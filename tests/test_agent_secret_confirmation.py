@@ -642,6 +642,48 @@ def test_confirm_respects_policy_denial_without_running_tool() -> None:
     run_tool.assert_not_awaited()
 
 
+def test_policy_denial_delivery_failure_reports_not_executed() -> None:
+    """策略拒绝无法私聊送达时，普通提示不得把未执行操作报告为完成。"""
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+        original_chat_id="group-1",
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+    denied = SimpleNamespace(decision=SimpleNamespace(allowed=False))
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            agent,
+            "_deliver_private_channel_message",
+            new=AsyncMock(side_effect=[True, False]),
+        ),
+        patch.object(agent, "send_agent_message", new=AsyncMock()) as send_notice,
+        patch(
+            "app.agent.middleware.policy.DEFAULT_TOOL_POLICY_ORCHESTRATOR.start",
+            return_value=denied,
+        ),
+        patch.object(QuerySystemSettingsTool, "_run_confirmed", new=AsyncMock()) as run_tool,
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "当前宿主策略不允许执行该工具。"
+    send_notice.assert_awaited_once_with(result)
+    run_tool.assert_not_awaited()
+
+
 def test_confirm_records_policy_failure_and_returns_protected_error() -> None:
     """确认执行异常必须闭合 fail 生命周期，且不把异常交给普通对话。"""
     protected_output = []
@@ -699,3 +741,44 @@ def test_confirm_records_policy_failure_and_returns_protected_error() -> None:
     assert protected_output[-1] == result
     fail.assert_called_once()
     finish.assert_not_called()
+
+
+def test_execution_failure_delivery_failure_reports_safe_notice() -> None:
+    """执行和私聊投递同时失败时，普通渠道仍须收到不含敏感信息的提示。"""
+    agent = MoviePilotAgent(
+        session_id="session-secret",
+        user_id="1",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+        original_chat_id="group-1",
+    )
+    tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
+    tool.set_agent_context(agent._tool_context)
+
+    async def scenario() -> str:
+        await agent._register_secret_confirmation(
+            tool,
+            {"setting_key": "TMDB_API_KEY", "show_secrets": True},
+        )
+        return await agent.process("确认")
+
+    with (
+        patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
+        patch.object(
+            agent,
+            "_deliver_private_channel_message",
+            new=AsyncMock(side_effect=[True, False]),
+        ),
+        patch.object(agent, "send_agent_message", new=AsyncMock()) as send_notice,
+        patch.object(
+            QuerySystemSettingsTool,
+            "_run_confirmed",
+            new=AsyncMock(side_effect=RuntimeError("secret-bearing-error")),
+        ),
+    ):
+        result = asyncio.run(scenario())
+
+    assert result == "敏感设置读取失败，请稍后重试。"
+    send_notice.assert_awaited_once_with(result)
+    assert "secret-bearing-error" not in send_notice.await_args.args[0]

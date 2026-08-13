@@ -18,6 +18,7 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
+POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
 
 
 class AgentPolicyMiddleware(AgentMiddleware):
@@ -135,9 +136,10 @@ class AgentPolicyMiddleware(AgentMiddleware):
             arguments=arguments,
             invocation_id=invocation_id,
         )
+        if enforce_decision and observation is None:
+            return False, POLICY_UNAVAILABLE_MESSAGE
         if (
                 enforce_decision
-                and observation is not None
                 and observation.decision.allowed is False
         ):
             return False, POLICY_DENIED_MESSAGE
@@ -162,4 +164,8 @@ class AgentPolicyMiddleware(AgentMiddleware):
         return True, result
 
 
-__all__ = ["AgentPolicyMiddleware", "POLICY_DENIED_MESSAGE"]
+__all__ = [
+    "AgentPolicyMiddleware",
+    "POLICY_DENIED_MESSAGE",
+    "POLICY_UNAVAILABLE_MESSAGE",
+]
