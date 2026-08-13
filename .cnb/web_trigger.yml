@@ -1,0 +1,12 @@
+# ╔══════════════════════════════════════════════╗
+# ║  Web Trigger — 手动触发同步按钮               ║
+# ║  在 CNB 分支详情页显示「同步到 GitHub」按钮   ║
+# ╚══════════════════════════════════════════════╝
+
+branch:
+  - buttons:
+      - name: 同步到 GitHub
+        description: 将 CNB 仓库代码强制同步到 GitHub (carolcoral/moviepilot)
+        event: web_trigger_push_github
+        permissions:
+          roles: [owner]
