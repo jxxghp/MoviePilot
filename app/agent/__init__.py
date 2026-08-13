@@ -395,6 +395,7 @@ class MoviePilotAgent:
         self._pending_secret_confirmation: Optional[_PendingSecretConfirmation] = None
         self._streamed_output = ""
         self._session_usage = _SessionUsageSnapshot()
+        self._request_sequence = 0
         self._llm_runtime_config: Optional[Dict[str, Any]] = None
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
@@ -642,6 +643,11 @@ class MoviePilotAgent:
             self._session_usage.model = model_name
         self._session_usage.context_window_tokens = context_window_tokens
 
+    def _next_request_sequence(self) -> int:
+        """为当前会话中的模型请求分配跨 Agent 图单调递增的序号。"""
+        self._request_sequence += 1
+        return self._request_sequence
+
     def _record_usage(self, usage: dict[str, Any]) -> None:
         if not usage:
             return
@@ -649,6 +655,7 @@ class MoviePilotAgent:
         self._session_usage.model_call_count += 1
         self._session_usage.last_updated_at = datetime.now()
 
+        has_request_sequence = "request_sequence" in usage
         request_sequence = self._coerce_int(usage.get("request_sequence"))
         if (
             usage.get("request_budget_recorded") is False
@@ -662,7 +669,7 @@ class MoviePilotAgent:
                 }
             )
         is_current_request = (
-            request_sequence is None
+            not has_request_sequence
             or request_sequence == self._session_usage.last_request_sequence
         )
 
@@ -756,7 +763,10 @@ class MoviePilotAgent:
         """保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。"""
         if not budget:
             return
-        request_sequence = self._coerce_int(budget.get("request_sequence")) or 0
+        request_sequence = self._coerce_int(budget.get("request_sequence"))
+        if "request_sequence" in budget and request_sequence is None:
+            return
+        request_sequence = request_sequence or 0
         if request_sequence < self._session_usage.last_request_sequence:
             return
         self._session_usage.last_request_sequence = request_sequence
@@ -804,17 +814,26 @@ class MoviePilotAgent:
         self._session_usage.configured_output_limit_tokens = self._coerce_int(
             budget.get("configured_output_limit_tokens")
         )
+        has_model_snapshot = "model" in budget
+        model_name = budget.get("model")
         context_window_tokens = self._coerce_positive_int(
             budget.get("context_window_tokens")
         )
-        if estimate_available:
+        # 模型标识与窗口属于同一次最终请求，必须一起替换，不能拼接两轮状态。
+        if has_model_snapshot:
+            self._session_usage.model = model_name if model_name else None
+            self._session_usage.context_window_tokens = context_window_tokens
+        elif estimate_available:
             self._session_usage.context_window_tokens = context_window_tokens
         self._session_usage.last_actual_input_tokens = None
         self._session_usage.last_estimate_error_tokens = None
         self._session_usage.last_estimate_error_ratio = None
 
     def get_session_status(self) -> dict[str, Any]:
-        if not self._session_usage.model:
+        if (
+            not self._session_usage.model
+            and self._session_usage.last_request_sequence == 0
+        ):
             self._session_usage.model = settings.LLM_MODEL
         if (
             not self._session_usage.context_window_tokens
@@ -1971,6 +1990,7 @@ class MoviePilotAgent:
                 UsageMiddleware(
                     on_usage=self._record_usage,
                     on_request_budget=self._record_request_budget,
+                    next_request_sequence=self._next_request_sequence,
                 )
             )
 

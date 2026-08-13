@@ -221,10 +221,47 @@ def test_request_budget_counts_multimodal_input_without_storing_content():
     assert snapshot["image_count"] == 1
     assert snapshot["unknown_multimodal_count"] == 1
     assert snapshot["multimodal_tokens"] == 85
+    assert snapshot["estimated_input_tokens"] == (
+        snapshot["message_tokens"]
+        + snapshot["system_tokens"]
+        + snapshot["tool_tokens"]
+    )
+    assert snapshot["model"] == "small-model"
     assert secret_marker not in repr(snapshot)
     assert all(
         value is None or isinstance(value, (bool, int, float))
-        for value in snapshot.values()
+        for key, value in snapshot.items()
+        if key != "model"
+    )
+
+
+def test_request_budget_counts_each_image_cost_exactly_once():
+    """LangChain 的消息估算已包含图片固定成本，汇总预算不得重复相加。"""
+    text_only = UsageMiddleware.estimate_request(
+        _request(
+            messages=[HumanMessage(content=[{"type": "text", "text": "hello"}])]
+        )
+    )
+    with_image = UsageMiddleware.estimate_request(
+        _request(
+            messages=[
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": "hello"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,hidden"},
+                        },
+                    ]
+                )
+            ]
+        )
+    )
+
+    assert with_image["multimodal_tokens"] == 85
+    assert (
+        with_image["estimated_input_tokens"] - text_only["estimated_input_tokens"]
+        == 85
     )
 
 
@@ -309,6 +346,8 @@ def test_request_budget_callback_failure_clears_previous_estimate_state():
     assert status["last_estimated_input_tokens"] is None
     assert status["last_actual_input_tokens"] is None
     assert status["last_estimate_error_tokens"] is None
+    assert status["model"] == "small-model"
+    assert status["context_window_tokens"] == 4096
     assert status["last_input_tokens"] == 50
 
 
@@ -330,7 +369,95 @@ def test_request_budget_estimator_failure_reports_empty_snapshot_and_calls_model
         result = asyncio.run(middleware.awrap_model_call(request, _handler))
 
     assert result is response
-    assert budgets == [{"request_sequence": 1, "has_estimate": False}]
+    assert budgets == [
+        {
+            "request_sequence": 1,
+            "has_estimate": False,
+            "model": "small-model",
+            "context_window_tokens": 4096,
+        }
+    ]
+
+
+def test_request_budget_metadata_failure_still_calls_model():
+    """模型元数据属性异常不得让预算观察器阻断真实模型调用。"""
+
+    class _BrokenMetadataModel:
+        @property
+        def model(self):
+            raise RuntimeError("model metadata unavailable")
+
+        @property
+        def model_name(self):
+            raise RuntimeError("model metadata unavailable")
+
+        @property
+        def model_id(self):
+            raise RuntimeError("model metadata unavailable")
+
+        @property
+        def profile(self):
+            raise RuntimeError("profile metadata unavailable")
+
+    budgets = []
+    middleware = UsageMiddleware(on_request_budget=budgets.append)
+    request = ModelRequest(
+        model=_BrokenMetadataModel(),
+        messages=[HumanMessage(content="hello")],
+        tools=[],
+        state={},
+        runtime=None,
+    )
+    response = ModelResponse(result=[AIMessage(content="ok")])
+    handled = []
+
+    async def _handler(received):
+        handled.append(received)
+        return response
+
+    with patch.object(
+        UsageMiddleware,
+        "estimate_request",
+        side_effect=RuntimeError("estimate unavailable"),
+    ):
+        result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert result is response
+    assert handled == [request]
+    assert budgets == [
+        {
+            "request_sequence": 1,
+            "has_estimate": False,
+            "model": None,
+            "context_window_tokens": None,
+        }
+    ]
+
+
+def test_request_sequence_callback_failure_still_calls_model():
+    """会话序号分配异常时应放弃最近快照竞争，并继续真实模型调用。"""
+    budgets = []
+
+    def _raise_sequence():
+        raise RuntimeError("sequence unavailable")
+
+    middleware = UsageMiddleware(
+        on_request_budget=budgets.append,
+        next_request_sequence=_raise_sequence,
+    )
+    request = _request(messages=[HumanMessage(content="hello")])
+    response = ModelResponse(result=[AIMessage(content="ok")])
+    handled = []
+
+    async def _handler(received):
+        handled.append(received)
+        return response
+
+    result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert result is response
+    assert handled == [request]
+    assert budgets[0]["request_sequence"] is None
 
 
 def test_request_budget_and_actual_usage_share_one_request_sequence():
@@ -542,6 +669,178 @@ def test_out_of_order_responses_keep_latest_request_snapshot():
     assert status["total_output_tokens"] == 3
     assert status["total_tokens"] == 63
     assert status["model_call_count"] == 2
+
+
+def test_sequence_failure_cannot_overwrite_next_request_snapshot():
+    """无序号请求晚返回时只能累计 usage，不能覆盖后续有序请求。"""
+    agent = MoviePilotAgent(session_id="request-budget", user_id="user-1")
+    allocation_count = 0
+
+    def _next_sequence():
+        nonlocal allocation_count
+        allocation_count += 1
+        if allocation_count == 1:
+            raise RuntimeError("sequence unavailable")
+        return agent._next_request_sequence()
+
+    middleware = UsageMiddleware(
+        on_request_budget=agent._record_request_budget,
+        on_usage=agent._record_usage,
+        next_request_sequence=_next_sequence,
+    )
+    first_request = _request(
+        messages=[HumanMessage(content="first")],
+        max_input_tokens=1000,
+    )
+    first_request.model.model = "first-model"
+    second_request = _request(
+        messages=[HumanMessage(content="second")],
+        max_input_tokens=2000,
+    )
+    second_request.model.model = "second-model"
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def _handler(request):
+        if request.model.model == "first-model":
+            first_started.set()
+            await release_first.wait()
+            input_tokens = 10
+        else:
+            input_tokens = 50
+        return ModelResponse(
+            result=[
+                AIMessage(
+                    content=request.model.model,
+                    usage_metadata={
+                        "input_tokens": input_tokens,
+                        "output_tokens": 1,
+                        "total_tokens": input_tokens + 1,
+                    },
+                )
+            ]
+        )
+
+    async def _run_out_of_order():
+        first_task = asyncio.create_task(
+            middleware.awrap_model_call(first_request, _handler)
+        )
+        await first_started.wait()
+        await middleware.awrap_model_call(second_request, _handler)
+        release_first.set()
+        await first_task
+
+    asyncio.run(_run_out_of_order())
+    status = agent.get_session_status()
+
+    assert status["last_request_sequence"] == 1
+    assert status["model"] == "second-model"
+    assert status["context_window_tokens"] == 2000
+    assert status["last_input_tokens"] == 50
+    assert status["last_actual_input_tokens"] == 50
+    assert status["total_input_tokens"] == 60
+    assert status["model_call_count"] == 2
+
+
+def test_failed_model_switch_keeps_model_and_window_from_same_request():
+    """新模型请求即使失败，状态也不得混合旧模型名称与新窗口。"""
+    agent = MoviePilotAgent(session_id="request-budget", user_id="user-1")
+    agent._sync_model_profile(
+        SimpleNamespace(model="large-model", profile={"max_input_tokens": 128000})
+    )
+    middleware = UsageMiddleware(
+        on_request_budget=agent._record_request_budget,
+        on_usage=agent._record_usage,
+    )
+    request = _request(
+        messages=[HumanMessage(content="small")],
+        max_input_tokens=2048,
+    )
+    request.model.model = "small-model"
+
+    async def _failing_handler(_request):
+        raise RuntimeError("model unavailable")
+
+    async def _run_failure():
+        try:
+            await middleware.awrap_model_call(request, _failing_handler)
+        except RuntimeError:
+            pass
+
+    asyncio.run(_run_failure())
+    status = agent.get_session_status()
+
+    assert status["last_request_sequence"] == 1
+    assert status["model"] == "small-model"
+    assert status["context_window_tokens"] == 2048
+
+
+def test_unknown_model_name_is_not_replaced_after_request_snapshot():
+    """请求已开始后，未知模型名称不得与配置默认值拼成虚假快照。"""
+    agent = MoviePilotAgent(session_id="request-budget", user_id="user-1")
+    agent._record_request_budget(
+        {
+            "has_estimate": True,
+            "request_sequence": 1,
+            "model": None,
+            "estimated_input_tokens": 100,
+            "context_window_tokens": 2048,
+        }
+    )
+
+    status = agent.get_session_status()
+
+    assert status["model"] is None
+    assert status["context_window_tokens"] == 2048
+
+
+def test_request_sequence_remains_monotonic_after_agent_graph_rebuild():
+    """重建 Agent 图后，新观察器也必须延续当前会话的请求顺序。"""
+    agent = MoviePilotAgent(session_id="request-budget", user_id="user-1")
+    first_graph = UsageMiddleware(
+        on_request_budget=agent._record_request_budget,
+        on_usage=agent._record_usage,
+        next_request_sequence=agent._next_request_sequence,
+    )
+    rebuilt_graph = UsageMiddleware(
+        on_request_budget=agent._record_request_budget,
+        on_usage=agent._record_usage,
+        next_request_sequence=agent._next_request_sequence,
+    )
+
+    async def _handler(request):
+        return ModelResponse(
+            result=[
+                AIMessage(
+                    content=request.model.model,
+                    usage_metadata={
+                        "input_tokens": request.model.profile["max_input_tokens"] // 10,
+                        "output_tokens": 1,
+                        "total_tokens": request.model.profile["max_input_tokens"] // 10 + 1,
+                    },
+                )
+            ]
+        )
+
+    first = _request(
+        messages=[HumanMessage(content="first")],
+        max_input_tokens=1000,
+    )
+    first.model.model = "first-model"
+    second = _request(
+        messages=[HumanMessage(content="second")],
+        max_input_tokens=2000,
+    )
+    second.model.model = "second-model"
+
+    asyncio.run(first_graph.awrap_model_call(first, _handler))
+    asyncio.run(rebuilt_graph.awrap_model_call(second, _handler))
+    status = agent.get_session_status()
+
+    assert status["last_request_sequence"] == 2
+    assert status["model"] == "second-model"
+    assert status["context_window_tokens"] == 2000
+    assert status["last_input_tokens"] == 200
 
 
 def test_new_request_estimate_clears_stale_calibration_until_success():

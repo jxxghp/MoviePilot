@@ -22,9 +22,11 @@ class UsageMiddleware(AgentMiddleware):
         *,
         on_usage: Callable[[dict[str, Any]], None] | None = None,
         on_request_budget: Callable[[dict[str, Any]], None] | None = None,
+        next_request_sequence: Callable[[], int] | None = None,
     ) -> None:
         self.on_usage = on_usage
         self.on_request_budget = on_request_budget
+        self.next_request_sequence = next_request_sequence
         self._request_sequence = 0
 
     @staticmethod
@@ -100,30 +102,60 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_model_name(cls, model: Any) -> str | None:
-        return (
-            getattr(model, "model", None)
-            or getattr(model, "model_name", None)
-            or getattr(model, "model_id", None)
-        )
+        for field in ("model", "model_name", "model_id"):
+            try:
+                value = getattr(model, field, None)
+            except Exception:
+                continue
+            if value:
+                return value
+        return None
 
     @classmethod
     def _extract_context_window_tokens(cls, model: Any) -> int | None:
-        profile = getattr(model, "profile", None)
+        try:
+            profile = getattr(model, "profile", None)
+        except Exception:
+            return None
         if not profile:
             return None
-        return cls._lookup_positive_int(
-            profile, "max_input_tokens", "input_token_limit"
-        )
+        try:
+            return cls._lookup_positive_int(
+                profile, "max_input_tokens", "input_token_limit"
+            )
+        except Exception:
+            return None
 
     @classmethod
     def _extract_model_max_output_tokens(cls, model: Any) -> int | None:
         """读取模型输出能力上限；该值不代表单次请求已经预留的输出空间。"""
-        profile = getattr(model, "profile", None)
+        try:
+            profile = getattr(model, "profile", None)
+        except Exception:
+            return None
         if not profile:
             return None
-        return cls._lookup_positive_int(
-            profile, "max_output_tokens", "output_token_limit"
-        )
+        try:
+            return cls._lookup_positive_int(
+                profile, "max_output_tokens", "output_token_limit"
+            )
+        except Exception:
+            return None
+
+    def _next_request_sequence(self) -> int | None:
+        """优先使用会话级序号，使图重建后的请求仍保持单调顺序。"""
+        if callable(self.next_request_sequence):
+            try:
+                return self.next_request_sequence()
+            except Exception as error:
+                logger.debug(
+                    "分配会话级模型请求序号失败: error_type=%s",
+                    type(error).__name__,
+                )
+                # 无法证明顺序的请求仍可累计 usage，但不能参与最近请求快照竞争。
+                return None
+        self._request_sequence += 1
+        return self._request_sequence
 
     @classmethod
     def _extract_configured_output_limit_tokens(
@@ -196,6 +228,7 @@ class UsageMiddleware(AgentMiddleware):
         )
         return {
             "has_estimate": True,
+            "model": cls._extract_model_name(request.model),
             "message_count": len(messages),
             "tool_count": len(tools),
             "image_count": image_count,
@@ -203,6 +236,7 @@ class UsageMiddleware(AgentMiddleware):
             "message_tokens": message_tokens,
             "system_tokens": system_tokens,
             "tool_tokens": tool_tokens,
+            # 该成本已经包含在 message_tokens 中，只单独暴露组成，不能再次汇总。
             "multimodal_tokens": image_count * 85,
             "estimated_input_tokens": estimated_input_tokens,
             "context_window_tokens": context_window_tokens,
@@ -477,8 +511,7 @@ class UsageMiddleware(AgentMiddleware):
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
-        self._request_sequence += 1
-        request_sequence = self._request_sequence
+        request_sequence = self._next_request_sequence()
         request_budget = None
         try:
             request_budget = {
@@ -493,6 +526,10 @@ class UsageMiddleware(AgentMiddleware):
             request_budget = {
                 "request_sequence": request_sequence,
                 "has_estimate": False,
+                "model": self._extract_model_name(request.model),
+                "context_window_tokens": self._extract_context_window_tokens(
+                    request.model
+                ),
             }
         if callable(self.on_request_budget):
             request_budget_recorded = False
