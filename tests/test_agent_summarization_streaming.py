@@ -17,6 +17,7 @@ from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -178,7 +179,6 @@ def _real_compaction_graph(*, model, summarizer, tools=None, checkpointer=None):
         model=model,
         tools=list(tools or []),
         middleware=[
-            summary_middleware,
             _DynamicSystemMiddleware(),
             FinalRequestCompactionMiddleware(summarizer=summary_middleware),
         ],
@@ -232,14 +232,18 @@ def test_streaming_agent_uses_non_streaming_llm_for_summary():
     ):
         asyncio.run(agent._create_agent(streaming=True))
 
-    summary_middleware = next(
+    compaction_middleware = next(
         middleware
         for middleware in captured["middleware"]
-        if isinstance(middleware, ContextPreservingSummarizationMiddleware)
+        if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
 
     assert captured["model"] is main_llm
-    assert summary_middleware.model is non_streaming_llm
+    assert compaction_middleware.summarizer.model is non_streaming_llm
+    assert not any(
+        isinstance(middleware, ContextPreservingSummarizationMiddleware)
+        for middleware in captured["middleware"]
+    )
 
 
 def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
@@ -355,14 +359,18 @@ def test_non_streaming_agent_reuses_main_llm_for_summary():
     ):
         asyncio.run(agent._create_agent(streaming=False))
 
-    summary_middleware = next(
+    compaction_middleware = next(
         middleware
         for middleware in captured["middleware"]
-        if isinstance(middleware, ContextPreservingSummarizationMiddleware)
+        if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
 
     assert captured["model"] is main_llm
-    assert summary_middleware.model is main_llm
+    assert compaction_middleware.summarizer.model is main_llm
+    assert not any(
+        isinstance(middleware, ContextPreservingSummarizationMiddleware)
+        for middleware in captured["middleware"]
+    )
 
 
 def test_summary_failure_does_not_replace_existing_context():
@@ -390,11 +398,12 @@ def test_summary_failure_does_not_replace_existing_context():
     ):
         asyncio.run(agent._create_agent(streaming=False))
 
-    summary_middleware = next(
+    compaction_middleware = next(
         middleware
         for middleware in captured["middleware"]
-        if isinstance(middleware, ContextPreservingSummarizationMiddleware)
+        if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
+    summary_middleware = compaction_middleware.summarizer
     messages = [
         HumanMessage(content=f"必须保留的旧上下文 {index} " * 200)
         for index in range(160)
@@ -570,6 +579,222 @@ def test_uncompactable_request_below_window_still_calls_main_model():
     assert received == [request]
 
 
+def test_overflow_with_small_history_compacts_to_hard_window():
+    """历史低于常规保留量时，超窗请求仍应尝试压缩而不是直接拒绝。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    messages = [
+        HumanMessage(content=f"近期历史 {index} " * 5) for index in range(4)
+    ]
+    request = _final_request(
+        messages=messages,
+        system_message=SystemMessage(content="固定系统约束 " * 1150),
+    )
+    original_budget = UsageMiddleware.estimate_request(request)
+    fixed_budget = UsageMiddleware.estimate_request(request.override(messages=[]))
+    assert fixed_budget["estimated_input_ratio"] < 1
+    assert summarizer.token_counter(messages) < 2048 * 0.10
+    assert original_budget["estimated_input_ratio"] > 1
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="继续完成")])
+
+    result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert isinstance(result, ExtendedModelResponse)
+    assert len(received) == 1
+    compacted_budget = UsageMiddleware.estimate_request(received[0])
+    assert 0.85 < compacted_budget["estimated_input_ratio"] <= 1
+
+
+def test_compaction_uses_hard_window_when_soft_target_is_unreachable():
+    """固定开销超过软线时，应缩小近期历史直到完整窗口可承载。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    messages = [
+        HumanMessage(content=f"需要择量保留的历史 {index} " * 20)
+        for index in range(24)
+    ]
+    request = _final_request(
+        messages=messages,
+        system_message=SystemMessage(content="固定系统约束 " * 1100),
+    )
+    fixed_budget = UsageMiddleware.estimate_request(request.override(messages=[]))
+    assert 0.85 < fixed_budget["estimated_input_ratio"] < 1
+    assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="继续完成")])
+
+    result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert isinstance(result, ExtendedModelResponse)
+    assert len(received) == 1
+    compacted_budget = UsageMiddleware.estimate_request(received[0])
+    assert 0.85 < compacted_budget["estimated_input_ratio"] <= 1
+
+
+def test_forced_compaction_advances_beyond_existing_summary():
+    """超窗时应继续压缩旧事实，不能因首条已有摘要而误判无进展。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    messages = [
+        AIMessage(
+            content="已有摘要 " * 570,
+            additional_kwargs={"lc_source": "summarization"},
+        ),
+        HumanMessage(content="仍可继续压缩的旧事实 " * 92),
+        HumanMessage(content="最新问题"),
+    ]
+    request = _final_request(
+        messages=messages,
+        system_message=SystemMessage(content="固定系统约束 " * 700),
+    )
+    fixed_budget = UsageMiddleware.estimate_request(request.override(messages=[]))
+    assert fixed_budget["estimated_input_ratio"] < 1
+    assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
+    partition = summarizer.partition_for_token_limit(
+        messages,
+        int(2048 * 0.10),
+        force=True,
+    )
+    assert partition is not None
+    assert len(partition[0]) == 2
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="继续完成")])
+
+    result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert isinstance(result, ExtendedModelResponse)
+    assert len(received) == 1
+    assert received[0].messages[-1].id == messages[-1].id
+    assert UsageMiddleware.estimate_request(received[0])["estimated_input_ratio"] <= 1
+
+
+def test_forced_compaction_keeps_only_current_message_instead_of_summarizing_it():
+    """唯一当前消息不可被强制摘要，无法装入窗口时应保留历史并拒绝。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    latest_message = HumanMessage(content="唯一且必须保留的当前问题 " * 40)
+    request = _final_request(
+        messages=[latest_message],
+        system_message=SystemMessage(content="固定系统约束 " * 1100),
+    )
+    fixed_budget = UsageMiddleware.estimate_request(request.override(messages=[]))
+    assert fixed_budget["estimated_input_ratio"] < 1
+    assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="不应执行")])
+
+    with pytest.raises(ContextSummarizationError, match="仍超出上下文窗口"):
+        asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert received == []
+    assert request.messages == [latest_message]
+
+
+def test_forced_compaction_rejects_single_long_current_message():
+    """当前消息超过保留预算时也不可被整体摘要。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    latest_message = HumanMessage(content="当前用户唯一问题 " * 830)
+    request = _final_request(
+        messages=[latest_message],
+        system_message=SystemMessage(content="固定系统约束 " * 100),
+    )
+    assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
+    assert summarizer.partition_for_token_limit(
+        [latest_message],
+        int(2048 * 0.10),
+        force=True,
+    ) is None
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="不应执行")])
+
+    with pytest.raises(ContextSummarizationError, match="仍超出上下文窗口"):
+        asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert received == []
+    assert request.messages == [latest_message]
+
+
+def test_repartition_advances_past_complete_old_tool_transaction():
+    """二次分区应整体摘要旧工具事务，而不是停在相同安全边界。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+    latest_message = HumanMessage(content="新的用户问题")
+    messages = [
+        HumanMessage(content="更早历史 " * 30),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "old_tool",
+                    "args": {"text": "工具参数 " * 500},
+                    "id": "old-call",
+                }
+            ],
+        ),
+        ToolMessage(content="旧工具结果", tool_call_id="old-call"),
+        latest_message,
+    ]
+    request = _final_request(
+        messages=messages,
+        system_message=SystemMessage(content="固定系统约束 " * 780),
+    )
+    assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
+    received = []
+
+    async def _handler(compacted_request):
+        received.append(compacted_request)
+        return ModelResponse(result=[AIMessage(content="继续完成")])
+
+    result = asyncio.run(middleware.awrap_model_call(request, _handler))
+
+    assert isinstance(result, ExtendedModelResponse)
+    assert len(received) == 1
+    assert received[0].messages[-1].id == latest_message.id
+    assert not any(isinstance(message, ToolMessage) for message in received[0].messages)
+    assert UsageMiddleware.estimate_request(received[0])["estimated_input_ratio"] <= 1
+
+
 def test_summary_calls_include_version_compatible_internal_metadata():
     """摘要调用应合并当前 LangChain 提供的内部流式过滤标记。"""
     summary_model = _MetadataRecordingSummaryLLM("summary")
@@ -740,7 +965,7 @@ def test_large_tool_result_allows_same_turn_recompaction():
     def large_result() -> str:
         """返回足以再次耗尽主模型窗口的工具结果。"""
         calls.append("once")
-        return "超长工具结果 " * 2000
+        return "超长工具结果 " * 800
 
     summarizer = _CountingSummaryLLM("summary")
     model = _RecordingChatModel(
@@ -766,7 +991,10 @@ def test_large_tool_result_allows_same_turn_recompaction():
     assert calls == ["once"]
     assert summarizer.calls == 2
     assert len(model.seen_messages) == 2
-    assert "超长工具结果" not in str(model.seen_messages[1])
+    second_request = model.seen_messages[1]
+    assert isinstance(second_request[-2], AIMessage)
+    assert isinstance(second_request[-1], ToolMessage)
+    assert second_request[-1].tool_call_id == second_request[-2].tool_calls[0]["id"]
     assert result["messages"][-1].content == "工具完成"
 
 
@@ -868,6 +1096,82 @@ def test_real_agent_failure_does_not_commit_compacted_history(failure):
     else:
         assert summarizer.calls == 1
         assert len(model.seen_messages) == 1
+
+
+def test_history_triggered_compaction_waits_for_main_model_success():
+    """历史本身触发压缩时，主模型失败也不得提前提交摘要状态。"""
+    checkpointer = InMemorySaver()
+    summarizer = _CountingSummaryLLM("summary")
+    summarizer.profile = {"max_input_tokens": 2048}
+    model = _FailingMainModel(
+        responses=[AIMessage(content="不会返回")],
+        profile={"max_input_tokens": 2048},
+    )
+    graph = _real_compaction_graph(
+        model=model,
+        summarizer=summarizer,
+        checkpointer=checkpointer,
+    )
+    messages = [
+        HumanMessage(content=f"历史直接触发压缩 {index} " * 40)
+        for index in range(30)
+    ]
+    summary_middleware = ContextPreservingSummarizationMiddleware(
+        model=summarizer,
+        trigger=("fraction", 0.85),
+        keep=("messages", 20),
+    )
+    assert summary_middleware.token_counter(messages) >= 2048 * 0.85
+    config = {"configurable": {"thread_id": "history-trigger-main-failure"}}
+
+    async def _run():
+        with pytest.raises(TimeoutError):
+            await graph.ainvoke({"messages": messages}, config=config)
+        return await graph.aget_state(config)
+
+    snapshot = asyncio.run(_run())
+
+    assert [message.content for message in snapshot.values["messages"]] == [
+        message.content for message in messages
+    ]
+    assert summarizer.calls >= 1
+    assert len(model.seen_messages) == 1
+
+
+def test_history_triggered_compaction_commits_after_main_model_success():
+    """历史本身触发压缩时，摘要与模型结果应在成功后一次性提交。"""
+    checkpointer = InMemorySaver()
+    summarizer = _CountingSummaryLLM("summary")
+    summarizer.profile = {"max_input_tokens": 2048}
+    model = _RecordingChatModel(
+        responses=[AIMessage(content="继续完成")],
+        profile={"max_input_tokens": 2048},
+    )
+    graph = _real_compaction_graph(
+        model=model,
+        summarizer=summarizer,
+        checkpointer=checkpointer,
+    )
+    messages = [
+        HumanMessage(content=f"历史直接触发压缩 {index} " * 40)
+        for index in range(30)
+    ]
+    config = {"configurable": {"thread_id": "history-trigger-main-success"}}
+
+    async def _run():
+        result = await graph.ainvoke({"messages": messages}, config=config)
+        return result, await graph.aget_state(config)
+
+    result, snapshot = asyncio.run(_run())
+
+    assert [message.content for message in result["messages"]] == [
+        message.content for message in snapshot.values["messages"]
+    ]
+    assert "保留旧事实的摘要" in result["messages"][0].content
+    assert result["messages"][-1].content == "继续完成"
+    assert len(result["messages"]) < len(messages)
+    assert summarizer.calls >= 1
+    assert len(model.seen_messages) == 1
 
 
 def test_unsummarizable_message_requires_new_context_instead_of_retry():

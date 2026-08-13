@@ -96,12 +96,26 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         return self._require_valid_summary(response.text.strip())
 
     def partition_for_token_limit(
-        self, messages: list[AnyMessage], token_limit: int
+        self,
+        messages: list[AnyMessage],
+        token_limit: int,
+        *,
+        force: bool = False,
+        minimum_cutoff: int = 1,
+        strict_token_limit: bool = False,
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
         """按 token 上限拆分历史，并保持 LangChain 的工具调用事务边界。"""
         self._ensure_message_ids(messages)
         if self.token_counter(messages) <= token_limit:
-            return None
+            return (
+                self._minimum_safe_partition(
+                    messages,
+                    minimum_cutoff=minimum_cutoff,
+                    token_limit=token_limit if strict_token_limit else None,
+                )
+                if force
+                else None
+            )
 
         left, right = 0, len(messages)
         cutoff_candidate = len(messages)
@@ -116,9 +130,88 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         if cutoff_candidate >= len(messages):
             cutoff_candidate = len(messages)
         cutoff_index = self._find_safe_cutoff_point(messages, cutoff_candidate)
+        if (
+            cutoff_index <= 0
+            or cutoff_index >= len(messages)
+            or cutoff_index < minimum_cutoff
+            or not self._contains_unsummarized_message(messages[:cutoff_index])
+            or (
+                strict_token_limit
+                and self._partial_token_counter(messages[cutoff_index:]) > token_limit
+            )
+        ):
+            if cutoff_candidate >= len(messages):
+                if strict_token_limit:
+                    return None
+                return self._latest_safe_partition(
+                    messages,
+                    minimum_cutoff=minimum_cutoff,
+                )
+            return self._minimum_safe_partition(
+                messages,
+                minimum_cutoff=max(minimum_cutoff, cutoff_candidate),
+                token_limit=token_limit if strict_token_limit else None,
+            )
+        return self._partition_messages(messages, cutoff_index)
+
+    def partition_for_retention(
+        self, messages: list[AnyMessage]
+    ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
+        """按摘要器既有触发和保留策略拆分历史。"""
+        self._ensure_message_ids(messages)
+        total_tokens = self.token_counter(messages)
+        if not self._should_summarize(messages, total_tokens):
+            return None
+        cutoff_index = self._determine_cutoff_index(messages)
         if cutoff_index <= 0:
             return None
         return self._partition_messages(messages, cutoff_index)
+
+    def _minimum_safe_partition(
+        self,
+        messages: list[AnyMessage],
+        *,
+        minimum_cutoff: int = 1,
+        token_limit: int | None = None,
+    ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
+        """至少摘要一段旧历史，同时保留最新完整消息事务。"""
+        for candidate in range(max(1, minimum_cutoff), len(messages)):
+            cutoff_index = self._find_safe_cutoff_point(messages, candidate)
+            if (
+                minimum_cutoff <= cutoff_index < len(messages)
+                and self._contains_unsummarized_message(messages[:cutoff_index])
+                and (
+                    token_limit is None
+                    or self._partial_token_counter(messages[cutoff_index:])
+                    <= token_limit
+                )
+            ):
+                return self._partition_messages(messages, cutoff_index)
+        return None
+
+    def _latest_safe_partition(
+        self,
+        messages: list[AnyMessage],
+        *,
+        minimum_cutoff: int,
+    ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
+        """保留无法满足软预算时的最新完整消息事务。"""
+        for candidate in range(len(messages) - 1, minimum_cutoff - 1, -1):
+            cutoff_index = self._find_safe_cutoff_point(messages, candidate)
+            if (
+                minimum_cutoff <= cutoff_index < len(messages)
+                and self._contains_unsummarized_message(messages[:cutoff_index])
+            ):
+                return self._partition_messages(messages, cutoff_index)
+        return None
+
+    @staticmethod
+    def _contains_unsummarized_message(messages: list[AnyMessage]) -> bool:
+        """确认待摘要段包含可推进上下文的原始消息。"""
+        return any(
+            message.additional_kwargs.get("lc_source") != "summarization"
+            for message in messages
+        )
 
     def build_summary_messages(self, summary: str) -> list[AnyMessage]:
         """将摘要转换为 LangChain 约定的可识别历史消息。"""
@@ -187,10 +280,13 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         if not self._should_compact(budget) or not isinstance(context_window, int):
             return None
         try:
-            partition = self.summarizer.partition_for_token_limit(
-                messages,
-                max(1, int(context_window * self.keep_fraction)),
-            )
+            partition = self.summarizer.partition_for_retention(messages)
+            if partition is None:
+                partition = self.summarizer.partition_for_token_limit(
+                    messages,
+                    max(1, int(context_window * self.keep_fraction)),
+                    force=budget["estimated_input_tokens"] > context_window,
+                )
         except Exception as error:
             logger.debug(
                 "最终请求历史拆分失败，继续原请求: error_type=%s",
@@ -291,8 +387,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         if not isinstance(context_window, int) or not isinstance(estimated_tokens, int):
             return compacted_messages, None
 
-        target_tokens = max(1, int(context_window * self.trigger_fraction))
-        if estimated_tokens <= target_tokens:
+        if estimated_tokens <= context_window:
             return compacted_messages, None
 
         summary_messages = self.summarizer.build_summary_messages(summary)
@@ -300,19 +395,22 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             request.override(messages=summary_messages)
         )
         available_recent_tokens = (
-            target_tokens - fixed_summary_budget["estimated_input_tokens"]
+            context_window - fixed_summary_budget["estimated_input_tokens"]
         )
+        if available_recent_tokens <= 0:
+            raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
         repartition = self.summarizer.partition_for_token_limit(
-            list(request.messages), max(1, available_recent_tokens)
+            list(request.messages),
+            available_recent_tokens,
+            force=True,
+            minimum_cutoff=len(messages_to_summarize) + 1,
+            strict_token_limit=True,
         )
         if (
-            available_recent_tokens <= 0
-            or repartition is None
+            repartition is None
             or len(repartition[0]) <= len(messages_to_summarize)
         ):
-            if estimated_tokens > context_window:
-                raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
-            return compacted_messages, None
+            raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
         return compacted_messages, repartition
 
     def _require_within_window(

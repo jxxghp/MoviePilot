@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
@@ -12,6 +11,7 @@ import app.agent as agent_module
 from app.agent.middleware.activity_log import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
 from app.agent.policy import (
     DEFAULT_TOOL_POLICY_ORCHESTRATOR,
     DEFAULT_TOOL_POLICY_REGISTRY,
@@ -838,12 +838,12 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
         for index, middleware in enumerate(middlewares)
         if isinstance(middleware, ActivityLogMiddleware)
     )
-    summary_index = next(
+    compaction_index = next(
         index
         for index, middleware in enumerate(middlewares)
-        if isinstance(middleware, SummarizationMiddleware)
+        if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
 
     assert policy_index == 0
     assert activity_index == memory_index + 1
-    assert summary_index == activity_index + 1
+    assert compaction_index > activity_index

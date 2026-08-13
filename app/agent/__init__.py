@@ -1969,10 +1969,8 @@ class MoviePilotAgent:
                 RuntimeConfigMiddleware(),
                 # 记忆管理
                 MemoryMiddleware(memory_dir=str(agent_runtime_manager.memory_dir)),
-                # 活动日志依赖记忆上下文，并应在摘要压缩前完成读取与记录。
+                # 活动日志依赖记忆上下文，并应在最终请求压缩前完成读取与记录。
                 *([activity_log_middleware] if activity_log_middleware else []),
-                # 上下文压缩
-                summarization_middleware,
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
                 # 子代理委派
@@ -1995,7 +1993,7 @@ class MoviePilotAgent:
                     )
                 )
 
-            # 需要在动态 system 与工具筛选完成后按最终输入预算补充压缩。
+            # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
             middlewares.append(
                 FinalRequestCompactionMiddleware(
                     summarizer=summarization_middleware,
