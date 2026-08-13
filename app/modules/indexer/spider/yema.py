@@ -17,7 +17,8 @@ class YemaSpider:
     # YemaPT 开放 API 使用更大的分页容量时会返回空结果。
     _size = 40
     _movie_category = [4]
-    _tv_category = [5, 6, 13, 14, 15, 16, 17]
+    _tv_category = [5, 6, 13, 14, 15, 17]
+    _music_category = [8, 16]
 
     _labels = {
         "1": "禁转",
@@ -78,12 +79,14 @@ class YemaSpider:
         self,
         keyword: Optional[str],
         page: Optional[int],
+        category_id: Optional[int] = None,
     ) -> dict:
         """
         构造公开种子列表查询参数
 
         :param keyword: 搜索关键字
         :param page: MoviePilot 从 0 开始的页码
+        :param category_id: 可选的站点分类 ID
         :return: YemaPT 开放 API 请求体
         """
         params = {
@@ -95,7 +98,38 @@ class YemaSpider:
         }
         if keyword:
             params["keyword"] = keyword
+        if category_id is not None:
+            params["categoryId"] = category_id
         return params
+
+    def _search_category_ids(self, mtype: MediaType = None) -> List[Optional[int]]:
+        """
+        返回当前媒体类型需要分别查询的站点分类。
+
+        YemaPT 分类参数不支持数组，音乐需要分别查询音频音乐和 MV/演唱会分类。
+        """
+        if mtype == MediaType.MOVIE:
+            return list(self._movie_category)
+        if mtype == MediaType.TV:
+            return list(self._tv_category)
+        if mtype == MediaType.MUSIC:
+            return list(self._music_category)
+        return [None]
+
+    @staticmethod
+    def _merge_search_results(result_groups: List[List[dict]]) -> List[dict]:
+        """按种子详情链接合并多个分类查询结果并保持首次出现顺序。"""
+        merged = []
+        seen = set()
+        for results in result_groups:
+            for torrent in results:
+                identity = torrent.get("page_url") or torrent.get("enclosure")
+                if identity and identity in seen:
+                    continue
+                if identity:
+                    seen.add(identity)
+                merged.append(torrent)
+        return merged
 
     def _parse_result(self, results: List[dict]) -> List[dict]:
         """
@@ -113,6 +147,8 @@ class YemaSpider:
                 category = MediaType.TV.value
             elif category_value in self._movie_category:
                 category = MediaType.MOVIE.value
+            elif category_value in self._music_category:
+                category = MediaType.MUSIC.value
             else:
                 category = MediaType.UNKNOWN.value
 
@@ -181,22 +217,30 @@ class YemaSpider:
         同步搜索 YemaPT 公开种子
 
         :param keyword: 搜索关键字
-        :param mtype: MoviePilot 媒体类型，开放 API 不支持直接按媒体类型查询
+        :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
         :return: 是否失败及标准种子列表
         """
         if not self._api_key:
             logger.warning(f"{self._name} 未配置 API AuthKey")
             return True, []
-        response = RequestUtils(
+        request = RequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
-        ).post_res(
-            url=self._search_url,
-            json=self._build_params(keyword, page),
         )
-        return self._process_search_response(response)
+        result_groups = []
+        errors = []
+        for category_id in self._search_category_ids(mtype):
+            response = request.post_res(
+                url=self._search_url,
+                json=self._build_params(keyword, page, category_id),
+            )
+            error, results = self._process_search_response(response)
+            errors.append(error)
+            if not error:
+                result_groups.append(results)
+        return all(errors), self._merge_search_results(result_groups)
 
     async def async_search(
         self,
@@ -208,22 +252,30 @@ class YemaSpider:
         异步搜索 YemaPT 公开种子
 
         :param keyword: 搜索关键字
-        :param mtype: MoviePilot 媒体类型，开放 API 不支持直接按媒体类型查询
+        :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
         :return: 是否失败及标准种子列表
         """
         if not self._api_key:
             logger.warning(f"{self._name} 未配置 API AuthKey")
             return True, []
-        response = await AsyncRequestUtils(
+        request = AsyncRequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
-        ).post_res(
-            url=self._search_url,
-            json=self._build_params(keyword, page),
         )
-        return self._process_search_response(response)
+        result_groups = []
+        errors = []
+        for category_id in self._search_category_ids(mtype):
+            response = await request.post_res(
+                url=self._search_url,
+                json=self._build_params(keyword, page, category_id),
+            )
+            error, results = self._process_search_response(response)
+            errors.append(error)
+            if not error:
+                result_groups.append(results)
+        return all(errors), self._merge_search_results(result_groups)
 
     @staticmethod
     def _download_factor(promotion: str) -> float:

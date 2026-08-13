@@ -93,6 +93,7 @@ def test_yemapt_search_uses_open_api_auth_and_maps_fields(monkeypatch):
     assert captured == {
         "url": "https://www.yemapt.org/openApi/torrent/fetchOpenTorrentList.json",
         "json": {
+            "categoryId": 4,
             "keyword": "Movie",
             "pageParam": {"current": 3, "pageSize": 40},
             "sorter": {},
@@ -150,6 +151,80 @@ def test_yemapt_search_rejects_business_failure(monkeypatch):
 
     assert error
     assert torrents == []
+
+
+def test_yemapt_maps_audio_and_music_video_categories_to_music():
+    """YemaPT 音乐和 MV/演唱会分类都应映射为统一音乐类型。"""
+    results = YemaSpider(_build_indexer())._parse_result([
+        {"id": 101, "showName": "Album FLAC", "categoryId": 8},
+        {"id": 102, "showName": "Live Concert", "categoryId": 16},
+    ])
+
+    assert [item["category"] for item in results] == [
+        MediaType.MUSIC.value,
+        MediaType.MUSIC.value,
+    ]
+
+
+def test_yemapt_music_search_queries_both_music_categories(monkeypatch):
+    """YemaPT 音乐搜索应分别查询音乐和 MV/演唱会分类。"""
+    request_payloads = []
+
+    def fake_post_res(_request, url: str, json: dict = None, **_kwargs):
+        """记录音乐分类请求并按分类返回一条种子。"""
+        request_payloads.append(json)
+        category_id = json["categoryId"]
+        return _FakeResponse({
+            "success": True,
+            "data": [{
+                "id": category_id,
+                "showName": f"Music {category_id}",
+                "categoryId": category_id,
+            }],
+        })
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.yema.RequestUtils.post_res",
+        fake_post_res,
+    )
+
+    error, torrents = YemaSpider(_build_indexer()).search(
+        keyword="Artist",
+        mtype=MediaType.MUSIC,
+    )
+
+    assert not error
+    assert [payload["categoryId"] for payload in request_payloads] == [8, 16]
+    assert [torrent["category"] for torrent in torrents] == [
+        MediaType.MUSIC.value,
+        MediaType.MUSIC.value,
+    ]
+
+
+def test_yemapt_tv_search_queries_all_video_categories(monkeypatch):
+    """YemaPT 剧集搜索应覆盖剧集、短剧、综艺、动漫、纪录片和体育。"""
+    request_payloads = []
+
+    def fake_post_res(_request, url: str, json: dict = None, **_kwargs):
+        """记录剧集分类请求并返回空的成功响应。"""
+        request_payloads.append(json)
+        return _FakeResponse({"success": True, "data": []})
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.yema.RequestUtils.post_res",
+        fake_post_res,
+    )
+
+    error, torrents = YemaSpider(_build_indexer()).search(
+        keyword="Series",
+        mtype=MediaType.TV,
+    )
+
+    assert not error
+    assert torrents == []
+    assert [payload["categoryId"] for payload in request_payloads] == [
+        5, 6, 13, 14, 15, 17,
+    ]
 
 
 def test_yemapt_async_search_uses_open_api(monkeypatch):

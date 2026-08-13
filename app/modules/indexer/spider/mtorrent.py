@@ -36,8 +36,8 @@ class MTorrentSpider:
     _movie_category = ['401', '419', '420', '421', '439', '405', '404']
     # 电视剧分类
     _tv_category = ['403', '402', '435', '438', '404', '405']
-    # 音乐分类：406 为馒头 Music(音樂) 分区
-    _music_category = ['406']
+    # 音乐分类：434 为无损音乐，406 为演唱分区
+    _music_category = ['434', '406']
 
     # API KEY
     _apikey = None

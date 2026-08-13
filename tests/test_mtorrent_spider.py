@@ -42,12 +42,14 @@ def test_movie_search_keeps_movie_categories(mteam_spider):
 def test_parse_result_marks_music_torrents(mteam_spider):
     """音乐分区种子应标记为音乐媒体类型，供音乐搜索链路筛选。"""
     results = mteam_spider._MTorrentSpider__parse_result([
-        {"id": "1", "name": "周杰伦 - 七里香 [FLAC]", "category": "406", "size": "1024", "status": {}},
-        {"id": "2", "name": "流浪地球 2160p", "category": "419", "size": "1024", "status": {}},
-        {"id": "3", "name": "其他资源", "category": "999", "size": "1024", "status": {}},
+        {"id": "1", "name": "周杰伦 - 七里香 [FLAC]", "category": "434", "size": "1024", "status": {}},
+        {"id": "2", "name": "周杰伦演唱会", "category": "406", "size": "1024", "status": {}},
+        {"id": "3", "name": "流浪地球 2160p", "category": "419", "size": "1024", "status": {}},
+        {"id": "4", "name": "其他资源", "category": "999", "size": "1024", "status": {}},
     ])
 
     assert [torrent["category"] for torrent in results] == [
+        MediaType.MUSIC.value,
         MediaType.MUSIC.value,
         MediaType.MOVIE.value,
         MediaType.UNKNOWN.value,

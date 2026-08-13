@@ -26,10 +26,10 @@ def haidan_spider(monkeypatch):
 
 
 def test_music_search_uses_music_categories(haidan_spider):
-    """音乐搜索应只提交海胆 HQ Audio 分区分类。"""
+    """音乐搜索应提交海胆 HQ Audio 和音乐视频分区。"""
     params = haidan_spider._HaiDanSpider__get_params("张学友", MediaType.MUSIC)
 
-    assert "cat=408" in params
+    assert "cat=406%2C408" in params or "cat=406,408" in params
     assert "401" not in params
 
 
@@ -46,14 +46,16 @@ def test_parse_result_reads_item_category(haidan_spider):
         "code": 0,
         "data": {
             "1": {"name": "张学友 - 他在那里 FLAC", "category": 408, "size": "1024"},
-            "2": {"name": "流浪地球", "category": 401, "size": "1024"},
-            "3": {"name": "剧集 S01", "category": 402, "size": "1024"},
+            "2": {"name": "张学友演唱会", "category": 406, "size": "1024"},
+            "3": {"name": "流浪地球", "category": 401, "size": "1024"},
+            "4": {"name": "剧集 S01", "category": 402, "size": "1024"},
         },
     }
 
     torrents = haidan_spider._HaiDanSpider__parse_result(result)
 
     assert [torrent["category"] for torrent in torrents] == [
+        MediaType.MUSIC.value,
         MediaType.MUSIC.value,
         MediaType.MOVIE.value,
         MediaType.TV.value,

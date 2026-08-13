@@ -121,6 +121,10 @@ class SiteSpider:
                 self.list = self.browse.get('list') or self.list
                 self.fields = self.browse.get('fields') or self.fields
             result_num = indexer.get('result_num')
+        self.result_media_type_from_request = (
+            (self.search or {}).get("result_media_type") == "requested"
+        )
+        self.requested_result_media_type = None
         self._field_templates = self.__build_field_templates()
         self.domain = indexer.get('domain')
         self.result_num = int(result_num or self.default_result_num())
@@ -167,6 +171,7 @@ class SiteSpider:
         torrentspath = ""
         # 是否选中了媒体类型专用路径，浏览模式下专用路径优先于 browse 配置
         typed_path_selected = False
+        category_filter_selected = False
         if len(paths) == 1:
             torrentspath = paths[0].get('path', '')
         else:
@@ -243,6 +248,7 @@ class SiteSpider:
                         if allowed_cats and str(cat.get('id')) not in allowed_cats:
                             continue
                         if self.category.get("field"):
+                            category_filter_selected = True
                             value = params.get(self.category.get("field"), "")
                             params.update({
                                 "%s" % self.category.get("field"): value + self.category.get("delimiter",
@@ -251,6 +257,7 @@ class SiteSpider:
                         else:
                             category_param = cat.get("param") or self.category.get("param")
                             if category_param:
+                                category_filter_selected = True
                                 # 某些站点（例如憨憨）使用重复的 cat[] 参数，字典值列表可由
                                 # UrlUtils.combine_url 以 doseq=True 正确展开。
                                 category_id = cat.get("value", cat.get("id"))
@@ -262,6 +269,7 @@ class SiteSpider:
                                 else:
                                     params[category_param] = [current_value, category_id]
                             else:
+                                category_filter_selected = True
                                 params.update({
                                     "cat%s" % cat.get("id"): 1
                                 })
@@ -300,6 +308,12 @@ class SiteSpider:
             # 搜索Url
             searchurl = self.domain + str(torrentspath).format(**inputs_dict)
 
+        if self.result_media_type_from_request \
+                and self.mtype \
+                and (typed_path_selected or category_filter_selected):
+            self.requested_result_media_type = self.mtype
+        else:
+            self.requested_result_media_type = None
         return searchurl
 
     def __format_search_word(self, search_word: str) -> str:
@@ -774,6 +788,9 @@ class SiteSpider:
 
     def __get_category(self, torrent: Any):
         # category 电影/电视剧/音乐
+        if self.requested_result_media_type:
+            self.torrents_info['category'] = self.requested_result_media_type.value
+            return
         if 'category' not in self.fields:
             if self.site_media_type:
                 self.torrents_info['category'] = self.site_media_type.value
@@ -785,6 +802,19 @@ class SiteSpider:
         if resolved_type == MediaType.UNKNOWN and self.site_media_type:
             resolved_type = self.site_media_type
         self.torrents_info['category'] = resolved_type.value
+
+    def __apply_requested_result_media_type(self, torrents: Optional[List[dict]]) -> List[dict]:
+        """
+        为已由站点查询条件约束类型的结果补充统一媒体类型。
+
+        仅在站点配置显式声明 result_media_type=requested 时生效，避免把普通混合搜索结果误分类。
+        """
+        results = torrents or []
+        if not self.requested_result_media_type:
+            return results
+        for torrent in results:
+            torrent["category"] = self.requested_result_media_type.value
+        return results
 
     def __get_subtitle_field(self, torrent: Any, field_name: str):
         """
@@ -1080,7 +1110,7 @@ class SiteSpider:
                 result_num=self.result_num
             )
             if rust_torrents is not None:
-                return rust_torrents
+                return self.__apply_requested_result_media_type(rust_torrents)
 
         # 清空旧结果
         self.torrents_info_array = []
@@ -1111,7 +1141,7 @@ class SiteSpider:
                     torrent_query.clear()
                     del torrent_query
             # 返回数组的副本，防止被后续清理操作影响
-            return self.torrents_info_array.copy()
+            return self.__apply_requested_result_media_type(self.torrents_info_array.copy())
         except Exception as err:
             self.is_error = True
             logger.warn(f"错误：{self.indexername} {str(err)}")

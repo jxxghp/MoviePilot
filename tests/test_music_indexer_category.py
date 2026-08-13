@@ -61,3 +61,59 @@ def test_site_level_music_type_fills_missing_torrent_category():
     spider._SiteSpider__get_category(None)
 
     assert spider.torrents_info["category"] == MediaType.MUSIC.value
+
+
+def test_requested_result_media_type_overrides_unrepresentable_site_category():
+    """音乐专属查询使用非主分类筛选时，应按显式契约把结果标记为音乐。"""
+    spider = SiteSpider(
+        indexer={
+            "id": "typed-music",
+            "name": "Typed Music",
+            "domain": "https://music.example/",
+            "search": {
+                "paths": [
+                    {"path": "torrents?q={keyword}", "type": "all"},
+                    {"path": "music?q={keyword}", "type": "music"},
+                ],
+                "result_media_type": "requested",
+            },
+            "category": {
+                "movie": [{"id": "1", "name": "电影"}],
+                "music": [{"id": "20", "name": "音乐规格"}],
+            },
+            "torrents": {
+                "fields": {
+                    "category": {"selector": "a.category"},
+                }
+            },
+        },
+        mtype=MediaType.MUSIC,
+    )
+
+    search_url = spider._SiteSpider__get_search_url()
+    spider._SiteSpider__get_category(None)
+
+    assert search_url == "https://music.example/music?q="
+    assert spider.torrents_info["category"] == MediaType.MUSIC.value
+
+
+def test_requested_result_media_type_requires_an_active_type_filter():
+    """未命中专属路径或分类参数时，不得把混合搜索结果强制标记为请求类型。"""
+    spider = SiteSpider(
+        indexer={
+            "id": "mixed",
+            "name": "Mixed",
+            "domain": "https://mixed.example/",
+            "search": {
+                "paths": [{"path": "torrents?q={keyword}", "type": "all"}],
+                "result_media_type": "requested",
+            },
+            "torrents": {"fields": {}},
+        },
+        mtype=MediaType.MOVIE,
+    )
+
+    spider._SiteSpider__get_search_url()
+    spider._SiteSpider__get_category(None)
+
+    assert "category" not in spider.torrents_info

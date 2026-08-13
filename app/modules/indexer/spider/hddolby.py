@@ -28,8 +28,8 @@ class HddolbySpider:
     # 分类
     _movie_category = [401, 405]
     _tv_category = [402, 403, 404, 405]
-    # 音乐分类：408 为杜比音乐唱片分区；406 演唱会蓝光属于视频，不计入音乐
-    _music_category = [408]
+    # 音乐搜索同时覆盖高品质音频和音乐视频/演唱会分区。
+    _music_category = [406, 408]
 
     # 标签
     _labels = {

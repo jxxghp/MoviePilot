@@ -252,6 +252,7 @@ class IndexerModule(_ModuleBase):
             elif site.get('parser') == "TorrentLeech":
                 error_flag, result = TorrentLeech(site).search(
                     keyword=search_word,
+                    mtype=mtype,
                     page=page
                 )
             elif site.get('parser') == "mTorrent":
@@ -395,6 +396,7 @@ class IndexerModule(_ModuleBase):
             elif site.get('parser') == "TorrentLeech":
                 error_flag, result = await TorrentLeech(site).async_search(
                     keyword=search_word,
+                    mtype=mtype,
                     page=page
                 )
             elif site.get('parser') == "mTorrent":
