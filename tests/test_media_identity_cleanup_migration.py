@@ -116,7 +116,7 @@ def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
 ) -> None:
     """升级应修复半对身份、保留完整身份并删除六表全部专用列。"""
     migration = importlib.import_module(
-        "database.versions.8a4c7e1d2f90_3_0_0"
+        "database.versions.8a4c7e1d2f90_3_0_2"
     )
     engine = sa.create_engine("sqlite://")
 
@@ -254,7 +254,7 @@ def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
 def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch) -> None:
     """升级应从历史组合字段回填全部规范来源及仍受支持的别名。"""
     migration = importlib.import_module(
-        "database.versions.8a4c7e1d2f90_3_0_0"
+        "database.versions.8a4c7e1d2f90_3_0_2"
     )
     engine = sa.create_engine("sqlite://")
 
@@ -302,7 +302,7 @@ def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch)
 def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) -> None:
     """升级后的数据库应允许插件来源，并拒绝半对、非法来源和零值身份。"""
     migration = importlib.import_module(
-        "database.versions.8a4c7e1d2f90_3_0_0"
+        "database.versions.8a4c7e1d2f90_3_0_2"
     )
     engine = sa.create_engine("sqlite://")
 
@@ -345,7 +345,7 @@ def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) 
 def test_cleanup_migration_downgrade_restores_legacy_schema(monkeypatch) -> None:
     """降级应恢复旧列并移除仅由本次迁移引入的媒体库身份列。"""
     migration = importlib.import_module(
-        "database.versions.8a4c7e1d2f90_3_0_0"
+        "database.versions.8a4c7e1d2f90_3_0_2"
     )
     engine = sa.create_engine("sqlite://")
 

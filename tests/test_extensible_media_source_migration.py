@@ -35,7 +35,7 @@ def _create_fixed_constraint_table(connection: sa.Connection) -> None:
 def test_upgrade_replaces_fixed_source_whitelist(monkeypatch) -> None:
     """升级后应保留原数据、允许插件来源并继续拒绝非法身份。"""
     migration = importlib.import_module(
-        "database.versions.b3d7e9f1a2c4_3_0_0"
+        "database.versions.b3d7e9f1a2c4_3_0_5"
     )
     engine = sa.create_engine("sqlite://")
 
