@@ -209,6 +209,21 @@ class MessageChain(ChainBase):
                     )
                     return
 
+            if self._handle_secret_confirmation_control(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    text=text,
+                    original_message_id=original_message_id,
+                    original_chat_id=original_chat_id,
+                    images=images,
+                    audio_refs=audio_refs,
+                    files=files,
+                    has_audio_input=has_audio_input,
+            ):
+                return
+
             if self._handle_plugin_input_interaction(
                     channel=channel,
                     source=source,
@@ -276,6 +291,54 @@ class MessageChain(ChainBase):
                     original_message_id=original_message_id,
                     original_chat_id=original_chat_id,
                 )
+
+    def _handle_secret_confirmation_control(
+            self,
+            channel: MessageChannel,
+            source: str,
+            userid: Union[str, int],
+            username: str,
+            text: Optional[str],
+            original_message_id: Optional[Union[str, int]] = None,
+            original_chat_id: Optional[str] = None,
+            images: Optional[List[CommingMessage.MessageImage]] = None,
+            audio_refs: Optional[List[str]] = None,
+            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            has_audio_input: bool = False,
+    ) -> bool:
+        """将 TG/飞书中的确认控制文本交回所属 Agent 会话。"""
+        if channel not in {MessageChannel.Telegram, MessageChannel.Feishu}:
+            return False
+        if str(text or "").strip() not in {"确认", "取消"}:
+            return False
+        if images or audio_refs or files or has_audio_input:
+            return False
+
+        session_info = self._user_sessions.get(userid)
+        if not session_info:
+            return False
+        session_id, _ = session_info
+        if not agent_manager.matches_secret_confirmation(
+            session_id,
+            str(userid),
+            channel=channel.value,
+            source=source,
+            original_chat_id=original_chat_id,
+        ):
+            return False
+        return self._handle_ai_message(
+            text=str(text).strip(),
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            original_message_id=original_message_id,
+            original_chat_id=original_chat_id,
+            images=images,
+            files=files,
+            session_id=session_id,
+            has_audio_input=has_audio_input,
+        )
 
     def _handle_message_core(
             self,

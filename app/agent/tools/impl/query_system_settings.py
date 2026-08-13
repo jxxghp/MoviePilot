@@ -3,7 +3,7 @@
 import json
 from typing import Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
@@ -64,6 +64,8 @@ class QuerySystemSettingsInput(BaseModel):
 
 
 class QuerySystemSettingsTool(MoviePilotTool):
+    """查询系统设置，并隔离 Agent 确认后的密钥读取入口。"""
+
     name: str = "query_system_settings"
     tags: list[str] = [
         ToolTag.Read,
@@ -78,6 +80,15 @@ class QuerySystemSettingsTool(MoviePilotTool):
     )
     require_admin: bool = True
     args_schema: Type[BaseModel] = QuerySystemSettingsInput
+    _secret_read_confirmed: bool = PrivateAttr(default=False)
+
+    async def _run_confirmed(self, **kwargs) -> str:
+        """仅供宿主在消费有效确认后执行一次未脱敏读取。"""
+        self._secret_read_confirmed = True
+        try:
+            return await self.run(**kwargs)
+        finally:
+            self._secret_read_confirmed = False
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据查询参数生成友好的提示消息。"""
@@ -136,12 +147,25 @@ class QuerySystemSettingsTool(MoviePilotTool):
         show_secrets: Optional[bool] = False,
         **kwargs,
     ) -> str:
+        """查询系统设置，并在 Agent 场景中阻止未经确认的密钥明文读取。"""
         logger.info(
             f"执行工具: {self.name}, setting_key={setting_key}, "
             f"group={group}, keyword={keyword}"
         )
 
         try:
+            if (
+                show_secrets is True
+                and self._agent_context.get("require_secret_confirmation")
+                and not self._secret_read_confirmed
+            ):
+                return json.dumps(
+                    {
+                        "success": False,
+                        "message": "读取敏感设置前需要用户确认，本次未执行。",
+                    },
+                    ensure_ascii=False,
+                )
             if setting_key:
                 spec = resolve_setting_spec(setting_key)
                 if not spec:
