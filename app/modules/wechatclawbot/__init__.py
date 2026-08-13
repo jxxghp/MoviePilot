@@ -3,6 +3,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 from app.core.cache import TTLCache
 from app.core.context import Context, MediaInfo
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _MessageBase, _ModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
@@ -198,6 +199,9 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             source=client_config.name,
             userid=user_id,
             username=username,
+            is_channel_admin=matches_channel_admin(
+                client_config.config, "WECHATCLAWBOT_ADMINS", user_id
+            ),
             text=text,
             message_id=message_id,
             chat_id=str(message.get("chat_id") or "") or None,

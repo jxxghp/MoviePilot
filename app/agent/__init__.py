@@ -373,6 +373,7 @@ class MoviePilotAgent:
             channel: str = None,
             source: str = None,
             username: str = None,
+            is_channel_admin: Optional[bool] = None,
             original_message_id: Optional[str] = None,
             original_chat_id: Optional[str] = None,
             replay_mode: ReplyMode = ReplyMode.DISPATCH,
@@ -385,6 +386,7 @@ class MoviePilotAgent:
         self.channel = channel
         self.source = source
         self.username = username
+        self.is_channel_admin = is_channel_admin
         self.original_message_id = original_message_id
         self.original_chat_id = original_chat_id
         self.reply_mode = replay_mode
@@ -934,6 +936,8 @@ class MoviePilotAgent:
             "anthropic",
         }:
             return True
+        if self.channel and self.channel != MessageChannel.Web.value:
+            return self.is_channel_admin is True
         if not self.username:
             return False
         try:
@@ -2429,6 +2433,7 @@ class _MessageTask:
     channel: Optional[str] = None
     source: Optional[str] = None
     username: Optional[str] = None
+    is_channel_admin: Optional[bool] = None
     original_message_id: Optional[str] = None
     original_chat_id: Optional[str] = None
     processing_status: Optional[dict] = None
@@ -2596,6 +2601,7 @@ class AgentManager:
             channel: str = None,
             source: str = None,
             username: str = None,
+            is_channel_admin: Optional[bool] = None,
             original_message_id: Optional[str] = None,
             original_chat_id: Optional[str] = None,
             reply_mode: ReplyMode = ReplyMode.DISPATCH,
@@ -2623,6 +2629,7 @@ class AgentManager:
             channel=channel,
             source=source,
             username=username,
+            is_channel_admin=is_channel_admin,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
             reply_mode=reply_mode,
@@ -2773,6 +2780,7 @@ class AgentManager:
                 "channel": task.channel,
                 "source": task.source,
                 "username": task.username,
+                "is_channel_admin": task.is_channel_admin,
                 "original_message_id": task.original_message_id,
                 "original_chat_id": task.original_chat_id,
                 "replay_mode": task.reply_mode,
@@ -2792,6 +2800,7 @@ class AgentManager:
             agent.channel = task.channel
             agent.source = task.source
             agent.username = task.username
+            agent.is_channel_admin = task.is_channel_admin
             agent.original_message_id = task.original_message_id
             agent.original_chat_id = task.original_chat_id
             agent.reply_mode = task.reply_mode

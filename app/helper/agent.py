@@ -7,6 +7,27 @@ _WEB_AGENT_EDIT_QUEUES: dict[str, list[Queue[dict]]] = {}
 _WEB_AGENT_EDIT_LOCK = Lock()
 
 
+def matches_channel_admin(
+        config: Optional[dict],
+        admin_key: str,
+        *principal_ids: Optional[Union[str, int]],
+) -> bool:
+    """按渠道配置中的稳定主体 ID 判断管理员身份。"""
+    admins = {
+        item.strip()
+        for item in str((config or {}).get(admin_key) or "").split(",")
+        if item.strip()
+    }
+    if not admins:
+        return False
+    candidates = {
+        str(principal_id).strip()
+        for principal_id in principal_ids
+        if principal_id is not None and str(principal_id).strip()
+    }
+    return bool(admins.intersection(candidates))
+
+
 def normalize_web_agent_button_rows(buttons: Optional[list[list[dict]]]) -> list[list[dict]]:
     """
     将消息按钮转换为 WebAgent 前端可识别的按钮行。

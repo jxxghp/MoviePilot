@@ -3,6 +3,7 @@ from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import Context, MediaInfo
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
@@ -180,6 +181,10 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                 text = content
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
+            from_uid = msg_body.get("from_uid")
+            if from_uid is None:
+                return None
+            actor_userid = f"UID#{from_uid}"
             channel_id = client_config.config.get("channel_id")
             if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
@@ -191,7 +196,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
             # 处理消息内容
             if (text or images or audio_refs or files) and userid:
                 if text and text.startswith("/") and self._should_reject_admin_command(
-                        client_config.config, msg_body.get("from_uid"), userid
+                        client_config.config, from_uid, actor_userid
                 ):
                     self._send_admin_denied(client, userid)
                     return None
@@ -201,7 +206,11 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                     f"audios={len(audio_refs) if audio_refs else 0}, files={len(files) if files else 0}"
                 )
                 return CommingMessage(channel=MessageChannel.VoceChat, source=client_config.name,
-                                      userid=userid, username=userid, text=text or "",
+                                      userid=userid, username=userid,
+                                      is_channel_admin=matches_channel_admin(
+                                          client_config.config, "VOCECHAT_ADMINS",
+                                          from_uid, actor_userid,
+                                      ), text=text or "",
                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")

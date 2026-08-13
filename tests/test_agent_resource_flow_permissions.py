@@ -9,6 +9,7 @@ from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.query_downloaders import QueryDownloadersTool
 from app.agent.tools.impl.query_sites import QuerySitesTool
+from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.read_file import ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -357,3 +358,78 @@ def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
         )
 
     assert context["is_admin"] is False
+
+
+def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
+    """外部显示名与本地管理员同名时，不得获得 Agent 管理员权限。"""
+    agent = MoviePilotAgent(
+        session_id="session-1",
+        user_id="10002",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+    )
+    agent.is_channel_admin = False
+
+    with patch("app.agent.UserOper") as user_oper:
+        user_oper.return_value.async_get_by_name = AsyncMock(
+            return_value=SimpleNamespace(is_superuser=True)
+        )
+        context = asyncio.run(
+            agent._build_tool_context(should_dispatch_reply=True)
+        )
+
+    assert context["is_admin"] is False
+    user_oper.return_value.async_get_by_name.assert_not_awaited()
+
+
+def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
+    """宿主确认的渠道管理员应直接获得 Agent 管理员权限。"""
+    agent = MoviePilotAgent(
+        session_id="session-1",
+        user_id="10001",
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="renamed-user",
+    )
+    agent.is_channel_admin = True
+
+    with patch("app.agent.UserOper") as user_oper:
+        context = asyncio.run(
+            agent._build_tool_context(should_dispatch_reply=True)
+        )
+
+    assert context["is_admin"] is True
+    user_oper.return_value.async_get_by_name.assert_not_called()
+
+
+def test_tool_explicit_non_admin_context_does_not_fallback_to_channel_lookup():
+    """Agent 已判定为非管理员时，工具不得通过旧权限查询重新授权。"""
+    tool = QuerySitesTool(session_id="session-1", user_id="10002")
+    tool.set_message_attr(
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="admin",
+    )
+    tool.set_agent_context({"is_admin": False})
+
+    with patch.object(
+        tool,
+        "_has_channel_admin_permission",
+        new=AsyncMock(return_value=True),
+    ) as has_channel_admin_permission:
+        result = asyncio.run(tool.is_admin_user())
+
+    assert result is False
+    has_channel_admin_permission.assert_not_awaited()
+
+
+def test_admin_tool_rejects_explicit_non_admin_without_channel_context():
+    """显式非管理员事实必须拒绝管理员工具，不能走无渠道兼容放行。"""
+    tool = QuerySystemSettingsTool(session_id="session-1", user_id="10002")
+    tool.set_agent_context({"is_admin": False})
+
+    result = asyncio.run(tool._check_permission())
+
+    assert result is not None
+    assert "没有执行此工具的权限" in result

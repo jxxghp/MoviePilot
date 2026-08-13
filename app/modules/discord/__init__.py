@@ -5,6 +5,7 @@ from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import (
@@ -194,7 +195,7 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
             chat_id = msg_json.get("chat_id")
             if callback_data and userid:
                 if str(callback_data).strip().startswith("/") and self._should_reject_admin_command(
-                        client_config.config, userid, username
+                        client_config.config, userid
                 ):
                     self._send_admin_denied(client, userid, chat_id)
                     return None
@@ -207,6 +208,9 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     source=client_config.name,
                     userid=userid,
                     username=username,
+                    is_channel_admin=matches_channel_admin(
+                        client_config.config, "DISCORD_ADMINS", userid
+                    ),
                     text=f"CALLBACK:{callback_data}",
                     is_callback=True,
                     callback_data=callback_data,
@@ -223,7 +227,7 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
             files = self._extract_files(msg_json)
             if (text or images or audio_refs or files) and userid:
                 if text and text.startswith("/") and self._should_reject_admin_command(
-                        client_config.config, userid, username
+                        client_config.config, userid
                 ):
                     self._send_admin_denied(client, userid, chat_id)
                     return None
@@ -238,6 +242,9 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     source=client_config.name,
                     userid=userid,
                     username=username,
+                    is_channel_admin=matches_channel_admin(
+                        client_config.config, "DISCORD_ADMINS", userid
+                    ),
                     text=text,
                     chat_id=str(chat_id) if chat_id else None,
                     images=images,

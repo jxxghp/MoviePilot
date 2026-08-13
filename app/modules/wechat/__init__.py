@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -250,7 +251,10 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             if content or images or audio_refs or files:
                 # 处理消息内容
                 return CommingMessage(channel=MessageChannel.Wechat, source=client_config.name,
-                                      userid=user_id, username=user_id, text=content or "",
+                                      userid=user_id, username=user_id,
+                                      is_channel_admin=matches_channel_admin(
+                                          client_config.config, "WECHAT_ADMINS", user_id
+                                      ), text=content or "",
                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.error(f"微信消息处理发生错误：{str(err)}")
@@ -320,6 +324,9 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             source=client_config.name,
             userid=sender,
             username=sender,
+            is_channel_admin=matches_channel_admin(
+                client_config.config, "WECHAT_ADMINS", sender
+            ),
             text=text or "",
             images=images,
             audio_refs=audio_refs,

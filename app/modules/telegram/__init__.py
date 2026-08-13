@@ -5,6 +5,7 @@ from typing import Dict, Optional, Union, List, Tuple, Any
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
@@ -211,7 +212,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
 
         if callback_data and user_id:
             if str(callback_data).strip().startswith("/") and self._should_reject_admin_command(
-                    client_config.config, user_id, user_name
+                    client_config.config, user_id
             ):
                 if client:
                     client.answer_callback_query(
@@ -235,6 +236,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 source=client_config.name,
                 userid=user_id,
                 username=user_name,
+                is_channel_admin=matches_channel_admin(
+                    client_config.config, "TELEGRAM_ADMINS", user_id
+                ),
                 text=callback_text,
                 is_callback=True,
                 callback_data=callback_data,
@@ -293,7 +297,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             user_list = client_config.config.get("TELEGRAM_USERS")
 
             if cleaned_text and cleaned_text.startswith("/"):
-                if self._should_reject_admin_command(client_config.config, user_id, user_name):
+                if self._should_reject_admin_command(client_config.config, user_id):
                     client.send_msg(
                         title="只有管理员才有权限执行此命令", userid=user_id
                     )
@@ -311,6 +315,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 source=client_config.name,
                 userid=user_id,
                 username=user_name,
+                is_channel_admin=matches_channel_admin(
+                    client_config.config, "TELEGRAM_ADMINS", user_id
+                ),
                 text=cleaned_text,
                 message_id=message_id,
                 chat_id=str(chat_id) if chat_id else None,

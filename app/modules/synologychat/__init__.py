@@ -3,6 +3,7 @@ from typing import Optional, Union, List, Tuple, Any
 from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
@@ -168,7 +169,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
             files = self._extract_files(message)
             if (text or images or audio_refs or files) and user_id:
                 if text and text.startswith("/") and self._should_reject_admin_command(
-                        client_config.config, user_id, user_name
+                        client_config.config, user_id
                 ):
                     self._send_admin_denied(client, user_id)
                     return None
@@ -179,7 +180,10 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
                     f"files={len(files) if files else 0}"
                 )
                 return CommingMessage(channel=MessageChannel.SynologyChat, source=client_config.name,
-                                      userid=user_id, username=user_name, text=text or "",
+                                      userid=user_id, username=user_name,
+                                      is_channel_admin=matches_channel_admin(
+                                          client_config.config, "SYNOLOGYCHAT_ADMINS", user_id
+                                      ), text=text or "",
                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")

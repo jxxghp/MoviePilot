@@ -75,7 +75,9 @@ class TestMessageProcessingStatus(unittest.TestCase):
         module = SlackModule()
 
         with patch.object(
-            module, "get_config", return_value=SimpleNamespace(name="slack-main")
+            module,
+            "get_config",
+            return_value=SimpleNamespace(name="slack-main", config={}),
         ):
             message = module.message_parser(
                 source="slack-main",

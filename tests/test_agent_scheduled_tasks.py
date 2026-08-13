@@ -631,6 +631,7 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
         channel="Telegram",
         source="telegram-test",
         username="admin",
+        is_channel_admin=True,
         original_chat_id="chat-123",
     )
     agent.process = AsyncMock(return_value="完成")
@@ -652,7 +653,40 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
     assert result == "完成"
     assert agent.channel is None
     assert agent.source is None
+    assert agent.is_channel_admin is None
     assert agent.original_chat_id is None
+
+
+@pytest.mark.anyio
+async def test_cached_agent_overwrites_channel_admin_with_explicit_false() -> None:
+    """复用会话 Agent 时，明确非管理员结论必须覆盖上一轮管理员身份。"""
+    manager = AgentManager()
+    agent = MoviePilotAgent(
+        session_id="channel-admin-cached-session",
+        user_id="user-1",
+        channel="Telegram",
+        source="telegram-test",
+        username="admin",
+        is_channel_admin=True,
+    )
+    agent.process = AsyncMock(return_value="完成")
+    manager.active_agents[agent.session_id] = agent
+    task = _MessageTask(
+        session_id=agent.session_id,
+        user_id="user-2",
+        message="执行普通用户请求",
+        channel="Telegram",
+        source="telegram-test",
+        username="admin",
+        is_channel_admin=False,
+    )
+
+    result = await manager._process_message_internal(task)
+
+    assert result == "完成"
+    assert agent.user_id == "user-2"
+    assert agent.username == "admin"
+    assert agent.is_channel_admin is False
 
 
 @pytest.mark.anyio

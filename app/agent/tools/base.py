@@ -19,7 +19,7 @@ from app.agent.policy.sanitizer import (
 from app.agent.tools.tags import ToolTag
 from app.chain import ChainBase
 from app.core.config import settings
-from app.db.user_oper import UserOper
+from app.helper.agent import matches_channel_admin
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import Notification
@@ -403,8 +403,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         :return: 当前调用者是系统管理员、渠道管理员或显式管理员上下文时返回 True
         """
-        if bool(self._agent_context.get("is_admin")):
-            return True
+        if "is_admin" in self._agent_context:
+            return self._agent_context.get("is_admin") is True
 
         if not self._channel or not self._source:
             return False
@@ -509,12 +509,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
     async def _check_permission(self) -> Optional[str]:
         """
-        检查用户权限：
-        1. 首先检查工具是否需要管理员权限
-        2. 如果需要管理员权限，则检查用户是否是渠道管理员
-        3. 如果渠道没有设置管理员名单，则检查用户是否是系统管理员
-        4. 如果都不是系统管理员，检查用户ID是否等于渠道配置的用户ID
-        5. 如果都不是，返回权限拒绝消息
+        检查管理员工具权限。
+
+        Agent 共享上下文中的显式管理员事实优先；没有该事实的旧调用才按渠道
+        管理员名单回查，并保留无消息渠道内部调用的兼容行为。
         """
         if not self._require_admin:
             return None
@@ -522,7 +520,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         if await self.is_admin_user():
             return None
 
-        if not self._channel or not self._source:
+        if "is_admin" not in self._agent_context and (
+            not self._channel or not self._source
+        ):
             return None
 
         return (
@@ -536,13 +536,11 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         检查当前消息渠道身份是否具备管理员权限。
 
-        :return: 当前渠道用户是渠道管理员、系统管理员或默认接收人时返回 True
+        :return: 当前渠道稳定用户 ID 位于显式管理员名单时返回 True
         """
         if not self._channel or not self._source:
             return False
 
-        # 渠道配置来自 SystemConfigOper 内存缓存，可以直接读取；
-        # 只有用户信息需要走异步数据库查询。
         user_id_str = str(self._user_id) if self._user_id else None
 
         channel_type_map = {
@@ -578,58 +576,17 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             "qqbot": "QQBOT_ADMINS",
         }
 
-        user_id_key_map = {
-            "telegram": "TELEGRAM_CHAT_ID",
-            "vocechat": "VOCECHAT_CHANNEL_ID",
-            "wechat": "WECHAT_BOT_CHAT_ID",
-            "feishu": "FEISHU_OPEN_ID",
-            "wechatclawbot": "WECHATCLAWBOT_DEFAULT_TARGET",
-            "discord": "DISCORD_CHANNEL_ID",
-            "slack": "SLACK_CHANNEL",
-            "qqbot": "QQ_OPENID",
-        }
-
         admin_key = admin_key_map.get(channel_type)
-        user_id_key = user_id_key_map.get(channel_type)
 
         try:
             configs = ServiceConfigHelper.get_notification_configs()
             for config in configs:
                 if config.name == self._source and config.config:
-                    channel_admins = config.config.get(admin_key) if admin_key else None
-                    if channel_admins:
-                        admin_list = [
-                            aid.strip()
-                            for aid in str(channel_admins).split(",")
-                            if aid.strip()
-                        ]
-                        if user_id_str and user_id_str in admin_list:
-                            return True
-
-                        user = (
-                            await UserOper().async_get_by_name(self._username)
-                            if self._username
-                            else None
-                        )
-                        if user and user.is_superuser:
-                            return True
-
-                        return False
-                    else:
-                        user = (
-                            await UserOper().async_get_by_name(self._username)
-                            if self._username
-                            else None
-                        )
-                        if user and user.is_superuser:
-                            return True
-
-                        if user_id_key:
-                            config_user_id = config.config.get(user_id_key)
-                            if config_user_id and str(config_user_id) == user_id_str:
-                                return True
-
-                        return False
+                    return matches_channel_admin(
+                        config.config,
+                        admin_key,
+                        user_id_str,
+                    )
         except Exception as e:
             logger.error(f"检查权限失败: {summarize_error(e)}")
 
