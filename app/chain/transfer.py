@@ -4037,43 +4037,42 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             file_modify_time=file_item.modify_time,
                             fileid=file_item.fileid,
                         )
+                        if not manual:
+                            # 自动路径（目录监控、下载器轮询）与监控分发共用同一套判定，
+                            # 否则监控层刚放行的失败重试与升级请求会在这里被全额收回
+                            gate_action = evaluate_history_gate(
+                                transferd,
+                                file_size=file_item.size,
+                                file_modify_time=file_item.modify_time,
+                                fileid=file_item.fileid,
+                            )
+                            if not is_skip_action(gate_action):
+                                logger.info(
+                                    f"{file_item.path} 命中"
+                                    f"{history_description}"
+                                    f"，重新送入整理"
+                                )
+                                transferd = None
 
-                    if transferd and not manual:
-                        # 自动路径（目录监控、下载器轮询）与监控分发共用同一套判定，
-                        # 否则监控层刚放行的失败重试与升级请求会在这里被全额收回
-                        gate_action = evaluate_history_gate(
-                            transferd,
-                            file_size=file_item.size,
-                            file_modify_time=file_item.modify_time,
-                            fileid=file_item.fileid,
-                        )
-                        if not is_skip_action(gate_action):
+                        if transferd:
+                            skipped_history_count += 1
+                            if not transferd.status:
+                                all_success = False
+                            # 失败记录能走到这里说明重试次数已用尽，此时同样要打已整理标签让种子
+                            # 退出轮询，否则下载器每一轮都会重新扫描并在这里被拦一次，空转且刷屏
+                            candidate_hash = download_hash or transferd.download_hash
+                            candidate_downloader = downloader or transferd.downloader
+                            if candidate_hash and candidate_downloader:
+                                skipped_torrents.add(
+                                    (candidate_hash, candidate_downloader)
+                                )
                             logger.info(
-                                f"{file_item.path} 命中"
+                                f"{file_item.path} 已整理过（"
                                 f"{history_description}"
-                                f"，重新送入整理"
+                                f"），如需重新处理，请删除整理记录。"
                             )
-                            transferd = None
-
-                    if transferd:
-                        skipped_history_count += 1
-                        if not transferd.status:
-                            all_success = False
-                        # 失败记录能走到这里说明重试次数已用尽，此时同样要打已整理标签让种子
-                        # 退出轮询，否则下载器每一轮都会重新扫描并在这里被拦一次，空转且刷屏
-                        candidate_hash = download_hash or transferd.download_hash
-                        candidate_downloader = downloader or transferd.downloader
-                        if candidate_hash and candidate_downloader:
-                            skipped_torrents.add(
-                                (candidate_hash, candidate_downloader)
-                            )
-                        logger.info(
-                            f"{file_item.path} 已整理过（"
-                            f"{history_description}"
-                            f"），如需重新处理，请删除整理记录。"
-                        )
-                        err_msgs.append(f"{file_item.name} 已整理过")
-                        continue
+                            err_msgs.append(f"{file_item.name} 已整理过")
+                            continue
 
                 # 提前获取下载历史，以便获取自定义识别词
                 downloadhis = DownloadHistoryOper()

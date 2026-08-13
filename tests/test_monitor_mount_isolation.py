@@ -81,8 +81,48 @@ def _run_watchdog(monitor, timeout=10.0):
         finally:
             done.set()
 
-    Thread(target=runner, daemon=True, name="test-watchdog").start()
-    return done.wait(timeout=timeout)
+    thread = Thread(target=runner, daemon=True, name="test-watchdog")
+    thread.start()
+    finished = done.wait(timeout=timeout)
+    if finished:
+        thread.join(timeout=timeout)
+    return finished and not thread.is_alive()
+
+
+def _release_and_join(release, threads, timeout=10.0):
+    """
+    释放测试注入的阻塞，并等待受控工作线程结束。
+
+    真实故障下的恢复线程允许随进程退出，但测试主动解除阻塞后必须完成回收，
+    避免仍在执行应用代码的守护线程与解释器关闭过程并发。
+    :param release: 控制阻塞动作的事件
+    :param threads: 需要等待的线程集合
+    :param timeout: 每个线程的最长等待秒数
+    """
+    release.set()
+    for thread in threads:
+        thread.join(timeout=timeout)
+        assert not thread.is_alive(), f"受控线程未能结束: {thread.name}"
+
+
+def _stop_monitor_threads(monitor, timeout=10.0):
+    """
+    停止测试期间重建的目录监控，并等待其派生任务结束。
+
+    目录 watcher 会进入 watchfiles 原生扩展，必须在解释器关闭前退出；补偿扫描
+    由重建流程派生，也要在测试边界内完成。
+    :param monitor: Monitor 骨架
+    :param timeout: 每个线程的最长等待秒数
+    """
+    for watcher in monitor._watchers:
+        if isinstance(watcher, LocalDirectoryWatcher):
+            watcher.stop()
+            watcher.join(timeout=timeout)
+            assert not watcher.is_alive(), f"目录监控线程未能结束: {watcher.watch_path}"
+    for thread in threading.enumerate():
+        if thread.name.startswith("MoviePilot-MonitorCompensation-"):
+            thread.join(timeout=timeout)
+            assert not thread.is_alive(), f"补偿扫描线程未能结束: {thread.name}"
 
 
 # --------------------------------------------------------------------------- #
@@ -115,7 +155,7 @@ def test_watchdog_returns_while_rebuild_blocks_forever(tmp_path, monkeypatch):
         assert _run_watchdog(monitor), "看门狗被重建动作冻死，未能在限定时间内返回"
         assert entered.is_set(), "重建动作没有被真正发起"
     finally:
-        release.set()
+        _release_and_join(release, monitor._recovery._running.values())
 
 
 def test_watchdog_returns_while_pending_retry_blocks_forever(tmp_path, monkeypatch):
@@ -130,7 +170,7 @@ def test_watchdog_returns_while_pending_retry_blocks_forever(tmp_path, monkeypat
     try:
         assert _run_watchdog(monitor), "看门狗被整理重试驱动冻死，未能在限定时间内返回"
     finally:
-        release.set()
+        _release_and_join(release, monitor._recovery._running.values())
 
 
 def test_watchdog_returns_while_local_retry_blocks_forever(tmp_path, monkeypatch):
@@ -155,7 +195,7 @@ def test_watchdog_returns_while_local_retry_blocks_forever(tmp_path, monkeypatch
     try:
         assert _run_watchdog(monitor), "看门狗被本地监控重试冻死，未能在限定时间内返回"
     finally:
-        release.set()
+        _release_and_join(release, monitor._recovery._running.values())
 
 
 def test_check_watchers_performs_no_filesystem_access(tmp_path, monkeypatch):
@@ -221,7 +261,8 @@ def test_watchdog_survives_blocking_exists_in_real_rebuild(tmp_path, monkeypatch
         assert _run_watchdog(monitor), "看门狗冻死在真实的重建调用链上"
         assert str(tmp_path) in monitor._isolated, "重建无响应后目录没有转入隔离"
     finally:
-        release.set()
+        _release_and_join(release, monitor._recovery._running.values())
+        _stop_monitor_threads(monitor)
 
 
 # --------------------------------------------------------------------------- #
@@ -259,7 +300,7 @@ def test_rebuild_timeout_isolates_directory(tmp_path, monkeypatch):
         assert _run_watchdog(monitor)
         assert len(calls) == 1, "隔离中的目录仍在被反复重建，会持续泄漏冻死的线程"
     finally:
-        release.set()
+        _release_and_join(release, monitor._recovery._running.values())
 
 
 def test_isolated_directory_recovers_after_probe_succeeds(tmp_path, monkeypatch):
@@ -392,17 +433,19 @@ def test_stuck_transfer_does_not_block_other_files(monkeypatch):
         """
         dispatcher.handle_file(storage="local", event_path=Path(f"/mnt/cd2/{name}"), file_size=1)
 
-    Thread(target=feed, args=("stuck.mkv",), daemon=True).start()
+    stuck_thread = Thread(target=feed, args=("stuck.mkv",), daemon=True)
+    stuck_thread.start()
     assert stuck_entered.wait(timeout=5), "卡死的整理没有真正进入"
 
     done = threading.Event()
-    Thread(target=lambda: (feed("other.mkv"), done.set()), daemon=True).start()
+    other_thread = Thread(target=lambda: (feed("other.mkv"), done.set()), daemon=True)
+    other_thread.start()
 
     try:
         assert done.wait(timeout=5), "一个文件卡在死挂载上就锁死了整条整理链"
         assert "/mnt/cd2/other.mkv" in transferred
     finally:
-        release.set()
+        _release_and_join(release, (stuck_thread, other_thread))
 
 
 # --------------------------------------------------------------------------- #
@@ -424,7 +467,7 @@ def test_recovery_executor_reports_timeout_without_blocking():
         assert results == {"stuck": RecoveryState.TIMEOUT}
         assert elapsed < 3.0, "执行器没有在超时后放弃冻死的动作"
     finally:
-        release.set()
+        _release_and_join(release, executor._running.values())
 
 
 def test_recovery_executor_skips_key_with_running_task():
@@ -448,7 +491,7 @@ def test_recovery_executor_skips_key_with_running_task():
         assert executor.run({"k": stuck}, timeout=0.2) == {"k": RecoveryState.BUSY}
         assert len(calls) == 1
     finally:
-        release.set()
+        _release_and_join(release, executor._running.values())
 
 
 def test_recovery_executor_runs_actions_concurrently():
@@ -467,7 +510,7 @@ def test_recovery_executor_runs_actions_concurrently():
         assert set(results.values()) == {RecoveryState.TIMEOUT}
         assert elapsed < 1.5, "恢复动作是串行等待的，总耗时随目录数增长"
     finally:
-        release.set()
+        _release_and_join(release, executor._running.values())
 
 
 def test_recovery_executor_reports_completion_and_swallows_errors():
