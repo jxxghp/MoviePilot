@@ -82,6 +82,38 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
     assert contexts[0].torrent_info.title == matched.title
 
 
+def test_music_search_uses_simplified_keywords_before_original_traditional_keywords():
+    """媒体信息含繁体时应先请求简体关键词，未命中后再请求繁体原文。"""
+    chain = SearchChain()
+    music = MusicInfo(
+        media_source="musicbrainz",
+        media_id="album-1",
+        music_type="album",
+        title="永遠是朋友",
+        album="永遠是朋友",
+        artists=["周華健"],
+    )
+    matched = TorrentInfo(
+        title="周華健 - 永遠是朋友 FLAC",
+        category=MediaType.MUSIC.value,
+        site_name="MusicSite",
+    )
+
+    with patch.object(
+            chain,
+            "_SearchChain__search_all_sites",
+            side_effect=[[], [matched]],
+    ) as search_sites, patch("app.chain.search.time.sleep"):
+        contexts = chain._process_music(music, rule_groups=[])
+
+    assert [call.kwargs["keyword"] for call in search_sites.call_args_list] == [
+        "永远是朋友",
+        "永遠是朋友",
+    ]
+    assert len(contexts) == 1
+    assert contexts[0].torrent_info.title == matched.title
+
+
 def test_music_search_matches_artist_from_resource_description():
     """精确音乐搜索应使用副标题中的艺术家，兼容主标题只有曲名的站点。"""
     music = MusicInfo(

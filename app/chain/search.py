@@ -62,7 +62,7 @@ class SearchChain(ChainBase):
 
     @classmethod
     def music_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
-        """按实体生成站点关键词，先扩大名称召回，再由结果匹配校验艺术家。"""
+        """按实体生成站点关键词，繁体字段优先使用简体写法扩大召回。"""
         artists = music.artists or []
         artist = artists[0] if artists else music.album_artist
         values: list[Optional[str]] = []
@@ -74,7 +74,13 @@ class SearchChain(ChainBase):
                 music.title,
                 f"{artist} {music.title}" if artist and music.title else None,
             ])
-        return cls._unique_music_texts(values)
+        search_values: list[Optional[str]] = []
+        for value in values:
+            search_values.extend([
+                zhconv_convert(value, "zh-hans") if value else None,
+                value,
+            ])
+        return cls._unique_music_texts(search_values)
 
     @classmethod
     def matches_music_resource(

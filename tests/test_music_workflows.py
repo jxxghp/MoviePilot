@@ -100,6 +100,40 @@ def test_build_site_keywords_searches_track_before_combined_artist():
     ]
 
 
+def test_build_site_keywords_places_simplified_album_terms_before_original_terms():
+    """繁体专辑信息应先搜索简体名称及组合词，再回退原文且不单搜艺术家。"""
+    info = MusicInfo(
+        music_type="album",
+        title="永遠是朋友",
+        artists=["周華健"],
+        album="永遠是朋友",
+    )
+
+    assert SearchChain.music_site_keywords(info) == [
+        "永远是朋友",
+        "永遠是朋友",
+        "周华健 永远是朋友",
+        "周華健 永遠是朋友",
+    ]
+
+
+def test_build_site_keywords_places_simplified_recording_terms_before_original_terms():
+    """繁体单曲信息应先搜索简体曲名及组合词，不生成仅艺术家的关键词。"""
+    info = MusicInfo(
+        music_type="recording",
+        title="後來",
+        artists=["劉若英"],
+        album="我等你",
+    )
+
+    assert SearchChain.music_site_keywords(info) == [
+        "后来",
+        "後來",
+        "刘若英 后来",
+        "劉若英 後來",
+    ]
+
+
 def test_album_resource_match_requires_selected_album_title():
     """专辑订阅只接受同时包含目标专辑名和艺术家的站点资源。"""
     album = MusicInfo(
