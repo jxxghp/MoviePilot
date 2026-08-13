@@ -83,6 +83,34 @@ def test_media_response_accepts_cross_source_credit_shapes() -> None:
     assert media["directors"][1]["name"] == "导演乙"
 
 
+def test_media_response_accepts_legacy_source_key() -> None:
+    """媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。"""
+    router = ResponseAPIRouter()
+
+    @router.get("/recommend", response_model=list[schemas.MediaInfo])
+    def recommend_media() -> list[dict]:
+        """返回媒体身份重构前缓存的旧格式推荐条目。"""
+        return [
+            {
+                "source": "themoviedb",
+                "media_id": "1368337",
+                "type": "电影",
+                "title": "奥德赛",
+                "year": "2026",
+                "tmdb_id": 1368337,
+            }
+        ]
+
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).get("/recommend")
+
+    assert response.status_code == 200
+    media = response.json()["data"][0]
+    assert media["media_source"] == "themoviedb"
+    assert media["media_id"] == "1368337"
+
+
 @pytest.mark.asyncio
 async def test_media_exists_not_found_is_a_successful_query(monkeypatch) -> None:
     """媒体库未命中是查询结果，不应被统一客户端识别为接口失败。"""

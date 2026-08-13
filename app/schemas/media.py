@@ -1,8 +1,34 @@
 from pydantic import model_validator
 
+from app.schemas.types import MediaSource
+
 
 class OptionalMediaIdentityMixin:
     """为可选媒体身份模型统一校验来源枚举与原生 ID 的成对约束。"""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_media_source(cls, value: object) -> object:
+        """兼容媒体身份重构前的旧缓存/插件数据：将旧 ``source`` 键迁移为 ``media_source``。
+
+        旧版本推荐等缓存以 ``source`` 键序列化媒体来源，与 ``media_id`` 成对出现；
+        仅当缺失新键、旧值可解析为规范枚举时才迁移，避免误判其他模型同名字段。
+        """
+        if (
+            isinstance(value, dict)
+            and "source" in value
+            and "media_source" not in value
+            and "media_id" in value
+            and value.get("source")
+        ):
+            try:
+                MediaSource(value["source"])
+            except ValueError:
+                return value
+            normalized = dict(value)
+            normalized["media_source"] = value["source"]
+            return normalized
+        return value
 
     @model_validator(mode="after")
     def _validate_optional_media_identity(self):
