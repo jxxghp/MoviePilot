@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
     # 初始化路由
     init_routers(app)
     # 初始化模块
-    init_modules()
+    await init_modules()
     if settings.MOVIEPILOT_SAFE_MODE:
         print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
     else:

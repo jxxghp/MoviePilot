@@ -25,7 +25,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
 
     for name in (
         "init_routers",
-        "init_modules",
         "init_plugins",
         "init_scheduler",
         "init_monitor",
@@ -33,6 +32,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_workflow",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
+    monkeypatch.setattr(lifecycle, "init_modules", AsyncMock())
 
     system_chain = MagicMock()
     monkeypatch.setattr(lifecycle, "SystemChain", MagicMock(return_value=system_chain))
@@ -101,6 +101,7 @@ def test_lifespan_continues_after_each_shutdown_owner_failure(
     asyncio.run(run_lifespan())
 
     lifecycle.global_vars.stop_system.assert_called_once_with()
+    lifecycle.init_modules.assert_awaited_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
 
