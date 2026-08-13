@@ -20,6 +20,13 @@ def test_media_source_normalization_accepts_plugin_source() -> None:
     assert normalize_media_source("plugin source:invalid") is None
 
 
+def test_iqiyi_media_source_aliases_are_normalized() -> None:
+    """爱奇艺探索来源的历史前缀和规范前缀应归一到同一媒体来源。"""
+    assert normalize_media_source("iqiyi") is MediaSource.Iqiyi
+    assert normalize_media_source("iqiyidiscover") is MediaSource.Iqiyi
+    assert MediaSource("iqiyi") is MediaSource.Iqiyi
+
+
 def test_resolve_anilist_search_params_preserves_identity() -> None:
     """精确搜索参数应保留枚举来源和原生 ID。"""
     params, message = asyncio.run(

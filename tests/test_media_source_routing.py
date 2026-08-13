@@ -4,7 +4,11 @@ from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.schemas.types import MediaSource, MediaType
-from app.utils.media import resolve_media_identity
+from app.utils.media import (
+    build_media_key,
+    parse_media_source_selection,
+    resolve_media_identity,
+)
 
 
 def _chain_without_init() -> ChainBase:
@@ -20,6 +24,18 @@ def test_generic_source_id_resolves_as_fixed_enum() -> None:
         media_source="anilist",
         media_id="154587",
     ) == (MediaSource.AniList, "154587")
+
+
+def test_iqiyi_source_routes_through_unified_identity() -> None:
+    """爱奇艺探索来源应支持选择解析、身份解析和媒体键构造。"""
+    assert parse_media_source_selection("iqiyi,iqiyidiscover") == (
+        MediaSource.Iqiyi,
+    )
+    assert resolve_media_identity(
+        media_source="iqiyi",
+        media_id="album-1",
+    ) == (MediaSource.Iqiyi, "album-1")
+    assert build_media_key("iqiyi", "album-1") == "iqiyidiscover:album-1"
 
 
 def test_plugin_source_is_preserved_as_dynamic_enum() -> None:

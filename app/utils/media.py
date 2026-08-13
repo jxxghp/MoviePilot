@@ -28,6 +28,8 @@ MEDIA_SOURCE_ALIASES = {
     "migu_video": MediaSource.MiguVideo,
     "tencentvideodiscover": MediaSource.TencentVideo,
     "tencent_video": MediaSource.TencentVideo,
+    "iqiyi": MediaSource.Iqiyi,
+    "iqiyidiscover": MediaSource.Iqiyi,
 }
 
 MEDIA_SOURCE_PREFIXES = {
@@ -44,6 +46,7 @@ MEDIA_SOURCE_PREFIXES = {
     MediaSource.MangoTV: "mangguodiscover",
     MediaSource.MiguVideo: "migu",
     MediaSource.TencentVideo: "tencentvideodiscover",
+    MediaSource.Iqiyi: "iqiyidiscover",
 }
 
 MUSIC_MEDIA_SOURCE_ORDER = (

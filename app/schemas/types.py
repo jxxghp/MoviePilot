@@ -59,6 +59,7 @@ _MEDIA_SOURCE_VALUE_ALIASES = {
     "mango_tv": "mangguodiscover",
     "migu_video": "migu",
     "tencent_video": "tencentvideodiscover",
+    "iqiyi": "iqiyidiscover",
 }
 
 
@@ -78,6 +79,7 @@ class MediaSource(str, Enum):
     MangoTV = "mangguodiscover"
     MiguVideo = "migu"
     TencentVideo = "tencentvideodiscover"
+    Iqiyi = "iqiyidiscover"
 
     def __str__(self) -> str:
         """返回可直接用于 API 和数据库的规范值。"""
