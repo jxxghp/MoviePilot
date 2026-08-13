@@ -67,10 +67,22 @@ class TestAgentSessionStatus(unittest.TestCase):
             "session_id": "session-1",
             "model": "gpt-4o-mini",
             "context_window_tokens": 128000,
+            "last_input_usage_available": True,
             "last_input_tokens": 1200,
             "last_output_tokens": 300,
             "last_total_tokens": 1500,
             "last_context_usage_ratio": 1200 / 128000,
+            "last_request_estimate_available": True,
+            "last_estimated_input_tokens": 1300,
+            "last_estimated_message_tokens": 900,
+            "last_estimated_system_tokens": 250,
+            "last_estimated_tool_tokens": 150,
+            "last_estimated_multimodal_tokens": 0,
+            "last_estimated_input_ratio": 1300 / 128000,
+            "last_estimated_over_input_limit": False,
+            "last_actual_input_tokens": 1200,
+            "last_estimate_error_tokens": -100,
+            "last_estimate_error_ratio": -100 / 1200,
             "total_input_tokens": 4500,
             "total_output_tokens": 1500,
             "total_tokens": 6000,
@@ -98,6 +110,9 @@ class TestAgentSessionStatus(unittest.TestCase):
         self.assertIn("session-1", notification.text)
         self.assertIn("gpt-4o-mini", notification.text)
         self.assertIn("1,200 / 128,000 (0.94%)", notification.text)
+        self.assertIn("最终请求估算: 1,300 / 128,000 (1.02%)", notification.text)
+        self.assertIn("消息 900 / 系统 250 / 工具 150 / 其中图片固定成本 0", notification.text)
+        self.assertIn("实际 1,200 / 误差 -100 (-8.33%)", notification.text)
         self.assertIn("输入 4,500 / 输出 1,500 / 总计 6,000", notification.text)
         self.assertIn("运行中", notification.text)
 
