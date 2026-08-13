@@ -751,6 +751,25 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             object_name, params={"encoding-type": "url", "sequential": ""}
         ).upload_id
         parts = []
+
+        def refresh_upload_bucket() -> oss2.Bucket:
+            """
+            上传凭证过期时重新获取 115 上传凭证并重建 OSS Bucket。
+            """
+            token_resp = self._request_api("GET", "/open/upload/get_token", "data")
+            if not token_resp:
+                raise Exception("【115】重新获取上传凭证失败")
+            logger.info("【115】已重新获取上传凭证，继续上传")
+            return oss2.Bucket(
+                oss2.StsAuth(
+                    access_key_id=token_resp.get("AccessKeyId"),
+                    access_key_secret=token_resp.get("AccessKeySecret"),
+                    security_token=token_resp.get("SecurityToken"),
+                ),
+                token_resp.get("endpoint"),
+                bucket_name,
+            )
+
         # 逐个上传分片
         with open(local_path, "rb") as fileobj:
             part_number = 1
@@ -764,12 +783,28 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 logger.info(
                     f"【115】开始上传 {target_name} 分片 {part_number}: {offset} -> {offset + num_to_upload}"
                 )
-                result = bucket.upload_part(
-                    object_name,
-                    upload_id,
-                    part_number,
-                    data=SizedFileAdapter(fileobj, num_to_upload),
-                )
+                retries = 0
+                while True:
+                    try:
+                        # 失败重试时确保从分片起始位置重新读取
+                        fileobj.seek(offset)
+                        result = bucket.upload_part(
+                            object_name,
+                            upload_id,
+                            part_number,
+                            data=SizedFileAdapter(fileobj, num_to_upload),
+                        )
+                        break
+                    except oss2.exceptions.OssError as e:
+                        # 上传凭证过期时重新获取凭证并重试当前分片（最多重试 5 次）
+                        if e.status == 403 and e.code == "SecurityTokenExpired" and retries < 5:
+                            retries += 1
+                            logger.warn(
+                                f"【115】上传凭证已过期，重新获取凭证后重试 {target_name} 分片 {part_number}（第 {retries} 次）"
+                            )
+                            bucket = refresh_upload_bucket()
+                            continue
+                        raise
                 parts.append(PartInfo(part_number, result.etag))
                 logger.info(f"【115】{target_name} 分片 {part_number} 上传完成")
                 offset += num_to_upload
@@ -788,9 +823,23 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             "x-oss-forbid-overwrite": "false",
         }
         try:
-            result = bucket.complete_multipart_upload(
-                object_name, upload_id, parts, headers=headers
-            )
+            retries = 0
+            while True:
+                try:
+                    result = bucket.complete_multipart_upload(
+                        object_name, upload_id, parts, headers=headers
+                    )
+                    break
+                except oss2.exceptions.OssError as e:
+                    # 上传凭证过期时重新获取凭证后重试完成上传（最多重试 5 次）
+                    if e.status == 403 and e.code == "SecurityTokenExpired" and retries < 5:
+                        retries += 1
+                        logger.warn(
+                            f"【115】上传凭证已过期，重新获取凭证后重试完成上传（第 {retries} 次）"
+                        )
+                        bucket = refresh_upload_bucket()
+                        continue
+                    raise
             if result.status != 200:
                 logger.warn(f"【115】{target_name} 上传失败，错误码: {result.status}")
                 return None
