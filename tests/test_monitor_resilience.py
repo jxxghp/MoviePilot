@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.monitor import LocalDirectoryWatcher, Monitor
+from app.monitor.recovery import RecoveryExecutor
 
 
 def _build_watcher(tmp_path, force_polling):
@@ -130,12 +131,16 @@ def _build_monitor(monkeypatch, put_recorder):
     from threading import Lock
     monkeypatch.setattr("app.monitor.monitor.MessageHelper", MagicMock(return_value=put_recorder))
     monitor = object.__new__(Monitor)
+    # 自动重启后健康检查会发起补偿扫描，骨架需要一个分发器替身
+    monitor._dispatcher = MagicMock()
     monitor._watchers = []
     monitor._watcher_lock = Lock()
     monitor._pending_locals = []
-    monitor._alerted_paths = set()
+    monitor._alerted_paths = {}
     monitor._restart_marks = {}
     monitor._stable_cycles = {}
+    monitor._isolated = {}
+    monitor._recovery = RecoveryExecutor()
     return monitor
 
 
@@ -158,35 +163,31 @@ def _fake_watcher(mon_path, alive=True, stalled=False, restart_count=0):
 
 def test_watchdog_rebuilds_dead_watcher(tmp_path, monkeypatch):
     """
-    监控线程退出后健康检查应重建线程并告警。
+    监控线程退出后健康检查应判定为待重建并告警。
+
+    重建本身会触碰挂载，已移出看门狗线程，因此检测环节只负责判定与告警，
+    真正的重建由 __drive_recovery 派发到一次性工作线程执行。
     """
     put_recorder = MagicMock()
     monitor = _build_monitor(monkeypatch, put_recorder)
     watcher = _fake_watcher(tmp_path, alive=False)
     monitor._watchers = [watcher]
-    rebuild = MagicMock()
-    setattr(monitor, "_Monitor__rebuild_watcher", rebuild)
 
-    monitor._Monitor__check_watchers()
+    assert monitor._Monitor__check_watchers() == [watcher]
 
-    rebuild.assert_called_once_with(watcher)
     put_recorder.put.assert_called_once()
 
 
 def test_watchdog_rebuilds_stalled_watcher(tmp_path, monkeypatch):
     """
-    静默失效的监控线程也应被健康检查重建。
+    静默失效的监控线程也应被健康检查判定为待重建。
     """
     put_recorder = MagicMock()
     monitor = _build_monitor(monkeypatch, put_recorder)
     watcher = _fake_watcher(tmp_path, alive=True, stalled=True)
     monitor._watchers = [watcher]
-    rebuild = MagicMock()
-    setattr(monitor, "_Monitor__rebuild_watcher", rebuild)
 
-    monitor._Monitor__check_watchers()
-
-    rebuild.assert_called_once_with(watcher)
+    assert monitor._Monitor__check_watchers() == [watcher]
 
 
 def test_watchdog_alerts_on_restart_and_recovers_after_stable_window(tmp_path, monkeypatch):
@@ -235,7 +236,7 @@ def test_dispatcher_retries_after_history_query_failure(monkeypatch):
     dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
     event_path = Path("/downloads/movie.mkv")
     history = MagicMock(side_effect=[None, False])
-    monkeypatch.setattr(dispatcher, "_has_transfer_history", history)
+    monkeypatch.setattr(dispatcher, "_should_skip_by_history", history)
     transfer_chain_instance = MagicMock()
     monkeypatch.setattr("app.monitor.dispatcher.TransferChain",
                         MagicMock(return_value=transfer_chain_instance))
@@ -253,6 +254,38 @@ def test_dispatcher_retries_after_history_query_failure(monkeypatch):
     assert dispatcher._pending_retries == {}
 
 
+def test_dispatcher_clear_pending_drops_stale_entries(monkeypatch):
+    """
+    停止/配置重载时应清空待重试队列，避免已移除的监控目录在数据库恢复后
+    仍被送入整理链。
+    """
+    from app.monitor.dispatcher import TransferDispatcher
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
+    monkeypatch.setattr(dispatcher, "_should_skip_by_history", MagicMock(return_value=None))
+    dispatcher.handle_file(storage="local", event_path=Path("/removed/movie.mkv"), file_size=1)
+    assert dispatcher._pending_retries
+
+    dispatcher.clear_pending()
+
+    assert dispatcher._pending_retries == {}
+    dispatcher.retry_pending()
+    assert dispatcher._pending_retries == {}
+
+
+def test_monitor_stop_clears_dispatcher_pending(monkeypatch):
+    """
+    Monitor.stop 应连带清理分发器的待重试队列。
+    """
+    put_recorder = MagicMock()
+    monitor = _build_monitor(monkeypatch, put_recorder)
+    monitor._scheduler = None
+    monitor._dispatcher = MagicMock()
+
+    monitor.stop()
+
+    monitor._dispatcher.clear_pending.assert_called_once()
+
+
 def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
     """
     历史查询持续失败达到上限后应放弃重试，避免队列无限累积。
@@ -260,7 +293,7 @@ def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
     from app.monitor.dispatcher import TransferDispatcher
     dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
     event_path = Path("/downloads/movie.mkv")
-    monkeypatch.setattr(dispatcher, "_has_transfer_history", MagicMock(return_value=None))
+    monkeypatch.setattr(dispatcher, "_should_skip_by_history", MagicMock(return_value=None))
 
     dispatcher.handle_file(storage="local", event_path=event_path, file_size=1)
     key = f"local:{event_path.as_posix()}"
@@ -271,3 +304,14 @@ def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
     dispatcher.retry_pending()
 
     assert dispatcher._pending_retries == {}
+
+
+def test_monitor_watches_mode_env_keys_for_hot_reload():
+    """
+    快速模式/轮询间隔只在监控线程创建时读取,必须监听对应 env 变更触发
+    init() 重建才能热生效;防止上游合并时丢失监听键。
+    """
+    from app.schemas.types import SystemConfigKey
+    assert SystemConfigKey.Directories.value in Monitor.CONFIG_WATCH
+    assert "MONITOR_NETWORK_FAST_MODE" in Monitor.CONFIG_WATCH
+    assert "MONITOR_POLL_DELAY_NETWORK" in Monitor.CONFIG_WATCH

@@ -12,9 +12,29 @@ import requests.exceptions
 from app.core.cache import cached, fresh, async_fresh
 from app.core.config import settings
 from app.utils.http import RequestUtils, AsyncRequestUtils
-from .exceptions import TMDbException
+from .exceptions import TMDbException, TMDbConnectionError
 
 logger = logging.getLogger(__name__)
+
+# 单次重试前的退避等待时间（秒）。NAS+FUSE网盘等环境下TMDB连接的失败大多是数秒内
+# 可自愈的瞬时抖动，零间隔重试（或异步完全不重试）基本无法穿越这类抖动窗口；
+# 识别链路是同步阻塞调用，1-3秒的等待可接受，超出3秒则会让识别耗时明显变长，
+# 故取区间内的经验值。
+RETRY_BACKOFF_SECONDS = 2
+
+
+def _is_business_failure_snapshot(snapshot) -> bool:
+    """
+    判断响应快照是否为TMDB业务失败（success=false，如404/限流/服务端错误的合法JSON）。
+
+    这类响应若入缓存会把瞬时失败固化整个TTL周期（如12小时），期间同key请求
+    直接命中失败快照；跳过缓存让下次请求重新确认。真正的负缓存（条目确认
+    不存在）由上层 TmdbCache 负责，request 层不做失败记忆。
+    """
+    if not isinstance(snapshot, dict):
+        return False
+    json_data = snapshot.get("json")
+    return isinstance(json_data, dict) and json_data.get("success") is False
 
 
 class TMDb(object):
@@ -136,15 +156,21 @@ class TMDb(object):
     def wait_on_rate_limit(self, wait_on_rate_limit):
         self._wait_on_rate_limit = bool(wait_on_rate_limit)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
+            skip_if=_is_business_failure_snapshot)
     def request(self, method, url, data, json, **kwargs):
         req = self._request_once(method, url, data, json)
         if req is None and method == "GET" and self._owns_session:
-            logger.debug("TMDB同步请求失败，重建会话后重试一次")
+            logger.debug(f"TMDB同步请求失败，等待{RETRY_BACKOFF_SECONDS}秒后重建会话重试一次")
+            # 同步阻塞识别链线程；1-3秒的退避等待可接受，能显著提升对瞬时抖动的容错，
+            # 详见模块级常量 RETRY_BACKOFF_SECONDS 的说明。
+            time.sleep(RETRY_BACKOFF_SECONDS)
             self._reset_owned_session()
             req = self._request_once(method, url, data, json)
         if req is None:
-            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+            # 抛出更具体的连接异常子类，供上层（如TMDB详情查询）区分"网络故障"
+            # 与"TMDB业务层明确返回的错误"（如404条目不存在），两者不能混为一谈。
+            raise TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
         return self._snapshot_response(req)
 
     def _request_once(self, method, url, data, json):
@@ -155,15 +181,27 @@ class TMDb(object):
             return self._req.get_res(url, params=data, json=json)
         return self._req.post_res(url, data=data, json=json)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
+            skip_if=_is_business_failure_snapshot)
     async def async_request(self, method, url, data, json, **kwargs):
-        if method == "GET":
-            req = await self._async_req.get_res(url, params=data, json=json)
-        else:
-            req = await self._async_req.post_res(url, data=data, json=json)
+        req = await self._async_request_once(method, url, data, json)
         if req is None:
-            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+            logger.debug(f"TMDB异步请求失败，等待{RETRY_BACKOFF_SECONDS}秒后重试一次")
+            # 异步会话（AsyncRequestUtils）不像同步会话那样支持按需重建，
+            # 这里退化为原会话上的纯重试，同样以退避等待应对瞬时抖动。
+            await asyncio.sleep(RETRY_BACKOFF_SECONDS)
+            req = await self._async_request_once(method, url, data, json)
+        if req is None:
+            raise TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
         return self._snapshot_response(req)
+
+    async def _async_request_once(self, method, url, data, json):
+        """
+        执行一次TMDB异步请求，调用方负责决定是否重试。
+        """
+        if method == "GET":
+            return await self._async_req.get_res(url, params=data, json=json)
+        return await self._async_req.post_res(url, data=data, json=json)
 
     @classmethod
     def _snapshot_response(cls, response):

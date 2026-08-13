@@ -25,11 +25,15 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.transferpending_oper import TransferPendingOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.audio import AudioMetadataHelper
 from app.helper.format import EpisodeFormatRuleHelper, FormatParser
 from app.helper.progress import ProgressHelper
+from app.helper.transferhistory import (clear_transfer_failures, describe_history_gate,
+                                        evaluate_history_gate, is_skip_action,
+                                        record_transfer_failure, resolve_history)
 from app.log import logger
 from app.schemas import StorageOperSelectionEventData
 from app.schemas import (
@@ -829,6 +833,22 @@ class JobManager:
         with job_lock:
             return sum([len(job.tasks) for job in self._job_view.values()])
 
+    def pending_total(self) -> int:
+        """
+        获取未到终态的任务总数。
+
+        作业要等关联任务全部终态才整体移除,追更/分批场景下已完成任务会
+        跨批次残留在视图中;批次统计若用全量 total() 会把历史任务计入
+        「当前共 N 个文件」并压低进度百分比,因此只数未终态任务。
+        """
+        with job_lock:
+            return sum(
+                1
+                for job in self._job_view.values()
+                for task in job.tasks
+                if task.state not in ("completed", "failed")
+            )
+
     def list_jobs(self) -> List[TransferJob]:
         """
         获取所有作业的任务列表
@@ -996,6 +1016,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         self.jobview = JobManager()
         # Agent重试管理器
         self.retry_scheduler = FailedRetryScheduler()
+        # 待整理文件落盘登记，用于进程重启后回放内存队列里未完成的任务
+        self._pendingoper = TransferPendingOper()
         # 转移成功的文件清单
         self._success_target_files: Dict[Tuple, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
@@ -1339,6 +1361,34 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
         return not mounted_filesystem_cache[source_directory]
 
+    @staticmethod
+    def __is_overwrite_declined(task: TransferTask, transferinfo: TransferInfo,
+                                transferhis: TransferHistoryOper) -> bool:
+        """
+        判断本次未入库是否为「同路径已有成功记录 + 覆盖模式裁定不覆盖」。
+
+        只有同路径此前已成功整理过才需要保护：这类文件是查重闸放行的同路径新版本，
+        媒体库中的原有版本仍然在位，不应因一次不覆盖裁决把成功记录改写成失败记录。
+        没有成功记录时（如目标同名文件来自其他源路径）保持原有失败语义，
+        用户仍能在历史与通知中看到裁决结果。
+        :param task: 整理任务
+        :param transferinfo: 整理结果
+        :param transferhis: 历史操作对象
+        :return: True 表示应保留原成功记录
+        """
+        if not transferinfo.overwrite_skipped or not task.fileitem:
+            return False
+        try:
+            history = resolve_history(
+                task.fileitem.path,
+                storage=task.fileitem.storage,
+                transfer_history_oper=transferhis,
+            )
+        except Exception as err:
+            logger.error(f"查询整理历史失败: {task.fileitem.path} - {err}")
+            return False
+        return bool(history and history.status)
+
     def __default_callback(
             self, task: TransferTask, transferinfo: TransferInfo, /
     ) -> Tuple[bool, str]:
@@ -1390,86 +1440,108 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         # 转移失败
         if not transferinfo.success:
-            logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
-
-            # 新增转移失败历史记录
-            history = transferhis.add_fail(
-                fileitem=task.fileitem,
-                mode=transferinfo.transfer_type if transferinfo else "",
-                downloader=task.downloader,
-                download_hash=task.download_hash,
-                meta=task.meta,
-                mediainfo=task.mediainfo,
-                transferinfo=transferinfo,
+            # 查重闸放行同路径新版本后由 overwrite_mode 判定不覆盖，是一次正常裁决而非故障：
+            # 媒体库里原有版本仍然在位，写失败记录会用 add_force 顶掉原成功记录，此后该路径
+            # 永远处于失败态，每个新事件都会重试并重推失败通知。此时保留原记录、不写历史、
+            # 不发事件与通知、不触发重试，仅把任务置为未入库
+            overwrite_declined = self.__is_overwrite_declined(
+                task, transferinfo, transferhis
             )
+            history = None
+            if overwrite_declined:
+                logger.info(
+                    f"{task.fileitem.name} 未入库并保留原整理记录：{transferinfo.message}"
+                )
+            else:
+                logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
 
-            # 整理失败事件
-            if self._is_primary_media_file(task.fileitem, task.mediainfo):
-                # 主要媒体文件整理失败事件
-                self.eventmanager.send_event(
-                    EventType.TransferFailed,
-                    {
-                        "fileitem": task.fileitem,
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "transferinfo": transferinfo,
-                        "downloader": task.downloader,
-                        "download_hash": task.download_hash,
-                        "transfer_history_id": history.id if history else None,
-                    },
-                )
-            elif self.__is_subtitle_file(task.fileitem):
-                # 字幕整理失败事件
-                self.eventmanager.send_event(
-                    EventType.SubtitleTransferFailed,
-                    {
-                        "fileitem": task.fileitem,
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "transferinfo": transferinfo,
-                        "downloader": task.downloader,
-                        "download_hash": task.download_hash,
-                        "transfer_history_id": history.id if history else None,
-                    },
-                )
-            elif self.__is_audio_file(task.fileitem):
-                # 音频文件整理失败事件
-                self.eventmanager.send_event(
-                    EventType.AudioTransferFailed,
-                    {
-                        "fileitem": task.fileitem,
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "transferinfo": transferinfo,
-                        "downloader": task.downloader,
-                        "download_hash": task.download_hash,
-                        "transfer_history_id": history.id if history else None,
-                    },
+                # 累计失败次数，达到上限后查重闸不再自动放行重试
+                record_transfer_failure(
+                    task.fileitem.path if task.fileitem else None,
+                    task.fileitem.storage if task.fileitem else None,
+                    file_size=task.fileitem.size if task.fileitem else None,
+                    file_modify_time=task.fileitem.modify_time if task.fileitem else None,
+                    fileid=task.fileitem.fileid if task.fileitem else None,
                 )
 
-            # 发送失败消息
-            self.post_message(
-                Notification(
-                    mtype=NotificationType.Manual,
-                    title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
-                    text="\n".join(
-                        [
-                            f"原因：{transferinfo.message or '未知'}",
-                            (
-                                f"如果按钮不可用，可回复：\n```\n/redo {history.id}\n```"
-                                if history
-                                else ""
-                            ),
-                        ]
-                    ).strip(),
-                    image=task.mediainfo.get_message_image(),
-                    username=task.username,
-                    link=settings.MP_DOMAIN("#/history"),
-                    buttons=self.build_failed_transfer_buttons(
-                        history.id if history else None
-                    ),
+                # 新增转移失败历史记录
+                history = transferhis.add_fail(
+                    fileitem=task.fileitem,
+                    mode=transferinfo.transfer_type if transferinfo else "",
+                    downloader=task.downloader,
+                    download_hash=task.download_hash,
+                    meta=task.meta,
+                    mediainfo=task.mediainfo,
+                    transferinfo=transferinfo,
                 )
-            )
+
+                # 整理失败事件
+                if self.__is_media_file(task.fileitem):
+                    # 主要媒体文件整理失败事件
+                    self.eventmanager.send_event(
+                        EventType.TransferFailed,
+                        {
+                            "fileitem": task.fileitem,
+                            "meta": task.meta,
+                            "mediainfo": task.mediainfo,
+                            "transferinfo": transferinfo,
+                            "downloader": task.downloader,
+                            "download_hash": task.download_hash,
+                            "transfer_history_id": history.id if history else None,
+                        },
+                    )
+                elif self.__is_subtitle_file(task.fileitem):
+                    # 字幕整理失败事件
+                    self.eventmanager.send_event(
+                        EventType.SubtitleTransferFailed,
+                        {
+                            "fileitem": task.fileitem,
+                            "meta": task.meta,
+                            "mediainfo": task.mediainfo,
+                            "transferinfo": transferinfo,
+                            "downloader": task.downloader,
+                            "download_hash": task.download_hash,
+                            "transfer_history_id": history.id if history else None,
+                        },
+                    )
+                elif self.__is_audio_file(task.fileitem):
+                    # 音频文件整理失败事件
+                    self.eventmanager.send_event(
+                        EventType.AudioTransferFailed,
+                        {
+                            "fileitem": task.fileitem,
+                            "meta": task.meta,
+                            "mediainfo": task.mediainfo,
+                            "transferinfo": transferinfo,
+                            "downloader": task.downloader,
+                            "download_hash": task.download_hash,
+                            "transfer_history_id": history.id if history else None,
+                        },
+                    )
+
+                # 发送失败消息
+                self.post_message(
+                    Notification(
+                        mtype=NotificationType.Manual,
+                        title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
+                        text="\n".join(
+                            [
+                                f"原因：{transferinfo.message or '未知'}",
+                                (
+                                    f"如果按钮不可用，可回复：\n```\n/redo {history.id}\n```"
+                                    if history
+                                    else ""
+                                ),
+                            ]
+                        ).strip(),
+                        image=task.mediainfo.get_message_image(),
+                        username=task.username,
+                        link=settings.MP_DOMAIN("#/history"),
+                        buttons=self.build_failed_transfer_buttons(
+                            history.id if history else None
+                        ),
+                    )
+                )
 
             # 设置任务失败
             self.jobview.fail_task(task)
@@ -1505,6 +1577,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         else:
             # 转移成功
             logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
+
+            # 整理成功即认为此前的连续失败已恢复，重置计数让后续故障重新获得完整重试额度
+            clear_transfer_failures(
+                task.fileitem.path if task.fileitem else None,
+                task.fileitem.storage if task.fileitem else None,
+            )
 
             # 新增task转移成功历史记录
             history = transferhis.add_success(
@@ -1670,7 +1748,125 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         self.__register_scrape_batch_task(task)
         # 添加到队列
         self._queue.put(TransferQueue(task=task, callback=self.__default_callback))
+        # 落盘登记：队列是纯内存的，进程重启（挂载挂死后的人工重启、升级、OOM）
+        # 会让队列连同「这些文件还没整理」这个事实一起蒸发，而已稳定落地的文件
+        # 不会再产生任何监控事件，等于永久漏件。登记放在入队之后，宁可多留一条
+        # 由回放时的整理历史查重挡掉，也不制造「已入队但未登记」的窗口
+        self.__register_pending(task)
         return True
+
+    def replay_pending(self):
+        """
+        回放上次进程退出时仍未整理完的文件。
+
+        在后台线程执行：回放要 stat 源文件，而启动期挂载可能尚未就绪甚至处于
+        挂死状态，同步执行会把整个启动流程堵住。
+        """
+        threading.Thread(
+            target=self.__replay_pending,
+            name="MoviePilot-TransferReplay",
+            daemon=True
+        ).start()
+
+    def __replay_pending(self):
+        """
+        把落盘登记的待整理文件重新送回整理入口。
+
+        只回放「存储 + 源路径」这一最小事实，重新走完整的识别与整理流程，
+        已经整理完成的由整理历史查重挡掉，因此不存在重复整理的问题。
+        """
+        try:
+            pendings = self._pendingoper.list_all()
+        except Exception as err:
+            logger.error(f"读取待整理文件登记失败：{err}")
+            return
+        if not pendings:
+            return
+        logger.info(f"发现 {len(pendings)} 个上次未整理完的文件，正在重新送入整理链 ...")
+        replayed = 0
+        for storage, src_path in pendings:
+            try:
+                fileitem, should_discard = self.__build_replay_fileitem(storage, src_path)
+                if not fileitem:
+                    if should_discard:
+                        # 源文件确认已消失，注销登记避免每次启动重复回放
+                        self._pendingoper.discard(storage=storage, src_path=src_path)
+                    continue
+                self.do_transfer(fileitem=fileitem)
+                replayed += 1
+            except Exception as err:
+                logger.error(f"回放待整理文件失败：{storage}:{src_path} - {err}")
+        logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
+
+    @staticmethod
+    def __build_replay_fileitem(storage: str, src_path: str) -> Tuple[Optional[FileItem], bool]:
+        """
+        为回放构造文件项。
+
+        必须用 stat 的异常类型区分「文件真的没了」和「挂载暂时读不到」，不能用
+        Path.exists()：它在任何 OSError 下都返回 False，会把挂载抖动
+        （Transport endpoint is not connected）误判成文件消失，进而注销登记
+        ——那等于在故障期间主动丢件，正是本表要防的事。
+        :param storage: 存储
+        :param src_path: 源文件路径，以 / 结尾表示蓝光原盘目录
+        :return: (文件项, 是否应注销登记)。文件项为 None 表示本次不回放；
+                 只有确认源文件已经消失时才注销登记
+        """
+        # 蓝光原盘目录在登记时保留了尾部斜杠，这里据此还原类型
+        is_dir = src_path.endswith("/")
+        path = Path(src_path)
+        size, modify_time = None, None
+        if storage == "local":
+            try:
+                file_stat = path.stat()
+                size, modify_time = file_stat.st_size, file_stat.st_mtime
+            except FileNotFoundError:
+                logger.info(f"待整理文件已不存在，注销登记：{src_path}")
+                return None, True
+            except OSError as err:
+                # 挂载未就绪或无响应属于暂时性故障，保留登记等下次启动再回放
+                logger.warn(f"读取待整理文件失败，保留登记等待下次回放：{src_path} - {err}")
+                return None, False
+        return FileItem(
+            storage=storage,
+            path=src_path if is_dir else path.as_posix(),
+            type="dir" if is_dir else "file",
+            name=path.name,
+            basename=path.stem,
+            extension=path.suffix[1:] if not is_dir else None,
+            size=size,
+            modify_time=modify_time,
+        ), False
+
+    def __register_pending(self, task: TransferTask):
+        """
+        落盘登记一个待整理文件，登记失败不影响正常入队。
+        :param task: 任务信息
+        """
+        fileitem = task.fileitem if task else None
+        if not fileitem or not fileitem.path:
+            return
+        try:
+            self._pendingoper.register(storage=fileitem.storage, src_path=fileitem.path)
+        except Exception as err:
+            # 登记只是重启后的补救手段，失败不能阻断正常整理
+            logger.debug(f"登记待整理文件失败: {fileitem.path} - {err}")
+
+    def __discard_pending(self, task: TransferTask):
+        """
+        注销一个待整理文件登记，整理到达终态（成功或失败）时调用。
+
+        失败的文件不靠本表回放：整理历史里已有失败记录，分发器的历史门控会按
+        重试预算重新送入整理链；留在本表反而会每次重启都重复回放。
+        :param task: 任务信息
+        """
+        fileitem = task.fileitem if task else None
+        if not fileitem or not fileitem.path:
+            return
+        try:
+            self._pendingoper.discard(storage=fileitem.storage, src_path=fileitem.path)
+        except Exception as err:
+            logger.debug(f"注销待整理文件登记失败: {fileitem.path} - {err}")
 
     def __put_to_jobview(self, task: TransferTask) -> bool:
         """
@@ -1942,6 +2138,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         marker = getattr(self.jobview, "finish_execution", None)
         if marker:
             marker(task)
+        # 任务已到终态，落盘登记到此作废（未登记过的实时整理路径为无害空操作）
+        self.__discard_pending(task)
 
     def __expire_stale_transfer_tasks(self):
         """清理外部接管后失去状态心跳的运行中整理任务。"""
@@ -1987,8 +2185,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 fileitem = task.fileitem
 
                 with task_lock:
-                    # 获取当前最新总数
-                    current_total = self.jobview.total()
+                    # 批次总数 = 本批已处理数 + 未终态数。作业视图会残留上一批
+                    # 已完成的任务（作业要等关联任务全部终态才移除），用全量
+                    # total() 会把历史任务计入本批（如显示 8 个实际只处理 2 个），
+                    # 且进度分母虚高导致百分比走不满
+                    current_total = self._processed_num + self.jobview.pending_total()
                     # 更新总数，取当前总数和当前已处理+运行中+队列中的最大值
                     self._total_num = max(self._total_num, current_total)
 
@@ -2155,6 +2356,15 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if not mediainfo:
                     if task.preview:
                         return False, "未识别到媒体信息"
+                    # 未识别同样是整理失败，计入重试次数：TMDB 瞬断属于可恢复故障，
+                    # 但文件名永远识别不出时不能无限重试刷通知
+                    record_transfer_failure(
+                        task.fileitem.path if task.fileitem else None,
+                        task.fileitem.storage if task.fileitem else None,
+                        file_size=task.fileitem.size if task.fileitem else None,
+                        file_modify_time=task.fileitem.modify_time if task.fileitem else None,
+                        fileid=task.fileitem.fileid if task.fileitem else None,
+                    )
                     # 新增整理失败历史记录
                     his = transferhis.add_fail(
                         fileitem=task.fileitem,
@@ -3156,9 +3366,12 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             include_move_dest: bool = False,
     ) -> Optional[TransferHistory]:
         """查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。"""
-        history = transfer_history_oper.get_by_src(
+        # resolve_history 在命中失败记录时会再确认一次有无成功记录，
+        # 避免 get_by_src 无排序导致同源多行时返回哪条不确定
+        history = resolve_history(
             fileitem.path,
             storage=fileitem.storage,
+            transfer_history_oper=transfer_history_oper,
         )
         if history or not include_move_dest:
             return history
@@ -3228,6 +3441,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             ):
                 return False, f"{dest_fileitem.path} 删除失败"
         transfer_history_oper.delete(history.id)
+        # 删除记录是用户显式要求重来，失败计数一并清零，否则重整仍会受上一轮次数限制
+        clear_transfer_failures(history.src, history.src_storage)
         return True, ""
 
     def do_transfer(
@@ -3786,7 +4001,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     raise OperationInterrupted()
                 file_path = Path(file_item.path)
 
-                # 自动整理继续按全部历史去重；手动整理可清理失败记录，或按用户确认清理成功记录。
+                # 自动整理按 app/helper/transferhistory.py 的统一判定去重（失败记录放行重试、
+                # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
+                # 或按用户确认清理成功记录。
                 if (not force or reorganize) and not preview:
                     transfer_history_oper = TransferHistoryOper()
                     transferd = self._get_manual_transfer_history(
@@ -3814,9 +4031,36 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             transferd = None
 
                     if transferd:
+                        history_description = describe_history_gate(
+                            transferd,
+                            file_size=file_item.size,
+                            file_modify_time=file_item.modify_time,
+                            fileid=file_item.fileid,
+                        )
+
+                    if transferd and not manual:
+                        # 自动路径（目录监控、下载器轮询）与监控分发共用同一套判定，
+                        # 否则监控层刚放行的失败重试与升级请求会在这里被全额收回
+                        gate_action = evaluate_history_gate(
+                            transferd,
+                            file_size=file_item.size,
+                            file_modify_time=file_item.modify_time,
+                            fileid=file_item.fileid,
+                        )
+                        if not is_skip_action(gate_action):
+                            logger.info(
+                                f"{file_item.path} 命中"
+                                f"{history_description}"
+                                f"，重新送入整理"
+                            )
+                            transferd = None
+
+                    if transferd:
                         skipped_history_count += 1
                         if not transferd.status:
                             all_success = False
+                        # 失败记录能走到这里说明重试次数已用尽，此时同样要打已整理标签让种子
+                        # 退出轮询，否则下载器每一轮都会重新扫描并在这里被拦一次，空转且刷屏
                         candidate_hash = download_hash or transferd.download_hash
                         candidate_downloader = downloader or transferd.downloader
                         if candidate_hash and candidate_downloader:
@@ -3824,7 +4068,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                 (candidate_hash, candidate_downloader)
                             )
                         logger.info(
-                            f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。"
+                            f"{file_item.path} 已整理过（"
+                            f"{history_description}"
+                            f"），如需重新处理，请删除整理记录。"
                         )
                         err_msgs.append(f"{file_item.name} 已整理过")
                         continue

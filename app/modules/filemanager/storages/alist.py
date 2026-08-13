@@ -10,7 +10,7 @@ from app.core.cache import cached
 from app.core.config import settings, global_vars
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
-from app.schemas.exception import OperationInterrupted
+from app.schemas.exception import OperationInterrupted, StorageQueryError
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import WeakSingleton
@@ -471,17 +471,57 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             )
             return None
 
+        return self.__build_fileitem(path, result["data"])
+
+    def __build_fileitem(self, path: Path, data: dict) -> schemas.FileItem:
+        """
+        根据接口返回数据构建文件项。
+        :param path: 文件路径
+        :param data: 接口返回的 data 字段
+        :return: 文件项
+        """
         return schemas.FileItem(
             storage=self.schema.value,
-            type="dir" if result["data"]["is_dir"] else "file",
-            path=path.as_posix() + ("/" if result["data"]["is_dir"] else ""),
-            name=result["data"]["name"],
-            basename=Path(result["data"]["name"]).stem,
-            extension=Path(result["data"]["name"]).suffix[1:],
-            size=result["data"]["size"],
-            modify_time=self.__parse_timestamp(result["data"]["modified"]),
-            thumbnail=result["data"]["thumb"],
+            type="dir" if data["is_dir"] else "file",
+            path=path.as_posix() + ("/" if data["is_dir"] else ""),
+            name=data["name"],
+            basename=Path(data["name"]).stem,
+            extension=Path(data["name"]).suffix[1:],
+            size=data["size"],
+            modify_time=self.__parse_timestamp(data["modified"]),
+            thumbnail=data["thumb"],
         )
+
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
+        只有接口明确回报「对象不存在」才是确定结果，连接失败、HTTP 异常与其他
+        业务错误都无法确认目标状态，必须保守失败以免覆盖保护被绕过。
+        """
+        resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
+            self.__get_api_url("/api/fs/get"),
+            json={
+                "path": path.as_posix(),
+                "password": "",
+                "page": 1,
+                "per_page": 0,
+                "refresh": False,
+            },
+        )
+        if resp is None:
+            raise StorageQueryError(f"【OpenList】查询文件 {path} 失败，无法连接服务")
+        if resp.status_code != 200:
+            raise StorageQueryError(f"【OpenList】查询文件 {path} 失败，状态码：{resp.status_code}")
+        try:
+            result = resp.json()
+        except Exception as err:
+            raise StorageQueryError(f"【OpenList】解析查询结果失败: {path} - {err}") from err
+        if result.get("code") != 200:
+            message = str(result.get("message") or "")
+            if "not found" in message.lower() or "not exist" in message.lower():
+                return None
+            raise StorageQueryError(f"【OpenList】查询文件 {path} 失败：{message}")
+        return self.__build_fileitem(path, result["data"])
 
     def get_parent(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

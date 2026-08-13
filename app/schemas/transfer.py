@@ -168,6 +168,9 @@ class TransferInfo(BaseModel):
     need_scrape: Optional[bool] = False
     # 是否需要通知
     need_notify: Optional[bool] = False
+    # 是否因覆盖模式判定「不覆盖」而放弃整理。
+    # 这是一次正常的策略裁决而非整理故障，调用方据此决定是否写失败历史与推送失败通知
+    overwrite_skipped: Optional[bool] = False
 
     def to_dict(self):
         """

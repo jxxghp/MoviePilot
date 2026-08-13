@@ -14,6 +14,7 @@ from .subscribe import Subscribe
 from .subscribehistory import SubscribeHistory
 from .systemconfig import SystemConfig
 from .transferhistory import TransferHistory
+from .transferpending import TransferPending
 from .user import User
 from .userconfig import UserConfig
 from .workflow import Workflow

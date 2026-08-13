@@ -98,9 +98,15 @@ FROM prepare_package AS prepare_code
 WORKDIR /app
 
 COPY . .
-RUN FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
+# 构建上下文中存在 frontend-dist/ 时优先使用本地前端产物（fork 自有前端），
+# 否则回退下载官方 release 的 dist.zip
+RUN if [ -d /app/frontend-dist ]; then \
+    mv /app/frontend-dist /public; \
+    else \
+    FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
-    && mv /dist /public \
+    && mv /dist /public; \
+    fi \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Plugins-main/plugins.v2/* /app/app/plugins/ \
     && cat /tmp/MoviePilot-Plugins-main/package.json | jq -r 'to_entries[] | select(.value.v2 == true) | .key' | awk '{print tolower($0)}' | \

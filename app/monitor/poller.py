@@ -137,13 +137,17 @@ class RemotePoller:
                     logger.info(f"{storage} 首次快照完成，共 {file_count} 个文件")
                     logger.info("*** 首次快照仅建立基准，不会处理现有文件。后续监控将处理新增和修改的文件 ***")
 
-                # 保存当前完整基线
-                if not self._store.save(storage, current_snapshot, file_count, last_snapshot_time):
+                # 保存合并后的基线。增量游标是整个存储共用的，若本轮有路径失败仍让
+                # 游标跟随成功路径前进，失败路径中时间落在新旧游标之间的变更会被
+                # 后续增量查询永久跳过，因此部分失败时把游标固定在旧值
+                pinned_time = last_snapshot_time if failed_paths else None
+                if not self._store.save(storage, current_snapshot, file_count, last_snapshot_time,
+                                        snapshot_time=pinned_time):
                     self._note_failure(storage, "保存快照基线失败")
                     return None
 
                 if failed_paths:
-                    # 部分路径失败：成功路径已合并，失败路径保留旧基线，下轮重试
+                    # 部分路径失败：成功路径已合并，失败路径保留旧基线与旧游标，下轮重试
                     self._note_failure(
                         storage,
                         f"部分路径快照失败: {','.join(str(path) for path in failed_paths)}"
@@ -181,7 +185,15 @@ class RemotePoller:
         for new_file in added_files:
             file_info = new_snapshot.get(new_file, {})
             file_size = file_info.get('size', 0) if isinstance(file_info, dict) else file_info
-            if self._dispatcher.handle_file(storage=storage, event_path=Path(new_file), file_size=file_size):
+            file_modify_time = file_info.get('modify_time') if isinstance(file_info, dict) else None
+            fileid = file_info.get('fileid') if isinstance(file_info, dict) else None
+            if self._dispatcher.handle_file(
+                    storage=storage,
+                    event_path=Path(new_file),
+                    file_size=file_size,
+                    file_modify_time=file_modify_time,
+                    fileid=fileid,
+            ):
                 handled_added_count += 1
 
         # 处理修改文件
@@ -189,7 +201,15 @@ class RemotePoller:
         for modified_file in modified_files:
             file_info = new_snapshot.get(modified_file, {})
             file_size = file_info.get('size', 0) if isinstance(file_info, dict) else file_info
-            if self._dispatcher.handle_file(storage=storage, event_path=Path(modified_file), file_size=file_size):
+            file_modify_time = file_info.get('modify_time') if isinstance(file_info, dict) else None
+            fileid = file_info.get('fileid') if isinstance(file_info, dict) else None
+            if self._dispatcher.handle_file(
+                    storage=storage,
+                    event_path=Path(modified_file),
+                    file_size=file_size,
+                    file_modify_time=file_modify_time,
+                    fileid=fileid,
+            ):
                 handled_modified_count += 1
 
         if handled_added_count or handled_modified_count:
@@ -228,8 +248,15 @@ class RemotePoller:
                     if not self._dispatcher.is_transfer_candidate_path(Path(file_path)):
                         continue
                     file_size = file_info.get('size', 0) if isinstance(file_info, dict) else file_info
-                    if self._dispatcher.handle_file(storage=storage, event_path=Path(file_path),
-                                                    file_size=file_size):
+                    file_modify_time = file_info.get('modify_time') if isinstance(file_info, dict) else None
+                    fileid = file_info.get('fileid') if isinstance(file_info, dict) else None
+                    if self._dispatcher.handle_file(
+                            storage=storage,
+                            event_path=Path(file_path),
+                            file_size=file_size,
+                            file_modify_time=file_modify_time,
+                            fileid=fileid,
+                    ):
                         processed_count += 1
                 except Exception as e:
                     logger.error(f"处理文件 {file_path} 失败: {e}")
@@ -237,11 +264,18 @@ class RemotePoller:
 
             logger.info(f"{storage}:{mon_path} 全量扫描完成，共处理 {processed_count}/{file_count} 个文件")
 
-            # 全量扫描覆盖单个路径，与已有基线合并后落盘，避免覆盖其他监控路径的基线
+            # 全量扫描只覆盖单个路径，必须与已有基线合并后落盘。读取失败时无法
+            # 区分「基线不存在」与「读取异常」，此时落盘会抹掉同存储下其他监控
+            # 路径的基线，因此直接判定失败
             old_snapshot_data, load_ok = self._store.load_checked(storage)
-            old_snapshot = old_snapshot_data.get('snapshot', {}) if (load_ok and old_snapshot_data) else {}
-            merged_snapshot = {**old_snapshot, **new_snapshot}
-            self._store.save(storage, merged_snapshot, len(merged_snapshot))
+            if not load_ok:
+                logger.error(f"读取快照基线失败，已跳过落盘以避免覆盖其他监控路径: {storage}:{mon_path}")
+                return False
+            old_snapshot = old_snapshot_data.get('snapshot', {}) if old_snapshot_data else {}
+            current_snapshot = {**old_snapshot, **new_snapshot}
+            if not self._store.save(storage, current_snapshot, len(current_snapshot)):
+                logger.error(f"保存快照基线失败，全量扫描未完成: {storage}:{mon_path}")
+                return False
 
             return True
 

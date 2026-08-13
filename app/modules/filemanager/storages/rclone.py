@@ -10,6 +10,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -297,6 +298,38 @@ class Rclone(StorageBase):
             return None
         except Exception as err:
             logger.debug(f"【rclone】获取文件项失败：{err}")
+        return None
+
+    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
+        rclone 用退出码 3/4 表示目录/文件不存在，其余非零退出无法区分
+        「不存在」与「查询失败」，必须保守失败以免覆盖保护被绕过。
+        """
+        try:
+            ret = subprocess.run(
+                [
+                    'rclone', 'lsjson',
+                    f'MP:{path.parent}'
+                ],
+                capture_output=True,
+                startupinfo=self.__get_hidden_shell()
+            )
+        except Exception as err:
+            raise StorageQueryError(f"【rclone】查询文件项失败: {path} - {err}") from err
+        if ret.returncode in (3, 4):
+            # 目录或文件不存在，是确定结果
+            return None
+        if ret.returncode != 0:
+            errmsg = (ret.stderr or b"").decode(errors="ignore").strip()
+            raise StorageQueryError(f"【rclone】查询文件项失败: {path} - {errmsg}")
+        try:
+            items = json.loads(ret.stdout)
+        except Exception as err:
+            raise StorageQueryError(f"【rclone】解析查询结果失败: {path} - {err}") from err
+        for item in items:
+            if item.get("Name") == path.name:
+                return self.__get_rcloneitem(item, parent=str(path.parent) + "/")
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:

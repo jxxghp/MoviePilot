@@ -386,6 +386,19 @@ class ConfigModel(BaseModel):
     # 下载器临时文件后缀
     DOWNLOAD_TMPEXT: list = Field(default_factory=lambda: [".!qb", ".part"])
 
+    # ==================== 目录监控配置 ====================
+    # 允许网络文件系统使用快速模式（inotify）。部分 FUSE 实现（如 CloudDrive2）
+    # 会正常下发内核通知，快速模式可用，且比每 N 秒 stat 全部目录的轮询对挂载后端
+    # 的压力小得多，由用户确认后开启
+    MONITOR_NETWORK_FAST_MODE: bool = False
+    # 网络文件系统的轮询扫描间隔（毫秒），0 表示使用内置默认值
+    MONITOR_POLL_DELAY_NETWORK: int = 0
+    # 新增目录延迟重扫的轮次延迟秒数，多个使用,分隔，如 "30,120,600,1800"。
+    # FUSE 挂载（如 CloudDrive2）上超大目录树呈现完整内容可能超过分钟级，
+    # 默认值在常见的 30/120 秒窗口后追加两轮成本极低的长延迟轮次兜底；
+    # 解析失败（如格式非法、包含非正整数）时回退默认值并记录 warn 日志
+    MONITOR_RESCAN_DELAYS: str = "30,120,600,1800"
+
     # ==================== CookieCloud配置 ====================
     # CookieCloud是否启动本地服务
     COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
@@ -405,6 +418,27 @@ class ConfigModel(BaseModel):
     # ==================== 整理配置 ====================
     # 文件整理线程数
     TRANSFER_THREADS: int = 1
+    # 本地文件操作是否走可强杀的子进程代理。
+    # FUSE/网络挂载进入「请求永不返回」状态时，stat/listdir 这类调用会永久悬挂，
+    # 而 Python 既不能中断已发出的系统调用、也不能强杀线程，阻塞其上的线程无法回收。
+    # 走子进程后超时可以 SIGKILL 真正回收，block 型故障被转换成各层已能处理的
+    # crash 型故障（OSError）。出现兼容问题时可关闭回到直接调用。
+    FS_PROXY_ENABLED: bool = True
+    # 单次本地快操作（stat/listdir/删除/重命名）的超时秒数，
+    # 超时即判定挂载无响应并回收代理进程
+    FS_PROXY_TIMEOUT: int = 30
+    # 复制大文件时两次进度上报之间的最长间隔秒数。代理每秒上报一次进度作为心跳，
+    # 因此这个阈值判定的是「传输完全没有推进」而不是「传输很慢」，
+    # 复制几小时的大文件也不会被误杀
+    FS_PROXY_STALL_TIMEOUT: int = 120
+    # 自动整理（目录监控、下载器轮询）遇到失败整理记录时，同一源路径允许自动重试的最大次数。
+    # 一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）不该让文件永久漏整理，因此必须重试；
+    # 但永远识别不出的文件重试再多也不会成功，只会重复推送失败通知，批量导入时更会刷屏，
+    # 因此必须有界。取值区间 1-10，越界或非法值会被钳制到边界并记录 warn：
+    # 既不支持关闭重试，也不支持无限重试。整理成功或删除整理记录时计数清零。
+    # 与本项无关的是同路径新版本：已成功整理的文件源大小变化时一律放行，
+    # 由整理链的 overwrite_mode 决断是否覆盖
+    TRANSFER_MAX_FAILED_RETRIES: int = 3
     # 外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用
     TRANSFER_TASK_TIMEOUT: int = 120
     # 电影重命名格式

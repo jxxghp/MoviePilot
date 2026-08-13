@@ -13,6 +13,7 @@ from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
+from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
     MediaImageType,
@@ -193,16 +194,42 @@ class TheMovieDbModule(_ModuleBase):
                     media.season = meta.begin_season
         return medias
 
+    def _safe_get_info_by_type(self, mtype: MediaType, tmdbid: int) -> Tuple[Optional[dict], bool]:
+        """
+        查询指定类型的媒体详情，将"确认TMDB连接失败"与"确认查无此项"区分开。
+
+        :param mtype: 媒体类型：电影或电视剧
+        :param tmdbid: TMDB的ID
+        :return: (媒体信息或None, 本次查询是否因TMDB连接失败而没有得到确定结果)
+        """
+        try:
+            return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid, raise_on_connection_error=True), False
+        except TMDbConnectionError:
+            return None, True
+
+    async def _async_safe_get_info_by_type(self, mtype: MediaType, tmdbid: int) -> Tuple[Optional[dict], bool]:
+        """
+        查询指定类型的媒体详情，将"确认TMDB连接失败"与"确认查无此项"区分开（异步版本）
+        """
+        try:
+            return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid, raise_on_connection_error=True), False
+        except TMDbConnectionError:
+            return None, True
+
     def _get_info_by_tmdbid(self, tmdbid: int, mtype: Optional[MediaType],
                              meta: Optional[MetaBase]) -> Optional[dict]:
         """
         根据tmdbid查询媒体信息，当类型未知且同时存在电影和电视剧时，通过元数据消歧
+
+        :raises TMDbConnectionError: 电影、电视剧两路查询都没有得到确定结果，且至少一路
+            是因TMDB连接失败导致的，此时不能断言"条目不存在"，交由上层报网络故障
         """
         if mtype:
-            return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
-        # 类型未知，分别查询电影和电视剧
-        info_tv = self.tmdb.get_info(mtype=MediaType.TV, tmdbid=tmdbid)
-        info_movie = self.tmdb.get_info(mtype=MediaType.MOVIE, tmdbid=tmdbid)
+            return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid, raise_on_connection_error=True)
+        # 类型未知，分别查询电影和电视剧；每一路的连接失败要单独识别，
+        # 避免一路瞬时抖动掩盖另一路已经得到的确定结果
+        info_tv, tv_conn_error = self._safe_get_info_by_type(MediaType.TV, tmdbid)
+        info_movie, movie_conn_error = self._safe_get_info_by_type(MediaType.MOVIE, tmdbid)
         if info_tv and info_movie:
             # 同时存在，尝试通过元数据消歧
             result = self._disambiguate_by_meta(info_tv, info_movie, meta)
@@ -210,18 +237,26 @@ class TheMovieDbModule(_ModuleBase):
                 return result
             logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
             return None
-        return info_tv or info_movie or None
+        if info_tv or info_movie:
+            return info_tv or info_movie
+        if tv_conn_error or movie_conn_error:
+            raise TMDbConnectionError(f"连接TheMovieDb失败，无法确认tmdb_id:{tmdbid} 的媒体类型")
+        return None
 
     async def _async_get_info_by_tmdbid(self, tmdbid: int, mtype: Optional[MediaType],
                                          meta: Optional[MetaBase]) -> Optional[dict]:
         """
         根据tmdbid查询媒体信息，当类型未知且同时存在电影和电视剧时，通过元数据消歧（异步版本）
+
+        :raises TMDbConnectionError: 电影、电视剧两路查询都没有得到确定结果，且至少一路
+            是因TMDB连接失败导致的，此时不能断言"条目不存在"，交由上层报网络故障
         """
         if mtype:
-            return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid)
-        # 类型未知，分别查询电影和电视剧
-        info_tv = await self.tmdb.async_get_info(mtype=MediaType.TV, tmdbid=tmdbid)
-        info_movie = await self.tmdb.async_get_info(mtype=MediaType.MOVIE, tmdbid=tmdbid)
+            return await self.tmdb.async_get_info(mtype=mtype, tmdbid=tmdbid, raise_on_connection_error=True)
+        # 类型未知，分别查询电影和电视剧；每一路的连接失败要单独识别，
+        # 避免一路瞬时抖动掩盖另一路已经得到的确定结果
+        info_tv, tv_conn_error = await self._async_safe_get_info_by_type(MediaType.TV, tmdbid)
+        info_movie, movie_conn_error = await self._async_safe_get_info_by_type(MediaType.MOVIE, tmdbid)
         if info_tv and info_movie:
             # 同时存在，尝试通过元数据消歧
             result = self._disambiguate_by_meta(info_tv, info_movie, meta)
@@ -229,7 +264,11 @@ class TheMovieDbModule(_ModuleBase):
                 return result
             logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
             return None
-        return info_tv or info_movie or None
+        if info_tv or info_movie:
+            return info_tv or info_movie
+        if tv_conn_error or movie_conn_error:
+            raise TMDbConnectionError(f"连接TheMovieDb失败，无法确认tmdb_id:{tmdbid} 的媒体类型")
+        return None
 
     @staticmethod
     def _disambiguate_by_meta(info_tv: dict, info_movie: dict,
@@ -525,10 +564,15 @@ class TheMovieDbModule(_ModuleBase):
         # 识别匹配
         if not cache_info or not cache:
             info = None
+            connection_error = False
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情，支持同ID电影/电视剧消歧
-                info = self._get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+                try:
+                    info = self._get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+                except TMDbConnectionError as err:
+                    logger.error(f"tmdb_id:{tmdbid} {err}")
+                    connection_error = True
             if not info and meta and not tmdbid:
                 # 准备搜索名称
                 names = self._prepare_search_names(meta)
@@ -542,7 +586,11 @@ class TheMovieDbModule(_ModuleBase):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
             elif not info:
-                if tmdbid:
+                if connection_error:
+                    # 网络故障与"条目不存在"是完全不同的两类问题，不能用同一句文案掩盖，
+                    # 否则用户无从判断该等网络恢复还是该确认条目本身是否存在
+                    logger.error(f"tmdb_id:{tmdbid} 连接TheMovieDb失败，无法完成识别，请检查网络连接后重试")
+                elif tmdbid:
                     logger.warn(f"tmdb_id:{tmdbid} 无法确定媒体类型，识别失败")
                 else:
                     logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")
@@ -624,10 +672,15 @@ class TheMovieDbModule(_ModuleBase):
         # 识别匹配
         if not cache_info or not cache:
             info = None
+            connection_error = False
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情，支持同ID电影/电视剧消歧
-                info = await self._async_get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+                try:
+                    info = await self._async_get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
+                except TMDbConnectionError as err:
+                    logger.error(f"tmdb_id:{tmdbid} {err}")
+                    connection_error = True
             if not info and meta and not tmdbid:
                 # 准备搜索名称
                 names = self._prepare_search_names(meta)
@@ -641,7 +694,11 @@ class TheMovieDbModule(_ModuleBase):
                     info = await self.tmdb.async_get_info(mtype=info.get("media_type"),
                                                           tmdbid=info.get("id"))
             elif not info:
-                if tmdbid:
+                if connection_error:
+                    # 网络故障与"条目不存在"是完全不同的两类问题，不能用同一句文案掩盖，
+                    # 否则用户无从判断该等网络恢复还是该确认条目本身是否存在
+                    logger.error(f"tmdb_id:{tmdbid} 连接TheMovieDb失败，无法完成识别，请检查网络连接后重试")
+                elif tmdbid:
                     logger.warn(f"tmdb_id:{tmdbid} 无法确定媒体类型，识别失败")
                 else:
                     logger.error("识别媒体信息时未提供元数据或唯一且有效的tmdbid")

@@ -8,6 +8,7 @@ from app import schemas
 from app.helper.progress import ProgressHelper
 from app.helper.storage import StorageHelper
 from app.log import logger
+from app.schemas.exception import StorageQueryError
 from app.utils.crypto import HashUtils
 
 
@@ -179,9 +180,13 @@ class StorageBase(metaclass=ABCMeta):
     def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
         """
         获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
-        默认实现不区分「不存在」与「查询失败」，由具体存储按需覆写。
+
+        默认保守失败：未覆写的存储无法区分「不存在」与「查询失败」，沿用
+        get_item() 会让 overwrite_mode=size 的覆盖保护在查询失败时被绕过，
+        把「无法确认」当成「目标不存在」而放行覆盖。具体存储必须先实现
+        「确认不存在」的判定，再覆写本方法。
         """
-        return self.get_item(path)
+        raise StorageQueryError(f"存储 {self.schema} 未实现严格查询，无法确认目标状态: {path}")
 
     def get_parent(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
@@ -337,6 +342,7 @@ class StorageBase(metaclass=ABCMeta):
                     files_info[_fileitm.path] = {
                         'size': _fileitm.size or 0,
                         'modify_time': getattr(_fileitm, 'modify_time', 0),
+                        'fileid': getattr(_fileitm, 'fileid', None),
                         'type': _fileitm.type
                     }
 

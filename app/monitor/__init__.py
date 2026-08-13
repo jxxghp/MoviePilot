@@ -6,6 +6,7 @@
 - snapshot.py    远程快照存取与比对
 - dispatcher.py  监控事件到整理链的分发
 - poller.py      远程目录轮询监控
+- recovery.py    触碰挂载的恢复动作的可放弃执行单元（block 型故障隔离）
 - monitor.py     Monitor 门面：装配、生命周期与健康检查
 """
 from app.monitor.watcher import DirectoryChangeEvent, LocalDirectoryWatcher

@@ -254,6 +254,71 @@ def test_poll_failure_alert_threshold_and_recovery(monkeypatch):
     assert "已恢复" in alert_cb.call_args.args[1]
 
 
+def test_poll_partial_failure_pins_incremental_cursor(monkeypatch):
+    """
+    部分路径失败时增量游标必须固定在旧值，否则失败路径中时间落在新旧游标
+    之间的变更会被后续增量查询永久跳过。
+    """
+    poller, store, _ = _build_poller()
+    store.load_checked.return_value = (dict(BASELINE), True)
+    _mock_storage_chain(monkeypatch, [None, {'/mon2/b.mkv': {'size': 2, 'modify_time': 999}}])
+
+    poller.poll("u115", [Path("/mon"), Path("/mon2")])
+
+    # 游标固定为旧基线时间 100，而不是成功路径产生的 999
+    assert store.save.call_args.kwargs["snapshot_time"] == 100
+
+
+def test_poll_full_success_advances_cursor(monkeypatch):
+    """
+    全部路径成功时不固定游标，由快照内容推进增量游标。
+    """
+    poller, store, _ = _build_poller()
+    store.load_checked.return_value = (dict(BASELINE), True)
+    _mock_storage_chain(monkeypatch, [{'/mon/b.mkv': {'size': 2, 'modify_time': 999}}])
+
+    poller.poll("u115", [Path("/mon")])
+
+    assert store.save.call_args.kwargs["snapshot_time"] is None
+
+
+def test_force_full_scan_aborts_on_baseline_load_error(monkeypatch):
+    """
+    全量扫描读取基线失败时必须放弃落盘，否则会抹掉同存储其他监控路径的基线。
+    """
+    poller, store, _ = _build_poller()
+    store.load_checked.return_value = (None, False)
+    _mock_storage_chain(monkeypatch, [{'/mon/a.mkv': {'size': 1, 'modify_time': 100}}])
+
+    assert poller.force_full_scan("u115", Path("/mon")) is False
+    store.save.assert_not_called()
+
+
+def test_force_full_scan_reports_save_failure(monkeypatch):
+    """
+    全量扫描持久化失败必须传播为失败，不能返回成功掩盖基线未更新。
+    """
+    poller, store, _ = _build_poller()
+    store.load_checked.return_value = (dict(BASELINE), True)
+    store.save.return_value = False
+    _mock_storage_chain(monkeypatch, [{'/mon/b.mkv': {'size': 2, 'modify_time': 200}}])
+
+    assert poller.force_full_scan("u115", Path("/mon")) is False
+
+
+def test_force_full_scan_merges_with_existing_baseline(monkeypatch):
+    """
+    全量扫描只覆盖单个路径，应与已有基线合并后落盘。
+    """
+    poller, store, _ = _build_poller()
+    store.load_checked.return_value = (dict(BASELINE), True)
+    _mock_storage_chain(monkeypatch, [{'/mon2/b.mkv': {'size': 2, 'modify_time': 200}}])
+
+    assert poller.force_full_scan("u115", Path("/mon2")) is True
+    saved_snapshot = store.save.call_args.args[1]
+    assert set(saved_snapshot.keys()) == {'/mon/a.mkv', '/mon2/b.mkv'}
+
+
 def test_watcher_poll_delay_defaults_and_override(tmp_path):
     """
     轮询扫描间隔默认取本地值，显式传入网络值时生效。

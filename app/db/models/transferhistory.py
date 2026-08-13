@@ -27,7 +27,7 @@ class TransferHistory(Base):
     # 源路径
     src = Column(String, index=True)
     # 源存储
-    src_storage = Column(String)
+    src_storage = Column(String, nullable=False, default="local")
     # 源文件项
     src_fileitem = Column(JSON, default=dict)
     # 目标路径
@@ -89,6 +89,7 @@ class TransferHistory(Base):
         Index('ix_transferhistory_status_date', 'status', 'date'),
         Index('ix_transferhistory_date_id', 'date', 'id'),
         Index('ix_transferhistory_media_identity', 'media_source', 'media_id'),
+        Index('ux_transferhistory_src_storage', 'src', 'src_storage', unique=True),
     )
 
     @classmethod
@@ -207,10 +208,30 @@ class TransferHistory(Base):
         :return: 命中的整理记录，未命中时返回 None
         """
         if storage:
-            return db.query(cls).filter(cls.src == src,
-                                        cls.src_storage == storage).first()
+            query = db.query(cls).filter(cls.src == src, cls.src_storage == storage)
         else:
-            return db.query(cls).filter(cls.src == src).first()
+            query = db.query(cls).filter(cls.src == src)
+        return query.order_by(cls.id.desc()).first()
+
+    @classmethod
+    @db_query
+    def get_success_by_src(
+            cls, db: Session, src: str, storage: Optional[str] = None
+    ) -> Optional["TransferHistory"]:
+        """
+        按源路径和存储查询成功的整理记录，源路径原样精确匹配。
+
+        与 list_success_by_src 不同，这里不对源路径做归一化，蓝光原盘目录记录
+        带尾斜杠，归一化后反而匹配不到。
+        :param db: 数据库会话
+        :param src: 源路径
+        :param storage: 源存储类型
+        :return: 命中的成功整理记录，未命中时返回 None
+        """
+        query = db.query(cls).filter(cls.src == src, cls.status.is_(True))
+        if storage:
+            query = query.filter(cls.src_storage == storage)
+        return query.order_by(cls.id.desc()).first()
 
     @classmethod
     @db_query
@@ -228,7 +249,7 @@ class TransferHistory(Base):
         query = db.query(cls).filter(cls.dest == dest)
         if storage:
             query = query.filter(cls.dest_storage == storage)
-        return query.first()
+        return query.order_by(cls.id.desc()).first()
 
     @classmethod
     @db_query
@@ -564,6 +585,31 @@ class TransferHistory(Base):
                 "download_hash": download_hash
             }
         )
+
+    @classmethod
+    @db_update
+    def replace_by_src(cls, db: Session, **kwargs) -> "TransferHistory":
+        """
+        用同源存储的新记录原子替换旧整理历史。
+
+        同一源路径在一个存储中只能对应一条最新整理记录。先在同一事务内清理旧行再
+        插入，避免旧的“查询一条再删除一条”在遗留重复数据下留下脏记录。
+        :param db: 数据库会话
+        :param kwargs: 整理历史字段
+        :return: 新创建的整理历史
+        """
+        src = kwargs.get("src")
+        src_storage = kwargs.get("src_storage") or "local"
+        kwargs["src_storage"] = src_storage
+        if src:
+            db.query(cls).filter(
+                cls.src == src,
+                cls.src_storage == src_storage,
+            ).delete(synchronize_session=False)
+        history = cls(**kwargs)
+        db.add(history)
+        db.flush()
+        return history
 
     @classmethod
     @db_query

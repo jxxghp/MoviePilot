@@ -33,6 +33,7 @@ from app.startup.scheduler_initializer import (
     init_scheduler,
     init_plugin_scheduler,
 )
+from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.utils.http import aclose_shared_async_transports
 
@@ -91,6 +92,8 @@ async def lifespan(app: FastAPI):
         init_scheduler()
         # 初始化监控器
         init_monitor()
+        # 回放上次未整理完的文件（后台线程，不阻塞启动）
+        replay_pending_transfers()
         # 初始化命令
         init_command()
         # 初始化工作流

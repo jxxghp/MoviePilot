@@ -326,7 +326,9 @@ def test_handle_file_prefers_music_type_from_monitor_directory(monkeypatch):
     ]
     transfer_chain_instance = MagicMock()
 
-    monkeypatch.setattr(dispatcher, "_has_transfer_history", MagicMock(return_value=False))
+    # 历史查重已由 _should_skip_by_history 统一承担（含失败重试预算与版本变化判定），
+    # 这里放行以便验证 mtype 的传递
+    monkeypatch.setattr(dispatcher, "_should_skip_by_history", MagicMock(return_value=False))
     monkeypatch.setattr(
         "app.monitor.dispatcher.DirectoryHelper",
         MagicMock(return_value=MagicMock(get_download_dirs=MagicMock(return_value=directories))),

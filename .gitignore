@@ -50,3 +50,6 @@ pylint-report.json
 
 # Superpowers 设计/计划文档（本地协作产物，不纳入仓库）
 docs/superpowers/
+
+# 本地前端构建产物（docker build 用，不入库）
+frontend-dist/

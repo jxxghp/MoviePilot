@@ -91,6 +91,17 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.get_by_src(self._db, src, storage)
 
+    def get_success_by_src(
+            self, src: str, storage: Optional[str] = None
+    ) -> Optional[TransferHistory]:
+        """
+        按源查询成功的转移记录，源路径原样精确匹配
+        :param src: 数据key
+        :param storage: 存储类型
+        :return: 命中的成功整理记录，未命中时返回 None
+        """
+        return TransferHistory.get_success_by_src(self._db, src, storage)
+
     def get_by_dest(
             self, dest: str, storage: Optional[str] = None
     ) -> Optional[TransferHistory]:
@@ -215,18 +226,25 @@ class TransferHistoryOper(DbOper):
 
     def add_force(self, **kwargs) -> TransferHistory:
         """
-        新增转移历史，相同源目录的记录会被删除
+        新增转移历史，并以同源存储的记录为准替换旧记录。
         """
         kwargs = normalize_media_identity_payload(kwargs)
-        if kwargs.get("src"):
-            transferhistory = TransferHistory.get_by_src(self._db, kwargs.get("src"))
-            if transferhistory:
-                transferhistory.delete(self._db, transferhistory.id)
+        # 文件项的默认存储是 local；归一化旧调用传入的 None，确保运行时语义与
+        # (src, src_storage) 唯一索引一致。
+        kwargs["src_storage"] = kwargs.get("src_storage") or "local"
+        # 旧记录的清理交给 replace_by_src 按 (src, src_storage) 处理：
+        # 仅按 src 删除会连带删掉其他存储下同路径的记录。
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
-        TransferHistory(**kwargs).create(self._db)
-        return TransferHistory.get_by_src(self._db, kwargs.get("src"))
+        TransferHistory.replace_by_src(self._db, **kwargs)
+        # 保持 add_force 的既有返回契约：返回可被调用方安全读取字段的查询结果，
+        # 而非事务提交后可能已脱离会话的新建实例。
+        return TransferHistory.get_by_src(
+            self._db,
+            kwargs.get("src"),
+            kwargs["src_storage"],
+        )
 
     def update_download_hash(self, historyid, download_hash):
         """

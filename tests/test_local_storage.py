@@ -95,16 +95,29 @@ def test_cross_device_move_keeps_target_permissions(tmp_path: Path) -> None:
     source_content = source.read_bytes()
     storage = _make_storage()
 
+    real_replace = local_storage_module.os.replace
+
+    def _exdev_for_source(src_path, dst_path, *args, **kwargs):
+        """
+        只让「源 → 最终目标」的直接移动以 EXDEV 失败；降级路径里
+        「临时文件 → 目标」的替换仍需正常工作，否则整个移动都会失败。
+        """
+        if Path(src_path) == source:
+            raise OSError(errno.EXDEV, "跨设备移动")
+        return real_replace(src_path, dst_path, *args, **kwargs)
+
     with (
         patch.object(
             local_storage_module.LocalStorage,
             "_LocalStorage__should_show_progress",
             return_value=False,
         ),
+        # move 现在显式用 os.replace 做同盘原子移动，EXDEV 失败才降级为
+        # 「写临时名 → 替换」的复制路径，因此在这里注入跨设备错误
         patch.object(
-            shutil.os,
-            "rename",
-            side_effect=OSError(errno.EXDEV, "跨设备移动"),
+            local_storage_module.os,
+            "replace",
+            side_effect=_exdev_for_source,
         ),
     ):
         result = storage.move(
