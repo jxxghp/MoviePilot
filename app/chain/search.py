@@ -8,6 +8,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import AsyncIterator, Any, Dict, Iterable, Tuple
 from typing import List, Optional
+from unicodedata import normalize
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -40,6 +41,7 @@ from app.utils.media import (
     resolve_media_identity,
 )
 from app.utils.string import StringUtils
+from app.utils.zhconv import convert as zhconv_convert
 
 
 class SearchChain(ChainBase):
@@ -60,17 +62,17 @@ class SearchChain(ChainBase):
 
     @classmethod
     def music_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
-        """按单曲或专辑实体生成站点关键词，避免单曲优先命中所属整专。"""
+        """按实体生成站点关键词，先扩大名称召回，再由结果匹配校验艺术家。"""
         artists = music.artists or []
         artist = artists[0] if artists else music.album_artist
         values: list[Optional[str]] = []
         if getattr(music, "music_type", None) == MUSIC_ENTITY_ALBUM:
             album = music.album or music.title
-            values.extend([f"{artist} {album}" if artist and album else None, album])
+            values.extend([album, f"{artist} {album}" if artist and album else None])
         else:
             values.extend([
-                f"{artist} {music.title}" if artist and music.title else None,
                 music.title,
+                f"{artist} {music.title}" if artist and music.title else None,
             ])
         return cls._unique_music_texts(values)
 
@@ -81,8 +83,8 @@ class SearchChain(ChainBase):
             resource_title: str,
             resource_description: Optional[str] = None,
     ) -> bool:
-        """校验站点资源标题同时包含目标音乐名称和已知艺术家。"""
-        normalized_resource = MetaMusic.compact_text(
+        """校验标题与副标题同时命中目标专辑/曲名和艺术家。"""
+        normalized_resource = cls._normalize_music_match_text(
             f"{resource_title or ''} {resource_description or ''}"
         )
         if not normalized_resource:
@@ -94,22 +96,36 @@ class SearchChain(ChainBase):
             ])
         else:
             candidates = cls._unique_music_texts([music.title])
-        if not any(
-                MetaMusic.compact_text(candidate) in normalized_resource
-                for candidate in candidates
-                if MetaMusic.compact_text(candidate)
-        ):
+        normalized_candidates = [
+            cls._normalize_music_match_text(candidate)
+            for candidate in candidates
+        ]
+        if not any(candidate in normalized_resource for candidate in normalized_candidates if candidate):
             return False
         artists = cls._unique_music_texts([
             music.artist,
             music.album_artist,
             *(music.artists or []),
         ])
-        return not artists or any(
-            MetaMusic.compact_text(artist) in normalized_resource
+        normalized_artists = [
+            cls._normalize_music_match_text(artist)
             for artist in artists
-            if MetaMusic.compact_text(artist)
+        ]
+        return bool(normalized_artists) and any(
+            artist in normalized_resource
+            for artist in normalized_artists
+            if artist
         )
+
+    @staticmethod
+    def _normalize_music_match_text(value: Optional[str]) -> str:
+        """去除音乐名称干扰字符并转换为简体小写文本。"""
+        compact_text = "".join(
+            char
+            for char in normalize("NFKC", str(value or "")).casefold()
+            if char.isalnum()
+        )
+        return zhconv_convert(compact_text, "zh-hans")
 
     @staticmethod
     def _unique_music_texts(values: Iterable[Optional[str]]) -> list[str]:
@@ -1469,7 +1485,7 @@ class SearchChain(ChainBase):
             torrents: Optional[List[TorrentInfo]],
             mediainfo: MusicInfo,
     ) -> List[TorrentInfo]:
-        """筛出音乐分类且标题包含目标单曲或专辑名称的站点资源。"""
+        """筛出音乐分类且标题、副标题匹配目标名称与艺术家的站点资源。"""
         return [
             torrent
             for torrent in torrents or []

@@ -70,8 +70,8 @@ def test_parse_query_keeps_non_artist_suffix():
     assert meta.title == "思念 - 现场版"
 
 
-def test_build_site_keywords_prefers_artist_album():
-    """专辑订阅只按艺术家与专辑名搜索，不混入其中某首单曲。"""
+def test_build_site_keywords_searches_album_before_combined_artist():
+    """专辑先按专辑名扩大召回，再用艺术家与专辑名组合词回退。"""
     info = MusicInfo(
         music_type="album",
         title="Get Lucky",
@@ -80,13 +80,13 @@ def test_build_site_keywords_prefers_artist_album():
     )
 
     assert SearchChain.music_site_keywords(info) == [
-        "Daft Punk Random Access Memories",
         "Random Access Memories",
+        "Daft Punk Random Access Memories",
     ]
 
 
-def test_build_site_keywords_keeps_recording_out_of_album_search():
-    """单曲订阅只按艺术家与曲名搜索，不能优先命中所属整张专辑。"""
+def test_build_site_keywords_searches_track_before_combined_artist():
+    """单曲先按曲名扩大召回，且关键词不能混入所属专辑名。"""
     info = MusicInfo(
         music_type="recording",
         title="Get Lucky",
@@ -95,17 +95,18 @@ def test_build_site_keywords_keeps_recording_out_of_album_search():
     )
 
     assert SearchChain.music_site_keywords(info) == [
-        "Daft Punk Get Lucky",
         "Get Lucky",
+        "Daft Punk Get Lucky",
     ]
 
 
 def test_album_resource_match_requires_selected_album_title():
-    """专辑订阅只接受包含目标专辑名的站点资源，忽略大小写、空格和标点差异。"""
+    """专辑订阅只接受同时包含目标专辑名和艺术家的站点资源。"""
     album = MusicInfo(
         music_type="album",
         title="Random Access Memories",
         album="Random Access Memories",
+        artists=["Daft Punk"],
         names=["Random-Access Memories"],
     )
 
@@ -122,6 +123,7 @@ def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
         music_type="recording",
         title="Get Lucky",
         album="Random Access Memories",
+        artists=["Daft Punk"],
         names=["Get Lucky", "Random Access Memories"],
     )
 
@@ -143,6 +145,44 @@ def test_resource_match_requires_artist_when_target_artist_is_known():
     assert SearchChain.matches_music_resource(recording, "周杰伦 - 晴天 FLAC") is True
     assert SearchChain.matches_music_resource(recording, "其他艺人 - 晴天 FLAC") is False
     assert SearchChain.matches_music_resource(recording, "晴天 FLAC") is False
+
+
+def test_album_resource_match_combines_title_description_and_converts_traditional_chinese():
+    """专辑名与艺术家可分处标题和副标题，繁简及干扰符号不影响匹配。"""
+    album = MusicInfo(
+        music_type="album",
+        title="永远是朋友",
+        album="永远是朋友",
+        artists=["周华健"],
+    )
+
+    assert SearchChain.matches_music_resource(
+        album,
+        "【永遠・是朋友】24bit／96kHz",
+        "專輯藝人：周華健；無損音樂",
+    ) is True
+
+
+def test_recording_resource_match_combines_title_description_and_converts_traditional_chinese():
+    """单曲按曲名与艺术家匹配，并统一繁简及全角符号。"""
+    recording = MusicInfo(
+        music_type="recording",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+
+    assert SearchChain.matches_music_resource(
+        recording,
+        "０１．晴 天［FLAC］",
+        "演唱：周杰倫",
+    ) is True
+
+
+def test_music_resource_match_rejects_target_without_artist():
+    """目标缺少艺术家时不能仅凭同名专辑或单曲放行。"""
+    recording = MusicInfo(music_type="recording", title="晴天")
+
+    assert SearchChain.matches_music_resource(recording, "周杰伦 - 晴天 FLAC") is False
 
 
 def test_normalize_candidates_deduplicates_source_identity():
