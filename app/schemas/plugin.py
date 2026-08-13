@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 
 from pydantic import BaseModel, Field, RootModel
 
@@ -165,8 +165,27 @@ class PluginReleaseData(BaseModel):
     items: List[PluginReleaseItem] = Field(default_factory=list)
 
 
-class PluginFoldersData(RootModel[Dict[str, List[str]]]):
-    """插件文件夹与插件 ID 列表映射。"""
+class PluginFolderConfigData(BaseModel):
+    """新版插件文件夹配置（对象格式，含展示配置与插件列表）。"""
+
+    # 文件夹内插件 ID 列表
+    plugins: List[str] = Field(default_factory=list)
+    # 文件夹排序值
+    order: Optional[int] = None
+    # 文件夹图标
+    icon: Optional[str] = None
+    # 文件夹颜色
+    color: Optional[str] = None
+    # 文件夹渐变
+    gradient: Optional[str] = None
+    # 文件夹背景
+    background: Optional[str] = None
+    # 是否显示图标（前端字段为驼峰命名）
+    show_icon: Optional[bool] = Field(default=None, alias="showIcon")
+
+
+class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigData]]]):
+    """插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。"""
 
 
 class PluginDashboardMetaItem(BaseModel):
