@@ -42,6 +42,18 @@ class _EchoInput(BaseModel):
     query: str = Field(description="待回显文本")
 
 
+class _AgentFactoryLLM:
+    """满足 Agent 构建与摘要中间件所需合同的测试模型。"""
+
+    _llm_type = "openai-chat"
+    model = "fake"
+    profile = {"max_input_tokens": 64000}
+
+    def with_retry(self):
+        """返回可供摘要中间件调用的 Runnable。"""
+        return self
+
+
 class _EchoTool(MoviePilotTool):
     """返回输入文本的测试工具。"""
 
@@ -769,11 +781,7 @@ def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> N
 def test_main_agent_registers_policy_middleware_as_outermost() -> None:
     """主 Agent 必须把宿主策略中间件放在 middleware 链最外层。"""
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="user-1")
-    fake_llm = SimpleNamespace(
-        _llm_type="openai-chat",
-        model="fake",
-        profile={"max_input_tokens": 64000},
-    )
+    fake_llm = _AgentFactoryLLM()
     captured = {}
 
     def _fake_create_agent(**kwargs):
@@ -801,11 +809,7 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
         channel=MessageChannel.WebAgent.value,
         source="web-agent",
     )
-    fake_llm = SimpleNamespace(
-        _llm_type="openai-chat",
-        model="fake",
-        profile={"max_input_tokens": 64000},
-    )
+    fake_llm = _AgentFactoryLLM()
     captured = {}
 
     def _fake_create_agent(**kwargs):
