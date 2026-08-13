@@ -2091,7 +2091,7 @@ class MoviePilotAgent:
             logger.info(f"Agent执行被取消: session_id={self.session_id}")
             self._compiled_agent_bundle = None
             execution_error = "任务已取消"
-            return "任务已取消", {}
+            raise
         except Exception as e:
             self._compiled_agent_bundle = None
             execution_error = str(e)
@@ -2436,9 +2436,9 @@ class AgentManager:
                     result = await self._process_message_internal(task)
                     if task.completion_future and not task.completion_future.done():
                         task.completion_future.set_result(result)
-                except asyncio.CancelledError as err:
+                except asyncio.CancelledError:
                     if task.completion_future and not task.completion_future.done():
-                        task.completion_future.set_exception(err)
+                        task.completion_future.cancel()
                     raise
                 except Exception as e:
                     logger.error(f"处理会话 {session_id} 的消息失败: {e}")
@@ -2452,13 +2452,27 @@ class AgentManager:
             logger.info(f"会话 {session_id} 的worker被取消")
         finally:
             # 清理已完成的worker记录
-            self._session_workers.pop(session_id, None)  # noqa
+            current_worker = asyncio.current_task()
+            if self._session_workers.get(session_id) is current_worker:
+                self._session_workers.pop(session_id, None)  # noqa
             # 如果队列为空，清理队列
             if (
-                    session_id in self._session_queues
-                    and self._session_queues[session_id].empty()
+                    self._session_queues.get(session_id) is queue
+                    and queue.empty()
             ):
                 self._session_queues.pop(session_id, None)
+
+    @staticmethod
+    def _discard_queued_messages(queue: asyncio.Queue) -> None:
+        """丢弃会话队列时同步结束等待任务完成的调用方。"""
+        while not queue.empty():
+            try:
+                task = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if task.completion_future and not task.completion_future.done():
+                task.completion_future.cancel()
+            queue.task_done()
 
     @staticmethod
     async def _start_task_processing_status(task: _MessageTask) -> None:
@@ -2550,27 +2564,37 @@ class AgentManager:
         """
         stopped = False
 
-        # 取消该会话的worker（会触发 _execute_agent 中的 CancelledError）
-        if session_id in self._session_workers:
-            self._session_workers[session_id].cancel()
+        worker = self._session_workers.get(session_id)
+        queue = self._session_queues.get(session_id)
+        if queue and self._session_queues.get(session_id) is queue:
+            self._session_queues.pop(session_id, None)
+
+        # 先摘下旧队列；清理期间的新消息进入新队列，但等待旧 worker 完全退出后再执行。
+        if worker:
+            worker.cancel()
+        if queue:
+            self._discard_queued_messages(queue)
+        if worker:
             try:
-                await self._session_workers[session_id]
+                await worker
             except asyncio.CancelledError:
                 pass
-            self._session_workers.pop(session_id, None)  # noqa
+            if self._session_workers.get(session_id) is worker:
+                self._session_workers.pop(session_id, None)  # noqa
+            stopped = True
+        if queue:
             stopped = True
 
-        # 清空队列中待处理的消息
-        if session_id in self._session_queues:
-            queue = self._session_queues[session_id]
-            while not queue.empty():
-                try:
-                    queue.get_nowait()
-                    queue.task_done()
-                except asyncio.QueueEmpty:
-                    break
-            self._session_queues.pop(session_id, None)
-            stopped = True
+        new_queue = self._session_queues.get(session_id)
+        current_worker = self._session_workers.get(session_id)
+        if (
+                new_queue
+                and not new_queue.empty()
+                and (not current_worker or current_worker.done())
+        ):
+            self._session_workers[session_id] = asyncio.create_task(
+                self._session_worker(session_id)
+            )
 
         if stopped:
             logger.info(f"会话 {session_id} 的Agent推理已应急停止")
@@ -2683,6 +2707,10 @@ class AgentManager:
             success = not result_text.startswith(
                 (AGENT_EXECUTION_ERROR_PREFIX, "处理消息时发生错误")
             )
+        except asyncio.CancelledError:
+            success = False
+            result = "Agent 定时任务已取消"
+            raise
         except Exception as err:
             success = False
             result = f"Agent 定时任务执行失败：{str(err)}"

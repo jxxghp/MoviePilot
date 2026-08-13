@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 from datetime import datetime, timedelta
@@ -589,6 +590,35 @@ async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
     assert kwargs["reply_mode"] == ReplyMode.DISPATCH
     assert kwargs["allow_message_tools"] is True
     post_message.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> None:
+    """被用户停止的定时 Agent 任务不得记录为成功完成。"""
+    user_id = f"cancel-{uuid4().hex}"
+    task = AgentTaskOper().add(
+        name="取消中的后台检查",
+        content="检查资源并报告",
+        trigger_type="cron",
+        cron_expression="0 * * * *",
+        run_at=None,
+        user_id=user_id,
+        username="admin",
+        session_id=f"session-{user_id}",
+        channel=None,
+        source="api",
+        original_chat_id=None,
+    )
+    manager = AgentManager()
+    manager.process_message = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with pytest.raises(asyncio.CancelledError):
+        await manager.execute_scheduled_task(task.id)
+
+    completed = AgentTaskOper().get(task.id)
+    assert completed.last_status == "failed"
+    assert completed.last_result == "Agent 定时任务已取消"
+    assert completed.run_count == 1
 
 
 @pytest.mark.anyio

@@ -2,6 +2,8 @@ import asyncio
 import threading
 from uuid import uuid4
 
+import pytest
+
 from app.core.config import global_vars
 from app.scheduler import Scheduler
 
@@ -142,6 +144,29 @@ def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
     assert progress.enable is False
     assert progress.value == 100
     assert progress.status == "success"
+
+
+def test_scheduler_records_cancelled_async_job_as_failed():
+    """协程任务取消时运行时进度不得收敛为成功。"""
+    job_id = f"test-cancelled-{uuid4()}"
+
+    async def task():
+        """模拟传播到调度器外壳的取消。"""
+        raise asyncio.CancelledError
+
+    async def run_task():
+        job = scheduler._Scheduler__prepare_job(job_id)
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler._Scheduler__run_coro_job(task(), job_id, job)
+
+    scheduler = _build_scheduler(job_id, task)
+    asyncio.run(run_task())
+
+    progress = scheduler.get_progress(job_id)
+    assert progress.enable is False
+    assert progress.status == "failed"
+    assert progress.success is False
+    assert progress.error == "任务已取消"
 
 
 def test_scheduler_returns_none_for_unknown_job():
