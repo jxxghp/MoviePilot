@@ -323,7 +323,6 @@ class MessageChain(ChainBase):
             str(userid),
             channel=channel.value,
             source=source,
-            original_chat_id=original_chat_id,
         ):
             return False
         return self._handle_ai_message(

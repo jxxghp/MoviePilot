@@ -106,6 +106,19 @@ def test_web_agent_event_publisher_coalesces_text_before_semantic_events():
     assert max_depth == 2
 
 
+def test_web_agent_event_publisher_rejects_events_after_close():
+    """连接关闭后必须显式拒绝事件，避免把敏感结果误报为已交付。"""
+
+    async def scenario():
+        publisher = _WebAgentEventPublisher()
+        await publisher.aclose()
+        return publisher.publish(
+            {"type": "interaction-protected", "content": "secret"}
+        )
+
+    assert asyncio.run(scenario()) is False
+
+
 def test_build_web_agent_session_id_is_stable_per_user_and_seed():
     """同一用户和前端会话标识应生成稳定的服务端会话 ID。"""
     user = SimpleNamespace(id=1, name="admin")
@@ -969,11 +982,15 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         client_session_id=payload.session_id,
     )
 
+    delivery_results = []
+
     async def finish_after_disconnect(**kwargs):
         """断线后继续完成只读任务，并尝试向已关闭发布器投递。"""
         agent_started.set()
         await release_agent.wait()
-        kwargs["protected_output_callback"]("DISCONNECTED_SECRET_MARKER")
+        delivery_results.append(
+            kwargs["protected_output_callback"]("DISCONNECTED_SECRET_MARKER")
+        )
         agent_completed.set()
 
     async def scenario():
@@ -999,6 +1016,7 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
             body = asyncio.run(scenario())
 
         assert '"type": "start"' in body
+        assert delivery_results == [False]
         assert "cancel_on_waiter_cancel" not in process.await_args.kwargs
         save_snapshot.assert_not_called()
         preserved_chat = AgentChatOper().get(session_id=session_id, user_id="1")

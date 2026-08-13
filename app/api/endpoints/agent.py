@@ -84,10 +84,10 @@ class _WebAgentEventPublisher:
         """返回本轮发布器观测到的最大积压深度。"""
         return self._max_depth
 
-    def publish(self, event: dict) -> None:
-        """发布事件；相邻文本会按时间或长度边界合并。"""
+    def publish(self, event: dict) -> bool:
+        """发布事件；返回关闭状态以便受保护投递能准确报告失败。"""
         if self._disposed:
-            return
+            return False
         if event.get("type") == "delta":
             self._pending_delta += str(event.get("content") or "")
             if len(self._pending_delta) >= WEB_AGENT_STREAM_COALESCE_MAX_CHARS:
@@ -98,10 +98,11 @@ class _WebAgentEventPublisher:
                     WEB_AGENT_STREAM_COALESCE_SECONDS,
                     self._flush_delta,
                 )
-            return
+            return True
 
         self._flush_delta()
         self._append_event(event)
+        return True
 
     async def get(self) -> dict:
         """等待并返回下一条已排序事件。"""
@@ -1955,7 +1956,6 @@ async def web_agent_stream(
             str(current_user.id),
             channel=MessageChannel.WebAgent.value,
             source=WEB_AGENT_SOURCE,
-            original_chat_id=str(payload.original_chat_id or ""),
         )
     )
     protected_transport_supported = (
@@ -2177,9 +2177,9 @@ async def web_agent_stream(
             _apply_web_agent_display_event(item, assistant_display_message)
             event_publisher.publish(item)
 
-    def protected_output_callback(content: str) -> None:
+    def protected_output_callback(content: str) -> bool:
         """将敏感文本封装为不进入普通展示快照的命名 SSE 事件。"""
-        event_publisher.publish(
+        return event_publisher.publish(
             {
                 "type": "interaction-protected",
                 "content": content,

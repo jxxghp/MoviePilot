@@ -578,6 +578,39 @@ def test_telegram_module_plain_direct_message_keeps_userid_target():
     assert response.message_id == 456
 
 
+def test_telegram_private_delivery_bypasses_group_chat_mapping(telegram):
+    """私聊投递必须直接使用用户 ID，不能沿用该用户最近发言的群聊。"""
+    telegram._user_chat_mapping["10001"] = "group-1"
+
+    result = telegram.send_msg(
+        title="",
+        text="受保护消息",
+        userid="10001",
+        private_delivery=True,
+    )
+
+    assert result and result.get("success")
+    assert telegram.bot.send_message.call_args.kwargs["chat_id"] == "10001"
+
+
+def test_telegram_plain_private_delivery_keeps_literal_text(telegram):
+    """纯文本私聊不得解释或改写密钥中可能出现的 Markdown/HTML 字符。"""
+    literal_text = "G2A1_PROTECTED_MARKER_20260812\n**literal markdown**\n<img src=x>"
+
+    result = telegram.send_msg(
+        title="",
+        text=literal_text,
+        userid="10001",
+        private_delivery=True,
+        parse_mode="plain",
+    )
+
+    assert result and result.get("success")
+    send_kwargs = telegram.bot.send_message.call_args.kwargs
+    assert send_kwargs["text"] == literal_text
+    assert send_kwargs["parse_mode"] == ""
+
+
 def test_send_msg_with_force_reply_uses_force_reply_when_no_buttons(telegram):
     """无按钮时force_reply应生成Telegram ForceReply标记"""
     result = telegram.send_msg(

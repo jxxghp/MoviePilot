@@ -761,6 +761,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                         original_chat_id=original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
+                        private_delivery=message.private_delivery,
                     )
                 if result and result.get("success"):
                     return MessageResponse(

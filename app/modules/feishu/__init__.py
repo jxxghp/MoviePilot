@@ -59,6 +59,10 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
         chat_id = None
         receive_id_type = "open_id" if userid else None
 
+        # 私聊投递只能按用户身份寻址，原会话 ID 可能属于群聊。
+        if message.private_delivery and userid:
+            return userid, None, None
+
         # 回复类消息携带原会话 ID 时，必须发回原会话，
         # 否则群聊 @ 机器人的回复会错误地发送到机器人与用户的私聊窗口。
         original_chat_id = str(message.original_chat_id or "").strip() or None
@@ -243,6 +247,20 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
                     userid=userid,
                     chat_id=chat_id,
                     caption=message.voice_caption,
+                    receive_id_type=receive_id_type,
+                    original_message_id=str(message.original_message_id) if message.original_message_id else None,
+                )
+            elif str(message.parse_mode or "").strip().lower() == "plain":
+                # 受保护结果必须绕过 Markdown 卡片，避免密钥字符被解释或改写。
+                plain_text = "\n".join(
+                    part
+                    for part in (message.title, message.text, message.link)
+                    if part
+                )
+                result = client.send_text(
+                    text=plain_text,
+                    userid=userid,
+                    chat_id=chat_id,
                     receive_id_type=receive_id_type,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
                 )

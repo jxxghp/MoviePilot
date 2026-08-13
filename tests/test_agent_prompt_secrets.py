@@ -1,4 +1,5 @@
 from app.agent.prompt import PromptManager
+from app.agent.tools.impl.query_system_settings import QuerySystemSettingsInput
 from app.core.config import settings
 
 
@@ -64,3 +65,19 @@ def test_moviepilot_info_lists_command_names_without_paths(monkeypatch) -> None:
     assert "/opt/homebrew/bin/rg" not in moviepilot_info
     assert "/usr/local/bin/ffmpeg" not in moviepilot_info
     assert "rg --files" in moviepilot_info
+
+
+def test_agent_prompt_delegates_explicit_secret_reads_to_host_confirmation() -> None:
+    """管理员明确索取密钥时，模型应发起工具调用并把授权交给宿主。"""
+    prompt = PromptManager().get_agent_prompt(channel="webagent")
+
+    assert "query_system_settings" in prompt
+    assert "show_secrets=true" in prompt
+    assert "do not refuse" in prompt
+    assert "host verifies administrator authority" in prompt
+    assert "Never expose or repeat the secret" in prompt
+
+    field_description = QuerySystemSettingsInput.model_fields["show_secrets"].description or ""
+    assert "user explicitly asks" in field_description
+    assert "host verifies administrator authority" in field_description
+    assert "Do not refuse the tool call" in field_description

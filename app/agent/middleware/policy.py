@@ -17,6 +17,9 @@ from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 
 
+POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
+
+
 class AgentPolicyMiddleware(AgentMiddleware):
     """观测进入本地 ToolNode 的 client-side 工具调用和结果。
 
@@ -103,16 +106,43 @@ class AgentPolicyMiddleware(AgentMiddleware):
         arguments = tool_call.get("args") or {}
         if not isinstance(arguments, dict):
             arguments = {}
+        _, result = await self.execute_tool_call(
+            tool=request.tool,
+            arguments=arguments,
+            invocation_id=tool_call.get("id"),
+            handler=lambda: handler(request),
+            enforce_decision=False,
+        )
+        # 普通 ToolNode 在严格策略接管前保持 shadow 观测语义。
+        # 已确认的受保护调用会使用默认的强制决策语义。
+        return result
+
+    async def execute_tool_call(
+        self,
+        *,
+        tool: Any,
+        arguments: dict[str, Any],
+        handler: Callable[[], Awaitable[Any]],
+        invocation_id: str | None = None,
+        enforce_decision: bool = True,
+    ) -> tuple[bool, Any]:
+        """执行一次本地工具调用，并复用 ToolNode 的策略生命周期。"""
         observation = call_policy_hook(
             "start",
             self.orchestrator.start,
             context=self.context,
-            tool=request.tool,
+            tool=tool,
             arguments=arguments,
-            invocation_id=tool_call.get("id"),
+            invocation_id=invocation_id,
         )
+        if (
+                enforce_decision
+                and observation is not None
+                and observation.decision.allowed is False
+        ):
+            return False, POLICY_DENIED_MESSAGE
         try:
-            result = await handler(request)
+            result = await handler()
         except Exception as error:
             if observation is not None:
                 call_policy_hook(
@@ -129,7 +159,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
                 observation,
                 result,
             )
-        return result
+        return True, result
 
 
-__all__ = ["AgentPolicyMiddleware"]
+__all__ = ["AgentPolicyMiddleware", "POLICY_DENIED_MESSAGE"]
