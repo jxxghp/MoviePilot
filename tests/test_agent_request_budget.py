@@ -81,6 +81,7 @@ def test_final_request_can_exceed_window_before_message_fraction_triggers():
         _llm_type="test-chat",
         profile={"max_input_tokens": 4096},
     )
+    model.with_retry = lambda: model
     summarizer = SummarizationMiddleware(
         model=model,
         trigger=("fraction", 0.85),

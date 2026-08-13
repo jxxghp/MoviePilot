@@ -42,6 +42,7 @@ from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware as SummarizationMiddleware,
+    FinalRequestCompactionMiddleware,
 )
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
@@ -1944,6 +1945,12 @@ class MoviePilotAgent:
                     if getattr(tool, "name", None) == QUERY_ACTIVITY_LOG_TOOL_NAME
                 )
 
+            summarization_middleware = SummarizationMiddleware(
+                model=non_streaming_model,
+                trigger=("fraction", 0.85),
+                keep=("messages", 20),
+            )
+
             # 中间件
             middlewares = [
                 # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
@@ -1965,9 +1972,7 @@ class MoviePilotAgent:
                 # 活动日志依赖记忆上下文，并应在摘要压缩前完成读取与记录。
                 *([activity_log_middleware] if activity_log_middleware else []),
                 # 上下文压缩
-                SummarizationMiddleware(
-                    model=non_streaming_model, trigger=("fraction", 0.85)
-                ),
+                summarization_middleware,
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
                 # 子代理委派
@@ -1989,6 +1994,13 @@ class MoviePilotAgent:
                         always_include=always_include_tools,
                     )
                 )
+
+            # 需要在动态 system 与工具筛选完成后按最终输入预算补充压缩。
+            middlewares.append(
+                FinalRequestCompactionMiddleware(
+                    summarizer=summarization_middleware,
+                )
+            )
 
             # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
             middlewares.append(

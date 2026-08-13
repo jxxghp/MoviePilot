@@ -491,9 +491,10 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
             activity_tool,
             subagent_task_tool,
         ]
-        assert captured["middlewares"][-2].name == "selector"
+        assert captured["middlewares"][-3].name == "selector"
     else:
         assert "selection_tools" not in captured
+    assert captured["middlewares"][-2].name == "FinalRequestCompactionMiddleware"
     assert captured["middlewares"][-1].name == "usage"
     policy_middleware = next(
         middleware
