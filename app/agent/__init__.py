@@ -139,10 +139,30 @@ async def _async_finish_processing_status(
 class _SessionUsageSnapshot:
     model: Optional[str] = None
     context_window_tokens: Optional[int] = None
-    last_input_tokens: int = 0
-    last_output_tokens: int = 0
-    last_total_tokens: int = 0
+    last_input_usage_available: bool = False
+    last_input_tokens: Optional[int] = None
+    last_output_tokens: Optional[int] = None
+    last_total_tokens: Optional[int] = None
     last_context_usage_ratio: Optional[float] = None
+    last_request_sequence: int = 0
+    last_request_estimate_available: bool = False
+    last_estimated_input_tokens: Optional[int] = None
+    last_estimated_message_tokens: Optional[int] = None
+    last_estimated_system_tokens: Optional[int] = None
+    last_estimated_tool_tokens: Optional[int] = None
+    last_estimated_multimodal_tokens: Optional[int] = None
+    last_estimated_input_ratio: Optional[float] = None
+    last_estimated_remaining_input_tokens: Optional[int] = None
+    last_estimated_over_input_limit: Optional[bool] = None
+    last_message_count: int = 0
+    last_tool_count: int = 0
+    last_image_count: int = 0
+    last_unknown_multimodal_count: int = 0
+    model_max_output_tokens: Optional[int] = None
+    configured_output_limit_tokens: Optional[int] = None
+    last_actual_input_tokens: Optional[int] = None
+    last_estimate_error_tokens: Optional[int] = None
+    last_estimate_error_ratio: Optional[float] = None
     last_cache_usage_available: bool = False
     last_cache_read_input_tokens: int = 0
     last_cache_write_input_tokens: int = 0
@@ -163,10 +183,30 @@ class _SessionUsageSnapshot:
             "session_id": session_id,
             "model": self.model,
             "context_window_tokens": self.context_window_tokens,
+            "last_input_usage_available": self.last_input_usage_available,
             "last_input_tokens": self.last_input_tokens,
             "last_output_tokens": self.last_output_tokens,
             "last_total_tokens": self.last_total_tokens,
             "last_context_usage_ratio": self.last_context_usage_ratio,
+            "last_request_sequence": self.last_request_sequence,
+            "last_request_estimate_available": self.last_request_estimate_available,
+            "last_estimated_input_tokens": self.last_estimated_input_tokens,
+            "last_estimated_message_tokens": self.last_estimated_message_tokens,
+            "last_estimated_system_tokens": self.last_estimated_system_tokens,
+            "last_estimated_tool_tokens": self.last_estimated_tool_tokens,
+            "last_estimated_multimodal_tokens": self.last_estimated_multimodal_tokens,
+            "last_estimated_input_ratio": self.last_estimated_input_ratio,
+            "last_estimated_remaining_input_tokens": self.last_estimated_remaining_input_tokens,
+            "last_estimated_over_input_limit": self.last_estimated_over_input_limit,
+            "last_message_count": self.last_message_count,
+            "last_tool_count": self.last_tool_count,
+            "last_image_count": self.last_image_count,
+            "last_unknown_multimodal_count": self.last_unknown_multimodal_count,
+            "model_max_output_tokens": self.model_max_output_tokens,
+            "configured_output_limit_tokens": self.configured_output_limit_tokens,
+            "last_actual_input_tokens": self.last_actual_input_tokens,
+            "last_estimate_error_tokens": self.last_estimate_error_tokens,
+            "last_estimate_error_ratio": self.last_estimate_error_ratio,
             "last_cache_usage_available": self.last_cache_usage_available,
             "last_cache_read_input_tokens": self.last_cache_read_input_tokens,
             "last_cache_write_input_tokens": self.last_cache_write_input_tokens,
@@ -355,6 +395,7 @@ class MoviePilotAgent:
         self._pending_secret_confirmation: Optional[_PendingSecretConfirmation] = None
         self._streamed_output = ""
         self._session_usage = _SessionUsageSnapshot()
+        self._request_sequence = 0
         self._llm_runtime_config: Optional[Dict[str, Any]] = None
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
@@ -551,6 +592,13 @@ class MoviePilotAgent:
             return None
 
     @staticmethod
+    def _coerce_positive_int(value: Any) -> Optional[int]:
+        """仅接受模型 profile 声明的非 bool 正整数。"""
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return None
+        return value
+
+    @staticmethod
     def _get_recursion_limit() -> int:
         """读取 LangGraph 递归上限，防止模型持续循环调用工具。"""
         try:
@@ -573,49 +621,88 @@ class MoviePilotAgent:
         if not profile:
             return None
         if isinstance(profile, dict):
-            return cls._coerce_int(
-                profile.get("max_input_tokens") or profile.get("input_token_limit")
+            candidates = (
+                profile.get("max_input_tokens"),
+                profile.get("input_token_limit"),
             )
-        return cls._coerce_int(
-            getattr(profile, "max_input_tokens", None)
-            or getattr(profile, "input_token_limit", None)
-        )
+        else:
+            candidates = (
+                getattr(profile, "max_input_tokens", None),
+                getattr(profile, "input_token_limit", None),
+            )
+        for candidate in candidates:
+            normalized = cls._coerce_positive_int(candidate)
+            if normalized is not None:
+                return normalized
+        return None
 
     def _sync_model_profile(self, model: Any) -> None:
         model_name = self._get_model_name(model)
         context_window_tokens = self._get_context_window_tokens(model)
         if model_name:
             self._session_usage.model = model_name
-        if context_window_tokens:
-            self._session_usage.context_window_tokens = context_window_tokens
+        self._session_usage.context_window_tokens = context_window_tokens
+
+    def _next_request_sequence(self) -> int:
+        """为当前会话中的模型请求分配跨 Agent 图单调递增的序号。"""
+        self._request_sequence += 1
+        return self._request_sequence
 
     def _record_usage(self, usage: dict[str, Any]) -> None:
         if not usage:
             return
 
-        model_name = usage.get("model")
-        context_window_tokens = self._coerce_int(usage.get("context_window_tokens"))
-        if model_name:
-            self._session_usage.model = model_name
-        if context_window_tokens:
-            self._session_usage.context_window_tokens = context_window_tokens
-
         self._session_usage.model_call_count += 1
         self._session_usage.last_updated_at = datetime.now()
 
+        has_request_sequence = "request_sequence" in usage
+        request_sequence = self._coerce_int(usage.get("request_sequence"))
+        if (
+            usage.get("request_budget_recorded") is False
+            and request_sequence is not None
+            and request_sequence >= self._session_usage.last_request_sequence
+        ):
+            self._record_request_budget(
+                {
+                    "request_sequence": request_sequence,
+                    "has_estimate": False,
+                }
+            )
+        is_current_request = (
+            not has_request_sequence
+            or request_sequence == self._session_usage.last_request_sequence
+        )
+
+        if is_current_request:
+            model_name = usage.get("model")
+            context_window_tokens = self._coerce_positive_int(
+                usage.get("context_window_tokens")
+            )
+            if model_name:
+                self._session_usage.model = model_name
+            self._session_usage.context_window_tokens = context_window_tokens
+
         if not usage.get("has_usage"):
+            if is_current_request:
+                self._session_usage.last_input_usage_available = False
+                self._session_usage.last_input_tokens = None
+                self._session_usage.last_output_tokens = None
+                self._session_usage.last_total_tokens = None
+                self._session_usage.last_context_usage_ratio = None
+                self._session_usage.last_cache_usage_available = False
+                self._session_usage.last_cache_read_input_tokens = 0
+                self._session_usage.last_cache_write_input_tokens = 0
+                self._session_usage.last_uncached_input_tokens = 0
+                self._session_usage.last_cache_hit_ratio = None
             return
 
+        input_usage_available = usage.get("input_usage_available") is True
         input_tokens = self._coerce_int(usage.get("input_tokens")) or 0
         output_tokens = self._coerce_int(usage.get("output_tokens")) or 0
         total_tokens = self._coerce_int(usage.get("total_tokens"))
         if total_tokens is None:
             total_tokens = input_tokens + output_tokens
 
-        self._session_usage.last_input_tokens = input_tokens
-        self._session_usage.last_output_tokens = output_tokens
-        self._session_usage.last_total_tokens = total_tokens
-        self._session_usage.last_context_usage_ratio = usage.get("context_usage_ratio")
         cache_usage_available = bool(usage.get("cache_usage_available"))
         cache_read_input_tokens = self._coerce_int(
             usage.get("cache_read_input_tokens")
@@ -631,11 +718,6 @@ class MoviePilotAgent:
                 input_tokens - cache_read_input_tokens - cache_write_input_tokens,
                 0,
             )
-        self._session_usage.last_cache_usage_available = cache_usage_available
-        self._session_usage.last_cache_read_input_tokens = cache_read_input_tokens
-        self._session_usage.last_cache_write_input_tokens = cache_write_input_tokens
-        self._session_usage.last_uncached_input_tokens = uncached_input_tokens
-        self._session_usage.last_cache_hit_ratio = usage.get("cache_hit_ratio")
         self._session_usage.total_input_tokens += input_tokens
         self._session_usage.total_output_tokens += output_tokens
         self._session_usage.total_tokens += total_tokens
@@ -644,10 +726,119 @@ class MoviePilotAgent:
         self._session_usage.total_uncached_input_tokens += uncached_input_tokens
         self._session_usage.cache_usage_available |= cache_usage_available
 
+        if not is_current_request:
+            return
+
+        self._session_usage.last_input_usage_available = input_usage_available
+        self._session_usage.last_input_tokens = (
+            input_tokens if input_usage_available else None
+        )
+        self._session_usage.last_output_tokens = output_tokens
+        self._session_usage.last_total_tokens = total_tokens
+        self._session_usage.last_context_usage_ratio = usage.get("context_usage_ratio")
+        self._session_usage.last_cache_usage_available = cache_usage_available
+        self._session_usage.last_cache_read_input_tokens = cache_read_input_tokens
+        self._session_usage.last_cache_write_input_tokens = cache_write_input_tokens
+        self._session_usage.last_uncached_input_tokens = uncached_input_tokens
+        self._session_usage.last_cache_hit_ratio = usage.get("cache_hit_ratio")
+
+        estimated_input_tokens = self._coerce_int(
+            usage.get("estimated_input_tokens")
+        )
+        if (
+            usage.get("request_budget_recorded") is True
+            and input_usage_available
+            and estimated_input_tokens is not None
+            and estimated_input_tokens
+                == self._session_usage.last_estimated_input_tokens
+        ):
+            estimate_error_tokens = input_tokens - estimated_input_tokens
+            self._session_usage.last_actual_input_tokens = input_tokens
+            self._session_usage.last_estimate_error_tokens = estimate_error_tokens
+            self._session_usage.last_estimate_error_ratio = (
+                estimate_error_tokens / input_tokens if input_tokens else None
+            )
+
+    def _record_request_budget(self, budget: dict[str, Any]) -> None:
+        """保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。"""
+        if not budget:
+            return
+        request_sequence = self._coerce_int(budget.get("request_sequence"))
+        if "request_sequence" in budget and request_sequence is None:
+            return
+        request_sequence = request_sequence or 0
+        if request_sequence < self._session_usage.last_request_sequence:
+            return
+        self._session_usage.last_request_sequence = request_sequence
+        estimate_available = bool(budget.get("has_estimate"))
+        self._session_usage.last_request_estimate_available = estimate_available
+        self._session_usage.last_estimated_input_tokens = self._coerce_int(
+            budget.get("estimated_input_tokens")
+        )
+        self._session_usage.last_estimated_message_tokens = self._coerce_int(
+            budget.get("message_tokens")
+        )
+        self._session_usage.last_estimated_system_tokens = self._coerce_int(
+            budget.get("system_tokens")
+        )
+        self._session_usage.last_estimated_tool_tokens = self._coerce_int(
+            budget.get("tool_tokens")
+        )
+        self._session_usage.last_estimated_multimodal_tokens = self._coerce_int(
+            budget.get("multimodal_tokens")
+        )
+        self._session_usage.last_estimated_input_ratio = budget.get(
+            "estimated_input_ratio"
+        )
+        self._session_usage.last_estimated_remaining_input_tokens = self._coerce_int(
+            budget.get("estimated_remaining_input_tokens")
+        )
+        self._session_usage.last_estimated_over_input_limit = budget.get(
+            "estimated_over_input_limit"
+        )
+        self._session_usage.last_message_count = self._coerce_int(
+            budget.get("message_count")
+        ) or 0
+        self._session_usage.last_tool_count = self._coerce_int(
+            budget.get("tool_count")
+        ) or 0
+        self._session_usage.last_image_count = self._coerce_int(
+            budget.get("image_count")
+        ) or 0
+        self._session_usage.last_unknown_multimodal_count = self._coerce_int(
+            budget.get("unknown_multimodal_count")
+        ) or 0
+        self._session_usage.model_max_output_tokens = self._coerce_int(
+            budget.get("model_max_output_tokens")
+        )
+        self._session_usage.configured_output_limit_tokens = self._coerce_int(
+            budget.get("configured_output_limit_tokens")
+        )
+        has_model_snapshot = "model" in budget
+        model_name = budget.get("model")
+        context_window_tokens = self._coerce_positive_int(
+            budget.get("context_window_tokens")
+        )
+        # 模型标识与窗口属于同一次最终请求，必须一起替换，不能拼接两轮状态。
+        if has_model_snapshot:
+            self._session_usage.model = model_name if model_name else None
+            self._session_usage.context_window_tokens = context_window_tokens
+        elif estimate_available:
+            self._session_usage.context_window_tokens = context_window_tokens
+        self._session_usage.last_actual_input_tokens = None
+        self._session_usage.last_estimate_error_tokens = None
+        self._session_usage.last_estimate_error_ratio = None
+
     def get_session_status(self) -> dict[str, Any]:
-        if not self._session_usage.model:
+        if (
+            not self._session_usage.model
+            and self._session_usage.last_request_sequence == 0
+        ):
             self._session_usage.model = settings.LLM_MODEL
-        if not self._session_usage.context_window_tokens:
+        if (
+            not self._session_usage.context_window_tokens
+            and self._session_usage.last_request_sequence == 0
+        ):
             self._session_usage.context_window_tokens = (
                 settings.LLM_MAX_CONTEXT_TOKENS * 1000
                 if settings.LLM_MAX_CONTEXT_TOKENS
@@ -1777,8 +1968,6 @@ class MoviePilotAgent:
                 PatchToolCallsMiddleware(),
                 # 子代理委派
                 *subagent_middlewares,
-                # 用量统计
-                UsageMiddleware(on_usage=self._record_usage),
             ]
 
             # 工具选择
@@ -1796,6 +1985,15 @@ class MoviePilotAgent:
                         always_include=always_include_tools,
                     )
                 )
+
+            # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
+            middlewares.append(
+                UsageMiddleware(
+                    on_usage=self._record_usage,
+                    on_request_budget=self._record_request_budget,
+                    next_request_sequence=self._next_request_sequence,
+                )
+            )
 
             agent = create_agent(
                 model=agent_model,
@@ -2267,22 +2465,14 @@ class AgentManager:
         if agent:
             status = agent.get_session_status()
         else:
-            status = {
-                "session_id": session_id,
-                "model": settings.LLM_MODEL,
-                "context_window_tokens": settings.LLM_MAX_CONTEXT_TOKENS * 1000
-                if settings.LLM_MAX_CONTEXT_TOKENS
-                else None,
-                "last_input_tokens": 0,
-                "last_output_tokens": 0,
-                "last_total_tokens": 0,
-                "last_context_usage_ratio": None,
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
-                "total_tokens": 0,
-                "model_call_count": 0,
-                "last_updated_at": None,
-            }
+            status = _SessionUsageSnapshot(
+                model=settings.LLM_MODEL,
+                context_window_tokens=(
+                    settings.LLM_MAX_CONTEXT_TOKENS * 1000
+                    if settings.LLM_MAX_CONTEXT_TOKENS
+                    else None
+                ),
+            ).to_dict(session_id)
 
         queue = self._session_queues.get(session_id)
         status["pending_messages"] = queue.qsize() if queue else 0
