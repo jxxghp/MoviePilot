@@ -154,7 +154,7 @@ async def stop_modules():
     await run_step("临时文件", clear_temp)
 
 
-def init_modules():
+async def init_modules():
     """
     启动模块
     """
@@ -178,7 +178,7 @@ def init_modules():
     MoviePilotServerHelper.get_user_uuid()
     MoviePilotServerHelper.get_github_user()
     # 初始化AI智能体
-    init_agent()
+    await init_agent()
     # 启动前端服务
     start_frontend()
     # 检查认证状态

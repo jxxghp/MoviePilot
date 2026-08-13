@@ -2,6 +2,7 @@ import asyncio
 import os
 import threading
 import time
+from unittest.mock import AsyncMock
 
 from app.core.cache import (
     AsyncFileBackend,
@@ -149,13 +150,15 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "init_subscribe_report", lambda: None)
     monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "get_user_uuid", lambda: None)
     monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "get_github_user", lambda: None)
-    monkeypatch.setattr(modules_initializer, "init_agent", lambda: None)
+    init_agent = AsyncMock()
+    monkeypatch.setattr(modules_initializer, "init_agent", init_agent)
     monkeypatch.setattr(modules_initializer, "start_frontend", lambda: None)
     monkeypatch.setattr(modules_initializer, "check_auth", lambda: None)
 
-    modules_initializer.init_modules()
+    asyncio.run(modules_initializer.init_modules())
 
     assert called is False
+    init_agent.assert_awaited_once_with()
 
 def test_file_backend_delete_missing_key_is_noop(tmp_path):
     """

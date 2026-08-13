@@ -962,6 +962,57 @@ async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> Non
 
 
 @pytest.mark.anyio
+async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() -> None:
+    """正常关闭必须取消同会话中正在执行和排队的持久任务。"""
+    user_id = f"shutdown-{uuid4().hex}"
+    session_id = f"session-{user_id}"
+    tasks = [
+        AgentTaskOper().add(
+            name=f"关闭中的后台检查 {index}",
+            content="检查资源并报告",
+            trigger_type="cron",
+            cron_expression="0 * * * *",
+            run_at=None,
+            user_id=user_id,
+            username="admin",
+            session_id=session_id,
+            channel=None,
+            source="api",
+            original_chat_id=None,
+        )
+        for index in range(2)
+    ]
+    manager = AgentManager()
+    started = asyncio.Event()
+
+    async def block_current_task(_task):
+        started.set()
+        await asyncio.Event().wait()
+
+    manager._process_message_internal = block_current_task
+    executions = [
+        asyncio.create_task(manager.execute_scheduled_task(task.id))
+        for task in tasks
+    ]
+    await asyncio.wait_for(started.wait(), timeout=1)
+    for _ in range(50):
+        if all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks):
+            break
+        await asyncio.sleep(0)
+    assert all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks)
+
+    await manager.close()
+    results = await asyncio.gather(*executions, return_exceptions=True)
+
+    assert all(isinstance(result, asyncio.CancelledError) for result in results)
+    for task in tasks:
+        completed = AgentTaskOper().get(task.id)
+        assert completed.last_status == "failed"
+        assert completed.last_result == "Agent 定时任务已取消"
+        assert completed.run_count == 1
+
+
+@pytest.mark.anyio
 async def test_cached_agent_clears_channel_for_background_task() -> None:
     """复用会话 Agent 时，后台任务必须覆盖上一轮保留的渠道信息。"""
     manager = AgentManager()

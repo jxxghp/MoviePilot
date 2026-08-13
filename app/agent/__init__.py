@@ -2546,6 +2546,8 @@ class AgentManager:
             except asyncio.CancelledError:
                 pass
         self._session_workers.clear()
+        for queue in list(self._session_queues.values()):
+            self._discard_queued_messages(queue)
         self._session_queues.clear()
         self._session_last_used.clear()
         for agent in list(self.active_agents.values()):
