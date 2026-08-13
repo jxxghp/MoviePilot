@@ -126,8 +126,8 @@ def _interactive_context(*, is_admin: bool = True) -> ToolPolicyContext:
     )
 
 
-def test_builtin_policy_registry_covers_every_fixed_tool() -> None:
-    """固定内置工具必须全部具有显式 migration registry 条目。"""
+def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
+    """固定内置工具 inventory 必须随工厂入口同步。"""
     fixed_tool_names = {
         _tool_class_name(tool_class)
         for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
@@ -140,11 +140,11 @@ def test_builtin_policy_registry_covers_every_fixed_tool() -> None:
         }
     )
 
-    assert DEFAULT_TOOL_POLICY_REGISTRY.builtin_tool_names == fixed_tool_names
+    assert DEFAULT_TOOL_POLICY_REGISTRY.builtin_tool_inventory == fixed_tool_names
 
 
-def test_registry_separates_safe_read_from_legacy_shadow() -> None:
-    """少量安全读取可直接迁移，其余高影响工具保持 shadow allow。"""
+def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
+    """SAFE_READ 仅用于明确例外，其他固定和动态工具默认 shadow。"""
     safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="query_personas",
         arguments={},
@@ -216,7 +216,7 @@ def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
 
 
 def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
-    """G1 的 shadow 决策只能观测，不能拒绝或要求确认。"""
+    """shadow 决策只能观测，不能拒绝或要求确认。"""
     context = _interactive_context()
     tool = _EchoTool(session_id="session-1", user_id="user-1")
 
@@ -231,8 +231,8 @@ def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
     assert observation.decision.reason_code == "legacy_shadow_allow"
 
 
-def test_sensitive_policy_does_not_claim_safe_read_before_strict_runtime() -> None:
-    """严格运行时接管前，敏感读取只能以明确的兼容 shadow 语义通过。"""
+def test_sensitive_policy_stays_shadow_in_generic_orchestrator() -> None:
+    """敏感读取在通用编排器中保持明确的兼容 shadow 语义。"""
     tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
     tool.set_agent_context({"is_admin": True})
 
@@ -246,7 +246,7 @@ def test_sensitive_policy_does_not_claim_safe_read_before_strict_runtime() -> No
     assert observation.decision.allowed is True
     assert observation.decision.shadow is True
     assert observation.decision.confirmation_required is False
-    assert observation.decision.reason_code == "strict_runtime_pending"
+    assert observation.decision.reason_code == "confirmation_policy_shadow_allow"
 
 
 def test_policy_context_reads_mutable_admin_state_without_model_fields() -> None:
@@ -439,8 +439,8 @@ def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
     assert error_info.value is tool_error
 
 
-def test_middleware_keeps_shadow_observation_until_strict_runtime_takeover() -> None:
-    """普通 ToolNode 在严格策略接管前不得因观测决策改变既有行为。"""
+def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> None:
+    """普通 ToolNode 不得因 shadow 观测决策改变既有行为。"""
     orchestrator = MagicMock()
     orchestrator.start.return_value = SimpleNamespace(
         decision=SimpleNamespace(allowed=False)

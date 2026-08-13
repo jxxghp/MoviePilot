@@ -65,7 +65,7 @@ class ToolCatalogEntry:
 
 @dataclass(frozen=True)
 class ToolCatalogSnapshot:
-    """同一图构造与严格执行共享的本地工具事实源。"""
+    """图构造、缓存签名和身份碰撞审计共享的本地工具事实源。"""
 
     entries: tuple[ToolCatalogEntry, ...]
     plugin_revision: int

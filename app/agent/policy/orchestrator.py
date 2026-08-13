@@ -37,7 +37,7 @@ def call_policy_hook(
     *args: Any,
     **kwargs: Any,
 ) -> Optional[_HookResult]:
-    """以 fail-open 方式调用 P1-G1 观测 hook，故障只记录稳定类型。"""
+    """以 fail-open 方式调用兼容观测 hook，故障只记录稳定类型。"""
     try:
         return hook(*args, **kwargs)
     except Exception as error:
@@ -76,7 +76,7 @@ class AgentToolPolicyOrchestrator:
     """让 Agent middleware 与 direct manager 复用同一策略生命周期。"""
 
     def __init__(self, registry: ToolPolicyRegistry = DEFAULT_TOOL_POLICY_REGISTRY) -> None:
-        """绑定固定工具迁移注册表。"""
+        """绑定工具策略解析表。"""
         self.registry = registry
 
     def start(
@@ -103,12 +103,12 @@ class AgentToolPolicyOrchestrator:
                 reason_code="legacy_shadow_allow",
             )
         elif policy.confirmation is ConfirmationMode.REQUIRED:
-            # 严格运行时接管前保持既有调用能力，但不得把敏感动作记为安全读取。
+            # 通用编排器保持 shadow；支持的 Agent 入口会在 ToolNode 前独立完成确认。
             decision = PolicyDecision(
                 allowed=True,
                 confirmation_required=False,
                 shadow=True,
-                reason_code="strict_runtime_pending",
+                reason_code="confirmation_policy_shadow_allow",
             )
         else:
             decision = PolicyDecision(
