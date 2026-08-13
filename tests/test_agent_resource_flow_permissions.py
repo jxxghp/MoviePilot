@@ -15,7 +15,13 @@ from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent import MoviePilotAgent
 from app.core.config import settings
+from app.modules.feishu import FeishuModule
+from app.modules.telegram import TelegramModule
 from app.schemas.types import MessageChannel
+
+
+# 渠道模块在导入时注册管理员解析器，权限回查测试需显式加载对应模块。
+_REGISTERED_CHANNEL_MODULES = (FeishuModule, TelegramModule)
 
 
 def test_non_admin_manager_exposes_resource_flow_helper_tools():

@@ -15,8 +15,10 @@ from app.core.cache import FileCache
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.schemas import CommingMessage
+from app.schemas.types import MessageChannel
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -489,7 +491,16 @@ class WeChatBot:
 
         self._remember_target(sender)
 
-        if text and text.startswith("/") and self._admins and sender not in self._admins:
+        is_channel_admin = matches_channel_admin(
+            MessageChannel.Wechat,
+            {
+                "WECHAT_ADMINS": ",".join(self._admins),
+                "WECHAT_BOT_CHAT_ID": getattr(self, "_default_chat_id", None),
+                "WECHAT_MODE": "bot",
+            },
+            sender,
+        )
+        if text and text.startswith("/") and self._admins and not is_channel_admin:
             self.send_msg(title="只有管理员才有权限执行此命令", userid=sender)
             return
 

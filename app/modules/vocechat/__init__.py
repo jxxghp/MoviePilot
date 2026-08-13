@@ -3,12 +3,22 @@ from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import Context, MediaInfo
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 from app.schemas.types import ModuleType
+
+
+register_channel_admin_resolver(
+    MessageChannel.VoceChat,
+    lambda config: resolve_config_principal_ids(config, "VOCECHAT_ADMINS"),
+)
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
@@ -208,7 +218,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                 return CommingMessage(channel=MessageChannel.VoceChat, source=client_config.name,
                                       userid=userid, username=userid,
                                       is_channel_admin=matches_channel_admin(
-                                          client_config.config, "VOCECHAT_ADMINS",
+                                          MessageChannel.VoceChat, client_config.config,
                                           from_uid, actor_userid,
                                       ), text=text or "",
                                       images=images, audio_refs=audio_refs, files=files)

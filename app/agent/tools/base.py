@@ -562,64 +562,20 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         user_id_str = str(self._user_id) if self._user_id else None
 
-        channel_type_map = {
-            MessageChannel.Telegram: "telegram",
-            MessageChannel.Discord: "discord",
-            MessageChannel.Wechat: "wechat",
-            MessageChannel.Feishu: "feishu",
-            MessageChannel.WechatClawBot: "wechatclawbot",
-            MessageChannel.Slack: "slack",
-            MessageChannel.VoceChat: "vocechat",
-            MessageChannel.SynologyChat: "synologychat",
-            MessageChannel.QQ: "qqbot",
-        }
-
-        channel_type = None
-        for key, value in channel_type_map.items():
-            if self._channel == key.value:
-                channel_type = value
-                break
-
-        if not channel_type:
+        try:
+            channel = MessageChannel(self._channel)
+        except ValueError:
             return False
-
-        admin_key_map = {
-            "telegram": "TELEGRAM_ADMINS",
-            "discord": "DISCORD_ADMINS",
-            "wechat": "WECHAT_ADMINS",
-            "feishu": "FEISHU_ADMINS",
-            "wechatclawbot": "WECHATCLAWBOT_ADMINS",
-            "slack": "SLACK_ADMINS",
-            "vocechat": "VOCECHAT_ADMINS",
-            "synologychat": "SYNOLOGYCHAT_ADMINS",
-            "qqbot": "QQBOT_ADMINS",
-        }
-
-        admin_key = admin_key_map.get(channel_type)
-
-        # 各渠道主ID对应的配置键：渠道默认接收人通常是部署者本人，
-        # 即使未配置到管理员名单也应默认拥有管理员权限。
-        primary_id_keys = {
-            "telegram": ("TELEGRAM_CHAT_ID",),
-            "feishu": ("FEISHU_OPEN_ID",),
-            "wechat": ("WECHAT_BOT_CHAT_ID",),
-            "wechatclawbot": ("WECHATCLAWBOT_DEFAULT_TARGET",),
-            "qqbot": ("QQ_OPENID",),
-        }
-        primary_keys = primary_id_keys.get(channel_type, ())
 
         try:
             configs = ServiceConfigHelper.get_notification_configs()
             for config in configs:
                 if config.name == self._source and config.config:
-                    if matches_channel_admin(config.config, admin_key, user_id_str):
-                        return True
-                    # 管理员名单遗漏主ID时按管理员处理
-                    if any(
-                        matches_channel_admin(config.config, key, user_id_str)
-                        for key in primary_keys
-                    ):
-                        return True
+                    return matches_channel_admin(
+                        channel,
+                        config.config,
+                        user_id_str,
+                    )
         except Exception as e:
             logger.error(f"检查权限失败: {summarize_error(e)}")
 

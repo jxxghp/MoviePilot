@@ -115,12 +115,14 @@ class Feishu:
         """判断飞书命令或命令型按钮回调是否应因非管理员身份被拒绝。"""
         if not self._admins:
             return False
-        candidates = [
-            str(user_id).strip()
-            for user_id in user_ids
-            if user_id is not None and str(user_id).strip()
-        ]
-        return not any(candidate in self._admins for candidate in candidates)
+        return not matches_channel_admin(
+            MessageChannel.Feishu,
+            {
+                "FEISHU_ADMINS": ",".join(self._admins),
+                "FEISHU_OPEN_ID": self._default_open_id,
+            },
+            *user_ids,
+        )
 
     def _build_api_client(self) -> lark.Client:
         """构建飞书 OpenAPI client，用于发送和编辑消息。"""
@@ -689,8 +691,11 @@ class Feishu:
                 userid=userid,
                 username=username,
                 is_channel_admin=matches_channel_admin(
-                    {"FEISHU_ADMINS": ",".join(self._admins)},
-                    "FEISHU_ADMINS",
+                    MessageChannel.Feishu,
+                    {
+                        "FEISHU_ADMINS": ",".join(self._admins),
+                        "FEISHU_OPEN_ID": self._default_open_id,
+                    },
                     open_id,
                     user_id,
                 ),
@@ -732,8 +737,11 @@ class Feishu:
             userid=userid,
             username=username,
             is_channel_admin=matches_channel_admin(
-                {"FEISHU_ADMINS": ",".join(self._admins)},
-                "FEISHU_ADMINS",
+                MessageChannel.Feishu,
+                {
+                    "FEISHU_ADMINS": ",".join(self._admins),
+                    "FEISHU_OPEN_ID": self._default_open_id,
+                },
                 open_id,
                 user_id,
             ),

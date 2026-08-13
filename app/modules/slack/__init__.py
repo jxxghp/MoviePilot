@@ -6,7 +6,11 @@ from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
@@ -19,6 +23,12 @@ from app.schemas import (
 )
 from app.schemas.types import ChainEventType, ModuleType
 from app.utils.structures import DictUtils
+
+
+register_channel_admin_resolver(
+    MessageChannel.Slack,
+    lambda config: resolve_config_principal_ids(config, "SLACK_ADMINS"),
+)
 
 
 class SlackModule(_ModuleBase, _MessageBase[Slack]):
@@ -321,7 +331,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                     userid=userid,
                     username=username,
                     is_channel_admin=matches_channel_admin(
-                        client_config.config, "SLACK_ADMINS", userid
+                        MessageChannel.Slack, client_config.config, userid
                     ),
                     text=text,
                     is_callback=True,
@@ -378,7 +388,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 userid=userid,
                 username=username,
                 is_channel_admin=matches_channel_admin(
-                    client_config.config, "SLACK_ADMINS", userid
+                    MessageChannel.Slack, client_config.config, userid
                 ),
                 text=text,
                 message_id=message_id,

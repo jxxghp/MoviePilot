@@ -3,13 +3,23 @@ from typing import Optional, Union, List, Tuple, Any
 from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 from app.schemas.types import ModuleType
 from app.utils.http import RequestUtils
+
+
+register_channel_admin_resolver(
+    MessageChannel.SynologyChat,
+    lambda config: resolve_config_principal_ids(config, "SYNOLOGYCHAT_ADMINS"),
+)
 
 
 class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
@@ -182,7 +192,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
                 return CommingMessage(channel=MessageChannel.SynologyChat, source=client_config.name,
                                       userid=user_id, username=user_name,
                                       is_channel_admin=matches_channel_admin(
-                                          client_config.config, "SYNOLOGYCHAT_ADMINS", user_id
+                                          MessageChannel.SynologyChat,
+                                          client_config.config,
+                                          user_id,
                                       ), text=text or "",
                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:

@@ -7,7 +7,11 @@ from urllib.parse import quote
 
 from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -17,6 +21,17 @@ from app.schemas import MessageChannel, CommingMessage, Notification, CommandReg
 from app.schemas.types import ModuleType, ChainEventType
 from app.utils.dom import DomUtils
 from app.utils.structures import DictUtils
+
+
+def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:
+    """解析企业微信管理员及机器人模式下的主用户 ID。"""
+    config_keys = ["WECHAT_ADMINS"]
+    if (config or {}).get("WECHAT_MODE", "app") == "bot":
+        config_keys.append("WECHAT_BOT_CHAT_ID")
+    return resolve_config_principal_ids(config, *config_keys)
+
+
+register_channel_admin_resolver(MessageChannel.Wechat, _resolve_wechat_admin_ids)
 
 
 class WechatModule(_ModuleBase, _MessageBase[WeChat]):
@@ -88,7 +103,11 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         admins = cls._get_admins(config)
         if not admins:
             return False
-        return str(user_id or "").strip() not in admins
+        return not matches_channel_admin(
+            MessageChannel.Wechat,
+            config,
+            user_id,
+        )
 
     @classmethod
     def _create_client(cls, conf):
@@ -253,7 +272,9 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                 return CommingMessage(channel=MessageChannel.Wechat, source=client_config.name,
                                       userid=user_id, username=user_id,
                                       is_channel_admin=matches_channel_admin(
-                                          client_config.config, "WECHAT_ADMINS", user_id
+                                          MessageChannel.Wechat,
+                                          client_config.config,
+                                          user_id,
                                       ), text=content or "",
                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
@@ -325,7 +346,9 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             userid=sender,
             username=sender,
             is_channel_admin=matches_channel_admin(
-                client_config.config, "WECHAT_ADMINS", sender
+                MessageChannel.Wechat,
+                client_config.config,
+                sender,
             ),
             text=text or "",
             images=images,

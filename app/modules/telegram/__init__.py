@@ -5,7 +5,11 @@ from typing import Dict, Optional, Union, List, Tuple, Any
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
@@ -19,6 +23,14 @@ from app.schemas import (
 )
 from app.schemas.types import ModuleType, ChainEventType
 from app.utils.structures import DictUtils
+
+
+register_channel_admin_resolver(
+    MessageChannel.Telegram,
+    lambda config: resolve_config_principal_ids(
+        config, "TELEGRAM_ADMINS", "TELEGRAM_CHAT_ID"
+    ),
+)
 
 
 class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
@@ -112,12 +124,11 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         admins = cls._get_admins(config)
         if not admins:
             return False
-        candidates = [
-            str(user_id).strip()
-            for user_id in user_ids
-            if user_id is not None and str(user_id).strip()
-        ]
-        return not any(candidate in admins for candidate in candidates)
+        return not matches_channel_admin(
+            MessageChannel.Telegram,
+            config,
+            *user_ids,
+        )
 
     def message_parser(
         self, source: str, body: Any, form: Any, args: Any
@@ -237,7 +248,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 userid=user_id,
                 username=user_name,
                 is_channel_admin=matches_channel_admin(
-                    client_config.config, "TELEGRAM_ADMINS", user_id
+                    MessageChannel.Telegram,
+                    client_config.config,
+                    user_id,
                 ),
                 text=callback_text,
                 is_callback=True,
@@ -316,7 +329,9 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 userid=user_id,
                 username=user_name,
                 is_channel_admin=matches_channel_admin(
-                    client_config.config, "TELEGRAM_ADMINS", user_id
+                    MessageChannel.Telegram,
+                    client_config.config,
+                    user_id,
                 ),
                 text=cleaned_text,
                 message_id=message_id,

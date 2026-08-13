@@ -9,13 +9,25 @@ from urllib.parse import quote, unquote
 from typing import Optional, List, Tuple, Union, Any
 
 from app.core.context import MediaInfo, Context
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.qqbot.qqbot import QQBot
 from app.schemas import CommingMessage, MessageChannel, Notification
 from app.schemas.types import ModuleType
 from app.utils.http import RequestUtils
+
+
+register_channel_admin_resolver(
+    MessageChannel.QQ,
+    lambda config: resolve_config_principal_ids(
+        config, "QQBOT_ADMINS", "QQ_OPENID"
+    ),
+)
 
 
 class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
@@ -108,12 +120,11 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
         admins = cls._get_admins(config)
         if not admins:
             return False
-        candidates = [
-            str(user_id).strip()
-            for user_id in user_ids
-            if user_id is not None and str(user_id).strip()
-        ]
-        return not any(candidate in admins for candidate in candidates)
+        return not matches_channel_admin(
+            MessageChannel.QQ,
+            config,
+            *user_ids,
+        )
 
     @staticmethod
     def _send_admin_denied(
@@ -176,7 +187,9 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
                 userid=user_openid,
                 username=user_openid,
                 is_channel_admin=matches_channel_admin(
-                    client_config.config, "QQBOT_ADMINS", user_openid
+                    MessageChannel.QQ,
+                    client_config.config,
+                    user_openid,
                 ),
                 text=content,
                 images=images,
@@ -205,7 +218,9 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
                 userid=userid,
                 username=member_openid or group_openid,
                 is_channel_admin=matches_channel_admin(
-                    client_config.config, "QQBOT_ADMINS", member_openid
+                    MessageChannel.QQ,
+                    client_config.config,
+                    member_openid,
                 ),
                 text=content,
                 images=images,

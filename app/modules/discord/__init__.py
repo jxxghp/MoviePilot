@@ -5,7 +5,11 @@ from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import (
@@ -24,6 +28,12 @@ try:
 except Exception as err:  # ImportError or other load issues
     Discord = None
     logger.error(f"Discord 模块未加载，缺少依赖或初始化错误：{err}")
+
+
+register_channel_admin_resolver(
+    MessageChannel.Discord,
+    lambda config: resolve_config_principal_ids(config, "DISCORD_ADMINS"),
+)
 
 
 class DiscordModule(_ModuleBase, _MessageBase[Discord]):
@@ -209,7 +219,7 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     userid=userid,
                     username=username,
                     is_channel_admin=matches_channel_admin(
-                        client_config.config, "DISCORD_ADMINS", userid
+                        MessageChannel.Discord, client_config.config, userid
                     ),
                     text=f"CALLBACK:{callback_data}",
                     is_callback=True,
@@ -243,7 +253,7 @@ class DiscordModule(_ModuleBase, _MessageBase[Discord]):
                     userid=userid,
                     username=username,
                     is_channel_admin=matches_channel_admin(
-                        client_config.config, "DISCORD_ADMINS", userid
+                        MessageChannel.Discord, client_config.config, userid
                     ),
                     text=text,
                     chat_id=str(chat_id) if chat_id else None,

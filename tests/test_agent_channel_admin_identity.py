@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.helper.agent import matches_channel_admin
+from app.helper.agent import matches_channel_admin, resolve_config_principal_ids
 from app.modules.discord import DiscordModule
 from app.modules.feishu.feishu import Feishu
 from app.modules.qqbot import QQBotModule
@@ -13,7 +13,9 @@ from app.modules.synologychat import SynologyChatModule
 from app.modules.telegram import TelegramModule
 from app.modules.vocechat import VoceChatModule
 from app.modules.wechat import WechatModule
+from app.modules.wechat.wechatbot import WeChatBot
 from app.modules.wechatclawbot import WechatClawBotModule
+from app.schemas.types import MessageChannel
 
 
 def _parse_module_message(module, *, config: dict, body, client=None, form=None):
@@ -33,19 +35,99 @@ def _parse_module_message(module, *, config: dict, body, client=None, form=None)
 
 
 @pytest.mark.parametrize(
-    ("config", "principal_ids", "expected"),
+    ("config", "expected"),
     [
-        ({"ADMINS": " user-1, 42 "}, ("user-1",), True),
-        ({"ADMINS": "user-1,42"}, ("user-2", 7), False),
-        ({"ADMINS": ""}, ("user-1",), False),
-        ({}, ("user-1",), False),
-        (None, ("user-1",), False),
+        ({"ADMINS": " user-1, 42 "}, {"user-1", "42"}),
+        ({"ADMINS": ""}, set()),
+        ({}, set()),
+        (None, set()),
     ],
 )
-def test_matches_channel_admin_uses_nonempty_stable_principal_set(
-    config, principal_ids, expected
+def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expected):
+    """渠道模块声明的配置值应统一转为非空字符串 ID。"""
+    assert resolve_config_principal_ids(config, "ADMINS") == expected
+
+
+@pytest.mark.parametrize(
+    ("channel", "config", "principal_ids", "expected"),
+    [
+        (
+            MessageChannel.Telegram,
+            {"TELEGRAM_ADMINS": "other", "TELEGRAM_CHAT_ID": "10001"},
+            (10001,),
+            True,
+        ),
+        (
+            MessageChannel.Feishu,
+            {"FEISHU_ADMINS": "other", "FEISHU_OPEN_ID": "ou_owner"},
+            ("ou_owner",),
+            True,
+        ),
+        (
+            MessageChannel.Wechat,
+            {
+                "WECHAT_MODE": "bot",
+                "WECHAT_ADMINS": "other",
+                "WECHAT_BOT_CHAT_ID": "wx_owner",
+            },
+            ("wx_owner",),
+            True,
+        ),
+        (
+            MessageChannel.Wechat,
+            {
+                "WECHAT_MODE": "app",
+                "WECHAT_ADMINS": "other",
+                "WECHAT_BOT_CHAT_ID": "stale_owner",
+            },
+            ("stale_owner",),
+            False,
+        ),
+        (
+            MessageChannel.WechatClawBot,
+            {
+                "WECHATCLAWBOT_ADMINS": "other",
+                "WECHATCLAWBOT_DEFAULT_TARGET": "wxid_owner",
+            },
+            ("wxid_owner",),
+            True,
+        ),
+        (
+            MessageChannel.QQ,
+            {"QQBOT_ADMINS": "other", "QQ_OPENID": "qq_owner"},
+            ("qq_owner",),
+            True,
+        ),
+        (
+            MessageChannel.Telegram,
+            {"TELEGRAM_ADMINS": "other", "TELEGRAM_CHAT_ID": "-10001"},
+            (10001,),
+            False,
+        ),
+        (
+            MessageChannel.Feishu,
+            {"FEISHU_ADMINS": "other", "FEISHU_CHAT_ID": "oc_group"},
+            ("ou_user",),
+            False,
+        ),
+        (
+            MessageChannel.QQ,
+            {"QQBOT_ADMINS": "other", "QQ_GROUP_OPENID": "qq_group"},
+            ("qq_member",),
+            False,
+        ),
+    ],
+)
+def test_matches_channel_admin_includes_only_primary_user_ids(
+    channel, config, principal_ids, expected
 ):
-    assert matches_channel_admin(config, "ADMINS", *principal_ids) is expected
+    """渠道主用户 ID 默认授权，但群组或频道目标不能授权其成员。"""
+    assert matches_channel_admin(channel, config, *principal_ids) is expected
+
+
+def test_matches_channel_admin_rejects_unregistered_channel():
+    """未注册管理员解析器的渠道不能获得管理员权限。"""
+    assert not matches_channel_admin("unregistered", {"ADMINS": "owner"}, "owner")
 
 
 @pytest.mark.parametrize("message_kind", ["message", "callback"])
@@ -111,6 +193,50 @@ def test_telegram_uses_stable_user_id_for_admin(message_kind):
 
     assert message.userid == 10001
     assert message.is_channel_admin is True
+
+
+def test_telegram_primary_user_id_is_admin_without_duplicate_admin_entry():
+    """Telegram 主用户 ID 无需重复加入管理员名单。"""
+    module = TelegramModule()
+    client = SimpleNamespace(bot_username=None, send_msg=Mock())
+    message = _parse_module_message(
+        module,
+        config={
+            "TELEGRAM_CHAT_ID": "10001",
+            "TELEGRAM_ADMINS": "10002",
+        },
+        body=json.dumps(
+            {
+                "message_id": 10,
+                "from": {"id": 10001, "username": "owner"},
+                "chat": {"id": 10001},
+                "text": "/sites",
+            }
+        ),
+        client=client,
+    )
+
+    assert message.is_channel_admin is True
+    client.send_msg.assert_not_called()
+
+
+def test_telegram_group_chat_id_does_not_authorize_group_member():
+    """Telegram 群组 Chat ID 不能使群内发送者默认成为管理员。"""
+    message = _parse_module_message(
+        TelegramModule(),
+        config={"TELEGRAM_CHAT_ID": "-10001", "TELEGRAM_ADMINS": "10002"},
+        body=json.dumps(
+            {
+                "message_id": 10,
+                "from": {"id": 10001, "username": "member"},
+                "chat": {"id": -10001},
+                "text": "hello",
+            }
+        ),
+        client=SimpleNamespace(bot_username=None),
+    )
+
+    assert message.is_channel_admin is False
 
 
 def test_telegram_slash_does_not_accept_admin_display_username():
@@ -296,6 +422,29 @@ def test_feishu_message_and_card_callback_accept_open_id_or_user_id(payload, adm
     assert message.is_channel_admin is True
 
 
+def test_feishu_default_open_id_is_admin_without_duplicate_admin_entry():
+    """飞书默认用户 Open ID 无需重复加入管理员名单。"""
+    with patch.object(Feishu, "_build_api_client", return_value=Mock()), patch.object(
+        Feishu, "_start_ws_client"
+    ), patch("app.modules.feishu.feishu.UserOper") as user_oper:
+        user_oper.return_value.get_name.return_value = None
+        client = Feishu(
+            FEISHU_APP_ID="app-id",
+            FEISHU_APP_SECRET="app-secret",
+            FEISHU_OPEN_ID="ou_owner",
+            FEISHU_ADMINS="ou_other",
+            name="feishu-test",
+        )
+        message = client.parse_message(
+            {
+                "text": "/sites",
+                "sender": {"open_id": "ou_owner", "name": "owner"},
+            }
+        )
+
+    assert message.is_channel_admin is True
+
+
 @pytest.mark.parametrize(
     ("user_id", "username", "expected"),
     [("wxid_admin", "renamed-user", True), ("wxid_user", "admin-name", False)],
@@ -314,6 +463,25 @@ def test_wechatclawbot_uses_channel_user_id_not_username(user_id, username, expe
 
     assert message.userid == user_id
     assert message.is_channel_admin is expected
+
+
+def test_wechatclawbot_primary_user_id_is_admin_without_duplicate_admin_entry():
+    """微信 ClawBot 默认用户 ID 无需重复加入管理员名单。"""
+    message = _parse_module_message(
+        WechatClawBotModule(),
+        config={
+            "WECHATCLAWBOT_DEFAULT_TARGET": "wxid_owner",
+            "WECHATCLAWBOT_ADMINS": "wxid_other",
+        },
+        body={
+            "__channel__": "wechatclawbot",
+            "userid": "wxid_owner",
+            "username": "owner",
+            "text": "/sites",
+        },
+    )
+
+    assert message.is_channel_admin is True
 
 
 @pytest.mark.parametrize(
@@ -339,6 +507,52 @@ def test_wechat_bot_uses_sender_userid(sender, admins, expected):
     assert message.is_channel_admin is expected
 
 
+def test_wechat_bot_primary_user_id_is_admin_without_duplicate_admin_entry():
+    """企业微信机器人默认用户 ID 无需重复加入管理员名单。"""
+    message = _parse_module_message(
+        WechatModule(),
+        config={
+            "WECHAT_MODE": "bot",
+            "WECHAT_BOT_CHAT_ID": "wechat-owner",
+            "WECHAT_ADMINS": "wechat-other",
+        },
+        body=json.dumps(
+            {
+                "body": {
+                    "from": {"userid": "wechat-owner"},
+                    "msgtype": "text",
+                    "text": {"content": "/sites"},
+                }
+            }
+        ),
+    )
+
+    assert message.is_channel_admin is True
+
+
+def test_wechat_bot_client_allows_primary_user_command():
+    """企业微信机器人客户端不得在转发前拦截主用户 ID。"""
+    bot = WeChatBot.__new__(WeChatBot)
+    bot._config_name = "wechat-bot-test"
+    bot._admins = ["wechat-other"]
+    bot._default_chat_id = "wechat-owner"
+    bot.send_msg = Mock()
+    bot._remember_target = Mock()
+    bot._forward_to_message_chain = Mock()
+    payload = {
+        "body": {
+            "from": {"userid": "wechat-owner"},
+            "msgtype": "text",
+            "text": {"content": "/sites"},
+        }
+    }
+
+    bot._handle_callback_message(payload)
+
+    bot.send_msg.assert_not_called()
+    bot._forward_to_message_chain.assert_called_once_with(payload)
+
+
 def test_qq_c2c_uses_user_openid_for_admin():
     message = _parse_module_message(
         QQBotModule(),
@@ -351,6 +565,21 @@ def test_qq_c2c_uses_user_openid_for_admin():
     )
 
     assert message.userid == "qq-admin"
+    assert message.is_channel_admin is True
+
+
+def test_qq_primary_user_openid_is_admin_without_duplicate_admin_entry():
+    """QQ 默认用户 OpenID 无需重复加入管理员名单。"""
+    message = _parse_module_message(
+        QQBotModule(),
+        config={"QQ_OPENID": "qq-owner", "QQBOT_ADMINS": "qq-other"},
+        body={
+            "type": "C2C_MESSAGE_CREATE",
+            "content": "/sites",
+            "author": {"user_openid": "qq-owner"},
+        },
+    )
+
     assert message.is_channel_admin is True
 
 
