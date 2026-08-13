@@ -1,4 +1,4 @@
-"""固定工具迁移注册表与参数级策略解析。"""
+"""工具策略例外与参数级策略解析。"""
 
 from typing import Any, Mapping
 
@@ -13,7 +13,7 @@ from app.agent.policy.contracts import (
 )
 
 
-# 这些读取已具备清晰的无副作用语义，用于证明新宿主边界不会改变正常结果。
+# 这些非管理员读取在运行时解析为强制 SAFE_READ；管理员门禁仍沿用原有授权事实源。
 SAFE_READ_TOOL_NAMES = frozenset(
     {
         "list_slash_commands",
@@ -25,8 +25,8 @@ SAFE_READ_TOOL_NAMES = frozenset(
 )
 
 
-# 其余固定工具先显式处于兼容观测状态，待领域叶子 Goal 逐个迁移。
-LEGACY_SHADOW_TOOL_NAMES = frozenset(
+# 该清单只校验固定工具 inventory；未命中的固定或动态工具同样默认 LEGACY_SHADOW。
+BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
     {
         "add_custom_filter_rule",
         "add_download_tasks",
@@ -112,25 +112,29 @@ LEGACY_SHADOW_TOOL_NAMES = frozenset(
 
 
 class ToolPolicyRegistry:
-    """解析固定和动态工具的 P1-G1 迁移策略。"""
+    """解析固定和动态工具的宿主策略。"""
 
     def __init__(
         self,
         *,
         safe_read_tool_names: frozenset[str] = SAFE_READ_TOOL_NAMES,
-        legacy_shadow_tool_names: frozenset[str] = LEGACY_SHADOW_TOOL_NAMES,
+        builtin_legacy_shadow_inventory: frozenset[str] = (
+            BUILTIN_LEGACY_SHADOW_INVENTORY
+        ),
     ) -> None:
-        """建立互斥的固定工具迁移表。"""
-        overlap = safe_read_tool_names & legacy_shadow_tool_names
+        """建立 SAFE_READ 例外与固定工具 inventory。"""
+        overlap = safe_read_tool_names & builtin_legacy_shadow_inventory
         if overlap:
-            raise ValueError(f"工具策略迁移表存在重复项: {sorted(overlap)}")
+            raise ValueError(f"工具策略 inventory 存在重复项: {sorted(overlap)}")
         self._safe_read_tool_names = safe_read_tool_names
-        self._legacy_shadow_tool_names = legacy_shadow_tool_names
+        self._builtin_legacy_shadow_inventory = builtin_legacy_shadow_inventory
 
     @property
-    def builtin_tool_names(self) -> set[str]:
-        """返回注册表覆盖的全部固定工具名。"""
-        return set(self._safe_read_tool_names | self._legacy_shadow_tool_names)
+    def builtin_tool_inventory(self) -> set[str]:
+        """返回用于测试校验的固定工具 inventory。"""
+        return set(
+            self._safe_read_tool_names | self._builtin_legacy_shadow_inventory
+        )
 
     def resolve(
         self,
@@ -139,7 +143,7 @@ class ToolPolicyRegistry:
         arguments: Mapping[str, Any],
         requires_admin: bool,
     ) -> ActionPolicy:
-        """根据工具名和宿主权限声明解析当前迁移策略。"""
+        """根据工具名和宿主权限声明解析当前参数级策略。"""
         required_role = (
             PrincipalRole.SYSTEM_ADMIN if requires_admin else PrincipalRole.USER
         )
@@ -166,7 +170,7 @@ class ToolPolicyRegistry:
                 confirmation=ConfirmationMode.NONE,
                 recovery=RecoveryMode.NONE,
                 result_sensitivity=ResultSensitivity.NORMAL,
-                # 角色门禁仍可能异步识别渠道管理员；G1 不复制旧授权事实源。
+                # 角色门禁仍由既有授权事实源判断，管理员读取保持兼容观测。
                 migration_state=(
                     MigrationState.LEGACY_SHADOW
                     if requires_admin
@@ -174,7 +178,7 @@ class ToolPolicyRegistry:
                 ),
             )
 
-        # 固定未迁移工具和动态工具都保持现有执行能力，但不得被视为安全读取。
+        # 除明确例外外，固定和动态工具都保持现有能力，但不得被视为安全读取。
         return ActionPolicy(
             effect=ActionEffect.UNKNOWN,
             required_role=required_role,
@@ -189,8 +193,8 @@ DEFAULT_TOOL_POLICY_REGISTRY = ToolPolicyRegistry()
 
 
 __all__ = [
+    "BUILTIN_LEGACY_SHADOW_INVENTORY",
     "DEFAULT_TOOL_POLICY_REGISTRY",
-    "LEGACY_SHADOW_TOOL_NAMES",
     "SAFE_READ_TOOL_NAMES",
     "ToolPolicyRegistry",
 ]

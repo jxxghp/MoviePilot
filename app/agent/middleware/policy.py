@@ -114,8 +114,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
             handler=lambda: handler(request),
             enforce_decision=False,
         )
-        # 普通 ToolNode 在严格策略接管前保持 shadow 观测语义。
-        # 已确认的受保护调用会使用默认的强制决策语义。
+        # 普通 ToolNode 保持 shadow 观测；已确认调用使用默认的强制决策语义。
         return result
 
     async def execute_tool_call(
