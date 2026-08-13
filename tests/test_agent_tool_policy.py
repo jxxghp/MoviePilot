@@ -453,6 +453,31 @@ def test_middleware_keeps_shadow_observation_until_strict_runtime_takeover() -> 
     orchestrator.fail.assert_not_called()
 
 
+def test_enforced_policy_start_failure_blocks_handler() -> None:
+    """强制策略无法形成决定时不得继续执行受保护工具。"""
+    orchestrator = MagicMock()
+    orchestrator.start.side_effect = RuntimeError("policy-start-failure")
+    middleware = AgentPolicyMiddleware(
+        context=_interactive_context(),
+        orchestrator=orchestrator,
+    )
+    tool = _EchoTool(session_id="session-1", user_id="user-1")
+    handler = AsyncMock(return_value="secret-result")
+
+    executed, result = asyncio.run(
+        middleware.execute_tool_call(
+            tool=tool,
+            arguments={"query": "secret"},
+            invocation_id="strict-call-1",
+            handler=handler,
+        )
+    )
+
+    assert executed is False
+    assert result == "宿主策略暂时不可用，未执行该工具。"
+    handler.assert_not_awaited()
+
+
 def test_policy_hook_failure_logs_only_stable_type_information() -> None:
     """fail-open 诊断只记录阶段和异常类型，不读取可能含凭据的异常文本。"""
     mock_logger = MagicMock()

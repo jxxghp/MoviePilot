@@ -907,6 +907,20 @@ class MoviePilotAgent:
             return delivered is not False
         return await self._deliver_private_channel_message(content)
 
+    async def _deliver_protected_output_with_fallback(
+            self,
+            content: str,
+            fallback_message: str,
+    ) -> bool:
+        """受保护投递失败时，仅通过普通回复报告不含敏感值的状态。"""
+        delivered = await self._deliver_protected_output(content)
+        if delivered:
+            return True
+        self._emit_output(fallback_message)
+        if self.should_dispatch_reply:
+            await self.send_agent_message(fallback_message)
+        return False
+
     async def _handle_secret_confirmation_control(
             self,
             message: str,
@@ -955,7 +969,7 @@ class MoviePilotAgent:
             tools=[pending.tool],
         )
         try:
-            _, result = await policy.execute_tool_call(
+            executed, result = await policy.execute_tool_call(
                 tool=pending.tool,
                 arguments=pending.arguments,
                 invocation_id=f"secret-confirmation-{uuid.uuid4().hex}",
@@ -963,15 +977,22 @@ class MoviePilotAgent:
             )
         except Exception:
             message_text = "敏感设置读取失败，请稍后重试。"
-            await self._deliver_protected_output(message_text)
+            await self._deliver_protected_output_with_fallback(
+                message_text,
+                message_text,
+            )
             return message_text
-        delivered = await self._deliver_protected_output(result)
+        fallback_message = (
+            "敏感设置读取已完成，但结果投递失败，请重新发起。"
+            if executed
+            else result
+        )
+        delivered = await self._deliver_protected_output_with_fallback(
+            result,
+            fallback_message,
+        )
         if not delivered:
-            message_text = "敏感设置读取已完成，但结果投递失败，请重新发起。"
-            self._emit_output(message_text)
-            if self.should_dispatch_reply:
-                await self.send_agent_message(message_text)
-            return message_text
+            return fallback_message
         return "敏感设置确认已处理。"
 
     def _build_policy_context(self) -> ToolPolicyContext:
