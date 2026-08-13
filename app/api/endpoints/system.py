@@ -23,6 +23,7 @@ from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
+from app.core.cache import Cache
 from app.core.config import global_vars, settings
 from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
@@ -804,6 +805,10 @@ async def set_env_setting(
         )
 
     if success_updates:
+        # 音乐封面代理变更后，清理推荐缓存中的旧封面地址，使其立即生效
+        if "MUSIC_COVER_PROXY" in success_updates:
+            Cache().clear(region="recommend")
+            logger.info("音乐封面代理已更新，推荐缓存已清理")
         # 发送配置变更事件
         await eventmanager.async_send_event(
             etype=EventType.ConfigChanged,
