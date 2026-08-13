@@ -307,10 +307,14 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self._lock = threading.RLock()
         # 各服务的运行状态
         self._jobs = {}
+        # 进程启动时只对账一次，配置热重载不得改写仍在执行的任务状态
+        self._agent_task_interruptions_reconciled = False
         # 用户认证失败次数
         self._auth_count = 0
         # 用户认证失败消息发送
         self._auth_message = False
+        # 对账上个进程未收口的 Agent 任务
+        self._reconcile_agent_task_interruptions()
         # 初始化
         self.init()
 
@@ -1066,19 +1070,32 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
     def init_agent_task_jobs(self) -> None:
         """
-        从数据库恢复所有启用的 Agent 自主定时任务。
+        按数据库当前状态注册所有启用的 Agent 自主定时任务。
         """
-        oper = AgentTaskOper()
-        for task in oper.list(enabled=True):
-            if task.last_status == "running":
-                oper.update(
-                    task_id=task.id,
-                    payload={
-                        "last_status": "waiting",
-                        "last_result": "服务重启后恢复调度",
-                    },
-                )
+        for task in AgentTaskOper().list(enabled=True):
             self.update_agent_task_job(task.id)
+
+    def _reconcile_agent_task_interruptions(self) -> None:
+        """
+        将上个进程未收口的 Agent 任务标记为结果未知。
+
+        配置变更会在同一进程内重建调度器，因此该对账在实例生命周期内只能
+        成功执行一次，避免把当前进程仍在运行的任务误判为中断。
+        """
+        with self._lock:
+            if self._agent_task_interruptions_reconciled:
+                return
+            oper = AgentTaskOper()
+            for task in oper.list():
+                if task.last_status == "running":
+                    oper.mark_interrupted(
+                        task_id=task.id,
+                        result=(
+                            "服务重启时任务执行被中断，结果未知，可能已有部分操作；"
+                            "请先检查实际状态，再决定是否重新执行"
+                        ),
+                    )
+            self._agent_task_interruptions_reconciled = True
 
     def update_agent_task_job(self, task_id: int) -> Optional[str]:
         """
@@ -1100,15 +1117,18 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         trigger_value = (
             task.cron_expression if task.trigger_type == "cron" else task.run_at
         )
-        try:
-            trigger = TimerUtils.build_schedule_trigger(
-                trigger_type=task.trigger_type,
-                trigger_value=trigger_value,
-                timezone_name=settings.TZ,
-            )
-        except (TypeError, ValueError) as err:
-            logger.error(f"Agent 定时任务 {task_id} 的触发配置无效：{str(err)}")
-            return None
+        manual_only = task.trigger_type == "date" and task.last_status == "interrupted"
+        trigger = None
+        if not manual_only:
+            try:
+                trigger = TimerUtils.build_schedule_trigger(
+                    trigger_type=task.trigger_type,
+                    trigger_value=trigger_value,
+                    timezone_name=settings.TZ,
+                )
+            except (TypeError, ValueError) as err:
+                logger.error(f"Agent 定时任务 {task_id} 的触发配置无效：{str(err)}")
+                return None
 
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
@@ -1119,6 +1139,10 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 "running": False,
                 "kwargs": {"task_id": task_id},
             }
+            # 已开始的一次任务在重启后结果未知，只保留显式执行入口，不能按
+            # 过期触发时间自动重放可能已经发生的外部副作用。
+            if manual_only:
+                return None
             self._scheduler.add_job(
                 self.start,
                 trigger=trigger,
@@ -1164,6 +1188,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
         task = AgentTaskOper().get(task_id)
         if not task or not task.enabled:
+            return None
+        if task.trigger_type == "date" and task.last_status == "interrupted":
             return None
         trigger_value = (
             task.cron_expression if task.trigger_type == "cron" else task.run_at

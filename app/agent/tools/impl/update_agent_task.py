@@ -109,6 +109,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
         if task.last_status == "running":
             return {"error": f"Agent 定时任务 {payload.task_id} 正在执行，请稍后再修改"}
 
+        has_schedule_update = payload.trigger_type is not None
         trigger_type = payload.trigger_type or task.trigger_type
         trigger_value = payload.trigger
         if trigger_type == "date" and payload.delay_minutes is not None:
@@ -120,20 +121,33 @@ class UpdateAgentTaskTool(MoviePilotTool):
             trigger_value = (
                 task.cron_expression if trigger_type == "cron" else task.run_at
             )
-        enabled = task.enabled if payload.enabled is None else payload.enabled
-        normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
-            trigger_type=trigger_type,
-            trigger_value=trigger_value,
-            timezone_name=settings.TZ,
-            require_future=bool(enabled and trigger_type == "date"),
+        normalized_type = trigger_type
+        normalized_trigger = trigger_value
+        validates_existing_date_schedule = bool(
+            payload.enabled
+            and task.last_status != "interrupted"
+            and trigger_type == "date"
         )
+        if has_schedule_update or validates_existing_date_schedule:
+            normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
+                trigger_type=trigger_type,
+                trigger_value=trigger_value,
+                timezone_name=settings.TZ,
+                require_future=bool(
+                    trigger_type == "date"
+                    and (
+                        task.last_status == "interrupted"
+                        or (task.enabled if payload.enabled is None else payload.enabled)
+                    )
+                ),
+            )
 
         update_payload = {}
         if payload.name is not None:
             update_payload["name"] = payload.name.strip()
         if payload.content is not None:
             update_payload["content"] = payload.content.strip()
-        if payload.trigger_type is not None:
+        if has_schedule_update:
             update_payload.update(
                 {
                     "trigger_type": normalized_type,
@@ -147,7 +161,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
             )
         if payload.enabled is not None:
             update_payload["enabled"] = payload.enabled
-            if payload.enabled:
+            if payload.enabled and task.last_status != "interrupted":
                 update_payload["last_status"] = "waiting"
 
         oper.update(

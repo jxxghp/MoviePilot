@@ -104,6 +104,16 @@ class AgentTaskOper(DbOper):
             run_at=self._now(),
         )
 
+    def mark_interrupted(self, task_id: int, result: str) -> bool:
+        """
+        将遗留的运行中任务标记为中断且结果未知。
+        """
+        return AgentTask.mark_interrupted(
+            self._db,
+            task_id=task_id,
+            result=(result or "")[:20000],
+        )
+
     def finish(
             self,
             task_id: int,
