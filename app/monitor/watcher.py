@@ -109,9 +109,14 @@ class LocalDirectoryWatcher:
         """
         启动本地目录监控线程。
         """
-        if not self._watch_path.exists():
-            raise FileNotFoundError(f"监控目录不存在: {self._watch_path}")
-        if not self._watch_path.is_dir():
+        # 走可强杀的子进程：这两行是事故中最先冻住的地方——挂载挂死时
+        # exists()/is_dir() 永不返回，重建监控的恢复动作就此永久悬挂。
+        # 经代理后超时会抛 OSError，由上层判定为挂载级故障并转入隔离
+        # 延迟导入：filemanager 包的 __init__ 会拖入整条 chain 依赖，
+        # 模块级导入会破坏 monitor 包的轻量加载
+        from app.modules.filemanager.fsproxy import fsproxy
+        info = fsproxy.stat(self._watch_path)
+        if not info["is_dir"]:
             raise NotADirectoryError(f"监控路径不是目录: {self._watch_path}")
         if self.is_alive():
             logger.info(f"本地目录监控已在运行中: {self._watch_path}")

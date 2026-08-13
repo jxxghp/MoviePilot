@@ -108,6 +108,15 @@ class FileSystemProxy:
         """
         return self._call("listdir", path=str(path))
 
+    def count_entries(self, path: Path, max_check: int = 10000) -> Dict[str, int]:
+        """
+        统计目录规模。整棵树的遍历在子进程内一次完成，超时可整体放弃。
+        :param path: 目标目录
+        :param max_check: 文件数上限，超过即提前结束
+        :return: {"file_count", "dir_count"}
+        """
+        return self._call("count_entries", path=str(path), max_check=max_check)
+
     def rename(self, src: Path, dst: Path) -> bool:
         """
         同一存储内重命名/移动。跨存储会抛 OSError(EXDEV)，由调用方走原有路径。
@@ -287,6 +296,14 @@ class FileSystemProxy:
             return True
         if op == "listdir":
             return sorted(os.listdir(payload["path"]))
+        if op == "count_entries":
+            file_count = dir_count = 0
+            for _, dirs, files in os.walk(payload["path"]):
+                file_count += len(files)
+                dir_count += len(dirs)
+                if file_count > (payload.get("max_check") or 10000):
+                    break
+            return {"file_count": file_count, "dir_count": dir_count}
         if op == "rename":
             os.rename(payload["src"], payload["dst"])
             return True

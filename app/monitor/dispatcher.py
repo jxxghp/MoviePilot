@@ -13,6 +13,7 @@ from app.helper.transferhistory import (HistoryGateAction, describe_history_gate
                                         evaluate_history_gate, is_skip_action,
                                         max_failed_retries, resolve_history)
 from app.log import logger
+from app.modules.filemanager.fsproxy import fsproxy
 from app.schemas import FileItem
 from app.schemas.types import MediaType
 
@@ -230,8 +231,10 @@ class TransferDispatcher:
         :return: (文件大小, 修改时间, 文件是否仍然存在)；大小为 None 表示本次读取仍然失败
         """
         try:
-            file_stat = Path(event_path).stat()
-            return file_stat.st_size, file_stat.st_mtime, True
+            # 走可强杀的子进程：裸 stat 在挂死的挂载上永不返回，会把整个
+            # 待重试队列的驱动动作钉死，其他健康目录的重试项再也不会被消费
+            info = fsproxy.stat(Path(event_path))
+            return info["size"], info["mtime"], True
         except FileNotFoundError:
             return None, None, False
         except OSError as err:
