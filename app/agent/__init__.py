@@ -11,9 +11,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
-from langchain.agents.middleware import (
-    SummarizationMiddleware,
-)
 from langchain_core.messages import (  # noqa: F401
     HumanMessage,
     BaseMessage,
@@ -43,6 +40,9 @@ from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
+from app.agent.middleware.summarization import (
+    ContextPreservingSummarizationMiddleware as SummarizationMiddleware,
+)
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
     SUBAGENT_TASK_TOOL_NAME,
