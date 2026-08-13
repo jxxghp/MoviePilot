@@ -58,6 +58,22 @@ class DummyTool(MoviePilotTool):
         return "ok"
 
 
+class AdminOnlyDummyTool(MoviePilotTool):
+    """仅管理员可用的工具，用于权限拦截场景的流式输出测试。"""
+
+    name: str = "admin_only_tool"
+    description: str = "Admin-only tool for streaming tests."
+    require_admin: bool = True
+
+    def get_tool_message(self, **kwargs) -> str:
+        """返回固定工具执行提示。"""
+        return "run admin only tool"
+
+    async def run(self, **kwargs) -> str:
+        """返回固定工具执行结果。"""
+        return "ok"
+
+
 class TestAgentToolStreaming:
     """Agent 工具流式输出测试。"""
 
@@ -82,6 +98,61 @@ class TestAgentToolStreaming:
 
         assert result == "ok"
         assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
+
+    def test_permission_failure_adds_boundary_newline(self):
+        """校验权限拦截时在流式缓冲中补齐工具边界换行。"""
+        async def _run():
+            tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
+            handler = StreamingHandler()
+            await handler.start_streaming()
+            handler.emit("好的，我来帮您执行")
+            tool.set_stream_handler(handler)
+            tool.set_agent_context({"is_admin": False})
+
+            result = await tool._arun()
+            # 模拟模型在工具被拦截后继续输出失败说明
+            handler.emit("抱歉，您没有执行此工具的权限")
+            buffered_message = await handler.take()
+            return result, buffered_message
+
+        result, buffered_message = asyncio.run(_run())
+
+        assert "没有执行此工具" in result
+        assert buffered_message == "好的，我来帮您执行\n抱歉，您没有执行此工具的权限"
+
+    def test_permission_failure_skips_newline_when_buffer_empty(self):
+        """校验缓冲为空时权限拦截不会补多余的换行。"""
+        async def _run():
+            tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
+            handler = StreamingHandler()
+            await handler.start_streaming()
+            tool.set_stream_handler(handler)
+            tool.set_agent_context({"is_admin": False})
+
+            await tool._arun()
+            return await handler.take()
+
+        buffered_message = asyncio.run(_run())
+
+        assert buffered_message == ""
+
+    def test_permission_failure_reuses_existing_newline(self):
+        """校验缓冲已以换行结尾时权限拦截不再补换行。"""
+        async def _run():
+            tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
+            handler = StreamingHandler()
+            await handler.start_streaming()
+            handler.emit("好的，我来帮您执行\n")
+            tool.set_stream_handler(handler)
+            tool.set_agent_context({"is_admin": False})
+
+            await tool._arun()
+            handler.emit("抱歉，您没有执行此工具的权限")
+            return await handler.take()
+
+        buffered_message = asyncio.run(_run())
+
+        assert buffered_message == "好的，我来帮您执行\n抱歉，您没有执行此工具的权限"
 
     def test_non_verbose_tool_call_reuses_existing_newline_before_summary(self):
         """校验非详细模式复用已有换行追加工具摘要。"""

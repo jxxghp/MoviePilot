@@ -424,6 +424,101 @@ def test_tool_explicit_non_admin_context_does_not_fallback_to_channel_lookup():
     has_channel_admin_permission.assert_not_awaited()
 
 
+def test_channel_primary_id_defaults_to_admin_without_admin_list():
+    """渠道主ID未配置到管理员名单时仍默认为管理员。"""
+    tool = QuerySitesTool(session_id="session-1", user_id="10001")
+    tool.set_message_attr(
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="owner",
+    )
+
+    with patch(
+        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        return_value=[
+            SimpleNamespace(
+                name="telegram-main",
+                config={"TELEGRAM_CHAT_ID": "10001"},
+            )
+        ],
+    ):
+        result = asyncio.run(tool._has_channel_admin_permission())
+
+    assert result is True
+
+
+def test_channel_primary_id_mismatch_remains_non_admin():
+    """非主ID用户且不在管理员名单时不能获得管理员权限。"""
+    tool = QuerySitesTool(session_id="session-1", user_id="10002")
+    tool.set_message_attr(
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="other",
+    )
+
+    with patch(
+        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        return_value=[
+            SimpleNamespace(
+                name="telegram-main",
+                config={"TELEGRAM_CHAT_ID": "10001"},
+            )
+        ],
+    ):
+        result = asyncio.run(tool._has_channel_admin_permission())
+
+    assert result is False
+
+
+def test_feishu_primary_open_id_defaults_to_admin():
+    """飞书渠道主ID使用默认接收人 OPEN_ID 判断管理员身份。"""
+    tool = QuerySitesTool(session_id="session-1", user_id="ou_owner")
+    tool.set_message_attr(
+        channel=MessageChannel.Feishu.value,
+        source="feishu-main",
+        username="owner",
+    )
+
+    with patch(
+        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        return_value=[
+            SimpleNamespace(
+                name="feishu-main",
+                config={"FEISHU_OPEN_ID": "ou_owner"},
+            )
+        ],
+    ):
+        result = asyncio.run(tool._has_channel_admin_permission())
+
+    assert result is True
+
+
+def test_channel_primary_id_still_prefers_admin_list():
+    """管理员名单命中优先于主ID兜底。"""
+    tool = QuerySitesTool(session_id="session-1", user_id="10001")
+    tool.set_message_attr(
+        channel=MessageChannel.Telegram.value,
+        source="telegram-main",
+        username="owner",
+    )
+
+    with patch(
+        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        return_value=[
+            SimpleNamespace(
+                name="telegram-main",
+                config={
+                    "TELEGRAM_ADMINS": "10001",
+                    "TELEGRAM_CHAT_ID": "99999",
+                },
+            )
+        ],
+    ):
+        result = asyncio.run(tool._has_channel_admin_permission())
+
+    assert result is True
+
+
 def test_admin_tool_rejects_explicit_non_admin_without_channel_context():
     """显式非管理员事实必须拒绝管理员工具，不能走无渠道兼容放行。"""
     tool = QuerySystemSettingsTool(session_id="session-1", user_id="10002")
