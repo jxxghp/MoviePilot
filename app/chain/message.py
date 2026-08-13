@@ -152,6 +152,7 @@ class MessageChain(ChainBase):
             source=source,
             userid=userid,
             username=username,
+            is_channel_admin=info.is_channel_admin,
             text=text,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
@@ -174,6 +175,7 @@ class MessageChain(ChainBase):
             audio_refs: Optional[List[str]] = None,
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
+            is_channel_admin: Optional[bool] = None,
     ) -> None:
         """
         识别消息内容，执行操作
@@ -214,6 +216,7 @@ class MessageChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    is_channel_admin=is_channel_admin,
                     text=text,
                     original_message_id=original_message_id,
                     original_chat_id=original_chat_id,
@@ -271,6 +274,7 @@ class MessageChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                is_channel_admin=is_channel_admin,
                 text=text,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
@@ -305,6 +309,7 @@ class MessageChain(ChainBase):
             audio_refs: Optional[List[str]] = None,
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
+            is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """将 TG/飞书中的确认控制文本交回所属 Agent 会话。"""
         if channel not in {MessageChannel.Telegram, MessageChannel.Feishu}:
@@ -331,6 +336,7 @@ class MessageChain(ChainBase):
             source=source,
             userid=userid,
             username=username,
+            is_channel_admin=is_channel_admin,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
             images=images,
@@ -354,6 +360,7 @@ class MessageChain(ChainBase):
             has_audio_input: bool = False,
             processing_status: Optional[_ProcessingStatus] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
+            is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """执行实际消息路由，便于统一包裹处理中状态。"""
 
@@ -365,6 +372,7 @@ class MessageChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    is_channel_admin=is_channel_admin,
                     original_message_id=original_message_id,
                     original_chat_id=original_chat_id,
                     processing_status=processing_status,
@@ -430,6 +438,7 @@ class MessageChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                is_channel_admin=is_channel_admin,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
                 images=images,
@@ -490,6 +499,7 @@ class MessageChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                is_channel_admin=is_channel_admin,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
                 images=images,
@@ -747,6 +757,7 @@ class MessageChain(ChainBase):
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
             processing_status: Optional[_ProcessingStatus] = None,
+            is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """
         处理按钮回调
@@ -815,6 +826,7 @@ class MessageChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                is_channel_admin=is_channel_admin,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
         ):
@@ -954,6 +966,7 @@ class MessageChain(ChainBase):
             username: str,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
+            is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """
         将 Agent 按钮选择回传为同一会话中的下一条用户消息。
@@ -999,6 +1012,7 @@ class MessageChain(ChainBase):
             source=source,
             userid=userid,
             username=username,
+            is_channel_admin=is_channel_admin,
             session_id=request.session_id,
         )
 
@@ -1527,6 +1541,7 @@ class MessageChain(ChainBase):
             files: Optional[List[CommingMessage.MessageAttachment]] = None,
             session_id: Optional[str] = None,
             has_audio_input: bool = False,
+            is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """
         处理AI智能体消息
@@ -1644,6 +1659,7 @@ class MessageChain(ChainBase):
                 "channel": channel.value if channel else None,
                 "source": source,
                 "username": username,
+                "is_channel_admin": is_channel_admin,
                 "original_message_id": str(original_message_id)
                 if original_message_id
                 else None,

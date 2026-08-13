@@ -53,6 +53,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.db.user_oper import UserOper
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.schemas import CommingMessage, Notification
 from app.schemas.types import MessageChannel, NotificationType
@@ -687,6 +688,12 @@ class Feishu:
                 source=self._name,
                 userid=userid,
                 username=username,
+                is_channel_admin=matches_channel_admin(
+                    {"FEISHU_ADMINS": ",".join(self._admins)},
+                    "FEISHU_ADMINS",
+                    open_id,
+                    user_id,
+                ),
                 text=f"CALLBACK:{callback_data}",
                 is_callback=True,
                 callback_data=callback_data,
@@ -724,6 +731,12 @@ class Feishu:
             source=self._name,
             userid=userid,
             username=username,
+            is_channel_admin=matches_channel_admin(
+                {"FEISHU_ADMINS": ",".join(self._admins)},
+                "FEISHU_ADMINS",
+                open_id,
+                user_id,
+            ),
             text=text,
             message_id=message.get("message_id"),
             chat_id=message.get("chat_id"),

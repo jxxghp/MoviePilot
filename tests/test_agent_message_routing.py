@@ -83,6 +83,75 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
     process_message.assert_called_once()
 
 
+def test_message_chain_passes_stable_channel_admin_principal_to_agent():
+    """消息链应将渠道适配器生成的管理员事实传给 Agent。"""
+    chain = MessageChain()
+
+    with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
+        "app.chain.message.agent_manager.process_message",
+        new_callable=AsyncMock,
+    ) as process_message, patch(
+        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
+    ):
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="renamed-user",
+            is_channel_admin=True,
+            text="/ai 检查系统状态",
+        )
+
+    assert process_message.call_args.kwargs["is_channel_admin"] is True
+
+
+def test_message_chain_does_not_trust_channel_display_username():
+    """消息链应保留适配器给出的明确非管理员结论。"""
+    chain = MessageChain()
+
+    with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
+        "app.chain.message.agent_manager.process_message",
+        new_callable=AsyncMock,
+    ) as process_message, patch(
+        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
+    ):
+        chain.handle_message(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            userid="10002",
+            username="admin",
+            is_channel_admin=False,
+            text="/ai 检查系统状态",
+        )
+
+    assert process_message.call_args.kwargs["is_channel_admin"] is False
+
+
+def test_message_chain_uses_same_admin_contract_for_slack():
+    """管理员事实透传应复用于其他消息渠道，而不是 Telegram 特判。"""
+    chain = MessageChain()
+
+    with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
+        "app.chain.message.agent_manager.process_message",
+        new_callable=AsyncMock,
+    ) as process_message, patch(
+        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
+    ):
+        chain.handle_message(
+            channel=MessageChannel.Slack,
+            source="slack-test",
+            userid="UADMIN",
+            username="renamed-user",
+            is_channel_admin=True,
+            text="/ai 检查系统状态",
+        )
+
+    assert process_message.call_args.kwargs["is_channel_admin"] is True
+
+
 def test_ask_user_choice_message_is_not_recorded_to_message_history():
     """Agent 询问用户意图工具发送的按钮消息不登记到消息表。"""
     _clear_messages()
@@ -200,6 +269,7 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
                 source="telegram-test",
                 userid="10001",
                 username="tester",
+                is_channel_admin=False,
                 original_message_id=123,
                 original_chat_id="456",
             )
@@ -208,3 +278,4 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
 
     record_user_message.assert_not_called()
     process_message.assert_called_once()
+    assert process_message.call_args.kwargs["is_channel_admin"] is False

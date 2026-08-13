@@ -6,6 +6,7 @@ from urllib.parse import quote, unquote
 
 from app.core.context import MediaInfo, Context
 from app.core.event import eventmanager
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
@@ -279,7 +280,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 text = msg_json.get("text")
                 username = msg_json.get("user")
                 if text and text.startswith("/") and self._should_reject_admin_command(
-                        client_config.config, userid, username
+                        client_config.config, userid
                 ):
                     self._send_admin_denied(client, userid)
                     return None
@@ -295,7 +296,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 text = f"CALLBACK:{callback_data}"
                 username = msg_json.get("user", {}).get("name")
                 if str(callback_data).strip().startswith("/") and self._should_reject_admin_command(
-                        client_config.config, userid, username
+                        client_config.config, userid
                 ):
                     self._send_admin_denied(client, userid)
                     return None
@@ -319,6 +320,9 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                     source=client_config.name,
                     userid=userid,
                     username=username,
+                    is_channel_admin=matches_channel_admin(
+                        client_config.config, "SLACK_ADMINS", userid
+                    ),
                     text=text,
                     is_callback=True,
                     callback_data=callback_data,
@@ -349,7 +353,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 text = msg_json.get("callback_id")
                 username = msg_json.get("user", {}).get("username")
                 if text and text.startswith("/") and self._should_reject_admin_command(
-                        client_config.config, userid, username
+                        client_config.config, userid
                 ):
                     self._send_admin_denied(client, userid)
                     return None
@@ -358,7 +362,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 text = msg_json.get("command")
                 username = msg_json.get("user_name")
                 chat_id = msg_json.get("channel_id")
-                if self._should_reject_admin_command(client_config.config, userid, username):
+                if self._should_reject_admin_command(client_config.config, userid):
                     self._send_admin_denied(client, userid)
                     return None
             else:
@@ -373,6 +377,9 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 source=client_config.name,
                 userid=userid,
                 username=username,
+                is_channel_admin=matches_channel_admin(
+                    client_config.config, "SLACK_ADMINS", userid
+                ),
                 text=text,
                 message_id=message_id,
                 chat_id=chat_id,

@@ -168,6 +168,8 @@ class CommingMessage(BaseModel):
     userid: Optional[Union[str, int]] = None
     # 用户名称
     username: Optional[Union[str, int]] = None
+    # 渠道适配器依据稳定用户 ID 与当前实例管理员名单生成的授权事实
+    is_channel_admin: Optional[bool] = None
     # 消息渠道
     channel: Optional[MessageChannel] = None
     # 来源（渠道名称）

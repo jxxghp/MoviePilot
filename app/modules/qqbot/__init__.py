@@ -9,6 +9,7 @@ from urllib.parse import quote, unquote
 from typing import Optional, List, Tuple, Union, Any
 
 from app.core.context import MediaInfo, Context
+from app.helper.agent import matches_channel_admin
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.qqbot.qqbot import QQBot
@@ -174,6 +175,9 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
                 source=client_config.name,
                 userid=user_openid,
                 username=user_openid,
+                is_channel_admin=matches_channel_admin(
+                    client_config.config, "QQBOT_ADMINS", user_openid
+                ),
                 text=content,
                 images=images,
                 audio_refs=audio_refs,
@@ -186,7 +190,7 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
             # 群聊用 group:group_openid 作为 userid，便于回复时识别
             userid = f"group:{group_openid}" if group_openid else member_openid
             if content.startswith("/") and self._should_reject_admin_command(
-                    client_config.config, member_openid, userid
+                    client_config.config, member_openid
             ):
                 self._send_admin_denied(client, userid)
                 return None
@@ -200,6 +204,9 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
                 source=client_config.name,
                 userid=userid,
                 username=member_openid or group_openid,
+                is_channel_admin=matches_channel_admin(
+                    client_config.config, "QQBOT_ADMINS", member_openid
+                ),
                 text=content,
                 images=images,
                 audio_refs=audio_refs,
