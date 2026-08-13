@@ -30,6 +30,7 @@ def _build_monitor(handle_file: MagicMock = None):
     monitor._restart_marks = {}
     monitor._stable_cycles = {}
     monitor._isolated = {}
+    monitor._pending_rebuild = {}
     monitor._recovery = RecoveryExecutor()
     return monitor, dispatcher
 

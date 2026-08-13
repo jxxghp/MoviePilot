@@ -140,6 +140,7 @@ def _build_monitor(monkeypatch, put_recorder):
     monitor._restart_marks = {}
     monitor._stable_cycles = {}
     monitor._isolated = {}
+    monitor._pending_rebuild = {}
     monitor._recovery = RecoveryExecutor()
     return monitor
 

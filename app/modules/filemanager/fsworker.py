@@ -94,6 +94,26 @@ def _copy(payload, emit):
     return {"copied": copied, "total": total}
 
 
+def _count_entries(payload, _emit):
+    """
+    统计目录下的文件与子目录数量，超过上限即提前结束。
+
+    放在子进程里做而不是逐层 listdir 走 IPC：递归遍历一棵大目录树会产生成千
+    上万次往返，代价不可接受；一次调用在子进程内跑完 os.walk，父进程只需对
+    这一次调用设超时即可整体放弃。
+    """
+    directory = payload["path"]
+    max_check = payload.get("max_check") or 10000
+    file_count = 0
+    dir_count = 0
+    for _, dirs, files in os.walk(directory):
+        file_count += len(files)
+        dir_count += len(dirs)
+        if file_count > max_check:
+            break
+    return {"file_count": file_count, "dir_count": dir_count}
+
+
 def _rename(payload, _emit):
     """
     同一存储内重命名/移动。
@@ -134,6 +154,7 @@ _HANDLERS = {
     "exists": _exists,
     "listdir": _listdir,
     "copy": _copy,
+    "count_entries": _count_entries,
     "rename": _rename,
     "unlink": _unlink,
     "rmtree": _rmtree,

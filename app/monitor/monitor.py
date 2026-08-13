@@ -71,6 +71,10 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         self._stable_cycles: Dict[str, int] = {}
         # 判定为挂载级故障、已暂停一切访问的监控目录（path -> 隔离状态）
         self._isolated: Dict[str, Dict[str, Any]] = {}
+        # 探测通过、等待下一周期重建的目录。不能靠 is_stalled 重新发现：
+        # 进入隔离前 __rebuild_watcher 已调用过 watcher.stop()，停止标志置位后
+        # is_stalled() 恒为 False，检测环节再也认不出它需要重建
+        self._pending_rebuild: Dict[str, Any] = {}
         # 触碰挂载的恢复动作执行器，把 block 型故障挡在看门狗线程之外
         self._recovery = RecoveryExecutor()
         # 定时服务
@@ -369,7 +373,10 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         with self._watcher_lock:
             watchers = list(self._watchers)
             isolated = set(self._isolated)
-        broken: List[LocalDirectoryWatcher] = []
+            # 探测已确认挂载恢复的目录，本轮直接送去重建
+            resumed = list(self._pending_rebuild.values())
+            self._pending_rebuild.clear()
+        broken: List[LocalDirectoryWatcher] = list(resumed)
         for watcher in watchers:
             key = str(watcher.watch_path)
             if key in isolated:
@@ -486,10 +493,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 entry = self._isolated.pop(key, None)
             if not entry:
                 continue
-            logger.info(f"✓ 挂载探测通过，解除隔离并重建目录监控: {mon_path}")
+            logger.info(f"✓ 挂载探测通过，解除隔离并登记重建: {mon_path}")
             self.__clear_alert(mon_path, f"目录监控挂载已恢复响应，正在重建监控: {mon_path}")
-            # 重建内部会按 watcher 的最后心跳时间发起补偿扫描，补回隔离期间落地的文件
-            self.__rebuild_watcher(entry["watcher"])
+            # 只登记、不在此处重建。重建会触碰挂载，若挂载能应答探测却在重建时再次
+            # 挂死，这条探测线程将永不返回，全局 PROBE_KEY 从此恒为 BUSY——列表中
+            # 其余隔离目录连探测机会都没有了，「按目录隔离」的承诺就此失效。
+            # 交由下一周期的 __check_watchers 走 rebuild:<path> 路径，天然按目录隔离。
+            with self._watcher_lock:
+                self._pending_rebuild[key] = entry["watcher"]
 
     def __drive_pending(self):
         """
@@ -766,6 +777,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             self._restart_marks = {}
             self._stable_cycles = {}
             self._isolated = {}
+            self._pending_rebuild = {}
         # 已冻死的恢复线程无法回收，这里只是不再跟踪它们，避免重载后同名目录
         # 被残留记录误判为 BUSY 而永远拿不到重建机会
         self._recovery.clear()

@@ -40,6 +40,7 @@ def _build_monitor(monkeypatch, put_recorder=None):
     monitor._restart_marks = {}
     monitor._stable_cycles = {}
     monitor._isolated = {}
+    monitor._pending_rebuild = {}
     monitor._recovery = RecoveryExecutor()
     return monitor
 
@@ -201,17 +202,19 @@ def test_watchdog_survives_blocking_exists_in_real_rebuild(tmp_path, monkeypatch
     monitor._watchers = [watcher]
 
     release = threading.Event()
-    real_exists = Path.exists
 
-    def blocking_exists(self, *args, **kwargs):
+    def blocking_stat(path, *_args, **_kwargs):
         """
-        模拟 block 型挂载：对监控目录的 exists() 永不返回。
+        模拟 block 型挂载：监控目录的属性读取永不返回。
+        入口校验已改走子进程代理，因此在代理这一层注入阻塞。
         """
-        if self == tmp_path:
+        if Path(path) == tmp_path:
             release.wait()
-        return real_exists(self, *args, **kwargs)
+        return {"size": 0, "mtime": 0.0, "is_dir": True, "is_file": False}
 
-    monkeypatch.setattr(Path, "exists", blocking_exists)
+    monkeypatch.setattr(
+        "app.modules.filemanager.fsproxy.fsproxy.stat", blocking_stat
+    )
     monkeypatch.setattr("app.monitor.monitor.probe_path", lambda *_a, **_kw: False)
 
     try:
@@ -277,7 +280,15 @@ def test_isolated_directory_recovers_after_probe_succeeds(tmp_path, monkeypatch)
     assert _run_watchdog(monitor)
 
     assert str(tmp_path) not in monitor._isolated, "探测通过后没有解除隔离"
-    assert rebuilt == [watcher], "解除隔离后没有重建监控"
+    # 不得在探测线程里内联重建：重建会触碰挂载，若此时再次挂死，全局 PROBE_KEY
+    # 将永久 BUSY，其余隔离目录连探测机会都没有
+    assert rebuilt == [], "探测线程内联执行了重建，会饿死其他隔离目录"
+    assert str(tmp_path) in monitor._pending_rebuild, "没有登记待重建"
+
+    # 下一周期应把它送去按目录隔离的重建路径
+    assert _run_watchdog(monitor)
+    assert rebuilt == [watcher], "下一周期没有重建该监控"
+    assert not monitor._pending_rebuild, "重建后未清空待重建登记"
 
 
 def test_isolated_directory_stays_isolated_while_probe_fails(tmp_path, monkeypatch):
