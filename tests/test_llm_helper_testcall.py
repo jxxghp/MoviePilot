@@ -394,6 +394,10 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = {"tool_calling": True}
 
+            def with_retry(self):
+                """满足 LangChain 摘要模型的 Runnable 合同。"""
+                return self
+
         with patch.dict(
             sys.modules,
             {"langchain_openai": SimpleNamespace(ChatOpenAI=_FakeChatOpenAI)},
