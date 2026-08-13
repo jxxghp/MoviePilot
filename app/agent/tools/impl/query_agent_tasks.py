@@ -64,6 +64,15 @@ class QueryAgentTasksTool(MoviePilotTool):
                 next_run_at=scheduler.get_agent_task_next_run(task.id),
                 timezone=settings.TZ,
             )
+            if task_id:
+                data["recent_runs"] = [
+                    oper.run_to_dict(run)
+                    for run in oper.list_runs(
+                        task_id=task.id,
+                        user_id=str(self._user_id),
+                        limit=10,
+                    )
+                ]
             result.append(data)
         return result
 

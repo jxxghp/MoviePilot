@@ -1065,7 +1065,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             job = self._jobs.get(job_id)
             if not job or job.get("running"):
                 return False
-        self.start(job_id)
+        self.start(job_id, task_id=task_id, trigger_source="manual")
         return True
 
     def init_agent_task_jobs(self) -> None:
@@ -1208,17 +1208,25 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             else None
         )
 
-    async def execute_agent_task(self, task_id: int) -> tuple[bool, str]:
+    async def execute_agent_task(
+            self,
+            task_id: int,
+            trigger_source: str = "scheduled",
+    ) -> tuple[bool, str]:
         """
         唤醒 Agent 执行指定自主定时任务。
 
         :param task_id: Agent 定时任务 ID
+        :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
         from app.agent import agent_manager
 
         try:
-            return await agent_manager.execute_scheduled_task(task_id)
+            return await agent_manager.execute_scheduled_task(
+                task_id,
+                trigger_source=trigger_source,
+            )
         finally:
             task = AgentTaskOper().get(task_id)
             if task and task.trigger_type == "date" and not task.enabled:
