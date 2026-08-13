@@ -164,11 +164,16 @@ class UpdateAgentTaskTool(MoviePilotTool):
             if payload.enabled and task.last_status != "interrupted":
                 update_payload["last_status"] = "waiting"
 
-        oper.update(
+        updated = oper.update(
             task_id=payload.task_id,
             payload=update_payload,
             user_id=str(self._user_id),
         )
+        if not updated:
+            current = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
+            if current and current.last_status == "running":
+                return {"error": f"Agent 定时任务 {payload.task_id} 正在执行，请稍后再修改"}
+            return None
         scheduler = Scheduler()
         next_run_at = scheduler.update_agent_task_job(payload.task_id)
         updated_task = oper.get(task_id=payload.task_id, user_id=str(self._user_id))

@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 
 from app.db import DbOper
 from app.db.models.agenttask import AgentTask
+from app.db.models.agenttaskrun import AgentTaskRun
 
 
 class AgentTaskOper(DbOper):
@@ -86,32 +90,80 @@ class AgentTaskOper(DbOper):
 
     def delete(self, task_id: int, user_id: Optional[str] = None) -> bool:
         """
-        删除 Agent 定时任务。
+        删除非运行中的 Agent 定时任务及其运行历史。
         """
-        return AgentTask.delete_task(
+        return AgentTaskRun.delete_task_and_runs(
             self._db,
             task_id=task_id,
             user_id=user_id,
         )
 
-    def mark_running(self, task_id: int) -> bool:
+    def begin_run(
+            self,
+            task_id: int,
+            trigger_source: str = "scheduled",
+    ) -> Optional[AgentTaskRun]:
         """
-        将 Agent 定时任务标记为运行中。
+        原子创建一次运行并返回其任务快照。
         """
-        return AgentTask.mark_running(
+        run_id = uuid4().hex
+        created_run_id = AgentTaskRun.begin_run(
             self._db,
             task_id=task_id,
-            run_at=self._now(),
+            run_id=run_id,
+            trigger_source=trigger_source,
+            started_at=self._now(),
         )
+        return self.get_run(created_run_id) if created_run_id else None
+
+    def mark_running(self, task_id: int) -> bool:
+        """兼容既有调用并为该次执行创建运行记录。"""
+        return self.begin_run(task_id=task_id) is not None
 
     def mark_interrupted(self, task_id: int, result: str) -> bool:
         """
         将遗留的运行中任务标记为中断且结果未知。
         """
-        return AgentTask.mark_interrupted(
+        return AgentTaskRun.interrupt_task(
             self._db,
             task_id=task_id,
             result=(result or "")[:20000],
+            finished_at=self._now(),
+        )
+
+    def get_run(self, run_id: str) -> Optional[AgentTaskRun]:
+        """查询一次 Agent 任务运行。"""
+        return AgentTaskRun.get_by_run_id(self._db, run_id=run_id)
+
+    def list_runs(
+            self,
+            task_id: int,
+            user_id: Optional[str] = None,
+            limit: int = 10,
+    ) -> list[AgentTaskRun]:
+        """查询任务最近的有界运行历史。"""
+        return AgentTaskRun.list_for_task(
+            self._db,
+            task_id=task_id,
+            user_id=user_id,
+            limit=limit,
+        )
+
+    def finish_run(
+            self,
+            run_id: str,
+            success: bool,
+            result: str,
+            disable_date_task: bool = False,
+    ) -> bool:
+        """收口精确运行并更新仍匹配的任务投影。"""
+        return AgentTaskRun.finish_run(
+            self._db,
+            run_id=run_id,
+            success=success,
+            result=(result or "")[:20000],
+            finished_at=self._now(),
+            disable_date_task=disable_date_task,
         )
 
     def finish(
@@ -124,12 +176,14 @@ class AgentTaskOper(DbOper):
         """
         记录 Agent 定时任务执行结果。
         """
-        return AgentTask.finish_task(
-            self._db,
-            task_id=task_id,
+        task = self.get(task_id)
+        if not task or not task.last_run_id:
+            return False
+        return self.finish_run(
+            run_id=task.last_run_id,
             success=success,
-            result=(result or "")[:20000],
-            disable=disable,
+            result=result,
+            disable_date_task=disable,
         )
 
     @staticmethod
@@ -153,8 +207,27 @@ class AgentTaskOper(DbOper):
             "last_status": task.last_status,
             "last_run_at": task.last_run_at,
             "last_result": task.last_result,
+            "last_run_id": task.last_run_id,
             "run_count": task.run_count or 0,
             "next_run_at": next_run_at,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
+        }
+
+    @staticmethod
+    def run_to_dict(run: AgentTaskRun) -> dict:
+        """将一次 Agent 任务运行转换为工具返回结构。"""
+        return {
+            "run_id": run.run_id,
+            "task_id": run.task_id,
+            "trigger_source": run.trigger_source,
+            "name": run.name,
+            "content": run.content,
+            "trigger_type": run.trigger_type,
+            "cron_expression": run.cron_expression,
+            "run_at": run.run_at,
+            "status": run.status,
+            "started_at": run.started_at,
+            "finished_at": run.finished_at,
+            "result": run.result,
         }

@@ -2941,11 +2941,16 @@ class AgentManager:
             await agent.cleanup()
             memory_manager.clear_memory(session_id, user_id)
 
-    async def execute_scheduled_task(self, task_id: int) -> tuple[bool, str]:
+    async def execute_scheduled_task(
+            self,
+            task_id: int,
+            trigger_source: str = "scheduled",
+    ) -> tuple[bool, str]:
         """
         按持久化上下文唤醒 Agent 执行自主定时任务并向用户回传结果。
 
         :param task_id: Agent 定时任务 ID
+        :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
         if not settings.AI_AGENT_ENABLE:
@@ -2954,23 +2959,27 @@ class AgentManager:
         task = oper.get(task_id)
         if not task or not task.enabled:
             return False, "Agent 定时任务不存在或已停用"
-        if not oper.mark_running(task_id):
+        run = oper.begin_run(task_id=task_id, trigger_source=trigger_source)
+        if not run:
             return False, "Agent 定时任务当前不可执行"
 
+        trigger_description = (
+            "已手动触发" if run.trigger_source == "manual" else "已按计划触发"
+        )
         task_message = (
-            f"定时任务已按计划触发。请立即完成下面的任务，不要只确认收到，"
+            f"定时任务{trigger_description}。请立即完成下面的任务，不要只确认收到，"
             f"也不要重复创建同一个定时任务。\n\n"
-            f"任务名称：{task.name}\n"
-            f"任务内容：{task.content}\n\n"
+            f"任务名称：{run.name}\n"
+            f"任务内容：{run.content}\n\n"
             "完成后请直接向用户发送消息报告本次执行结果；如果无法完成，也需发送消息说明原因。"
         )
         success = True
         result = ""
-        notification_username = task.username or settings.SUPERUSER
+        notification_username = run.username or settings.SUPERUSER
         try:
             result = await self.process_message(
-                session_id=task.session_id,
-                user_id=task.user_id,
+                session_id=run.session_id,
+                user_id=run.user_id,
                 message=task_message,
                 channel=None,
                 source=None,
@@ -2996,23 +3005,17 @@ class AgentManager:
                 Notification(
                     mtype=NotificationType.Agent,
                     username=notification_username,
-                    title=f"定时任务执行失败：{task.name}",
+                    title=f"定时任务执行失败：{run.name}",
                     text=result,
                     save_history=False,
                 )
             )
         finally:
-            current_task = oper.get(task_id)
-            oper.finish(
-                task_id=task_id,
+            oper.finish_run(
+                run_id=run.run_id,
                 success=success,
                 result=str(result or ""),
-                disable=bool(
-                    current_task
-                    and task.trigger_type == "date"
-                    and current_task.trigger_type == task.trigger_type
-                    and current_task.run_at == task.run_at
-                ),
+                disable_date_task=run.trigger_type == "date",
             )
 
         return success, str(result or "任务执行完成")

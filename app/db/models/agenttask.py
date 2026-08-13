@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, Index, Integer, String, Text
@@ -36,6 +35,8 @@ class AgentTask(Base):
     last_status = Column(String, nullable=False, default="waiting")
     last_run_at = Column(String)
     last_result = Column(Text)
+    # 最新一次真实执行的公开 ID，用于保护 last_* 投影不被旧运行覆盖
+    last_run_id = Column(String)
     # 已收口执行次数；进程中断的未完成尝试不计入
     run_count = Column(Integer, nullable=False, default=0)
     created_at = Column(String, nullable=False)
@@ -101,95 +102,15 @@ class AgentTask(Base):
             user_id: Optional[str] = None,
     ) -> bool:
         """
-        按任务 ID 和可选用户 ID 更新 Agent 定时任务。
+        仅在任务未运行时按任务 ID 和可选用户 ID 更新配置。
+
+        运行状态与配置必须在同一条条件更新中判定，避免执行认领后被并发配置写入
+        覆盖回可再次执行的状态。
         """
-        query = db.query(cls).filter(cls.id == task_id)
+        query = db.query(cls).filter(
+            cls.id == task_id,
+            cls.last_status != "running",
+        )
         if user_id is not None:
             query = query.filter(cls.user_id == user_id)
         return bool(query.update(payload))
-
-    @classmethod
-    @db_update
-    def delete_task(
-            cls,
-            db: Session,
-            task_id: int,
-            user_id: Optional[str] = None,
-    ) -> bool:
-        """
-        按任务 ID 和可选用户 ID 删除 Agent 定时任务。
-        """
-        query = db.query(cls).filter(cls.id == task_id)
-        if user_id is not None:
-            query = query.filter(cls.user_id == user_id)
-        return bool(query.delete())
-
-    @classmethod
-    @db_update
-    def mark_running(cls, db: Session, task_id: int, run_at: str) -> bool:
-        """
-        将可执行任务标记为运行中。
-        """
-        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return bool(
-            db.query(cls)
-            .filter(
-                cls.id == task_id,
-                cls.enabled.is_(True),
-                cls.last_status != "running",
-            )
-            .update(
-                {
-                    "last_status": "running",
-                    "last_run_at": run_at,
-                    "updated_at": updated_at,
-                }
-            )
-        )
-
-    @classmethod
-    @db_update
-    def mark_interrupted(cls, db: Session, task_id: int, result: str) -> bool:
-        """
-        将服务重启时遗留的运行中任务标记为结果未知。
-
-        该状态保留原执行时间和计数，避免把可能已经产生副作用的执行误记为
-        从未开始或完整失败。
-        """
-        return bool(
-            db.query(cls)
-            .filter(
-                cls.id == task_id,
-                cls.last_status == "running",
-            )
-            .update(
-                {
-                    "last_status": "interrupted",
-                    "last_result": result,
-                    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            )
-        )
-
-    @classmethod
-    @db_update
-    def finish_task(
-            cls,
-            db: Session,
-            task_id: int,
-            success: bool,
-            result: str,
-            disable: bool = False,
-    ) -> bool:
-        """
-        记录 Agent 定时任务执行结果，并按需关闭单次任务。
-        """
-        payload = {
-            "last_status": "success" if success else "failed",
-            "last_result": result,
-            "run_count": cls.run_count + 1,
-            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        if disable:
-            payload["enabled"] = False
-        return bool(db.query(cls).filter(cls.id == task_id).update(payload))

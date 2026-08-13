@@ -37,7 +37,9 @@ from app.agent.tools.impl.update_agent_task import (
 )
 from app.agent.tools.tags import ToolTag
 from app.core.config import settings
+from app.db import SessionFactory
 from app.db.agenttask_oper import AgentTaskOper
+from app.db.models.agenttask import AgentTask
 from app.schemas import ScheduleInfo
 from app.scheduler import Scheduler
 from app.utils.timer import TimerUtils
@@ -364,7 +366,11 @@ def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
 
     scheduler.start = Mock()
     assert scheduler.start_agent_task(task.id) is True
-    scheduler.start.assert_called_once_with(job_id)
+    scheduler.start.assert_called_once_with(
+        job_id,
+        task_id=task.id,
+        trigger_source="manual",
+    )
 
 
 @pytest.mark.anyio
@@ -381,15 +387,33 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     process_message = AsyncMock(return_value="执行完成")
     monkeypatch.setattr("app.agent.agent_manager.process_message", process_message)
 
-    assert await scheduler.execute_agent_task(task.id) == (True, "执行完成")
+    assert await scheduler.execute_agent_task(
+        task.id,
+        trigger_source="manual",
+    ) == (True, "执行完成")
     process_message.assert_awaited_once()
 
     finished = AgentTaskOper().get(task.id)
+    runs = AgentTaskOper().list_runs(task.id)
     job_id = scheduler._get_agent_task_job_id(task.id)
     assert finished.last_status == "success"
     assert finished.run_count == 1
     assert finished.enabled is False
+    assert len(runs) == 2
+    assert [run.trigger_source for run in runs] == ["manual", "scheduled"]
     assert job_id not in scheduler._jobs
+
+
+@pytest.mark.anyio
+async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> None:
+    """自动调度入口应显式保持 scheduled 运行来源。"""
+    task = _add_agent_task("cron", "0 * * * *", "scheduled-source")
+    scheduler = _build_agent_task_scheduler()
+    execute = AsyncMock(return_value=(True, "执行完成"))
+    monkeypatch.setattr("app.agent.agent_manager.execute_scheduled_task", execute)
+
+    assert await scheduler.execute_agent_task(task.id) == (True, "执行完成")
+    execute.assert_awaited_once_with(task.id, trigger_source="scheduled")
 
 
 @pytest.mark.parametrize("run_time_factory", [_future_time, _invalid_time])
@@ -612,7 +636,11 @@ def test_scheduler_restart_keeps_interrupted_cron_future_schedule() -> None:
 
     scheduler.start = Mock()
     assert scheduler.start_agent_task(task.id) is True
-    scheduler.start.assert_called_once_with(job_id)
+    scheduler.start.assert_called_once_with(
+        job_id,
+        task_id=task.id,
+        trigger_source="manual",
+    )
 
 
 def test_scheduler_restart_reconciles_disabled_running_agent_task() -> None:
@@ -620,7 +648,10 @@ def test_scheduler_restart_reconciles_disabled_running_agent_task() -> None:
     task = _add_agent_task("cron", "0 * * * *", "restart-disabled")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
-    assert oper.update(task_id=task.id, payload={"enabled": False})
+    # 冷启动需兼容数据库中的异常状态组合；生产更新入口禁止修改运行中任务。
+    with SessionFactory() as db:
+        db.query(AgentTask).filter(AgentTask.id == task.id).update({"enabled": False})
+        db.commit()
 
     scheduler = _build_agent_task_scheduler(reconcile=True)
     scheduler.init_agent_task_jobs()
@@ -644,7 +675,11 @@ def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
     scheduler.start = Mock()
 
     assert scheduler.start_agent_task(7) is True
-    scheduler.start.assert_called_once_with("agent-task-7")
+    scheduler.start.assert_called_once_with(
+        "agent-task-7",
+        task_id=7,
+        trigger_source="manual",
+    )
 
     scheduler._jobs["agent-task-7"]["running"] = True
     assert scheduler.start_agent_task(7) is False
@@ -774,8 +809,10 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
     assert updated["run_at"] is None
 
     assert AgentTaskOper().mark_running(task_id)
+    updated_jobs = list(fake_scheduler.updated)
     running_update = await update_tool.run(task_id=task_id, enabled=False)
     assert running_update == f"Agent 定时任务 {task_id} 正在执行，请稍后再修改"
+    assert fake_scheduler.updated == updated_jobs
     AgentTaskOper().finish(task_id, success=True, result="完成")
 
     run_result = await _build_tool(RunAgentTaskTool, user_id).run(task_id=task_id)
