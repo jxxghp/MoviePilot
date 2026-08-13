@@ -41,10 +41,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             conf = SystemConfig.get_by_key(self._db, key)
             if conf:
                 if old_value != value:
-                    if value:
-                        conf.update(self._db, {"value": value})
-                    else:
-                        conf.delete(self._db, conf.id)
+                    # 假值（False/0/None/空容器）同样落库而不是删除记录：
+                    # 读取端以「无记录」表示未配置并回落默认值，删除会使布尔开关的关闭态无法持久化
+                    conf.update(self._db, {"value": value})
                     return True
                 return None
             else:
@@ -77,10 +76,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 return None
             # 执行数据库更新
             if conf:
-                if value:
-                    await conf.async_update(self._db, {"value": value})
-                else:
-                    await conf.async_delete(self._db, conf.id)
+                # 假值（False/0/None/空容器）同样落库而不是删除记录：
+                # 读取端以「无记录」表示未配置并回落默认值，删除会使布尔开关的关闭态无法持久化
+                await conf.async_update(self._db, {"value": value})
             else:
                 conf = SystemConfig(key=key, value=value)
                 await conf.async_create(self._db)
