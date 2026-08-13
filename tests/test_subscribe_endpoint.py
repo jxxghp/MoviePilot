@@ -1358,7 +1358,7 @@ def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
         {"media_id": "123"},
         {"media_source": ""},
         {"media_id": ""},
-        {"media_source": "unknown", "media_id": "123"},
+        {"media_source": "invalid source:", "media_id": "123"},
         {"media_source": MediaSource.TMDB, "media_id": "0"},
         {"media_source": MediaSource.TMDB, "media_id": "   "},
     ],

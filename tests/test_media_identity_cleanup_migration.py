@@ -171,6 +171,14 @@ def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
                 "doubanid": None,
                 "mediaid": None,
             },
+            {
+                "id": 7,
+                "media_source": None,
+                "media_id": None,
+                "tmdbid": None,
+                "doubanid": None,
+                "mediaid": "acme.video:custom-7",
+            },
         ])
         connection.execute(tables["subscribehistory"].insert(), {
             "id": 1, "mediaid": "bangumi:400602",
@@ -225,13 +233,16 @@ def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
             "themoviedb", "1396",
         )
         assert (subscribe_rows[3]["media_source"], subscribe_rows[3]["media_id"]) == (
-            "douban", "35209731",
+            "plugin_source", "custom-1",
         )
         assert (subscribe_rows[4]["media_source"], subscribe_rows[4]["media_id"]) == (
             "douban", "1295644",
         )
         assert (subscribe_rows[5]["media_source"], subscribe_rows[5]["media_id"]) == (
             "musicbrainz", "release-group-1",
+        )
+        assert (subscribe_rows[6]["media_source"], subscribe_rows[6]["media_id"]) == (
+            "acme.video", "custom-7",
         )
         assert identities["subscribehistory"]["media_source"] == "bangumi"
         assert identities["downloadhistory"]["media_source"] == "douban"
@@ -257,9 +268,9 @@ def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch)
                     "mediaid": f"{prefix}:native-{index}",
                 }
                 for index, (prefix, _) in enumerate(PREFIXED_IDENTITIES, start=1)
-            ] + [{
-                "id": len(PREFIXED_IDENTITIES) + 1,
-                "mediaid": "audioXdb:must-not-match-alias",
+        ] + [{
+            "id": len(PREFIXED_IDENTITIES) + 1,
+            "mediaid": "audioXdb:must-not-match-alias",
             }],
         )
 
@@ -283,11 +294,13 @@ def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch)
         (source, f"native-{index}")
         for index, (_, source) in enumerate(PREFIXED_IDENTITIES, start=1)
     ]
-    assert (rows[-1]["media_source"], rows[-1]["media_id"]) == (None, None)
+    assert (rows[-1]["media_source"], rows[-1]["media_id"]) == (
+        "audioxdb", "must-not-match-alias",
+    )
 
 
 def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) -> None:
-    """升级后的数据库应拒绝半对、未知来源和零值身份。"""
+    """升级后的数据库应允许插件来源，并拒绝半对、非法来源和零值身份。"""
     migration = importlib.import_module(
         "database.versions.8a4c7e1d2f90_3_0_0"
     )
@@ -303,7 +316,7 @@ def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) 
         for identity in (
             {"media_source": "themoviedb", "media_id": None},
             {"media_source": None, "media_id": "550"},
-            {"media_source": "plugin_source", "media_id": "550"},
+            {"media_source": "invalid:source", "media_id": "550"},
             {"media_source": "themoviedb", "media_id": "0"},
         ):
             with pytest.raises(sa.exc.IntegrityError):
@@ -312,6 +325,12 @@ def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) 
                         "name": "invalid",
                         **identity,
                     })
+
+        connection.execute(subscribe.insert(), {
+            "name": "plugin",
+            "media_source": "plugin_source",
+            "media_id": "custom-1",
+        })
 
         connection.execute(subscribe.insert(), [
             {"name": "empty", "media_source": None, "media_id": None},

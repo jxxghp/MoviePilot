@@ -1,5 +1,9 @@
+import re
 from enum import Enum
 from typing import Literal, Optional, Tuple, Union
+
+from pydantic import GetJsonSchemaHandler
+from pydantic_core import CoreSchema
 
 
 # 音乐实体命名空间由公共类型模块统一持有，避免模型、接口和工具层重复定义。
@@ -46,8 +50,20 @@ class MediaType(Enum):
         }.get(self, self.value)
 
 
+MEDIA_SOURCE_IDENTIFIER_PATTERN = r"^[a-z][a-z0-9._-]{0,63}$"
+_MEDIA_SOURCE_IDENTIFIER_RE = re.compile(MEDIA_SOURCE_IDENTIFIER_PATTERN)
+_MEDIA_SOURCE_VALUE_ALIASES = {
+    "tmdb": "themoviedb",
+    "audio_db": "theaudiodb",
+    "douban_music": "doubanmusic",
+    "mango_tv": "mangguodiscover",
+    "migu_video": "migu",
+    "tencent_video": "tencentvideodiscover",
+}
+
+
 class MediaSource(str, Enum):
-    """媒体主身份的数据来源。"""
+    """媒体主身份的数据来源，内置来源为常量，插件来源为动态扩展成员。"""
 
     TMDB = "themoviedb"
     Douban = "douban"
@@ -67,8 +83,37 @@ class MediaSource(str, Enum):
         """返回可直接用于 API 和数据库的规范值。"""
         return self.value
 
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["MediaSource"]:
+        """将合法插件来源标识解析为动态枚举成员，并规范化内置别名。"""
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().casefold()
+        normalized = _MEDIA_SOURCE_VALUE_ALIASES.get(normalized, normalized)
+        known_member = cls._value2member_map_.get(normalized)
+        if known_member:
+            return known_member
+        if not _MEDIA_SOURCE_IDENTIFIER_RE.fullmatch(normalized):
+            return None
+        member = str.__new__(cls, normalized)
+        member._name_ = normalized
+        member._value_ = normalized
+        cls._value2member_map_.setdefault(normalized, member)
+        return cls._value2member_map_[normalized]
 
-# 搜索可以选择一个或多个来源，但集合中的每一项都必须是固定枚举。
+    @classmethod
+    def __get_pydantic_json_schema__(
+            cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler,
+    ) -> dict:
+        """在 OpenAPI 中声明可扩展标识格式，避免把内置成员误写成完整白名单。"""
+        schema = handler(core_schema)
+        schema.pop("enum", None)
+        schema["pattern"] = MEDIA_SOURCE_IDENTIFIER_PATTERN
+        schema["examples"] = [source.value for source in cls]
+        return schema
+
+
+# 搜索可以选择一个或多个内置或插件扩展来源。
 MediaSourceSelection = Union[MediaSource, Tuple[MediaSource, ...]]
 
 

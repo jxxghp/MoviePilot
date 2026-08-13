@@ -143,8 +143,8 @@ with Engine.connect() as connection:
             "media_idisnull",
             "media_sourceisnotnull",
             "media_idisnotnull",
-            "'themoviedb'",
-            "'anilist'",
+            "length(media_source)",
+            "media_sourcenotlike'%:%'",
         ):
             assert fragment in normalized_sql, (
                 table_name,
@@ -174,12 +174,12 @@ with Engine.connect() as connection:
                     "INSERT INTO mediaserveritem (media_source, media_id) "
                     "VALUES (:media_source, :media_id)"
                 ),
-                {{"media_source": "invalid_source", "media_id": "1"}},
+                {{"media_source": "invalid:source", "media_id": "1"}},
             )
     except IntegrityError as error:
         assert constraint_name in str(error.orig), str(error.orig)
     else:
-        raise AssertionError("非法媒体身份未被具名检查约束拒绝")
+        raise AssertionError("格式非法的媒体身份未被具名检查约束拒绝")
 """.format(
     media_tables=MEDIA_TABLES,
     legacy_identity_columns=LEGACY_IDENTITY_COLUMNS,

@@ -405,8 +405,8 @@ def test_chain_async_supplement_media_recognize():
     assert result.media_id == "song-1"
 
 
-def test_chain_supplement_rejects_unknown_media_source():
-    """插件返回非固定枚举来源时不得进入统一识别链。"""
+def test_chain_supplement_accepts_plugin_media_source():
+    """插件返回的规范扩展来源应进入统一识别链。"""
     chain = ChainBase()
     event = Event(
         ChainEventType.MusicMediaRecognize,
@@ -429,4 +429,5 @@ def test_chain_supplement_rejects_unknown_media_source():
             mediainfo=None,
         )
 
-    assert result is None
+    assert result.media_source == MediaSource("qqmusic")
+    assert result.media_id == "song-1"

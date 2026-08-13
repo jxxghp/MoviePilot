@@ -229,9 +229,10 @@ moviepilot scheduler run subscribe_refresh
 ```
 
 **Media identity rule:** Generic media tools use the complete `media_source` +
-`media_id` pair returned by media search. `media_source` must be a `MediaSource`
-enum value. A source-owned tool such as `query_episode_schedule` may retain its
-native ID parameter because its schema and implementation are single-source.
+`media_id` pair returned by media search. Built-in sources use `MediaSource`
+constants; plugins may register a schema-valid extension identifier. A
+source-owned tool such as `query_episode_schedule` may retain its native ID
+parameter because its schema and implementation are single-source.
 
 ---
 

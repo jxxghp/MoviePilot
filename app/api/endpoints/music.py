@@ -42,11 +42,6 @@ MusicAlbumTypeParam = Annotated[
     Optional[str],
     Query(pattern="^(album|single|ep|broadcast|other|compilation|soundtrack|live|remix)$"),
 ]
-_MUSIC_DETAIL_SOURCES = frozenset({
-    MediaSource.MusicBrainz,
-    MediaSource.TheAudioDB,
-    MediaSource.DoubanMusic,
-})
 _MUSIC_EXPLORE_SOURCES = frozenset({
     MediaSource.MusicBrainz,
     MediaSource.DoubanMusic,
@@ -55,14 +50,14 @@ _MUSIC_EXPLORE_SOURCES = frozenset({
 
 def _validate_music_source(
         media_source: MediaSource,
-        allowed_sources: frozenset[MediaSource],
+        allowed_sources: Optional[frozenset[MediaSource]] = None,
 ) -> MediaSource:
-    """将 HTTP 或直接调用参数规范为音乐来源枚举，并拒绝不支持的来源。"""
+    """规范音乐来源；仅来源专属端点额外限制内置来源集合。"""
     try:
         normalized_source = MediaSource(media_source)
     except (TypeError, ValueError) as err:
         raise HTTPException(status_code=422, detail="无效的媒体来源") from err
-    if normalized_source not in allowed_sources:
+    if allowed_sources is not None and normalized_source not in allowed_sources:
         raise HTTPException(status_code=422, detail="该媒体来源不支持此音乐接口")
     return normalized_source
 
@@ -228,7 +223,7 @@ async def music_album(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicAlbumInfo:
     """按专辑标准 ID 返回专辑详情、曲目列表和发行版本。"""
-    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    media_source = _validate_music_source(media_source)
     info = await MediaChain().async_get_music_album(
         media_source=media_source, media_id=album_id
     )
@@ -249,7 +244,7 @@ async def music_album_related(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
     """按来源和专辑 ID 返回可继续浏览的关联专辑。"""
-    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_album_related(
         media_source=media_source,
         media_id=album_id,
@@ -272,7 +267,7 @@ async def music_artist_albums(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicInfo]:
     """按艺术家标准 ID 分页返回其专辑、EP 和单曲。"""
-    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_artist_albums(
         media_source=media_source,
         media_id=artist_id,
@@ -295,7 +290,7 @@ async def music_artist_related(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> list[schemas.MusicArtistInfo]:
     """按艺术家关系返回可继续浏览的关联艺术家。"""
-    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_artist_related(
         media_source=media_source,
         media_id=artist_id,
@@ -315,7 +310,7 @@ async def music_artist(
         _: schemas.TokenPayload = Depends(verify_token),
 ) -> schemas.MusicArtistInfo:
     """按艺术家标准 ID 返回艺术家详情。"""
-    media_source = _validate_music_source(media_source, _MUSIC_DETAIL_SOURCES)
+    media_source = _validate_music_source(media_source)
     info = await MediaChain().async_get_music_artist(
         media_source=media_source, media_id=artist_id
     )

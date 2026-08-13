@@ -482,12 +482,12 @@ class DiscoverMediaSource(BaseModel):
     探索媒体数据源的基类。
 
     ``mediaid_prefix`` 是既有插件与前端标签使用的稳定标识；
-    ``media_source`` 是新的规范媒体来源。模型同时输出两者，并在输入时互相补齐，
-    以兼容尚未升级的已安装插件。
+    ``media_source`` 是新的规范媒体来源，可以是内置常量或插件扩展成员。模型同时
+    输出两者，并在输入时互相补齐，以兼容尚未升级的已安装插件。
     """
 
     name: str = Field(..., description="数据源名称")
-    media_source: MediaSource = Field(..., description="媒体来源枚举")
+    media_source: MediaSource = Field(..., description="内置或插件扩展媒体来源")
     mediaid_prefix: str = Field(..., description="兼容插件使用的媒体ID前缀")
     api_path: str = Field(..., description="媒体数据源API地址")
     filter_params: Optional[Dict[str, JsonData]] = Field(
@@ -517,7 +517,7 @@ class DiscoverMediaSource(BaseModel):
 
     @staticmethod
     def _media_source_from_prefix(mediaid_prefix: str) -> MediaSource:
-        """将旧插件使用的历史前缀映射为规范媒体来源枚举。"""
+        """将旧插件前缀映射为内置或插件扩展媒体来源。"""
         aliases = {
             "mangguo": MediaSource.MangoTV,
             "tencentvideo": MediaSource.TencentVideo,
@@ -573,9 +573,9 @@ class MediaRecognizeConvertEventData(RequiredMediaIdentityMixin, ChainEventData)
 
     Attributes:
         # 输入参数
-        media_source (MediaSource): 输入媒体来源
+        media_source (MediaSource): 输入内置或插件扩展媒体来源
         media_id (str): 数据源原生 ID
-        target_media_source (MediaSource): 需要转换到的目标媒体来源
+        target_media_source (MediaSource): 需要转换到的内置或插件扩展媒体来源
 
         # 输出参数
         media_dict (dict): TheMovieDb/豆瓣的媒体数据

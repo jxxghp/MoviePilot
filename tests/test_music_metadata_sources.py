@@ -509,6 +509,15 @@ async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(
     ])
     source_chains = {
         "musicbrainz": musicbrainz,
+        "acme.music": Mock(
+            async_search_music=AsyncMock(return_value=[
+                MusicInfo(
+                    media_source="acme.music",
+                    media_id="plugin-1",
+                    title="Yellow",
+                )
+            ])
+        ),
         "theaudiodb": theaudiodb,
         "doubanmusic": douban,
     }
@@ -520,6 +529,7 @@ async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(
         limit=30,
         media_source=(
             MediaSource.MusicBrainz,
+            MediaSource("acme.music"),
             MediaSource.TheAudioDB,
             MediaSource.DoubanMusic,
             MediaSource.MusicBrainz,
@@ -528,10 +538,12 @@ async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(
 
     assert [(str(item.media_source), item.media_id) for item in results] == [
         ("musicbrainz", "recording-1"),
+        ("acme.music", "plugin-1"),
         ("doubanmusic", "album-1"),
     ]
     assert [str(item.args[0]) for item in select_chain.call_args_list] == [
         "musicbrainz",
+        "acme.music",
         "theaudiodb",
         "doubanmusic",
     ]

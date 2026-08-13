@@ -75,13 +75,19 @@ def is_music_media_source(
 def normalize_media_source(
         source: Optional[Union[MediaSource, str]],
 ) -> Optional[MediaSource]:
-    """将来源别名规范化为固定枚举，未知来源返回 None。"""
+    """将内置别名或插件扩展标识规范化为 MediaSource。"""
     if not source:
         return None
     if isinstance(source, MediaSource):
         return source
     normalized = str(source).strip().casefold()
-    return MEDIA_SOURCE_ALIASES.get(normalized)
+    builtin_source = MEDIA_SOURCE_ALIASES.get(normalized)
+    if builtin_source:
+        return builtin_source
+    try:
+        return MediaSource(normalized)
+    except ValueError:
+        return None
 
 
 def parse_media_source_selection(value: Optional[str]) -> Tuple[MediaSource, ...]:
@@ -90,7 +96,7 @@ def parse_media_source_selection(value: Optional[str]) -> Tuple[MediaSource, ...
 
     :param value: 逗号分隔的来源值；空值表示未显式选择来源
     :return: 去重后的媒体来源枚举元组
-    :raises ValueError: 包含固定枚举之外的来源
+    :raises ValueError: 包含格式非法的来源标识
     """
     if not value:
         return ()
@@ -241,5 +247,5 @@ def build_media_key(
     normalized_id = str(media_id).strip() if media_id is not None else ""
     if not normalized_source or not normalized_id or normalized_id == "0":
         return ""
-    prefix = MEDIA_SOURCE_PREFIXES[normalized_source]
+    prefix = MEDIA_SOURCE_PREFIXES.get(normalized_source, normalized_source.value)
     return f"{prefix}:{normalized_id}"

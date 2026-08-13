@@ -1,5 +1,6 @@
 import asyncio
 from typing import Optional
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -97,8 +98,8 @@ def test_bangumi_movie_conversion_uses_movie_type() -> None:
     assert chain.douban_mtype == MediaType.MOVIE
 
 
-def test_media_identity_conversion_rejects_invalid_or_unsupported_pairs() -> None:
-    """跨源转换只接受完整非零 pair 和受支持的来源组合。"""
+def test_media_identity_conversion_rejects_invalid_pair_without_plugin_handler() -> None:
+    """跨源转换拒绝无效 pair，且没有插件处理器时返回空结果。"""
     chain = _SyncBangumiMediaChain()
 
     assert MediaChain.convert_media_identity(
@@ -107,14 +108,36 @@ def test_media_identity_conversion_rejects_invalid_or_unsupported_pairs() -> Non
         media_source=MediaSource.Bangumi,
         media_id="0",
     ) is None
-    assert MediaChain.convert_media_identity(
-        chain,
-        target_source=MediaSource.TheAudioDB,
-        media_source=MediaSource.Bangumi,
-        media_id="1",
-    ) is None
+    with patch("app.chain.media.eventmanager.send_event", return_value=None):
+        assert MediaChain.convert_media_identity(
+            chain,
+            target_source=MediaSource.TheAudioDB,
+            media_source=MediaSource.Bangumi,
+            media_id="1",
+        ) is None
     assert chain.tmdb_mtype is None
     assert chain.douban_mtype is None
+
+
+def test_media_identity_conversion_dispatches_plugin_source() -> None:
+    """内置转换无匹配时应把动态来源交给插件转换事件。"""
+    chain = _SyncBangumiMediaChain()
+    result = {"media_source": MediaSource.TMDB, "media_id": "550"}
+
+    def handle_event(_event_type, event_data):
+        """模拟插件在链式事件中写入转换结果。"""
+        event_data.media_dict.update(result)
+        return Mock(event_data=event_data)
+
+    with patch("app.chain.media.eventmanager.send_event", side_effect=handle_event):
+        converted = MediaChain.convert_media_identity(
+            chain,
+            target_source=MediaSource.TMDB,
+            media_source=MediaSource("acme.video"),
+            media_id="custom-1",
+        )
+
+    assert converted == result
 
 
 class _AsyncBangumiMediaChain:
@@ -176,3 +199,27 @@ def test_async_bangumi_movie_conversion_uses_movie_type() -> None:
     assert douban_info == {"id": "200"}
     assert chain.tmdb_mtype == MediaType.MOVIE
     assert chain.douban_mtype == MediaType.MOVIE
+
+
+def test_async_media_identity_conversion_dispatches_plugin_source() -> None:
+    """异步内置转换无匹配时也应分派插件转换事件。"""
+    chain = _AsyncBangumiMediaChain()
+    result = {"media_source": MediaSource.Douban, "media_id": "1295644"}
+
+    async def handle_event(_event_type, event_data):
+        """模拟异步插件在链式事件中写入转换结果。"""
+        event_data.media_dict.update(result)
+        return Mock(event_data=event_data)
+
+    with patch(
+        "app.chain.media.eventmanager.async_send_event",
+        new=AsyncMock(side_effect=handle_event),
+    ):
+        converted = asyncio.run(MediaChain.async_convert_media_identity(
+            chain,
+            target_source=MediaSource.Douban,
+            media_source=MediaSource("acme.video"),
+            media_id="custom-1",
+        ))
+
+    assert converted == result

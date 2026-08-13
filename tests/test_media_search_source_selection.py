@@ -46,7 +46,7 @@ def test_media_search_endpoint_forwards_source(
 
 
 def test_media_search_endpoint_forwards_multi_source() -> None:
-    """媒体搜索接口应将逗号分隔来源解析为固定枚举元组。"""
+    """媒体搜索接口应将逗号分隔来源解析为规范来源元组。"""
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
 
@@ -69,7 +69,7 @@ def test_media_search_endpoint_forwards_multi_source() -> None:
 
 @pytest.mark.anyio
 async def test_media_search_route_accepts_comma_separated_music_sources() -> None:
-    """真实路由在旧逗号格式兼容边界后应把每项转换为固定枚举。"""
+    """真实路由在旧逗号格式兼容边界后应把每项转换为 MediaSource。"""
     chain = Mock()
     chain.async_search_music = AsyncMock(return_value=[])
     app = FastAPI()
@@ -166,8 +166,8 @@ async def test_media_search_route_deduplicates_repeated_sources() -> None:
 
 
 @pytest.mark.anyio
-async def test_media_search_route_rejects_unknown_source() -> None:
-    """真实搜索路由应在进入处理链前拒绝固定枚举之外的数据源。"""
+async def test_media_search_route_forwards_plugin_source() -> None:
+    """真实搜索路由应把插件扩展来源传入完整模块调度。"""
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
     app = FastAPI()
@@ -184,11 +184,11 @@ async def test_media_search_route_rejects_unknown_source() -> None:
                 params={"title": "测试", "media_source": "plugin-source"},
             )
 
-    assert response.status_code == 422
-    detail = response.json()["detail"][0]
-    assert detail["type"] == "enum"
-    assert detail["input"] == "plugin-source"
-    chain.async_search.assert_not_awaited()
+    assert response.status_code == 200
+    chain.async_search.assert_awaited_once_with(
+        title="测试",
+        media_source=(MediaSource("plugin-source"),),
+    )
 
 
 @pytest.mark.parametrize(

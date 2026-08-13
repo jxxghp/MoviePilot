@@ -22,10 +22,18 @@ def test_generic_source_id_resolves_as_fixed_enum() -> None:
     ) == (MediaSource.AniList, "154587")
 
 
-def test_unknown_plugin_source_is_rejected() -> None:
-    """固定枚举以外的来源不能进入通用识别链。"""
+def test_plugin_source_is_preserved_as_dynamic_enum() -> None:
+    """格式合法的插件来源应作为动态枚举成员进入通用识别链。"""
     assert resolve_media_identity(
         media_source="plugin_source",
+        media_id="custom-1",
+    ) == (MediaSource("plugin_source"), "custom-1")
+
+
+def test_invalid_source_identifier_is_rejected() -> None:
+    """包含空格或分隔符的来源标识不得进入通用识别链。"""
+    assert resolve_media_identity(
+        media_source="Plugin Source:Invalid",
         media_id="custom-1",
     ) == (None, None)
 

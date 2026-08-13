@@ -7,8 +7,8 @@ from app.schemas import FileItem, TransferDirectoryConf, TransferTask
 from app.schemas.types import MediaSource, MediaType
 
 
-def test_transfer_rejects_partial_or_unknown_explicit_identity() -> None:
-    """整理公共入口不得把半套身份或未知来源传入后台任务。"""
+def test_transfer_rejects_partial_or_invalid_explicit_identity() -> None:
+    """整理公共入口不得把半套身份或格式非法来源传入后台任务。"""
     chain = object.__new__(TransferChain)
     fileitem = FileItem(
         storage="local",
@@ -20,16 +20,16 @@ def test_transfer_rejects_partial_or_unknown_explicit_identity() -> None:
         fileitem=fileitem,
         media_source=MediaSource.TMDB,
     )
-    unknown_state, unknown_message = chain.do_transfer(
+    invalid_state, invalid_message = chain.do_transfer(
         fileitem=fileitem,
-        media_source="plugin-source",
+        media_source="plugin source:invalid",
         media_id="1234",
     )
 
     assert not partial_state
     assert "media_source" in partial_message
-    assert not unknown_state
-    assert "media_source" in unknown_message
+    assert not invalid_state
+    assert "media_source" in invalid_message
 
 
 def test_transfer_resolves_complete_identity_before_building_tasks(monkeypatch) -> None:

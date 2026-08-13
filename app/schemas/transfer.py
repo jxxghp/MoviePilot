@@ -224,7 +224,7 @@ class EpisodeFormatRecommendItem(BaseModel):
 
 
 class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
-    """手动整理请求，媒体身份只接受来源枚举与原生 ID。"""
+    """手动整理请求，媒体身份接受内置或插件来源与原生 ID。"""
 
     # 文件项
     fileitem: FileItem = None

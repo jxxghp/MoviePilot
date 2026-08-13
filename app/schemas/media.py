@@ -4,7 +4,7 @@ from app.schemas.types import MediaSource
 
 
 class OptionalMediaIdentityMixin:
-    """为可选媒体身份模型统一校验来源枚举与原生 ID 的成对约束。"""
+    """为可选媒体身份模型统一校验内置或插件来源与原生 ID 的成对约束。"""
 
     @model_validator(mode="before")
     @classmethod
@@ -52,7 +52,7 @@ class OptionalMediaIdentityMixin:
 
 
 class RequiredMediaIdentityMixin:
-    """为必填媒体身份模型统一校验来源枚举与原生 ID。"""
+    """为必填媒体身份模型统一校验内置或插件来源与原生 ID。"""
 
     @model_validator(mode="after")
     def _validate_required_media_identity(self):

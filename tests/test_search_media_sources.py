@@ -13,10 +13,11 @@ from app.schemas.types import MediaSource, MediaType
 from app.utils.media import normalize_media_source
 
 
-def test_media_source_normalization_rejects_unknown_source() -> None:
-    """固定枚举之外的来源不能进入统一身份链路。"""
-    assert normalize_media_source("plugin_source") is None
+def test_media_source_normalization_accepts_plugin_source() -> None:
+    """来源规范化应同时支持内置别名和插件扩展标识。"""
+    assert normalize_media_source(" Plugin_Source ") == MediaSource("plugin_source")
     assert normalize_media_source("tmdb") == MediaSource.TMDB
+    assert normalize_media_source("plugin source:invalid") is None
 
 
 def test_resolve_anilist_search_params_preserves_identity() -> None:

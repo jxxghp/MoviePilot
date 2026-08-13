@@ -168,21 +168,23 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized = str(media_id).strip() if media_id is not None else ""
         return normalized if normalized and normalized != "0" else None
 
-    @classmethod
-    def _music_infos(cls, result: Any, limit: Optional[int] = None) -> list[MusicInfo]:
-        """将模块或插件结果统一转换为音乐候选列表。"""
+    def _music_infos(
+            self,
+            result: Any,
+            limit: Optional[int] = None,
+    ) -> list[MusicInfo]:
+        """将模块或插件结果统一转换为当前来源的音乐候选列表。"""
         candidates = result if isinstance(result, list) else []
         infos = [
             item if isinstance(item, MusicInfo) else MusicInfo.from_dict(item)
             for item in candidates
             if isinstance(item, (MusicInfo, dict))
         ]
-        infos = [info for info in infos if info.media_source == cls.source]
+        infos = [info for info in infos if info.media_source == self.source]
         return infos[:limit] if limit else infos
 
-    @classmethod
     def _music_info(
-            cls,
+            self,
             result: Any,
             media_id: Optional[str] = None,
     ) -> Optional[MusicInfo]:
@@ -193,15 +195,14 @@ class _MusicMetadataSourceChain(ChainBase):
             info = MusicInfo.from_dict(result)
         else:
             return None
-        if info.media_source and info.media_source != cls.source:
+        if info.media_source and info.media_source != self.source:
             return None
-        if media_id and (info.media_source != cls.source or info.media_id != media_id):
+        if media_id and (info.media_source != self.source or info.media_id != media_id):
             return None
         return info
 
-    @classmethod
     def _music_album(
-            cls,
+            self,
             result: Any,
             media_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
@@ -212,15 +213,14 @@ class _MusicMetadataSourceChain(ChainBase):
             album = MusicAlbumInfo.from_dict(result)
         else:
             return None
-        if album.media_source != cls.source:
+        if album.media_source != self.source:
             return None
         if media_id and album.media_id != media_id:
             return None
         return album
 
-    @classmethod
     def _music_artist(
-            cls,
+            self,
             result: Any,
             media_id: Optional[str] = None,
     ) -> Optional[MusicArtistInfo]:
@@ -231,15 +231,14 @@ class _MusicMetadataSourceChain(ChainBase):
             artist = MusicArtistInfo.from_dict(result)
         else:
             return None
-        if artist.media_source != cls.source:
+        if artist.media_source != self.source:
             return None
         if media_id and artist.media_id != media_id:
             return None
         return artist
 
-    @classmethod
     def _music_artists(
-            cls,
+            self,
             result: Any,
             limit: Optional[int] = None,
     ) -> list[MusicArtistInfo]:
@@ -250,7 +249,7 @@ class _MusicMetadataSourceChain(ChainBase):
             for item in candidates
             if isinstance(item, (MusicArtistInfo, dict))
         ]
-        artists = [artist for artist in artists if artist.media_source == cls.source]
+        artists = [artist for artist in artists if artist.media_source == self.source]
         return artists[:limit] if limit else artists
 
 

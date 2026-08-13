@@ -29,8 +29,8 @@ def test_message_context_contains_primary_and_auxiliary_media_fields() -> None:
     assert media.to_dict()["media_id"] == "170942"
 
 
-def test_media_info_rejects_unknown_plugin_source_identity() -> None:
-    """核心媒体对象应丢弃枚举以外的插件自定义来源。"""
+def test_media_info_preserves_plugin_source_identity() -> None:
+    """核心媒体对象应保留格式合法的插件自定义来源。"""
     media = MediaInfo(
         media_source="plugin_source",
         media_id="custom-100",
@@ -38,5 +38,6 @@ def test_media_info_rejects_unknown_plugin_source_identity() -> None:
         title="插件电影",
     )
 
-    assert media.media_source is None
-    assert media.media_id is None
+    assert media.media_source == MediaSource("plugin_source")
+    assert media.media_id == "custom-100"
+    assert media.to_dict()["media_source"] == "plugin_source"

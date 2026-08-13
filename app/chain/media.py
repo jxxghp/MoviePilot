@@ -10,7 +10,7 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
-from app.chain.musicbrainz import MusicBrainzChain
+from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
 from app.core.cache import async_fresh, fresh
 from app.core.config import settings
@@ -61,23 +61,29 @@ class MediaChain(ChainBase, metaclass=Singleton):
     @staticmethod
     def _music_source_chain(
             media_source: MediaSource,
-    ) -> Optional[MusicBrainzChain | TheAudioDbChain | DoubanChain]:
-        """按固定音乐来源返回对应来源链。"""
+    ) -> Optional[_MusicMetadataSourceChain | DoubanChain]:
+        """返回内置来源专用链，或绑定插件扩展来源的通用音乐端口。"""
         source = normalize_media_source(media_source)
+        if not source:
+            return None
         chains = {
             MediaSource.MusicBrainz: MusicBrainzChain,
             MediaSource.TheAudioDB: TheAudioDbChain,
             MediaSource.DoubanMusic: DoubanChain,
         }
         chain_type = chains.get(source)
-        return chain_type() if chain_type else None
+        if chain_type:
+            return chain_type()
+        plugin_chain = _MusicMetadataSourceChain()
+        plugin_chain.source = source
+        return plugin_chain
 
     @classmethod
     def _music_search_sources(
             cls,
             media_source: Optional[MediaSourceSelection],
     ) -> list[MediaSource]:
-        """解析有序音乐搜索来源集合，忽略未知来源和重复项。"""
+        """解析有序音乐搜索来源集合，保留合法插件扩展来源并去重。"""
         if not media_source:
             return [cls._music_primary_source]
         raw_sources = (
@@ -87,13 +93,14 @@ class MediaChain(ChainBase, metaclass=Singleton):
         )
         sources: list[MediaSource] = []
         for raw_source in raw_sources:
-            if is_music_media_source(raw_source) and raw_source not in sources:
-                sources.append(raw_source)
+            source = normalize_media_source(raw_source)
+            if source and source not in sources:
+                sources.append(source)
         return sources
 
     @staticmethod
     async def _async_search_music_source(
-            chain: MusicBrainzChain | TheAudioDbChain | DoubanChain,
+            chain: _MusicMetadataSourceChain | DoubanChain,
             source: MediaSource,
             meta: MetaMusic,
             limit: int,
@@ -1480,7 +1487,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 mtype=mtype or MediaInfo.get_bangumi_media_type(source_info),
                 season=season if season is not None else meta.begin_season,
             )
-        return None
+        event_data = schemas.MediaRecognizeConvertEventData(
+            media_source=media_source,
+            media_id=media_id,
+            target_media_source=target_source,
+        )
+        event = eventmanager.send_event(
+            ChainEventType.MediaRecognizeConvert, event_data,
+        )
+        return event_data.media_dict if event and event_data.media_dict else None
 
 
     @staticmethod
@@ -2018,4 +2033,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 mtype=mtype or MediaInfo.get_bangumi_media_type(source_info),
                 season=season if season is not None else meta.begin_season,
             )
-        return None
+        event_data = schemas.MediaRecognizeConvertEventData(
+            media_source=media_source,
+            media_id=media_id,
+            target_media_source=target_source,
+        )
+        event = await eventmanager.async_send_event(
+            ChainEventType.MediaRecognizeConvert, event_data,
+        )
+        return event_data.media_dict if event and event_data.media_dict else None

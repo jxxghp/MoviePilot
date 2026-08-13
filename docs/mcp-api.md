@@ -131,13 +131,13 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 #### 媒体识别 / 整理
 
-媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。`media_source` 必须是 `MediaSource` 枚举值：`themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic`、`bilibili`、`mangguodiscover`、`migu` 或 `tencentvideodiscover`；`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。
+媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。内置来源通过 `MediaSource` 提供 `themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic`、`bilibili`、`mangguodiscover`、`migu` 和 `tencentvideodiscover` 等常量；该列表不是插件来源白名单，插件可以注册符合 OpenAPI 格式约束的稳定扩展标识。`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。
 
 影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，标签和文件名标题识别也只使用 MusicBrainz。其它元数据源仅在手动操作通过请求级 `media_source`，或通过完整的 `media_source` + `media_id` 精确指定时使用，不修改系统默认值，也不会跨来源兜底。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/media/search` | 按标题搜索媒体、合集、人物或音乐，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；不同搜索类型仅接受其支持的 `MediaSource` 枚举值，旧客户端的逗号格式仅在输入边界兼容 |
+| GET | `/api/v1/media/search` | 按标题搜索媒体、合集、人物或音乐，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；内置模块只处理自身支持的来源，插件模块可以处理其注册的扩展来源，旧客户端的逗号格式仅在输入边界兼容 |
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `media_source` |
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询媒体详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份 |
@@ -296,7 +296,7 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
 `start_line`、`end_line` 指定更小的行号范围继续读取。
 
-媒体相关 MCP 工具以 `MediaSource` 枚举 `media_source` + 来源原生 `media_id` 传递精确身份。`query_media_detail`、`search_torrents`、`query_library_exists` 必须提供完整字段对；`add_subscribe`、`transfer_file`、`scrape_metadata` 在显式指定身份时也必须成对提供。`search_media` 和 `recognize_media` 是按标题或路径发现身份的入口，其结果中的字段对可直接用于后续工具。音乐调用还使用 `media_type=music` 与 `music_type=recording|album|artist`；其中艺术家只允许搜索和详情浏览。工具响应中的专用 ID 仅是跨源映射辅助输出，不应再作为上述通用工具的输入。TMDB 专用的 `query_episode_schedule` 仍使用 `tmdb_id`，因为它直接调用单一 TMDB 剧集接口。
+媒体相关 MCP 工具以 `media_source` + 来源原生 `media_id` 传递精确身份；内置来源使用 `MediaSource` 常量，插件来源使用注册的稳定扩展标识。`query_media_detail`、`search_torrents`、`query_library_exists` 必须提供完整字段对；`add_subscribe`、`transfer_file`、`scrape_metadata` 在显式指定身份时也必须成对提供。`search_media` 和 `recognize_media` 是按标题或路径发现身份的入口，其结果中的字段对可直接用于后续工具。音乐调用还使用 `media_type=music` 与 `music_type=recording|album|artist`；其中艺术家只允许搜索和详情浏览。工具响应中的专用 ID 仅是跨源映射辅助输出，不应再作为上述通用工具的输入。TMDB 专用的 `query_episode_schedule` 仍使用 `tmdb_id`，因为它直接调用单一 TMDB 剧集接口。
 
 Agent 音乐流程与影视共用同一采集管线，但实体边界不同：单曲通过 `music_type=recording` 按一个文件处理；专辑通过 `music_type=album` 类似电视剧整季包，按一个目录/资源处理并校验总曲目数；艺术家不是采集目标。`add_subscribe` / `update_subscribe` 支持音乐音质筛选字段和 `best_version` 音质洗版；`query_subscribes` 会返回筛选条件及当前音质快照。`scrape_metadata(media_type="music")` 会按策略写音频标签、封面和歌词，并返回歌词新增、已存在、未匹配和失败数量。
 

@@ -291,8 +291,8 @@ def test_scrape_album_uses_unified_entity_recognition(tmp_path):
     assert async_recognize.await_args.kwargs["music_type"] == "album"
 
 
-def test_scrape_metadata_rejects_unknown_media_source_before_file_access(tmp_path):
-    """Agent 直接调用工具时也必须拒绝固定枚举之外的媒体来源。"""
+def test_scrape_metadata_rejects_invalid_media_source_before_file_access(tmp_path):
+    """Agent 直接调用工具时也必须拒绝格式非法的媒体来源。"""
     audio_file = tmp_path / "unknown-source.flac"
     audio_file.write_bytes(b"audio")
     tool = ScrapeMetadataTool(session_id="session-1", user_id="10001")
@@ -300,7 +300,7 @@ def test_scrape_metadata_rejects_unknown_media_source_before_file_access(tmp_pat
     result = asyncio.run(tool.run(
         path=str(audio_file),
         media_type="music",
-        media_source="plugin-source",
+        media_source="plugin source:invalid",
         media_id="recording-1",
     ))
 

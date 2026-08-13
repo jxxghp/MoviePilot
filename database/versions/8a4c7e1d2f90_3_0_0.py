@@ -7,6 +7,7 @@ Create Date: 2026-08-12
 """
 
 from collections.abc import Iterable
+import re
 
 from alembic import op
 import sqlalchemy as sa
@@ -69,16 +70,15 @@ SOURCE_ALIASES = {
     "tencentvideodiscover": "tencentvideodiscover",
     "tencent_video": "tencentvideodiscover",
 }
-MEDIA_SOURCE_VALUES = frozenset(SOURCE_ALIASES.values())
-MEDIA_SOURCE_SQL_VALUES = ", ".join(
-    f"'{source}'" for source in sorted(MEDIA_SOURCE_VALUES)
-)
 MEDIA_IDENTITY_CHECK_SQL = (
     "(media_source IS NULL AND media_id IS NULL) OR "
     "(media_source IS NOT NULL AND "
-    f"media_source IN ({MEDIA_SOURCE_SQL_VALUES}) AND "
+    "trim(media_source) <> '' AND media_source = lower(trim(media_source)) AND "
+    "length(media_source) <= 64 AND media_source NOT LIKE '%:%' AND "
+    "media_source NOT LIKE '% %' AND "
     "media_id IS NOT NULL AND trim(media_id) <> '' AND trim(media_id) <> '0')"
 )
+MEDIA_SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
 
 
 def _inspector() -> sa.Inspector:
@@ -118,7 +118,7 @@ def _identity_missing(table: sa.TableClause):
 
 
 def _normalize_existing_sources(table_name: str) -> None:
-    """把旧版本允许的来源别名规范化为当前枚举值。"""
+    """规范内置来源别名，并保留插件注册的扩展来源标识。"""
     table = sa.table(
         table_name,
         sa.column("media_source", sa.String()),
@@ -133,7 +133,7 @@ def _normalize_existing_sources(table_name: str) -> None:
     connection.execute(
         table.update()
         .where(table.c.media_source.is_not(None))
-        .values(media_source=sa.func.trim(table.c.media_source))
+        .values(media_source=sa.func.lower(sa.func.trim(table.c.media_source)))
     )
 
 
@@ -147,9 +147,9 @@ def _clear_invalid_or_partial_identity(table_name: str) -> None:
     invalid_identity = sa.or_(
         table.c.media_source.is_(None),
         sa.func.trim(table.c.media_source) == "",
-        sa.func.lower(sa.func.trim(table.c.media_source)).not_in(
-            MEDIA_SOURCE_VALUES
-        ),
+        sa.func.length(sa.func.trim(table.c.media_source)) > 64,
+        sa.func.trim(table.c.media_source).contains(":"),
+        sa.func.trim(table.c.media_source).contains(" "),
         table.c.media_id.is_(None),
         sa.func.trim(table.c.media_id) == "",
         sa.func.trim(table.c.media_id) == "0",
@@ -167,11 +167,12 @@ def _clear_invalid_or_partial_identity(table_name: str) -> None:
 
 
 def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
-    """从旧的 ``prefix:id`` 组合字段回填规范身份。"""
+    """从旧的 ``prefix:id`` 组合字段回填内置或插件扩展身份。"""
     if "mediaid" not in columns:
         return
     table = sa.table(
         table_name,
+        sa.column("id", sa.Integer()),
         sa.column("mediaid", sa.String()),
         sa.column("media_source", sa.String()),
         sa.column("media_id", sa.String()),
@@ -203,6 +204,32 @@ def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
                     sa.func.substr(table.c.mediaid, len(prefix) + 2)
                 ),
             )
+        )
+
+    # 插件来源无法预先枚举，已知别名批量回填后再解析剩余合法前缀。
+    connection = op.get_bind()
+    rows = connection.execute(
+        sa.select(table.c.id, table.c.mediaid)
+        .where(_identity_missing(table))
+        .where(table.c.mediaid.is_not(None))
+    ).mappings().all()
+    for row in rows:
+        raw_media_id = str(row["mediaid"]).strip()
+        raw_source, separator, raw_native_id = raw_media_id.partition(":")
+        media_source = raw_source.strip().casefold()
+        media_id = raw_native_id.strip()
+        if (
+                not separator
+                or not MEDIA_SOURCE_PATTERN.fullmatch(media_source)
+                or not media_id
+                or media_id == "0"
+        ):
+            continue
+        connection.execute(
+            table.update()
+            .where(table.c.id == row["id"])
+            .where(_identity_missing(table))
+            .values(media_source=media_source, media_id=media_id)
         )
 
 
@@ -302,7 +329,7 @@ def _ensure_identity_indexes() -> None:
 
 
 def _ensure_identity_constraints() -> None:
-    """为六张通用媒体表建立来源枚举与身份成对数据库约束。"""
+    """为六张通用媒体表建立可扩展来源与身份成对数据库约束。"""
     for table_name in LEGACY_COLUMNS:
         if not _has_table(table_name):
             continue

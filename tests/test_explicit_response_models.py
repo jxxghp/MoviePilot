@@ -153,8 +153,15 @@ def test_discover_media_source_keeps_legacy_prefix_compatible():
         mediaid_prefix="mangguo",
         api_path="plugin/MangoTVDiscover/discover",
     )
+    plugin_source = DiscoverMediaSource(
+        name="Acme Video",
+        media_source=MediaSource("acme.video"),
+        api_path="plugin/AcmeVideo/discover",
+    )
 
     assert legacy.media_source is MediaSource.Bilibili
     assert legacy.model_dump(mode="json")["mediaid_prefix"] == "bilibili"
     assert current.mediaid_prefix == MediaSource.TencentVideo.value
     assert historical_alias.media_source is MediaSource.MangoTV
+    assert plugin_source.media_source == MediaSource("acme.video")
+    assert plugin_source.mediaid_prefix == "acme.video"
