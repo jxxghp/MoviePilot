@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 项目讨论
+    url: https://github.com/jxxghp/MoviePilot/discussions/new/choose
+    about: discussion
+  - name: Telegram 频道
+    url: https://t.me/moviepilot_channel
+    about: 更新日志
+  - name: Telegram 交流群
+    url: https://t.me/moviepilot_official
+    about: 交流互助

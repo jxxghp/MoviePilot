@@ -1,0 +1,158 @@
+name: Close inactive issues
+on:
+ workflow_dispatch:
+
+ issues:
+   types: [opened, edited]
+
+ schedule:
+   # Github Action 只支持 UTC 时间。
+   # '0 18 * * *' 对应 UTC 时间的 18:00，也就是中国时区 (UTC+8) 的第二天凌晨 02:00。
+   - cron: "0 18 * * *"
+
+jobs:
+ label-opened-issue:
+   if: github.event_name == 'issues'
+   runs-on: ubuntu-latest
+   permissions:
+     issues: write
+   steps:
+     - uses: actions/github-script@v7
+       with:
+         script: |
+           const issue = context.payload.issue;
+           const title = issue.title || '';
+           const body = issue.body || '';
+           const currentLabels = (issue.labels || []).map((label) => label.name);
+
+           // 网页 Issue Form 已经会自动带模板 labels；这里只兜底处理
+           // API 创建或异常路径产生的无 label issue，避免重复补标。
+           if (currentLabels.length > 0) {
+             core.info(`Issue #${issue.number} already has labels: ${currentLabels.join(', ')}`);
+             return;
+           }
+
+           const hasAllMarkers = (markers) => markers.every((marker) => body.includes(marker));
+           const labelRules = [
+             {
+               label: 'bug',
+               titlePrefix: '[错误报告]:',
+               markers: ['### 当前程序版本', '### 运行环境', '### 问题类型', '### 问题描述'],
+             },
+             {
+               label: 'feature request',
+               titlePrefix: '[Feature Request]:',
+               markers: ['### 当前程序版本', '### 运行环境', '### 功能改进类型', '### 功能改进'],
+             },
+             {
+               label: 'RFC',
+               titlePrefix: '[RFC]',
+               markers: ['### 背景 or 问题', '### 目标 & 方案简述'],
+             },
+           ];
+
+           const matched = labelRules.find((rule) => (
+             title.startsWith(rule.titlePrefix) || hasAllMarkers(rule.markers)
+           ));
+
+           if (!matched) {
+             core.info(`Issue #${issue.number} does not match known issue templates.`);
+             return;
+           }
+
+           await github.rest.issues.addLabels({
+             owner: context.repo.owner,
+             repo: context.repo.repo,
+             issue_number: issue.number,
+             labels: [matched.label],
+           });
+           core.info(`Added label "${matched.label}" to issue #${issue.number}.`);
+
+ label-unlabeled-issues:
+   if: github.event_name != 'issues'
+   runs-on: ubuntu-latest
+   permissions:
+     issues: write
+   steps:
+     - uses: actions/github-script@v7
+       with:
+         script: |
+           const labelRules = [
+             {
+               label: 'bug',
+               titlePrefix: '[错误报告]:',
+               markers: ['### 当前程序版本', '### 运行环境', '### 问题类型', '### 问题描述'],
+             },
+             {
+               label: 'feature request',
+               titlePrefix: '[Feature Request]:',
+               markers: ['### 当前程序版本', '### 运行环境', '### 功能改进类型', '### 功能改进'],
+             },
+             {
+               label: 'RFC',
+               titlePrefix: '[RFC]',
+               markers: ['### 背景 or 问题', '### 目标 & 方案简述'],
+             },
+           ];
+
+           const hasAllMarkers = (body, markers) => markers.every((marker) => body.includes(marker));
+           const getMatchedRule = (issue) => {
+             const title = issue.title || '';
+             const body = issue.body || '';
+             return labelRules.find((rule) => (
+               title.startsWith(rule.titlePrefix) || hasAllMarkers(body, rule.markers)
+             ));
+           };
+
+           // Search API 支持 no:label 查询；issues.listForRepo 的 labels=none
+           // 会被当作名为 none 的标签，不能用于扫描无 label issue。
+           const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open no:label`;
+           for await (const response of github.paginate.iterator(github.rest.search.issuesAndPullRequests, {
+             q: query,
+             per_page: 100,
+           })) {
+             for (const issue of response.data) {
+               if (issue.pull_request) {
+                 continue;
+               }
+
+               const matched = getMatchedRule(issue);
+               if (!matched) {
+                 continue;
+               }
+
+               await github.rest.issues.addLabels({
+                 owner: context.repo.owner,
+                 repo: context.repo.repo,
+                 issue_number: issue.number,
+                 labels: [matched.label],
+               });
+               core.info(`Added label "${matched.label}" to issue #${issue.number}.`);
+             }
+           }
+
+ close-issues:
+   if: github.event_name != 'issues'
+   needs: label-unlabeled-issues
+   runs-on: ubuntu-latest
+   permissions:
+     issues: write
+     pull-requests: write
+   steps:
+     - uses: actions/stale@v5
+       with:
+         # 标记 stale 标签时间
+         days-before-issue-stale: 30
+         # 关闭 issues 标签时间
+         days-before-issue-close: 14
+         # 自定义标签名
+         stale-issue-label: "stale"
+         stale-issue-message: "此问题已过时，因为它已打开 30 天且没有任何活动。"
+         close-issue-message: "此问题已关闭，因为它在标记为 stale 后，已处于无更新状态 14 天。"
+         # 忽略所有的 Pull Request，只处理 Issue
+         days-before-pr-stale: -1
+         days-before-pr-close: -1
+         # 排除带有RFC标签的issue
+         exempt-issue-labels: "RFC"
+         operations-per-run: 500
+         repo-token: ${{ secrets.GITHUB_TOKEN }}

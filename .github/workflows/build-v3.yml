@@ -1,0 +1,257 @@
+name: MoviePilot Builder v3
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v3
+    paths:
+      - 'version.py'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  Docker-build:
+    runs-on: ubuntu-latest
+    name: Build Docker Image
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Release version
+        id: release_version
+        run: |
+          app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+          echo "app_version=$app_version" >> $GITHUB_ENV
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Checkout Wiki Plugin Market
+        uses: actions/checkout@v4
+        with:
+          repository: jxxghp/MoviePilot-Wiki
+          ref: main
+          path: .build/moviepilot-wiki
+          sparse-checkout: plugin.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Generate Plugin Market Default
+        id: plugin_market
+        run: |
+          python3 -m scripts.generate_plugin_market_default \
+            --wiki-file .build/moviepilot-wiki/plugin.md \
+            --config-file app/core/config.py
+          wiki_commit=$(git -C .build/moviepilot-wiki rev-parse HEAD)
+          echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release Snapshot
+        id: release_snapshot
+        env:
+          WIKI_COMMIT: ${{ steps.plugin_market.outputs.wiki_commit }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/core/config.py
+          if ! git diff --cached --quiet; then
+            git commit -m "build(plugin-market): sync default from MoviePilot-Wiki@${WIKI_COMMIT:0:12}"
+          fi
+          echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
+            ghcr.io/${{ github.repository }}-v3
+          tags: |
+            type=raw,value=${{ env.app_version }}
+            type=raw,value=latest
+
+      - name: Set Up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set Up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
+            org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
+          cache-from: type=gha,scope=moviepilot-v3-docker,version=2
+          cache-to: type=gha,scope=moviepilot-v3-docker,mode=max,version=2
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # 获取上一个 tag（优先 v3.*，回退到任意 v* 版本 tag）
+          PREVIOUS_TAG=$(git tag -l 'v3.*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
+          fi
+          echo "Previous tag: $PREVIOUS_TAG"
+
+          # 使用 || 作为分隔符，同时获取 commit 消息和作者 GitHub 用户名
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # 首次发布且无任何历史版本 tag，限制条数避免打印整库历史撑爆环境变量
+            COMMITS=$(git log --pretty=format:"%s||%an" -n 300 "${SOURCE_COMMIT}")
+          else
+            COMMITS=$(git log --pretty=format:"%s||%an" "${PREVIOUS_TAG}..${SOURCE_COMMIT}")
+          fi
+
+          # 分类收集 commit 消息（使用关联数组去重）
+          declare -A SEEN
+          FEATURES=""
+          FIXES=""
+          OTHERS=""
+
+          while IFS= read -r line; do
+            # 跳过空行
+            if [ -z "$line" ]; then
+              continue
+            fi
+
+            # 分离 commit 消息和作者
+            msg=$(echo "$line" | sed 's/||[^|]*$//')
+            author=$(echo "$line" | sed 's/.*||//')
+
+            # 跳过 Merge commit 和版本更新 commit
+            if echo "$msg" | grep -qE "^Merge pull request|^Merge branch|^更新 version"; then
+              continue
+            fi
+
+            # 按 Conventional Commits 前缀分类
+            if echo "$msg" | grep -qiE "^feat(\(.+\))?:"; then
+              desc=$(echo "$msg" | sed -E 's/^feat(\([^)]*\))?:\s*//')
+              category="FEATURES"
+            elif echo "$msg" | grep -qiE "^fix(\(.+\))?:"; then
+              desc=$(echo "$msg" | sed -E 's/^fix(\([^)]*\))?:\s*//')
+              category="FIXES"
+            elif echo "$msg" | grep -qiE "^(docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?:"; then
+              desc=$(echo "$msg" | sed -E 's/^(docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?:\s*//')
+              category="OTHERS"
+            else
+              desc="$msg"
+              category="OTHERS"
+            fi
+
+            # 使用 "分类+描述" 作为去重的 key，跳过重复内容
+            dedup_key="${category}::${desc}"
+            if [ -n "${SEEN[$dedup_key]+x}" ]; then
+              continue
+            fi
+            SEEN[$dedup_key]=1
+
+            # 添加 by @author 引用
+            entry="- ${desc} by @${author}"
+
+            case "$category" in
+              FEATURES) FEATURES="${FEATURES}${entry}\n" ;;
+              FIXES)    FIXES="${FIXES}${entry}\n" ;;
+              OTHERS)   OTHERS="${OTHERS}${entry}\n" ;;
+            esac
+          done <<< "$COMMITS"
+
+          # 组装 changelog
+          CHANGELOG=""
+
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### ✨ 新功能\n\n${FEATURES}\n"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### 🐛 修复\n\n${FIXES}\n"
+          fi
+
+          if [ -n "$OTHERS" ]; then
+            CHANGELOG="${CHANGELOG}### 🔧 其他\n\n${OTHERS}\n"
+          fi
+
+          # 添加版本对比链接
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG="${CHANGELOG}**完整更新记录**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${{ env.app_version }}"
+          fi
+
+          # 写入环境变量
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo -e "$CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Get existing release body
+        id: get_release_body
+        continue-on-error: true
+        env:
+          CHANGELOG: ${{ env.CHANGELOG }}
+        run: |
+          release_body=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.app_version }}" | \
+            jq -r '.body // ""')
+
+          # 如果已有手动编写的 release body，则保留；否则使用自动生成的 changelog
+          if [ -n "$release_body" ] && [ "$release_body" != "null" ] && [ "$release_body" != "" ]; then
+            echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+            echo "$release_body" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+            echo "$CHANGELOG" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          fi
+
+      - name: Delete Release
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        continue-on-error: true
+        with:
+          tag_name: v${{ env.app_version }}
+          delete_release: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release Tag
+        env:
+          RELEASE_COMMIT: ${{ steps.release_snapshot.outputs.release_commit }}
+        run: |
+          tag_name="v${{ env.app_version }}"
+          if git show-ref --verify --quiet "refs/tags/${tag_name}"; then
+            git tag -d "$tag_name"
+          fi
+          git tag "$tag_name" "$RELEASE_COMMIT"
+          git push origin "refs/tags/${tag_name}"
+
+      - name: Generate Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.app_version }}
+          name: v${{ env.app_version }}
+          body: ${{ env.RELEASE_BODY }}
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

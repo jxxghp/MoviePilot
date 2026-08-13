@@ -1,0 +1,70 @@
+name: Unit Tests
+
+on:
+  # 指向 v3 的 PR 与推送都跑全量单测，作为合并门禁
+  pull_request:
+    branches:
+      - v3
+  push:
+    branches:
+      - v3
+  # 允许手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements-dev.in', '**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # 单测需要开发/测试依赖；运行时入口 requirements.in 不携带测试与构建辅助工具。
+          pip install -r requirements-dev.in
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: |
+          # tests/run.py 以 pytest 跑 tests 全量；tests/conftest.py 在收集前把 CONFIG_DIR
+          # 指向临时库并建表；CI 额外生成覆盖率报告，便于后续补测和回归分析。
+          python -m coverage erase
+          python -m coverage run tests/run.py
+          python -m coverage report
+          python -m coverage json
+          python -m coverage xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage.json
+          retention-days: 7

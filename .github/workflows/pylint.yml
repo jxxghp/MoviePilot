@@ -1,0 +1,82 @@
+name: Pylint Code Quality Check
+
+on:
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  pylint:
+    runs-on: ubuntu-latest
+    name: Pylint Code Quality Check
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.in', '**/requirements-dev.in', '**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        # Pylint 属于开发/静态检查依赖，统一通过 dev 入口安装。
+        pip install -r requirements-dev.in
+
+    - name: Verify pylint config
+      run: |
+        # 检查项目中的pylint配置文件是否存在
+        if [ -f .pylintrc ]; then
+          echo "✅ 找到项目配置文件: .pylintrc"
+          echo "配置文件内容预览:"
+          head -10 .pylintrc
+        else
+          echo "❌ 未找到 .pylintrc 配置文件"
+          exit 1
+        fi
+    - name: Run pylint
+      run: |
+        # 运行pylint，检查主要的Python文件
+        echo "🚀 运行 Pylint 错误检查..."
+
+        # 检查主要目录 - 只关注错误，如果有错误则退出
+        echo "📂 检查 app/ 目录..."
+        pylint app/ --output-format=colorized --reports=yes --score=yes
+
+        # 检查根目录的Python文件
+        echo "📂 检查根目录 Python 文件..."
+        for file in $(find . -name "*.py" -not -path "./.*" -not -path "./.venv/*" -not -path "./build/*" -not -path "./dist/*" -not -path "./tests/*" -not -path "./docs/*" -not -path "./__pycache__/*" -maxdepth 1); do
+          echo "检查文件: $file"
+          pylint "$file" --output-format=colorized || exit 1
+        done
+
+        # 生成详细报告
+        echo "📊 生成 Pylint 详细报告..."
+        pylint app/ --output-format=json > pylint-report.json || true
+
+        # 显示评分（仅供参考）
+        echo "📈 Pylint 评分（仅供参考）:"
+        pylint app/ --score=yes --reports=no | tail -2 || true
+
+    - name: Upload pylint report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pylint-report
+        path: pylint-report.json
+
+    - name: Summary
+      run: |
+        echo "🎉 Pylint 检查完成！"
+        echo "✅ 没有发现语法错误或严重问题"
+        echo "📊 详细报告已保存为构建工件"

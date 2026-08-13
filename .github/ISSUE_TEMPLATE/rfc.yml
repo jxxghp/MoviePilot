@@ -1,0 +1,45 @@
+name: 功能提案
+description: Request for Comments
+title: "[RFC]"
+labels: ["RFC"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        一份提案(RFC)定位为 **「在某功能/重构的具体开发前，用于开发者间 review 技术设计/方案的文档」**，
+        目的是让协作的开发者间清晰的知道「要做什么」和「具体会怎么做」，以及所有的开发者都能公开透明的参与讨论；
+        以便评估和讨论产生的影响 (遗漏的考虑、向后兼容性、与现有功能的冲突)，
+        因此提案侧重在对解决问题的 **方案、设计、步骤** 的描述上。
+
+        如果仅希望讨论是否添加或改进某功能本身，请使用 -> [Issue: 功能改进](https://github.com/jxxghp/MoviePilot/issues/new?assignees=&labels=feature+request&projects=&template=feature_request.yml&title=%5BFeature+Request%5D%3A+)
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景 or 问题
+      description: 简单描述遇到的什么问题或需要改动什么。可以引用其他 issue、讨论、文档等。
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: "目标 & 方案简述"
+      description: 简单描述提案此提案实现后，**预期的目标效果**，以及简单大致描述会采取的方案/步骤，可能会/不会产生什么影响。
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: "方案设计 & 实现步骤"
+      description: |
+        详细描述你设计的具体方案，可以考虑拆分列表或要点，一步步描述具体打算如何实现的步骤和相关细节。
+        这部份不需要一次性写完整，即使在创建完此提案 issue 后，依旧可以再次编辑修改。
+    validations:
+      required: false
+  - type: textarea
+    id: alternative
+    attributes:
+      label: "替代方案 & 对比"
+      description: |
+        [可选] 为来实现目标效果，还考虑过什么其他方案，有什么对比？
+    validations:
+      required: false

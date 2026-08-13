@@ -1,0 +1,70 @@
+name: 问题反馈
+description: File a bug report
+title: "[错误报告]: 请在此处简单描述你的问题"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请确认以下信息：
+        1. 请按此模板提交issues，不按模板提交的问题将直接关闭。
+        2. 如果你的问题可以直接在以往 issue 或者 Telegram频道 中找到，那么你的 issue 将会被直接关闭。
+        3. **$\color{red}{提交问题务必描述清楚、附上日志}$**，描述不清导致无法理解和分析的问题会被直接关闭。
+        4. 此仓库为后端仓库，如果是前端 WebUI 问题请在[前端仓库](https://github.com/jxxghp/MoviePilot-Frontend)提 issue。
+        5. **$\color{red}{不要通过issues来寻求解决你的环境问题、配置安装类问题、咨询类问题}$**，否则直接关闭并加入用户 $\color{red}{黑名单}$ !实在没有精力陪一波又一波的伸手党玩。
+  - type: checkboxes
+    id: ensure
+    attributes:
+      label: 确认
+      description: 在提交 issue 之前，请确认你已经阅读并确认以下内容
+      options:
+        - label: 我的版本是最新版本，我的版本号与 [version](https://github.com/jxxghp/MoviePilot/releases/latest) 相同。
+          required: true
+        - label: 我已经 [issue](https://github.com/jxxghp/MoviePilot/issues) 中搜索过，确认我的问题没有被提出过。
+          required: true
+        - label: 我已经 [Telegram频道](https://t.me/moviepilot_channel) 中搜索过，确认我的问题没有被提出过。
+          required: true
+        - label: 我已经修改标题，将标题中的 描述 替换为我遇到的问题。
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: 当前程序版本
+      description: 遇到问题时程序所在的版本号
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 当前程序运行环境
+      options:
+        - Docker
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: 问题类型
+      description: 你在以下哪个部分碰到了问题
+      options:
+        - 主程序运行问题
+        - 插件问题
+        - 其他问题
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 请详细描述你碰到的问题
+      placeholder: "问题描述"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 发生问题时系统日志和配置文件
+      description: 问题出现时，程序运行日志请复制到这里。
+      render: bash

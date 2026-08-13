@@ -1,0 +1,134 @@
+name: Site Adapter Collector
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to receive collector assets; leave empty for artifacts only
+        required: false
+        type: string
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform_name }} collector
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_name: Windows
+            platform_id: windows
+            runner: windows-latest
+            source_name: moviepilot-site-collector.exe
+            asset_name: moviepilot-site-collector-windows.exe
+            artifact_name: site-adapter-collector-windows
+          - platform_name: macOS
+            platform_id: macos
+            runner: macos-latest
+            source_name: moviepilot-site-collector
+            asset_name: MoviePilot-Site-Collector-macOS.zip
+            artifact_name: site-adapter-collector-macos
+          - platform_name: Linux
+            platform_id: linux
+            runner: ubuntu-latest
+            source_name: moviepilot-site-collector
+            asset_name: moviepilot-site-collector-linux
+            artifact_name: site-adapter-collector-linux
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/site_adapter_collector_requirements.txt
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r scripts/site_adapter_collector_requirements.txt
+
+      - name: Build single-file collector
+        run: |
+          pyinstaller --clean --noconfirm scripts/site_adapter_collector.spec
+
+      - name: Smoke-test collector
+        env:
+          SOURCE_NAME: ${{ matrix.source_name }}
+        run: |
+          python -c "import os, subprocess; from pathlib import Path; subprocess.run([str((Path('dist') / os.environ['SOURCE_NAME']).resolve()), '--help'], check=True)"
+
+      - name: Package macOS double-click archive
+        if: matrix.platform_id == 'macos'
+        shell: bash
+        env:
+          ASSET_NAME: ${{ matrix.asset_name }}
+          SOURCE_NAME: ${{ matrix.source_name }}
+        run: |
+          package_dir="dist/MoviePilot-Collector"
+          mkdir -p "$package_dir"
+          cp "dist/$SOURCE_NAME" "$package_dir/moviepilot-site-collector-macos"
+          cp scripts/start-site-adapter-collector.command "$package_dir/start-site-adapter-collector.command"
+          chmod +x "$package_dir/moviepilot-site-collector-macos"
+          chmod +x "$package_dir/start-site-adapter-collector.command"
+          cd dist
+          COPYFILE_DISABLE=1 zip -q -r -X "$ASSET_NAME" MoviePilot-Collector
+
+      - name: Rename Windows and Linux collector
+        if: matrix.platform_id != 'macos'
+        env:
+          ASSET_NAME: ${{ matrix.asset_name }}
+          SOURCE_NAME: ${{ matrix.source_name }}
+        run: |
+          python -c "import os; from pathlib import Path; (Path('dist') / os.environ['SOURCE_NAME']).replace(Path('dist') / os.environ['ASSET_NAME'])"
+
+      - name: Generate SHA-256 checksum
+        env:
+          ASSET_NAME: ${{ matrix.asset_name }}
+        run: |
+          python -c "import hashlib, os; from pathlib import Path; path = Path('dist') / os.environ['ASSET_NAME']; path.with_name(path.name + '.sha256').write_text(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n', encoding='utf-8')"
+
+      - name: Upload collector artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.asset_name }}
+            dist/${{ matrix.asset_name }}.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: Upload collectors to release
+    if: github.event_name == 'release' || inputs.release_tag != ''
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download collector artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: site-adapter-collector-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Upload assets to published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
