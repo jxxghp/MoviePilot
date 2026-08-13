@@ -485,6 +485,31 @@ def test_interrupted_date_task_requires_explicit_reschedule_value() -> None:
         UpdateAgentTaskInput(task_id=1, trigger_type="date")
 
 
+@pytest.mark.anyio
+async def test_expired_date_task_rejects_enable_without_reschedule(
+        monkeypatch,
+) -> None:
+    """普通单次任务恢复启用时仍需校验现有触发时间，避免过期补跑。"""
+    task = _add_agent_task("date", _past_time(), "expired-enable")
+    oper = AgentTaskOper()
+    assert oper.update(task_id=task.id, payload={"enabled": False})
+
+    scheduler = _build_agent_task_scheduler()
+    scheduler.init_agent_task_jobs()
+    monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+
+    with pytest.raises(ValueError, match="必须晚于当前时间"):
+        await _build_tool(UpdateAgentTaskTool, task.user_id).run(
+            task_id=task.id,
+            enabled=True,
+        )
+
+    unchanged = oper.get(task.id)
+    assert unchanged.enabled is False
+    assert unchanged.last_status == "waiting"
+    assert scheduler._get_agent_task_job_id(task.id) not in scheduler._jobs
+
+
 def test_agent_task_interruption_transition_preserves_execution_evidence() -> None:
     """中断迁移只能消费 running 状态，并保留既有执行次数与开始时间。"""
     task = _add_agent_task("cron", "0 * * * *", "interrupt-state")

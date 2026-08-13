@@ -123,7 +123,12 @@ class UpdateAgentTaskTool(MoviePilotTool):
             )
         normalized_type = trigger_type
         normalized_trigger = trigger_value
-        if has_schedule_update:
+        validates_existing_date_schedule = bool(
+            payload.enabled
+            and task.last_status != "interrupted"
+            and trigger_type == "date"
+        )
+        if has_schedule_update or validates_existing_date_schedule:
             normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=trigger_type,
                 trigger_value=trigger_value,
