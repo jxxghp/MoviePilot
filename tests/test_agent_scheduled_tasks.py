@@ -31,7 +31,10 @@ from app.agent.tools.impl.query_schedulers import QuerySchedulersTool
 from app.agent.tools.impl.run_agent_task import RunAgentTaskTool
 from app.agent.tools.impl.run_scheduler import RunSchedulerTool
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.agent.tools.impl.update_agent_task import UpdateAgentTaskTool
+from app.agent.tools.impl.update_agent_task import (
+    UpdateAgentTaskInput,
+    UpdateAgentTaskTool,
+)
 from app.agent.tools.tags import ToolTag
 from app.core.config import settings
 from app.db.agenttask_oper import AgentTaskOper
@@ -445,6 +448,41 @@ async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) ->
     assert updated["last_result"] is None
     assert updated["next_run_at"] is not None
     assert scheduler._scheduler.get_job(job_id) is not None
+
+
+@pytest.mark.anyio
+async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
+        monkeypatch,
+) -> None:
+    """中断的一次任务即使同时暂停，也只能用新的未来时间离开中断状态。"""
+    task = _add_agent_task("date", _future_time(), "interrupted-past-reschedule")
+    oper = AgentTaskOper()
+    assert oper.mark_running(task.id)
+    assert oper.mark_interrupted(task.id, "执行结果未知")
+
+    scheduler = _build_agent_task_scheduler()
+    scheduler.init_agent_task_jobs()
+    monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    tool = _build_tool(UpdateAgentTaskTool, task.user_id)
+
+    with pytest.raises(ValueError, match="必须晚于当前时间"):
+        await tool.run(
+            task_id=task.id,
+            trigger_type="date",
+            trigger=_past_time(),
+            enabled=False,
+        )
+
+    unchanged = oper.get(task.id)
+    assert unchanged.enabled is True
+    assert unchanged.last_status == "interrupted"
+    assert unchanged.last_result == "执行结果未知"
+
+
+def test_interrupted_date_task_requires_explicit_reschedule_value() -> None:
+    """仅重复 date 类型不构成重新排期，必须同时提供新的触发值。"""
+    with pytest.raises(ValueError, match="必须提供 trigger 或 delay_minutes"):
+        UpdateAgentTaskInput(task_id=1, trigger_type="date")
 
 
 def test_agent_task_interruption_transition_preserves_execution_evidence() -> None:
