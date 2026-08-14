@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db.agenttask_oper import AgentTaskOper
-from app.platform.scheduling import TimerUtils
+from app.runtime.scheduling import TimerUtils
 
 
 class UpdateAgentTaskInput(BaseModel):

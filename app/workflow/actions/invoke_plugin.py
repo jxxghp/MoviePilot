@@ -1,8 +1,8 @@
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.extensions.plugin_manager import PluginManager
-from app.platform.log import logger
+from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.log import logger
 from app.schemas import ActionParams, ActionContext
 
 

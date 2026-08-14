@@ -6,7 +6,7 @@ from unittest.mock import patch
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.integrations.ocr import OcrHelper
+from app.adapters.external.ocr import OcrHelper
 
 
 class _FakeResponse:
@@ -67,7 +67,7 @@ def test_ocr_helper_extracts_data_url_base64_without_downloading_image():
     image_b64 = base64.b64encode(b"captcha-image").decode()
     image_url = f"data:image/png;base64,{image_b64}"
 
-    with patch("app.integrations.ocr.RequestUtils") as request_utils:
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
         request_utils.return_value.post_res.return_value = _FakeResponse(
             payload={"result": "a8k2"}
         )
@@ -86,7 +86,7 @@ def test_ocr_helper_normalizes_data_url_base64_padding():
     """data:image 地址缺少 padding 时应补齐后提交给 OCR 服务。"""
     image_url = "data:image/jpeg;base64,YWJjZA"
 
-    with patch("app.integrations.ocr.RequestUtils") as request_utils:
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
         request_utils.return_value.post_res.return_value = _FakeResponse(
             payload={"result": "z9k2"}
         )

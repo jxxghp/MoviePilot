@@ -3,20 +3,20 @@ import re
 import traceback
 from typing import Callable, Dict, List, Union, Optional
 
-from app.infrastructure.sites import SitesHelper  # noqa
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.platform.config import settings, global_vars
+from app.runtime.config import settings, global_vars
 from app.domain.context import TorrentInfo, Context, MediaInfo
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.infrastructure.rss import RssHelper
-from app.services.torrent import TorrentHelper
-from app.platform.log import logger
+from app.application.rss import RssHelper
+from app.application.torrent import TorrentHelper
+from app.runtime.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
 from app.domain.media import resolve_media_identity

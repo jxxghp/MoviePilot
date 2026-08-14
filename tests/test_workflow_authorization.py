@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.routing import APIRoute
 
 from app.api.endpoints import workflow as workflow_endpoint
-from app.security.access import verify_token
+from app.application.security.access import verify_token
 from app.db.user_oper import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,

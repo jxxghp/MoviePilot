@@ -10,8 +10,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ARTIST,

@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.mediaserver import MediaServerChain
-from app.services.mediaserver import MediaServerHelper
-from app.platform.log import logger
+from app.application.mediaserver import MediaServerHelper
+from app.runtime.log import logger
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MediaSource,

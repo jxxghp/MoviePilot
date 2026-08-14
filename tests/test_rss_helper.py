@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from app.infrastructure import rss as rss_module
-from app.infrastructure.rss import RssHelper
-from app.foundation.http import RequestUtils
+from app.application import rss as rss_module
+from app.application.rss import RssHelper
+from app.adapters.network.http import RequestUtils
 
 
 def test_rss_site_domain_prefers_configured_multilevel_domain():

@@ -31,7 +31,7 @@ from app.agent.skills.metadata import (
     SkillMetadata,
     parse_skill_metadata,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # 模型返回上限独立于领域层的磁盘读取上限，避免异常内容撑爆上下文。
 MAX_SKILL_RESULT_CHARS = 64 * 1024

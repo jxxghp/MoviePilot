@@ -9,11 +9,11 @@ from fastapi.concurrency import run_in_threadpool
 from jinja2 import Template
 from pyquery import PyQuery
 
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.schemas.types import MediaType
-from app.infrastructure import rust as rust_accel
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.adapters.system import rust as rust_accel
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain.string import StringUtils
 from app.foundation.url import UrlUtils
 

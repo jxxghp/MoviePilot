@@ -56,52 +56,56 @@ The historical `app/core`, `app/helper`, and `app/utils` directories are compati
 
 | Package | Owns | Must Not Own | Representative Files |
 |---|---|---|---|
-| `app/foundation/` | Generic mechanisms that work without MoviePilot business state: HTTP transport, reflection/module loading, crypto, URL/object primitives, and structures | `settings`, DB/SystemConfig, MoviePilot business rules, concrete products, legacy import paths | `http.py`, `module.py`, `url.py`, `structures.py` |
+| `app/foundation/` | 无状态、无配置和无 I/O 的底层机制：反射/动态导入、加密、DOM、身份、集合、单例、文本、URL 和版本比较 | `settings`、DB/SystemConfig、网络请求、运行日志、MoviePilot 业务规则、旧导入路径 | `reflection.py`, `crypto.py`, `collections.py`, `text.py`, `url.py` |
 | `app/domain/` | Pure MoviePilot business semantics and models for media, recognition, sites, and torrents | Persistence, global settings reads, network/filesystem clients, Rust imports, service discovery, process lifecycle | `context.py`, `media.py`, `metainfo.py`, `scraper.py`, `meta/` |
-| `app/platform/` | Process-wide runtime contracts and policy: configuration, events, complete logging runtime, cache contracts/in-memory behavior, concurrency, scheduling, rate limiting, localization, GC, restart state | Named third-party integrations, DB-backed business services, Redis/file cache adapter implementations | `config.py`, `events.py`, `log.py`, `cache.py`, `thread.py`, `gc.py`, `runtime.py` |
-| `app/infrastructure/` | Configured technical adapters to Redis, files and standard streams, OS/process facilities, browser/display, DNS, RSS transport, package/resource installation, Rust, generated site resources | Media/site/torrent business decisions, plugin lifecycle, named ecosystem workflows, process restart policy after an adapter action | `cache.py`, `stdio.py`, `redis.py`, `resource.py`, `rss.py`, `rust.py`, `system.py` |
-| `app/integrations/` | Concrete external products and ecosystems, including plugin markets, MoviePilot remote service, CookieCloud, OCR, and IP-location providers | Generic HTTP/DNS/filesystem primitives or reusable domain semantics | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py` |
-| `app/extensions/` | Discovery, loading, registration, and lifecycle of runtime modules, plugins, and configured service implementations | Generic module import mechanics, plugin-facing compatibility APIs, unrelated business workflows | `module_manager.py`, `plugin_manager.py`, `service_registry.py` |
-| `app/messaging/` | Message rendering/routing, interactions, and Agent-to-message bridging | Authentication policy, generic HTTP clients, configured service discovery, endpoint-only Web Push behavior | `message.py`, `interaction.py`, `agent.py` |
-| `app/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy | Generic URL parsing, process runtime policy, ordinary business validation | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
-| `app/services/` | Focused application services and service-bound rules, including persisted configuration, configured capability discovery, notification selection, and media-server normalization/matching | Multi-domain use-case orchestration, generic primitives, concrete product protocols | `recognition.py`, `filter.py`, `notification.py`, `mediaserver.py`, `history.py`, `image.py`, `torrent.py` |
+| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `thread.py`, `state.py` |
+| `app/runtime/extensions/` | 模块、插件和配置化服务实现的发现、注册与生命周期 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `service_registry.py` |
+| `app/adapters/network/` | HTTP、浏览器、DNS、Cloudflare 和 IP 等通用网络技术适配 | RSS/站点业务编排、身份认证策略、命名外部产品流程 | `http.py`, `browser.py`, `doh.py`, `ip.py` |
+| `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
+| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `stdio.py`, `package.py`, `resource.py`, `rust.py` |
+| `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py` |
+| `app/application/` | 读取配置/持久化状态的聚焦应用服务和服务族规则 | 多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `notification.py`, `mediaserver.py`, `rss.py`, `site/sites.*` |
+| `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接 | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `message.py`, `interaction.py`, `agent.py` |
+| `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
 | `app/chain/` | Reusable use-case orchestration across modules, services, Oper classes, events, and caches | Transport schemas, backend-specific protocol details, generic primitives | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |
 | `app/startup/` | Composition root: inject providers/adapters, order initialization and shutdown, decide restart/lifecycle policy | Reusable business rules or adapter implementation details | `lifecycle.py`, `domain_initializer.py`, `cache_initializer.py`, `modules_initializer.py` |
 | `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
-| `app/compat/` | Standard-library-only exact legacy import routing and DEBUG diagnostics | Business implementation, wildcard alias guessing, eager canonical imports | `manifest.py`, `imports.py`, `diagnostics.py` |
+| `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `diagnostics.py` |
+
+容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
 
 ### Placement Decision Order
 
 Use these questions in order before creating or moving a module:
 
-1. Is it generic and independent of MoviePilot state? Put it in `foundation`.
+1. Is it generic, free of MoviePilot state and I/O? Put it in `foundation`.
 2. Is it a pure core MoviePilot rule/model that is independent of a configured service boundary? Put it in `domain`.
-3. Is it process-wide runtime policy or a contract used by adapters? Put it in `platform`.
-4. Does it perform configured technical I/O against Redis, files, OS, browser, RSS, or Rust? Put it in `infrastructure`.
-5. Does it implement a named external product/ecosystem workflow? Put it in `integrations`.
-6. Does it discover or manage modules/plugins/service implementations? Put it in `extensions`.
-7. Does it own authentication, authorization, signing, SSRF, URL/path safety, OTP, passkeys, or two-factor behavior? Put it in `security`.
-8. Does it read persisted user configuration, coordinate one bounded capability, or normalize/match one service family? Put it in `services`.
+3. Is it process-wide runtime policy or a contract used by adapters? Put it in `runtime`.
+4. Does it discover or manage modules/plugins/service implementations? Put it in `runtime/extensions`.
+5. Does it perform configured network, cache, OS/process, file, package/resource, stdio, or Rust I/O? Put it under the matching `adapters` technical boundary.
+6. Does it implement a named external product/ecosystem workflow? Put it in `adapters/external`.
+7. Does it own authentication, authorization, signing, SSRF, URL/path safety, OTP, passkeys, or two-factor behavior? Put it in `application/security`.
+8. Does it read persisted user configuration, coordinate one bounded capability, or normalize/match one service family? Put it in `application`.
 9. Does it coordinate several modules/services/Oper classes for one use case? Put it in `chain`.
-10. Is it public to plugins or only preserving an old path? Curate it in `sdk` or map it in `compat`; do not move implementation there.
+10. Is it public to plugins or only preserving an old path? Curate it in `sdk` or map it in `runtime/compat`; do not move implementation there.
 
 ### Enforced Split Examples
 
 These decisions are architectural constraints, not naming suggestions:
 
-* Cache contracts, memory backends, decorators, and proxies stay in `app/platform/cache.py`; Redis and filesystem implementations stay in `app/infrastructure/cache.py`. Startup registers concrete factories before decorated business modules are imported. Legacy `app.core.cache` resolves to the complete `app.sdk.cache` facade.
-* The complete logging runtime stays in `app/platform/log.py`: policy, console/plugin routing, async rotating file output, and shutdown. `app.platform.config` supplies the resolved settings and log path. `platform/log.py` remains a dependency leaf with no `app.*` imports. Plugins use `app.sdk.logging`; legacy `app.log` resolves to that SDK facade.
-* Recognition parsing stays pure in `app/domain/meta/` and `app/domain/metainfo.py`. `app/services/recognition.py` reads `SystemConfigOper`; `app/startup/domain_initializer.py` injects rules, extension policy, source defaults, TMDB image construction, and the optional Rust accelerator.
+* Cache contracts, memory backends, decorators, and proxies stay in `app/runtime/cache.py`; Redis and filesystem implementations stay in `app/adapters/cache/backends.py`. Startup registers concrete factories before decorated business modules are imported. Legacy `app.core.cache` resolves to the complete `app.sdk.cache` facade.
+* The complete logging runtime stays in `app/runtime/log.py`: policy, console/plugin routing, async rotating file output, and shutdown. `app.runtime.config` supplies the resolved settings and log path. `runtime/log.py` remains a dependency leaf with no `app.*` imports. Plugins use `app.sdk.logging`; legacy `app.log` resolves to that SDK facade.
+* Recognition parsing stays pure in `app/domain/meta/` and `app/domain/metainfo.py`. `app/application/recognition.py` reads `SystemConfigOper`; `app/startup/domain_initializer.py` injects rules, extension policy, source defaults, TMDB image construction, and the optional Rust accelerator.
 * Kodi-style NFO reading and metadata document generation are one domain capability and stay together in `app/domain/scraper.py`; a separate `domain/nfo.py` must not be recreated.
-* `app/services/mediaserver.py` is the single media-server service capability module. It owns configured service discovery together with Provider ID normalization and music-library matching, while reusing generic identity rules from `app/domain/media.py`.
-* Configured notification-service discovery belongs in `app/services/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module.
-* `app/infrastructure/resource.py` detects/downloads/installs resources and returns whether installation occurred. Only `app/startup/modules_initializer.py` may decide to restart the process afterward.
-* Process memory/GC policy belongs in `app/platform/gc.py`; external IP-location APIs belong in `app/integrations/location.py`.
-* Security implementation filenames use package-context nouns: `app/security/url.py` and `app/security/twofactor.py`. Historical `app.utils.security` and `app.helper.twofa` remain compatibility mappings only.
+* `app/application/mediaserver.py` is the single media-server service capability module. It owns configured service discovery together with Provider ID normalization and music-library matching, while reusing generic identity rules from `app/domain/media.py`.
+* Configured notification-service discovery belongs in `app/application/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module.
+* `app/adapters/system/resource.py` detects/downloads/installs resources and returns whether installation occurred. Only `app/startup/modules_initializer.py` may decide to restart the process afterward.
+* Process memory/GC policy belongs in `app/runtime/gc.py`; external IP-location APIs belong in `app/adapters/external/location.py`.
+* Security implementation filenames use package-context nouns: `app/application/security/url.py` and `app/application/security/twofactor.py`. Historical `app.utils.security` and `app.helper.twofa` remain compatibility mappings only.
 
 Foundation modules do not emit runtime logs. They return documented fallback values or raise according to their public contract; application callers decide whether a failure is operationally relevant and log it from the owning upper layer.
 
-Any ownership move must update canonical host imports, `app/compat/manifest.py`, curated SDK exports when applicable, `docs/rules/05-architecture.md`, and `tests/test_architecture_dependencies.py`. Run that architecture test before broader tests; it rejects physical legacy sources, forbidden upward dependencies, retired canonical filenames, and import cycles.
+Any ownership move must update canonical host imports, `app/runtime/compat/manifest.py`, curated SDK exports when applicable, `docs/rules/05-architecture.md`, and `tests/test_architecture_dependencies.py`. Run that architecture test before broader tests; it rejects physical legacy sources, forbidden upward dependencies, retired canonical filenames, and import cycles.
 
 ---
 
@@ -140,7 +144,7 @@ When modifying the following, you must also update the listed artifacts:
 | Database model schema | New Alembic migration under `database/versions/` |
 | User-visible config or init flow | Related docs, help text, setup/init flows, tests |
 | New skill | Follow `skills/<name>/SKILL.md` structure, keep YAML front matter |
-| Canonical module ownership or import path | `docs/rules/05-architecture.md`, `app/compat/manifest.py`, SDK exports when public, architecture/compatibility tests |
+| Canonical module ownership or import path | `docs/rules/05-architecture.md`, `app/runtime/compat/manifest.py`, SDK exports when public, architecture/compatibility tests |
 
 ---
 

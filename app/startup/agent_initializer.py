@@ -1,6 +1,6 @@
 from app.agent.orchestrator import agent_manager
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 
 
 class AgentInitializer:

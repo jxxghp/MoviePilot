@@ -3,8 +3,8 @@ from typing import Union, Tuple
 
 from pywebpush import webpush, WebPushException
 
-from app.platform.config import global_vars, settings
-from app.platform.log import logger
+from app.runtime.config import global_vars, settings
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
 from app.schemas.types import ModuleType, MessageChannel

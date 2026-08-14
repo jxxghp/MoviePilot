@@ -4,20 +4,20 @@ from datetime import datetime
 from typing import Callable, List, Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
-from app.infrastructure.sites import SitesHelper  # noqa
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from lxml import etree
 
 from app.chain import ChainBase
-from app.platform.config import global_vars, settings
-from app.platform.events import Event, eventmanager
+from app.runtime.config import global_vars, settings
+from app.runtime.events import Event, eventmanager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.infrastructure.browser import PlaywrightHelper
-from app.infrastructure.cloudflare import under_challenge
-from app.security.cookie import CookieHelper
-from app.integrations.cookiecloud import CookieCloudHelper
-from app.messaging.interaction import (
+from app.adapters.network.browser import PlaywrightHelper
+from app.adapters.network.cloudflare import under_challenge
+from app.application.security.cookie import CookieHelper
+from app.adapters.external.cookiecloud import CookieCloudHelper
+from app.application.messaging.interaction import (
     SlashInteractionManager,
     build_navigation_buttons,
     format_markdown_table,
@@ -26,11 +26,11 @@ from app.messaging.interaction import (
     supports_markdown,
     update_or_post_message,
 )
-from app.infrastructure.rss import RssHelper
-from app.platform.log import logger
+from app.application.rss import RssHelper
+from app.runtime.log import logger
 from app.schemas import MessageChannel, Notification, SiteUserData
 from app.schemas.types import EventType, NotificationType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
 from app.domain.string import StringUtils
 

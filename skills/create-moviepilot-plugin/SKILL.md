@@ -22,8 +22,8 @@ a local plugin source and installed into the running MoviePilot instance.
 ## Ground Truth
 
 - Host plugin contract: `app/plugins/__init__.py`, especially `_PluginBase`.
-- Host plugin discovery, local source sync, install, reload: `app/extensions/plugin_manager.py`
-  and `app/integrations/market.py`.
+- Host plugin discovery, local source sync, install, reload: `app/runtime/extensions/plugin_manager.py`
+  and `app/adapters/external/market.py`.
 - Host plugin endpoints, API auth, static files, remotes, and sidebar nav:
   `app/api/endpoints/plugin.py`.
 - Local development note: `docs/development-setup.md`.

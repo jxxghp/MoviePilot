@@ -12,7 +12,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     remove_rule_group_references,
     save_system_config,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 

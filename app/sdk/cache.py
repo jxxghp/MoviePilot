@@ -1,12 +1,12 @@
 """插件可用的缓存契约、适配器工厂和装饰器。"""
 
-from app.infrastructure.cache import (
+from app.adapters.cache.backends import (
     AsyncFileBackend,
     AsyncRedisBackend,
     FileBackend,
     RedisBackend,
 )
-from app.platform.cache import (
+from app.runtime.cache import (
     AsyncCache,
     AsyncCacheBackend,
     AsyncFileCache,

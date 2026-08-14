@@ -3,12 +3,12 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
-from app.extensions.service_registry import ServiceConfigHelper
-from app.platform.log import logger
+from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.log import logger
 from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
 from app.schemas.types import ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
     OtherModulesType, SystemConfigKey, MediaRecognizeType
-from app.platform.reload import ConfigReloadMixin
+from app.runtime.reload import ConfigReloadMixin
 
 
 class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):

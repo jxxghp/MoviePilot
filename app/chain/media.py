@@ -12,8 +12,8 @@ from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
 from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
-from app.platform.cache import async_fresh, fresh
-from app.platform.config import settings
+from app.runtime.cache import async_fresh, fresh
+from app.runtime.config import settings
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -21,12 +21,12 @@ from app.domain.context import (
     MusicArtistInfo,
     MusicInfo,
 )
-from app.platform.events import eventmanager, Event
+from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.services.audio import AudioMetadataHelper
-from app.platform.log import logger
+from app.application.audio import AudioMetadataHelper
+from app.runtime.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,

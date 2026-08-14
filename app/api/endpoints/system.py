@@ -13,7 +13,7 @@ import aiofiles
 import anyio
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from anyio import Path as AsyncPath
-from app.infrastructure.sites import SitesHelper  # noqa  # noqa
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from fastapi import Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -23,11 +23,11 @@ from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.platform.config import global_vars, settings
-from app.platform.events import eventmanager
+from app.runtime.config import global_vars, settings
+from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
-from app.extensions.module_manager import ModuleManager
-from app.security.access import verify_apitoken, verify_resource_token, verify_token
+from app.runtime.extensions.module_manager import ModuleManager
+from app.application.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import (
@@ -35,27 +35,27 @@ from app.db.user_oper import (
     get_current_active_superuser_async,
     get_current_active_user_async,
 )
-from app.services.image import ImageHelper
-from app.platform.localization import LocaleHelper
-from app.integrations.market import (
+from app.application.image import ImageHelper
+from app.runtime.localization import LocaleHelper
+from app.adapters.external.market import (
     PLUGIN_MARKET_WIKI_URL,
     extract_plugin_market_repos_from_wiki,
     merge_plugin_market_repos,
     split_plugin_market_repo_urls,
 )
-from app.messaging.message import MessageHelper
-from app.platform.progress import ProgressHelper
-from app.services.filter import RuleHelper
-from app.integrations.server import MoviePilotServerHelper
-from app.platform.runtime import SystemHelper
-from app.platform.log import logger
+from app.application.messaging.message import MessageHelper
+from app.runtime.progress import ProgressHelper
+from app.application.filter import RuleHelper
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.state import SystemHelper
+from app.runtime.log import logger
 from app.scheduler import Scheduler
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
-from app.foundation.http import RequestUtils, AsyncRequestUtils
-from app.infrastructure import rust as rust_accel
-from app.security.url import SecurityUtils
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
+from app.adapters.system import rust as rust_accel
+from app.application.security.url import SecurityUtils
 from app.foundation.url import UrlUtils
 from version import APP_VERSION
 

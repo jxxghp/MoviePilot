@@ -5,8 +5,8 @@ import jwt
 from fastapi import Response
 
 from app import schemas
-from app.platform.config import settings
-from app.security.access import ALGORITHM, create_access_token, set_or_refresh_resource_token_cookie
+from app.runtime.config import settings
+from app.application.security.access import ALGORITHM, create_access_token, set_or_refresh_resource_token_cookie
 
 
 class FakeURL:

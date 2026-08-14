@@ -6,10 +6,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.events import eventmanager
+from app.runtime.events import eventmanager
 from app.db.subscribe_oper import SubscribeOper
-from app.integrations.server import MoviePilotServerHelper
-from app.platform.log import logger
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.log import logger
 from app.schemas.types import EventType
 
 

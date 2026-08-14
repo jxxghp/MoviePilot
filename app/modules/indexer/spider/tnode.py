@@ -1,10 +1,10 @@
 import re
 from typing import Tuple, List, Optional
 
-from app.platform.cache import cached
-from app.platform.config import settings
-from app.platform.log import logger
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.runtime.cache import cached
+from app.runtime.config import settings
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import SingletonClass
 from app.domain.string import StringUtils
 

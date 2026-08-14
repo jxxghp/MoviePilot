@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from app.platform.config import settings
-from app.platform.log import logger
-from app.foundation.http import RequestUtils
+from app.runtime.config import settings
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
 
 
 class AgentCapabilityProvider(ABC):
@@ -799,7 +799,7 @@ class AgentCapabilityManager:
         if not source:
             return False
 
-        from app.extensions.service_registry import ServiceConfigHelper
+        from app.runtime.extensions.service_registry import ServiceConfigHelper
 
         for config in ServiceConfigHelper.get_notification_configs():
             if config.name != source:

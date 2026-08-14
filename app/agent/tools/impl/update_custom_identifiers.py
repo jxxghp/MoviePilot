@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.domain.metainfo import clear_rust_parse_options_cache
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 

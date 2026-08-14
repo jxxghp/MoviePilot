@@ -17,7 +17,7 @@ from app.factory import (
     localized_unhandled_exception_handler,
     localized_validation_exception_handler,
 )
-from app.platform.localization import LocaleHelper
+from app.runtime.localization import LocaleHelper
 from app.schemas.common import JsonData
 from app.schemas.response import Response
 

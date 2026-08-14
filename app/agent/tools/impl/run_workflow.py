@@ -8,7 +8,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.workflow import WorkflowChain
 from app.db.workflow_oper import WorkflowOper
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class RunWorkflowInput(BaseModel):

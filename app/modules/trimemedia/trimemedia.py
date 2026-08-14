@@ -3,11 +3,11 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import app.modules.trimemedia.api as fnapi
 from app import schemas
-from app.services.mediaserver import MediaServerIdentityHelper
-from app.platform.log import logger
+from app.application.mediaserver import MediaServerIdentityHelper
+from app.runtime.log import logger
 from app.schemas import MediaType
 from app.schemas.types import MediaSource
-from app.security.url import SecurityUtils
+from app.application.security.url import SecurityUtils
 from app.foundation.url import UrlUtils
 
 

@@ -3,9 +3,9 @@ import json
 from urllib.parse import urljoin
 from typing import Optional, Tuple
 
-from app.platform.log import logger
-from app.platform.config import settings
-from app.foundation.http import RequestUtils
+from app.runtime.log import logger
+from app.runtime.config import settings
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 

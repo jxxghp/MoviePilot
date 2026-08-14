@@ -3,17 +3,17 @@ from typing import Optional, Union, List, Tuple, Any
 from urllib.parse import quote, unquote
 
 from app.domain.context import MediaInfo, Context
-from app.messaging.agent import (
+from app.application.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 from app.schemas.types import ModuleType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 
 register_channel_admin_resolver(

@@ -1,0 +1,530 @@
+import re
+import traceback
+from typing import List, Tuple, Union, Optional
+from urllib.parse import urljoin, urlparse
+
+import dateutil.parser
+from lxml import etree
+
+from app.runtime.config import settings
+from app.adapters.network.browser import PlaywrightHelper
+from app.runtime.log import logger
+from app.adapters.system import rust as rust_accel
+from app.adapters.network.http import RequestUtils
+
+
+class RssHelper:
+    """
+    RSS帮助类，解析RSS报文、获取RSS地址等
+    """
+
+    # RSS解析限制配置
+    MAX_RSS_SIZE = 50 * 1024 * 1024  # 50MB最大RSS文件大小
+    MAX_RSS_ITEMS = 1000  # 最大解析条目数
+
+    # 各站点RSS链接获取配置
+    rss_link_conf = {
+        "default": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "hares.top": {
+            "xpath": "//*[@id='layui-layer100001']/div[2]/div/p[4]/a/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "et8.org": {
+            "xpath": "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/a[2]/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "pttime.org": {
+            "xpath": "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/text()[5]",
+            "url": "getrss.php",
+            "params": {
+                "showrows": 10,
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1
+            }
+        },
+        "ourbits.club": {
+            "xpath": "//a[@class='gen_rsslink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "totheglory.im": {
+            "xpath": "//textarea/text()",
+            "url": "rsstools.php?c51=51&c52=52&c53=53&c54=54&c108=108&c109=109&c62=62&c63=63&c67=67&c69=69&c70=70&c73=73&c76=76&c75=75&c74=74&c87=87&c88=88&c99=99&c90=90&c58=58&c103=103&c101=101&c60=60",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "monikadesign.uk": {
+            "xpath": "//a/@href",
+            "url": "rss",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "zhuque.in": {
+            "xpath": "//a/@href",
+            "url": "user/rss",
+            "render": True,
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+            }
+        },
+        "hdchina.org": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "rsscart": 0
+            }
+        },
+        "audiences.me": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "torrent_type": 1,
+                "exp": 180
+            }
+        },
+        "shadowflow.org": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "paid": 0,
+                "search_mode": 0,
+                "showrows": 30
+            }
+        },
+        "hddolby.com": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "exp": 180
+            }
+        },
+        "hdhome.org": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "exp": 180
+            }
+        },
+        "pthome.net": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "exp": 180
+            }
+        },
+        "ptsbao.club": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "size": 0
+            }
+        },
+        "leaves.red": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 0,
+                "paid": 2
+            }
+        },
+        "hdtime.org": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 0,
+            }
+        },
+        "m-team.io": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "showrows": 50,
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "https": 1
+            }
+        },
+        "u2.dmhy.org": {
+            "xpath": "//a[@class='faqlink']/@href",
+            "url": "getrss.php",
+            "params": {
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "showrows": 50,
+                "search_mode": 1,
+                "inclautochecked": 1,
+                "trackerssl": 1
+            }
+        },
+    }
+
+    @classmethod
+    def _get_site_domain(cls, url: str) -> str:
+        """按 RSS 站点配置匹配域名，未命中时回退到最后两级域名。"""
+        hostname = (urlparse(url).hostname or "").lower()
+        for domain in cls.rss_link_conf:
+            if domain == "default":
+                continue
+            if hostname == domain or hostname.endswith(f".{domain}"):
+                return domain
+        parts = hostname.split(".")
+        return ".".join(parts[-2:]) if len(parts) >= 2 else hostname
+
+    @staticmethod
+    def _parse_publish_time(value: str):
+        """将 RSS 常见日期表达解析为 datetime，无法解析时返回 None。"""
+        try:
+            return dateutil.parser.parse(value)
+        except dateutil.parser.ParserError:
+            return None
+
+    def __parse_with_rust(self, ret_xml: Optional[str]) -> Optional[list]:
+        """
+        调用 Rust RSS 解析器，并统一处理基础 XML 校验和最大条目限制。
+        """
+        if not ret_xml or not ret_xml.strip():
+            return None
+        ret_xml_stripped = ret_xml.strip()
+        if not ret_xml_stripped.startswith('<'):
+            return None
+        rust_items = rust_accel.parse_rss_items(ret_xml, self.MAX_RSS_ITEMS + 1)
+        if rust_items is None:
+            return None
+        if len(rust_items) > self.MAX_RSS_ITEMS:
+            logger.warning(f"RSS条目过多: 超过{self.MAX_RSS_ITEMS}，仅处理前{self.MAX_RSS_ITEMS}个")
+        return rust_items[:self.MAX_RSS_ITEMS]
+
+    def parse(self, url, proxy: bool = False,
+              timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
+        """
+        解析RSS订阅URL，获取RSS中的种子信息
+        :param url: RSS地址
+        :param proxy: 是否使用代理
+        :param timeout: 请求超时
+        :param headers: 自定义请求头
+        :param ua: 自定义User-Agent
+        :return: 种子信息列表，如为None代表Rss过期，如果为False则为错误
+        """
+        # 开始处理
+        ret_array: list = []
+        if not url:
+            return False
+
+        try:
+            ret = RequestUtils(ua=ua,
+                               proxies=settings.PROXY if proxy else None,
+                               timeout=timeout or 30, headers=headers).get_res(url)
+            if not ret:
+                logger.error(f"获取RSS失败：请求返回空值，URL: {url}")
+                return False
+        except Exception as err:
+            logger.error(f"获取RSS失败：{str(err)} - {traceback.format_exc()}")
+            return False
+
+        if ret:
+            # 检查HTTP状态码
+            if ret.status_code != 200:
+                logger.error(f"RSS请求失败，状态码: {ret.status_code}, URL: {url}")
+                return False
+            ret_xml = None
+            root = None
+            try:
+                # 检查响应大小，避免处理过大的RSS文件
+                raw_data = ret.content
+                if raw_data and len(raw_data) > self.MAX_RSS_SIZE:
+                    logger.warning(f"RSS文件过大: {len(raw_data) / 1024 / 1024:.1f}MB，跳过解析")
+                    return False
+
+                if raw_data:
+                    ret_xml = RequestUtils.get_decoded_xml_content(
+                        ret,
+                        performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
+                        confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+                    )
+                    rust_items = self.__parse_with_rust(ret_xml)
+                    if rust_items is not None:
+                        return rust_items
+                if not ret_xml:
+                    ret_xml = ret.text
+
+                # 验证RSS内容是否有效
+                if not ret_xml or not ret_xml.strip():
+                    logger.error("RSS内容为空")
+                    return False
+
+                # 检查是否包含基本的RSS/XML结构
+                ret_xml_stripped = ret_xml.strip()
+                if not ret_xml_stripped.startswith('<'):
+                    logger.error("RSS内容不是有效的XML格式")
+                    return False
+
+                rust_items = self.__parse_with_rust(ret_xml)
+                if rust_items is not None:
+                    return rust_items
+
+                # 使用lxml.etree解析XML
+                parser = None
+                try:
+                    # 创建解析器，禁用网络访问以提高安全性和性能
+                    parser = etree.XMLParser(
+                        recover=True,  # 容错模式
+                        strip_cdata=False,  # 保留CDATA
+                        resolve_entities=False,  # 禁用外部实体解析
+                        no_network=True,  # 禁用网络访问
+                        huge_tree=False  # 禁用大文档解析，避免内存问题
+                    )
+                    root = etree.fromstring(ret_xml.encode('utf-8'), parser=parser)
+                except etree.XMLSyntaxError as xml_error:
+                    logger.debug(f"XML解析失败：{str(xml_error)}，尝试HTML解析")
+                    # 如果XML解析失败，尝试作为HTML解析
+                    try:
+                        root = etree.HTML(ret_xml)
+                        if root is not None:
+                            # 查找RSS根节点
+                            rss_root = root.xpath('//rss | //feed')
+                            if rss_root:
+                                root = rss_root[0]
+                    except Exception as e:
+                        logger.error(f"HTML解析也失败：{str(e)}")
+                        return False
+                except Exception as general_error:
+                    logger.error(f"解析RSS时发生未预期错误：{str(general_error)}")
+                    return False
+                finally:
+                    if parser is not None:
+                        try:
+                            parser.close()
+                        except Exception as close_error:
+                            logger.debug(f"关闭解析器时出错：{str(close_error)}")
+                        del parser
+
+                if root is None:
+                    logger.error("无法解析RSS内容")
+                    return False
+
+                # 查找所有item或entry节点
+                items = root.xpath('.//item | .//entry')
+
+                # 限制处理的条目数量
+                items_count = min(len(items), self.MAX_RSS_ITEMS)
+                if len(items) > self.MAX_RSS_ITEMS:
+                    logger.warning(f"RSS条目过多: {len(items)}，仅处理前{self.MAX_RSS_ITEMS}个")
+                try:
+                    for item in items[:items_count]:
+                        try:
+                            # 使用xpath提取信息，更高效
+                            title_nodes = item.xpath('.//title')
+                            title = title_nodes[0].text if title_nodes and title_nodes[0].text else ""
+                            if not title:
+                                continue
+
+                            # 描述
+                            desc_nodes = item.xpath('.//description | .//summary')
+                            description = desc_nodes[0].text if desc_nodes and desc_nodes[0].text else ""
+
+                            # 种子页面
+                            link_nodes = item.xpath('.//link')
+                            if link_nodes:
+                                link = link_nodes[0].text if hasattr(link_nodes[0], 'text') and link_nodes[0].text else link_nodes[0].get('href', '')
+                            else:
+                                link = ""
+
+                            # 种子链接
+                            enclosure_nodes = item.xpath('.//enclosure')
+                            enclosure = enclosure_nodes[0].get('url', '') if enclosure_nodes else ""
+                            if not enclosure and not link:
+                                continue
+                            # 部分RSS只有link没有enclosure
+                            if not enclosure and link:
+                                enclosure = link
+
+                            # 大小
+                            size = 0
+                            if enclosure_nodes:
+                                size_attr = enclosure_nodes[0].get('length', '0')
+                                if size_attr and str(size_attr).isdigit():
+                                    size = int(size_attr)
+
+                            # 发布日期
+                            pubdate_nodes = item.xpath('./pubDate | ./published | ./updated')
+                            if not pubdate_nodes:
+                                pubdate_nodes = item.xpath('.//*[local-name()="pubDate"] | .//*[local-name()="published"] | .//*[local-name()="updated"]')
+
+                            pubdate = ""
+                            if pubdate_nodes and pubdate_nodes[0].text:
+                                pubdate = self._parse_publish_time(pubdate_nodes[0].text)
+                                if pubdate is not None:
+                                    # 转为本地时区
+                                    pubdate = pubdate.astimezone(tz=None)
+
+                            # 获取豆瓣昵称
+                            nickname_nodes = item.xpath('.//*[local-name()="creator"]')
+                            nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
+
+                            # 返回对象
+                            tmp_dict = {
+                                'title': title,
+                                'enclosure': enclosure,
+                                'size': size,
+                                'description': description,
+                                'link': link,
+                                'pubdate': pubdate
+                            }
+                            # 如果豆瓣昵称不为空，返回数据增加豆瓣昵称，供doubansync插件获取
+                            if nickname:
+                                tmp_dict['nickname'] = nickname
+                            ret_array.append(tmp_dict)
+
+                        except Exception as e1:
+                            logger.debug(f"解析RSS条目失败：{str(e1)} - {traceback.format_exc()}")
+                            continue
+                finally:
+                    items.clear()
+                    del items
+
+            except Exception as e2:
+                logger.error(f"解析RSS失败：{str(e2)} - {traceback.format_exc()}")
+                # RSS过期检查
+                _rss_expired_msg = [
+                    "RSS 链接已过期, 您需要获得一个新的!",
+                    "RSS Link has expired, You need to get a new one!",
+                    "RSS Link has expired, You need to get new!"
+                ]
+                if ret_xml in _rss_expired_msg:
+                    return None
+                return False
+            finally:
+                if root is not None:
+                    del root
+                if ret_xml is not None:
+                    del ret_xml
+
+        return ret_array
+
+    def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False, timeout: int = None) -> Tuple[str, str]:
+        """
+        获取站点rss地址
+        :param url: 站点地址
+        :param cookie: 站点cookie
+        :param ua: 站点ua
+        :param proxy: 是否使用代理
+        :param timeout: 请求超时时间
+        :return: rss地址、错误信息
+        """
+        try:
+            # 获取站点域名
+            domain = self._get_site_domain(url)
+            # 获取配置
+            site_conf = self.rss_link_conf.get(domain) or self.rss_link_conf.get("default")
+            # RSS地址
+            rss_url = urljoin(url, site_conf.get("url"))
+            # RSS请求参数
+            rss_params = site_conf.get("params")
+            # 请求RSS页面
+            if site_conf.get("render"):
+                html_text = PlaywrightHelper().get_page_source(
+                    url=rss_url,
+                    cookies=cookie,
+                    ua=ua,
+                    proxies=settings.PROXY_SERVER if proxy else None,
+                    timeout=timeout or 60
+                )
+            else:
+                res = RequestUtils(
+                    cookies=cookie,
+                    timeout=timeout or 30,
+                    ua=ua,
+                    proxies=settings.PROXY if proxy else None
+                ).post_res(url=rss_url, data=rss_params)
+                if res:
+                    html_text = res.text
+                elif res is not None:
+                    return "", f"获取 {url} RSS链接失败，错误码：{res.status_code}，错误原因：{res.reason}"
+                else:
+                    return "", f"获取RSS链接失败：无法连接 {url} "
+
+            # 解析HTML
+            if html_text:
+                html = None
+                try:
+                    html = etree.HTML(html_text)
+                    if html is not None and len(html) > 0:
+                        rss_link = html.xpath(site_conf.get("xpath"))
+                        if rss_link:
+                            return str(rss_link[-1]), ""
+                finally:
+                    if html is not None:
+                        del html
+
+            return "", f"获取RSS链接失败：{url}"
+        except Exception as e:
+            return "", f"获取 {url} RSS链接失败：{str(e)}"

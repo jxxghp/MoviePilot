@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.agent import MoviePilotAgent
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas import AgentLLMProviderEventData
 from app.schemas.types import ChainEventType
 

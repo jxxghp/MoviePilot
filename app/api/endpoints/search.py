@@ -10,12 +10,12 @@ from fastapi.responses import StreamingResponse
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.search import SearchChain
-from app.security.access import verify_resource_token, verify_token
-from app.platform.localization import LocaleHelper
-from app.platform.log import logger
+from app.application.security.access import verify_resource_token, verify_token
+from app.runtime.localization import LocaleHelper
+from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.domain.media import normalize_music_type, resolve_media_identity
-from app.security.url import SecurityUtils
+from app.application.security.url import SecurityUtils
 
 router = ResponseAPIRouter()
 

@@ -242,7 +242,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
 class TestUpdateOrPostMessage(unittest.TestCase):
     def test_fallback_post_keeps_original_message_context(self):
         """编辑失败回退发新消息时，必须保留原消息/会话上下文，供渠道回复到原会话。"""
-        from app.messaging.interaction import update_or_post_message
+        from app.application.messaging.interaction import update_or_post_message
 
         chain = SimpleNamespace(
             edit_message=MagicMock(return_value=False),

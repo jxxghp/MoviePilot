@@ -7,9 +7,9 @@ from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import urlencode
 
 from app import schemas
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import MediaType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
 
 

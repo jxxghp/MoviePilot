@@ -9,9 +9,9 @@ from datetime import datetime
 import requests
 import requests.exceptions
 
-from app.platform.cache import cached, fresh, async_fresh
-from app.platform.config import settings
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.runtime.cache import cached, fresh, async_fresh
+from app.runtime.config import settings
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from .exceptions import TMDbException, TMDbConnectionError
 
 logger = logging.getLogger(__name__)

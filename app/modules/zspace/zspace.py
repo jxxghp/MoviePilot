@@ -8,11 +8,11 @@ from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 from requests import Response
 
 from app import schemas
-from app.services.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
-from app.platform.log import logger
+from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.runtime.log import logger
 from app.schemas import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
 
 

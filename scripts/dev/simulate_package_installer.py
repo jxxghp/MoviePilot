@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.infrastructure.package import PackageInstallRequest, build_package_install_strategies
+from app.adapters.system.package import PackageInstallRequest, build_package_install_strategies
 
 
 def sample(name: str, request: PackageInstallRequest) -> None:

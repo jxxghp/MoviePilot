@@ -6,8 +6,8 @@ from urllib.parse import quote
 
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
-from app.foundation.http import RequestUtils
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 
 lock = Lock()

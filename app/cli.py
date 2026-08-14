@@ -15,8 +15,8 @@ from urllib.request import ProxyHandler, Request, build_opener, urlopen
 import click
 import psutil
 
-from app.platform.config import Settings, settings
-from app.platform.runtime import SystemHelper
+from app.runtime.config import Settings, settings
+from app.runtime.state import SystemHelper
 from version import APP_VERSION
 
 BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"

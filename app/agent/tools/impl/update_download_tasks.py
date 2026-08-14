@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
-from app.services.directory import validate_download_save_path
-from app.platform.log import logger
+from app.application.directory import validate_download_save_path
+from app.runtime.log import logger
 
 
 class UpdateDownloadTasksInput(BaseModel):

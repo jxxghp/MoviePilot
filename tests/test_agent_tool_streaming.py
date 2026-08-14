@@ -13,7 +13,7 @@ from app.agent.middleware.subagents import is_subagent_stream_metadata
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.api.endpoints.openai import _OpenAIStreamingHandler
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.message import MessageResponse
 from app.schemas.types import MessageChannel, NotificationType
 

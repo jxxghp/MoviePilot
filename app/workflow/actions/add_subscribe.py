@@ -1,9 +1,9 @@
 from app.workflow.actions import BaseAction
 from app.chain.subscribe import SubscribeChain
-from app.platform.config import settings, global_vars
+from app.runtime.config import settings, global_vars
 from app.domain.context import MediaInfo
 from app.db.subscribe_oper import SubscribeOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import ActionParams, ActionContext
 
 

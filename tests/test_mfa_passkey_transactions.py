@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.api.endpoints import mfa as mfa_endpoint
-from app.security.passkey import PasskeyChallengeStore
+from app.application.security.passkey import PasskeyChallengeStore
 
 
 def _request() -> Request:

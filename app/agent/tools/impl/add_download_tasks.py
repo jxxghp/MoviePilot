@@ -12,12 +12,12 @@ from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
-from app.services.directory import DirectoryHelper, validate_download_save_path
-from app.platform.log import logger
+from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.runtime.log import logger
 from app.schemas import FileURI
 from app.foundation.crypto import HashUtils
 

@@ -5,9 +5,9 @@ from pydantic import Field
 from app.workflow.actions import BaseAction
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.platform.config import global_vars
+from app.runtime.config import global_vars
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import ActionParams, ActionContext, DownloadTask, MediaType
 
 

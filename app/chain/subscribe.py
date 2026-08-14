@@ -15,14 +15,14 @@ from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
-from app.platform.config import settings, global_vars
+from app.runtime.config import settings, global_vars
 from app.domain.context import (
     Context,
     MediaInfo,
     MusicInfo,
     TorrentInfo,
 )
-from app.platform.events import eventmanager, Event
+from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.words import WordsMatcher
@@ -32,7 +32,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.messaging.interaction import (
+from app.application.messaging.interaction import (
     SlashInteractionManager,
     build_navigation_buttons,
     format_markdown_table,
@@ -41,10 +41,10 @@ from app.messaging.interaction import (
     supports_markdown,
     update_or_post_message,
 )
-from app.services.mediaserver import MediaServerHelper
-from app.integrations.server import MoviePilotServerHelper
-from app.services.torrent import TorrentHelper
-from app.platform.log import logger
+from app.application.mediaserver import MediaServerHelper
+from app.adapters.external.server import MoviePilotServerHelper
+from app.application.torrent import TorrentHelper
+from app.runtime.log import logger
 from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \

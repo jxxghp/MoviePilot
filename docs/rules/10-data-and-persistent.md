@@ -120,14 +120,14 @@ oper.set(user_id=1, key="notification_enabled", value=True)
 
 **Purpose:** Deployment-level, environment-level, and startup-time configuration such as ports, paths, proxies, switches, API keys, and third-party service addresses.
 
-**Location:** `ConfigModel` and `Settings` in `app/platform/config.py`
+**Location:** `ConfigModel` and `Settings` in `app/runtime/config.py`
 
 These values are read from environment variables (or `.moviepilot.env`) at startup and are immutable at runtime. They are not stored in the database.
 
 **Access:**
 
 ```python
-from app.platform.config import settings
+from app.runtime.config import settings
 
 host = settings.QB_HOST
 port = settings.QB_PORT
@@ -139,12 +139,12 @@ port = settings.QB_PORT
 
 ### FileCache / AsyncFileCache
 
-**Location:** `app/platform/cache.py`
+**Location:** `app/runtime/cache.py`
 
 Used to cache expensive external API responses to disk. Cache entries have a configurable TTL.
 
 ```python
-from app.platform.cache import FileCache, fresh
+from app.runtime.cache import FileCache, fresh
 
 cache = FileCache(cache_name="tmdb", ttl=3600)
 

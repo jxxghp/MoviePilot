@@ -14,18 +14,18 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.platform.config import global_vars, settings
+from app.runtime.config import global_vars, settings
 from app.domain.context import Context
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
-from app.platform.events import eventmanager, Event
+from app.runtime.events import eventmanager, Event
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.progress import ProgressHelper
-from app.infrastructure.sites import SitesHelper  # noqa
-from app.services.torrent import TorrentHelper
-from app.platform.log import logger
+from app.runtime.progress import ProgressHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.torrent import TorrentHelper
+from app.runtime.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -41,7 +41,7 @@ from app.domain.media import (
     resolve_media_identity,
 )
 from app.domain.string import StringUtils
-from app.foundation.zhconv import convert as zhconv_convert
+from app.foundation.text import convert as zhconv_convert
 
 
 class SearchChain(ChainBase):

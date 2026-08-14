@@ -14,7 +14,7 @@ from app.domain.meta.metaanime import MetaAnime
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_audio_extensions
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.infrastructure import rust as rust_accel
+from app.adapters.system import rust as rust_accel
 from tests.cases.meta import meta_cases
 
 

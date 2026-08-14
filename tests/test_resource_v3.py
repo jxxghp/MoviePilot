@@ -1,7 +1,10 @@
 from pathlib import Path
 
-from app.platform.config import settings
-from app.infrastructure.resource import ResourceHelper
+from app.runtime.config import settings
+from app.adapters.system.resource import (
+    ResourceHelper,
+    configure_resource_version_provider,
+)
 from app.startup import modules_initializer
 
 
@@ -15,7 +18,28 @@ def test_resource_helper_uses_v3_only():
     assert ResourceHelper._repo.endswith("/package.v3.json")
     assert ResourceHelper._files_api.endswith("/resources.v3")
     assert ResourceHelper._get_needed_files()[0] == "user.sites.v3.bin"
-    assert ResourceHelper._resource_target == Path("app/infrastructure")
+    assert ResourceHelper._resource_target == Path("app/application/site")
+
+
+def test_resource_helper_preserves_no_argument_check_contract(monkeypatch):
+    """旧插件无参数调用 check 时应使用启动层注入版本，不反向导入站点应用。"""
+    provider_calls = []
+
+    def provide_versions() -> tuple[str, str]:
+        """记录资源更新器是否读取了组合根注入的版本。"""
+        provider_calls.append(True)
+        return "2.4.10", "3.0.2"
+
+    configure_resource_version_provider(provide_versions)
+    monkeypatch.setattr(ResourceHelper, "_load_resource_info", lambda _self: None)
+    monkeypatch.setattr("app.adapters.system.resource.settings.AUTO_UPDATE_RESOURCE", True)
+    monkeypatch.setattr(
+        "app.adapters.system.resource.SystemUtils.is_frozen",
+        lambda: False,
+    )
+
+    assert ResourceHelper().check() is False
+    assert provider_calls == [True]
 
 
 def test_startup_owns_restart_after_resource_update(monkeypatch):
@@ -24,7 +48,11 @@ def test_startup_owns_restart_after_resource_update(monkeypatch):
     monkeypatch.setattr(
         modules_initializer,
         "ResourceHelper",
-        lambda: type("ResourceStub", (), {"check": lambda self: True})(),
+        lambda: type(
+            "ResourceStub",
+            (),
+            {"check": lambda self, **_versions: True},
+        )(),
     )
     monkeypatch.setattr(
         modules_initializer.SystemHelper,
@@ -42,7 +70,11 @@ def test_startup_does_not_restart_without_resource_update(monkeypatch):
     monkeypatch.setattr(
         modules_initializer,
         "ResourceHelper",
-        lambda: type("ResourceStub", (), {"check": lambda self: False})(),
+        lambda: type(
+            "ResourceStub",
+            (),
+            {"check": lambda self, **_versions: False},
+        )(),
     )
     monkeypatch.setattr(
         modules_initializer.SystemHelper,
@@ -66,7 +98,7 @@ def test_install_and_docker_paths_do_not_reference_v2_resources():
         assert "resources.v2" not in content
         assert "user.sites.v2.bin" not in content
         assert "resources.v3" in content
-        assert "app/infrastructure" in content
+        assert "app/application/site" in content
 
 
 def test_v3_release_workflows_use_main_wiki_and_isolated_images():

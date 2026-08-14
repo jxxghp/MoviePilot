@@ -4,9 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
-from app.platform.config import ConfigModel
+from app.runtime.config import ConfigModel
 from app.modules.acoustid import AcoustIdModule
-from app.foundation.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 
 
 RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"

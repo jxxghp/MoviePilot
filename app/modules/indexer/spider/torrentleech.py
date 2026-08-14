@@ -1,10 +1,10 @@
 from typing import List, Tuple, Optional
 from urllib.parse import quote
 
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.schemas import MediaType
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain.string import StringUtils
 
 

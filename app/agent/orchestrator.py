@@ -69,13 +69,13 @@ from app.agent.tools.impl.mcp import (
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.chain import ChainBase
-from app.platform.config import settings
-from app.platform.events import eventmanager
-from app.extensions.plugin_manager import PluginManager
+from app.runtime.config import settings
+from app.runtime.events import eventmanager
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.agentchat_oper import AgentChatOper
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.user_oper import UserOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Notification, NotificationType
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.types import ChainEventType, EventType, MessageChannel

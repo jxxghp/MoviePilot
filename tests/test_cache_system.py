@@ -5,21 +5,21 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.infrastructure.cache import (
+from app.adapters.cache.backends import (
     AsyncFileBackend,
     AsyncRedisBackend,
     FileBackend,
     RedisBackend,
 )
-from app.platform.cache import (
+from app.runtime.cache import (
     AsyncFileCache,
     AsyncMemoryBackend,
     FileCache,
     MemoryBackend,
     cached,
 )
-from app.platform.config import settings
-from app.infrastructure.redis import AsyncRedisHelper, RedisHelper, serialize
+from app.runtime.config import settings
+from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper, serialize
 
 def test_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     """
@@ -542,8 +542,8 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/2")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 7)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 3)
-    monkeypatch.setattr("app.infrastructure.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.infrastructure.redis.redis.Redis", FakeClient)
+    monkeypatch.setattr("app.adapters.cache.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.adapters.cache.redis.redis.Redis", FakeClient)
 
     helper = RedisHelper()
     helper.close()
@@ -621,8 +621,8 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/3")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 9)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 4)
-    monkeypatch.setattr("app.infrastructure.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.infrastructure.redis.Redis", FakeAsyncClient)
+    monkeypatch.setattr("app.adapters.cache.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.adapters.cache.redis.Redis", FakeAsyncClient)
 
     config_calls = asyncio.run(run_connect())
 

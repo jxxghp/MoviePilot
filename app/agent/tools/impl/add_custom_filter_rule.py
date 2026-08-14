@@ -13,7 +13,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     save_system_config,
     serialize_custom_rule,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 

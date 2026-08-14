@@ -6,7 +6,7 @@ from app.domain.context import MediaInfo, SubtitleInfo
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import MediaType
-from app.infrastructure import rust as rust_accel
+from app.adapters.system import rust as rust_accel
 
 
 AUDIENCES_SUBTITLE_HTML = """

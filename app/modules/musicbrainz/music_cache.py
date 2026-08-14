@@ -5,11 +5,11 @@ from threading import RLock
 from time import time
 from typing import Optional
 
-from app.platform.cache import FileCache, TTLCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache, TTLCache
+from app.runtime.config import settings
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING
 from app.foundation.singleton import WeakSingleton
 

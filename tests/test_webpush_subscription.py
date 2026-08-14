@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.api.endpoints.message import is_webpush_subscription_gone
-from app.platform.config import global_vars
+from app.runtime.config import global_vars
 
 
 @pytest.fixture(autouse=True)

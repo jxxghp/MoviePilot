@@ -13,7 +13,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     get_plugin_snapshot,
 )
 from app.db.plugindata_oper import PluginDataOper
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class QueryPluginDataInput(BaseModel):

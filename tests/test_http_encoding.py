@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 
 def test_xml_decoding_prefers_xml_declaration_over_http_default():

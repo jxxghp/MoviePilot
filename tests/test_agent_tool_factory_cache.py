@@ -12,7 +12,7 @@ from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceInput, AskUserChoiceTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.foundation.singleton import Singleton
 
 

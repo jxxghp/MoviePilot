@@ -5,9 +5,9 @@ from app.api.endpoints.transfer import (
     query_manual_transfer_history,
 )
 from app.chain.transfer import TransferChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.services.history import (
+from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,
     max_failed_retries,

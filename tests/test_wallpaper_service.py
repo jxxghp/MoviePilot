@@ -1,5 +1,5 @@
-import app.services.image as image_service
-from app.services.image import WallpaperHelper, configure_wallpaper_providers
+import app.application.image as image_service
+from app.application.image import WallpaperHelper, configure_wallpaper_providers
 
 
 def test_wallpaper_service_uses_startup_providers(monkeypatch):

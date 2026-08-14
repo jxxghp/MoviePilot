@@ -13,7 +13,7 @@ def _load_transmission_client_module():
 
     app_module = types.ModuleType("app")
     app_module.__path__ = []
-    log_module = types.ModuleType("app.platform.log")
+    log_module = types.ModuleType("app.runtime.log")
     utils_module = types.ModuleType("app.utils")
     utils_module.__path__ = []
     url_module = types.ModuleType("app.foundation.url")
@@ -67,7 +67,7 @@ def _load_transmission_client_module():
 
     stub_modules = {
         "app": app_module,
-        "app.platform.log": log_module,
+        "app.runtime.log": log_module,
         "app.utils": utils_module,
         "app.foundation.url": url_module,
         "transmission_rpc": transmission_rpc_module,

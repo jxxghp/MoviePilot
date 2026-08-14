@@ -4,9 +4,9 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
 from app.domain.context import MediaInfo
-from app.platform.events import eventmanager
-from app.services.mediaserver import MusicMediaServerHelper
-from app.platform.log import logger
+from app.runtime.events import eventmanager
+from app.application.mediaserver import MusicMediaServerHelper
+from app.runtime.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome
 from app.schemas import AuthCredentials, AuthInterceptCredentials

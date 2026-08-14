@@ -2,9 +2,9 @@ from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 
 from app import schemas
 from app.domain.context import MediaInfo
-from app.platform.events import eventmanager
-from app.services.mediaserver import MusicMediaServerHelper
-from app.platform.log import logger
+from app.runtime.events import eventmanager
+from app.application.mediaserver import MusicMediaServerHelper
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
 from app.schemas import AuthCredentials, AuthInterceptCredentials

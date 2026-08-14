@@ -5,9 +5,9 @@ from app.domain.meta.releasegroup import configure_release_groups_provider
 from app.domain.meta.runtime import configure_recognition_runtime
 from app.domain.meta.words import configure_custom_words_provider
 from app.domain.metainfo import clear_rust_parse_options_cache
-from app.infrastructure import rust as rust_accelerator
-from app.platform.config import settings
-from app.services.recognition import RecognitionRuleService
+from app.adapters.system import rust as rust_accelerator
+from app.runtime.config import settings
+from app.application.recognition import RecognitionRuleService
 
 
 def configure_domain_dependencies() -> None:

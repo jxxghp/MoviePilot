@@ -8,14 +8,14 @@ from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.dashboard import DashboardChain
 from app.chain.storage import StorageChain
-from app.platform.config import settings
-from app.security.access import verify_apitoken
+from app.runtime.config import settings
+from app.application.security.access import verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.db.user_oper import get_current_active_superuser
-from app.services.directory import DirectoryHelper
+from app.application.directory import DirectoryHelper
 from app.scheduler import Scheduler
-from app.infrastructure.system import SystemUtils
+from app.adapters.system.host import SystemUtils
 
 router = ResponseAPIRouter()
 

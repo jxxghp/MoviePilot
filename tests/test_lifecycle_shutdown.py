@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.startup import lifecycle, modules_initializer
-from app.foundation import http as http_utils
+from app.adapters.network import http as http_utils
 
 
 def _assert_completed_once(mock: MagicMock) -> None:
@@ -227,7 +227,7 @@ def test_restart_endpoint_failure_preserves_stop_state(
 def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):
     """命令重启失败时进程仍在运行，不能提前发布停止请求"""
     from app.chain.system import SystemChain
-    from app.platform.config import global_vars
+    from app.runtime.config import global_vars
 
     stop_event = threading.Event()
     monkeypatch.setattr(global_vars, "STOP_EVENT", stop_event)

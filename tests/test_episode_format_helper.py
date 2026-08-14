@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.chain.transfer import TransferChain
-from app.services.formatting import EpisodeFormatRuleHelper, FormatParser, _AutoRecommendSample
+from app.application.formatting import EpisodeFormatRuleHelper, FormatParser, _AutoRecommendSample
 from app.schemas import EpisodeFormatRule, FileItem
 
 
@@ -22,7 +22,7 @@ def _make_file(name: str, size: int = 150 * 1024 * 1024) -> FileItem:
 @pytest.fixture(autouse=True)
 def _patch_media_exts(monkeypatch):
     monkeypatch.setattr(
-        "app.services.formatting.settings.RMT_MEDIAEXT",
+        "app.application.formatting.settings.RMT_MEDIAEXT",
         [".mkv", ".mp4"],
     )
 
@@ -233,7 +233,7 @@ def test_auto_recommend_returns_false_when_parse_raises(monkeypatch):
     def _raise_parse(*args, **kwargs):
         raise ValueError("broken parse")
 
-    monkeypatch.setattr("app.services.formatting._match_template", _raise_parse)
+    monkeypatch.setattr("app.application.formatting._match_template", _raise_parse)
 
     state, errmsg, data = helper.recommend([], samples)
 
@@ -432,7 +432,7 @@ def test_auto_recommend_uses_native_episode_as_fallback(monkeypatch):
     ]
 
     monkeypatch.setattr(
-        "app.services.formatting.anitopy.parse",
+        "app.application.formatting.anitopy.parse",
         lambda _: {},
     )
     monkeypatch.setattr(
@@ -508,7 +508,7 @@ def test_auto_recommend_prefers_bracket_episode_over_title_sequence_native(monke
     ]
 
     monkeypatch.setattr(
-        "app.services.formatting.anitopy.parse",
+        "app.application.formatting.anitopy.parse",
         lambda _: {},
     )
     monkeypatch.setattr(
@@ -541,7 +541,7 @@ def test_auto_recommend_corrects_anitopy_title_sequence_bias(monkeypatch):
         return {"episode_number": "3"}
 
     monkeypatch.setattr(
-        "app.services.formatting.anitopy.parse",
+        "app.application.formatting.anitopy.parse",
         _mock_parse,
     )
     monkeypatch.setattr(
@@ -611,7 +611,7 @@ def test_extract_episode_with_native_fallback_keeps_anitopy_range_list(monkeypat
     item = _make_file("Show - 01-02 [02].mkv")
 
     monkeypatch.setattr(
-        "app.services.formatting.anitopy.parse",
+        "app.application.formatting.anitopy.parse",
         lambda _: {"episode_number": ["01", "02"]},
     )
     monkeypatch.setattr(

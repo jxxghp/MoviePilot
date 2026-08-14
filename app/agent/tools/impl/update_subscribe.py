@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.events import eventmanager
+from app.runtime.events import eventmanager
 from app.db.subscribe_oper import SubscribeOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import EventType, media_type_to_agent
 

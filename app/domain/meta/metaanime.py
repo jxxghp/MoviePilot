@@ -7,7 +7,7 @@ from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.domain.string import StringUtils
-from app.foundation.zhconv import convert as zhconv_convert
+from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MediaType
 
 

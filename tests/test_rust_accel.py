@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.infrastructure import rss as rss_module
-from app.infrastructure.rss import RssHelper
+from app.application import rss as rss_module
+from app.application.rss import RssHelper
 from app.domain import metainfo as metainfo_module
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.domain.meta.streamingplatform import StreamingPlatforms
@@ -17,8 +17,8 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import SystemConfigKey
 from app.schemas.types import MediaType
-from app.infrastructure import rust as rust_accel
-from app.foundation.http import RequestUtils
+from app.adapters.system import rust as rust_accel
+from app.adapters.network.http import RequestUtils
 
 
 pytestmark = pytest.mark.skipif(

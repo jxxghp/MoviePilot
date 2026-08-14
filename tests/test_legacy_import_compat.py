@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from app.compat.diagnostics import (
+from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     get_legacy_import_diagnostics,
     reset_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
-from app.compat.imports import install_legacy_import_hook
-from app.compat.manifest import (
+from app.runtime.compat.imports import install_legacy_import_hook
+from app.runtime.compat.manifest import (
     MODULE_ALIASES,
     PACKAGE_ALIASES,
     PACKAGE_EXPORTS,
@@ -164,8 +164,8 @@ def test_manifest_aliases_reuse_real_canonical_modules():
     """正式映射表中的旧路径应在隔离进程中复用全部 canonical 模块。"""
     code = """
 import importlib
-from app.compat.manifest import MODULE_ALIASES
-# CI 无 app.infrastructure.sites 二进制模块，先补垫片再校验全部映射（与 conftest 同源）。
+from app.runtime.compat.manifest import MODULE_ALIASES
+# CI 无 app.application.site.sites 二进制模块，先补垫片再校验全部映射（与 conftest 同源）。
 from app.testing.bootstrap import ensure_sites_stub
 ensure_sites_stub()
 
@@ -173,7 +173,7 @@ for legacy_name, alias in MODULE_ALIASES.items():
     try:
         canonical = importlib.import_module(alias.target)
     except ModuleNotFoundError:
-        if alias.target == "app.infrastructure.sites":
+        if alias.target == "app.application.site.sites":
             continue
         raise
     legacy = importlib.import_module(legacy_name)

@@ -25,9 +25,9 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
-from app.platform.config import settings, global_vars
-from app.platform.events import Event, eventmanager
-from app.extensions.plugin_manager import PluginManager
+from app.runtime.config import settings, global_vars
+from app.runtime.events import Event, eventmanager
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.db import SessionFactory
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -35,19 +35,19 @@ from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
-from app.services.image import WallpaperHelper
-from app.messaging.message import MessageHelper
-from app.platform.progress import ProgressHelper
-from app.integrations.server import MoviePilotServerHelper
-from app.extensions.service_registry import ServiceConfigHelper
-from app.infrastructure.sites import SitesHelper  # noqa
-from app.platform.log import logger
+from app.application.image import WallpaperHelper
+from app.application.messaging.message import MessageHelper
+from app.runtime.progress import ProgressHelper
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.runtime.log import logger
 from app.schemas import Notification, NotificationType, Workflow
 from app.schemas.types import EventType, SystemConfigKey
-from app.platform.gc import get_memory_usage
-from app.platform.reload import ConfigReloadMixin
+from app.runtime.gc import get_memory_usage
+from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
-from app.platform.scheduling import TimerUtils
+from app.runtime.scheduling import TimerUtils
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"

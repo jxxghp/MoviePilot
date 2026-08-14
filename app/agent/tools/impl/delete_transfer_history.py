@@ -8,7 +8,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.storage import StorageChain
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import FileItem
 
 

@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.chain.transfer import JobManager, TransferChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas import EpisodeFormat, FileItem
 from app.schemas.types import MediaType
 

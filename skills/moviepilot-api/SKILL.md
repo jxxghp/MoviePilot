@@ -47,7 +47,7 @@ that the CLI/MCP tools do not expose.
 
 ## Setup
 
-When the script runs inside the MoviePilot project, it imports `app.platform.config.settings` and reads `settings.HOST`, `settings.PORT`, and `settings.API_TOKEN` directly. Do not ask the user for `API_TOKEN`, and do not copy API keys into the prompt.
+When the script runs inside the MoviePilot project, it imports `app.runtime.config.settings` and reads `settings.HOST`, `settings.PORT`, and `settings.API_TOKEN` directly. Do not ask the user for `API_TOKEN`, and do not copy API keys into the prompt.
 
 Configuration priority:
 

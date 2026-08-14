@@ -2,7 +2,7 @@ import threading
 
 from pyparsing import Forward, Literal, Word, alphas, infix_notation, opAssoc, alphanums, Combine, nums, ParseResults
 
-from app.infrastructure import rust as rust_accel
+from app.adapters.system import rust as rust_accel
 
 
 class RuleParser:

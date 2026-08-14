@@ -2,7 +2,7 @@
 import json
 from typing import Optional, Tuple
 
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.domain.string import StringUtils

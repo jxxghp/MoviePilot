@@ -36,13 +36,13 @@ from app.agent.tools.impl.update_agent_task import (
     UpdateAgentTaskTool,
 )
 from app.agent.tools.tags import ToolTag
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db import SessionFactory
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.schemas import ScheduleInfo
 from app.scheduler import Scheduler
-from app.platform.scheduling import TimerUtils
+from app.runtime.scheduling import TimerUtils
 
 
 class _FakeAgentTaskScheduler:

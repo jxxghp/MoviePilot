@@ -12,7 +12,7 @@ from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.scheduler import SchedulerChain
 
 

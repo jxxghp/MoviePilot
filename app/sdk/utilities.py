@@ -3,14 +3,14 @@
 from app.domain.string import StringUtils
 from app.foundation.crypto import CryptoJsUtils
 from app.foundation.dom import DomUtils
-from app.foundation.jieba import cut
-from app.foundation.object import ObjectUtils
+from app.foundation.text import cut
+from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
-from app.infrastructure.system import SystemUtils
-from app.platform.execution import log_execution_time, retry
-from app.platform.localization import LocaleHelper
-from app.platform.scheduling import TimerUtils
-from app.security.otp import OtpUtils
+from app.adapters.system.host import SystemUtils
+from app.runtime.execution import log_execution_time, retry
+from app.runtime.localization import LocaleHelper
+from app.runtime.scheduling import TimerUtils
+from app.application.security.otp import OtpUtils
 
 
 decrypt = CryptoJsUtils.decrypt

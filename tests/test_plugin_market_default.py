@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.integrations.market import extract_plugin_market_repos_from_wiki
+from app.adapters.external.market import extract_plugin_market_repos_from_wiki
 from scripts.generate_plugin_market_default import (
     OFFICIAL_PLUGIN_MARKET,
     _generate_plugin_market_default,

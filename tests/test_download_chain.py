@@ -6,7 +6,7 @@ import pytest
 
 import app.chain.download as download_module
 from app.chain.download import DownloadChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas import DownloaderTorrent, FileItem, NotExistMediaInfo, TransferDirectoryConf
@@ -138,7 +138,7 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     """
     _FakeThreadHelper.submitted = []
     monkeypatch.setattr(
-        "app.services.directory.DirectoryHelper.get_download_dirs",
+        "app.application.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
@@ -258,7 +258,7 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
 
     _FakeThreadHelper.submitted = []
     monkeypatch.setattr(
-        "app.services.directory.DirectoryHelper.get_download_dirs",
+        "app.application.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
@@ -783,7 +783,7 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
             return SimpleNamespace(id=1)
 
     monkeypatch.setattr(
-        "app.services.directory.DirectoryHelper.get_download_dirs",
+        "app.application.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)

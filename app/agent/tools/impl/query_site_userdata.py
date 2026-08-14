@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.db.site_oper import SiteOper
-from app.platform.log import logger
+from app.runtime.log import logger
 
 SITE_USERDATA_DETAIL_PREVIEW_LIMIT = 10
 

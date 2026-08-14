@@ -1,11 +1,11 @@
 from typing import List, Optional, Tuple, Union
 
 from app import schemas
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
 from app.schemas.types import (

@@ -15,9 +15,9 @@ from app.agent.prompt.transfer_redo import (
     build_manual_redo_prompt,
 )
 from app.chain.storage import StorageChain
-from app.platform.config import settings, global_vars
-from app.platform.events import eventmanager
-from app.security.access import verify_token
+from app.runtime.config import settings, global_vars
+from app.runtime.events import eventmanager
+from app.application.security.access import verify_token
 from app.db import get_async_db, get_db
 from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -27,10 +27,10 @@ from app.db.user_oper import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.platform.progress import ProgressHelper
-from app.services.history import clear_transfer_failures
+from app.runtime.progress import ProgressHelper
+from app.application.history import clear_transfer_failures
 from app.schemas.types import EventType
-from app.foundation.jieba import cut as jieba_cut
+from app.foundation.text import cut as jieba_cut
 
 router = ResponseAPIRouter()
 

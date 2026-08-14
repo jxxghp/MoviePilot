@@ -12,7 +12,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     summarize_plugin,
     uninstall_plugin_runtime,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class UninstallPluginInput(BaseModel):

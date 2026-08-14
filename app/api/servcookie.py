@@ -11,8 +11,8 @@ from fastapi.routing import APIRoute
 
 from app import schemas
 from app.api.response import ERROR_RESPONSES
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.foundation.crypto import CryptoJsUtils, HashUtils
 
 

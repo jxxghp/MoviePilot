@@ -79,16 +79,16 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 
 | 目标包 | 职责 | 允许依赖 |
 | --- | --- | --- |
-| `app.foundation` | 不读取 MoviePilot 业务或运行配置的 HTTP、动态模块加载、通用结构、加密、URL、版本和文本基础能力 | 标准库、第三方库、同层代码 |
+| `app.foundation` | 不读取 MoviePilot 业务或运行配置、也不执行 I/O 的反射/动态加载、DOM、通用结构、加密、URL、版本和文本基础能力 | 标准库、第三方库、同层代码 |
 | `app.domain` | 媒体、识别、媒体服务器身份、站点和种子业务语义 | `foundation` 和 schemas；不得依赖 DB、settings、基础设施、扩展、消息、安全或应用服务 |
-| `app.chain`、`app.services` | 用例编排、跨模块业务流程和聚焦应用服务 | 领域、平台能力和适配器；不得形成模块级依赖环 |
-| `app.infrastructure` | RSS、Redis/文件缓存、浏览器、DNS、资源、包、OS 和 Rust 等配置化运行适配 | `foundation`、`platform`；不得依赖领域或上层能力包 |
-| `app.platform` | 配置、事件总线、缓存契约/内存策略、并发、GC 和进程级协调 | `foundation` 及少量明确的 OS 适配器 |
-| `app.extensions` | 模块、插件和服务的运行时发现及生命周期 | 领域、平台及适配器；依赖由 startup 注入 |
+| `app.chain`、`app.application` | 用例编排、跨模块业务流程和聚焦应用服务 | 领域、平台能力和适配器；不得形成模块级依赖环 |
+| `app.adapters` | 按 cache/network/system/external 分类的 Redis、HTTP、浏览器、DNS、资源、包、OS、Rust 和命名外部生态适配 | `foundation`、`domain`、schemas 和必要 runtime 契约；不得依赖 application、runtime extensions/compat 或 SDK |
+| `app.runtime` | 配置、事件总线、缓存契约/内存策略、并发、GC 和进程级协调 | `foundation` 及少量明确的 OS 适配器 |
+| `app.runtime.extensions` | 模块、插件和服务的运行时发现及生命周期 | 领域、平台及适配器；依赖由 startup 注入 |
 | `app.agent.skills` | Agent Skill 元数据、市场和本地生命周期 | Agent、平台及适配器；不归入通用扩展层 |
-| `app.integrations`、`app.messaging`、`app.security` | 插件市场、IP 归属等外部生态、消息和安全边界 | 领域、平台及基础设施能力 |
+| `app.adapters.external`、`app.application.messaging`、`app.application.security` | 插件市场、IP 归属等外部生态、消息和安全边界 | 领域、平台及基础设施能力 |
 | `app.sdk` | 明确承诺给插件使用的稳定类型、事件和服务门面 | 只通过显式导出依赖受控 canonical 对象 |
-| `app.compat` | 旧导入路径兼容机制和声明式映射 | 仅 Python 标准库；不能导入业务目标模块 |
+| `app.runtime.compat` | 旧导入路径兼容机制和声明式映射 | 仅 Python 标准库；不能导入业务目标模块 |
 
 源码已按这些边界迁移完成。后续新增模块以所有权和无环依赖为验收标准，不能重新创建 `core/helper/utils` 物理源码目录。
 
@@ -108,27 +108,28 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | --- | --- | --- |
 | `core.context`、`core.meta*`、`core.metainfo` | `app.domain.context` / `app.domain.meta` / `app.domain.metainfo` | 已去除 DB、settings、平台日志实现和 Rust adapter 直接依赖，由 startup 注入 |
 | `helper.nfo`、`helper.scraper` | `app.domain.scraper` | NFO 读取与媒体元数据文档生成属于同一领域能力；旧 `app.helper.nfo` 精确映射到合并后的模块 |
-| `app.log` | `app.platform.log` | 日志策略、控制台/插件路由、异步滚动文件写入和关闭集中在一个模块；插件入口为 `app.sdk.logging` |
-| `core.config` | `runtime.config` | 先把纯路径、URL、系统操作下沉到 foundation/infrastructure，避免 runtime 被低层反向导入 |
+| `app.log` | `app.runtime.log` | 日志策略、控制台/插件路由、异步滚动文件写入和关闭集中在一个模块；插件入口为 `app.sdk.logging` |
+| `core.config` | `runtime.config` | 纯 URL、网络和系统操作下沉到 foundation/adapters，避免 runtime 承担具体 I/O |
 | `core.event` 中的 `Event` 契约 | `domain.events` 或稳定 SDK contract | 与事件队列、线程、处理器实例解析分离 |
 | `core.event` 中的 EventManager | `runtime.events` | 移除按类名猜路径及直接实例化 PluginManager/ModuleManager/MessageHelper |
 | `core.module`、`core.plugin` | `runtime.extensions` | 安装、发现、生命周期和业务上报通过接口/装配连接 |
-| `core.cache` | `app.platform.cache` + `app.infrastructure.cache` | platform 保留契约、内存策略和装饰器；infrastructure 实现 Redis/文件 I/O；SDK 维持旧完整符号集 |
+| `core.cache` | `app.runtime.cache` + `app.adapters.cache.backends` | runtime 保留契约、内存策略和装饰器；cache adapters 实现 Redis/文件 I/O；SDK 维持旧完整符号集 |
 | `utils.string/url/identity/coalesce/structures` 等纯函数 | `foundation` 对应领域文件 | 确认不读取全局配置、不执行 I/O、不导入高层模块 |
-| `utils.http` | `foundation.http` | 去除对 `settings` 的反向读取，由启动层注入宿主 User-Agent |
-| `utils.web` | `app.integrations.location` | 外部 IP 归属服务是具体生态集成，不是通用网络基础设施 |
-| `utils.gc` | `app.platform.gc` | 进程内存观测和回收是运行平台策略，不是外部适配器 |
-| `utils.rust_accel/system/stdio` | `app.infrastructure` | 具体扩展、系统调用和 stdio I/O 保留在适配器层 |
+| `utils.http` | `app.adapters.network.http` | 去除对 `settings` 的反向读取，由启动层注入宿主 User-Agent |
+| `utils.web` | `app.adapters.external.location` | 外部 IP 归属服务是具体生态集成，不是通用网络基础设施 |
+| `utils.gc` | `app.runtime.gc` | 进程内存观测和回收是运行平台策略，不是外部适配器 |
+| `utils.rust_accel/system/stdio` | `app.adapters` | 具体扩展、系统调用和 stdio I/O 保留在适配器层 |
 | `utils.mixins` | 按能力拆分，配置重载部分归 `runtime` | 消除 mixin 对全局事件单例的导入期注册 |
-| `helper.redis/browser/doh/display/thread/package` 等 | `infrastructure` | 生命周期由 runtime 装配，不在适配器内部反向获取管理器 |
-| `helper.module` | `foundation.module` | 只保留通用 Python 模块发现与动态加载，不承担模块生命周期 |
-| `helper.downloader/mediaserver/service` | `app.services` + `app.extensions.service_registry` | 媒体服务器身份/匹配规则与配置化服务发现统一归入 `services/mediaserver.py`，通用服务注册机制保持独立 |
-| `helper.message/interaction` | `app.messaging` | 负责消息渲染、路由和交互，不承担配置化服务发现 |
-| `helper.notification` | `app.services.notification` | 通知模块发现依赖持久化配置，属于应用服务 |
+| `helper.redis/browser/doh/display/thread/package` 等 | `adapters/cache`、`adapters/network`、`adapters/system` 或 `runtime/thread.py` | 生命周期由 startup 装配，不在适配器内部反向获取管理器 |
+| `helper.module` | `foundation.reflection` | 只保留通用 Python 反射、模块发现与动态加载，不承担模块生命周期 |
+| `helper.downloader/mediaserver/service` | `app.application` + `app.runtime.extensions.service_registry` | 媒体服务器身份/匹配规则与配置化服务发现统一归入 `application/mediaserver.py`，通用服务注册机制保持独立 |
+| `helper.message/interaction` | `app.application.messaging` | 负责消息渲染、路由和交互，不承担配置化服务发现 |
+| `helper.notification` | `app.application.notification` | 通知模块发现依赖持久化配置，属于应用服务 |
 | `helper.webpush` | `app.api.endpoints.message` | Web Push 订阅和手动发送只服务消息 HTTP API，直接归入对应 endpoint |
-| `helper.server` | `app.integrations.server` | MoviePilot 远端服务是命名外部生态集成 |
+| `helper.server` | `app.adapters.external.server` | MoviePilot 远端服务是命名外部生态集成 |
 | `helper.torrent/audio/directory/format/nfo/rule/scraper` | `domain` 纯规则 + `application` 用例 + I/O adapter | 逐函数区分纯转换、业务流程和文件/网络访问 |
-| `helper.sites` 与二进制资源 | `infrastructure.sites` + 独立资源目录 | 完成 Build、Resources、Docker、本地安装的跨仓同步迁移 |
+| `helper.rss` | `app.application.rss` | RSS 同时负责 Feed/种子语义、站点规则和浏览器回退，不把它简化为网络传输适配器 |
+| `helper.sites` 与二进制资源 | `app.application.site.sites` + `app/application/site/` 资源目录 | 站点目录、认证和索引属于应用能力；完成 Build、Resources、Docker、本地安装及 CI 的跨仓同步迁移 |
 
 `app.chain` 已经承担 application orchestration，可继续保留，不必仅为追求目录命名整齐而整体改名。`app.modules` 继续作为可插拔 adapter 集合，但模块间编排仍由 chain/application 完成。
 
@@ -161,7 +162,7 @@ app/
     services.py
 ```
 
-`app.compat` 自身只使用标准库，尤其不能导入 `settings`、logger、事件总线、插件管理器或映射目标。`app/__init__.py` 只负责无业务依赖地安装钩子；配置初始化完成后、插件加载前，再由启动装配代码调用类似 `configure_diagnostics(enabled=settings.DEBUG, emit=logger.warning)` 的入口注入 Debug 状态和日志回调，避免兼容层再次进入当前依赖环。
+`app.runtime.compat` 自身只使用标准库，尤其不能导入 `settings`、logger、事件总线、插件管理器或映射目标。`app/__init__.py` 只负责无业务依赖地安装钩子；配置初始化完成后、插件加载前，再由启动装配代码调用类似 `configure_diagnostics(enabled=settings.DEBUG, emit=logger.warning)` 的入口注入 Debug 状态和日志回调，避免兼容层再次进入当前依赖环。
 
 ### 4.3 声明式映射
 
@@ -170,12 +171,12 @@ app/
 ```python
 MODULE_ALIASES = {
     "app.core.event": ModuleAlias(
-        target="app.platform.events",
+        target="app.runtime.events",
         introduced="3.x.y",
         owner="runtime",
     ),
     "app.utils.http": ModuleAlias(
-        target="app.foundation.http",
+        target="app.adapters.network.http",
         introduced="3.x.y",
         owner="infrastructure",
     ),
@@ -187,7 +188,7 @@ MODULE_ALIASES = {
 约束如下：
 
 - 旧路径和目标路径都必须是完整绝对模块名。
-- 不允许 `app.core.* -> app.platform.*` 这类通配规则自动覆盖未知模块。
+- 不允许 `app.core.* -> app.runtime.*` 这类通配规则自动覆盖未知模块。
 - 旧路径不能仍有真实 `.py` 文件，避免标准查找器绕过兼容 Finder。
 - 目标不能再指向另一个旧路径；启动校验应将别名链视为错误。
 - 一个旧模块只能映射到一个目标模块。
@@ -202,7 +203,7 @@ MODULE_ALIASES = {
 
 ```python
 import app.core.event as legacy
-import app.platform.events as canonical
+import app.runtime.events as canonical
 
 assert legacy is canonical
 assert legacy.Event is canonical.Event
@@ -269,7 +270,7 @@ Finder 在诊断回调尚未配置时仍可暂存命中的旧路径和调用模�
 当 `settings.DEBUG` 为真且兼容 Finder 命中旧路径时，记录一次 Debug 兼容警告：
 
 ```text
-[兼容导入] 插件 AutoSignIn 使用旧路径 app.utils.http，已映射到 app.foundation.http；请迁移到 app.sdk.network
+[兼容导入] 插件 AutoSignIn 使用旧路径 app.utils.http，已映射到 app.adapters.network.http；请迁移到 app.sdk.network
 ```
 
 警告应包含：
@@ -361,7 +362,7 @@ SYMBOL_ALIASES = {
 
 ### 阶段 1：先落兼容基础设施
 
-- 新增只依赖标准库的 `app.compat`。
+- 新增只依赖标准库的 `app.runtime.compat`。
 - 在 `app/__init__.py` 最早安装 Finder。
 - 实现 DEBUG 运行时告警与插件 AST 扫描。
 - 映射表先为空或只放一个无副作用的试点模块。
@@ -406,12 +407,12 @@ SYMBOL_ALIASES = {
 
 新增 AST 级测试或独立脚本，至少检查：
 
-- `app.compat` 不导入任何 MoviePilot 业务模块；
+- `app.runtime.compat` 不导入任何 MoviePilot 业务模块；
 - `app.foundation` 不导入其他 MoviePilot 能力包；
-- `domain` 不导入 DB、平台日志实现、platform、infrastructure、`extensions/integrations/messaging/security/services/sdk/compat`；
-- `infrastructure` 不导入 `domain` 或任何上层应用能力包；
-- `foundation` 不打印日志，也不导入平台日志实现；`platform.cache` 不导入具体 infrastructure cache adapter；
-- `infrastructure.resource` 不导入或调用 `platform.runtime`；
+- `domain` 不导入 DB、runtime、adapters、application、SDK 或兼容层；
+- `adapters` 不导入 application、runtime extensions/compat 或 SDK；
+- `foundation` 不打印日志，也不导入任何其他 `app.*` 包；`runtime.cache` 不导入具体 cache adapter；
+- `adapters.system.resource` 不导入或调用 `runtime.state`；
 - 低层不导入 `PluginManager`、`ModuleManager` 等运行时实现；
 - `app/` 主程序代码不再导入已登记的旧路径，插件目录除外；
 - 完整导入图中不存在包含 canonical 迁移模块、SDK 或兼容层的强连通分量；
@@ -453,13 +454,14 @@ SYMBOL_ALIASES = {
 
 ## 10. 资源、构建和跨仓影响
 
-`MoviePilot-Resources/resources.v3`、Docker 更新脚本、本地安装脚本以及 `MoviePilot-Build` 现已把站点扩展和数据文件同步到 `app/infrastructure/`，编译扩展模块名为 `app.infrastructure.sites`。
+`MoviePilot-Resources/resources.v3`、Docker 更新脚本、本地安装脚本以及 `MoviePilot-Build` 现已把站点扩展和数据文件同步到 `app/application/site/`，编译扩展模块名为 `app.application.site.sites`。
 
 跨仓资源迁移已按以下约束完成：
 
-- 站点运行时扩展 canonical 路径为 `app.infrastructure.sites`；
-- 数据文件放到明确的资源目录，不再与 Python helper 源码混放；
+- 站点运行时扩展 canonical 路径为 `app.application.site.sites`；
+- 数据文件与其唯一消费者放到聚焦的站点应用目录，不再混入通用网络适配器；
 - 同步修改 `MoviePilot-Build` 的扩展名和输出参数；
+- 同步修改 Build CI 的认证扩展、站点数据发布流程和 manifest target；
 - 同步修改 `MoviePilot-Resources` 的 package target；
 - 修改 Dockerfile、`docker/update.sh`、entrypoint、本地安装/卸载和相关文档；
 - 为 `app.helper.sites` 保留旧路径兼容，并验证 CPython 扩展通过别名加载时保持同一模块身份；
@@ -511,16 +513,16 @@ SYMBOL_ALIASES = {
 ## 14. 实施结果
 
 1. `app/core`、`app/helper`、`app/utils` 已无物理 Python 源码，宿主全部使用 canonical 路径。
-2. `app.compat` 在 `app` 包初始化时安装精确白名单 Finder，旧叶子模块与 canonical 模块保持同一身份。
+2. `app.runtime.compat` 在 `app` 包初始化时安装精确白名单 Finder，旧叶子模块与 canonical 模块保持同一身份。
 3. DEBUG 诊断通过运行时命中和插件 AST 扫描互补发现旧引用，生产模式静默。
 4. Event、模块、插件和安全边界改为由 startup composition root 注入 resolver、回调和错误处理器，迁移模块不再处于强连通分量。
 5. 插件稳定入口收敛到 `app.sdk`；存量插件无需同步修改，官方插件可以按正常发布节奏迁移。
-6. 站点二进制和数据资源迁到 `app.infrastructure`，Build 直接生成 canonical 模块，Resources V3 manifest、Docker 和本地 CLI 使用同一目标路径。
+6. 站点二进制和数据资源迁到 `app/application/site`，Build 直接生成 `app.application.site.sites`，Build CI、Resources V3 manifest、Docker 和本地 CLI 使用同一目标路径。
 7. 媒体识别领域不再直接读取 DB/settings，也不导入 Rust 适配器；`startup/domain_initializer.py` 统一注入实时规则、后缀策略、TMDB 图片地址、默认媒体来源和加速器。
-8. 缓存按职责拆为 `platform/cache.py`（契约、内存实现、装饰器、代理）和 `infrastructure/cache.py`（Redis、文件 I/O）；旧 `app.core.cache` 指向完整 `app.sdk.cache` 门面。
-9. `services/mediaserver.py` 集中负责媒体服务器的配置化服务发现、Provider ID 规范化和音乐库匹配；通用媒体身份规则继续复用 `domain/media.py`。
-10. GC 归入 `platform/gc.py`，外部 IP 归属查询归入 `integrations/location.py`，安全能力统一在 `app/security/`，URL 安全策略为 `url.py`，二次认证文件为 `twofactor.py`。
+8. 缓存按职责拆为 `runtime/cache.py`（契约、内存实现、装饰器、代理）和 `adapters/cache/backends.py`（Redis、文件 I/O）；旧 `app.core.cache` 指向完整 `app.sdk.cache` 门面。
+9. `application/mediaserver.py` 集中负责媒体服务器的配置化服务发现、Provider ID 规范化和音乐库匹配；通用媒体身份规则继续复用 `domain/media.py`。
+10. GC 归入 `runtime/gc.py`，外部 IP 归属查询归入 `adapters/external/location.py`，安全能力统一在 `app/application/security/`，URL 安全策略为 `url.py`，二次认证文件为 `twofactor.py`。
 11. 资源适配器只负责检测、下载和安装，成功后是否重启由 startup 决策。
-12. 日志策略、控制台/插件路由、异步滚动文件写入和关闭集中在 `platform/log.py`；该模块不得导入任何 `app.*` 模块，foundation 不打印日志，运行期诊断由上层调用方负责。插件使用 `app.sdk.logging`，旧 `app.log` 继续精确兼容。
+12. 日志策略、控制台/插件路由、异步滚动文件写入和关闭集中在 `runtime/log.py`；该模块不得导入任何 `app.*` 模块，foundation 不打印日志，运行期诊断由上层调用方负责。插件使用 `app.sdk.logging`，旧 `app.log` 继续精确兼容。
 13. `domain/nfo.py` 已合并进 `domain/scraper.py`，NFO 读取与元数据文档生成由同一领域模块负责，旧 `app.helper.nfo` 仍可导入。
-14. 通知服务发现归入 `services/notification.py`；Web Push API 辅助逻辑归入 `api/endpoints/message.py`，不再保留 `messaging/notification.py` 和 `messaging/webpush.py`。
+14. 通知服务发现归入 `application/notification.py`；Web Push API 辅助逻辑归入 `api/endpoints/message.py`，不再保留旧顶级 messaging 中的 notification/webpush 模块。

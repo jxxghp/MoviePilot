@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 

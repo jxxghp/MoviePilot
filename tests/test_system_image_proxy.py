@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from app.api.endpoints import system as system_endpoint
-from app.services.image import ImageHelper
+from app.application.image import ImageHelper
 
 
 def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
@@ -78,7 +78,7 @@ def test_fetch_image_with_mime_type_validates_network_content_once():
         image_helper.file_cache,
         "set",
     ), patch(
-        "app.services.image.RequestUtils",
+        "app.application.image.RequestUtils",
         return_value=request,
     ), patch.object(
         image_helper,
@@ -132,7 +132,7 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
         "set",
         new=AsyncMock(),
     ), patch(
-        "app.services.image.AsyncRequestUtils",
+        "app.application.image.AsyncRequestUtils",
         return_value=request,
     ), patch.object(
         image_helper,

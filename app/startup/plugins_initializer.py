@@ -1,24 +1,27 @@
-from app.compat.diagnostics import (
+from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
-from app.platform.config import global_vars
-from app.extensions.plugin_manager import (
+from app.runtime.config import global_vars
+from app.runtime.extensions.plugin_manager import (
     PluginManager,
     configure_plugin_install_reporter,
     configure_plugin_legacy_import_services,
+    configure_site_auth_level_provider,
 )
-from app.integrations.server import MoviePilotServerHelper
-from app.platform.log import logger
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.log import logger
 
 
 def _configure_plugin_services() -> None:
-    """把兼容诊断和远程上报能力装配到插件管理器。"""
+    """把兼容诊断、远程上报和站点认证等级装配到插件管理器。"""
     configure_plugin_legacy_import_services(
         diagnostics_configurator=configure_legacy_import_diagnostics,
         import_scanner=scan_plugin_legacy_imports,
     )
     configure_plugin_install_reporter(MoviePilotServerHelper.install_plugin_reg)
+    configure_site_auth_level_provider(lambda: SitesHelper().auth_level)
 
 
 async def sync_plugins() -> bool:

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.security.access import get_password_hash
+from app.application.security.access import get_password_hash
 from app.db import get_async_db
 from app.db.models.user import User
 from app.db.user_oper import (

@@ -1,6 +1,6 @@
 import time
 
-from app.messaging.message import MessageQueueManager, TemplateHelper, stop_message
+from app.application.messaging.message import MessageQueueManager, TemplateHelper, stop_message
 from app.foundation.singleton import SingletonClass
 
 

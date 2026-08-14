@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from app.agent.prompt import prompt_manager
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.types import MessageChannel
 
 

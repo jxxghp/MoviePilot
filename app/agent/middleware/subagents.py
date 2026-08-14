@@ -37,7 +37,7 @@ from app.agent.policy import (
 from app.agent.runtime import SubAgentDefinition, agent_runtime_manager
 from app.agent.tools.tags import ToolTag
 from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 SUBAGENT_TASK_TOOL_NAME = "task"

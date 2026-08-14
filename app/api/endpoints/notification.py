@@ -4,7 +4,7 @@ from fastapi import Depends
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module_manager import ModuleManager
 from app.db.models import User
 from app.db.user_oper import get_current_active_superuser
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot

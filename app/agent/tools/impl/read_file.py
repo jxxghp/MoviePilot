@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # 最大读取大小 50KB
 MAX_READ_SIZE = 50 * 1024

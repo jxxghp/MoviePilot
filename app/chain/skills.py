@@ -2,7 +2,7 @@ import re
 from typing import List, Optional, Tuple, Union
 
 from app.chain import ChainBase
-from app.messaging.interaction import (
+from app.application.messaging.interaction import (
     build_navigation_buttons,
     page_items,
     supports_interaction_buttons,

@@ -22,7 +22,7 @@ python tests/run.py                       # 等价于 pytest 全量（参数透�
 收集任何测试模块、`import app.*` **之前**，conftest 完成两件事：
 
 1. **临时库**：把 `CONFIG_DIR` 指向临时目录并 `init_db()` 建表。`app.db` 在导入期即按 `CONFIG_PATH` 连接 `user.db`，所以必须早于首个 `import app.*`；空库会让运行期查表报 `no such table`，故必须建表。
-2. **`app.infrastructure.sites` 垫片**：该模块由独立仓库动态拉取、CI 无此文件，conftest 统一补最小垫片（本地存在真实模块时优先用真实模块）。兼容层会把旧插件的 `app.helper.sites` 导入路由到同一模块。
+2. **`app.application.site.sites` 垫片**：该模块由独立仓库动态拉取、CI 无此文件，conftest 统一补最小垫片（本地存在真实模块时优先用真实模块）。兼容层会把旧插件的 `app.helper.sites` 导入路由到同一模块。
 
 由此推出两条**硬规范**：
 

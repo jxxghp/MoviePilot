@@ -3,12 +3,12 @@ from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.domain.context import Context, MediaInfo
-from app.messaging.agent import (
+from app.application.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification

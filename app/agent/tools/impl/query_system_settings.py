@@ -15,9 +15,9 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class QuerySystemSettingsInput(BaseModel):

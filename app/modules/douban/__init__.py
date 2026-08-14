@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Tuple, Union
 import cn2an
 
 from app import schemas
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
@@ -13,7 +13,7 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
@@ -27,11 +27,11 @@ from app.schemas.types import (
     ModuleType,
     MediaRecognizeType,
 )
-from app.platform.execution import retry
-from app.foundation.http import RequestUtils
-from app.platform.rate import rate_limit_exponential
+from app.runtime.execution import retry
+from app.adapters.network.http import RequestUtils
+from app.runtime.rate import rate_limit_exponential
 from app.domain.media import is_media_source_enabled, is_media_source_selected
-from app.foundation.zhconv import convert as zhconv_convert
+from app.foundation.text import convert as zhconv_convert
 
 
 class DoubanModule(_ModuleBase):

@@ -5,13 +5,13 @@ from typing import List, Tuple, Union, Dict, Optional
 
 from app.domain.context import TorrentInfo, MediaInfo
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
-from app.services.filter import RuleHelper
-from app.platform.log import logger
+from app.application.filter import RuleHelper
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
-from app.infrastructure import rust as rust_accel
+from app.adapters.system import rust as rust_accel
 from app.domain.string import StringUtils
 
 

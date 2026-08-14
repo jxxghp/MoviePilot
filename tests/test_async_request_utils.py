@@ -4,8 +4,8 @@ import time
 import httpx
 import pytest
 
-from app.foundation import http as http_module
-from app.foundation.http import AsyncRequestUtils
+from app.adapters.network import http as http_module
+from app.adapters.network.http import AsyncRequestUtils
 
 PROXY = "http://proxy.example:7890"
 URL = "https://raw.githubusercontent.com/demo/repo/main/package.json"

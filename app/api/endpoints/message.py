@@ -10,15 +10,15 @@ from starlette.responses import PlainTextResponse
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.message import MessageChain
-from app.platform.config import settings, global_vars
-from app.security.access import verify_token, verify_apitoken
+from app.runtime.config import settings, global_vars
+from app.application.security.access import verify_token, verify_apitoken
 from app.db import get_async_db
 from app.db.models import User
 from app.db.message_oper import MessageOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
-from app.extensions.service_registry import ServiceConfigHelper
-from app.platform.log import logger
+from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel, SystemConfigKey
 

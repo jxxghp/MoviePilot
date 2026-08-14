@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.services.directory import DirectoryHelper
-from app.platform.log import logger
+from app.application.directory import DirectoryHelper
+from app.runtime.log import logger
 
 
 class QueryDirectorySettingsInput(BaseModel):

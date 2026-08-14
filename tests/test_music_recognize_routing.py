@@ -306,7 +306,7 @@ def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatc
     monkeypatch.setattr(chain.eventmanager, "check", Mock(return_value=False))
 
     with patch(
-            "app.integrations.server.MoviePilotServerHelper.report_recognize_share"
+            "app.adapters.external.server.MoviePilotServerHelper.report_recognize_share"
     ):
         result = chain.recognize_media(
             mtype=MediaType.MUSIC,
@@ -580,7 +580,7 @@ def test_chain_recognize_media_returns_musicinfo_and_reports_share():
     with patch.object(
         chain, "recognize_music_from_source", return_value=expected
     ), patch(
-            "app.integrations.server.MoviePilotServerHelper.report_recognize_share"
+            "app.adapters.external.server.MoviePilotServerHelper.report_recognize_share"
     ) as report_mock:
         result = chain.recognize_media(meta=MetaMusic(title="晴天"))
 
@@ -598,7 +598,7 @@ def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
             "async_recognize_music_from_source",
             AsyncMock(return_value=expected),
     ), patch(
-        "app.integrations.server.MoviePilotServerHelper.async_report_recognize_share",
+        "app.adapters.external.server.MoviePilotServerHelper.async_report_recognize_share",
         AsyncMock(),
     ) as report_mock:
         async def runner():

@@ -7,8 +7,8 @@ from typing import Any, Optional
 
 from watchfiles import Change, DefaultFilter, watch
 
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 
 
 @dataclass(frozen=True)

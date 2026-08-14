@@ -2,9 +2,9 @@ from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
 from app.domain.context import MediaInfo
-from app.platform.events import eventmanager
-from app.services.mediaserver import MusicMediaServerHelper
-from app.platform.log import logger
+from app.runtime.events import eventmanager
+from app.application.mediaserver import MusicMediaServerHelper
+from app.runtime.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.ugreen.ugreen import Ugreen
 from app.schemas import AuthCredentials, AuthInterceptCredentials

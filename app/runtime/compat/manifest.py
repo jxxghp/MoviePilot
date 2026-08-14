@@ -1,0 +1,564 @@
+from dataclasses import dataclass
+from typing import Dict, Set
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleAlias:
+    """描述一个旧模块路径到 canonical 模块的精确映射。"""
+
+    target: str
+    replacement: str
+    introduced: str
+    owner: str
+    is_package: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolAlias:
+    """描述合成兼容包公开符号的精确来源。"""
+
+    target_module: str
+    target_name: str
+    replacement: str
+
+
+# 只登记已经删除旧物理源码、并完成 canonical 路径验证的模块。
+MODULE_ALIASES: Dict[str, ModuleAlias] = {
+    "app.log": ModuleAlias(
+        target="app.sdk.logging",
+        replacement="app.sdk.logging",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.utils.crypto": ModuleAlias(
+        target="app.foundation.crypto",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.dom": ModuleAlias(
+        target="app.foundation.dom",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.identity": ModuleAlias(
+        target="app.foundation.identity",
+        replacement="app.foundation.identity",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.ip": ModuleAlias(
+        target="app.adapters.network.ip",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="adapters",
+    ),
+    "app.utils.jieba": ModuleAlias(
+        target="app.foundation.text",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.object": ModuleAlias(
+        target="app.foundation.reflection",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.otp": ModuleAlias(
+        target="app.application.security.otp",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.utils.singleton": ModuleAlias(
+        target="app.foundation.singleton",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.structures": ModuleAlias(
+        target="app.foundation.collections",
+        replacement="app.foundation.collections",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.timer": ModuleAlias(
+        target="app.runtime.scheduling",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.tokens": ModuleAlias(
+        target="app.domain.tokens",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.utils.zhconv": ModuleAlias(
+        target="app.foundation.text",
+        replacement="app.foundation.text",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.stdio": ModuleAlias(
+        target="app.adapters.system.stdio",
+        replacement="app.adapters.system.stdio",
+        introduced="v3.0.0",
+        owner="adapters",
+    ),
+    "app.utils.system": ModuleAlias(
+        target="app.adapters.system.host",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="adapters",
+    ),
+    "app.utils.coalesce": ModuleAlias(
+        target="app.runtime.coalesce",
+        replacement="app.runtime.coalesce",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.common": ModuleAlias(
+        target="app.sdk.utilities",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.utils.debounce": ModuleAlias(
+        target="app.runtime.debounce",
+        replacement="app.runtime.debounce",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.gc": ModuleAlias(
+        target="app.runtime.gc",
+        replacement="app.runtime.gc",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.http": ModuleAlias(
+        target="app.adapters.network.http",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.limit": ModuleAlias(
+        target="app.runtime.rate",
+        replacement="app.runtime.rate",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.media": ModuleAlias(
+        target="app.domain.media",
+        replacement="app.domain.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.utils.mixins": ModuleAlias(
+        target="app.runtime.reload",
+        replacement="app.runtime.reload",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.utils.rust_accel": ModuleAlias(
+        target="app.adapters.system.rust",
+        replacement="app.adapters.system.rust",
+        introduced="v3.0.0",
+        owner="adapters",
+    ),
+    "app.utils.security": ModuleAlias(
+        target="app.application.security.url",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.utils.site": ModuleAlias(
+        target="app.domain.site",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.utils.string": ModuleAlias(
+        target="app.domain.string",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.utils.url": ModuleAlias(
+        target="app.foundation.url",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="foundation",
+    ),
+    "app.utils.web": ModuleAlias(
+        target="app.adapters.external.location",
+        replacement="app.sdk.network",
+        introduced="v3.0.0",
+        owner="adapters",
+    ),
+    "app.core.auth": ModuleAlias(
+        target="app.application.security.auth",
+        replacement="app.application.security.auth",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.core.auth_bridge": ModuleAlias(
+        target="app.application.security.auth",
+        replacement="app.application.security.auth",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.core.cache": ModuleAlias(
+        target="app.sdk.cache",
+        replacement="app.sdk.cache",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.core.config": ModuleAlias(
+        target="app.runtime.config",
+        replacement="app.sdk.config",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.core.context": ModuleAlias(
+        target="app.domain.context",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.event": ModuleAlias(
+        target="app.runtime.events",
+        replacement="app.sdk.events",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.core.meta.customization": ModuleAlias(
+        target="app.domain.meta.customization",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.infopath": ModuleAlias(
+        target="app.domain.meta.infopath",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.metaanime": ModuleAlias(
+        target="app.domain.meta.metaanime",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.metabase": ModuleAlias(
+        target="app.domain.meta.metabase",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.metamusic": ModuleAlias(
+        target="app.domain.meta.metamusic",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.metavideo": ModuleAlias(
+        target="app.domain.meta.metavideo",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.releasegroup": ModuleAlias(
+        target="app.domain.meta.releasegroup",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.streamingplatform": ModuleAlias(
+        target="app.domain.meta.streamingplatform",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.meta.words": ModuleAlias(
+        target="app.domain.meta.words",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.metainfo": ModuleAlias(
+        target="app.domain.metainfo",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+    ),
+    "app.core.module": ModuleAlias(
+        target="app.runtime.extensions.module_manager",
+        replacement="app.sdk.plugins",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.core.plugin": ModuleAlias(
+        target="app.runtime.extensions.plugin_manager",
+        replacement="app.sdk.plugins",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
+    "app.core.security": ModuleAlias(
+        target="app.application.security.access",
+        replacement="app.application.security.access",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.helper.agent": ModuleAlias(
+        target="app.application.messaging.agent", replacement="app.application.messaging.agent",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.audio": ModuleAlias(
+        target="app.application.audio", replacement="app.application.audio",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.browser": ModuleAlias(
+        target="app.adapters.network.browser", replacement="app.adapters.network.browser",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.cloudflare": ModuleAlias(
+        target="app.adapters.network.cloudflare", replacement="app.adapters.network.cloudflare",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.cookie": ModuleAlias(
+        target="app.application.security.cookie", replacement="app.application.security.cookie",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.cookiecloud": ModuleAlias(
+        target="app.adapters.external.cookiecloud", replacement="app.adapters.external.cookiecloud",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.directory": ModuleAlias(
+        target="app.application.directory", replacement="app.application.directory",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.display": ModuleAlias(
+        target="app.adapters.system.display", replacement="app.adapters.system.display",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.doh": ModuleAlias(
+        target="app.adapters.network.doh", replacement="app.adapters.network.doh",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.downloader": ModuleAlias(
+        target="app.application.downloader", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.format": ModuleAlias(
+        target="app.application.formatting", replacement="app.application.formatting",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.image": ModuleAlias(
+        target="app.application.image", replacement="app.application.image",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.interaction": ModuleAlias(
+        target="app.application.messaging.interaction", replacement="app.application.messaging.interaction",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.locale": ModuleAlias(
+        target="app.runtime.localization", replacement="app.sdk.utilities",
+        introduced="v3.0.0", owner="runtime",
+    ),
+    "app.helper.market": ModuleAlias(
+        target="app.adapters.external.market",
+        replacement="app.adapters.external.market",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.mediaserver": ModuleAlias(
+        target="app.application.mediaserver", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.message": ModuleAlias(
+        target="app.application.messaging.message", replacement="app.application.messaging.message",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.module": ModuleAlias(
+        target="app.foundation.reflection", replacement="app.foundation.reflection",
+        introduced="v3.0.0", owner="foundation",
+    ),
+    "app.helper.nfo": ModuleAlias(
+        target="app.domain.scraper", replacement="app.sdk.media",
+        introduced="v3.0.0", owner="domain",
+    ),
+    "app.helper.notification": ModuleAlias(
+        target="app.application.notification", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.ocr": ModuleAlias(
+        target="app.adapters.external.ocr", replacement="app.adapters.external.ocr",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.package": ModuleAlias(
+        target="app.adapters.system.package",
+        replacement="app.adapters.system.package",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.passkey": ModuleAlias(
+        target="app.application.security.passkey", replacement="app.application.security.passkey",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.plugin": ModuleAlias(
+        target="app.adapters.external.market",
+        replacement="app.adapters.external.market",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.progress": ModuleAlias(
+        target="app.runtime.progress", replacement="app.runtime.progress",
+        introduced="v3.0.0", owner="runtime",
+    ),
+    "app.helper.redis": ModuleAlias(
+        target="app.adapters.cache.redis", replacement="app.adapters.cache.redis",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.resource": ModuleAlias(
+        target="app.adapters.system.resource",
+        replacement="app.adapters.system.resource",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.rss": ModuleAlias(
+        target="app.application.rss", replacement="app.sdk.network",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.rule": ModuleAlias(
+        target="app.application.filter", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.scraper": ModuleAlias(
+        target="app.domain.scraper", replacement="app.domain.scraper",
+        introduced="v3.0.0", owner="domain",
+    ),
+    "app.helper.server": ModuleAlias(
+        target="app.adapters.external.server", replacement="app.adapters.external.server",
+        introduced="v3.0.0", owner="adapters",
+    ),
+    "app.helper.service": ModuleAlias(
+        target="app.runtime.extensions.service_registry",
+        replacement="app.sdk.services",
+        introduced="v3.0.0", owner="runtime",
+    ),
+    "app.helper.sites": ModuleAlias(
+        target="app.application.site.sites", replacement="app.sdk.network",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.skill": ModuleAlias(
+        target="app.agent.skills.registry",
+        replacement="app.agent.skills.registry",
+        introduced="v3.0.0", owner="agent",
+    ),
+    "app.helper.storage": ModuleAlias(
+        target="app.application.storage", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.system": ModuleAlias(
+        target="app.runtime.state", replacement="app.sdk.services",
+        introduced="v3.0.0", owner="runtime",
+    ),
+    "app.helper.thread": ModuleAlias(
+        target="app.runtime.thread", replacement="app.runtime.thread",
+        introduced="v3.0.0", owner="runtime",
+    ),
+    "app.helper.torrent": ModuleAlias(
+        target="app.application.torrent", replacement="app.application.torrent",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.transferhistory": ModuleAlias(
+        target="app.application.history",
+        replacement="app.application.history",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.twofa": ModuleAlias(
+        target="app.application.security.twofactor", replacement="app.application.security.twofactor",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.webpush": ModuleAlias(
+        target="app.api.endpoints.message", replacement="app.api.endpoints.message",
+        introduced="v3.0.0", owner="api",
+    ),
+    "app.helper.wallpaper": ModuleAlias(
+        target="app.application.image", replacement="app.application.image",
+        introduced="v3.0.0", owner="application",
+    ),
+    "app.helper.llm": ModuleAlias(
+        target="app.agent.llm", replacement="app.agent.llm",
+        introduced="v3.0.0", owner="agent", is_package=True,
+    ),
+}
+
+# 需要合成包级符号的旧路径单独登记；它们不是 canonical 模块别名。
+PACKAGE_ALIASES: Dict[str, ModuleAlias] = {
+    "app.core.meta": ModuleAlias(
+        target="app.domain.meta",
+        replacement="app.sdk.media",
+        introduced="v3.0.0",
+        owner="domain",
+        is_package=True,
+    ),
+}
+
+# 旧父包完全迁空后才登记；迁移中的物理父包继续由 PathFinder 处理。
+VIRTUAL_PACKAGES: Set[str] = {"app.core", "app.helper", "app.utils"}
+
+# 旧包 __init__.py 曾公开的符号在这里显式声明，禁止模糊转发。
+PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.core.meta": {
+        "MetaBase": SymbolAlias(
+            target_module="app.domain.meta.metabase",
+            target_name="MetaBase",
+            replacement="app.sdk.media.MetaBase",
+        ),
+        "MetaVideo": SymbolAlias(
+            target_module="app.domain.meta.metavideo",
+            target_name="MetaVideo",
+            replacement="app.sdk.media.MetaVideo",
+        ),
+        "MetaAnime": SymbolAlias(
+            target_module="app.domain.meta.metaanime",
+            target_name="MetaAnime",
+            replacement="app.sdk.media.MetaAnime",
+        ),
+        "MetaMusic": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MetaMusic",
+            replacement="app.sdk.media.MetaMusic",
+        ),
+        "MusicNameContext": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNameContext",
+            replacement="app.sdk.media.MusicNameContext",
+        ),
+        "MusicNameParseResult": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNameParseResult",
+            replacement="app.sdk.media.MusicNameParseResult",
+        ),
+        "MusicNameParser": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNameParser",
+            replacement="app.sdk.media.MusicNameParser",
+        ),
+        "MusicNamePattern": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNamePattern",
+            replacement="app.sdk.media.MusicNamePattern",
+        ),
+        "MusicNamePatternMatch": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNamePatternMatch",
+            replacement="app.sdk.media.MusicNamePatternMatch",
+        ),
+        "MusicNameRegistry": SymbolAlias(
+            target_module="app.domain.meta.metamusic",
+            target_name="MusicNameRegistry",
+            replacement="app.sdk.media.MusicNameRegistry",
+        ),
+    },
+}

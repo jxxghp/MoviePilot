@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from app.api.endpoints import media as media_endpoints
 from app.api.endpoints.media import search
 from app.chain import ChainBase
-from app.security.access import verify_token
+from app.application.security.access import verify_token
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.schemas.types import MediaSource, MediaType

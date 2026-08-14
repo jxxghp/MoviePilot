@@ -3,13 +3,13 @@ from datetime import datetime
 from typing import Callable, Dict, List, Union, Optional, Generator, Any
 
 from app.chain import ChainBase
-from app.platform.config import global_vars
+from app.runtime.config import global_vars
 from app.db.mediaserver_oper import MediaServerOper
-from app.extensions.service_registry import ServiceConfigHelper
-from app.platform.log import logger
+from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.log import logger
 from app.schemas import MediaServerLibrary, MediaServerItem, MediaServerSeasonInfo, MediaServerPlayItem
 from app.schemas.types import MediaType
-from app.security.url import SecurityUtils
+from app.application.security.url import SecurityUtils
 
 lock = threading.Lock()
 

@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.schemas import Notification, NotificationType
 
 

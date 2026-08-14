@@ -2,13 +2,13 @@ import asyncio
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from app.platform.cache import cached
+from app.runtime.cache import cached
 from app.domain.context import MediaInfo
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 
 class FanartModule(_ModuleBase):

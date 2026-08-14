@@ -12,9 +12,9 @@ import httpx
 import requests
 from bs4 import BeautifulSoup
 
-from app.platform.cache import cached
-from app.platform.config import settings
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.runtime.cache import cached
+from app.runtime.config import settings
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
 
 

@@ -8,11 +8,11 @@ from app.agent.tools.impl.ask_user_choice import (
 )
 from app.agent.tools.impl.send_message import SendMessageTool
 from app.chain.message import MessageChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db import SessionFactory
 from app.db.message_oper import MessageOper
 from app.db.models.message import Message
-from app.messaging.interaction import AgentInteractionOption, agent_interaction_manager, media_interaction_manager
+from app.application.messaging.interaction import AgentInteractionOption, agent_interaction_manager, media_interaction_manager
 from app.schemas.types import MessageChannel, NotificationType
 
 
@@ -165,10 +165,10 @@ def test_ask_user_choice_message_is_not_recorded_to_message_history():
 
     try:
         with patch(
-            "app.platform.events.EventManager.async_send_event",
+            "app.runtime.events.EventManager.async_send_event",
             new_callable=AsyncMock,
         ) as async_send_event, patch(
-            "app.messaging.message.MessageQueueManager.async_send_message",
+            "app.application.messaging.message.MessageQueueManager.async_send_message",
             new_callable=AsyncMock,
         ) as async_send_message:
             result = asyncio.run(

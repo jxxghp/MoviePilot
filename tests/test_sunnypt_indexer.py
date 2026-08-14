@@ -7,7 +7,7 @@ import pytest
 
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import TorrentInfo
 from app.db.message_oper import MessageOper
 from app.modules.indexer import IndexerModule

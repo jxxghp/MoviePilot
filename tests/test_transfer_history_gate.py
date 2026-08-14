@@ -1,5 +1,5 @@
 """
-覆盖 app/services/history.py 的整理历史查重闸。
+覆盖 app/application/history.py 的整理历史查重闸。
 
 监控分发（app/monitor/dispatcher.py）与整理链计划整理段（app/chain/transfer.py）
 共用这套判定，本文件只测判定本身的真值表与查询辅助函数，不涉及调用方。
@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.platform.config import settings
-from app.services import history as transfer_history_helper
-from app.services.history import (
+from app.runtime.config import settings
+from app.application import history as transfer_history_helper
+from app.application.history import (
     HistoryGateAction,
     clear_transfer_failures,
     coerce_size,

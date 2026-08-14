@@ -1,6 +1,6 @@
 import warnings
 
-from app.compat.imports import install_legacy_import_hook
+from app.runtime.compat.imports import install_legacy_import_hook
 
 
 def _filter_third_party_startup_warnings() -> None:

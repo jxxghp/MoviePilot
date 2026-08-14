@@ -8,10 +8,10 @@ from urllib.parse import urljoin, urlsplit
 
 from requests import Session
 
-from app.platform.config import settings
-from app.infrastructure.cloudflare import under_challenge
-from app.platform.log import logger
-from app.foundation.http import RequestUtils
+from app.runtime.config import settings
+from app.adapters.network.cloudflare import under_challenge
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
 from app.domain.string import StringUtils
 

@@ -13,12 +13,12 @@ def _load_downloader_base():
     app_module.__path__ = []
     helper_module = types.ModuleType("app.helper")
     helper_module.__path__ = []
-    service_module = types.ModuleType("app.extensions.service_registry")
+    service_module = types.ModuleType("app.runtime.extensions.service_registry")
     schemas_module = types.ModuleType("app.schemas")
     schema_types_module = types.ModuleType("app.schemas.types")
     utils_module = types.ModuleType("app.utils")
     utils_module.__path__ = []
-    mixins_module = types.ModuleType("app.platform.reload")
+    mixins_module = types.ModuleType("app.runtime.reload")
 
     class StorageSchema(Enum):
         Local = "local"
@@ -75,11 +75,11 @@ def _load_downloader_base():
     stub_modules = {
         "app": app_module,
         "app.helper": helper_module,
-        "app.extensions.service_registry": service_module,
+        "app.runtime.extensions.service_registry": service_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,
         "app.utils": utils_module,
-        "app.platform.reload": mixins_module,
+        "app.runtime.reload": mixins_module,
     }
 
     module_path = repo_root / "app" / "modules" / "__init__.py"
@@ -101,7 +101,7 @@ def _load_transmission_module():
     app_module.__path__ = []
     core_module = types.ModuleType("app.core")
     core_module.__path__ = []
-    cache_module = types.ModuleType("app.platform.cache")
+    cache_module = types.ModuleType("app.runtime.cache")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
     transmission_package_module = types.ModuleType("app.modules.transmission")
@@ -109,9 +109,9 @@ def _load_transmission_module():
     transmission_client_module = types.ModuleType("app.modules.transmission.transmission")
     schemas_module = types.ModuleType("app.schemas")
     schema_types_module = types.ModuleType("app.schemas.types")
-    config_module = types.ModuleType("app.platform.config")
+    config_module = types.ModuleType("app.runtime.config")
     metainfo_module = types.ModuleType("app.domain.metainfo")
-    log_module = types.ModuleType("app.platform.log")
+    log_module = types.ModuleType("app.runtime.log")
     utils_module = types.ModuleType("app.utils")
     utils_module.__path__ = []
     string_module = types.ModuleType("app.domain.string")
@@ -233,10 +233,10 @@ def _load_transmission_module():
     stub_modules = {
         "app": app_module,
         "app.core": core_module,
-        "app.platform.cache": cache_module,
-        "app.platform.config": config_module,
+        "app.runtime.cache": cache_module,
+        "app.runtime.config": config_module,
         "app.domain.metainfo": metainfo_module,
-        "app.platform.log": log_module,
+        "app.runtime.log": log_module,
         "app.modules": modules_module,
         "app.modules.transmission": transmission_package_module,
         "app.modules.transmission.transmission": transmission_client_module,

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.storage import StorageChain
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.file import FileItem
 from app.domain.string import StringUtils
 

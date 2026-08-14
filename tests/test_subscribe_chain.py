@@ -62,7 +62,7 @@ def _load_subscribe_chain_class():
             """异步按元数据识别默认返回空结果。"""
             return None
 
-    interaction_module = ensure_module("app.messaging.interaction", types.ModuleType("app.messaging.interaction"))
+    interaction_module = ensure_module("app.application.messaging.interaction", types.ModuleType("app.application.messaging.interaction"))
 
     class _SlashInteractionManager:
         def create_or_replace(self, *args, **kwargs):
@@ -85,7 +85,7 @@ def _load_subscribe_chain_class():
     interaction_module.supports_markdown = lambda *args, **kwargs: False
     interaction_module.update_or_post_message = lambda *args, **kwargs: None
 
-    config_module = ensure_module("app.platform.config", types.ModuleType("app.platform.config"))
+    config_module = ensure_module("app.runtime.config", types.ModuleType("app.runtime.config"))
     config_module.global_vars = SimpleNamespace(is_system_stopped=False)
     config_module.settings = SimpleNamespace(
         RECOGNIZE_SOURCE="themoviedb",
@@ -100,7 +100,7 @@ def _load_subscribe_chain_class():
     context_module.MUSIC_ENTITY_ALBUM = "album"
     context_module.MUSIC_ENTITY_RECORDING = "recording"
 
-    event_module = ensure_module("app.platform.events", types.ModuleType("app.platform.events"))
+    event_module = ensure_module("app.runtime.events", types.ModuleType("app.runtime.events"))
 
     class _EventManager:
         @staticmethod
@@ -253,7 +253,7 @@ def _load_subscribe_chain_class():
     schemas_module.SubscribeEpisodesRefreshEventData = _SubscribeEpisodesRefreshEventData
     schemas_module.SubscribeCompletionCheckEventData = _SubscribeCompletionCheckEventData
 
-    logger_module = ensure_module("app.platform.log", types.ModuleType("app.platform.log"))
+    logger_module = ensure_module("app.runtime.log", types.ModuleType("app.runtime.log"))
 
     class _Logger:
         def info(self, *args, **kwargs):
@@ -273,7 +273,7 @@ def _load_subscribe_chain_class():
 
     logger_module.logger = _Logger()
 
-    helper_server_module = ensure_module("app.integrations.server", types.ModuleType("app.integrations.server"))
+    helper_server_module = ensure_module("app.adapters.external.server", types.ModuleType("app.adapters.external.server"))
 
     class _MoviePilotServerHelper:
         @staticmethod
@@ -306,10 +306,10 @@ def _load_subscribe_chain_class():
 
     helper_server_module.MoviePilotServerHelper = _MoviePilotServerHelper
 
-    helper_mediaserver_module = ensure_module("app.services.mediaserver", types.ModuleType("app.services.mediaserver"))
+    helper_mediaserver_module = ensure_module("app.application.mediaserver", types.ModuleType("app.application.mediaserver"))
     helper_mediaserver_module.MediaServerHelper = type("MediaServerHelper", (), {})
 
-    helper_torrent_module = ensure_module("app.services.torrent", types.ModuleType("app.services.torrent"))
+    helper_torrent_module = ensure_module("app.application.torrent", types.ModuleType("app.application.torrent"))
     helper_torrent_module.TorrentHelper = type("TorrentHelper", (), {})
 
     db_model_module = ensure_module("app.db.models.subscribe", types.ModuleType("app.db.models.subscribe"))

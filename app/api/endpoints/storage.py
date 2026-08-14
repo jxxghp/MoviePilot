@@ -12,15 +12,15 @@ from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
-from app.platform.config import settings
-from app.security.access import verify_token
+from app.runtime.config import settings
+from app.application.security.access import verify_token
 from app.db.models import User
 from app.db.user_oper import (
     get_current_active_manage_user,
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.platform.progress import ProgressHelper
+from app.runtime.progress import ProgressHelper
 from app.schemas.types import ProgressKey
 from app.domain.string import StringUtils
 

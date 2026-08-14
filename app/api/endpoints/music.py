@@ -8,7 +8,7 @@ from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
-from app.security.access import verify_token
+from app.application.security.access import verify_token
 from app.db.models.user import User
 from app.db.user_oper import get_current_active_superuser_async
 from app.modules.listenbrainz import (

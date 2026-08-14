@@ -8,19 +8,19 @@ from urllib.parse import urljoin, urlparse
 from lxml import etree
 
 from app.chain.storage import StorageChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import Context
 from app.db.site_oper import SiteOper
-from app.infrastructure.sites import SitesHelper  # noqa
-from app.services.torrent import TorrentHelper
-from app.platform.log import logger
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.torrent import TorrentHelper
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.schemas import TorrentInfo
 from app.schemas.file import FileURI 
 from app.schemas.types import ModuleType, OtherModulesType
-from app.foundation.http import RequestUtils
-from app.infrastructure.system import SystemUtils
+from app.adapters.network.http import RequestUtils
+from app.adapters.system.host import SystemUtils
 
 
 class SubtitleModule(_ModuleBase):

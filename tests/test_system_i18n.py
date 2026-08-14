@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from app.api.endpoints import system as system_endpoint
-from app.platform.localization import LocaleHelper
+from app.runtime.localization import LocaleHelper
 
 
 class _FakeDoubanModule:

@@ -4,12 +4,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.platform.config import global_vars
-from app.platform.events import eventmanager, Event
+from app.runtime.config import global_vars
+from app.runtime.events import eventmanager, Event
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
-from app.foundation.module import ModuleHelper
-from app.platform.log import logger
+from app.foundation.reflection import ModuleHelper
+from app.runtime.log import logger
 from app.schemas import ActionContext, Action, ActionResult
 from app.schemas.types import EventType
 from app.foundation.singleton import Singleton

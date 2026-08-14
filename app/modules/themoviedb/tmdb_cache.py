@@ -5,10 +5,10 @@ from threading import RLock
 from time import time
 from typing import Any
 
-from app.platform.cache import FileCache, TTLCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache, TTLCache
+from app.runtime.config import settings
 from app.domain.meta.metabase import MetaBase
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.foundation.singleton import WeakSingleton
 

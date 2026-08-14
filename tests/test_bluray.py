@@ -10,10 +10,10 @@ from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.domain.context import MediaInfo
-from app.platform.events import Event
+from app.runtime.events import Event
 from app.domain.metainfo import MetaInfoPath
 from app.db.models.transferhistory import TransferHistory
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import EventType
 from tests.cases.files import bluray_files
 

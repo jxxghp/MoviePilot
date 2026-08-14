@@ -10,7 +10,7 @@ import contextlib
 from alembic import op
 import sqlalchemy as sa
 
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 # revision identifiers, used by Alembic.

@@ -18,10 +18,10 @@ from app.agent.policy.sanitizer import (
 )
 from app.agent.tools.tags import ToolTag
 from app.chain import ChainBase
-from app.platform.config import settings
-from app.messaging.agent import matches_channel_admin
-from app.extensions.service_registry import ServiceConfigHelper
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.application.messaging.agent import matches_channel_admin
+from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.log import logger
 from app.schemas import Notification
 from app.schemas.types import MessageChannel, NotificationType
 

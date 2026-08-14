@@ -25,7 +25,7 @@
 - All request body and response models must be defined as Pydantic `BaseModel` subclasses in `app/schemas/`.
 - Use `Field(...)` for required fields; use `Field(default=...)` or `Field(None)` for optional fields.
 - Do not define ad-hoc `dict` return types for API responses — define a schema class.
-- Settings and deployment configuration live in `ConfigModel` / `Settings` in `app/platform/config.py` using `pydantic-settings`.
+- Settings and deployment configuration live in `ConfigModel` / `Settings` in `app/runtime/config.py` using `pydantic-settings`.
 - Use `model_validator` for cross-field validation logic.
 
 ---
@@ -34,7 +34,7 @@
 
 - Prefer `async def` for I/O-bound operations (network requests, database queries, file operations).
 - Use `await` consistently; do not mix sync and async code paths in the same function without using `run_in_threadpool` from FastAPI or `asyncio.to_thread`.
-- For CPU-bound work that must not block the event loop, submit to `ThreadHelper` (see `app/platform/thread.py`).
+- For CPU-bound work that must not block the event loop, submit to `ThreadHelper` (see `app/runtime/thread.py`).
 - Do not use bare `threading.Thread` in new code; use `ThreadHelper.submit()`.
 
 ---
@@ -84,7 +84,7 @@ except:
 
 ## Logging
 
-- Host code uses `logger` from `app.platform.log`; new plugins use `app.sdk.logging`. The historical `app.log` path is compatibility-only. Do not import the standard library `logging` directly in application code.
+- Host code uses `logger` from `app.runtime.log`; new plugins use `app.sdk.logging`. The historical `app.log` path is compatibility-only. Do not import the standard library `logging` directly in application code.
 - Log levels:
   - `logger.debug(...)` — detailed diagnostic information, disabled by default.
   - `logger.info(...)` — normal operational events.
@@ -107,7 +107,7 @@ except:
 - Private functions in the same file are preferable to extracting a new module for single-use logic.
 - Add code to the canonical capability package that owns it, and extend an existing domain file whenever that domain already exists.
 - Do not recreate generic `core`, `helper`, or `utils` buckets; see `05-architecture.md` for placement rules.
-- New files should use a focused noun name; a role suffix is appropriate only when it distinguishes ownership, such as `plugin_manager.py`; otherwise prefer the package-owned noun, such as `infrastructure/package.py`.
+- New files should use a focused noun name; a role suffix is appropriate only when it distinguishes ownership, such as `plugin_manager.py`; otherwise prefer the package-owned noun, such as `adapters/system/package.py`.
 - Keep files focused on one domain concern.
 
 ---

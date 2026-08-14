@@ -17,8 +17,8 @@ from app.api.openai_utils import (
 )
 from app.agent.callback import StreamingHandler
 from app.agent.orchestrator import MoviePilotAgent
-from app.platform.config import settings
-from app.security.access import openai_bearer_scheme
+from app.runtime.config import settings
+from app.application.security.access import openai_bearer_scheme
 from app.schemas.types import MessageChannel
 
 OPENAI_ERROR_RESPONSES = {

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
 from app.chain.message import MessageChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.types import MessageChannel
 
 

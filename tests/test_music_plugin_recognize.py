@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
-from app.platform.events import Event
+from app.runtime.events import Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import ChainEventType, MediaSource, MediaType

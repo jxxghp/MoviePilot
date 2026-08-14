@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from app.chain import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.integrations.server import MoviePilotServerHelper
+from app.adapters.external.server import MoviePilotServerHelper
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 

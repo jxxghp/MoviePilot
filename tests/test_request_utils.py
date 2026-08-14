@@ -1,7 +1,7 @@
 import requests
 
-from app.foundation import http as http_module
-from app.foundation.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network import http as http_module
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 
 
 class _FakeSession:

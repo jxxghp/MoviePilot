@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import MessageChannel
 
@@ -199,7 +199,7 @@ class AgentCapabilityManagerTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.extensions.service_registry.ServiceConfigHelper.get_notification_configs",
+            "app.runtime.extensions.service_registry.ServiceConfigHelper.get_notification_configs",
             return_value=configs,
         ):
             self.assertTrue(

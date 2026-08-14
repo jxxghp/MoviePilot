@@ -4,10 +4,10 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 from torrentool.torrent import Torrent
 
 from app import schemas
-from app.platform.cache import FileCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache
+from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas import DownloaderTorrent

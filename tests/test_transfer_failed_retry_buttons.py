@@ -13,7 +13,7 @@ sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.chain.message import MessageChain
 from app.chain.transfer import TransferChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.types import MessageChannel
 
 

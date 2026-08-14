@@ -18,13 +18,13 @@ class JellyfinUserResolutionTest(unittest.TestCase):
     def test_loader_does_not_leave_stub_modules_in_sys_modules(self):
         self.assertNotIn("_test_jellyfin_module", sys.modules)
         self.assertFalse(
-            getattr(sys.modules.get("app.platform.log"), "_jellyfin_test_stub", False)
+            getattr(sys.modules.get("app.runtime.log"), "_jellyfin_test_stub", False)
         )
         self.assertFalse(
-            getattr(sys.modules.get("app.platform.config"), "_jellyfin_test_stub", False)
+            getattr(sys.modules.get("app.runtime.config"), "_jellyfin_test_stub", False)
         )
         self.assertFalse(
-            getattr(sys.modules.get("app.foundation.http"), "_jellyfin_test_stub", False)
+            getattr(sys.modules.get("app.adapters.network.http"), "_jellyfin_test_stub", False)
         )
 
     def _build_client(self) -> Jellyfin:

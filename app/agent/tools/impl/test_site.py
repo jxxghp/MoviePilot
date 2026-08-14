@@ -8,7 +8,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.site import SiteChain
 from app.db.site_oper import SiteOper
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class TestSiteInput(BaseModel):

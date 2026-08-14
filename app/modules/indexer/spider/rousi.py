@@ -2,11 +2,11 @@ import base64
 import json
 from typing import List, Optional, Tuple
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import MediaType
-from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain.string import StringUtils
 
 

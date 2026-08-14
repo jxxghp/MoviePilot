@@ -1,9 +1,9 @@
 from typing import Any, Optional, Tuple, Union
 
-from app.platform.cache import cached
-from app.platform.config import settings
+from app.runtime.cache import cached
+from app.runtime.config import settings
 from app.domain.context import MusicInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -12,7 +12,7 @@ from app.schemas.types import (
     ModuleType,
     OtherModulesType,
 )
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 # ListenBrainz 全站统计支持的周期，取值与官方统计页面完全一致
 LISTENBRAINZ_CHART_RANGES = (

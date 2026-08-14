@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.platform.config import settings
+from app.runtime.config import settings
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "skills" / "feedback-issue" / "scripts"

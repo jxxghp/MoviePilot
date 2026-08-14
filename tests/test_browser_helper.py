@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
-from app.infrastructure.browser import BrowserSessionHelper, PlaywrightHelper
+from app.adapters.network.browser import BrowserSessionHelper, PlaywrightHelper
 
 
 class _FakeResponse:
@@ -168,7 +168,7 @@ def test_default_emulation_uses_cloakbrowser_context():
     page = _FakePage()
     context = _FakeContext([page])
 
-    with patch("app.infrastructure.browser.settings.BROWSER_EMULATION", "cloakbrowser"), patch.object(
+    with patch("app.adapters.network.browser.settings.BROWSER_EMULATION", "cloakbrowser"), patch.object(
         PlaywrightHelper,
         "_PlaywrightHelper__launch_cloakbrowser_context",
         return_value=context,
@@ -197,7 +197,7 @@ def test_legacy_playwright_emulation_uses_cloakbrowser_context():
     page = _FakePage()
     context = _FakeContext([page])
 
-    with patch("app.infrastructure.browser.settings.BROWSER_EMULATION", "Playwright"), patch.object(
+    with patch("app.adapters.network.browser.settings.BROWSER_EMULATION", "Playwright"), patch.object(
         PlaywrightHelper,
         "_PlaywrightHelper__launch_cloakbrowser_context",
         return_value=context,

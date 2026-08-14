@@ -8,7 +8,7 @@ from app.agent.tools.impl.search_web import (
     DEFAULT_SEARCH_ENGINE,
     SearchWebTool,
 )
-from app.platform.config import settings
+from app.runtime.config import settings
 
 
 class TestAgentSearchWebTool(unittest.TestCase):

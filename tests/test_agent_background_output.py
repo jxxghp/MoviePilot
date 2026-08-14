@@ -20,7 +20,7 @@ from app.agent.middleware.subagents import (
     SUBAGENT_TASK_TOOL_NAME,
 )
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 

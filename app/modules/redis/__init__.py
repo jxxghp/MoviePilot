@@ -1,7 +1,7 @@
 from typing import Tuple, Union
 
-from app.platform.config import settings
-from app.infrastructure.redis import RedisHelper
+from app.runtime.config import settings
+from app.adapters.cache.redis import RedisHelper
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
 

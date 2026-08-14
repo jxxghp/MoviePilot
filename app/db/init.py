@@ -4,9 +4,9 @@ import traceback
 from alembic.command import upgrade
 from alembic.config import Config
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db import Engine, Base
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 def init_db():

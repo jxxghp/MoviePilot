@@ -13,7 +13,7 @@ import threading
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.messaging.message import TemplateContextBuilder
+from app.application.messaging.message import TemplateContextBuilder
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode

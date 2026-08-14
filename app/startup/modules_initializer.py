@@ -2,40 +2,43 @@ import inspect
 import sys
 from typing import Callable
 
-from app.infrastructure.redis import RedisHelper, AsyncRedisHelper
+from app.adapters.cache.redis import RedisHelper, AsyncRedisHelper
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.infrastructure.sites import SitesHelper  # noqa
+    from app.application.site.sites import SitesHelper  # noqa
 except ImportError as e:
     SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
-from app.infrastructure.system import SystemUtils
-from app.platform.log import logger
-from app.platform.config import settings
-from app.extensions.module_manager import ModuleManager
-from app.platform.events import EventManager
-from app.platform.runtime import SystemHelper
-from app.platform.thread import ThreadHelper
-from app.infrastructure.display import DisplayHelper
-from app.infrastructure.doh import DohHelper
-from app.infrastructure.resource import ResourceHelper
-from app.messaging.message import MessageHelper, stop_message
-from app.integrations.server import MoviePilotServerHelper
+from app.adapters.system.host import SystemUtils
+from app.runtime.log import logger
+from app.runtime.config import settings
+from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.events import EventManager
+from app.runtime.state import SystemHelper
+from app.runtime.thread import ThreadHelper
+from app.adapters.system.display import DisplayHelper
+from app.adapters.network.doh import DohHelper
+from app.adapters.system.resource import (
+    ResourceHelper,
+    configure_resource_version_provider,
+)
+from app.application.messaging.message import MessageHelper, stop_message
+from app.adapters.external.server import MoviePilotServerHelper
 from app.db import close_database
 from app.db.systemconfig_oper import SystemConfigOper
 from app.command import CommandChain
 from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
-from app.security.access import set_superuser_token_payload_provider
-from app.security.auth import build_superuser_token_payload
-from app.services.image import configure_wallpaper_providers
+from app.application.security.access import set_superuser_token_payload_provider
+from app.application.security.auth import build_superuser_token_payload
+from app.application.image import configure_wallpaper_providers
 
 
 def configure_wallpaper_services() -> None:
@@ -156,6 +159,10 @@ def check_auth():
 
 def update_resources() -> None:
     """安装可用资源更新，并由组合根统一决定是否重启进程。"""
+    sites_helper = SitesHelper()
+    configure_resource_version_provider(
+        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
+    )
     if ResourceHelper().check() is not True:
         return
     restarted, message = SystemHelper.restart()

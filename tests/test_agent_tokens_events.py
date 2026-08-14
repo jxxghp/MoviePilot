@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 
 from app.agent import MoviePilotAgent
 from app.agent.memory import memory_manager
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.types import ChainEventType, EventType
 
 

@@ -5,12 +5,12 @@ from pydantic import Field
 from app.workflow.actions import BaseAction
 from app.chain.recommend import RecommendChain
 from app.schemas import ActionParams, ActionContext
-from app.platform.config import settings, global_vars
-from app.platform.events import eventmanager
-from app.platform.log import logger
+from app.runtime.config import settings, global_vars
+from app.runtime.events import eventmanager
+from app.runtime.log import logger
 from app.schemas import RecommendSourceEventData, MediaInfo
 from app.schemas.types import ChainEventType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 
 class FetchMediasParams(ActionParams):

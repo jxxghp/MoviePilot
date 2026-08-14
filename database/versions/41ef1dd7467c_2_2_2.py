@@ -9,7 +9,7 @@ Create Date: 2026-01-13 13:02:41.614029
 from alembic import op
 from sqlalchemy import text
 
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # revision identifiers, used by Alembic.
 revision = "41ef1dd7467c"

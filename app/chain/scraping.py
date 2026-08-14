@@ -13,8 +13,8 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.lrclib import LrclibChain
 from app.chain.storage import StorageChain
-from app.platform.cache import async_fresh, cached, fresh
-from app.platform.config import settings
+from app.runtime.cache import async_fresh, cached, fresh
+from app.runtime.config import settings
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -22,13 +22,13 @@ from app.domain.context import (
     MusicInfo,
     MusicLyrics,
 )
-from app.platform.events import eventmanager, Event
+from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.db.systemconfig_oper import SystemConfigOper
-from app.services.audio import AudioMetadataHelper
-from app.platform.log import logger
+from app.application.audio import AudioMetadataHelper
+from app.runtime.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -42,13 +42,13 @@ from app.schemas.types import (
     ScrapingPolicy,
     SystemConfigKey,
 )
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.domain.media import (
     is_music_media_source,
     normalize_media_source,
     resolve_media_identity,
 )
-from app.platform.reload import ConfigReloadMixin
+from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import Singleton
 from app.domain.string import StringUtils
 

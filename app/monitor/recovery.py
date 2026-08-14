@@ -24,7 +24,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # 探测子进程执行的脚本：只对目标路径做一次 stat，成功退出 0，失败退出非 0。
 # 用 sys.executable 而不是 test/stat 等外部命令，避免依赖发行版的 coreutils 布局。

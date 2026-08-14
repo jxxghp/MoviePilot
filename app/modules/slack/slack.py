@@ -10,11 +10,11 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
-from app.foundation.http import RequestUtils
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 
 lock = Lock()

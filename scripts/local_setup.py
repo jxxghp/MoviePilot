@@ -28,7 +28,7 @@ from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_CONFIG_DIR = ROOT / "config"
-SITE_RESOURCE_DIR = ROOT / "app" / "infrastructure"
+SITE_RESOURCE_DIR = ROOT / "app" / "application" / "site"
 PUBLIC_DIR = ROOT / "public"
 RUNTIME_DIR = ROOT / ".runtime"
 NODE_DIR = RUNTIME_DIR / "node"
@@ -2127,7 +2127,7 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.infrastructure.sites import SitesHelper  # noqa
+    from app.application.site.sites import SitesHelper  # noqa
 
     auth_sites = SitesHelper().get_authsites() or {}
     definitions: dict[str, Any] = {}
@@ -2464,7 +2464,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         system_config.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
-            from app.infrastructure.sites import SitesHelper  # noqa
+            from app.application.site.sites import SitesHelper  # noqa
 
             status, msg = SitesHelper().check_user(
                 site_auth_item.get("site"), site_auth_item.get("params")
@@ -2496,8 +2496,8 @@ def _ensure_superuser_account_inner() -> None:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.platform.config import settings
-    from app.security.access import get_password_hash
+    from app.runtime.config import settings
+    from app.application.security.access import get_password_hash
     from app.db.user_oper import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
@@ -2547,7 +2547,7 @@ def _ensure_superuser_account_inner() -> None:
 
 
 def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
-    from app.platform.config import settings
+    from app.runtime.config import settings
     from app.db.user_oper import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
@@ -3673,7 +3673,7 @@ def run_agent_request(
     try:
         from app.db.init import init_db, update_db
         from app.agent import MoviePilotAgent
-        from app.platform.config import settings
+        from app.runtime.config import settings
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
@@ -3737,7 +3737,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     resources_parser = subparsers.add_parser(
-        "install-resources", help="下载资源文件并同步到 app/infrastructure"
+        "install-resources", help="下载资源文件并同步到 app/application/site"
     )
     resources_parser.add_argument(
         "--resources-repo", help="本地 MoviePilot-Resources 仓库路径"

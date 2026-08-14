@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - 安装后端依赖
 - 按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
 - 下载 `MoviePilot-Resources` 主分支资源
-- 将 `resources.v3/*` 同步到后端 `app/infrastructure/`
+- 将 `resources.v3/*` 同步到后端 `app/application/site/`
 - 下载本地 Node 运行时并安装前端运行依赖
 - 执行初始化向导
 - 创建全局 `moviepilot` 命令
@@ -192,7 +192,7 @@ moviepilot install resources --config-dir /path/to/moviepilot-config
 说明：
 
 - 默认直接从 GitHub 下载 `MoviePilot-Resources` 主分支压缩包
-- 会将 `resources.v3/*` 整体复制到 `app/infrastructure/`
+- 会将 `resources.v3/*` 整体复制到 `app/application/site/`
 - 这一步和 Docker 构建流程保持一致
 
 ## 初始化命令
@@ -294,7 +294,7 @@ moviepilot uninstall --config-dir /path/to/moviepilot-config
 说明：
 
 - 卸载时会先停止当前 CLI 管理的前后端服务
-- 会删除本地虚拟环境、前端运行时、本地 Node 运行时、全局 `moviepilot` 软链接，以及同步到 `app/infrastructure` 的资源文件
+- 会删除本地虚拟环境、前端运行时、本地 Node 运行时、全局 `moviepilot` 软链接，以及同步到 `app/application/site` 的资源文件
 - 如果之前注册过开机自启，卸载时也会一并取消
 - 会询问是否同时删除配置目录，默认不删除
 - 如果当前使用的是仓库内 legacy `config/` 目录，确认删除后其中的 `category.yaml` 等配置文件也会一起删除

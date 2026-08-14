@@ -16,9 +16,9 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
-from app.platform.config import settings, global_vars
+from app.runtime.config import settings, global_vars
 from app.domain.context import MediaInfo, MusicInfo
-from app.platform.events import eventmanager
+from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
@@ -28,14 +28,14 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferpending_oper import TransferPendingOper
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.services.directory import DirectoryHelper
-from app.services.audio import AudioMetadataHelper
-from app.services.formatting import EpisodeFormatRuleHelper, FormatParser
-from app.platform.progress import ProgressHelper
-from app.services.history import (clear_transfer_failures, describe_history_gate,
+from app.application.directory import DirectoryHelper
+from app.application.audio import AudioMetadataHelper
+from app.application.formatting import EpisodeFormatRuleHelper, FormatParser
+from app.runtime.progress import ProgressHelper
+from app.application.history import (clear_transfer_failures, describe_history_gate,
                                         evaluate_history_gate, is_skip_action,
                                         record_transfer_failure, resolve_history)
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas import StorageOperSelectionEventData
 from app.schemas import (
     TransferInfo,
@@ -64,7 +64,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
 )
-from app.platform.reload import ConfigReloadMixin
+from app.runtime.reload import ConfigReloadMixin
 from app.domain.media import (
     normalize_media_source,
     normalize_music_type,
@@ -72,7 +72,7 @@ from app.domain.media import (
 )
 from app.foundation.singleton import Singleton
 from app.domain.string import StringUtils
-from app.infrastructure.system import SystemUtils
+from app.adapters.system.host import SystemUtils
 
 # 下载器锁
 downloader_lock = threading.Lock()
@@ -4002,7 +4002,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     raise OperationInterrupted()
                 file_path = Path(file_item.path)
 
-                # 自动整理按 app/services/history.py 的统一判定去重（失败记录放行重试、
+                # 自动整理按 app/application/history.py 的统一判定去重（失败记录放行重试、
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
                 # 或按用户确认清理成功记录。
                 if (not force or reorganize) and not preview:

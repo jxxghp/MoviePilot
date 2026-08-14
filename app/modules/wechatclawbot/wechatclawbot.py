@@ -16,12 +16,12 @@ from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
-from app.platform.cache import FileCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache
+from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
-from app.foundation.http import RequestUtils
+from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 
 

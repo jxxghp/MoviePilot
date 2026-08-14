@@ -6,8 +6,8 @@ from fastapi.responses import JSONResponse, Response
 from app import schemas
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.agent.tools.manager import moviepilot_tool_manager
-from app.security.access import verify_apikey
-from app.platform.log import logger
+from app.application.security.access import verify_apikey
+from app.runtime.log import logger
 
 # 导入版本号
 try:

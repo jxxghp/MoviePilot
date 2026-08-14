@@ -7,8 +7,8 @@ from app.api.endpoints.plugin import plugin_history
 from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
-from app.platform.config import settings
-from app.extensions.plugin_manager import PluginManager
+from app.runtime.config import settings
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.types import ChainEventType
 from app.foundation.singleton import Singleton
@@ -242,7 +242,7 @@ def test_plugin_releases_force_uses_cached_release_response_and_schedules_refres
     """
     手动刷新时 package 元数据仍强刷，但 Release 明细先读缓存并后台刷新，避免弹窗阻塞。
     """
-    from app.platform.cache import is_fresh
+    from app.runtime.cache import is_fresh
 
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
@@ -380,7 +380,7 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
         patch("app.api.endpoints.system.AsyncRequestUtils", return_value=request_utils),
         patch("app.api.endpoints.system.settings.PLUGIN_MARKET", "https://github.com/local/existing"),
         patch(
-            "app.platform.config.Settings.update_setting",
+            "app.runtime.config.Settings.update_setting",
             autospec=True,
             return_value=(True, ""),
         ) as update_setting,
@@ -458,7 +458,7 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
 
-    with patch("app.extensions.plugin_manager.SystemConfigOper") as system_config_oper:
+    with patch("app.runtime.extensions.plugin_manager.SystemConfigOper") as system_config_oper:
         system_config_oper.return_value.delete.return_value = True
         assert manager.delete_plugin_config("DemoPlugin", force=True) is True
 
@@ -474,7 +474,7 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
     manager = PluginManager()
     calls = []
 
-    with patch("app.extensions.plugin_manager.PluginDataOper") as plugin_data_oper:
+    with patch("app.runtime.extensions.plugin_manager.PluginDataOper") as plugin_data_oper:
         plugin_data_oper.return_value.del_data.side_effect = lambda pid: calls.append(pid)
         assert manager.delete_plugin_data("DemoPlugin", force=True) is True
 

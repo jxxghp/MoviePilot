@@ -3,14 +3,14 @@ import threading
 import time
 from typing import Any, Optional, Tuple, Union
 
-from app.platform.cache import cached
-from app.platform.config import settings
+from app.runtime.cache import cached
+from app.runtime.config import settings
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 
 class LrclibModule(_ModuleBase):

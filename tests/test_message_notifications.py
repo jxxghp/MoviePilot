@@ -10,7 +10,7 @@ from app.db import AsyncSessionFactory, SessionFactory
 from app.db.message_oper import MessageOper
 from app.db.models.message import Message
 from app.db.systemconfig_oper import SystemConfigOper
-from app.messaging.message import MessageHelper
+from app.application.messaging.message import MessageHelper
 from app.schemas import Notification, NotificationClearScope
 from app.schemas.types import MediaType, NotificationType, SystemConfigKey
 

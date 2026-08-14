@@ -8,11 +8,11 @@ from fastapi.responses import JSONResponse
 from app import schemas
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.chain.user import MfaRequired, UserChain
-from app.security import access as security
-from app.platform.config import settings
+from app.application.security import access as security
+from app.runtime.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.infrastructure.sites import SitesHelper  # noqa
-from app.services.image import WallpaperHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()

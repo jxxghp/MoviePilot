@@ -8,9 +8,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
-from app.platform.config import settings
-from app.platform.localization import LocaleHelper
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.localization import LocaleHelper
+from app.runtime.log import logger
 from app.schemas.openai import (
     AnthropicErrorDetail,
     AnthropicErrorResponse,

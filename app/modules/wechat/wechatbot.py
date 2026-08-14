@@ -11,15 +11,15 @@ from typing import Optional, List, Dict, Tuple, Set
 import websocket
 from Crypto.Cipher import AES
 
-from app.platform.cache import FileCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache
+from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.messaging.agent import matches_channel_admin
-from app.platform.log import logger
+from app.application.messaging.agent import matches_channel_admin
+from app.runtime.log import logger
 from app.schemas import CommingMessage
 from app.schemas.types import MessageChannel
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 
 

@@ -1,8 +1,8 @@
 from app.db import SessionFactory
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource, MediaType
-from app.infrastructure import system as system_module
-from app.infrastructure.system import SystemUtils
+from app.adapters.system import host as system_module
+from app.adapters.system.host import SystemUtils
 
 
 def test_dashboard_system_info_returns_runtime_environment(monkeypatch):

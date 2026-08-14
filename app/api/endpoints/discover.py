@@ -7,8 +7,8 @@ from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
-from app.platform.events import eventmanager
-from app.security.access import verify_token
+from app.runtime.events import eventmanager
+from app.application.security.access import verify_token
 from app.schemas import DiscoverSourceEventData
 from app.schemas.types import ChainEventType, MediaType
 

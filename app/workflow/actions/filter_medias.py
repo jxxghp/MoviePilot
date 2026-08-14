@@ -3,8 +3,8 @@ from typing import Optional
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.platform.config import global_vars
-from app.platform.log import logger
+from app.runtime.config import global_vars
+from app.runtime.log import logger
 from app.schemas import ActionParams, ActionContext
 
 

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 
 from app.factory import create_app, localized_http_exception_handler
-from app.platform.localization import LocaleHelper
-from app.platform.progress import ProgressHelper
+from app.runtime.localization import LocaleHelper
+from app.runtime.progress import ProgressHelper
 from app.schemas.dashboard import ScheduleInfo, ScheduleProgress
 from app.schemas.response import Response
 from version import APP_VERSION

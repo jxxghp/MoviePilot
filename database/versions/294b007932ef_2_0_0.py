@@ -8,12 +8,12 @@ Create Date: 2024-07-20 08:43:40.741251
 
 import secrets
 
-from app.platform.config import settings
-from app.security.access import get_password_hash
+from app.runtime.config import settings
+from app.application.security.access import get_password_hash
 from app.db import SessionFactory
 from app.db.models import *
 from app.db.systemconfig_oper import SystemConfigOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 # revision identifiers, used by Alembic.

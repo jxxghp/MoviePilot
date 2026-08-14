@@ -15,7 +15,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from app.agent.middleware.utils import append_to_system_message
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # 记忆文件最大限制为 100KB，防止单文件过大导致上下文溢出
 MAX_MEMORY_FILE_SIZE = 100 * 1024

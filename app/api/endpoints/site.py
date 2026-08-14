@@ -11,9 +11,9 @@ from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.command import Command
-from app.platform.events import eventmanager
-from app.extensions.plugin_manager import PluginManager
-from app.security.access import verify_token
+from app.runtime.events import eventmanager
+from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.security.access import verify_token
 from app.db import get_db, get_async_db
 from app.db.models import User
 from app.db.models.site import Site
@@ -28,8 +28,8 @@ from app.db.user_oper import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.infrastructure.sites import SitesHelper  # noqa
-from app.platform.log import logger
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.runtime.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType, MediaType
 from app.domain.string import StringUtils

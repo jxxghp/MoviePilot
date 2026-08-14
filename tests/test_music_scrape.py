@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
-from app.platform.events import Event
+from app.runtime.events import Event
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas import FileItem
 from app.schemas.types import EventType, ScrapingPolicy

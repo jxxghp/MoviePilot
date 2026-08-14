@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.runtime import agent_runtime_manager
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class QueryPersonasInput(BaseModel):

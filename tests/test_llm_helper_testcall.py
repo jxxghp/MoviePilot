@@ -121,7 +121,7 @@ def _build_fake_openai_modules(chat_openai_cls=_FakeChatOpenAIForPatch):
 
 # 以假 settings/log 控制 helper 加载期行为；用唯一模块名加载，并以 stub_modules 上下文
 # 在 import 期注入、退出后还原真实平台配置与日志模块，避免污染其他测试。
-_config_stub = ModuleType("app.platform.config")
+_config_stub = ModuleType("app.runtime.config")
 _config_stub.settings = SimpleNamespace(
     LLM_PROVIDER="global-provider",
     LLM_MODEL="global-model",
@@ -136,11 +136,11 @@ _config_stub.settings = SimpleNamespace(
     LLM_USE_PROXY=True,
     PROXY_HOST=None,
 )
-_log_stub = ModuleType("app.platform.log")
+_log_stub = ModuleType("app.runtime.log")
 _log_stub.logger = _DummyLogger()
 
 module_path = Path(__file__).resolve().parents[1] / "app" / "agent" / "llm" / "helper.py"
-with stub_modules({"app.platform.config": _config_stub, "app.platform.log": _log_stub}):
+with stub_modules({"app.runtime.config": _config_stub, "app.runtime.log": _log_stub}):
     spec = importlib.util.spec_from_file_location("test_llm_module", module_path)
     llm_module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader

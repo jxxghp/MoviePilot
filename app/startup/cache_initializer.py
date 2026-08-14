@@ -1,4 +1,4 @@
-from app.infrastructure.cache import configure_platform_cache
+from app.adapters.cache.backends import configure_platform_cache
 
 
 def configure_cache_dependencies() -> None:

@@ -4,7 +4,7 @@ import json
 from typing import Optional
 from lxml import etree
 from urllib.parse import urljoin
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser import SiteParserBase
 from app.domain.string import StringUtils

@@ -8,17 +8,23 @@ LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
     "app.agent.skills",
+    "app.adapters",
+    "app.application",
     "app.domain",
-    "app.extensions",
     "app.foundation",
-    "app.infrastructure",
-    "app.integrations",
-    "app.messaging",
-    "app.platform",
-    "app.security",
-    "app.services",
+    "app.runtime",
 )
-CYCLE_ROOTS = (*IMPLEMENTATION_ROOTS, "app.compat", "app.sdk")
+CYCLE_ROOTS = (*IMPLEMENTATION_ROOTS, "app.runtime.compat", "app.sdk")
+RETIRED_CANONICAL_ROOTS = (
+    "compat",
+    "extensions",
+    "infrastructure",
+    "integrations",
+    "messaging",
+    "platform",
+    "security",
+    "services",
+)
 RETIRED_CANONICAL_FILES = (
     "app/infrastructure/package_installer.py",
     "app/infrastructure/resource_updater.py",
@@ -47,35 +53,45 @@ RETIRED_CANONICAL_FILES = (
     "app/startup/log_initializer.py",
     "app/messaging/notification.py",
     "app/messaging/webpush.py",
+    "app/foundation/jieba.py",
+    "app/foundation/module.py",
+    "app/foundation/object.py",
+    "app/foundation/structures.py",
+    "app/foundation/zhconv.py",
+    "app/runtime/runtime.py",
+    "app/adapters/network/rss.py",
+    "app/adapters/network/sites.pyi",
 )
-FORBIDDEN_CAPABILITY_IMPORTS = {
-    "foundation": {
-        "domain", "extensions", "infrastructure", "integrations", "messaging",
-        "platform", "security", "services", "sdk", "compat", "log",
-    },
-    "domain": {
-        "extensions", "integrations", "messaging", "security", "services",
-        "sdk", "compat", "db", "infrastructure", "platform", "log",
-    },
-    "platform": {
-        "domain", "extensions", "integrations", "messaging", "security",
-        "services", "sdk", "compat",
-    },
-    "infrastructure": {
-        "domain", "extensions", "integrations", "messaging", "security",
-        "services", "sdk", "compat",
-    },
-    "extensions": {"messaging", "security", "services", "sdk", "compat"},
-    "integrations": {
-        "extensions", "messaging", "security", "services", "sdk", "compat",
-    },
-    "messaging": {"integrations", "security", "services", "sdk", "compat"},
-    "security": {"extensions", "messaging", "services", "sdk", "compat"},
-    "services": {"integrations", "messaging", "sdk", "compat"},
-    "compat": {
-        "domain", "extensions", "foundation", "infrastructure", "integrations",
-        "messaging", "platform", "security", "services", "sdk",
-    },
+FORBIDDEN_IMPORT_PREFIXES = {
+    "app.foundation": (
+        "app.adapters",
+        "app.application",
+        "app.db",
+        "app.domain",
+        "app.runtime",
+        "app.sdk",
+    ),
+    "app.domain": (
+        "app.adapters",
+        "app.application",
+        "app.db",
+        "app.runtime",
+        "app.sdk",
+    ),
+    "app.adapters": (
+        "app.application",
+        "app.runtime.compat",
+        "app.runtime.extensions",
+        "app.sdk",
+    ),
+    "app.runtime": (
+        "app.application",
+        "app.sdk",
+    ),
+    "app.application": (
+        "app.runtime.compat",
+        "app.sdk",
+    ),
 }
 
 
@@ -220,12 +236,25 @@ def test_retired_canonical_filenames_do_not_return():
     assert leftovers == []
 
 
+def test_retired_canonical_roots_contain_no_python_sources():
+    """已收敛的新增目录不得再次以顶级 Python 包形式出现。"""
+    leftovers = sorted(
+        str(path.relative_to(PROJECT_ROOT))
+        for root_name in RETIRED_CANONICAL_ROOTS
+        for path in (APP_ROOT / root_name).rglob("*.py")
+    )
+    assert leftovers == []
+
+
 def test_host_code_does_not_import_legacy_roots():
     """除插件和兼容层外，宿主代码必须使用 canonical 路径。"""
     violations: dict[str, set[str]] = {}
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(APP_ROOT)
-        if relative.parts[0] in {"compat", "plugins"}:
+        if relative.parts[0] == "plugins" or relative.parts[:2] == (
+            "runtime",
+            "compat",
+        ):
             continue
         imports = _legacy_imports(path)
         if imports:
@@ -257,11 +286,13 @@ def test_canonical_layers_do_not_depend_on_sdk_or_compat():
     for module_name, path in modules.items():
         if not module_name.startswith(IMPLEMENTATION_ROOTS):
             continue
+        if module_name.startswith("app.runtime.compat"):
+            continue
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
             dependency
             for dependency in dependencies
-            if dependency.startswith(("app.sdk", "app.compat"))
+            if dependency.startswith(("app.sdk", "app.runtime.compat"))
         }
         if forbidden:
             violations[module_name] = forbidden
@@ -269,36 +300,38 @@ def test_canonical_layers_do_not_depend_on_sdk_or_compat():
 
 
 def test_capability_packages_do_not_import_forbidden_upper_layers():
-    """能力包只能依赖其明确允许的下层或同层协作包。"""
+    """新能力包只能依赖明确允许的下层或同层协作包。"""
     modules = _discover_modules()
     known_modules = set(modules)
     violations: dict[str, set[str]] = {}
     for module_name, path in modules.items():
-        parts = module_name.split(".")
-        if len(parts) < 2:
-            continue
-        source_package = parts[1]
-        forbidden_packages = FORBIDDEN_CAPABILITY_IMPORTS.get(source_package)
-        if not forbidden_packages:
+        source_root = next(
+            (
+                root
+                for root in FORBIDDEN_IMPORT_PREFIXES
+                if module_name == root or module_name.startswith(f"{root}.")
+            ),
+            None,
+        )
+        if not source_root:
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
             dependency
             for dependency in dependencies
-            if len(dependency.split(".")) >= 2
-            and dependency.split(".")[1] in forbidden_packages
+            if dependency.startswith(FORBIDDEN_IMPORT_PREFIXES[source_root])
         }
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
 
 
-def test_platform_log_is_a_dependency_leaf():
-    """底层可引用平台日志，但日志模块本身不得反向导入应用模块。"""
+def test_runtime_log_is_a_dependency_leaf():
+    """底层可引用运行时日志，但日志模块本身不得反向导入应用模块。"""
     modules = _discover_modules()
     dependencies = _resolve_imports(
-        "app.platform.log",
-        modules["app.platform.log"],
+        "app.runtime.log",
+        modules["app.runtime.log"],
         set(modules),
     )
     assert {
@@ -309,7 +342,7 @@ def test_platform_log_is_a_dependency_leaf():
 
 
 def test_foundation_does_not_emit_runtime_logs():
-    """基础机制不初始化日志系统，运行期诊断由上层调用方负责。"""
+    """基础机制不打印或初始化日志系统，运行期诊断由上层调用方负责。"""
     violations: list[str] = []
     for path in (APP_ROOT / "foundation").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
@@ -321,25 +354,32 @@ def test_foundation_does_not_emit_runtime_logs():
                 break
             if isinstance(node, ast.ImportFrom) and node.module in {
                 "logging",
-                "app.platform.log",
+                "app.runtime.log",
             }:
+                violations.append(str(path.relative_to(PROJECT_ROOT)))
+                break
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "print"
+            ):
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
     assert violations == []
 
 
 def test_cache_contract_does_not_import_concrete_adapters():
-    """平台缓存契约和内存机制不得反向导入基础设施适配器。"""
+    """运行时缓存契约和内存机制不得反向导入具体缓存适配器。"""
     modules = _discover_modules()
     dependencies = _resolve_imports(
-        "app.platform.cache",
-        modules["app.platform.cache"],
+        "app.runtime.cache",
+        modules["app.runtime.cache"],
         set(modules),
     )
     assert {
         dependency
         for dependency in dependencies
-        if dependency.startswith("app.infrastructure")
+        if dependency.startswith("app.adapters.cache")
     } == set()
 
 
@@ -347,8 +387,8 @@ def test_resource_adapter_does_not_restart_process():
     """资源下载安装适配器不得反向调用进程重启能力。"""
     modules = _discover_modules()
     dependencies = _resolve_imports(
-        "app.infrastructure.resource",
-        modules["app.infrastructure.resource"],
+        "app.adapters.system.resource",
+        modules["app.adapters.system.resource"],
         set(modules),
     )
-    assert "app.platform.runtime" not in dependencies
+    assert "app.runtime.state" not in dependencies

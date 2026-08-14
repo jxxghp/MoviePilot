@@ -15,7 +15,7 @@ pytest
 ### When to Expand Scope
 
 Run the full test suite when changing:
-- `app/platform/`, `app/extensions/`, or `app/compat/` - config, events, managers, and compatibility boundaries
+- `app/runtime/`, `app/adapters/`, or `app/runtime/compat/` - config, events, managers, adapters, and compatibility boundaries
 - `app/chain/__init__.py` — chain base class
 - `app/modules/__init__.py` — module base class
 - `app/main.py` — application startup

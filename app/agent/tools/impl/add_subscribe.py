@@ -8,7 +8,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.subscribe import SubscribeChain
 from app.db.user_oper import UserOper
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, MessageChannel
 from ._music_utils import normalize_music_type
 

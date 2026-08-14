@@ -1,7 +1,7 @@
 from typing import Any, Optional, Tuple, Union
 
-from app.platform.cache import cached
-from app.platform.config import settings
+from app.runtime.cache import cached
+from app.runtime.config import settings
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -9,7 +9,7 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -20,7 +20,7 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.foundation.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.media import is_media_source_selected
 
 

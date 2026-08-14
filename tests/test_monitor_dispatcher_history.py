@@ -3,8 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.platform.config import settings
-from app.services.history import (
+from app.runtime.config import settings
+from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,
     record_transfer_failure,

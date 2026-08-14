@@ -6,7 +6,7 @@ from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.torrents import TorrentsChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo

@@ -3,10 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.domain.context import MediaInfo, TorrentInfo
-from app.services.torrent import TorrentHelper
+from app.application.torrent import TorrentHelper
 from app.modules.filter import FilterModule
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
-from app.infrastructure import rust as rust_accel
+from app.adapters.system import rust as rust_accel
 
 
 class _RuleHelper:

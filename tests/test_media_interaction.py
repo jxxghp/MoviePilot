@@ -4,10 +4,10 @@ from unittest.mock import patch
 import pytest
 
 from app.chain.message import MediaInteractionChain, MessageChain
-from app.platform.events import EventManager
+from app.runtime.events import EventManager
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.messaging.interaction import media_interaction_manager, plugin_input_interaction_manager
+from app.application.messaging.interaction import media_interaction_manager, plugin_input_interaction_manager
 from app.schemas import CommingMessage, TransferDirectoryConf
 from app.schemas.types import EventType, MediaSource, MediaType, MessageChannel
 

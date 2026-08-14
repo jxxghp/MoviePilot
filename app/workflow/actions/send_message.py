@@ -4,7 +4,7 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction, ActionChain
 from app.schemas import ActionParams, ActionContext, Notification
-from app.platform.config import settings
+from app.runtime.config import settings
 
 
 class SendMessageParams(ActionParams):

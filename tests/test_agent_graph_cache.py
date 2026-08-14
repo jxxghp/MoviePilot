@@ -16,7 +16,7 @@ from app.agent.tools.catalog import (
     ToolIdentityAmbiguousError,
 )
 from app.agent.tools.impl.mcp import create_external_mcp_tools
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.schemas.agent import AgentMcpServerConfig
 
 

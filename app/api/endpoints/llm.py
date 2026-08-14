@@ -13,13 +13,13 @@ from app.agent.llm import (
     LLMTestTimeout,
     render_auth_result_html,
 )
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db.models import User
 from app.db.user_oper import (
     get_current_active_superuser_async,
     get_current_active_user_async,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 
 router = ResponseAPIRouter()
 

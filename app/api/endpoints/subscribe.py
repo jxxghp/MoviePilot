@@ -8,19 +8,19 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.subscribe import SubscribeChain
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import MediaInfo
-from app.platform.events import eventmanager
+from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
-from app.security.access import verify_token, verify_apitoken
+from app.application.security.access import verify_token, verify_apitoken
 from app.db import get_async_db, get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user, get_current_active_user_async
-from app.integrations.server import MoviePilotServerHelper
-from app.platform.log import logger
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.log import logger
 from app.scheduler import Scheduler
 from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import (

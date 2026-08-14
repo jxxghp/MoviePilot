@@ -5,8 +5,8 @@ from typing import Union
 import ruamel.yaml
 from ruamel.yaml import CommentedMap
 
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 from app.schemas.category import CategoryConfig
 from app.foundation.singleton import WeakSingleton
 

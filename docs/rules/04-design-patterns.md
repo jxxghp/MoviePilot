@@ -84,12 +84,12 @@ result = await self.async_run_module("method_name", kwarg1=val1)
 
 **When to use:** Triggering cross-cutting reactions (e.g., notifying the media server after a transfer completes, reloading a module after config changes, dispatching user messages to message channels).
 
-**Core classes:** `EventManager` (singleton instance `eventmanager`) and `Event` in `app/platform/events.py`.
+**Core classes:** `EventManager` (singleton instance `eventmanager`) and `Event` in `app/runtime/events.py`.
 
 **Registering a handler:**
 
 ```python
-from app.platform.events import eventmanager, Event
+from app.runtime.events import eventmanager, Event
 from app.schemas.types import EventType
 
 @eventmanager.register(EventType.TransferComplete)
@@ -136,7 +136,7 @@ oper.add(Subscribe(name="Example", type="电影"))
 
 **When to use:** A chain, module, or helper holds a long-lived object that must be rebuilt when specific configuration keys change (e.g., a downloader client reconnects when its host/port changes).
 
-**Mixin:** `ConfigReloadMixin` in `app/platform/reload.py`
+**Mixin:** `ConfigReloadMixin` in `app/runtime/reload.py`
 
 **How it works:**
 1. Inherit `ConfigReloadMixin`.

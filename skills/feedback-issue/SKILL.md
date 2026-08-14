@@ -247,7 +247,7 @@ python <skill_dir>/scripts/submit_feedback_issue.py \
   --username "<current admin username if known>"
 ```
 
-The script automatically imports MoviePilot's `app.platform.config.settings`
+The script automatically imports MoviePilot's `app.runtime.config.settings`
 and reads the system-configured `GITHUB_TOKEN` / `settings.GITHUB_HEADERS`
 from the running MoviePilot environment. Do not ask the user to provide
 a GitHub token in chat, and never accept or echo a token from the user.

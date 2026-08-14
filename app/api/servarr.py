@@ -10,7 +10,7 @@ from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tvdb import TvdbChain
 from app.domain.metainfo import MetaInfo
-from app.security.access import verify_apikey
+from app.application.security.access import verify_apikey
 from app.db import get_db, get_async_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries

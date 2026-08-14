@@ -1,6 +1,6 @@
 from app.agent.prompt import PromptManager
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsInput
-from app.platform.config import settings
+from app.runtime.config import settings
 
 
 def test_moviepilot_info_does_not_expose_api_token_or_database_password(monkeypatch) -> None:

@@ -7,28 +7,28 @@ import json
 from datetime import timedelta
 from typing import Any, Annotated, Optional
 
-from app.infrastructure.sites import SitesHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from fastapi import Depends, HTTPException, Body, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.security import access as security
-from app.platform.config import settings
+from app.application.security import access as security
+from app.runtime.config import settings
 from app.db import get_async_db
 from app.db.models.passkey import PassKey
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user, get_current_active_user_async
-from app.security.passkey import (
+from app.application.security.passkey import (
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,
     PassKeyRegistrationVerificationError,
     PasskeyChallengeStore,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
-from app.security.otp import OtpUtils
+from app.application.security.otp import OtpUtils
 
 router = ResponseAPIRouter()
 

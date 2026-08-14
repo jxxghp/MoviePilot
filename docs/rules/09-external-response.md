@@ -12,7 +12,7 @@
 - Retry logic
 
 ```python
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 
 res = RequestUtils(
     ua=settings.USER_AGENT,
@@ -136,7 +136,7 @@ Internal notifications use the `Notification` schema and the event system:
 ```python
 from app.schemas import Notification
 from app.schemas.types import NotificationType, MessageChannel
-from app.platform.events import eventmanager
+from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
 eventmanager.send_event(

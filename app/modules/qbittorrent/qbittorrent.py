@@ -10,7 +10,7 @@ from qbittorrentapi import TorrentDictionary, TorrentFilesList
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.domain.string import StringUtils
 
 

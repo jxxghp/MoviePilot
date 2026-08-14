@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.chain.recommend import RecommendChain
-from app.platform.cache import TTLCache
+from app.runtime.cache import TTLCache
 from app.domain.context import MusicInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM
 

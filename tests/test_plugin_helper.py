@@ -77,7 +77,7 @@ def _build_release_zip_member(name: str, *, symlink: bool = False) -> bytes:
 
 def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
     """隔离 release 安装根目录，并阻止测试误触真实根路径。"""
-    monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(
+    monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(
         ROOT_PATH=tmp_path,
         REPO_GITHUB_HEADERS=lambda repo=None: {},
     ))
@@ -160,7 +160,7 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginHelper__async_install_dependencies_if_required", fake_dependencies)
     monkeypatch.setattr(helper, "_PluginHelper__async_install_from_release", fake_release)
     monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
-    monkeypatch.setattr("app.integrations.market.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr("app.adapters.external.market.asyncio.to_thread", fake_to_thread)
     return calls
 
 
@@ -171,7 +171,7 @@ class TestPluginHelper:
         插件安装统计脱敏保留远端仓库地址。
         """
         try:
-            from app.integrations.server import MoviePilotServerHelper
+            from app.adapters.external.server import MoviePilotServerHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
         repo_url = "https://github.com/InfinityPacer/MoviePilot-Plugins"
@@ -182,7 +182,7 @@ class TestPluginHelper:
         插件安装统计脱敏移除本地仓库绝对路径。
         """
         try:
-            from app.integrations.server import MoviePilotServerHelper
+            from app.adapters.external.server import MoviePilotServerHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
         repo_url = "local://TestPlugin?path=/Users/InfinityPacer/GitHub/MoviePilot/MoviePilot-Plugins&version=v2"
@@ -193,15 +193,15 @@ class TestPluginHelper:
         插件库强制刷新时远端索引 URL 也要变化，避免命中镜像或代理缓存。
         """
         try:
-            from app.platform.cache import fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         url = "https://raw.githubusercontent.com/user/repo/main/package.json"
 
         assert url == PluginHelper._PluginHelper__append_cache_buster(url)
-        with patch("app.integrations.market.time.time_ns", return_value=1234567890):
+        with patch("app.adapters.external.market.time.time_ns", return_value=1234567890):
             with fresh(True):
                 refreshed_url = PluginHelper._PluginHelper__append_cache_buster(url)
 
@@ -212,7 +212,7 @@ class TestPluginHelper:
         未声明主系统版本范围时保持旧插件兼容，不做额外限制。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -226,7 +226,7 @@ class TestPluginHelper:
         插件声明的主系统版本范围不满足当前版本时拒绝安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -241,7 +241,7 @@ class TestPluginHelper:
         兼容带 v 前缀的版本范围，降低插件索引维护成本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -256,7 +256,7 @@ class TestPluginHelper:
         release 版本列表只暴露符合插件 tag 规范且存在同名 zip 资产的版本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -304,8 +304,8 @@ class TestPluginHelper:
         插件市场强制刷新时 Release 列表请求也要绕过 GitHub 镜像或代理缓存。
         """
         try:
-            from app.platform.cache import fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -319,7 +319,7 @@ class TestPluginHelper:
         helper.get_plugin_release_versions.cache_clear()
         monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", fake_request)
 
-        with patch("app.integrations.market.time.time_ns", return_value=1234567890):
+        with patch("app.adapters.external.market.time.time_ns", return_value=1234567890):
             with fresh(True):
                 helper.get_plugin_release_versions(PLUGIN_ID, REPO_URL)
 
@@ -332,7 +332,7 @@ class TestPluginHelper:
         多插件共用 Release 列表时需要分页，避免目标插件历史发行版被第一页之外的数据遮蔽。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -367,7 +367,7 @@ class TestPluginHelper:
         同一仓库的不同插件共享 GitHub Release 分页结果，避免按插件 ID 重复请求。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -404,8 +404,8 @@ class TestPluginHelper:
         同一仓库的并发强制刷新共享一个请求任务，避免缓存失效瞬间放大 GitHub 请求。
         """
         try:
-            from app.platform.cache import async_fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import async_fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -446,8 +446,8 @@ class TestPluginHelper:
     def test_async_forced_release_refresh_does_not_reuse_normal_read_task(self, monkeypatch):
         """强刷等待在途普通读取后再请求，最终缓存必须保留强刷结果。"""
         try:
-            from app.platform.cache import async_fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import async_fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -502,8 +502,8 @@ class TestPluginHelper:
     def test_async_normal_release_read_does_not_wait_for_pending_force_refresh(self, monkeypatch):
         """普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。"""
         try:
-            from app.platform.cache import async_fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import async_fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -572,7 +572,7 @@ class TestPluginHelper:
     def test_async_has_plugin_release_cache_reflects_repository_cache(self, monkeypatch):
         """Release 缓存探针只判断仓库级缓存是否已经存在，不触发网络请求。"""
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -605,8 +605,8 @@ class TestPluginHelper:
     def test_failed_forced_release_refresh_preserves_cached_repository_payload(self, monkeypatch):
         """GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。"""
         try:
-            from app.platform.cache import fresh
-            from app.integrations.market import PluginHelper
+            from app.runtime.cache import fresh
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -638,8 +638,8 @@ class TestPluginHelper:
         插件市场 labels 为列表时应转换为字符串，避免响应模型序列化异常。
         """
         try:
-            from app.extensions.plugin_manager import PluginManager
-            from app.integrations.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -655,9 +655,12 @@ class TestPluginHelper:
         plugin_manager = PluginManager()
         monkeypatch.setattr(plugin_manager, "_plugins", {})
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
-        monkeypatch.setattr("app.extensions.plugin_manager.settings", SimpleNamespace(VERSION_FLAG="v2"))
-        monkeypatch.setattr("app.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
-        monkeypatch.setattr("app.extensions.plugin_manager.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", SimpleNamespace(VERSION_FLAG="v2"))
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
+        monkeypatch.setattr(
+            "app.runtime.extensions.plugin_manager._site_auth_level_provider",
+            lambda: 1,
+        )
         monkeypatch.setattr(PluginHelper, "get_plugins", lambda _self, *_args: market_plugins)
 
         plugins = plugin_manager.get_plugins_from_market(REPO_URL)
@@ -672,8 +675,8 @@ class TestPluginHelper:
         package.v2.json 中的 v2 原生插件，并过滤掉未声明任何版本兼容的 v1 插件。
         """
         try:
-            from app.extensions.plugin_manager import PluginManager
-            from app.integrations.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -710,12 +713,15 @@ class TestPluginHelper:
         monkeypatch.setattr(plugin_manager, "_plugins", {})
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
         monkeypatch.setattr(
-            "app.extensions.plugin_manager.settings",
+            "app.runtime.extensions.plugin_manager.settings",
             SimpleNamespace(VERSION_FLAG="v3", PLUGIN_MARKET=REPO_URL),
         )
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
-        monkeypatch.setattr("app.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
-        monkeypatch.setattr("app.extensions.plugin_manager.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
+        monkeypatch.setattr(
+            "app.runtime.extensions.plugin_manager._site_auth_level_provider",
+            lambda: 1,
+        )
         monkeypatch.setattr(PluginHelper, "get_plugins", fake_get_plugins)
 
         plugins = plugin_manager.get_online_plugins(force=False)
@@ -732,7 +738,7 @@ class TestPluginHelper:
         V3 安装链路应能解析 v2 兼容插件：package.v2.json 命中返回 v2，package.json 声明 v2 返回基础版本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -762,7 +768,7 @@ class TestPluginHelper:
                 return v2_native_plugins
             return base_plugins
 
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
         helper = PluginHelper.__new__(PluginHelper)
         monkeypatch.setattr(PluginHelper, "get_plugins", fake_get_plugins)
 
@@ -775,12 +781,12 @@ class TestPluginHelper:
     def test_explicit_v2_resolution_still_respects_v3_false(self, monkeypatch) -> None:
         """V3 显式解析 V2 索引时也不得绕过专用副本的排除标志。"""
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         monkeypatch.setattr(
-            "app.integrations.market.settings",
+            "app.adapters.external.market.settings",
             SimpleNamespace(VERSION_FLAG="v3"),
         )
         helper = PluginHelper.__new__(PluginHelper)
@@ -803,12 +809,12 @@ class TestPluginHelper:
     def test_async_resolution_matches_v2_default_compatibility(self, monkeypatch) -> None:
         """异步安装解析应默认接纳 V2，并排除显式 v3:false 的旧实现。"""
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         monkeypatch.setattr(
-            "app.integrations.market.settings",
+            "app.adapters.external.market.settings",
             SimpleNamespace(VERSION_FLAG="v3"),
         )
         helper = PluginHelper.__new__(PluginHelper)
@@ -839,12 +845,12 @@ class TestPluginHelper:
     def test_v3_package_compatibility_defaults_v2_to_allowed(self, monkeypatch) -> None:
         """V3 临时兼容 V2，显式 false 优先拒绝且纯 V1 不被带入。"""
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         monkeypatch.setattr(
-            "app.integrations.market.settings",
+            "app.adapters.external.market.settings",
             SimpleNamespace(VERSION_FLAG="v3"),
         )
 
@@ -864,16 +870,16 @@ class TestPluginHelper:
         全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。
         """
         try:
-            from app.extensions.plugin_manager import PluginManager
-            from app.integrations.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         clear_calls = []
         fake_release_method = SimpleNamespace(cache_clear=lambda: clear_calls.append("clear"))
         fake_helper = SimpleNamespace(get_plugin_release_versions=fake_release_method)
-        monkeypatch.setattr("app.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "get_plugins_from_market", lambda *_args, **_kwargs: [])
 
         PluginManager().get_online_plugins(force=True)
@@ -883,7 +889,7 @@ class TestPluginHelper:
     def test_async_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """异步全市场刷新同样不得清理其他仓库的 Release 缓存。"""
         try:
-            from app.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin_manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -898,8 +904,8 @@ class TestPluginHelper:
         async def fake_market(*_args, **_kwargs):
             return []
 
-        monkeypatch.setattr("app.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
+        monkeypatch.setattr("app.runtime.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
 
         asyncio.run(PluginManager().async_get_online_plugins(force=True))
@@ -909,7 +915,7 @@ class TestPluginHelper:
     def test_get_local_plugin_version_reads_only_requested_installed_plugin(self, monkeypatch):
         """单插件版本查询不构建全部本地插件信息。"""
         try:
-            from app.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin_manager import PluginManager
             from app.db.systemconfig_oper import SystemConfigOper
             from app.schemas.types import SystemConfigKey
         except ModuleNotFoundError as exc:
@@ -934,7 +940,7 @@ class TestPluginHelper:
         插件市场列表会带出系统版本兼容状态，供前端禁用安装入口。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -950,7 +956,7 @@ class TestPluginHelper:
         验证依赖安装窗口内被其他任务导入的运行态模块不会被误删。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -967,7 +973,7 @@ class TestPluginHelper:
             with tempfile.TemporaryDirectory() as temp_dir:
                 requirements_file = Path(temp_dir) / "requirements.txt"
                 requirements_file.write_text("demo-package\n", encoding="utf-8")
-                with patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                     success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
             assert success
@@ -980,7 +986,7 @@ class TestPluginHelper:
         插件依赖安装优先使用 uv 时，传输代理只进入子进程环境。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -998,16 +1004,16 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.infrastructure.package._find_uv", return_value=uv_bin), \
+            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
                         return_value={"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                     ), \
-                    patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
-                    patch("app.integrations.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
-                    patch("app.integrations.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"):
+                    patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
+                    patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"):
                 success, message = PluginHelper.pip_install_with_fallback(req)
 
         assert success
@@ -1024,7 +1030,7 @@ class TestPluginHelper:
         验证多个依赖安装请求会复用同一把锁串行执行 pip。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1063,7 +1069,7 @@ class TestPluginHelper:
                 threading.Thread(target=worker, args=(requirements_file,))
                 for requirements_file in requirements_files
             ]
-            with patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+            with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 for thread in threads:
                     thread.start()
                 start_event.set()
@@ -1078,7 +1084,7 @@ class TestPluginHelper:
         验证仅主程序依赖链上的包会被纳入保护集合。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1115,7 +1121,7 @@ class TestPluginHelper:
         验证插件如果试图覆盖主程序核心依赖，会在真正执行 pip 前被直接拒绝。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1138,7 +1144,7 @@ class TestPluginHelper:
         验证非主程序依赖即便已安装，插件后续仍可调整其版本约束。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1164,8 +1170,8 @@ class TestPluginHelper:
                         "_PluginHelper__get_protected_runtime_packages",
                         return_value={}
                 ):
-                    with patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                        with patch("app.infrastructure.package._find_uv", return_value=None):
+                    with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                        with patch("app.adapters.system.package._find_uv", return_value=None):
                             success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert success
@@ -1177,7 +1183,7 @@ class TestPluginHelper:
         验证插件依赖安装会固定主程序依赖的当前版本，防止共享 venv 被改写。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1201,8 +1207,8 @@ class TestPluginHelper:
                     "_PluginHelper__get_protected_runtime_packages",
                     return_value={"fastapi": Version("0.115.14")}
             ):
-                with patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.infrastructure.package._find_uv", return_value=None):
+                with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    with patch("app.adapters.system.package._find_uv", return_value=None):
                         success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert success
@@ -1215,7 +1221,7 @@ class TestPluginHelper:
         验证插件依赖安装后若破坏运行环境，会先恢复主程序依赖，再向上层返回失败。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1247,8 +1253,8 @@ class TestPluginHelper:
                     "_PluginHelper__get_protected_runtime_packages",
                     return_value={"fastapi": Version("0.115.14")}
             ):
-                with patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.infrastructure.package._find_uv", return_value=None):
+                with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    with patch("app.adapters.system.package._find_uv", return_value=None):
                         success, message = PluginHelper.pip_install_with_fallback(requirements_file)
 
         assert not success
@@ -1261,7 +1267,7 @@ class TestPluginHelper:
         安装前已存在且安装后未新增的环境异常不应归因于本次插件依赖安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1279,7 +1285,7 @@ class TestPluginHelper:
         with tempfile.TemporaryDirectory() as temp_dir:
             requirements_file = Path(temp_dir) / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
-            with patch("app.infrastructure.package._find_uv", return_value=None), \
+            with patch("app.adapters.system.package._find_uv", return_value=None), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1288,7 +1294,7 @@ class TestPluginHelper:
                     ), \
                     patch.object(PluginHelper, "_PluginHelper__repair_main_runtime_dependencies") as repair_mock, \
                     patch(
-                        "app.integrations.market.SystemUtils.execute_with_subprocess",
+                        "app.adapters.external.market.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
                     ):
                 success, message = PluginHelper.pip_install_with_fallback(requirements_file)
@@ -1302,7 +1308,7 @@ class TestPluginHelper:
         既有全局依赖异常不能遮蔽本次安装新造成的核心依赖导入失败。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1324,7 +1330,7 @@ class TestPluginHelper:
         with tempfile.TemporaryDirectory() as temp_dir:
             requirements_file = Path(temp_dir) / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
-            with patch("app.infrastructure.package._find_uv", return_value=None), \
+            with patch("app.adapters.system.package._find_uv", return_value=None), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1337,7 +1343,7 @@ class TestPluginHelper:
                         return_value=(True, "repaired"),
                     ) as repair_mock, \
                     patch(
-                        "app.integrations.market.SystemUtils.execute_with_subprocess",
+                        "app.adapters.external.market.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
                     ):
                 success, message = PluginHelper.pip_install_with_fallback(requirements_file)
@@ -1351,7 +1357,7 @@ class TestPluginHelper:
         安装策略失败后如果主运行环境异常，应先恢复主程序依赖再返回失败。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1367,7 +1373,7 @@ class TestPluginHelper:
             req = root / "plugin-requirements.txt"
             req.write_text("demo\n", encoding="utf-8")
 
-            with patch("app.infrastructure.package._find_uv", return_value=None), \
+            with patch("app.adapters.system.package._find_uv", return_value=None), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1384,7 +1390,7 @@ class TestPluginHelper:
                         side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
                         or (True, "runtime repaired"),
                     ), \
-                    patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginHelper.pip_install_with_fallback(req)
 
         assert not success
@@ -1396,7 +1402,7 @@ class TestPluginHelper:
         一旦失败策略污染主运行环境并触发恢复，不能继续 fallback 后把安装结果伪装成成功。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1419,7 +1425,7 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.infrastructure.package._find_uv", return_value=uv_bin), \
+            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1436,9 +1442,9 @@ class TestPluginHelper:
                         side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
                         or (True, "runtime repaired"),
                     ), \
-                    patch("app.integrations.market.settings.PIP_PROXY", "https://mirror.example/simple"), \
-                    patch("app.integrations.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
-                    patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                    patch("app.adapters.external.market.settings.PIP_PROXY", "https://mirror.example/simple"), \
+                    patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginHelper.pip_install_with_fallback(req)
 
         assert not success
@@ -1452,7 +1458,7 @@ class TestPluginHelper:
         主运行环境恢复与插件安装使用同一套 cache、index、proxy 和安全日志语义。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1470,12 +1476,12 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.infrastructure.package._find_uv", return_value=uv_bin), \
-                    patch("app.integrations.market.settings.CONFIG_DIR", str(root / "config")), \
-                    patch("app.integrations.market.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
-                    patch("app.integrations.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
-                    patch("app.integrations.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
-                    patch("app.integrations.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
+                    patch("app.adapters.external.market.settings.CONFIG_DIR", str(root / "config")), \
+                    patch("app.adapters.external.market.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
+                    patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
+                    patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
+                    patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginHelper._PluginHelper__repair_main_runtime_dependencies(req)
 
         assert success
@@ -1495,7 +1501,7 @@ class TestPluginHelper:
         验证异步安装路径会把同步 pip 安装派发到线程池，避免阻塞事件循环。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1514,7 +1520,7 @@ class TestPluginHelper:
             calls.append((func, args, kwargs))
             return True, "ok"
 
-        with patch("app.integrations.market.asyncio.to_thread", side_effect=fake_to_thread):
+        with patch("app.adapters.external.market.asyncio.to_thread", side_effect=fake_to_thread):
             success, message = asyncio.run(run_install())
 
         assert success
@@ -1529,7 +1535,7 @@ class TestPluginHelper:
         release 包可用时优先使用 zip 安装，不再额外访问文件列表。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1552,7 +1558,7 @@ class TestPluginHelper:
         release 标记存在但 tag 或 zip 尚未生成时，清理可能残留的安装目录后回退文件列表安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1576,7 +1582,7 @@ class TestPluginHelper:
         release 和文件列表都不可用时返回最终文件列表错误，并在每次写入前后保持目录可回滚。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1600,7 +1606,7 @@ class TestPluginHelper:
         未开启 release 标记的插件保持原有文件列表安装路径。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1624,7 +1630,7 @@ class TestPluginHelper:
         release 安装必须有插件版本号，否则无法构造稳定 tag。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1647,7 +1653,7 @@ class TestPluginHelper:
         系统版本不兼容时不会删除旧插件，也不会尝试 release 或文件列表安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1671,7 +1677,7 @@ class TestPluginHelper:
         指定安装当前最新 release 时仍按当前 package 元数据校验主程序版本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1702,7 +1708,7 @@ class TestPluginHelper:
         指定旧 release 版本时直接安装对应资产，失败也不回退当前分支文件列表。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1734,7 +1740,7 @@ class TestPluginHelper:
         指定版本必须来自可安装 Release 列表，避免客户端绕过前端约束拼接任意 tag。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1764,7 +1770,7 @@ class TestPluginHelper:
         远端安装缺少插件 ID 或仓库地址时直接拒绝。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1778,7 +1784,7 @@ class TestPluginHelper:
         仓库地址无法解析出 owner/repo 时直接拒绝。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1792,7 +1798,7 @@ class TestPluginHelper:
         当前系统版本找不到匹配插件索引时直接返回兼容性错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1809,7 +1815,7 @@ class TestPluginHelper:
         调用方未指定索引版本时使用系统版本标记继续安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1834,7 +1840,7 @@ class TestPluginHelper:
         local:// 来源保留运行资产，但不把本地前端构建依赖复制到运行目录。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1859,7 +1865,7 @@ class TestPluginHelper:
                 "version": "1.0.0",
             },
         )
-        monkeypatch.setattr("app.integrations.market.PLUGIN_DIR", runtime_root)
+        monkeypatch.setattr("app.adapters.external.market.PLUGIN_DIR", runtime_root)
         monkeypatch.setattr(helper, "refresh_persistent_plugin_backup", lambda _pid: True)
 
         success, message = helper.install(
@@ -1879,7 +1885,7 @@ class TestPluginHelper:
         release tag 存在但 zip 下载失败时清理可能残留的目录，再回退文件列表安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1903,7 +1909,7 @@ class TestPluginHelper:
         异步安装路径在 release 包可用时优先使用 zip 安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1929,7 +1935,7 @@ class TestPluginHelper:
         异步安装路径在 release tag 或 zip 未生成时，清理可能残留的安装目录后回退文件列表安装。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1956,7 +1962,7 @@ class TestPluginHelper:
         异步路径指定旧 release 版本时直接安装对应资产，失败也不回退当前分支文件列表。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1990,7 +1996,7 @@ class TestPluginHelper:
         异步安装同样只接受 Release 列表中存在的指定版本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2022,7 +2028,7 @@ class TestPluginHelper:
         异步安装路径在 release 与文件列表都失败时返回文件列表错误，并保持失败清理顺序稳定。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2048,7 +2054,7 @@ class TestPluginHelper:
         异步 release 回退文件列表安装时使用小写插件 ID，保持 GitHub 目录查询与同步路径一致。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2081,7 +2087,7 @@ class TestPluginHelper:
         异步文件列表直装使用小写插件 ID，避免大小写插件 ID 影响远端目录匹配。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2114,7 +2120,7 @@ class TestPluginHelper:
         release tag 不存在时返回可用于降级判断的失败消息。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2131,7 +2137,7 @@ class TestPluginHelper:
         release tag 存在但缺少规范 zip 资产时返回明确错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2152,7 +2158,7 @@ class TestPluginHelper:
         release 资产缺少 id 时无法使用 API 下载，返回明确错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2173,7 +2179,7 @@ class TestPluginHelper:
         release API 返回无法解析的结构时返回解析错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2197,7 +2203,7 @@ class TestPluginHelper:
         release asset API 下载失败时返回下载错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2229,7 +2235,7 @@ class TestPluginHelper:
         release zip 成员必须限制在插件运行目录内，且不能是符号链接或特殊文件。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2255,7 +2261,7 @@ class TestPluginHelper:
         release zip 带顶层插件目录时剥离该层后写入运行目录。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2269,7 +2275,7 @@ class TestPluginHelper:
             _FakeResponse(200, release_payload),
             _FakeContentResponse(200, zip_content),
         ])
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(
             ROOT_PATH=tmp_path,
             REPO_GITHUB_HEADERS=lambda repo=None: {},
         ))
@@ -2287,7 +2293,7 @@ class TestPluginHelper:
         release zip 内显式目录项会被创建，并继续写入后续文件。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2300,7 +2306,7 @@ class TestPluginHelper:
             _FakeResponse(200, {"assets": [{"name": "demoplugin_v1.2.3.zip", "id": 42}]}),
             _FakeContentResponse(200, buffer.getvalue()),
         ])
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(
             ROOT_PATH=tmp_path,
             REPO_GITHUB_HEADERS=lambda repo=None: {},
         ))
@@ -2318,7 +2324,7 @@ class TestPluginHelper:
         release zip 为空时返回明确错误，避免安装出空插件目录。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2339,7 +2345,7 @@ class TestPluginHelper:
         release zip 只有目录项时返回无可写入文件错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2351,7 +2357,7 @@ class TestPluginHelper:
             _FakeResponse(200, {"assets": [{"name": "demoplugin_v1.2.3.zip", "id": 42}]}),
             _FakeContentResponse(200, buffer.getvalue()),
         ])
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(
             ROOT_PATH=tmp_path,
             REPO_GITHUB_HEADERS=lambda repo=None: {},
         ))
@@ -2367,7 +2373,7 @@ class TestPluginHelper:
         release asset 不是合法 zip 时返回解压错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2388,7 +2394,7 @@ class TestPluginHelper:
         内容准备失败时恢复备份，避免安装失败后留下半成品目录。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2411,7 +2417,7 @@ class TestPluginHelper:
         依赖安装失败时恢复备份，避免新插件内容破坏可用版本。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2439,7 +2445,7 @@ class TestPluginHelper:
         文件列表安装会先尝试 requirements 预安装，再下载插件文件。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2470,7 +2476,7 @@ class TestPluginHelper:
         requirements 预安装失败不阻断文件下载，最终依赖安装由统一流程兜底。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2500,7 +2506,7 @@ class TestPluginHelper:
         文件列表为空时直接返回列表获取错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2517,7 +2523,7 @@ class TestPluginHelper:
         文件列表存在但文件下载失败时向上返回下载错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2535,7 +2541,7 @@ class TestPluginHelper:
         异步文件列表安装会先尝试 requirements 预安装，再下载插件文件。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2572,7 +2578,7 @@ class TestPluginHelper:
         异步文件列表为空时直接返回列表获取错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2595,7 +2601,7 @@ class TestPluginHelper:
         异步文件列表下载失败时向上返回下载错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2622,7 +2628,7 @@ class TestPluginHelper:
         异步内容准备失败时恢复备份。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2656,7 +2662,7 @@ class TestPluginHelper:
         异步依赖安装失败时恢复备份。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2694,7 +2700,7 @@ class TestPluginHelper:
         异步 release tag 存在但缺少规范 zip 资产时返回明确错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2717,7 +2723,7 @@ class TestPluginHelper:
         异步 release tag 不存在时返回获取 release 失败。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2740,7 +2746,7 @@ class TestPluginHelper:
         异步 release 资产缺少 id 时返回明确错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2763,7 +2769,7 @@ class TestPluginHelper:
         异步 release asset 下载失败时返回下载错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2801,7 +2807,7 @@ class TestPluginHelper:
         异步 release zip 成员使用同步路径相同的边界与文件类型规则。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2833,8 +2839,8 @@ class TestPluginHelper:
         异步 release zip 带顶层插件目录时剥离该层后写入运行目录。
         """
         try:
-            from app.platform.config import settings
-            from app.integrations.market import PluginHelper
+            from app.runtime.config import settings
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2847,7 +2853,7 @@ class TestPluginHelper:
         async def fake_request(*_args, **_kwargs):
             return next(responses)
 
-        monkeypatch.setattr("app.integrations.market.settings", SimpleNamespace(
+        monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(
             ROOT_PATH=tmp_path,
             REPO_GITHUB_HEADERS=lambda repo=None: {},
         ))
@@ -2866,7 +2872,7 @@ class TestPluginHelper:
         异步 release zip 为空时返回明确错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2893,7 +2899,7 @@ class TestPluginHelper:
         异步 release asset 不是合法 zip 时返回解压错误。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -2920,7 +2926,7 @@ class TestPluginHelper:
         本地插件来源中的插件 ID 必须与安装目标一致。
         """
         try:
-            from app.integrations.market import PluginHelper
+            from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 

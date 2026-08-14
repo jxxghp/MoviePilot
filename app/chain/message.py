@@ -22,26 +22,26 @@ from app.chain.site import SiteChain, site_interaction_manager
 from app.chain.skills import SkillsChain, skills_interaction_manager
 from app.chain.subscribe import SubscribeChain, subscribe_interaction_manager
 from app.chain.transfer import TransferChain
-from app.platform.config import settings, global_vars
+from app.runtime.config import settings, global_vars
 from app.domain.context import MediaInfo, Context
 from app.domain.meta.metabase import MetaBase
 from app.db.models import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.db.user_oper import UserOper
-from app.services.directory import DirectoryHelper
-from app.messaging.interaction import (
+from app.application.directory import DirectoryHelper
+from app.application.messaging.interaction import (
     agent_interaction_manager,
     media_interaction_manager,
     plugin_input_interaction_manager,
     PendingMediaInteraction,
 )
-from app.services.torrent import TorrentHelper
-from app.platform.log import logger
+from app.application.torrent import TorrentHelper
+from app.runtime.log import logger
 from app.schemas import CommingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Notification
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import EventType, MessageChannel, MediaType
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.domain.media import build_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 

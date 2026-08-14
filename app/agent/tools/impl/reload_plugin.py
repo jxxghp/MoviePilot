@@ -11,7 +11,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     get_plugin_snapshot,
     reload_plugin_runtime,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 
 
 class ReloadPluginInput(BaseModel):

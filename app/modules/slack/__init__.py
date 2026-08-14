@@ -5,13 +5,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
 from app.domain.context import MediaInfo, Context
-from app.platform.events import eventmanager
-from app.messaging.agent import (
+from app.runtime.events import eventmanager
+from app.application.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
 from app.schemas import (
@@ -22,7 +22,7 @@ from app.schemas import (
     Notification,
 )
 from app.schemas.types import ChainEventType, ModuleType
-from app.foundation.structures import DictUtils
+from app.foundation.collections import DictUtils
 
 
 register_channel_admin_resolver(

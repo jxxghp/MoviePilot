@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock, patch
 
-from app.integrations.server import MoviePilotServerHelper
+from app.adapters.external.server import MoviePilotServerHelper
 from app.schemas.types import MediaSource
 
 
@@ -23,7 +23,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         发往 MoviePilot 服务端的请求会自动携带安装用户 ID。
         """
         with patch.object(MoviePilotServerHelper, "get_user_uid", return_value="uid-1"), \
-                patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
+                patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
             headers = MoviePilotServerHelper.build_headers(
                 "https://movie-pilot.org/plugin/install",
                 headers={"Content-Type": "application/json"},
@@ -37,7 +37,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         发往其他域名的请求不会携带安装用户 ID。
         """
         with patch.object(MoviePilotServerHelper, "get_user_uid", return_value="uid-1"), \
-                patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
+                patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
             headers = MoviePilotServerHelper.build_headers(
                 "https://example.com/plugin/install",
                 headers={"Content-Type": "application/json"},
@@ -50,7 +50,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         调用方显式传入的安装用户 ID 请求头不被覆盖。
         """
         with patch.object(MoviePilotServerHelper, "get_user_uid", return_value="uid-1"), \
-                patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
+                patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
             headers = MoviePilotServerHelper.build_headers(
                 "https://movie-pilot.org/plugin/install",
                 headers={
@@ -66,7 +66,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         调用方使用不同大小写的安装用户 ID 请求头时不会重复注入。
         """
         with patch.object(MoviePilotServerHelper, "get_user_uid", return_value="uid-1"), \
-                patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
+                patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
             headers = MoviePilotServerHelper.build_headers(
                 "https://movie-pilot.org/plugin/install",
                 headers={
@@ -83,7 +83,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         构建 JSON 请求头时会补充 Content-Type。
         """
         with patch.object(MoviePilotServerHelper, "get_user_uid", return_value="uid-1"), \
-                patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
+                patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"):
             headers = MoviePilotServerHelper.build_headers(
                 "https://movie-pilot.org/plugin/install",
                 content_type="application/json",
@@ -95,7 +95,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         """
         订阅复用请求使用服务端 fork 接口。
         """
-        with patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
+        with patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
                 patch.object(MoviePilotServerHelper, "_get", return_value=None) as request:
             MoviePilotServerHelper.subscribe_fork(9)
 
@@ -108,7 +108,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         """
         工作流复用请求使用服务端 fork 接口。
         """
-        with patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
+        with patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
                 patch.object(MoviePilotServerHelper, "_get", return_value=None) as request:
             MoviePilotServerHelper.workflow_fork(9)
 
@@ -121,7 +121,7 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         """
         用户权限请求使用服务端权限接口。
         """
-        with patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
+        with patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"), \
                 patch.object(MoviePilotServerHelper, "_get", return_value=None) as request:
             MoviePilotServerHelper.user_permissions("jxxghp")
 

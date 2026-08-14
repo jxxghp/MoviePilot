@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from app.agent.middleware.utils import append_to_system_message
-from app.platform.log import logger
+from app.runtime.log import logger
 
 # JOB.md 文件最大限制为 1MB
 MAX_JOB_FILE_SIZE = 1 * 1024 * 1024

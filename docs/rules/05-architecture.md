@@ -1,18 +1,15 @@
 # 05 - Architecture and Modules
 
-## Dependency Model
+## Directory Model
 
-MoviePilot uses explicit capability packages instead of the historical
-`app/core`, `app/helper`, and `app/utils` buckets. Physical Python source must
-not be added back under those paths. They exist only as virtual compatibility
-packages for installed plugins.
+MoviePilot keeps the established product packages such as `app/chain`,
+`app/agent`, `app/modules`, `app/db`, `app/api`, `app/startup` and
+`app/workflow` in their original locations. The historical `app/core`,
+`app/helper` and `app/utils` roots are virtual compatibility packages only;
+physical Python sources must not be recreated there.
 
-Every migrated capability module and boundary package is required to stay out
-of Python-module import cycles. The gate builds the complete application graph
-so a cycle through an unmigrated caller is still detected. Startup code is the
-composition root: it wires callbacks, resolvers, and adapters into lower-level
-managers instead of letting those managers import and instantiate higher-level
-services.
+Capabilities migrated out of those legacy roots are organized by technical
+responsibility:
 
 ```text
 Entrypoints / Plugins
@@ -21,230 +18,254 @@ Entrypoints / Plugins
 API / Agent / CLI / Scheduler / Workflow
         |
         v
-Chain orchestration -----> Modules / DB / Services
-        |                         |
-        +-------------------------+
-                    |
-                    v
-Domain / Platform contracts and state
-                    |
-                    v
-Foundation and infrastructure adapters
+Chain orchestration ---------> Application services
+        |                              |
+        +----------> Modules / DB <----+
+                       |
+                       v
+             Domain / Runtime contracts
+                       |
+                       v
+              Foundation / Adapters
 
-Startup composes managers, adapters, diagnostics, and error callbacks.
-Compatibility aliases and the plugin SDK are boundary packages, never
-dependencies of canonical implementation modules.
+Startup remains the composition root. SDK and compatibility are boundaries,
+not dependencies of canonical implementation modules.
 ```
 
-## Canonical Capability Packages
+Directory grouping does not override dependency direction. The architecture
+gate builds the complete Python module graph and rejects cycles even when a
+cycle passes through an established package that was not moved.
+
+## Canonical Migrated Packages
 
 | Package | Ownership |
 |---|---|
-| `app/foundation/` | Reusable low-level mechanisms with no MoviePilot business/config dependency: HTTP clients, dynamic module loading, crypto, DOM, identity, URL, version, singleton, text segmentation, and data structures |
-| `app/domain/` | Pure business semantics for media, recognition, sites, and torrents; configuration, persistence, and acceleration are injected; detailed below |
-| `app/platform/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution policy, localization, scheduling, runtime lifecycle, concurrency, GC monitoring, and rate limits |
-| `app/infrastructure/` | Configured runtime adapters for Redis/file cache, standard streams, browser, DNS/network, RSS, resources, packages, OS, Rust acceleration, and generated site resources |
-| `app/extensions/` | Runtime module, plugin, and service discovery/lifecycle management |
-| `app/integrations/` | Concrete product/ecosystem integrations: plugin markets and repositories, CookieCloud, IP-location providers, OCR, and remote MoviePilot service |
-| `app/messaging/` | Agent-message bridge, message rendering/routing, and interactions |
-| `app/security/` | Authentication, authorization, URL/path safety, SSRF protection, OTP, cookies, passkeys, and two-factor authentication |
-| `app/services/` | Focused application services: audio, directory, downloader/media-server/storage selection, notification selection, media-server normalization/matching, persisted recognition/filter rules, formatting, image, torrent I/O, and transfer history |
-| `app/agent/skills/` | Agent Skill metadata, market discovery, installation, and local lifecycle; importing it must not initialize the Agent orchestrator |
+| `app/foundation/` | Stateless, config-free and I/O-free primitives: reflection and dynamic import, crypto, DOM parsing, identity, collections, singleton, text conversion/segmentation, URL and version helpers |
+| `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; live configuration, persistence, transport and acceleration are injected |
+| `app/application/` | Focused stateful application services, configured capability selection and service-bound rules |
+| `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, localization, scheduling, restart state, concurrency, GC and rate limits |
+| `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system and external boundaries |
 | `app/sdk/` | Stable, deliberately curated imports for plugin authors |
-| `app/compat/` | Standard-library-only legacy import routing and DEBUG diagnostics |
 
-`app/chain/` remains the application orchestration layer and `app/modules/`
-remains the collection of pluggable backend implementations. A package name
-describes ownership; it does not authorize a dependency cycle. The architecture
-gate checks the complete module graph, including imports outside these packages.
+The packages above are the only top-level roots created by the legacy-module
+refactor. Existing product roots remain unchanged rather than being moved only
+to make the directory tree look symmetrical.
+
+### Application boundaries
+
+| Path | Ownership |
+|---|---|
+| `app/application/*.py` | Audio, directory, downloader, filter, formatting, transfer history, image, media-server, notification, recognition, RSS, storage and torrent application services |
+| `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge |
+| `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
+
+Application services may use domain rules, runtime contracts, Oper classes and
+adapters. Multi-domain workflows still belong in the existing `app/chain/`
+package. `Chain`, `Service` and `Manager` remain class patterns; they do not
+create additional top-level directory categories.
+
+### Runtime boundaries
+
+| Path | Ownership |
+|---|---|
+| `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
+| `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
+| `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
+| `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
+| `app/runtime/state.py` | Process restart and update state |
+| `app/runtime/extensions/` | Module, plugin and configured-service discovery/registration/lifecycle |
+| `app/runtime/compat/` | Standard-library-only exact legacy import routing and DEBUG diagnostics |
+
+`app/startup/` remains the established composition root and is not nested under
+runtime. It injects providers and callbacks, orders initialization/shutdown and
+decides restart policy. Lower-level runtime modules must not import startup.
+
+### Adapter boundaries
+
+| Path | Ownership |
+|---|---|
+| `app/adapters/cache/` | Redis and filesystem cache implementations and Redis clients |
+| `app/adapters/network/` | Generic HTTP, browser, DNS, Cloudflare and IP transport mechanisms |
+| `app/adapters/system/` | OS/filesystem/process facilities, stdio, display, packages, resources and optional Rust acceleration |
+| `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
+
+Generic protocol transport belongs in `adapters/network`; a named product or
+ecosystem workflow belongs in `adapters/external`. An adapter may depend on
+foundation, domain models, schemas and narrowly required runtime contracts, but
+must not import application services, `runtime/extensions`, `runtime/compat` or
+the plugin SDK.
+
+RSS is not classified as a transport adapter merely because it uses HTTP. The
+current `RssHelper` combines feed parsing, torrent item semantics, configured
+site-specific URL discovery and browser fallback, so it belongs to
+`app/application/rss.py` and consumes network adapters. Likewise, the generated
+site extension owns the configured catalog/authentication/index capability and
+lives in `app/application/site/`; only its download and file installation
+mechanism remains in `app/adapters/system/resource.py`.
+
+`app/foundation/crypto.py` stays in foundation because it contains only generic
+RSA, digest and CryptoJS-compatible AES primitives and has no settings, policy,
+I/O or logging. Authentication, token, passkey, signing and two-factor policy
+still belongs in `app/application/security/`; callers decide how cryptographic
+failures are reported.
 
 ### Domain subdomains
 
-`app/domain/` is a business-capability package, not a synonym for every file
-whose name mentions media, site, or torrent:
+`app/domain/` is a business package, not a synonym for every file whose name
+mentions media, site or torrent:
 
 | Subdomain | Modules and ownership |
 |---|---|
-| Media | `context.py` owns `MediaInfo`, `TorrentInfo`, music models, and use-case context; `media.py` owns source/ID normalization; `scraper.py` owns Kodi-style NFO reading and media metadata document generation |
-| Recognition | `metainfo.py`, `meta/`, and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video, and music metadata |
-| Site | `site.py` interprets site HTML into business states such as logged-in and checked-in; generic HTTP transport remains foundation and configured browser access remains infrastructure |
-| Torrent | Torrent identity and title semantics live in the context/recognition model; downloading, caching, and parsing torrent files lives in `services/torrent.py` |
-| Shared business text | `string.py` retains MoviePilot-specific media/site/torrent text normalization pending concern-level extraction; new generic primitives must not be added to it |
+| Media | `context.py` owns `Context`, `MediaInfo` and `TorrentInfo`; `media.py` owns source/ID normalization; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
+| Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
+| Site | `site.py` interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, DOM parsing stays in foundation and network access stays in adapters |
+| Torrent | Identity/title semantics live in the domain model; configured download/cache/file behavior stays in `app/application/torrent.py` |
+| Shared business text | `string.py` contains MoviePilot-specific media/site/torrent normalization; generic text primitives stay in `app/foundation/text.py` |
 
-Filter-rule meaning is part of the torrent/filter domain, but
-`services/filter.py` reads user-persisted rule configuration and is
-therefore an application service rather than a pure domain module.
+`app/domain` may depend only on schemas and foundation. It must not read global
+settings, access DB/network/filesystem adapters, import Rust, discover services
+or initialize process runtime state.
 
-Recognition follows the same boundary: `services/recognition.py` reads
-`SystemConfigOper`; `startup/domain_initializer.py` injects live rule providers,
-file-extension policy, TMDB image URL construction, source defaults, and the
-optional Rust accelerator into pure domain modules.
+## Established Packages That Stay in Place
 
-## Shared File Placement Rule
+The following roots predate this migration and must not be moved or renamed as
+part of migrated-capability cleanup:
 
-Before creating a file, first decide which capability package owns it and check
-whether an existing domain file already provides that capability. Create a new
-file only for a genuinely separate concern and name it according to
-`07-naming-conventions.md`.
+- `app/agent/`
+- `app/api/`
+- `app/chain/`
+- `app/db/`
+- `app/doctor/`
+- `app/modules/`
+- `app/monitor/`
+- `app/plugins/`
+- `app/schemas/`
+- `app/startup/`
+- `app/testing/`
+- `app/workflow/`
 
-Do not create generic `common`, `helper`, or `utils` buckets. A reusable function
-still needs an owner:
+Necessary canonical import updates are allowed; changing their physical layout
+or product responsibilities requires a separate architectural decision.
 
-- Generic code that does not read MoviePilot business/config state belongs in `app/foundation/`, including reusable protocol clients and reflection helpers.
-- Core media-specific rules belong in `app/domain/`; rules tied specifically to
-  configured media-server representations belong in `app/services/mediaserver.py`.
-- Configuration-aware runtime resources belong in `app/infrastructure/`; a
-  concrete external product or ecosystem belongs in `app/integrations/`.
-- Stateful cross-domain behavior belongs in `app/services/` or `app/chain/`.
-- Plugin-facing public imports belong in `app/sdk/`; canonical packages are not
-  automatically public plugin APIs.
+## Placement Decision Order
 
-## Entrypoint Layer
+Use these questions in order before creating or moving a migrated capability:
 
-**Directories:** `app/api/endpoints/`, `moviepilot` (CLI), `app/agent/`, scheduler
-callbacks, webhook handlers, and message interactions.
+1. Is it generic, stateless, independent of MoviePilot state and free of I/O?
+   Put it in `app/foundation`.
+2. Is it a pure MoviePilot business rule/model? Put it in `app/domain`.
+3. Does it read persisted configuration or coordinate one focused configured
+   capability? Put it in `app/application`.
+4. Is it authentication, authorization, signing, SSRF, URL/path safety, OTP,
+   passkey or two-factor policy? Put it in `app/application/security`.
+5. Is it message rendering, routing or interaction behavior? Put it in
+   `app/application/messaging`.
+6. Is it process-wide configuration, events, logging, cache policy, execution,
+   scheduling, concurrency, GC or restart state? Put it in `app/runtime`.
+7. Does it discover/manage modules, plugins or configured service providers?
+   Put it in `app/runtime/extensions`.
+8. Does it perform concrete cache, network, OS/process, filesystem, stdio,
+   package/resource or Rust I/O? Put it under the matching `app/adapters`
+   technical boundary.
+9. Does it implement a named external product/ecosystem? Put it in
+   `app/adapters/external`.
+10. Is it public to plugins or only preserving an old path? Curate it in
+    `app/sdk` or map it in `app/runtime/compat`; never move implementation there.
 
-Responsibilities:
+Do not create generic `common`, `helper` or `utils` buckets. Reuse does not erase
+ownership.
 
-- Handle authentication, parameter parsing, response serialization, streaming,
-  and boundary validation.
-- Call `app/chain/` for logic that coordinates modules, events, caches, or
-  workflows.
-- Call an Oper class or focused service directly only for simple CRUD and input
-  normalization.
+## Existing Chain, Module and DB Layers
 
-Endpoints must not contain reusable business workflows. Register new API
-endpoints in `app/api/apiv1.py`.
+### Chain layer
 
-## Chain Layer
+`app/chain/` implements use cases shared by API, CLI, Agent, scheduler and other
+entrypoints. Chains may coordinate modules, application services, Oper classes,
+events and caches. New chain-to-chain dependencies are allowed only while the
+static graph remains acyclic. Backend protocol details and HTTP request objects
+do not belong here.
 
-**Directory:** `app/chain/`
+### Module layer
 
-Chains implement use cases shared by API, CLI, agent, scheduler, and other
-entrypoints. They may coordinate modules, services, Oper classes, events, and
-caches.
+`app/modules/` contains pluggable downloaders, media servers, metadata sources,
+message channels, indexers and storage providers. New direct module-to-module or
+module-to-chain dependencies are forbidden; cross-module orchestration belongs
+in a chain. The directory remains unchanged because discovery and plugin code
+depend on this established runtime root.
 
-- Call module capabilities through `run_module()` or `async_run_module()`.
-- Use `ModuleManager` directly only for enumeration, inspection, or health
-  checks.
-- Chain-to-chain reuse is allowed only while the static dependency graph remains
-  acyclic.
-- Do not place HTTP request objects or backend-specific protocol details here.
+### DB / Oper layer
 
-## Module Layer
-
-**Directory:** `app/modules/`
-
-Modules implement pluggable backends such as downloaders, media servers,
-metadata sources, message channels, indexers, and storage providers.
-
-- A module focuses on one backend or capability and returns domain results, not
-  HTTP responses.
-- New direct `module -> module` or `module -> chain` dependencies are forbidden.
-- Cross-module orchestration belongs in a chain.
-- Shared backend-neutral behavior belongs in its owning canonical package.
-
-Module categories are defined in `app/schemas/types.py`.
-
-## DB / Oper Layer
-
-**Directory:** `app/db/`
-
-SQLAlchemy models live under `app/db/models/`; `*_oper.py` classes encapsulate
-queries. Chains, modules, services, and endpoints must use those classes instead
-of issuing SQLAlchemy queries directly. Every schema change requires an Alembic
-migration under `database/versions/`.
+SQLAlchemy models stay under `app/db/models/`; `*_oper.py` classes encapsulate
+queries. Chains, modules, application services and endpoints use Oper classes
+instead of issuing SQLAlchemy queries directly. Every schema change requires an
+Alembic migration under `database/versions/`.
 
 ## Composition and Compatibility Boundaries
 
-- `app/startup/` owns process composition. Lower layers expose explicit
-  registration or configuration functions for dependencies such as event
-  resolvers and error reporters.
-- Cache contracts, memory implementations, decorators, and proxies live in
-  `app/platform/cache.py`; Redis and file I/O implementations live in
-  `app/infrastructure/cache.py`. Startup registers concrete factories before
-  importing modules that instantiate cache decorators.
-- The complete logging runtime lives in `app/platform/log.py`: policy,
-  console/plugin routing, async rotating file output, and shutdown.
-  `app.platform.config` supplies the resolved settings and log path.
-  `platform/log.py` is enforced as a dependency leaf with no `app.*` imports.
-  Foundation modules do not emit runtime logs; their callers decide whether a
-  returned fallback or raised error should be logged. Plugins use `app.sdk.logging`;
-  legacy `app.log` resolves to that SDK facade.
-- Resource adapters only report whether installation succeeded. Process restart
-  policy belongs to `app/startup/modules_initializer.py`.
-- Configured notification-service discovery lives in
-  `app/services/notification.py`. Web Push subscription and manual-send HTTP
-  behavior lives directly in `app/api/endpoints/message.py`, not in messaging.
-- `app/compat/` may not import canonical MoviePilot implementation modules at
-  import time. Its manifest stores strings and resolves aliases lazily.
-- Canonical packages may not import `app.compat` or `app.sdk`.
+- Startup registers concrete cache factories before decorated business modules
+  are imported. Cache contracts remain in `app/runtime/cache.py`; Redis/file
+  implementations remain in `app/adapters/cache/backends.py`.
+- `app/runtime/log.py` is a dependency leaf with no `app.*` imports. Foundation
+  emits no runtime logs; upper-layer owners decide whether failures are
+  operationally relevant.
+- `app/adapters/system/resource.py` only reports whether installation occurred;
+  `app/startup/modules_initializer.py` supplies the loaded site-resource
+  versions and decides whether to restart. The adapter never imports the site
+  application service.
+- Configured notification discovery lives in
+  `app/application/notification.py`. Web Push subscription and manual-send HTTP
+  behavior stays in `app/api/endpoints/message.py`.
+- `app/runtime/compat` stores string mappings and resolves aliases lazily. It may
+  not eagerly import canonical MoviePilot modules.
+- Canonical implementation packages may not import `app/runtime/compat` or
+  `app/sdk`.
 - Host code uses canonical paths. Only `app/plugins/` and compatibility tests
-  may use legacy `app.core`, `app.helper`, or `app.utils` paths.
-- New plugins use `app.sdk`. In DEBUG mode, legacy plugin imports work but emit
-  one actionable warning per plugin and legacy module.
-- Delayed imports are not accepted as a way to hide a dependency cycle.
+  may use `app.core`, `app.helper`, `app.utils` or `app.log`.
+- New plugins use `app.sdk`. In DEBUG mode, a legacy plugin import remains
+  functional and emits one actionable warning per plugin and legacy module.
+- Delayed imports are not accepted as a way to hide dependency cycles.
 
 ## Permitted Call Directions
 
 | Direction | Status |
 |---|---|
-| `entrypoint -> chain / service / Oper` | Allowed according to workflow complexity |
-| `chain -> module / service / Oper / canonical capability` | Allowed |
+| `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
+| `chain -> module / application / Oper / canonical capability` | Allowed |
+| `application -> domain / runtime / adapter / Oper` | Allowed |
 | `module -> canonical capability / Oper` | Allowed |
 | `module -> module / chain` | Forbidden for new code |
+| `adapter -> application / runtime.extensions / sdk / compat` | Forbidden |
+| `domain -> runtime / adapter / application / DB` | Forbidden |
+| `foundation -> other app packages` | Forbidden |
 | `canonical implementation -> sdk / compat` | Forbidden |
-| `compat -> canonical implementation at module import time` | Forbidden; aliases resolve lazily |
-| `foundation -> other app capability packages` | Forbidden |
+| `compat -> canonical implementation at module import time` | Forbidden |
 | Any import that creates a module-level cycle | Forbidden |
 
 ## Key File Locations
 
 | Path | Purpose |
 |---|---|
-| `app/api/apiv1.py` | API router registration |
-| `app/platform/config.py` | `ConfigModel`, `Settings`, and deployment configuration |
-| `app/platform/events.py` | `EventManager`, `Event`, and event resolver registration |
-| `app/extensions/module_manager.py` | Module discovery and lifecycle |
-| `app/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
-| `app/foundation/module.py` | Generic Python module discovery and dynamic import |
-| `app/foundation/http.py` | Shared synchronous and asynchronous HTTP clients |
-| `app/infrastructure/rss.py` | Configured RSS retrieval and parsing adapter |
-| `app/platform/cache.py` | Cache contracts, memory backend, decorators, and proxies |
-| `app/infrastructure/cache.py` | Redis and filesystem cache adapters |
-| `app/platform/gc.py` | Process memory observation and garbage-collection policy |
-| `app/integrations/market.py` | Plugin repository discovery, compatibility, download, and installation |
-| `app/integrations/location.py` | External IP-location provider integration |
-| `app/agent/skills/registry.py` | Agent Skill discovery, market, and local lifecycle |
-| `app/domain/context.py` | `Context`, `MediaInfo`, and `TorrentInfo` |
-| `app/security/url.py` | URL/path validation, SSRF protection, and signed image URL policy |
-| `app/services/filter.py` | Persistent user filter-rule lookup and media-context selection |
-| `app/services/recognition.py` | Persistent recognition-rule lookup for domain injection |
-| `app/services/mediaserver.py` | Configured media-server discovery, Provider ID normalization, and music-library matching |
-| `app/startup/` | Runtime composition root |
-| `app/compat/manifest.py` | Exact legacy-to-canonical import manifest |
+| `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
+| `app/runtime/events.py` | `EventManager`, `Event` and event resolver registration |
+| `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
+| `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/foundation/reflection.py` | Generic reflection and Python module discovery |
+| `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |
+| `app/application/rss.py` | Configured RSS retrieval and parsing |
+| `app/application/site/sites.*` | Generated site catalog, authentication and index capability plus its colocated data bundle |
+| `app/runtime/cache.py` | Cache contracts, memory backend, decorators and proxies |
+| `app/adapters/cache/backends.py` | Redis and filesystem cache adapters |
+| `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
+| `app/adapters/external/market.py` | Plugin repository discovery and installation |
+| `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
+| `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
+| `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
 | `app/sdk/` | Stable plugin imports |
-| `database/versions/` | Alembic migrations |
-
-## Where New Capabilities Go
-
-| Scenario | Action |
-|---|---|
-| Shared business workflow | `app/chain/` |
-| Stateful focused application behavior | `app/services/` or the owning capability package |
-| New backend implementation | `app/modules/<backend>/` or `app/integrations/` |
-| New public HTTP endpoint | `app/api/endpoints/`, registered in `app/api/apiv1.py` |
-| Generic primitive, protocol client, or reflection mechanism | `app/foundation/` |
-| Media-domain parsing or rule | `app/domain/` |
-| Configuration-aware network, filesystem, process, feed, or generated resource adapter | `app/infrastructure/` |
-| Concrete third-party product or ecosystem integration | `app/integrations/` |
-| Deployment/startup setting | `ConfigModel` in `app/platform/config.py` |
-| Runtime user-editable option | `SystemConfigKey` plus `SystemConfigOper` |
-| New supported plugin API | Curated export in `app/sdk/` with compatibility tests |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import
-change. It rejects physical legacy sources, host legacy imports, implementation
-dependencies on SDK/compat, and any strongly connected component containing a
-canonical migrated module.
+change. It rejects physical legacy or retired canonical sources, forbidden
+upward dependencies, SDK/compat backreferences and any strongly connected
+component containing a migrated module.
 
 *Last Updated: 2026-08-14*

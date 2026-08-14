@@ -4,7 +4,7 @@ from typing import Any, Iterator
 import pytest
 from fastapi import HTTPException
 
-from app.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.foundation.singleton import Singleton
 
 

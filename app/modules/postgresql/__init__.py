@@ -1,6 +1,6 @@
 from typing import Tuple, Union
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db import SessionFactory
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType

@@ -11,11 +11,11 @@ from typing import Optional, List, Tuple
 
 from PIL import Image
 
-from app.platform.cache import FileCache
-from app.platform.config import settings
+from app.runtime.cache import FileCache
+from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules.qqbot.api import (
     get_access_token,
     get_gateway_url,
@@ -23,7 +23,7 @@ from app.modules.qqbot.api import (
     send_proactive_group_message,
 )
 from app.modules.qqbot.gateway import run_gateway
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.domain.string import StringUtils
 
 # QQ Markdown 图片展示尺寸限制，避免竖版海报被客户端拉伸变形

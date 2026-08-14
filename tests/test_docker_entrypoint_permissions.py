@@ -38,7 +38,7 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     fake_bin = _write_fake_chown(tmp_path)
     chown_log = tmp_path / "chown.log"
     app_dir = tmp_path / "app"
-    resource_dir = app_dir / "app" / "infrastructure"
+    resource_dir = app_dir / "app" / "application" / "site"
     public_dir = tmp_path / "public"
     home_dir = tmp_path / "home"
     (app_dir / "app" / "plugins").mkdir(parents=True)
@@ -192,7 +192,7 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
     assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
     assert f"-R moviepilot:moviepilot {tmp_path}/config /var/lib/nginx /var/log/nginx" in lines
     assert "moviepilot:moviepilot /etc/hosts /tmp" in lines
-    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/infrastructure" in lines
+    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/application/site" in lines
     assert not any(line.startswith("-R ") and ".cloakbrowser" in line for line in lines)
     assert not any(f"{tmp_path}/app " in line for line in lines)
     assert not any(f"{tmp_path}/public" in line for line in lines)
@@ -205,7 +205,7 @@ def test_site_resource_permissions_are_repaired_even_when_owner_matches(tmp_path
     )
 
     lines = log.splitlines()
-    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/infrastructure" in lines
+    assert f"-R moviepilot:moviepilot {tmp_path}/app/app/application/site" in lines
     assert not any(line.startswith("-R ") and f"{tmp_path}/app " in line for line in lines)
     assert not any(line.startswith("-R ") and f"{tmp_path}/public" in line for line in lines)
 

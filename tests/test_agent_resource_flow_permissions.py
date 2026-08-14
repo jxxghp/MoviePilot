@@ -14,7 +14,7 @@ from app.agent.tools.impl.read_file import ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent import MoviePilotAgent
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.modules.feishu import FeishuModule
 from app.modules.telegram import TelegramModule
 from app.schemas.types import MessageChannel

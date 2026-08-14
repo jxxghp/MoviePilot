@@ -29,15 +29,14 @@ MoviePilot is a self-hosted media automation platform targeting Chinese-language
 | `app/db/` | SQLAlchemy models and data access wrappers |
 | `app/foundation/` | Stateless general-purpose primitives |
 | `app/domain/` | Media-domain models, parsing, and rules |
-| `app/platform/` | Config, events, caching, and process-wide coordination |
-| `app/infrastructure/` | Network, filesystem, process, Redis, and site-resource adapters |
-| `app/extensions/` | Module, plugin, market, and service lifecycle management |
-| `app/integrations/` | Downloader, media-server, RSS, OCR, storage, and remote-service adapters |
-| `app/messaging/` | Messaging, interaction, notification, and push capabilities |
-| `app/security/` | Authentication and access-control capabilities |
-| `app/services/` | Focused application services |
+| `app/runtime/` | Config, events, logging, caching, concurrency, process state, extensions, and legacy compatibility |
+| `app/adapters/` | Cache, network, system, generated-resource, and named external-product adapters |
+| `app/runtime/extensions/` | Module, plugin, and configured-service lifecycle management |
+| `app/application/messaging/` | Messaging, interaction, and Agent-to-message capabilities |
+| `app/application/security/` | Authentication and access-control capabilities |
+| `app/application/` | Focused application services |
 | `app/sdk/` | Stable imports for plugins |
-| `app/compat/` | Virtual legacy import compatibility and DEBUG diagnostics |
+| `app/runtime/compat/` | Virtual legacy import compatibility and DEBUG diagnostics |
 | `app/schemas/` | Pydantic request/response models and shared enums |
 | `app/agent/` | LLM Agent runtime, tools, middleware, and Skill lifecycle |
 | `app/workflow/` | Workflow engine |

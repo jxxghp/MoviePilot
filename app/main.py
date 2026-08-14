@@ -6,9 +6,9 @@ def _prepare_direct_execution_import_path() -> None:
     """
     修正直接执行 ``app/main.py`` 时的模块搜索路径。
 
-    PyCharm 的脚本启动方式会把 ``app`` 目录放到 ``sys.path[0]``，导致第三方
-    库的 ``import platform`` 错误命中 ``app/platform``。直接执行时只保留项目
-    根目录作为应用导入入口，模块方式启动则不做任何调整。
+    PyCharm 的脚本启动方式会把 ``app`` 目录放到 ``sys.path[0]``，使应用内部
+    目录可能被当成顶级模块并遮蔽标准库或第三方包。直接执行时只保留项目根目录
+    作为应用导入入口，模块方式启动则不做任何调整。
     """
     if __package__:
         return
@@ -36,8 +36,8 @@ import uvicorn as uvicorn
 from PIL import Image
 from uvicorn import Config
 
-from app.infrastructure.stdio import configure_rotating_stdio
-from app.infrastructure.system import SystemUtils
+from app.adapters.system.stdio import configure_rotating_stdio
+from app.adapters.system.host import SystemUtils
 
 # 禁用输出
 stdio_log_file = os.getenv("MOVIEPILOT_STDIO_LOG_FILE")
@@ -56,7 +56,7 @@ elif SystemUtils.is_frozen():
     sys.stderr = open(os.devnull, 'w')
 
 from app.factory import app
-from app.platform.config import global_vars, settings
+from app.runtime.config import global_vars, settings
 from app.db.init import init_db, update_db
 
 # 设置进程名

@@ -9,10 +9,10 @@ import discord
 from discord import app_commands
 import httpx
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.schemas.types import NotificationType
 from app.domain.string import StringUtils
 

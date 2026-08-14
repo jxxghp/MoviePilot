@@ -410,7 +410,7 @@ function chown_plugin_runtime_path() {
 }
 
 function correct_site_resource_permissions() {
-    local resource_dir="${IMAGE_RESOURCE_DIR:-/app/app/infrastructure}"
+    local resource_dir="${IMAGE_RESOURCE_DIR:-/app/app/application/site}"
     [ -e "${resource_dir}" ] || return 0
 
     INFO "→ 正在修复资源包目录权限：${resource_dir}"

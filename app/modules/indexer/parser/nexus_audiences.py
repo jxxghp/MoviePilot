@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 
 from lxml import etree
 
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.domain.string import StringUtils

@@ -12,7 +12,7 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.integrations.server import MoviePilotServerHelper
+from app.adapters.external.server import MoviePilotServerHelper
 from app.schemas.types import MediaSource, MediaType
 
 

@@ -3,7 +3,7 @@ import json
 import re
 from typing import Optional
 
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.domain.string import StringUtils
 

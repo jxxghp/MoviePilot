@@ -7,8 +7,8 @@ from typing import Any, Iterable, Optional, Tuple, Union
 
 from requests import Session
 
-from app.platform.cache import cached
-from app.platform.config import settings
+from app.runtime.cache import cached
+from app.runtime.config import settings
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -17,7 +17,7 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.platform.log import logger
+from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.musicbrainz.music_cache import MusicBrainzCache
 from app.schemas.types import (
@@ -29,9 +29,9 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.foundation.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.media import is_media_source_selected
-from app.foundation.zhconv import convert as zhconv_convert
+from app.foundation.text import convert as zhconv_convert
 
 
 class MusicBrainzModule(_ModuleBase):

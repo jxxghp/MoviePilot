@@ -5,7 +5,7 @@ from app.sdk.config import settings
 from app.sdk.events import Event, eventmanager
 from app.sdk.logging import logger
 from app.sdk.media import MediaInfo, MetaBase, MetaInfo, MetaMusic, NfoReader
-from app.sdk.network import RequestUtils
+from app.sdk.network import RequestUtils, RssHelper, SitesHelper
 from app.sdk.plugins import ModuleManager, PluginManager
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
@@ -21,16 +21,18 @@ def test_sdk_exports_canonical_plugin_interfaces():
     from app.domain.scraper import NfoReader as CanonicalNfoReader
     from app.domain.string import StringUtils as CanonicalStringUtils
     from app.foundation.crypto import CryptoJsUtils
-    from app.extensions.module_manager import ModuleManager as CanonicalModuleManager
-    from app.extensions.plugin_manager import PluginManager as CanonicalPluginManager
-    from app.foundation.http import RequestUtils as CanonicalRequestUtils
-    from app.platform.cache import Cache as CanonicalCache
-    from app.platform.cache import cached as canonical_cached
-    from app.platform.config import settings as canonical_settings
-    from app.platform.events import Event as CanonicalEvent
-    from app.platform.events import eventmanager as canonical_eventmanager
-    from app.platform.log import logger as canonical_logger
-    from app.services.notification import NotificationHelper as CanonicalNotificationHelper
+    from app.runtime.extensions.module_manager import ModuleManager as CanonicalModuleManager
+    from app.runtime.extensions.plugin_manager import PluginManager as CanonicalPluginManager
+    from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
+    from app.application.rss import RssHelper as CanonicalRssHelper
+    from app.application.site.sites import SitesHelper as CanonicalSitesHelper
+    from app.runtime.cache import Cache as CanonicalCache
+    from app.runtime.cache import cached as canonical_cached
+    from app.runtime.config import settings as canonical_settings
+    from app.runtime.events import Event as CanonicalEvent
+    from app.runtime.events import eventmanager as canonical_eventmanager
+    from app.runtime.log import logger as canonical_logger
+    from app.application.notification import NotificationHelper as CanonicalNotificationHelper
 
     assert Cache is CanonicalCache
     assert cached is canonical_cached
@@ -44,6 +46,8 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert MetaMusic is CanonicalMetaMusic
     assert NfoReader is CanonicalNfoReader
     assert RequestUtils is CanonicalRequestUtils
+    assert RssHelper is CanonicalRssHelper
+    assert SitesHelper is CanonicalSitesHelper
     assert NotificationHelper is CanonicalNotificationHelper
     assert UtilityStringUtils is CanonicalStringUtils
     assert decrypt is CryptoJsUtils.decrypt

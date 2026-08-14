@@ -12,8 +12,8 @@ from typing import Any, Iterable, Optional
 
 import yaml
 
-from app.platform.config import settings
-from app.platform.log import logger
+from app.runtime.config import settings
+from app.runtime.log import logger
 
 CURRENT_PERSONA_FILE = "CURRENT_PERSONA.md"
 SYSTEM_RUNTIME_DIR = "runtime"

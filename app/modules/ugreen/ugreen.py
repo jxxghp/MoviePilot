@@ -7,8 +7,8 @@ from urllib.parse import parse_qs, urlparse
 
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
-from app.services.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
-from app.platform.log import logger
+from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.runtime.log import logger
 from app.modules.ugreen.api import Api
 from app.schemas import MediaType
 from app.schemas.types import MediaSource, SystemConfigKey

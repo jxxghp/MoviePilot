@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.search import SearchChain
-from app.platform.log import logger
+from app.runtime.log import logger
 from ._torrent_search_utils import (
     TORRENT_RESULT_LIMIT,
     build_filter_options,

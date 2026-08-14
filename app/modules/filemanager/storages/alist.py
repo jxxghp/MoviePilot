@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
-from app.platform.cache import cached
-from app.platform.config import settings, global_vars
-from app.platform.log import logger
+from app.runtime.cache import cached
+from app.runtime.config import settings, global_vars
+from app.runtime.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import OperationInterrupted, StorageQueryError
 from app.schemas.types import StorageSchema
-from app.foundation.http import RequestUtils
+from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 

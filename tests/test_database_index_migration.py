@@ -74,7 +74,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from app.platform.config import settings
+from app.runtime.config import settings
 from app.db import Engine
 from app.db.init import init_db, update_db
 

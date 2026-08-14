@@ -59,10 +59,10 @@ def test_metainfo_path_inherits_bangumi_id_from_parent() -> None:
 def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
     """当前Rust扩展缺少新字段时应直接使用Python解析器。"""
     with patch(
-        "app.infrastructure.rust.supports_extended_media_ids",
+        "app.adapters.system.rust.supports_extended_media_ids",
         return_value=False,
     ), patch(
-        "app.infrastructure.rust.find_metainfo",
+        "app.adapters.system.rust.find_metainfo",
         side_effect=AssertionError("旧Rust扩展不应处理扩展来源ID"),
     ):
         _, metainfo = find_metainfo("Frieren [anilist=154587]")
@@ -81,7 +81,7 @@ def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
 )
 def test_python_metainfo_rejects_zero_identity_and_removes_tag(title: str) -> None:
     """Python 标签解析器应移除零值标签，但不得生成媒体身份。"""
-    with patch("app.infrastructure.rust.find_metainfo", return_value=None):
+    with patch("app.adapters.system.rust.find_metainfo", return_value=None):
         parsed_title, metainfo = find_metainfo(title)
 
     assert metainfo["media_source"] is None
@@ -100,7 +100,7 @@ def test_metainfo_normalizes_zero_identity_from_old_rust_extension() -> None:
         },
     }
     with patch(
-        "app.infrastructure.rust.find_metainfo",
+        "app.adapters.system.rust.find_metainfo",
         return_value=rust_result,
     ):
         parsed_title, metainfo = find_metainfo("Movie [tmdbid=0]")

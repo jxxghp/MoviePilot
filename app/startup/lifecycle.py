@@ -22,10 +22,10 @@ except Exception:
     pass
 
 from app.chain.system import SystemChain
-from app.platform.config import global_vars, settings
-from app.integrations.server import MoviePilotServerHelper
-from app.platform.runtime import SystemHelper
-from app.platform.log import logger, LoggerManager
+from app.runtime.config import global_vars, settings
+from app.adapters.external.server import MoviePilotServerHelper
+from app.runtime.state import SystemHelper
+from app.runtime.log import logger, LoggerManager
 from app.startup.command_initializer import init_command, stop_command, restart_command
 from app.startup.domain_initializer import configure_domain_dependencies
 from app.startup.modules_initializer import init_modules, stop_modules
@@ -39,7 +39,7 @@ from app.startup.scheduler_initializer import (
 )
 from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
-from app.foundation.http import (
+from app.adapters.network.http import (
     aclose_shared_async_transports,
     configure_default_user_agent,
 )

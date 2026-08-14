@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
-from app.platform.config import global_vars, settings
-from app.services.directory import DirectoryHelper
-from app.platform.log import logger
+from app.runtime.config import global_vars, settings
+from app.application.directory import DirectoryHelper
+from app.runtime.log import logger
 from app.modules.filemanager.fsproxy import fsproxy
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.infrastructure.system import SystemUtils
+from app.adapters.system.host import SystemUtils
 
 
 class LocalStorage(StorageBase):
