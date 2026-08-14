@@ -1570,6 +1570,72 @@ class SearchChain(ChainBase):
             filter_params=filter_params,
         )
 
+    async def _async_process_music_stream(
+            self,
+            mediainfo: MusicInfo,
+            keyword: Optional[str] = None,
+            sites: Optional[List[int]] = None,
+            rule_groups: Optional[List[str]] = None,
+            filter_params: Optional[Dict[str, str]] = None,
+    ) -> AsyncIterator[dict]:
+        """
+        按音乐元数据渐进式搜索资源，逐站点输出进度并在结束时返回过滤后的完整结果。
+
+        音乐候选需要同时匹配名称、艺术家和音乐分类，因此站点批次只负责推进搜索进度，
+        最终结果仍统一交给音乐上下文构造逻辑过滤、排序和去重。
+        """
+        keywords = [keyword] if keyword else SearchChain.music_site_keywords(mediainfo)
+        torrents: List[TorrentInfo] = []
+        for index, search_word in enumerate(keywords or [mediainfo.title]):
+            if index:
+                await asyncio.sleep(random.randint(1, 10))
+            keyword_matched = False
+            async for event in self.__async_search_all_sites_stream(
+                    keyword=search_word,
+                    mediainfo=mediainfo,
+                    sites=sites,
+                    mtype=MediaType.MUSIC):
+                result = event.pop("items", []) or []
+                matched_torrents = self._matching_music_torrents(result, mediainfo)
+                if matched_torrents:
+                    keyword_matched = True
+                    torrents.extend(matched_torrents)
+                yield {
+                    **event,
+                    "type": "append",
+                    "items": [],
+                    "total_items": len(torrents),
+                }
+            if keyword_matched and not settings.SEARCH_MULTIPLE_NAME:
+                break
+
+        contexts = await run_in_threadpool(
+            self._build_music_contexts,
+            torrents=torrents,
+            mediainfo=mediainfo,
+            rule_groups=rule_groups,
+            filter_params=filter_params,
+        )
+        items = [context.to_dict() for context in contexts]
+        yield {
+            "type": "replace",
+            "stage": "filtered",
+            "value": 100,
+            "text": f"过滤匹配完成，共 {len(contexts)} 个资源",
+            "items": items,
+            "total_items": len(contexts),
+            "candidate_items": len(torrents),
+        }
+        yield {
+            "type": "done",
+            "stage": "done",
+            "text": f"搜索完成，共 {len(contexts)} 个资源",
+            "items": items,
+            "total_items": len(contexts),
+            "candidate_items": len(torrents),
+            "contexts": contexts,
+        }
+
     def process(self, mediainfo: MediaInfo,
                 keyword: Optional[str] = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
@@ -1766,30 +1832,13 @@ class SearchChain(ChainBase):
         """
 
         if mediainfo.type == MediaType.MUSIC:
-            contexts = await self._async_process_music(
-                mediainfo=mediainfo,
-                keyword=keyword,
-                sites=sites,
-                rule_groups=rule_groups,
-                filter_params=filter_params,
-            )
-            items = [context.to_dict() for context in contexts]
-            yield {
-                "type": "replace",
-                "stage": "filtered",
-                "value": 100,
-                "text": f"过滤匹配完成，共 {len(contexts)} 个资源",
-                "items": items,
-                "total_items": len(contexts),
-            }
-            yield {
-                "type": "done",
-                "stage": "done",
-                "text": f"搜索完成，共 {len(contexts)} 个资源",
-                "items": items,
-                "total_items": len(contexts),
-                "contexts": contexts,
-            }
+            async for event in self._async_process_music_stream(
+                    mediainfo=mediainfo,
+                    keyword=keyword,
+                    sites=sites,
+                    rule_groups=rule_groups,
+                    filter_params=filter_params):
+                yield event
             return
 
         # 豆瓣标题处理

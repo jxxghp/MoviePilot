@@ -1,9 +1,9 @@
+import asyncio
 from unittest.mock import Mock, patch
 
 from app.chain.search import SearchChain
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.context import MusicInfo
-from app.schemas.context import TorrentInfo
+from app.domain.context import MusicInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -129,6 +129,80 @@ def test_music_search_matches_artist_from_resource_description():
     )
 
     assert SearchChain._matching_music_torrents([torrent], music) == [torrent]
+
+
+def test_music_stream_reports_site_progress_before_final_results(monkeypatch):
+    """精确音乐搜索应逐站点输出进度事件，不能等待全部搜索完成后才返回。"""
+    chain = SearchChain()
+    music = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+    )
+    unrelated = TorrentInfo(
+        title="其他歌手 - 晴天 FLAC",
+        category=MediaType.MUSIC.value,
+        site_name="Site A",
+    )
+    matched = TorrentInfo(
+        title="周杰伦 - 晴天 FLAC",
+        category=MediaType.MUSIC.value,
+        site_name="Site B",
+    )
+
+    async def search_stream(**_kwargs):
+        """模拟两个站点依次完成并返回各自候选。"""
+        yield {
+            "type": "append",
+            "stage": "searching",
+            "value": 50,
+            "text": "已完成 1 / 2 个请求",
+            "items": [unrelated],
+            "finished": 1,
+            "total": 2,
+        }
+        yield {
+            "type": "append",
+            "stage": "searching",
+            "value": 100,
+            "text": "已完成 2 / 2 个请求",
+            "items": [matched],
+            "finished": 2,
+            "total": 2,
+        }
+
+    async def collect_events():
+        """收集音乐精确搜索流事件。"""
+        return [
+            event
+            async for event in chain.async_process_stream(
+                mediainfo=music,
+                sites=[1, 2],
+                rule_groups=[],
+            )
+        ]
+
+    monkeypatch.setattr(
+        chain,
+        "_SearchChain__async_search_all_sites_stream",
+        search_stream,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_SearchChain__async_search_all_sites",
+        Mock(side_effect=AssertionError("音乐流式搜索不应回退到非流式站点搜索")),
+    )
+
+    with patch("app.chain.search.settings.SEARCH_MULTIPLE_NAME", False):
+        events = asyncio.run(collect_events())
+
+    assert [event["value"] for event in events[:2]] == [50, 100]
+    assert [event["finished"] for event in events[:2]] == [1, 2]
+    assert events[-2]["type"] == "replace"
+    assert events[-1]["type"] == "done"
+    assert events[-1]["total_items"] == 1
+    assert events[-1]["items"][0]["torrent_info"]["title"] == matched.title
 
 
 def test_search_by_id_routes_music_identity_to_recognize_and_process():
