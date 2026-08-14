@@ -1,46 +1,19 @@
 """
 用户数据访问。
 
-模块级的认证依赖（get_current_user 等）已迁至 app/api/deps.py——那是 HTTP 层的
-关注点，产出 403/400 而非数据。本模块只保留 UserOper。
+认证依赖（get_current_user 等八个）已迁至 app/api/deps.py——那是 HTTP 层的关注点，
+产出 403/400 而非数据。本模块只保留 UserOper。
 
-那八个名字仍能从本模块取到（见下方 __getattr__）：它们曾是用户数据访问模块的一部分，
-搬去 app.api.deps 属于分层归位而非删除，取属性时转发过去即可，调用方无需知道落点。
-用惰性转发而不是模块级 re-import，是为了避免 app.db.oper.user -> app.api.deps ->
-app.db 这条链在导入期成环。
-
-注：本模块自 app/db/user_oper.py 迁来，旧模块路径不再存在；下方转发覆盖的是名字，
-不是路径。
+这里不为那八个名字留惰性转发。转发曾是给仓外插件备的软着陆，代价是把
+app.db.oper.user -> app.api.deps -> app.application.security 这条边永久焊进依赖图：
+数据访问模块从此在静态分析里牵着整个鉴权栈，而仓内没有任何调用方需要它。插件生态
+既已确定迭代，就让旧名字直接以 AttributeError 报错——指向明确、当场可改，好过一条
+悄悄成立的反向依赖。
 """
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from app.db import DbOper
 from app.db.models.user import User
-
-# 已迁至 app/api/deps.py 的认证依赖，保留本模块上的旧名字
-_MOVED_TO_API_DEPS = (
-    "get_current_user",
-    "get_current_user_async",
-    "get_current_active_user",
-    "get_current_active_user_async",
-    "get_current_active_manage_user",
-    "get_current_active_manage_user_async",
-    "get_current_active_superuser",
-    "get_current_active_superuser_async",
-)
-
-
-def __getattr__(name: str) -> Any:
-    """
-    兼容旧名字：认证依赖已迁往 app.api.deps，按需转发。
-    :param name: 属性名
-    :return: 迁移后的目标对象
-    """
-    if name in _MOVED_TO_API_DEPS:
-        from app.api import deps
-
-        return getattr(deps, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class UserOper(DbOper):

@@ -654,6 +654,7 @@ class SubscribeEndpointTest(TestCase):
         """
         owner-aware 创建不应把他人已有订阅当作当前用户订阅。
         """
+        from app.application.subscribe import async_add_subscribe
         from app.db.oper.subscribe import SubscribeOper
 
         other = _EndpointSubscribe(id=21, username="bob")
@@ -668,7 +669,8 @@ class SubscribeEndpointTest(TestCase):
             subscribe_model.return_value = created
 
             sid, message = asyncio.run(
-                SubscribeOper(db=object()).async_add(
+                async_add_subscribe(
+                    subscribe_oper=SubscribeOper(db=object()),
                     mediainfo=_EndpointMediaInfo(),
                     username="alice",
                     owner_scope=True,

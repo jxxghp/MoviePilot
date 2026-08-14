@@ -1,12 +1,20 @@
-import time
-from typing import Tuple, List, Optional
+"""
+订阅数据访问。
 
-from app.domain.context import MediaInfo, MusicInfo
+本模块只收敛针对订阅表的读写。把 MediaInfo / MusicInfo 翻译成一行订阅是订阅业务的
+规则，住在 app/application/subscribe.py；这里收到的 payload 已经是纯粹的持久化字段，
+因此不 import 任何领域对象。
+
+留在这一层的只有列类型强转与建库时间戳——它们跟着订阅表的列走，换谁来调都一样。
+"""
+import time
+from typing import Any, Tuple, List, Optional
+
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
-from app.domain.media import normalize_media_identity_payload, resolve_media_identity
+from app.schemas.types import MediaSource
+from app.domain.media import normalize_media_identity_payload
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
 
@@ -32,16 +40,24 @@ def _normalize_year(year: Optional[int | str]) -> Optional[str]:
     return str(year)
 
 
-def _music_subscription_fields(mediainfo: MediaInfo | MusicInfo) -> dict:
-    """从标准媒体信息提取音乐订阅需要持久化的专辑级字段。"""
-    if mediainfo.type != MediaType.MUSIC:
-        return {"music_type": None, "total_tracks": None}
-    music_type = getattr(mediainfo, "music_type", None)
-    return {
-        "music_type": music_type,
-        "total_tracks": getattr(mediainfo, "total_tracks", None)
-        if music_type == MUSIC_ENTITY_ALBUM else None,
-    }
+def _persistable(payload: dict) -> dict:
+    """
+    把应用层给的写入字段落成订阅表能收的一行。
+
+    做两件事。一是列类型强转：PostgreSQL 的整型列拒收布尔值、字符串列拒收数字，而
+    SQLite 会靠类型亲和悄悄替我们转好——漏了只在生产库上炸，所以放在紧挨建模的地方。
+    二是盖建库时间戳：调用方传进来的 date 不作数，否则订阅列表的默认排序与过期清理
+    都会读到一个假的建库时间。
+    :param payload: 应用层翻译好的写入字段
+    :return: 可直接建模的字段字典
+    """
+    persistable = _normalize_integer_flags(payload)
+    persistable["year"] = _normalize_year(persistable.get("year"))
+    # search_imdbid 参与搜索分支判定，None 与真值都要归一到 0/1，否则同一列在不同
+    # 订阅上会存出三种形态，PG 上还会直接拒写
+    persistable["search_imdbid"] = 1 if persistable.get("search_imdbid") else 0
+    persistable["date"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    return persistable
 
 
 class SubscribeOper(DbOper):
@@ -49,123 +65,66 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
-    def add(self, mediainfo: MediaInfo | MusicInfo, **kwargs) -> Tuple[int, str]:
+    def _exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
         """
-        新增订阅
+        按身份查重。
+        :param identity: 查重身份
+        :param username: 非空时只在该用户的订阅内查
+        :return: 命中的订阅行，未命中为 None
         """
-        owner_scope = bool(kwargs.pop("owner_scope", False))
-        username = kwargs.get("username") if owner_scope else None
-        media_source, media_id = resolve_media_identity(
-            media=mediainfo,
-            media_source=kwargs.get("media_source"),
-            media_id=kwargs.get("media_id"),
-        )
-        if not media_source or not media_id:
-            return 0, "媒体身份不完整"
-        identity_params = {
-            "media_source": str(media_source),
-            "media_id": media_id,
-            "music_type": getattr(mediainfo, "music_type", None)
-            if mediainfo.type == MediaType.MUSIC else None,
-            "season": kwargs.get("season"),
-            "episode_group": mediainfo.episode_group,
-        }
         if username:
-            subscribe = Subscribe.exists_by_username(self._db,
-                                                     username=username,
-                                                     **identity_params)
-        else:
-            subscribe = Subscribe.exists(self._db, **identity_params)
-        kwargs.update({
-            "name": mediainfo.title,
-            "year": _normalize_year(mediainfo.year),
-            "type": mediainfo.type.value,
-            "media_source": str(media_source),
-            "media_id": media_id,
-            "episode_group": mediainfo.episode_group,
-            "poster": mediainfo.get_poster_image(),
-            "backdrop": mediainfo.get_backdrop_image(),
-            "vote": mediainfo.vote_average,
-            "description": mediainfo.overview,
-            "search_imdbid": 1 if kwargs.get('search_imdbid') else 0,
-            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        })
-        kwargs.update(_music_subscription_fields(mediainfo))
-        kwargs = _normalize_integer_flags(kwargs)
-        if not subscribe:
-            subscribe = Subscribe(**kwargs)
-            subscribe.create(self._db)
-            # 查询订阅
-            if username:
-                subscribe = Subscribe.exists_by_username(self._db,
-                                                         username=username,
-                                                         **identity_params)
-            else:
-                subscribe = Subscribe.exists(self._db, **identity_params)
-            if not subscribe:
-                return 0, "新增订阅失败"
-            return subscribe.id, "新增订阅成功"
-        else:
-            return subscribe.id, "订阅已存在"
+            return Subscribe.exists_by_username(self._db, username=username, **identity)
+        return Subscribe.exists(self._db, **identity)
 
-    async def async_add(self, mediainfo: MediaInfo | MusicInfo, **kwargs) -> Tuple[int, str]:
+    async def _async_exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
         """
-        异步新增订阅
+        按身份查重（异步）。
+        :param identity: 查重身份
+        :param username: 非空时只在该用户的订阅内查
+        :return: 命中的订阅行，未命中为 None
         """
-        owner_scope = bool(kwargs.pop("owner_scope", False))
-        username = kwargs.get("username") if owner_scope else None
-        media_source, media_id = resolve_media_identity(
-            media=mediainfo,
-            media_source=kwargs.get("media_source"),
-            media_id=kwargs.get("media_id"),
-        )
-        if not media_source or not media_id:
-            return 0, "媒体身份不完整"
-        identity_params = {
-            "media_source": str(media_source),
-            "media_id": media_id,
-            "music_type": getattr(mediainfo, "music_type", None)
-            if mediainfo.type == MediaType.MUSIC else None,
-            "season": kwargs.get("season"),
-            "episode_group": mediainfo.episode_group,
-        }
         if username:
-            subscribe = await Subscribe.async_exists_by_username(self._db,
-                                                                 username=username,
-                                                                 **identity_params)
-        else:
-            subscribe = await Subscribe.async_exists(self._db, **identity_params)
-        kwargs.update({
-            "name": mediainfo.title,
-            "year": _normalize_year(mediainfo.year),
-            "type": mediainfo.type.value,
-            "media_source": str(media_source),
-            "media_id": media_id,
-            "episode_group": mediainfo.episode_group,
-            "poster": mediainfo.get_poster_image(),
-            "backdrop": mediainfo.get_backdrop_image(),
-            "vote": mediainfo.vote_average,
-            "description": mediainfo.overview,
-            "search_imdbid": 1 if kwargs.get('search_imdbid') else 0,
-            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        })
-        kwargs.update(_music_subscription_fields(mediainfo))
-        kwargs = _normalize_integer_flags(kwargs)
-        if not subscribe:
-            subscribe = Subscribe(**kwargs)
-            await subscribe.async_create(self._db)
-            # 查询订阅
-            if username:
-                subscribe = await Subscribe.async_exists_by_username(self._db,
-                                                                     username=username,
-                                                                     **identity_params)
-            else:
-                subscribe = await Subscribe.async_exists(self._db, **identity_params)
-            if not subscribe:
-                return 0, "新增订阅失败"
-            return subscribe.id, "新增订阅成功"
-        else:
+            return await Subscribe.async_exists_by_username(self._db, username=username, **identity)
+        return await Subscribe.async_exists(self._db, **identity)
+
+    def add(self, identity: dict, payload: dict,
+            username: Optional[str] = None) -> Tuple[int, str]:
+        """
+        新增订阅：命中既有订阅则原样返回，否则落库后回读。
+
+        回读不是多余的一次查询——写入可能被唯一约束或事务回滚吞掉，此时若报成功，
+        调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
+        :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
+        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param username: 非空时把查重限定在该用户的订阅内
+        :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
+        """
+        subscribe = self._exists(identity, username)
+        if subscribe:
             return subscribe.id, "订阅已存在"
+        Subscribe(**_persistable(payload)).create(self._db)
+        subscribe = self._exists(identity, username)
+        if not subscribe:
+            return 0, "新增订阅失败"
+        return subscribe.id, "新增订阅成功"
+
+    async def async_add(self, identity: dict, payload: dict,
+                        username: Optional[str] = None) -> Tuple[int, str]:
+        """
+        异步新增订阅，语义与 add 完全一致。
+        :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
+        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param username: 非空时把查重限定在该用户的订阅内
+        :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
+        """
+        subscribe = await self._async_exists(identity, username)
+        if subscribe:
+            return subscribe.id, "订阅已存在"
+        await Subscribe(**_persistable(payload)).async_create(self._db)
+        subscribe = await self._async_exists(identity, username)
+        if not subscribe:
+            return 0, "新增订阅失败"
+        return subscribe.id, "新增订阅成功"
 
     def exists(
             self, media_source: MediaSource, media_id: str,

@@ -42,6 +42,7 @@ from app.application.messaging.interaction import (
     update_or_post_message,
 )
 from app.application.mediaserver import MediaServerHelper
+from app.application.subscribe import add_subscribe, async_add_subscribe
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
@@ -989,7 +990,7 @@ class SubscribeChain(ChainBase):
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
         # 操作数据库
-        sid, err_msg = SubscribeOper().add(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -1193,7 +1194,7 @@ class SubscribeChain(ChainBase):
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
         # 操作数据库
-        sid, err_msg = await SubscribeOper().async_add(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = await async_add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:

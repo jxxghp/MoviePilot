@@ -1,7 +1,7 @@
 """
-订阅的写入路径：SubscribeOper.add / async_add。
+订阅的写入路径：app/application/subscribe.py 的 add_subscribe / async_add_subscribe。
 
-这两个方法是订阅表的唯一写入口，把 MediaInfo / MusicInfo 翻译成一行订阅：
+这两个函数是订阅表的唯一写入口，把 MediaInfo / MusicInfo 翻译成一行订阅：
 标题、年份、类型、海报背景、评分简介、剧集组、音乐实体与曲目数，再叠上
 持久化类型强转（布尔开关转整型、年份转字符串）。字段映射错了不会报错，
 只会让订阅静静地记错——而搜索、洗版、完成判定、去重全都读这张表。
@@ -16,6 +16,8 @@
 落库后的值对「写入路径自己有没有转」完全无感（已用变异验证确认：删掉
 ``_normalize_year`` 后按落库值断言的用例全部照过）。所以这两类契约必须在
 建模那一刻、即 ``Subscribe(**kwargs)`` 的入参上断言，见 ``payloads`` 夹具。
+强转跟着订阅表的列走，因此仍留在 ``app/db/oper/subscribe.py``，夹具也就
+仍然钉在那个模块的 ``Subscribe`` 上。
 
 同步与异步两条链路是两份逐字复制的实现，任何一条改了另一条没跟上都属于
 真实缺陷，故每个字段契约都在两条链路上各断言一次。
@@ -24,6 +26,7 @@ import asyncio
 
 import pytest
 
+from app.application.subscribe import add_subscribe, async_add_subscribe
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper
 from app.domain.context import MediaInfo, MusicInfo
@@ -68,8 +71,8 @@ def _musicinfo(media_id: str, music_type: str, **kwargs) -> MusicInfo:
 def _add(oper: SubscribeOper, is_async: bool, **kwargs):
     """按链路分派到同步或异步新增，让同一份字段契约跑两遍。"""
     if is_async:
-        return asyncio.run(oper.async_add(**kwargs))
-    return oper.add(**kwargs)
+        return asyncio.run(async_add_subscribe(subscribe_oper=oper, **kwargs))
+    return add_subscribe(subscribe_oper=oper, **kwargs)
 
 
 def _row(db, subscribe_id: int) -> Subscribe:

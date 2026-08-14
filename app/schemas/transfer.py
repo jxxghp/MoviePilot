@@ -81,9 +81,22 @@ class DownloadingTorrent(DownloaderTorrent):
 
 class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     """
-    文件整理任务
+    文件整理任务。
+
+    与同文件的 TransferJob / TransferJobTask 不同，本模型是整理链的**进程内工作项**
+    而非出网的 DTO：meta 装的是领域侧的 MetaBase 子类（MetaInfo / MetaMusic），
+    mediainfo 装的是领域侧的 MediaInfo / MusicInfo，都带行为而非纯数据——to_dict()
+    存在正是因为它自己序列化不了。TransferJobTask 才是它面向前端的投影，那里的
+    meta / media 用的是 app.schemas 的同名 DTO。
     """
     fileitem: FileItem
+    # 这两个 Any 是承重的，不是漏标。app.schemas 不能命名领域类型：
+    # app.schemas -> app.schemas.transfer -> app.domain.* -> app.schemas.types -> app.schemas
+    # 会闭环，仓库自己的 test_migrated_modules_are_not_in_import_cycles 就会红（已实测）。
+    # 改标注前先把本模型搬出 app.schemas，否则只是把环换个地方藏。
+    # 另注：收紧后 app/chain/transfer.py 会净增 4 条 pyright 错误，指向该文件里
+    # MusicInfo 被传给要求 MediaInfo 的参数（约 12 处）——那是真实的建模不一致，
+    # 但属于整理链自己的工程，不是本字段能顺手带走的。
     meta: Optional[Any] = None
     mediainfo: Optional[Any] = None
     media_source: Optional[MediaSource] = None
