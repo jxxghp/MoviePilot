@@ -1150,6 +1150,15 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             return f"{self.DB_POSTGRESQL_HOST}:{self.DB_POSTGRESQL_PORT}"
         return self.DB_POSTGRESQL_HOST
 
+    def DB_SQLITE_URL(self, driver: Optional[str] = None) -> str:
+        """
+        SQLite 连接串。与 DB_POSTGRESQL_URL 对称，避免各调用点各自拼接后悄悄漂移
+        ——迁移与应用连到不同的库文件是不会报错的。
+        :param driver: 驱动名，如 aiosqlite；留空为同步驱动
+        """
+        scheme = "sqlite" if not driver else f"sqlite+{driver}"
+        return f"{scheme}:///{self.CONFIG_PATH}/user.db"
+
     def DB_POSTGRESQL_URL(self, driver: Optional[str] = None) -> str:
         """按同步或异步驱动构造 PostgreSQL SQLAlchemy URL。"""
         scheme = "postgresql" if not driver else f"postgresql+{driver}"

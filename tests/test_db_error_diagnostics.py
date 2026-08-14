@@ -4,7 +4,9 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
-import app.db as db_module
+# 诊断实现已迁至 app.db.diagnostics；app.db 只做 re-export，私有符号不在其上
+import app.db.diagnostics as db_module
+from app.db.engine import AsyncEngine
 
 
 class _SqliteError(Exception):
@@ -62,7 +64,7 @@ def test_database_error_listener_omits_statement_and_parameters(monkeypatch) -> 
     """数据库错误日志不得包含 SQL、参数或驱动返回的原始消息。"""
     messages = []
     engine = create_engine("sqlite:///:memory:")
-    monkeypatch.setattr("app.db.logger.error", messages.append)
+    monkeypatch.setattr("app.db.diagnostics.logger.error", messages.append)
     db_module._register_database_error_logging(engine)
 
     with pytest.raises(OperationalError):
@@ -84,10 +86,10 @@ def test_database_error_listener_omits_statement_and_parameters(monkeypatch) -> 
 def test_async_database_engine_logs_driver_error_metadata(monkeypatch) -> None:
     """异步 Engine 应通过底层 sync engine 记录驱动错误码。"""
     messages = []
-    monkeypatch.setattr("app.db.logger.error", messages.append)
+    monkeypatch.setattr("app.db.diagnostics.logger.error", messages.append)
 
     async def query_missing_table() -> None:
-        async with db_module.AsyncEngine.connect() as connection:
+        async with AsyncEngine.connect() as connection:
             await connection.execute(text("SELECT * FROM async_missing_table"))
 
     with pytest.raises(OperationalError):

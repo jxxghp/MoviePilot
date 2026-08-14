@@ -17,8 +17,11 @@ import threading
 
 import pytest
 
-import app.db as db_module
+# 池化实现位于 app.db.session；app.db 只做 re-export，私有符号不在其上
+import app.db.session as db_module
+from app.db.engine import AsyncEngine as _AsyncEngine
 from app.runtime.config import global_vars, settings
+from app.db.engine import _async_pool_kwargs
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +47,7 @@ def test_pool_disabled_falls_back_to_nullpool(monkeypatch):
         global_vars.CURRENT_EVENT_LOOP = asyncio.get_running_loop()
         return db_module.get_async_engine()
 
-    assert asyncio.run(run()) is db_module.AsyncEngine
+    assert asyncio.run(run()) is _AsyncEngine
 
 
 def test_non_resident_loop_is_not_pooled():
@@ -59,14 +62,14 @@ def test_non_resident_loop_is_not_pooled():
         global_vars.CURRENT_EVENT_LOOP = None
         return db_module.get_async_engine()
 
-    assert asyncio.run(run()) is db_module.AsyncEngine
+    assert asyncio.run(run()) is _AsyncEngine
 
 
 def test_no_running_loop_falls_back():
     """
     没有运行中的事件循环时不得池化，行为与池化前一致。
     """
-    assert db_module.get_async_engine() is db_module.AsyncEngine
+    assert db_module.get_async_engine() is _AsyncEngine
 
 
 def test_pooled_loop_gets_dedicated_engine_and_reuses_it(monkeypatch):
@@ -84,7 +87,7 @@ def test_pooled_loop_gets_dedicated_engine_and_reuses_it(monkeypatch):
         return first, second
 
     first, second = asyncio.run(run())
-    assert first is not db_module.AsyncEngine, "常驻循环没有拿到池化引擎"
+    assert first is not _AsyncEngine, "常驻循环没有拿到池化引擎"
     assert first is second, "同一循环重复创建了引擎，池被反复丢弃"
 
 
@@ -120,12 +123,12 @@ def test_pool_kwargs_shape():
     池化时不得指定 poolclass：SQLAlchemy 需要自行选用异步适配的
     AsyncAdaptedQueuePool，显式传入同步 QueuePool 会出错。
     """
-    pooled = db_module._async_pool_kwargs(True)
+    pooled = _async_pool_kwargs(True)
     assert "poolclass" not in pooled
     assert pooled["pool_size"] == settings.DB_ASYNC_POOL_SIZE
     assert pooled["max_overflow"] == settings.DB_ASYNC_MAX_OVERFLOW
 
-    fallback = db_module._async_pool_kwargs(False)
+    fallback = _async_pool_kwargs(False)
     assert fallback["poolclass"].__name__ == "NullPool"
 
 
