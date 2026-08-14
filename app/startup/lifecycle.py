@@ -37,6 +37,7 @@ from app.startup.scheduler_initializer import (
     init_scheduler,
     init_plugin_scheduler,
 )
+from app.db import check_connection_budget
 from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.adapters.network.http import (
@@ -92,6 +93,10 @@ async def lifespan(app: FastAPI):
     init_routers(app)
     # 初始化模块
     await init_modules()
+    # 核算数据库连接理论峰值。各连接池是彼此独立配置的，没有任何地方核算总和，
+    # 超额只会在突发并发时以 TooManyConnectionsError 的形式暴露；这里在启动期
+    # 就对照数据库的真实上限校验一次，把问题前移到可见的位置
+    check_connection_budget()
     if settings.MOVIEPILOT_SAFE_MODE:
         print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
     else:
