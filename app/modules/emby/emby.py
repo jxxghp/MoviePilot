@@ -377,6 +377,70 @@ class Emby:
             return None
         return ""
 
+    def __get_emby_items_by_provider_id(
+            self,
+            item_type: str,
+            media_source: Optional[MediaSource],
+            media_id: Optional[str],
+    ) -> List[dict]:
+        """
+        按媒体来源原生ID精确查询Emby条目
+
+        :param item_type: Emby条目类型
+        :param media_source: 媒体来源
+        :param media_id: 媒体来源原生ID
+        :return: 身份完全匹配的Emby原始条目列表
+        """
+        if not self._host or not self._apikey:
+            return []
+        provider_key, provider_id = MediaServerIdentityHelper.to_provider_id(
+            media_source, media_id
+        )
+        if not provider_key or not provider_id:
+            return []
+        url = f"{self._host}emby/Items"
+        params = {
+            "IncludeItemTypes": item_type,
+            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,"
+                      "UserDataPlayCount,UserDataLastPlayedDate,ParentId",
+            "StartIndex": 0,
+            "Recursive": "true",
+            "AnyProviderIdEquals": f"{provider_key}.{provider_id}",
+            "Limit": 10,
+            "IncludeSearchTypes": "false",
+            "api_key": self._apikey,
+        }
+        try:
+            res = RequestUtils().get_res(url, params)
+            if not res:
+                return []
+            items = res.json().get("Items") or []
+            return [
+                item for item in items
+                if item and MediaServerIdentityHelper.matches_provider_ids(
+                    item.get("ProviderIds"), media_source, media_id
+                )
+            ]
+        except Exception as e:
+            logger.error(f"按Provider ID连接Items出错：{str(e)}")
+            return []
+
+    def __get_emby_series_id(
+            self,
+            name: str,
+            year: str,
+            media_source: Optional[MediaSource],
+            media_id: Optional[str],
+    ) -> Optional[str]:
+        """优先按Provider ID查询剧集，未命中时回退标题和年份。"""
+        provider_items = self.__get_emby_items_by_provider_id(
+            "Series", media_source, media_id
+        )
+        for item in provider_items:
+            if item.get("Id"):
+                return item.get("Id")
+        return self.__get_emby_series_id_by_name(name, year)
+
     def get_movies(self,
                    title: str,
                    year: Optional[str] = None,
@@ -392,6 +456,15 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
+        provider_items = self.__get_emby_items_by_provider_id(
+            "Movie", media_source, media_id
+        )
+        provider_movies = [
+            item for item in (self.__format_item_info(item) for item in provider_items)
+            if item
+        ]
+        if provider_movies:
+            return provider_movies
         url = f"{self._host}emby/Items"
         params = {
             "IncludeItemTypes": "Movie",
@@ -477,7 +550,9 @@ class Emby:
         cached_item_id = item_id
         # 电视剧
         if not item_id:
-            item_id = self.__get_emby_series_id_by_name(title, year)
+            item_id = self.__get_emby_series_id(
+                title, year, media_source, media_id
+            )
             if item_id is None:
                 return None, None
             if not item_id:
@@ -487,7 +562,9 @@ class Emby:
         if not item_info and cached_item_id and title:
             # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
             logger.warning(f"Emby缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            item_id = self.__get_emby_series_id_by_name(title, year)
+            item_id = self.__get_emby_series_id(
+                title, year, media_source, media_id
+            )
             if item_id is None:
                 return None, None
             if not item_id:

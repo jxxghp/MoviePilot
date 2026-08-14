@@ -40,6 +40,48 @@ class MediaServerIdentityHelper:
                     return media_source, str(value).strip()
         return None, None
 
+    @classmethod
+    def to_provider_id(
+            cls,
+            media_source: Optional[MediaSource | str],
+            media_id: Optional[str],
+    ) -> tuple[Optional[str], Optional[str]]:
+        """将统一媒体身份转换为媒体服务器 ProviderIds 的规范键值。"""
+        normalized_source, normalized_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if not normalized_source or not normalized_id:
+            return None, None
+        for provider_source, keys in cls._provider_keys:
+            if provider_source == normalized_source:
+                return keys[0], normalized_id
+        return None, None
+
+    @classmethod
+    def matches_provider_ids(
+            cls,
+            provider_ids: Optional[Mapping[str, Any]],
+            media_source: Optional[MediaSource | str],
+            media_id: Optional[str],
+    ) -> bool:
+        """判断 ProviderIds 是否包含与目标完全一致的媒体身份。"""
+        normalized_source, normalized_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if not isinstance(provider_ids, Mapping) or not normalized_source or not normalized_id:
+            return False
+        for provider_source, keys in cls._provider_keys:
+            if provider_source != normalized_source:
+                continue
+            return any(
+                value is not None and str(value).strip() == normalized_id
+                for key in keys
+                if (value := provider_ids.get(key)) is not None
+            )
+        return False
+
     @staticmethod
     def are_compatible(
             left_source: Optional[MediaSource | str],
