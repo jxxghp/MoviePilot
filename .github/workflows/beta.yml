@@ -35,7 +35,7 @@ jobs:
         run: |
           python3 -m scripts.generate_plugin_market_default \
             --wiki-file .build/moviepilot-wiki/plugin.md \
-            --config-file app/core/config.py
+            --config-file app/runtime/config.py
           wiki_commit=$(git -C .build/moviepilot-wiki rev-parse HEAD)
           echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
 

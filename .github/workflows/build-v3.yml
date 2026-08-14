@@ -44,7 +44,7 @@ jobs:
         run: |
           python3 -m scripts.generate_plugin_market_default \
             --wiki-file .build/moviepilot-wiki/plugin.md \
-            --config-file app/core/config.py
+            --config-file app/runtime/config.py
           wiki_commit=$(git -C .build/moviepilot-wiki rev-parse HEAD)
           echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
 
@@ -55,7 +55,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/core/config.py
+          git add app/runtime/config.py
           if ! git diff --cached --quiet; then
             git commit -m "build(plugin-market): sync default from MoviePilot-Wiki@${WIKI_COMMIT:0:12}"
           fi
