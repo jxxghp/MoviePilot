@@ -1,8 +1,8 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, JSON, Index, select
+from sqlalchemy import Integer, String, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, mapped_column
 
 from app.db import Base, async_db_query, db_query, get_id_column
 
@@ -14,33 +14,33 @@ class AgentChat(Base):
 
     id = get_id_column()
     # Agent 内部会话 ID，用于恢复 LangGraph 对话上下文
-    session_id = Column(String, nullable=False)
+    session_id = mapped_column(String, nullable=False)
     # 前端或渠道侧传入的原始会话标识
-    client_session_id = Column(String)
+    client_session_id = mapped_column(String)
     # 用户 ID
-    user_id = Column(String)
+    user_id = mapped_column(String)
     # 用户名称
-    username = Column(String)
+    username = mapped_column(String)
     # 消息渠道
-    channel = Column(String)
+    channel = mapped_column(String)
     # 渠道来源配置名
-    source = Column(String)
+    source = mapped_column(String)
     # 原聊天 ID，用于区分群聊、频道或私聊
-    original_chat_id = Column(String)
+    original_chat_id = mapped_column(String)
     # 会话标题
-    title = Column(String)
+    title = mapped_column(String)
     # 会话预览文本
-    preview = Column(String)
+    preview = mapped_column(String)
     # 原始 LangChain messages，用于继续会话
-    agent_messages = Column(JSON)
+    agent_messages = mapped_column(JSON)
     # 展示给用户的消息记录，包含文字、工具提示、附件与选择卡片
-    display_messages = Column(JSON)
+    display_messages = mapped_column(JSON)
     # 展示消息数量
-    message_count = Column(Integer, default=0)
+    message_count = mapped_column(Integer, default=0)
     # 创建时间
-    created_at = Column(String)
+    created_at = mapped_column(String)
     # 更新时间
-    updated_at = Column(String)
+    updated_at = mapped_column(String)
 
     __table_args__ = (
         Index("ix_agentchat_session_user", "session_id", "user_id"),
@@ -56,10 +56,10 @@ class AgentChat(Base):
         """
         根据会话 ID 获取 Agent 会话。
         """
-        query = db.query(cls).filter(cls.session_id == session_id)
+        statement = select(cls).where(cls.session_id == session_id)
         if user_id is not None:
-            query = query.filter(cls.user_id == user_id)
-        return query.order_by(cls.id.desc()).first()
+            statement = statement.where(cls.user_id == user_id)
+        return db.execute(statement.order_by(cls.id.desc())).scalars().first()
 
     @classmethod
     @async_db_query
@@ -88,19 +88,18 @@ class AgentChat(Base):
         """
         分页获取 Agent 会话历史。
         """
-        query = db.query(cls)
+        statement = select(cls)
         if user_id is not None and username is not None:
-            query = query.filter((cls.user_id == user_id) | (cls.username == username))
+            statement = statement.where((cls.user_id == user_id) | (cls.username == username))
         elif user_id is not None:
-            query = query.filter(cls.user_id == user_id)
+            statement = statement.where(cls.user_id == user_id)
         elif username is not None:
-            query = query.filter(cls.username == username)
-        return (
-            query.order_by(cls.updated_at.desc(), cls.id.desc())
+            statement = statement.where(cls.username == username)
+        return db.execute(
+            statement.order_by(cls.updated_at.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-            .all()
-        )
+        ).scalars().all()
 
     @classmethod
     @async_db_query

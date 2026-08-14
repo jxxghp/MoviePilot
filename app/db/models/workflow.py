@@ -2,7 +2,8 @@ from datetime import datetime
 from builtins import list as builtin_list
 from typing import Optional
 
-from sqlalchemy import Column, Integer, JSON, String, Index, and_, or_, select
+from sqlalchemy import Integer, JSON, String, Index, and_, or_, select, update
+from sqlalchemy.orm import mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import Base, db_query, get_id_column, db_update, async_db_query, async_db_update
@@ -15,39 +16,39 @@ class Workflow(Base):
     # ID
     id = get_id_column()
     # 名称
-    name = Column(String, index=True, nullable=False)
+    name = mapped_column(String, index=True, nullable=False)
     # 描述
-    description = Column(String)
+    description = mapped_column(String)
     # 定时器
-    timer = Column(String)
+    timer = mapped_column(String)
     # 触发类型：timer-定时触发 event-事件触发 manual-手动触发
-    trigger_type = Column(String, default='timer')
+    trigger_type = mapped_column(String, default='timer')
     # 事件类型（当trigger_type为event时使用）
-    event_type = Column(String)
+    event_type = mapped_column(String)
     # 事件条件（JSON格式，用于过滤事件）
-    event_conditions = Column(JSON, default=dict)
+    event_conditions = mapped_column(JSON, default=dict)
     # 状态：W-等待 R-运行中 P-暂停 S-成功 F-失败
-    state = Column(String, nullable=False, index=True, default='W')
+    state = mapped_column(String, nullable=False, index=True, default='W')
     # 已执行动作（,分隔）
-    current_action = Column(String)
+    current_action = mapped_column(String)
     # 任务执行结果
-    result = Column(String)
+    result = mapped_column(String)
     # 已执行次数
-    run_count = Column(Integer, default=0)
+    run_count = mapped_column(Integer, default=0)
     # 任务列表
-    actions = Column(JSON, default=builtin_list)
+    actions = mapped_column(JSON, default=builtin_list)
     # 任务流
-    flows = Column(JSON, default=builtin_list)
+    flows = mapped_column(JSON, default=builtin_list)
     # 执行上下文
-    context = Column(JSON, default=dict)
+    context = mapped_column(JSON, default=dict)
     # 执行配置
-    execution_config = Column(JSON, default=dict)
+    execution_config = mapped_column(JSON, default=dict)
     # 结构化执行状态
-    execution_state = Column(JSON, default=dict)
+    execution_state = mapped_column(JSON, default=dict)
     # 创建时间
-    add_time = Column(String, default=lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    add_time = mapped_column(String, default=lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     # 最后执行时间
-    last_time = Column(String)
+    last_time = mapped_column(String)
 
     __table_args__ = (
         Index('ix_workflow_trigger_type_state', 'trigger_type', 'state'),
@@ -56,7 +57,7 @@ class Workflow(Base):
     @classmethod
     @db_query
     def list(cls, db):
-        return db.query(cls).all()
+        return db.execute(select(cls)).scalars().all()
 
     @classmethod
     @async_db_query
@@ -67,7 +68,7 @@ class Workflow(Base):
     @classmethod
     @db_query
     def get_enabled_workflows(cls, db):
-        return db.query(cls).filter(cls.state != 'P').all()
+        return db.execute(select(cls).where(cls.state != 'P')).scalars().all()
 
     @classmethod
     @async_db_query
@@ -79,7 +80,7 @@ class Workflow(Base):
     @db_query
     def get_timer_triggered_workflows(cls, db):
         """获取定时触发的工作流"""
-        return db.query(cls).filter(
+        return db.execute(select(cls).where(
             and_(
                 or_(
                     cls.trigger_type == 'timer',
@@ -87,7 +88,7 @@ class Workflow(Base):
                 ),
                 cls.state != 'P'
             )
-        ).all()
+        )).scalars().all()
 
     @classmethod
     @async_db_query
@@ -108,12 +109,12 @@ class Workflow(Base):
     @db_query
     def get_event_triggered_workflows(cls, db):
         """获取事件触发的工作流"""
-        return db.query(cls).filter(
+        return db.execute(select(cls).where(
             and_(
                 cls.trigger_type == 'event',
                 cls.state != 'P'
             )
-        ).all()
+        )).scalars().all()
 
     @classmethod
     @async_db_query
@@ -130,7 +131,7 @@ class Workflow(Base):
     @classmethod
     @db_query
     def get_by_name(cls, db, name: str):
-        return db.query(cls).filter(cls.name == name).first()
+        return db.execute(select(cls).where(cls.name == name)).scalars().first()
 
     @classmethod
     @async_db_query
@@ -141,45 +142,42 @@ class Workflow(Base):
     @classmethod
     @db_update
     def update_state(cls, db, wid: int, state: str):
-        db.query(cls).filter(cls.id == wid).update({"state": state})
+        db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
     @classmethod
     @async_db_update
     async def async_update_state(cls, db: AsyncSession, wid: int, state: str):
-        from sqlalchemy import update
         await db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
     @classmethod
     @db_update
     def start(cls, db, wid: int):
-        db.query(cls).filter(cls.id == wid).update({
-            "state": 'R'
-        })
+        db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
     @classmethod
     @async_db_update
     async def async_start(cls, db: AsyncSession, wid: int):
-        from sqlalchemy import update
         await db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
     @classmethod
     @db_update
     def fail(cls, db, wid: int, result: str):
-        db.query(cls).filter(and_(cls.id == wid, cls.state != "P")).update({
-            "state": 'F',
-            "result": result,
-            "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        })
+        db.execute(update(cls).where(
+            and_(cls.id == wid, cls.state != "P")
+        ).values(
+            state='F',
+            result=result,
+            last_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ))
         return True
 
     @classmethod
     @async_db_update
     async def async_fail(cls, db: AsyncSession, wid: int, result: str):
-        from sqlalchemy import update
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -192,18 +190,19 @@ class Workflow(Base):
     @classmethod
     @db_update
     def success(cls, db, wid: int, result: Optional[str] = None):
-        db.query(cls).filter(and_(cls.id == wid, cls.state != "P")).update({
-            "state": 'S',
-            "result": result,
-            "run_count": cls.run_count + 1,
-            "last_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        })
+        db.execute(update(cls).where(
+            and_(cls.id == wid, cls.state != "P")
+        ).values(
+            state='S',
+            result=result,
+            run_count=cls.run_count + 1,
+            last_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ))
         return True
 
     @classmethod
     @async_db_update
     async def async_success(cls, db: AsyncSession, wid: int, result: Optional[str] = None):
-        from sqlalchemy import update
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -217,20 +216,19 @@ class Workflow(Base):
     @classmethod
     @db_update
     def reset(cls, db, wid: int, reset_count: Optional[bool] = False):
-        db.query(cls).filter(cls.id == wid).update({
-            "state": 'W',
-            "result": None,
-            "current_action": None,
-            "context": {},
-            "execution_state": {},
-            "run_count": 0 if reset_count else cls.run_count,
-        })
+        db.execute(update(cls).where(cls.id == wid).values(
+            state='W',
+            result=None,
+            current_action=None,
+            context={},
+            execution_state={},
+            run_count=0 if reset_count else cls.run_count,
+        ))
         return True
 
     @classmethod
     @async_db_update
     async def async_reset(cls, db: AsyncSession, wid: int, reset_count: Optional[bool] = False):
-        from sqlalchemy import update
         await db.execute(update(cls).where(cls.id == wid).values(
             state='W',
             result=None,
@@ -245,7 +243,7 @@ class Workflow(Base):
     @db_update
     def update_current_action(cls, db, wid: int, action_id: str, context: dict,
                               execution_state: Optional[dict] = None):
-        workflow = db.query(cls).filter(cls.id == wid).first()
+        workflow = db.execute(select(cls).where(cls.id == wid)).scalars().first()
         current_actions = []
         if workflow and workflow.current_action:
             current_actions = [item for item in workflow.current_action.split(",") if item]
@@ -257,14 +255,13 @@ class Workflow(Base):
         }
         if execution_state is not None:
             update_values["execution_state"] = execution_state
-        db.query(cls).filter(cls.id == wid).update(update_values)
+        db.execute(update(cls).where(cls.id == wid).values(**update_values))
         return True
 
     @classmethod
     @async_db_update
     async def async_update_current_action(cls, db: AsyncSession, wid: int, action_id: str, context: dict,
                                           execution_state: Optional[dict] = None):
-        from sqlalchemy import update
         # 先获取当前current_action
         result = await db.execute(select(cls.current_action).where(cls.id == wid))
         current_action = result.scalar()

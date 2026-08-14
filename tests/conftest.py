@@ -5,6 +5,8 @@
 """
 import sys
 
+import pytest
+
 # 必须早于首个 import app.db（其在 import 期即按 CONFIG_PATH 连库）：prepare_backend 内部
 # 先隔离 CONFIG_DIR、补 app.application.site.sites 垫片，再建表。app/testing 仅依赖标准库、import 不连库，
 # 故此处先 import 再调用是安全的。
@@ -14,6 +16,86 @@ prepare_backend()
 
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
+
+
+class DbHarness:
+    """真实数据库会话的测试载具。
+
+    ``prepare_backend`` 已把 CONFIG_DIR 指向临时目录并建好表，操作的是一次性数据库；
+    但同一次 pytest 会话内所有用例共用这一个库，因此清理必须精确到行——按主键水位回收
+    用例新增的数据，而不是 truncate 整表，否则会连带删掉其他用例依赖的数据。
+
+    水位法同时覆盖「被测代码自己写入的行」：只要在写入前登记过该表，其后新增的行
+    都会被回收，测试不必持有每一个模型实例的句柄。
+    """
+
+    def __init__(self, session):
+        self.session = session
+        self._watermarks = {}
+
+    def watermark(self, *models) -> None:
+        """
+        登记若干表的当前最大主键，用例结束时删除其后新增的全部行。
+        :param models: 需要纳入回收的模型类
+        """
+        from sqlalchemy import func, select
+
+        for model in models:
+            if model in self._watermarks:
+                continue
+            current = self.session.execute(select(func.max(model.id))).scalar()
+            self._watermarks[model] = current or 0
+
+    def add(self, *rows):
+        """
+        写入若干行并提交，返回单行或行列表。
+
+        写入前自动登记水位，因此这些行以及被测代码后续新增的同表行都会被回收。
+        :param rows: 待写入的模型实例
+        """
+        self.watermark(*{type(row) for row in rows})
+        for row in rows:
+            self.session.add(row)
+        self.session.commit()
+        return rows[0] if len(rows) == 1 else list(rows)
+
+    def cleanup(self) -> None:
+        """按水位删除本用例新增的全部行。"""
+        from sqlalchemy import delete
+
+        # 用例可能因约束冲突等原因让事务处于待回滚状态，此时任何语句都会被拒绝；
+        # 先回滚再清理，否则清理会整体失效、数据泄漏到后续用例
+        try:
+            self.session.rollback()
+        except Exception:  # noqa: BLE001  会话已不可用时也要继续尝试清理
+            pass
+
+        for model, mark in self._watermarks.items():
+            try:
+                self.session.execute(delete(model).where(model.id > mark))
+                self.session.commit()
+            except Exception:  # noqa: BLE001  清理失败不应掩盖用例本身的断言结果
+                self.session.rollback()
+
+
+@pytest.fixture
+def db():
+    """
+    提供真实数据库会话载具，用例结束按主键水位回收新增数据。
+
+    数据库查询方法的行为（过滤、排序、分页、去重）无法用替身验证——替身只能证明
+    「调用了什么」，证明不了「查回了什么」，而 1.x Query 到 2.0 select 的改写恰恰
+    只可能在后者上出偏差。
+    """
+    from app.db.session import ScopedSession
+
+    session = ScopedSession()
+    harness = DbHarness(session)
+    try:
+        yield harness
+    finally:
+        harness.cleanup()
+        session.close()
 
 
 def _report_session_cleanup_error(session, name: str, err: Exception) -> None:

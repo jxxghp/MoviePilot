@@ -1,6 +1,6 @@
-from sqlalchemy import Boolean, Column, JSON, String, select
+from sqlalchemy import Boolean, JSON, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, mapped_column
 
 from app.db import Base, db_query, db_update, async_db_query, async_db_update, get_id_column
 
@@ -12,30 +12,30 @@ class User(Base):
     # ID
     id = get_id_column()
     # 用户名，唯一值
-    name = Column(String, index=True, nullable=False)
+    name = mapped_column(String, index=True, nullable=False)
     # 邮箱
-    email = Column(String)
+    email = mapped_column(String)
     # 加密后密码
-    hashed_password = Column(String)
+    hashed_password = mapped_column(String)
     # 是否启用
-    is_active = Column(Boolean(), default=True)
+    is_active = mapped_column(Boolean(), default=True)
     # 是否管理员
-    is_superuser = Column(Boolean(), default=False)
+    is_superuser = mapped_column(Boolean(), default=False)
     # 头像
-    avatar = Column(String)
+    avatar = mapped_column(String)
     # 是否启用otp二次验证
-    is_otp = Column(Boolean(), default=False)
+    is_otp = mapped_column(Boolean(), default=False)
     # otp秘钥
-    otp_secret = Column(String, default=None)
+    otp_secret = mapped_column(String, default=None)
     # 用户权限 json
-    permissions = Column(JSON, default=dict)
+    permissions = mapped_column(JSON, default=dict)
     # 用户个性化设置 json
-    settings = Column(JSON, default=dict)
+    settings = mapped_column(JSON, default=dict)
 
     @classmethod
     @db_query
     def get_by_name(cls, db: Session, name: str):
-        return db.query(cls).filter(cls.name == name).first()
+        return db.execute(select(cls).where(cls.name == name)).scalars().first()
 
     @classmethod
     @async_db_query
@@ -48,7 +48,7 @@ class User(Base):
     @classmethod
     @db_query
     def get_by_id(cls, db: Session, user_id: int):
-        return db.query(cls).filter(cls.id == user_id).first()
+        return db.execute(select(cls).where(cls.id == user_id)).scalars().first()
 
     @classmethod
     @async_db_query

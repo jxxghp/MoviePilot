@@ -1,6 +1,6 @@
-from sqlalchemy import Column, String, select
+from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, mapped_column
 
 from app.db import db_query, Base, get_id_column, async_db_query
 
@@ -11,18 +11,18 @@ class SiteIcon(Base):
     """
     id = get_id_column()
     # 站点名称
-    name = Column(String, nullable=False)
+    name = mapped_column(String, nullable=False)
     # 域名Key
-    domain = Column(String, index=True)
+    domain = mapped_column(String, index=True)
     # 图标地址
-    url = Column(String, nullable=False)
+    url = mapped_column(String, nullable=False)
     # 图标Base64
-    base64 = Column(String)
+    base64 = mapped_column(String)
 
     @classmethod
     @db_query
     def get_by_domain(cls, db: Session, domain: str):
-        return db.query(cls).filter(cls.domain == domain).first()
+        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
     @classmethod
     @async_db_query

@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, JSON, select, delete
+from sqlalchemy import Boolean, Integer, String, JSON, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, mapped_column
 
 from app.db import db_query, db_update, Base, async_db_query, async_db_update, get_id_column
 
@@ -13,52 +13,52 @@ class Site(Base):
     """
     id = get_id_column()
     # 站点名
-    name = Column(String, nullable=False)
+    name = mapped_column(String, nullable=False)
     # 域名Key
-    domain = Column(String, index=True)
+    domain = mapped_column(String, index=True)
     # 站点地址
-    url = Column(String, nullable=False)
+    url = mapped_column(String, nullable=False)
     # 站点优先级
-    pri = Column(Integer, default=1)
+    pri = mapped_column(Integer, default=1)
     # RSS地址，未启用
-    rss = Column(String)
+    rss = mapped_column(String)
     # Cookie
-    cookie = Column(String)
+    cookie = mapped_column(String)
     # User-Agent
-    ua = Column(String)
+    ua = mapped_column(String)
     # ApiKey
-    apikey = Column(String)
+    apikey = mapped_column(String)
     # Token
-    token = Column(String)
+    token = mapped_column(String)
     # 是否使用代理 0-否，1-是
-    proxy = Column(Integer)
+    proxy = mapped_column(Integer)
     # 过滤规则
-    filter = Column(String)
+    filter = mapped_column(String)
     # 是否渲染
-    render = Column(Integer)
+    render = mapped_column(Integer)
     # 是否公开站点
-    public = Column(Integer)
+    public = mapped_column(Integer)
     # 附加信息
-    note = Column(JSON)
+    note = mapped_column(JSON)
     # 流控单位周期
-    limit_interval = Column(Integer, default=0)
+    limit_interval = mapped_column(Integer, default=0)
     # 流控次数
-    limit_count = Column(Integer, default=0)
+    limit_count = mapped_column(Integer, default=0)
     # 流控间隔
-    limit_seconds = Column(Integer, default=0)
+    limit_seconds = mapped_column(Integer, default=0)
     # 超时时间
-    timeout = Column(Integer, default=15)
+    timeout = mapped_column(Integer, default=15)
     # 是否启用
-    is_active = Column(Boolean(), default=True)
+    is_active = mapped_column(Boolean(), default=True)
     # 创建时间
-    lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    lst_mod_date = mapped_column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     # 下载器
-    downloader = Column(String)
+    downloader = mapped_column(String)
 
     @classmethod
     @db_query
     def get_by_domain(cls, db: Session, domain: str):
-        return db.query(cls).filter(cls.domain == domain).first()
+        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
     @classmethod
     @async_db_query
@@ -75,7 +75,7 @@ class Site(Base):
     @classmethod
     @db_query
     def get_actives(cls, db: Session):
-        return db.query(cls).filter(cls.is_active).all()
+        return db.execute(select(cls).where(cls.is_active)).scalars().all()
 
     @classmethod
     @async_db_query
@@ -86,7 +86,7 @@ class Site(Base):
     @classmethod
     @db_query
     def list_order_by_pri(cls, db: Session):
-        return db.query(cls).order_by(cls.pri).all()
+        return db.execute(select(cls).order_by(cls.pri)).scalars().all()
 
     @classmethod
     @async_db_query
@@ -97,12 +97,12 @@ class Site(Base):
     @classmethod
     @db_query
     def get_domains_by_ids(cls, db: Session, ids: list):
-        return [r[0] for r in db.query(cls.domain).filter(cls.id.in_(ids)).all()]
+        return list(db.execute(select(cls.domain).where(cls.id.in_(ids))).scalars().all())
 
     @classmethod
     @db_update
     def reset(cls, db: Session):
-        db.query(cls).delete()
+        db.execute(delete(cls))
 
     @classmethod
     @async_db_update

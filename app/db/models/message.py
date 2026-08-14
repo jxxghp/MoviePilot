@@ -1,8 +1,8 @@
 from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, JSON, Index, and_, or_, select
+from sqlalchemy import Integer, String, JSON, Index, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, mapped_column
 
 from app.db import db_query, db_update, Base, get_id_column, async_db_query
 
@@ -13,27 +13,27 @@ class Message(Base):
     """
     id = get_id_column()
     # 消息渠道
-    channel = Column(String)
+    channel = mapped_column(String)
     # 消息来源
-    source = Column(String)
+    source = mapped_column(String)
     # 消息类型
-    mtype = Column(String)
+    mtype = mapped_column(String)
     # 标题
-    title = Column(String)
+    title = mapped_column(String)
     # 文本内容
-    text = Column(String)
+    text = mapped_column(String)
     # 图片
-    image = Column(String)
+    image = mapped_column(String)
     # 链接
-    link = Column(String)
+    link = mapped_column(String)
     # 用户ID
-    userid = Column(String)
+    userid = mapped_column(String)
     # 登记时间
-    reg_time = Column(String)
+    reg_time = mapped_column(String)
     # 消息方向：0-接收息，1-发送消息
-    action = Column(Integer)
+    action = mapped_column(Integer)
     # 附件json
-    note = Column(JSON)
+    note = mapped_column(JSON)
 
     __table_args__ = (
         Index('ix_message_reg_time_id', 'reg_time', 'id'),
@@ -54,13 +54,12 @@ class Message(Base):
         """
         分页获取消息记录。
         """
-        return (
-            db.query(cls)
+        return db.execute(
+            select(cls)
             .order_by(cls.reg_time.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-            .all()
-        )
+        ).scalars().all()
 
     @classmethod
     @db_query
@@ -72,7 +71,9 @@ class Message(Base):
         :param source: 消息来源唯一标识
         :return: 是否存在匹配记录
         """
-        return db.query(cls.id).filter(cls.source == source).first() is not None
+        return db.execute(
+            select(cls.id).where(cls.source == source).limit(1)
+        ).scalars().first() is not None
 
     @classmethod
     @async_db_query
@@ -142,18 +143,15 @@ class Message(Base):
         """
         分批删除指定时间之前的消息记录。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
-            .filter(cls.reg_time < before_time)
+        ids = db.execute(
+            select(cls.id)
+            .where(cls.reg_time < before_time)
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return (
-            db.query(cls)
-            .filter(cls.id.in_(ids))
-            .delete(synchronize_session=False)
-        )
+        return db.execute(
+            delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
+        ).rowcount

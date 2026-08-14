@@ -6,29 +6,39 @@ DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 """
 from typing import Any, List, Self, Union
 
-from sqlalchemy import Column, Identity, Integer, Sequence, and_, delete, inspect, select
+from sqlalchemy import Identity, Integer, Sequence, and_, delete, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, as_declarative, declared_attr
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
 from app.runtime.config import settings
 from app.db.decorators import async_db_query, async_db_update, db_query, db_update
 
-def get_id_column():
+def get_id_column() -> Mapped[int]:
     """
     根据数据库类型返回合适的ID列定义
     """
     if settings.DB_TYPE.lower() == "postgresql":
         # PostgreSQL使用SERIAL类型，让数据库自动处理序列
-        return Column(Integer, Identity(start=1, cycle=True), primary_key=True)
+        return mapped_column(Integer, Identity(start=1, cycle=True), primary_key=True)
     else:
         # SQLite使用Sequence
-        return Column(Integer, Sequence('id'), primary_key=True)
+        return mapped_column(Integer, Sequence('id'), primary_key=True)
 
 
-@as_declarative()
-class Base:
-    id: Any
-    __name__: str
+class Base(DeclarativeBase):
+    """
+    声明式基类。
+
+    2.0 的声明式系统会解释类级 PEP 484 注解，未包裹在 Mapped[] 中的注解会直接
+    报错。现有 22 个模型仍是 legacy Column() 写法（列由 Column 对象本身描述、
+    不依赖注解），因此开启 __allow_unmapped__ 让声明式系统忽略这类注解，
+    使模型可以逐个迁移而不必一次性全改。
+    """
+
+    __allow_unmapped__ = True
+
+    # 由 get_id_column() 在各模型中提供实际的列定义，这里只声明类型供 IDE 使用
+    id: Mapped[int]
 
     @db_update
     def create(self, db: Session):
@@ -43,7 +53,7 @@ class Base:
     @classmethod
     @db_query
     def get(cls, db: Session, rid: int) -> Self:
-        return db.query(cls).filter(and_(cls.id == rid)).first()
+        return db.execute(select(cls).where(and_(cls.id == rid))).scalars().first()
 
     @classmethod
     @async_db_query
@@ -68,7 +78,7 @@ class Base:
     @classmethod
     @db_update
     def delete(cls, db: Session, rid):
-        db.query(cls).filter(and_(cls.id == rid)).delete()
+        db.execute(delete(cls).where(and_(cls.id == rid)))
 
     @classmethod
     @async_db_update
@@ -81,7 +91,7 @@ class Base:
     @classmethod
     @db_update
     def truncate(cls, db: Session):
-        db.query(cls).delete()
+        db.execute(delete(cls))
 
     @classmethod
     @async_db_update
@@ -91,7 +101,7 @@ class Base:
     @classmethod
     @db_query
     def list(cls, db: Session) -> List[Self]:
-        return db.query(cls).all()
+        return db.execute(select(cls)).scalars().all()
 
     @classmethod
     @async_db_query
