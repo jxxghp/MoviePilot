@@ -13,16 +13,16 @@ def init_db():
     """
     初始化数据库
     """
-    # 在函数内取引擎而不是模块级导入：模块级 `from app.db import Engine` 会在
-    # import 本模块时就把引擎对象绑定下来，使本模块反过来依赖「数据库已在别处
-    # 初始化完成」。函数内获取才能让引擎的创建时机由调用方决定。
-    from app.db.engine import Engine
+    # 用 get_engine() 而不是旧名字 Engine：后者只为仓库外插件保留，走模块级 __getattr__，
+    # 一旦写成模块级 `from app.db.engine import Engine` 就会在 import 本模块时把引擎建出来，
+    # 使本模块反过来依赖「数据库已在别处初始化完成」。调用函数才能让创建时机由调用方决定。
+    from app.db.engine import get_engine
 
     # 确保所有模型都已注册到 Base.metadata 中
     import app.db.models  # noqa: F401
 
     # 全量建表
-    Base.metadata.create_all(bind=Engine)
+    Base.metadata.create_all(bind=get_engine())
 
 
 def update_db():

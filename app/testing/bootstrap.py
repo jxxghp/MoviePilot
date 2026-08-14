@@ -6,8 +6,8 @@
 其中 :func:`isolate_config_dir` 为主程序与插件仓共用，``prepare_v1/v2_backend`` 与
 :func:`mark_plugin_generation` 为插件仓专用。
 
-本模块只依赖标准库，``import`` 期不连库、不触发 ``app.db``：调用方可安全地「先 import 本模块、
-再隔离 CONFIG_DIR」，不破坏「隔离必须早于首个 ``import app.db``」这一硬约束。
+本模块只依赖标准库，``import`` 期不触发 ``app.*``：调用方可安全地「先 import 本模块、
+再隔离 CONFIG_DIR」，不破坏「隔离必须早于首个 ``import app.runtime.config``」这一硬约束。
 """
 from __future__ import annotations
 
@@ -68,9 +68,11 @@ class _SitesHelperStub:
 def isolate_config_dir() -> str:
     """把 ``CONFIG_DIR`` 指向进程私有临时目录，隔离主程序真实库与配置（幂等）。
 
-    ``import app.db`` / ``import app.chain.*`` 在 import 期即按 ``settings.CONFIG_PATH`` 连接
-    ``user.db``，故本函数必须在首个 ``import app.db`` 之前调用。调用方已显式设置 ``CONFIG_DIR``
-    （如 CI 指定隔离目录）时尊重之、不覆盖。
+    数据库引擎已改为惰性创建，``import app.db`` 本身不再连库；但 ``settings`` 是在
+    ``import app.runtime.config`` 时构造的，那一刻就把 ``CONFIG_DIR`` 读进字段并建好配置子目录，
+    之后再改环境变量对 ``settings.CONFIG_PATH`` 毫无影响——引擎晚点才建，连的仍是真实 ``user.db``。
+    故本函数必须早于首个牵入 ``app.runtime.config`` 的 import（``app.db`` / ``app.chain.*`` 都会牵入）。
+    调用方已显式设置 ``CONFIG_DIR``（如 CI 指定隔离目录）时尊重之、不覆盖。
 
     :return: 实际生效的 CONFIG_DIR 绝对路径
     """
@@ -89,13 +91,19 @@ def isolate_config_dir() -> str:
         """进程退出时释放 SQLite 连接池再删临时目录。
 
         默认参数绑定 ``rmtree``/``path``/``sys_mod``：解释器关停期标准库模块可能已被回收为 ``None``，
-        绑定后仍可安全调用。先 ``Engine.dispose`` 释放 ``user.db`` 连接，规避 Windows 下
+        绑定后仍可安全调用。先释放已建立的 ``user.db`` 连接，规避 Windows 下
         文件锁导致 ``rmtree`` 静默失败（``ignore_errors``）、残留临时目录。
+
+        读 ``peek_sync_engine``（有则取、无则 ``None``）而不是旧名字 ``app.db.Engine``：后者是
+        惰性解析的属性，取它会**创建**引擎——只 ``import`` 过 ``app.db`` 的进程会在解释器关停时
+        凭空连一次库，仅仅为了随后把它 dispose 掉。
         """
         try:
-            db_mod = sys_mod.modules.get("app.db")
-            if db_mod is not None:
-                db_mod.Engine.dispose()
+            engine_mod = sys_mod.modules.get("app.db.engine")
+            peek = getattr(engine_mod, "peek_sync_engine", None)
+            engine = peek() if peek is not None else None
+            if engine is not None:
+                engine.dispose()
         except Exception:
             pass
         rmtree(path, ignore_errors=True)
@@ -117,7 +125,8 @@ def ensure_sites_stub() -> None:
     ``app.application.site.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.chain.*`` /
     ``app.modules.*`` 在 import 期依赖它。统一补一个最小垫片，省去各测试文件各自打桩；若真实模块
     已存在（本地已拉取）则用真实模块、不覆盖，不影响真实行为。须在隔离 CONFIG_DIR 之后调用，
-    以免试探性 ``import app.application.site.sites`` 触发的连库落到真实库。
+    以免试探性 ``import app.application.site.sites`` 牵入 ``app.runtime.config``、
+    把配置路径定型到真实目录。
     """
     if "app.application.site.sites" in sys.modules:
         return

@@ -34,6 +34,12 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         monkeypatch.setattr(lifecycle, name, MagicMock())
     monkeypatch.setattr(lifecycle, "init_modules", AsyncMock())
 
+    # 启动期的引擎预热与额度核算也要打桩。不打的话这些用例会走真实的引擎创建，在测试
+    # 进程里留下一个从此无人释放的全局异步引擎——NullPool 不持连接、无害，但用例就不再
+    # 自洽了，而且额度核算还会去连库。
+    for name in ("get_engine", "get_global_async_engine", "check_connection_budget"):
+        monkeypatch.setattr(lifecycle, name, MagicMock())
+
     system_chain = MagicMock()
     monkeypatch.setattr(lifecycle, "SystemChain", MagicMock(return_value=system_chain))
     monkeypatch.setattr(lifecycle, "init_extra", AsyncMock())
@@ -104,6 +110,104 @@ def test_lifespan_continues_after_each_shutdown_owner_failure(
     lifecycle.init_modules.assert_awaited_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
+
+
+def test_lifespan_creates_global_async_engine_at_startup(monkeypatch):
+    """启动期必须把全局异步引擎建出来一次，让异步侧恢复 fail-fast
+
+    引擎改为惰性创建后，启动路径只碰得到同步引擎（init_db 建表），异步驱动没装、
+    异步 URL 拼错这类问题会一路推迟到第一个异步查询——用户拿到 500、调度任务静默死掉，
+    而不是启动就崩。create_async_engine 只校验 URL 与驱动导入、不建立连接，代价可以忽略。
+    """
+    _patch_lifespan(monkeypatch)
+    created = []
+    monkeypatch.setattr(lifecycle, "get_global_async_engine",
+                        lambda: created.append(1) or MagicMock())
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert created, "启动期未创建全局异步引擎，异步侧的驱动/URL 错误会推迟到运行期才暴露"
+
+
+def test_lifespan_creates_sync_engine_at_startup(monkeypatch):
+    """启动期也必须把同步引擎建出来一次，把首次创建钉在单线程期
+
+    「init_db() 会在启动期单线程预热同步引擎」这个前提只对 run_application() 入口成立。
+    外部 supervisor 直挂 ASGI app（`gunicorn -k uvicorn.workers.UvicornWorker
+    app.factory:app`、`uvicorn app.main:app`）时 run_application() 不执行、init_db() 也就
+    不执行，同步引擎的首次创建退到运行期——而那时 init_scheduler() / init_monitor() 已经
+    放出上百个线程，引擎构建里那段 PRAGMA journal_mode 会让它们一起堵在创建锁上。
+    """
+    _patch_lifespan(monkeypatch)
+    created = []
+    monkeypatch.setattr(lifecycle, "get_engine",
+                        lambda: created.append(1) or MagicMock())
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert created, "启动期未预热同步引擎，首次创建会退到已经放出上百个线程的运行期"
+
+
+def test_lifespan_warms_engines_before_any_initializer(monkeypatch):
+    """两个引擎的预热必须排在 init_routers / init_modules 之前
+
+    排在后面时，预热失败会把已经初始化好的模块晾在那里：lifespan 的 try/finally 关停块
+    要到 yield 处才开始，在它之前抛异常，stop_modules() 根本没有机会执行。
+    """
+    _patch_lifespan(monkeypatch)
+    calls = []
+    monkeypatch.setattr(lifecycle, "get_engine", lambda: calls.append("sync_engine"))
+    monkeypatch.setattr(lifecycle, "get_global_async_engine",
+                        lambda: calls.append("async_engine"))
+    monkeypatch.setattr(lifecycle, "init_routers", lambda _app: calls.append("init_routers"))
+    async def _init_modules():
+        """init_modules 在 v3 是协程，桩也必须可 await。"""
+        calls.append("init_modules")
+
+    monkeypatch.setattr(lifecycle, "init_modules", _init_modules)
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    # 不钉同步/异步两者之间的先后：那一层顺序无所谓，要紧的是它们都在 init_* 之前
+    assert set(calls[:2]) == {"sync_engine", "async_engine"}, f"引擎预热没有排在最前面：{calls}"
+    assert calls[2:] == ["init_routers", "init_modules"], f"初始化顺序被打乱：{calls}"
+
+
+def test_lifespan_fails_fast_when_async_engine_cannot_be_built(monkeypatch):
+    """异步引擎建不起来必须让启动直接失败，不能吞掉继续跑
+
+    吞掉等于把 fail-fast 又还回去了：进程起来了、健康检查是绿的，只有异步请求在报错。
+    """
+    _patch_lifespan(monkeypatch)
+
+    def _boom():
+        """模拟异步驱动缺失。"""
+        raise RuntimeError("no async driver")
+
+    monkeypatch.setattr(lifecycle, "get_global_async_engine", _boom)
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    with pytest.raises(RuntimeError, match="no async driver"):
+        asyncio.run(run_lifespan())
+
+    # 失败要发生在任何东西被初始化之前，否则模块起来了却没人关：关停块在 yield 处才开始
+    lifecycle.init_routers.assert_not_called()
+    lifecycle.init_modules.assert_not_called()
 
 
 def test_uvicorn_signal_publishes_stop_before_server_exit(monkeypatch):

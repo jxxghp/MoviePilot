@@ -6,7 +6,9 @@ from sqlalchemy.exc import OperationalError
 
 # 诊断实现已迁至 app.db.diagnostics；app.db 只做 re-export，私有符号不在其上
 import app.db.diagnostics as db_module
-from app.db.engine import AsyncEngine
+# 用 getter 而不是旧名字 AsyncEngine：后者只为仓库外插件保留，模块级导入它会在 pytest
+# 的收集期就把全局异步引擎建出来
+from app.db.engine import get_global_async_engine
 
 
 class _SqliteError(Exception):
@@ -89,7 +91,7 @@ def test_async_database_engine_logs_driver_error_metadata(monkeypatch) -> None:
     monkeypatch.setattr("app.db.diagnostics.logger.error", messages.append)
 
     async def query_missing_table() -> None:
-        async with AsyncEngine.connect() as connection:
+        async with get_global_async_engine().connect() as connection:
             await connection.execute(text("SELECT * FROM async_missing_table"))
 
     with pytest.raises(OperationalError):

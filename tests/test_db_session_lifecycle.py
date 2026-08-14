@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.runtime.config import global_vars, settings
+from app.db import engine as engine_module
 from app.db import session as session_module
 
 
@@ -101,8 +102,8 @@ def test_close_database_disposes_pooled_engines(monkeypatch):
     pooled_a = MagicMock(dispose=AsyncMock())
     pooled_b = MagicMock(dispose=AsyncMock())
 
-    monkeypatch.setattr(session_module, "Engine", sync_engine)
-    monkeypatch.setattr(session_module, "AsyncEngine", async_engine)
+    monkeypatch.setattr(engine_module, "_sync_engine", sync_engine)
+    monkeypatch.setattr(engine_module, "_async_engine", async_engine)
     session_module._pooled_async_engines.clear()
     session_module._pooled_async_engines.update({1: pooled_a, 2: pooled_b})
 
@@ -115,6 +116,29 @@ def test_close_database_disposes_pooled_engines(monkeypatch):
     assert not session_module._pooled_async_engines, "释放后未清空缓存"
 
 
+def test_close_database_does_not_create_engines_to_dispose_them(monkeypatch):
+    """
+    两个引擎槽都是空的时候，close_database 不得为了 dispose 而把引擎创建出来。
+
+    这是惰性化的直接后果，也是最容易在重构中丢掉的一条：写成 `Engine.dispose()`
+    同样能跑通上面那几个用例——它们都把 MagicMock 塞进了引擎槽，`is not None` 恒真，
+    于是「先创建再释放」和「有才释放」在测试里完全等价。因此必须单独用空槽压一次：
+    否则一个从未用过数据库的进程会在关停时凭空连一次库，只为了随后释放它。
+    """
+    created = []
+    monkeypatch.setattr(engine_module, "_sync_engine", None)
+    monkeypatch.setattr(engine_module, "_async_engine", None)
+    monkeypatch.setattr(engine_module, "_get_database_engine",
+                        lambda **kw: created.append(kw) or MagicMock(dispose=AsyncMock()))
+    session_module._pooled_async_engines.clear()
+
+    asyncio.run(session_module.close_database())
+
+    assert created == [], f"close_database 为了 dispose 创建了引擎：{created}"
+    assert engine_module._sync_engine is None, "同步引擎槽被 close_database 填上了"
+    assert engine_module._async_engine is None, "异步引擎槽被 close_database 填上了"
+
+
 def test_close_database_continues_after_single_engine_failure(monkeypatch):
     """
     单个引擎释放失败不能中断其余引擎的释放，否则一个坏连接会让其他连接全部泄漏。
@@ -122,8 +146,8 @@ def test_close_database_continues_after_single_engine_failure(monkeypatch):
     failing = MagicMock(dispose=AsyncMock(side_effect=RuntimeError("connection reset")))
     healthy = MagicMock(dispose=AsyncMock())
 
-    monkeypatch.setattr(session_module, "Engine", MagicMock())
-    monkeypatch.setattr(session_module, "AsyncEngine", MagicMock(dispose=AsyncMock()))
+    monkeypatch.setattr(engine_module, "_sync_engine", MagicMock())
+    monkeypatch.setattr(engine_module, "_async_engine", MagicMock(dispose=AsyncMock()))
     session_module._pooled_async_engines.clear()
     session_module._pooled_async_engines.update({1: failing, 2: healthy})
 
@@ -132,17 +156,37 @@ def test_close_database_continues_after_single_engine_failure(monkeypatch):
     healthy.dispose.assert_awaited_once()
 
 
-def test_close_database_tolerates_global_engine_failure(monkeypatch):
+@pytest.mark.parametrize("failing", ["sync", "async"])
+def test_close_database_releases_remaining_engines_after_global_failure(monkeypatch, failing):
     """
-    全局引擎释放失败不能抛出——close_database 在关闭流程末尾调用，
-    抛异常会掩盖其他关闭步骤的问题。
-    """
-    monkeypatch.setattr(session_module, "Engine",
-                        MagicMock(dispose=MagicMock(side_effect=RuntimeError("boom"))))
-    monkeypatch.setattr(session_module, "AsyncEngine", MagicMock(dispose=AsyncMock()))
-    session_module._pooled_async_engines.clear()
+    全局引擎释放失败：既不能抛出，也不能连累后面的引擎。
 
-    asyncio.run(session_module.close_database())  # 不抛异常即通过
+    「不抛」是因为 close_database 在关闭流程末尾调用，抛异常会掩盖其他关闭步骤的问题。
+    但只断言「不抛」是不够的——在外面套一个大 try 同样不抛，代价是同步引擎一出错，
+    异步引擎和全部池化引擎就都跳过了释放：一条坏连接拖着其余连接一起泄漏，
+    而这恰恰是兄弟用例 test_close_database_continues_after_single_engine_failure
+    的 docstring 已经声称过的不变量。所以这里把它真正钉住：坏的那个失败，其余照常释放。
+    """
+    sync_engine = MagicMock()
+    async_engine = MagicMock(dispose=AsyncMock())
+    pooled = MagicMock(dispose=AsyncMock())
+    if failing == "sync":
+        sync_engine.dispose.side_effect = RuntimeError("boom")
+    else:
+        async_engine.dispose.side_effect = RuntimeError("boom")
+
+    monkeypatch.setattr(engine_module, "_sync_engine", sync_engine)
+    monkeypatch.setattr(engine_module, "_async_engine", async_engine)
+    session_module._pooled_async_engines.clear()
+    session_module._pooled_async_engines.update({1: pooled})
+
+    asyncio.run(session_module.close_database())  # 不抛异常
+
+    # 出错的那个也得真被尝试过，排在它后面的一个都不能少
+    sync_engine.dispose.assert_called_once()
+    async_engine.dispose.assert_awaited_once()
+    pooled.dispose.assert_awaited_once()
+    assert not session_module._pooled_async_engines, "释放后未清空缓存"
 
 
 def test_pooled_engine_is_reused_within_same_loop(monkeypatch):

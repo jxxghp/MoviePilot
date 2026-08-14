@@ -1,11 +1,11 @@
 """
 数据库引擎的构建与连接额度核算。
 
-同步引擎在导入期创建一次；异步引擎分两类——按事件循环池化的引擎由 session 模块
-按需创建，未池化的全局引擎在此创建。两者的构建参数在这里收口。
+同步引擎与未池化的全局异步引擎都在此按需创建（首次访问时，不在 import 期）；
+按事件循环池化的异步引擎由 session 模块创建。三者的构建参数在这里收口。
 """
-import asyncio
-from typing import Dict, cast
+import threading
+from typing import Any, Dict, Optional, cast
 
 from sqlalchemy import NullPool, QueuePool, create_engine, text
 from sqlalchemy.engine import Engine as SyncEngine
@@ -89,7 +89,11 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         engine = create_engine(**_db_kwargs)
         _register_database_error_logging(engine)
 
-        # 设置WAL模式
+        # 设置WAL模式。
+        # 这是引擎构建里唯一的阻塞 I/O，且发生在 get_engine() 的创建锁内——异步侧因此
+        # 移除了对称的那一段（见下方 else 分支）。同步侧保留是因为 journal_mode 必须有人
+        # 设置一次，而同步引擎的首次创建由 init_db() 在启动期单线程完成，不存在一群线程
+        # 等在锁上的场面；即便退化到运行期首次访问，阻塞的也只是本地 SQLite 的一次 PRAGMA。
         _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
         with engine.connect() as connection:
             current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
@@ -110,30 +114,11 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         async_engine = create_async_engine(**_db_kwargs)
         _register_database_error_logging(async_engine.sync_engine)
 
-        # 设置WAL模式
-        _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
-
-        async def set_async_wal_mode():
-            """
-            设置异步引擎的WAL模式
-            """
-            async with async_engine.connect() as _connection:
-                result = await _connection.execute(text(f"PRAGMA journal_mode={_journal_mode};"))
-                _current_mode = result.scalar()
-                print(f"Async SQLite database journal mode set to: {_current_mode}")
-
-        # journal_mode 是数据库文件级的持久属性，同步引擎在导入期已经设置过。
-        # 池化引擎是在运行中的事件循环里按需创建的，此处的 asyncio.run() 必然抛
-        # "cannot be called from a running event loop"；而且重复设置本身也是冗余的，
-        # 因此仅对导入期创建的全局引擎执行
-        if not pooled:
-            try:
-                asyncio.run(set_async_wal_mode())
-            except Exception as e:
-                print(f"Failed to set async SQLite WAL mode: {e}")
-        else:
-            set_async_wal_mode().close()
-
+        # 异步侧不再设置 WAL。journal_mode 是数据库文件级的持久属性，同步引擎已经设置过，
+        # 这里重复设置本就是冗余的；而它原本用 asyncio.run() 完成，是异步引擎构建里唯一的
+        # 阻塞 I/O。引擎改为惰性创建之后，构建可能发生在任意线程——包括在运行中的事件循环
+        # 内部（async_session_scope 首次取全局引擎时），那里调 asyncio.run() 会直接抛
+        # RuntimeError；即便不抛，它也是在持有创建锁的状态下阻塞，会把所有等锁的线程拖死。
         return async_engine
 
 
@@ -196,13 +181,89 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
         return async_engine
 
 
-# 同步数据库引擎
-# 工厂按 is_async 返回两类引擎，静态类型只能推出联合类型；这里断言各自的实际类型，
-# 否则 Base.metadata.create_all(bind=Engine) 之类只收同步引擎的调用处会一路报错
-Engine: SyncEngine = cast(SyncEngine, _get_database_engine(is_async=False))
+# 引擎按需创建，不在 import 期建立连接。
+#
+# 此前这两个是模块级常量，`import app.db` 就会按 settings 连库、建出 user.db、SQLite 还要
+# 去设一次 WAL——仅仅把这个包 import 进来（工具脚本、子进程探测、文档生成）就有了副作用。
+#
+# 注意惰性化并没有让「隔离 CONFIG_DIR 必须早于 import」这条约束消失：settings 是在
+# import app.runtime.config 时构造的，那一刻 CONFIG_DIR 就定型了，晚建的引擎连的仍是真实库。
+# 它消掉的是「import 本身即产生副作用」，以及由此带来的「测试想换库就必须重新起进程」。
+#
+# 惰性化引入的唯一新风险是首次访问的并发：这个项目有上百个调度线程，创建出多个引擎
+# 意味着各自持一份连接池，实际连接数是额度核算的数倍。因此用双重检查加锁收口。
+_sync_engine_lock = threading.RLock()
+_async_engine_lock = threading.RLock()
+_sync_engine: Optional[SyncEngine] = None
+_async_engine: Optional[SaAsyncEngine] = None
 
-# 异步数据库引擎（未池化的全局引擎，供非常驻事件循环回退使用）
-AsyncEngine: SaAsyncEngine = cast(SaAsyncEngine, _get_database_engine(is_async=True))
+
+def get_engine() -> SyncEngine:
+    """
+    获取同步数据库引擎，首次调用时创建。
+    :return: 同步引擎
+    """
+    global _sync_engine
+    if _sync_engine is None:
+        with _sync_engine_lock:
+            # 锁内复查：等锁期间可能已被其它线程创建
+            if _sync_engine is None:
+                _sync_engine = cast(SyncEngine, _get_database_engine(is_async=False))
+    return _sync_engine
+
+
+def get_global_async_engine() -> SaAsyncEngine:
+    """
+    获取未池化的全局异步引擎，供非常驻事件循环回退使用，首次调用时创建。
+    :return: 异步引擎
+    """
+    global _async_engine
+    if _async_engine is None:
+        with _async_engine_lock:
+            if _async_engine is None:
+                _async_engine = cast(SaAsyncEngine, _get_database_engine(is_async=True))
+    return _async_engine
+
+
+def peek_sync_engine() -> Optional[SyncEngine]:
+    """
+    取已创建的同步引擎，未创建时返回 None——不触发创建。
+
+    关停路径（close_database、测试引导的 atexit）需要「有就释放、没有就算了」：
+    走 get_engine() 会为了 dispose 而先连一次库，在从未用过数据库的进程里尤其荒谬。
+    取锁而不是裸读槽位：另一个线程可能正卡在创建里，裸读会看到 None、把那个引擎漏掉，
+    取锁则会等它建完。注意这只是把竞态窗口**缩小**，并没有消除——在 peek 返回之后才
+    开始创建的引擎照样漏。真要杜绝得让关停之后的创建直接失败，那是另一层面的改动。
+    :return: 同步引擎或 None
+    """
+    with _sync_engine_lock:
+        return _sync_engine
+
+
+def peek_async_engine() -> Optional[SaAsyncEngine]:
+    """
+    取已创建的全局异步引擎，未创建时返回 None——不触发创建。
+    :return: 异步引擎或 None
+    """
+    with _async_engine_lock:
+        return _async_engine
+
+
+def __getattr__(name: str) -> Any:
+    """
+    兼容 Engine / AsyncEngine 这两个旧名字：属性访问发生在运行期，不破坏惰性。
+
+    仓库外的插件按这两个名字取引擎，不能直接删。注意 `from app.db.engine import Engine`
+    这种写法仍会在 import 期触发创建——那是调用方自己选择的时机，与本模块无关。
+    :param name: 属性名
+    :return: 对应的引擎
+    """
+    if name == "Engine":
+        return get_engine()
+    if name == "AsyncEngine":
+        return get_global_async_engine()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def _async_pool_enabled() -> bool:
     """
@@ -263,7 +324,7 @@ def check_connection_budget() -> bool:
                     f"，worker {budget['workers']})")
         return True
     try:
-        with Engine.connect() as conn:  # noqa
+        with get_engine().connect() as conn:
             max_conn = int(conn.execute(text("SHOW max_connections")).scalar() or 0)
             reserved = int(
                 conn.execute(text("SHOW superuser_reserved_connections")).scalar() or 0

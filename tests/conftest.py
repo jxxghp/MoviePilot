@@ -7,9 +7,10 @@ import sys
 
 import pytest
 
-# 必须早于首个 import app.db（其在 import 期即按 CONFIG_PATH 连库）：prepare_backend 内部
-# 先隔离 CONFIG_DIR、补 app.application.site.sites 垫片，再建表。app/testing 仅依赖标准库、import 不连库，
-# 故此处先 import 再调用是安全的。
+# 必须早于首个牵入 app.runtime.config 的 import（app.db / app.chain.* 都会牵入）：引擎本身已惰性，
+# import app.db 不再连库，但 settings 在 import 期就把 CONFIG_DIR 读进字段并建好配置目录，之后
+# 改环境变量已经晚了。prepare_backend 内部先隔离 CONFIG_DIR、补 app.application.site.sites 垫片，
+# 再建表。app/testing 仅依赖标准库、import 不触发 app.*，故此处先 import 再调用是安全的。
 from app.testing.bootstrap import prepare_backend
 
 prepare_backend()
