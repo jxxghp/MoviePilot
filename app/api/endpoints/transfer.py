@@ -29,6 +29,26 @@ from app.schemas import (
 router = ResponseAPIRouter()
 
 
+@router.post(
+    "/route/preview",
+    summary="预览分类与目录路由",
+    response_model=schemas.Response[schemas.TransferRoutePreviewResponse],
+)
+def preview_transfer_route(
+    request: schemas.TransferRoutePreviewRequest,
+    _: User = Depends(get_current_active_manage_user),
+) -> Any:
+    """
+    使用已识别媒体快照预览分类和目录候选，不执行媒体识别或文件整理。
+
+    :param request: 路由预览请求
+    :param _: 用户鉴权
+    :return: 路由预览结果
+    """
+    result = TransferChain.preview_route(request)
+    return schemas.Response(success=True, data=result.model_dump())
+
+
 @router.get(
     "/name",
     summary="查询整理后的名称",

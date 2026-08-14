@@ -7,7 +7,13 @@ from ruamel.yaml import CommentedMap
 
 from app.platform.config import settings
 from app.platform.log import logger
-from app.schemas.category import CategoryConfig
+from app.schemas.category import (
+    CategoryConditionDecision,
+    CategoryConfig,
+    CategoryRouteDecision,
+    CategoryRuleDecision,
+    RouteDiagnosticWarning,
+)
 from app.foundation.singleton import WeakSingleton
 
 HEADER_COMMENTS = """####### 配置说明 #######
@@ -153,73 +159,163 @@ class CategoryHelper(metaclass=WeakSingleton):
         :param tmdb_info: TMDB信息
         :return: 分类的名称
         """
-        if not tmdb_info:
-            return ""
-        if not categorys:
-            return ""
+        return CategoryHelper.evaluate_category(categorys, tmdb_info).automatic_category
 
-        for key, item in categorys.items():
-            if not item:
-                return key
-            match_flag = True
-            for attr, value in item.items():
-                if not value:
-                    continue
-                if attr == "release_year":
-                    # 发行年份
-                    info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
-                    if info_value:
-                        info_value = str(info_value)[:4]
-                else:
-                    info_value = tmdb_info.get(attr)
-                if not info_value:
-                    match_flag = False
-                    continue
-                elif attr == "production_countries":
-                    # 制片国家
-                    info_values = [str(val.get("iso_3166_1")).upper() for val in info_value]  # type: ignore
-                else:
-                    if isinstance(info_value, list):
-                        info_values = [str(val).upper() for val in info_value]
-                    else:
-                        info_values = [str(info_value).upper()]
+    @staticmethod
+    def evaluate_category(
+            categorys: Union[dict, CommentedMap],
+            tmdb_info: dict,
+    ) -> CategoryRouteDecision:
+        """
+        求值全部分类规则并保留第一条命中的现有语义。
 
-                values = []
-                invert_values = []
+        :param categorys: 分类配置
+        :param tmdb_info: 已获取的 TMDB 元数据快照
+        :return: 分类规则决策与非阻断警告
+        """
+        if not tmdb_info or not categorys:
+            return CategoryRouteDecision()
 
-                # 如果有 "," 进行分割
-                values = [str(val) for val in value.split(",") if val]
+        rule_decisions = []
+        fallback_indices = []
+        for index, (category, raw_rule) in enumerate(categorys.items()):
+            if hasattr(raw_rule, "model_dump"):
+                rule = raw_rule.model_dump(exclude_none=True)
+            else:
+                rule = raw_rule
+            if not rule:
+                fallback_indices.append(index)
+                rule_decisions.append(
+                    CategoryRuleDecision(
+                        index=index,
+                        category=category,
+                        matched=True,
+                    )
+                )
+                continue
 
-                expanded_values = []
-                for v in values:
-                    if "-" not in v:
-                        expanded_values.append(v)
-                        continue
+            conditions = [
+                CategoryHelper._evaluate_condition(attr, value, tmdb_info)
+                for attr, value in rule.items()
+                if value
+            ]
+            rule_decisions.append(
+                CategoryRuleDecision(
+                    index=index,
+                    category=category,
+                    matched=all(condition.matched for condition in conditions),
+                    conditions=conditions,
+                )
+            )
 
-                    # - 表示范围
-                    value_begin, value_end = v.split("-", 1)
+        matched_indices = [rule.index for rule in rule_decisions if rule.matched]
+        selected_index = matched_indices[0] if matched_indices else None
+        if selected_index is not None:
+            rule_decisions[selected_index].selected = True
+            for rule in rule_decisions[selected_index + 1:]:
+                rule.reachable = False
 
-                    prefix = ""
-                    if value_begin.startswith('!'):
-                        prefix = '!'
-                        value_begin = value_begin[1:]
+        warnings = []
+        invalid_fallbacks = [
+            index for index in fallback_indices if index < len(rule_decisions) - 1
+        ]
+        if invalid_fallbacks:
+            warnings.append(
+                RouteDiagnosticWarning(
+                    code="unconditional_category_not_last",
+                    message="无条件兜底分类不是最后一项，后续规则在实际分类中不可达",
+                    related_indices=invalid_fallbacks,
+                )
+            )
+        if len(matched_indices) > 1:
+            warnings.append(
+                RouteDiagnosticWarning(
+                    code="multiple_category_matches",
+                    message="当前媒体同时匹配多条分类规则，实际分类采用第一条",
+                    related_indices=matched_indices,
+                )
+            )
 
-                    if value_begin.isdigit() and value_end.isdigit():
-                        # 数字范围
-                        expanded_values.extend(f"{prefix}{val}" for val in range(int(value_begin), int(value_end) + 1))
-                    else:
-                        # 字符串范围
-                        expanded_values.extend([f"{prefix}{value_begin}", f"{prefix}{value_end}"])
+        selected_category = (
+            rule_decisions[selected_index].category
+            if selected_index is not None
+            else ""
+        )
+        return CategoryRouteDecision(
+            automatic_category=selected_category,
+            selected_category=selected_category,
+            source="automatic" if selected_category else "none",
+            rules=rule_decisions,
+            warnings=warnings,
+        )
 
-                values = list(map(str.upper, expanded_values))
+    @staticmethod
+    def _evaluate_condition(
+            attr: str,
+            value: str,
+            tmdb_info: dict,
+    ) -> CategoryConditionDecision:
+        """求值单个分类条件并返回可展示原因。"""
+        if attr == "release_year":
+            info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
+            if info_value:
+                info_value = str(info_value)[:4]
+        else:
+            info_value = tmdb_info.get(attr)
+        if not info_value:
+            return CategoryConditionDecision(
+                field=attr,
+                expected=value,
+                actual=info_value,
+                matched=False,
+                message="元数据缺少该字段",
+            )
 
-                invert_values = [val[1:] for val in values if val.startswith('!')]
-                values = [val for val in values if not val.startswith('!')]
+        if attr == "production_countries":
+            info_values = [
+                str(item.get("iso_3166_1")).upper()
+                for item in info_value
+            ]
+        elif isinstance(info_value, list):
+            info_values = [str(item).upper() for item in info_value]
+        else:
+            info_values = [str(info_value).upper()]
 
-                if values and not set(values).intersection(set(info_values)):
-                    match_flag = False
-                if invert_values and set(invert_values).intersection(set(info_values)):
-                    match_flag = False
-            if match_flag:
-                return key
-        return ""
+        values = [item for item in str(value).split(",") if item]
+        expanded_values = []
+        for expected in values:
+            if "-" not in expected:
+                expanded_values.append(expected)
+                continue
+            value_begin, value_end = expected.split("-", 1)
+            prefix = ""
+            if value_begin.startswith("!"):
+                prefix = "!"
+                value_begin = value_begin[1:]
+            if value_begin.isdigit() and value_end.isdigit():
+                expanded_values.extend(
+                    f"{prefix}{item}"
+                    for item in range(int(value_begin), int(value_end) + 1)
+                )
+            else:
+                expanded_values.extend([
+                    f"{prefix}{value_begin}",
+                    f"{prefix}{value_end}",
+                ])
+
+        normalized_values = [item.upper() for item in expanded_values]
+        inverted_values = [item[1:] for item in normalized_values if item.startswith("!")]
+        included_values = [item for item in normalized_values if not item.startswith("!")]
+        included_match = (
+            not included_values
+            or bool(set(included_values).intersection(info_values))
+        )
+        excluded_match = bool(set(inverted_values).intersection(info_values))
+        matched = included_match and not excluded_match
+        return CategoryConditionDecision(
+            field=attr,
+            expected=value,
+            actual=info_value,
+            matched=matched,
+            message="条件匹配" if matched else "元数据值不满足条件",
+        )

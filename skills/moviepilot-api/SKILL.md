@@ -355,6 +355,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/transfer/queue` | Transfer queue |
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
 | POST | `/api/v1/transfer/manual/target-path` | Match the manual transfer target from source path and directory configuration. Body: ManualTransferItem JSON; this endpoint does not recognize media |
+| POST | `/api/v1/transfer/route/preview` | Preview category and directory routing from an already recognized media snapshot. Optional request drafts override current category/directory config; returns sequential and specificity comparisons without external recognition or file operations |
 | POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
 | POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |

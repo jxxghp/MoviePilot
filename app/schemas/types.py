@@ -325,6 +325,8 @@ class SystemConfigKey(Enum):
     NotificationSwitchs = "NotificationSwitchs"
     # 目录配置
     Directories = "Directories"
+    # 目录匹配模式
+    DirectoryMatchMode = "DirectoryMatchMode"
     # 挂载型本地盘是否删除空目录
     MountedLocalDiskDeleteEmptyDirs = "MountedLocalDiskDeleteEmptyDirs"
     # 存储配置
@@ -395,6 +397,13 @@ class SystemConfigKey(Enum):
     UgreenSessionCache = "UgreenSessionCache"
     # 共享媒体识别成功次数
     MediaRecognizeShareCount = "MediaRecognizeShareCount"
+
+
+class DirectoryMatchMode(str, Enum):
+    """目录候选的选择模式。"""
+
+    SEQUENTIAL = "sequential"
+    SPECIFICITY = "specificity"
 
 
 # 处理进度Key字典

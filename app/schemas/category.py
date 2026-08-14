@@ -1,6 +1,6 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 class CategoryRule(BaseModel):
@@ -33,3 +33,43 @@ class CategoryConfig(BaseModel):
 
 class MediaCategoryMap(RootModel[Dict[str, list[str]]]):
     """媒体类型与自动分类名称列表的映射。"""
+
+
+class RouteDiagnosticWarning(BaseModel):
+    """不阻断路由决策的结构化警告。"""
+
+    code: str
+    message: str
+    related_indices: list[int] = Field(default_factory=list)
+
+
+class CategoryConditionDecision(BaseModel):
+    """单个分类条件的求值结果。"""
+
+    field: str
+    expected: Any = None
+    actual: Any = None
+    matched: bool = False
+    message: str = ""
+
+
+class CategoryRuleDecision(BaseModel):
+    """单条分类规则的求值结果。"""
+
+    index: int
+    category: str
+    matched: bool = False
+    selected: bool = False
+    reachable: bool = True
+    conditions: list[CategoryConditionDecision] = Field(default_factory=list)
+
+
+class CategoryRouteDecision(BaseModel):
+    """分类规则求值与最终类别来源。"""
+
+    automatic_category: str = ""
+    provided_category: str = ""
+    selected_category: str = ""
+    source: Literal["automatic", "provided", "none"] = "none"
+    rules: list[CategoryRuleDecision] = Field(default_factory=list)
+    warnings: list[RouteDiagnosticWarning] = Field(default_factory=list)

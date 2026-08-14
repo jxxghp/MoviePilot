@@ -1,10 +1,12 @@
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
-from app.schemas.types import MediaSource, MusicTargetEntityType
+from app.schemas.category import CategoryConfig, CategoryRouteDecision, RouteDiagnosticWarning
+from app.schemas.types import DirectoryMatchMode, MediaSource, MusicTargetEntityType
 
 from app.schemas.context import MetaInfo, MediaInfo
 from app.schemas.music import MusicInfo, MusicMeta
@@ -116,6 +118,72 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
         dicts["mediainfo"] = self.mediainfo.model_dump() if self.mediainfo else None
         dicts["target_directory"] = self.target_directory.model_dump() if self.target_directory else None
         return dicts
+
+
+class RouteDiagnosticReason(BaseModel):
+    """路由候选或规则的结构化诊断原因。"""
+
+    code: str
+    message: str
+
+
+class DirectoryRouteCandidate(BaseModel):
+    """单条目录配置的候选求值结果。"""
+
+    index: int
+    directory: TransferDirectoryConf
+    eligible: bool = False
+    selected: bool = False
+    match_level: Literal["none", "wildcard", "media_type", "category"] = "none"
+    same_source: Optional[bool] = None
+    reasons: list[RouteDiagnosticReason] = Field(default_factory=list)
+
+
+class DirectoryRouteDecision(BaseModel):
+    """给定目录匹配模式下的完整路由决策。"""
+
+    mode: DirectoryMatchMode
+    selected_index: Optional[int] = None
+    selected_directory: Optional[TransferDirectoryConf] = None
+    candidates: list[DirectoryRouteCandidate] = Field(default_factory=list)
+    warnings: list[RouteDiagnosticWarning] = Field(default_factory=list)
+
+
+class TransferRouteMediaSnapshot(BaseModel):
+    """路由预览使用的已识别媒体快照。"""
+
+    type: MediaType
+    title: Optional[str] = None
+    year: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    tmdb_id: Optional[int] = None
+    category: Optional[str] = None
+
+
+class TransferRoutePreviewRequest(BaseModel):
+    """分类与目录路由预览请求。"""
+
+    media: TransferRouteMediaSnapshot
+    metadata: dict[str, JsonData] = Field(default_factory=dict)
+    category_config: Optional[CategoryConfig] = None
+    directories: Optional[list[TransferDirectoryConf]] = None
+    match_mode: Optional[DirectoryMatchMode] = None
+    include_unsorted: bool = False
+    storage: Optional[str] = None
+    src_path: Optional[str] = None
+    target_storage: Optional[str] = None
+    dest_path: Optional[str] = None
+
+
+class TransferRoutePreviewResponse(BaseModel):
+    """分类与目录路由预览结果。"""
+
+    media: TransferRouteMediaSnapshot
+    metadata: dict[str, JsonData] = Field(default_factory=dict)
+    category: CategoryRouteDecision
+    route: DirectoryRouteDecision
+    comparisons: list[DirectoryRouteDecision] = Field(default_factory=list)
 
 
 class TransferJobTask(BaseModel):
