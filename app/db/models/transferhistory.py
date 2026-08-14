@@ -95,7 +95,7 @@ class TransferHistory(Base):
     @classmethod
     @db_query
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
-                      status: bool = None, wildcard: bool = False):
+                      status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -122,7 +122,7 @@ class TransferHistory(Base):
     @classmethod
     @async_db_query
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
-                                  status: bool = None, wildcard: bool = False):
+                                  status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -149,7 +149,7 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: bool = None):
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None):
         statement = select(cls)
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -164,7 +164,7 @@ class TransferHistory(Base):
     @classmethod
     @async_db_query
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
-                                 status: bool = None):
+                                 status: Optional[bool] = None):
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
@@ -442,7 +442,7 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def count(cls, db: Session, status: bool = None):
+    def count(cls, db: Session, status: Optional[bool] = None):
         statement = select(func.count(cls.id))
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -450,7 +450,7 @@ class TransferHistory(Base):
 
     @classmethod
     @async_db_query
-    async def async_count(cls, db: AsyncSession, status: bool = None):
+    async def async_count(cls, db: AsyncSession, status: Optional[bool] = None):
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
@@ -463,7 +463,7 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def count_by_title(cls, db: Session, title: str, status: bool = None, wildcard: bool = False):
+    def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -483,7 +483,7 @@ class TransferHistory(Base):
 
     @classmethod
     @async_db_query
-    async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None, wildcard: bool = False):
+    async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),

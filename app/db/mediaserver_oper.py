@@ -12,7 +12,7 @@ class MediaServerOper(DbOper):
     媒体服务器数据管理
     """
 
-    def __init__(self, db: Session = None):
+    def __init__(self, db: Optional[Session] = None):
         super().__init__(db)
 
     @staticmethod

@@ -14,20 +14,20 @@ class MessageOper(DbOper):
     消息数据管理
     """
 
-    def __init__(self, db: Union[Session, AsyncSession] = None):
+    def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
         super().__init__(db)
 
     def add(self,
-            channel: MessageChannel = None,
+            channel: Optional[MessageChannel] = None,
             source: Optional[str] = None,
-            mtype: NotificationType = None,
+            mtype: Optional[NotificationType] = None,
             title: Optional[str] = None,
             text: Optional[str] = None,
             image: Optional[str] = None,
             link: Optional[str] = None,
             userid: Optional[str] = None,
             action: Optional[int] = 1,
-            note: Union[list, dict] = None,
+            note: Optional[Union[list, dict]] = None,
             **kwargs) -> dict:
         """
         新增消息
@@ -64,16 +64,16 @@ class MessageOper(DbOper):
         return Message(**kwargs).create_and_to_dict(self._db)
 
     async def async_add(self,
-                        channel: MessageChannel = None,
+                        channel: Optional[MessageChannel] = None,
                         source: Optional[str] = None,
-                        mtype: NotificationType = None,
+                        mtype: Optional[NotificationType] = None,
                         title: Optional[str] = None,
                         text: Optional[str] = None,
                         image: Optional[str] = None,
                         link: Optional[str] = None,
                         userid: Optional[str] = None,
                         action: Optional[int] = 1,
-                        note: Union[list, dict] = None,
+                        note: Optional[Union[list, dict]] = None,
                         **kwargs) -> Message:
         """
         异步新增消息

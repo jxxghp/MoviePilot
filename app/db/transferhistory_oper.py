@@ -301,8 +301,8 @@ class TransferHistoryOper(DbOper):
             files=transferinfo.file_list
         )
 
-    def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
-                 transferinfo: TransferInfo = None, downloader: Optional[str] = None, download_hash: Optional[str] = None):
+    def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: Optional[MediaInfo] = None,
+                 transferinfo: Optional[TransferInfo] = None, downloader: Optional[str] = None, download_hash: Optional[str] = None):
         """
         新增转移失败历史记录
         """
