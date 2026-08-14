@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.core.context import MediaInfo
-from app.helper.directory import DirectoryHelper
+from app.domain.context import MediaInfo
+from app.services.directory import DirectoryHelper
 from app.schemas import TransferDirectoryConf
 from app.schemas.types import DirectoryMatchMode, MediaType, SystemConfigKey
 
@@ -43,7 +43,7 @@ def test_sequential_mode_preserves_first_eligible_directory(monkeypatch) -> None
     ]
     monkeypatch.setattr(helper, "get_dirs", lambda: directories)
     monkeypatch.setattr(
-        "app.helper.directory.SystemConfigOper",
+        "app.services.directory.SystemConfigOper",
         lambda: type("Config", (), {"get": lambda _self, key: None})(),
     )
 
@@ -194,7 +194,7 @@ def test_get_dir_uses_persisted_specificity_mode(monkeypatch) -> None:
             return self.value
 
     config = Config()
-    monkeypatch.setattr("app.helper.directory.SystemConfigOper", lambda: config)
+    monkeypatch.setattr("app.services.directory.SystemConfigOper", lambda: config)
 
     assert helper.get_dir(media=_variety_media()).name == "综艺"
     config.value = "invalid"

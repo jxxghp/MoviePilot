@@ -143,11 +143,13 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询媒体详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份 |
 | POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）。音乐会按策略处理音频标签、封面和歌词 |
 | POST | `/api/v1/transfer/route/preview` | 使用已识别媒体快照预览分类与目录路由；请求可携带尚未保存的分类和目录草稿，接口不访问 TMDB、不执行整理，并同时返回 `sequential` 与 `specificity` 两种目录模式的候选、排除原因、冲突警告和最终选择 |
+| GET | `/api/v1/transfer/route/settings` | 一次读取目录配置和当前目录匹配模式 |
+| POST | `/api/v1/transfer/route/settings` | 在同一数据库事务中保存目录配置和目录匹配模式，避免两个独立设置请求产生部分更新 |
 | POST | `/api/v1/transfer/manual/target-path` | 按源文件与目录配置匹配手动整理目标路径；请求体为 `ManualTransferItem`，该接口不执行媒体识别 |
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
 | POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
 
-目录路由默认使用 `SystemConfigKey.DirectoryMatchMode=sequential`，保持按目录配置顺序选择的现有行为。管理员可通过通用系统设置接口将其显式设为 `specificity`；该模式只在通过监控状态、源路径、源/目标存储、显式目标路径和同源优先等约束后的候选池中应用“精确类别 > 媒体类型 > 通配”排序，同一精确度仍保持原配置顺序。分类规则始终按 `category.yaml` 顺序采用第一条命中，不受目录匹配模式影响。
+目录路由默认使用 `SystemConfigKey.DirectoryMatchMode=sequential`，保持按目录配置顺序选择的现有行为。管理员通过 `/transfer/route/settings` 将目录与模式作为一个设置契约保存；`specificity` 只在通过监控状态、源路径、源/目标存储、显式目标路径和同源优先等约束后的候选池中应用“精确类别 > 媒体类型 > 通配”排序，同一精确度仍保持原配置顺序。分类规则始终按 `category.yaml` 顺序采用第一条命中，不受目录匹配模式影响。
 
 #### 站点
 

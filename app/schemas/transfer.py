@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
@@ -147,6 +147,21 @@ class DirectoryRouteDecision(BaseModel):
     selected_directory: Optional[TransferDirectoryConf] = None
     candidates: list[DirectoryRouteCandidate] = Field(default_factory=list)
     warnings: list[RouteDiagnosticWarning] = Field(default_factory=list)
+
+
+class DirectoryRouteSettings(BaseModel):
+    """目录配置及其候选选择模式。"""
+
+    directories: list[TransferDirectoryConf] = Field(default_factory=list)
+    match_mode: DirectoryMatchMode = DirectoryMatchMode.SEQUENTIAL
+
+    @model_validator(mode="after")
+    def validate_unique_names(self) -> "DirectoryRouteSettings":
+        """拒绝名称重复的目录，避免保存后无法稳定引用。"""
+        names = [directory.name for directory in self.directories]
+        if len(names) != len(set(names)):
+            raise ValueError("目录名称不能重复")
+        return self
 
 
 class TransferRouteMediaSnapshot(BaseModel):

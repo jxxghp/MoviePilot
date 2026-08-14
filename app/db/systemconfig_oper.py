@@ -1,9 +1,11 @@
 import asyncio
 import copy
 import threading
-from typing import Any, Optional, Union
+from typing import Any, Iterable, Mapping, Optional, Set, Union
 
-from app.db import DbOper
+from sqlalchemy import select
+
+from app.db import AsyncSessionFactory, DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
@@ -87,6 +89,47 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 self.__SYSTEMCONF[key] = copy.deepcopy(value)
             return True
 
+    async def async_set_many(
+            self,
+            values: Mapping[Union[str, SystemConfigKey], Any],
+    ) -> Set[str]:
+        """在同一事务中更新多个系统配置，并在提交后同步内存缓存。"""
+        normalized_values = {
+            key.value if isinstance(key, SystemConfigKey) else key: copy.deepcopy(value)
+            for key, value in values.items()
+        }
+        if not normalized_values:
+            return set()
+
+        async with self._alock:
+            async with AsyncSessionFactory() as db:
+                try:
+                    result = await db.execute(
+                        select(SystemConfig).where(
+                            SystemConfig.key.in_(normalized_values.keys())
+                        )
+                    )
+                    records = {item.key: item for item in result.scalars().all()}
+                    changed_keys = set()
+                    for key, value in normalized_values.items():
+                        record = records.get(key)
+                        if record:
+                            if record.value == value:
+                                continue
+                            record.value = value
+                        else:
+                            db.add(SystemConfig(key=key, value=value))
+                        changed_keys.add(key)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
+
+            with self._rlock:
+                for key, value in normalized_values.items():
+                    self.__SYSTEMCONF[key] = copy.deepcopy(value)
+            return changed_keys
+
     def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
         """
         获取系统设置
@@ -98,6 +141,21 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         with self._rlock:
             # 避免将__SYSTEMCONF内的值引用出去，会导致set时误判没有变动
             return copy.deepcopy(self.__SYSTEMCONF.get(key))
+
+    def get_many(
+            self,
+            keys: Iterable[Union[str, SystemConfigKey]],
+    ) -> dict[str, Any]:
+        """在同一缓存快照中读取多个系统配置。"""
+        normalized_keys = [
+            key.value if isinstance(key, SystemConfigKey) else key
+            for key in keys
+        ]
+        with self._rlock:
+            return {
+                key: copy.deepcopy(self.__SYSTEMCONF.get(key))
+                for key in normalized_keys
+            }
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
         """

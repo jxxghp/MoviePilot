@@ -347,7 +347,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | POST | `/api/v1/storage/save/{name}` | Save storage config. Body: JSON object |
 | GET | `/api/v1/storage/reset/{name}` | Reset storage config |
 
-### Transfer (7 endpoints)
+### Transfer (10 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -356,6 +356,8 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
 | POST | `/api/v1/transfer/manual/target-path` | Match the manual transfer target from source path and directory configuration. Body: ManualTransferItem JSON; this endpoint does not recognize media |
 | POST | `/api/v1/transfer/route/preview` | Preview category and directory routing from an already recognized media snapshot. Optional request drafts override current category/directory config; returns sequential and specificity comparisons without external recognition or file operations |
+| GET | `/api/v1/transfer/route/settings` | Read directory configuration and its match mode as one settings contract |
+| POST | `/api/v1/transfer/route/settings` | Atomically save directory configuration and its match mode |
 | POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
 | POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |

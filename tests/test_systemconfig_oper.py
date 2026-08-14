@@ -67,6 +67,50 @@ def test_increment_supports_custom_step(monkeypatch):
     assert stored_value["value"] == 7
 
 
+def test_get_many_reads_one_locked_cache_snapshot():
+    """并发更新多个键时，批量读取不得返回新旧值混合的快照。"""
+    first_key = _unique_key()
+    second_key = _unique_key()
+    first_read = threading.Event()
+    writer_attempted = threading.Event()
+
+    class CoordinatedCache(dict):
+        """在首键读取后让写线程尝试获得同一把缓存锁。"""
+
+        def get(self, key, default=None):
+            value = super().get(key, default)
+            if key == first_key:
+                first_read.set()
+                assert writer_attempted.wait(timeout=1)
+            return value
+
+    oper = object.__new__(SystemConfigOper)
+    oper._rlock = threading.RLock()
+    oper._SystemConfigOper__SYSTEMCONF = CoordinatedCache({
+        first_key: "old",
+        second_key: "old",
+    })
+
+    def update_snapshot() -> None:
+        assert first_read.wait(timeout=1)
+        writer_attempted.set()
+        with oper._rlock:
+            oper._SystemConfigOper__SYSTEMCONF[first_key] = "new"
+            oper._SystemConfigOper__SYSTEMCONF[second_key] = "new"
+
+    writer = threading.Thread(target=update_snapshot)
+    writer.start()
+    snapshot = oper.get_many((first_key, second_key))
+    writer.join(timeout=1)
+
+    assert not writer.is_alive()
+    assert snapshot == {first_key: "old", second_key: "old"}
+    assert oper.get_many((first_key, second_key)) == {
+        first_key: "new",
+        second_key: "new",
+    }
+
+
 def test_set_creates_record_for_falsy_value():
     """无记录时写入假值应创建记录，而不是丢弃配置。"""
     key = _unique_key()
@@ -109,6 +153,40 @@ async def test_async_set_creates_record_for_falsy_value():
     assert await oper.async_set(key, 0) is True
     assert oper.get(key) == 0
     assert SystemConfig.get_by_key(oper._db, key).value == 0
+
+
+@pytest.mark.asyncio
+async def test_async_set_many_commits_values_together():
+    """批量设置应在一次成功事务后同时更新数据库和缓存。"""
+    first_key = _unique_key()
+    second_key = _unique_key()
+    oper = _fresh_oper()
+
+    changed = await oper.async_set_many({first_key: [1], second_key: "specificity"})
+
+    assert changed == {first_key, second_key}
+    assert oper.get(first_key) == [1]
+    assert oper.get(second_key) == "specificity"
+    assert SystemConfig.get_by_key(oper._db, first_key).value == [1]
+    assert SystemConfig.get_by_key(oper._db, second_key).value == "specificity"
+
+
+@pytest.mark.asyncio
+async def test_async_set_many_rolls_back_every_value_on_failure():
+    """任一配置无法持久化时不得留下部分数据库或缓存更新。"""
+    first_key = _unique_key()
+    second_key = _unique_key()
+    oper = _fresh_oper()
+    oper.set(first_key, "before-first")
+    oper.set(second_key, "before-second")
+
+    with pytest.raises(Exception):
+        await oper.async_set_many({first_key: "after", second_key: object()})
+
+    assert oper.get(first_key) == "before-first"
+    assert oper.get(second_key) == "before-second"
+    assert SystemConfig.get_by_key(oper._db, first_key).value == "before-first"
+    assert SystemConfig.get_by_key(oper._db, second_key).value == "before-second"
 
 
 def test_delete_removes_record_explicitly():

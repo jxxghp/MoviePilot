@@ -8,6 +8,7 @@ from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
+from app.chain.directory_route import DirectoryRouteChain
 from app.platform.config import settings, global_vars
 from app.security.access import verify_token, verify_apitoken
 from app.db import get_db
@@ -16,6 +17,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.user_oper import (
     get_current_active_manage_user,
     get_current_active_superuser,
+    get_current_active_superuser_async,
 )
 from app.services.directory import DirectoryHelper
 from app.platform.log import logger
@@ -27,6 +29,32 @@ from app.schemas import (
 )
 
 router = ResponseAPIRouter()
+
+
+@router.get(
+    "/route/settings",
+    summary="查询目录路由设置",
+    response_model=schemas.Response[schemas.DirectoryRouteSettings],
+)
+def query_route_settings(
+    _: User = Depends(get_current_active_manage_user),
+) -> Any:
+    """返回目录配置及当前候选选择模式。"""
+    return schemas.Response(success=True, data=DirectoryRouteChain.get_settings())
+
+
+@router.post(
+    "/route/settings",
+    summary="更新目录路由设置",
+    response_model=schemas.Response[schemas.DirectoryRouteSettings],
+)
+async def update_route_settings(
+    route_settings: schemas.DirectoryRouteSettings,
+    _: User = Depends(get_current_active_superuser_async),
+) -> Any:
+    """原子更新目录配置及候选选择模式。"""
+    saved_settings = await DirectoryRouteChain.save_settings(route_settings)
+    return schemas.Response(success=True, data=saved_settings)
 
 
 @router.post(
@@ -45,7 +73,7 @@ def preview_transfer_route(
     :param _: 用户鉴权
     :return: 路由预览结果
     """
-    result = TransferChain.preview_route(request)
+    result = DirectoryRouteChain.preview(request)
     return schemas.Response(success=True, data=result.model_dump())
 
 

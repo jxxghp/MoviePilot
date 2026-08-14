@@ -183,7 +183,12 @@ class CategoryHelper(metaclass=WeakSingleton):
                 rule = raw_rule.model_dump(exclude_none=True)
             else:
                 rule = raw_rule
-            if not rule:
+            rule_items = [
+                (attr, value)
+                for attr, value in rule.items()
+                if value
+            ] if rule else []
+            if not rule_items:
                 fallback_indices.append(index)
                 rule_decisions.append(
                     CategoryRuleDecision(
@@ -196,8 +201,7 @@ class CategoryHelper(metaclass=WeakSingleton):
 
             conditions = [
                 CategoryHelper._evaluate_condition(attr, value, tmdb_info)
-                for attr, value in rule.items()
-                if value
+                for attr, value in rule_items
             ]
             rule_decisions.append(
                 CategoryRuleDecision(

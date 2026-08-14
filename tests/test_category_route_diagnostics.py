@@ -59,6 +59,27 @@ def test_unconditional_category_before_end_emits_unreachable_warning() -> None:
     assert any(warning.code == "unconditional_category_not_last" for warning in decision.warnings)
 
 
+def test_empty_category_conditions_are_treated_as_unconditional_fallback() -> None:
+    """仅含空值条件的规则也应按无条件兜底规则诊断。"""
+    rules = {
+        "空值兜底": CategoryRule(genre_ids=""),
+        "综艺": CategoryRule(genre_ids="10764"),
+    }
+
+    decision = CategoryHelper.evaluate_category(
+        categorys=rules,
+        tmdb_info={"genre_ids": [10764]},
+    )
+
+    assert decision.selected_category == "空值兜底"
+    assert decision.rules[1].matched is True
+    assert decision.rules[1].reachable is False
+    assert any(
+        warning.code == "unconditional_category_not_last" and warning.related_indices == [0]
+        for warning in decision.warnings
+    )
+
+
 def test_category_range_and_exclusion_keep_existing_semantics() -> None:
     """年份范围与排除条件在诊断重构后必须保持现有结果。"""
     rules = {
