@@ -4,11 +4,10 @@
 认证依赖（get_current_user 等八个）已迁至 app/api/deps.py——那是 HTTP 层的关注点，
 产出 403/400 而非数据。本模块只保留 UserOper。
 
-这里不为那八个名字留惰性转发。转发曾是给仓外插件备的软着陆，代价是把
-app.db.oper.user -> app.api.deps -> app.application.security 这条边永久焊进依赖图：
-数据访问模块从此在静态分析里牵着整个鉴权栈，而仓内没有任何调用方需要它。插件生态
-既已确定迭代，就让旧名字直接以 AttributeError 报错——指向明确、当场可改，好过一条
-悄悄成立的反向依赖。
+这里不为那八个名字留惰性转发，否则会把
+app.db.oper.user -> app.api.deps -> app.application.security 这条边永久焊进依赖图，
+让数据访问模块在静态分析里牵着整个鉴权栈。仓外插件的旧 ``app.db.user_oper`` 路径由
+runtime 兼容映射指向 SDK 薄门面；canonical 数据访问模块仍只依赖模型，不承担兼容职责。
 """
 from typing import List, Optional
 

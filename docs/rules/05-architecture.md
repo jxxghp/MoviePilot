@@ -243,6 +243,12 @@ policy. `app/db` therefore has no dependency on `app/domain`.
   behavior stays in `app/api/endpoints/message.py`.
 - `app/runtime/compat` stores string mappings and resolves aliases lazily. It may
   not eagerly import canonical MoviePilot modules.
+- 已删除的 `app.db.<entity>_oper` 路径继续由精确模块映射提供给旧插件；其中订阅写入、
+  整理历史写入和拆分后的用户认证依赖通过 `app.sdk._legacy` 薄门面委托 canonical
+  Application/Oper，不把领域对象或 HTTP 依赖重新引回 DB 层。
+- 物理模块仍存在但公开符号已经迁走时（例如 `app.domain.media` 的身份原语、
+  `app.schemas` 的整理工作项），兼容 Finder 在标准 Loader 执行后叠加白名单符号路由；
+  canonical 模块不得为兼容而反向 import `app.runtime.compat`。
 - Canonical implementation packages may not import `app/runtime/compat` or
   `app/sdk`.
 - Host code uses canonical paths. Only `app/plugins/` and compatibility tests

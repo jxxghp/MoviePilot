@@ -30,6 +30,108 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="sdk",
     ),
+    "app.db.agentchat_oper": ModuleAlias(
+        target="app.db.oper.agentchat",
+        replacement="app.db.oper.agentchat",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.agenttask_oper": ModuleAlias(
+        target="app.db.oper.agenttask",
+        replacement="app.db.oper.agenttask",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.downloadfailure_oper": ModuleAlias(
+        target="app.db.oper.downloadfailure",
+        replacement="app.db.oper.downloadfailure",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.downloadhistory_oper": ModuleAlias(
+        target="app.db.oper.downloadhistory",
+        replacement="app.db.oper.downloadhistory",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.init": ModuleAlias(
+        target="app.startup.database_initializer",
+        replacement="app.startup.database_initializer",
+        introduced="v3.0.0",
+        owner="startup",
+    ),
+    "app.db.mediaserver_oper": ModuleAlias(
+        target="app.db.oper.mediaserver",
+        replacement="app.db.oper.mediaserver",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.message_oper": ModuleAlias(
+        target="app.db.oper.message",
+        replacement="app.db.oper.message",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.plugindata_oper": ModuleAlias(
+        target="app.db.oper.plugindata",
+        replacement="app.db.oper.plugindata",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.site_oper": ModuleAlias(
+        target="app.db.oper.site",
+        replacement="app.db.oper.site",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.subscribe_oper": ModuleAlias(
+        target="app.sdk._legacy.subscribe",
+        replacement="app.application.subscribe.add_subscribe",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.db.subscribehistory_oper": ModuleAlias(
+        target="app.db.oper.subscribehistory",
+        replacement="app.db.oper.subscribehistory",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.systemconfig_oper": ModuleAlias(
+        target="app.db.oper.systemconfig",
+        replacement="app.db.oper.systemconfig",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.transferhistory_oper": ModuleAlias(
+        target="app.sdk._legacy.history",
+        replacement="app.application.history",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.db.transferpending_oper": ModuleAlias(
+        target="app.db.oper.transferpending",
+        replacement="app.db.oper.transferpending",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.user_oper": ModuleAlias(
+        target="app.sdk._legacy.user",
+        replacement="app.db.oper.user 或 app.api.deps",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
+    "app.db.userconfig_oper": ModuleAlias(
+        target="app.db.oper.userconfig",
+        replacement="app.db.oper.userconfig",
+        introduced="v3.0.0",
+        owner="db",
+    ),
+    "app.db.workflow_oper": ModuleAlias(
+        target="app.db.oper.workflow",
+        replacement="app.db.oper.workflow",
+        introduced="v3.0.0",
+        owner="db",
+    ),
     "app.utils.crypto": ModuleAlias(
         target="app.foundation.crypto",
         replacement="app.sdk.utilities",
@@ -151,10 +253,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="runtime",
     ),
     "app.utils.media": ModuleAlias(
-        target="app.domain.media",
-        replacement="app.domain.media",
+        target="app.sdk.media",
+        replacement="app.sdk.media",
         introduced="v3.0.0",
-        owner="domain",
+        owner="sdk",
     ),
     "app.utils.mixins": ModuleAlias(
         target="app.runtime.reload",
@@ -560,5 +662,42 @@ PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
             target_name="MusicNameRegistry",
             replacement="app.sdk.media.MusicNameRegistry",
         ),
+    },
+}
+
+# 物理模块仍存在、仅部分公开符号迁走时，由导入器在标准 Loader 执行后叠加惰性符号路由。
+# canonical 源码不反向依赖兼容层，目标符号也只在旧调用方真正取用时加载。
+SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.domain.media": {
+        name: SymbolAlias(
+            target_module="app.schemas.media",
+            target_name=name,
+            replacement=f"app.schemas.media.{name}",
+        )
+        for name in (
+            "MEDIA_SOURCE_ALIASES",
+            "MEDIA_SOURCE_PREFIXES",
+            "normalize_media_source",
+            "parse_media_key",
+            "resolve_media_identity",
+            "normalize_media_identity_payload",
+            "build_media_key",
+        )
+    },
+    "app.schemas": {
+        name: SymbolAlias(
+            target_module="app.sdk._legacy.transfer",
+            target_name=name,
+            replacement=f"app.application.transfer.{name}",
+        )
+        for name in ("TransferTask", "TransferQueue")
+    },
+    "app.schemas.transfer": {
+        name: SymbolAlias(
+            target_module="app.sdk._legacy.transfer",
+            target_name=name,
+            replacement=f"app.application.transfer.{name}",
+        )
+        for name in ("TransferTask", "TransferQueue")
     },
 }

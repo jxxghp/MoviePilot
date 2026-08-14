@@ -17,6 +17,7 @@ from app.runtime.compat.manifest import (
     MODULE_ALIASES,
     PACKAGE_ALIASES,
     PACKAGE_EXPORTS,
+    SYMBOL_ALIASES,
     VIRTUAL_PACKAGES,
     ModuleAlias,
 )
@@ -203,3 +204,133 @@ def test_virtual_package_exports_resolve_exact_manifest_symbols():
     ).MetaBase
     assert PACKAGE_ALIASES[legacy_package].replacement in messages[0]
     reset_legacy_import_diagnostics()
+
+
+def test_db_refactor_legacy_modules_are_all_registered():
+    """DB 分层迁移删除的旧模块必须全部有精确兼容入口。"""
+    expected = {
+        "app.db.agentchat_oper",
+        "app.db.agenttask_oper",
+        "app.db.downloadfailure_oper",
+        "app.db.downloadhistory_oper",
+        "app.db.init",
+        "app.db.mediaserver_oper",
+        "app.db.message_oper",
+        "app.db.plugindata_oper",
+        "app.db.site_oper",
+        "app.db.subscribe_oper",
+        "app.db.subscribehistory_oper",
+        "app.db.systemconfig_oper",
+        "app.db.transferhistory_oper",
+        "app.db.transferpending_oper",
+        "app.db.user_oper",
+        "app.db.userconfig_oper",
+        "app.db.workflow_oper",
+    }
+
+    assert expected <= set(MODULE_ALIASES)
+
+
+def test_split_user_oper_facade_exports_data_and_auth_contracts():
+    """旧 user_oper 同时提供 UserOper 与八个认证依赖。"""
+    legacy = importlib.import_module("app.db.user_oper")
+    canonical_user = importlib.import_module("app.db.oper.user")
+    canonical_deps = importlib.import_module("app.api.deps")
+
+    assert legacy.UserOper is canonical_user.UserOper
+    for name in (
+        "get_current_user",
+        "get_current_user_async",
+        "get_current_active_user",
+        "get_current_active_user_async",
+        "get_current_active_manage_user",
+        "get_current_active_manage_user_async",
+        "get_current_active_superuser",
+        "get_current_active_superuser_async",
+    ):
+        assert getattr(legacy, name) is getattr(canonical_deps, name)
+
+
+def test_legacy_utils_media_facade_combines_strategy_and_identity_symbols():
+    """旧 utils.media 同时保留领域策略和迁至 schemas 的身份原语。"""
+    legacy = importlib.import_module("app.utils.media")
+    domain_media = importlib.import_module("app.domain.media")
+    schema_media = importlib.import_module("app.schemas.media")
+
+    assert legacy.is_music_media_source is domain_media.is_music_media_source
+    assert legacy.resolve_media_identity is schema_media.resolve_media_identity
+    assert legacy.build_media_key is schema_media.build_media_key
+    assert legacy.MEDIA_SOURCE_ALIASES is schema_media.MEDIA_SOURCE_ALIASES
+
+
+def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
+    """仍存在的旧物理模块应通过 Loader 叠加迁走的符号。"""
+    domain_media = importlib.import_module("app.domain.media")
+    schema_media = importlib.import_module("app.schemas.media")
+    transfer_schema = importlib.import_module("app.schemas.transfer")
+    legacy_transfer = importlib.import_module("app.sdk._legacy.transfer")
+    schemas_package = importlib.import_module("app.schemas")
+
+    assert domain_media.build_media_key is schema_media.build_media_key
+    assert domain_media.resolve_media_identity is schema_media.resolve_media_identity
+    assert transfer_schema.TransferTask is legacy_transfer.TransferTask
+    assert transfer_schema.TransferQueue is legacy_transfer.TransferQueue
+    assert schemas_package.TransferTask is legacy_transfer.TransferTask
+    assert schemas_package.TransferQueue is legacy_transfer.TransferQueue
+
+
+def test_debug_diagnostics_reports_moved_symbol_path():
+    """DEBUG 模式应对物理模块中的旧符号路径给出一次迁移提示。"""
+    messages = []
+    reset_legacy_import_diagnostics()
+    configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
+
+    domain_media = importlib.import_module("app.domain.media")
+    domain_media.build_media_key
+    domain_media.build_media_key
+
+    assert len(messages) == 1
+    assert "app.domain.media.build_media_key" in messages[0]
+    assert "app.schemas.media.build_media_key" in messages[0]
+    reset_legacy_import_diagnostics()
+
+
+def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
+    """插件静态扫描应识别仍存在模块中的旧符号导入。"""
+    messages = []
+    reset_legacy_import_diagnostics()
+    configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
+    plugin_dir = tmp_path / "symbolplugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "__init__.py").write_text(
+        "from app.domain.media import build_media_key\n",
+        encoding="utf-8",
+    )
+
+    scan_plugin_legacy_imports("SymbolPlugin", plugin_dir)
+
+    assert len(messages) == 1
+    assert "app.domain.media.build_media_key" in messages[0]
+    assert "__init__.py:1" in messages[0]
+    reset_legacy_import_diagnostics()
+
+
+def test_symbol_alias_manifest_covers_all_moved_public_symbols():
+    """符号级映射清单应覆盖媒体身份与整理工作项的旧入口。"""
+    assert set(SYMBOL_ALIASES["app.domain.media"]) == {
+        "MEDIA_SOURCE_ALIASES",
+        "MEDIA_SOURCE_PREFIXES",
+        "normalize_media_source",
+        "parse_media_key",
+        "resolve_media_identity",
+        "normalize_media_identity_payload",
+        "build_media_key",
+    }
+    assert set(SYMBOL_ALIASES["app.schemas"]) == {
+        "TransferTask",
+        "TransferQueue",
+    }
+    assert set(SYMBOL_ALIASES["app.schemas.transfer"]) == {
+        "TransferTask",
+        "TransferQueue",
+    }

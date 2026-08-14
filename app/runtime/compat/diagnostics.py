@@ -3,9 +3,15 @@ import inspect
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
-from app.runtime.compat.manifest import MODULE_ALIASES, PACKAGE_ALIASES, ModuleAlias
+from app.runtime.compat.manifest import (
+    MODULE_ALIASES,
+    PACKAGE_ALIASES,
+    SYMBOL_ALIASES,
+    ModuleAlias,
+    SymbolAlias,
+)
 
 
 WarningEmitter = Callable[[str], object]
@@ -47,7 +53,23 @@ def _find_import_consumer() -> str:
     return "unknown"
 
 
-def _format_warning(usage: LegacyImportUsage, alias: ModuleAlias) -> str:
+def _find_alias(legacy_path: str) -> Optional[Union[ModuleAlias, SymbolAlias]]:
+    """查找旧模块或旧符号对应的精确兼容规则。"""
+    module_alias = MODULE_ALIASES.get(legacy_path) or PACKAGE_ALIASES.get(
+        legacy_path
+    )
+    if module_alias:
+        return module_alias
+    module_name, separator, symbol_name = legacy_path.rpartition(".")
+    if not separator:
+        return None
+    return SYMBOL_ALIASES.get(module_name, {}).get(symbol_name)
+
+
+def _format_warning(
+        usage: LegacyImportUsage,
+        alias: Union[ModuleAlias, SymbolAlias],
+) -> str:
     """生成包含实际目标和推荐 SDK 路径的单行兼容警告。"""
     consumer = usage.consumer
     if consumer.startswith("app.plugins."):
@@ -56,17 +78,20 @@ def _format_warning(usage: LegacyImportUsage, alias: ModuleAlias) -> str:
     else:
         source = f"模块 {consumer}"
     origin = f"（{usage.origin}）" if usage.origin else ""
+    target = (
+        alias.target
+        if isinstance(alias, ModuleAlias)
+        else f"{alias.target_module}.{alias.target_name}"
+    )
     return (
         f"[兼容导入] {source}{origin} 使用旧路径 {usage.legacy_module}，"
-        f"已映射到 {alias.target}；请迁移到 {alias.replacement}"
+        f"已映射到 {target}；请迁移到 {alias.replacement}"
     )
 
 
 def _emit_usage(usage: LegacyImportUsage) -> None:
     """按调用方和旧路径去重后输出兼容警告。"""
-    alias = MODULE_ALIASES.get(usage.legacy_module) or PACKAGE_ALIASES.get(
-        usage.legacy_module
-    )
+    alias = _find_alias(usage.legacy_module)
     if not alias:
         return
     key = (usage.consumer, usage.legacy_module)
@@ -129,7 +154,11 @@ def _extract_legacy_imports(tree: ast.AST) -> Tuple[Tuple[str, int], ...]:
                 matches.add((node.module, node.lineno))
             for imported in node.names:
                 candidate = f"{node.module}.{imported.name}"
-                if candidate in MODULE_ALIASES or candidate in PACKAGE_ALIASES:
+                if (
+                    candidate in MODULE_ALIASES
+                    or candidate in PACKAGE_ALIASES
+                    or imported.name in SYMBOL_ALIASES.get(node.module, {})
+                ):
                     matches.add((candidate, node.lineno))
         elif isinstance(node, ast.Call) and node.args:
             function_name = ""

@@ -12,6 +12,7 @@ from app.runtime.compat.manifest import (
     MODULE_ALIASES,
     PACKAGE_ALIASES,
     PACKAGE_EXPORTS,
+    SYMBOL_ALIASES,
     VIRTUAL_PACKAGES,
     ModuleAlias,
 )
@@ -115,6 +116,91 @@ class VirtualLegacyPackageLoader(importlib.abc.Loader):
             record_legacy_import(self.package_name)
 
 
+class LegacySymbolOverlayLoader(importlib.abc.Loader):
+    """在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。"""
+
+    _STATE_KEY = "__legacy_symbol_overlay_state__"
+
+    def __init__(self, module_name: str, original_loader: importlib.abc.Loader):
+        """保存物理模块名称和 PathFinder 已选择的原始 Loader。"""
+        self.module_name = module_name
+        self.original_loader = original_loader
+
+    def __getattr__(self, name: str):
+        """把资源读取等非核心 Loader 能力转交给原始 Loader。"""
+        return getattr(self.original_loader, name)
+
+    def create_module(self, spec):
+        """沿用原始 Loader 的模块创建逻辑。"""
+        creator = getattr(self.original_loader, "create_module", None)
+        return creator(spec) if creator else None
+
+    @classmethod
+    def _restore_previous_overlay(cls, module: ModuleType) -> None:
+        """reload 前恢复物理模块原有的动态属性和 __all__ 状态。"""
+        state = module.__dict__.pop(cls._STATE_KEY, None)
+        if not state:
+            return
+        for name in ("__getattr__", "__dir__"):
+            previous = state.get(name)
+            if previous is None:
+                module.__dict__.pop(name, None)
+            else:
+                module.__dict__[name] = previous
+        if state.get("had_all"):
+            module.__dict__["__all__"] = state.get("all")
+        else:
+            module.__dict__.pop("__all__", None)
+
+    def exec_module(self, module: ModuleType) -> None:
+        """执行真实模块后安装只对已登记旧符号生效的 __getattr__。"""
+        self._restore_previous_overlay(module)
+        executor = getattr(self.original_loader, "exec_module", None)
+        if not executor:
+            raise ImportError(f"模块 {self.module_name} 的原始 Loader 不支持 exec_module")
+        executor(module)
+
+        exports = SYMBOL_ALIASES[self.module_name]
+        previous_getattr = module.__dict__.get("__getattr__")
+        previous_dir = module.__dict__.get("__dir__")
+        had_all = "__all__" in module.__dict__
+        previous_all = module.__dict__.get("__all__")
+
+        def resolve_export(name: str):
+            """惰性解析物理模块中已经迁走的旧符号。"""
+            symbol = exports.get(name)
+            if symbol:
+                record_legacy_import(f"{self.module_name}.{name}")
+                target = importlib.import_module(symbol.target_module)
+                return getattr(target, symbol.target_name)
+            if previous_getattr:
+                return previous_getattr(name)
+            raise AttributeError(
+                f"module {self.module_name!r} has no attribute {name!r}"
+            )
+
+        def list_exports():
+            """返回物理模块原有名称与兼容符号的并集。"""
+            names = set(module.__dict__) | set(exports)
+            if previous_dir:
+                names.update(previous_dir())
+            return sorted(names)
+
+        module.__getattr__ = resolve_export
+        module.__dir__ = list_exports
+        public_names = {
+            name for name in module.__dict__ if not name.startswith("_")
+        }
+        declared_exports = set(previous_all or ()) if had_all else public_names
+        module.__all__ = sorted(declared_exports | set(exports))
+        module.__dict__[self._STATE_KEY] = {
+            "__getattr__": previous_getattr,
+            "__dir__": previous_dir,
+            "had_all": had_all,
+            "all": previous_all,
+        }
+
+
 class BlockedLegacyModuleLoader(importlib.abc.Loader):
     """阻止合成旧包从其他 Finder 泄漏未登记的新内部模块。"""
 
@@ -162,6 +248,12 @@ class LegacyImportFinder(importlib.abc.MetaPathFinder):
                 loader,
                 is_package=alias.is_package,
             )
+
+        if fullname in SYMBOL_ALIASES:
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
+            if spec and spec.loader:
+                spec.loader = LegacySymbolOverlayLoader(fullname, spec.loader)
+                return spec
 
         virtual_packages = self._virtual_package_names()
         if fullname in virtual_packages:
