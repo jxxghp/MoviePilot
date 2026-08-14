@@ -1,8 +1,20 @@
 from typing import Optional
 
 from pydantic import BaseModel, Field, ConfigDict
+from typing_extensions import TypedDict
 
 from app.schemas.common import JsonData
+
+
+class UserPermissions(TypedDict, total=False):
+    """用户分类权限及可动态扩展的功能级权限。"""
+
+    discovery: bool  # 发现功能分类权限
+    search: bool  # 资源搜索分类权限
+    subscribe: bool  # 订阅管理分类权限
+    manage: bool  # 系统管理分类权限
+    admin: bool  # 管理员入口标识，实际授权仍由超级用户身份决定
+    features: dict[str, bool]  # 功能键到启用状态的映射
 
 
 # Shared properties
@@ -22,7 +34,7 @@ class UserBase(BaseModel):
     # 是否开启二次验证
     is_otp: Optional[bool] = False
     # 权限
-    permissions: Optional[dict[str, bool]] = Field(default_factory=dict)
+    permissions: Optional[UserPermissions] = Field(default_factory=dict)
     # 个性化设置
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict)
 
@@ -37,7 +49,7 @@ class UserCreate(UserBase):
     email: Optional[str] = None
     password: Optional[str] = None
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict)
-    permissions: Optional[dict[str, bool]] = Field(default_factory=dict)
+    permissions: Optional[UserPermissions] = Field(default_factory=dict)
 
 
 # Properties to receive via API on update
@@ -49,7 +61,7 @@ class UserUpdate(UserBase):
     email: Optional[str] = None
     password: Optional[str] = None
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict)
-    permissions: Optional[dict[str, bool]] = Field(default_factory=dict)
+    permissions: Optional[UserPermissions] = Field(default_factory=dict)
 
 
 class UserInDBBase(UserBase):
