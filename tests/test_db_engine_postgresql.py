@@ -10,8 +10,11 @@ TooManyConnectionsError），但本地开发与 CI 都跑 SQLite——PG 分支�
 """
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.runtime.config import settings
 from app.db import engine as engine_module
+from app.db.engine import connection_budget
 
 
 def _fake_pg_connection(max_connections: int, reserved: int) -> MagicMock:
@@ -95,7 +98,8 @@ def test_check_passes_when_within_available(monkeypatch):
     """
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
     monkeypatch.setattr(engine_module, "connection_budget",
-                        lambda: {"sync": 60, "async_pooled": 15, "async_fallback": 10, "total": 85})
+                        lambda: {"sync": 60, "async_pooled": 15, "async_fallback": 10,
+                                 "per_worker": 85, "workers": 1, "total": 85})
     monkeypatch.setattr(engine_module.Engine, "connect",
                         lambda *_a, **_kw: _fake_pg_connection(100, 3))
 
@@ -111,7 +115,8 @@ def test_check_fails_when_exceeding_available(monkeypatch):
     """
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
     monkeypatch.setattr(engine_module, "connection_budget",
-                        lambda: {"sync": 60, "async_pooled": 40, "async_fallback": 30, "total": 130})
+                        lambda: {"sync": 60, "async_pooled": 40, "async_fallback": 30,
+                                 "per_worker": 130, "workers": 1, "total": 130})
     monkeypatch.setattr(engine_module.Engine, "connect",
                         lambda *_a, **_kw: _fake_pg_connection(100, 3))
     errors = []
@@ -131,7 +136,8 @@ def test_check_uses_real_max_connections_not_assumption(monkeypatch):
     """
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
     monkeypatch.setattr(engine_module, "connection_budget",
-                        lambda: {"sync": 200, "async_pooled": 15, "async_fallback": 10, "total": 225})
+                        lambda: {"sync": 200, "async_pooled": 15, "async_fallback": 10,
+                                 "per_worker": 225, "workers": 1, "total": 225})
     # 数据库已调大到 500，225 应当通过
     monkeypatch.setattr(engine_module.Engine, "connect",
                         lambda *_a, **_kw: _fake_pg_connection(500, 3))
@@ -242,3 +248,93 @@ def test_pg_engine_injects_connect_args(monkeypatch):
     engine_module._get_postgresql_engine(is_async=True, pooled=False)
 
     assert captured["connect_args"]["statement_cache_size"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# 多 worker 下的额度核算
+# --------------------------------------------------------------------------- #
+
+def test_budget_reports_per_worker_and_total(monkeypatch):
+    """
+    连接池是进程级的，多 worker 下每个进程各持一份。
+
+    核算必须同时给出「单进程」与「全部 worker 合计」——只报单进程会让多 worker
+    部署在启动校验里一路绿灯，实际第一个 worker 还没起完就顶穿 max_connections。
+    """
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(settings, "DB_POSTGRESQL_POOL_SIZE", 10, raising=False)
+    monkeypatch.setattr(settings, "DB_POSTGRESQL_MAX_OVERFLOW", 50, raising=False)
+    monkeypatch.setattr(settings, "DB_POOL_TYPE", "QueuePool", raising=False)
+    monkeypatch.setattr(settings, "DB_ASYNC_POOL_TYPE", "QueuePool", raising=False)
+    monkeypatch.setattr(settings, "DB_ASYNC_POOL_SIZE", 5, raising=False)
+    monkeypatch.setattr(settings, "DB_ASYNC_MAX_OVERFLOW", 10, raising=False)
+    monkeypatch.setattr(settings, "DB_ASYNC_FALLBACK_LIMIT", 10, raising=False)
+    monkeypatch.setattr(settings, "API_WORKERS", 4, raising=False)
+
+    budget = connection_budget()
+
+    assert budget["per_worker"] == 85
+    assert budget["workers"] == 4
+    assert budget["total"] == 340
+
+
+def test_budget_single_worker_keeps_total_equal_to_per_worker(monkeypatch):
+    """
+    单 worker 时合计等于单进程用量，与引入 worker 概念之前的口径一致。
+    """
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(settings, "API_WORKERS", 1, raising=False)
+
+    budget = connection_budget()
+
+    assert budget["total"] == budget["per_worker"]
+
+
+@pytest.mark.parametrize("workers", [0, -3, None])
+def test_budget_treats_invalid_worker_count_as_one(monkeypatch, workers):
+    """
+    worker 数非法时按 1 计，不能让核算退化成 0 而误判「额度充足」。
+    """
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(settings, "API_WORKERS", workers, raising=False)
+
+    budget = connection_budget()
+
+    assert budget["workers"] == 1
+    assert budget["total"] == budget["per_worker"]
+
+
+def test_check_fails_when_workers_multiply_past_the_limit(monkeypatch):
+    """
+    单进程用量在额度内、但乘上 worker 数后超限时必须报错。
+
+    这正是盲区所在：85 条对 max_connections=100 是安全的，17 个 worker 的 1445 条
+    则毫无胜算，而此前的校验对后者一路放行。
+    """
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(engine_module, "connection_budget",
+                        lambda: {"sync": 60, "async_pooled": 15, "async_fallback": 10,
+                                 "per_worker": 85, "workers": 4, "total": 340})
+    monkeypatch.setattr(engine_module.Engine, "connect",
+                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+    errors = []
+    monkeypatch.setattr(engine_module.logger, "error", errors.append)
+
+    assert engine_module.check_connection_budget() is False
+    assert errors and "额度不足" in errors[0]
+    # 报错必须点出 worker 数，否则用户看到 340 会以为是池配置写错了
+    assert "worker" in errors[0].lower()
+
+
+def test_check_passes_when_workers_stay_within_the_limit(monkeypatch):
+    """
+    乘上 worker 数后仍在额度内时通过。
+    """
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(engine_module, "connection_budget",
+                        lambda: {"sync": 20, "async_pooled": 5, "async_fallback": 5,
+                                 "per_worker": 30, "workers": 3, "total": 90})
+    monkeypatch.setattr(engine_module.Engine, "connect",
+                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+
+    assert engine_module.check_connection_budget() is True

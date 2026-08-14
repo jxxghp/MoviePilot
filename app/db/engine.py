@@ -218,7 +218,10 @@ def connection_budget() -> Dict[str, int]:
     各连接池此前是彼此独立配置的，没有任何地方核算总和——异步侧从无界收敛到有界
     之后，真正决定安全与否的就变成了「同步池 + 异步池 + 回退配额」这个总数是否
     还在数据库的额度之内。这里把它显式算出来，供启动校验与排障使用。
-    :return: 各项上限与合计
+    连接池是进程级的：多 worker 部署时每个进程各持一份，因此合计要乘上 worker 数。
+    只报单进程用量会让多 worker 在启动校验里一路绿灯，实际第一个 worker 还没起完
+    就顶穿了 max_connections。
+    :return: 单进程各项上限、worker 数与合计
     """
     if settings.DB_TYPE.lower() == "postgresql":
         sync_max = settings.DB_POSTGRESQL_POOL_SIZE + settings.DB_POSTGRESQL_MAX_OVERFLOW
@@ -230,11 +233,17 @@ def connection_budget() -> Dict[str, int]:
     async_max = (settings.DB_ASYNC_POOL_SIZE + settings.DB_ASYNC_MAX_OVERFLOW
                  if _async_pool_enabled() else 0)
     fallback = settings.DB_ASYNC_FALLBACK_LIMIT if _async_pool_enabled() else settings.CONF.scheduler
+    per_worker = sync_max + async_max + fallback
+    # worker 数非法时按 1 计：退化成 0 会让合计归零、反而误判「额度充足」
+    workers = getattr(settings, "API_WORKERS", 1) or 1
+    workers = workers if isinstance(workers, int) and workers > 0 else 1
     return {
         "sync": sync_max,
         "async_pooled": async_max,
         "async_fallback": fallback,
-        "total": sync_max + async_max + fallback,
+        "per_worker": per_worker,
+        "workers": workers,
+        "total": per_worker * workers,
     }
 
 
@@ -249,8 +258,9 @@ def check_connection_budget() -> bool:
     budget = connection_budget()
     if settings.DB_TYPE.lower() != "postgresql":
         logger.info(f"数据库连接理论峰值: {budget['total']} "
-                    f"(同步 {budget['sync']} + 异步池 {budget['async_pooled']} "
-                    f"+ 回退 {budget['async_fallback']})")
+                    f"(单进程 {budget['per_worker']} = 同步 {budget['sync']} + 异步池 "
+                    f"{budget['async_pooled']} + 回退 {budget['async_fallback']}"
+                    f"，worker {budget['workers']})")
         return True
     try:
         with Engine.connect() as conn:  # noqa
@@ -263,14 +273,15 @@ def check_connection_budget() -> bool:
         return True
     available = max_conn - reserved
     total = budget["total"]
-    detail = (f"理论峰值 {total} (同步 {budget['sync']} + 异步池 {budget['async_pooled']} "
-              f"+ 回退 {budget['async_fallback']})，数据库可用 {available} "
+    detail = (f"理论峰值 {total} = 单进程 {budget['per_worker']} (同步 {budget['sync']} "
+              f"+ 异步池 {budget['async_pooled']} + 回退 {budget['async_fallback']}) "
+              f"x worker {budget['workers']}，数据库可用 {available} "
               f"(max_connections {max_conn} - 保留 {reserved})")
     if total > available:
         logger.error(
             f"数据库连接额度不足：{detail}。"
             f"突发并发时可能出现 TooManyConnectionsError。"
-            f"请调大 max_connections，或调小 DB_POSTGRESQL_MAX_OVERFLOW / "
+            f"请调大 max_connections，或调小 API_WORKERS / DB_POSTGRESQL_MAX_OVERFLOW / "
             f"DB_ASYNC_MAX_OVERFLOW / DB_ASYNC_FALLBACK_LIMIT"
         )
         return False

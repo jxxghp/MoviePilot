@@ -73,7 +73,7 @@ class MoviePilotServer(uvicorn.Server):
 
 # uvicorn服务
 Server = MoviePilotServer(Config(app, host=settings.HOST, port=settings.PORT,
-                                 reload=settings.DEV, workers=multiprocessing.cpu_count() * 2 + 1,
+                                 reload=settings.DEV, workers=settings.API_WORKERS,
                                  timeout_graceful_shutdown=60))
 
 
