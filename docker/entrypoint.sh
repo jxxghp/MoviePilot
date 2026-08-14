@@ -465,6 +465,12 @@ render_nginx_config
 
 # 自动更新
 cd /
+if [ -f /app/docker/update.sh ] && ! cmp -s /app/docker/update.sh /usr/local/bin/mp_update.sh; then
+    # 后端源码可独立于镜像更新，启动前同步更新器，避免它长期保留过期目录约定。
+    cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh
+    chmod +x /usr/local/bin/mp_update.sh
+    INFO "→ 已同步后端内置更新脚本"
+fi
 source /usr/local/bin/mp_update.sh
 if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
     MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"

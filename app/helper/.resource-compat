@@ -1,0 +1,2 @@
+该目录仅用于兼容旧 Docker 镜像中固化的资源更新脚本，不承载 Python 源码。
+新更新器和新镜像仍只把站点资源安装到 app/application/site。

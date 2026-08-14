@@ -1,5 +1,7 @@
+from importlib.machinery import EXTENSION_SUFFIXES, PathFinder
 from pathlib import Path
 
+from app.application.site import _include_legacy_resource_directory
 from app.runtime.config import settings
 from app.adapters.system.resource import (
     ResourceHelper,
@@ -9,6 +11,41 @@ from app.startup import modules_initializer
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_legacy_docker_updater_resource_directory_remains_importable(tmp_path):
+    """旧镜像把资源写入 helper 时，canonical 站点包仍应找到对应扩展。"""
+    package_dir = tmp_path / "app" / "application" / "site"
+    legacy_dir = tmp_path / "app" / "helper"
+    package_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    extension_path = legacy_dir / f"sites{EXTENSION_SUFFIXES[0]}"
+    extension_path.touch()
+    package_paths = [str(package_dir)]
+
+    _include_legacy_resource_directory(package_paths, package_dir)
+
+    assert (ROOT_DIR / "app" / "helper" / ".resource-compat").is_file()
+    assert package_paths == [str(package_dir), str(legacy_dir)]
+    spec = PathFinder.find_spec("app.application.site.sites", package_paths)
+    assert spec is not None
+    assert spec.origin == str(extension_path)
+
+
+def test_canonical_site_extension_takes_priority_over_legacy_directory(tmp_path):
+    """canonical 扩展存在时不得把旧资源目录加入站点包搜索路径。"""
+    package_dir = tmp_path / "app" / "application" / "site"
+    legacy_dir = tmp_path / "app" / "helper"
+    package_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    extension_name = f"sites{EXTENSION_SUFFIXES[0]}"
+    (package_dir / extension_name).touch()
+    (legacy_dir / extension_name).touch()
+    package_paths = [str(package_dir)]
+
+    _include_legacy_resource_directory(package_paths, package_dir)
+
+    assert package_paths == [str(package_dir)]
 
 
 def test_resource_helper_uses_v3_only():
@@ -99,6 +136,16 @@ def test_install_and_docker_paths_do_not_reference_v2_resources():
         assert "user.sites.v2.bin" not in content
         assert "resources.v3" in content
         assert "app/application/site" in content
+
+
+def test_docker_entrypoint_refreshes_stale_update_script_before_use():
+    """新镜像应在自动更新前同步源码内置脚本，避免目录约定再次陈旧。"""
+    content = (ROOT_DIR / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    refresh = "cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh"
+    source = "source /usr/local/bin/mp_update.sh"
+
+    assert refresh in content
+    assert content.index(refresh) < content.index(source)
 
 
 def test_v3_release_workflows_use_main_wiki_and_isolated_images():

@@ -54,6 +54,8 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 The historical `app/core`, `app/helper`, and `app/utils` directories are compatibility-only virtual import roots. Never add physical Python source there and never use those imports from host code. Choose an owner by responsibility, not by whether a function is "shared" or has historically been called a helper.
 
+`app/helper/` may contain only the non-Python `.resource-compat` marker so source archives retain a write target for old Docker images whose updater is fixed to that path. If such an updater writes the compiled site resources there, `app/application/site/__init__.py` exposes that directory only as a fallback when the canonical extension is absent. New images and current update flows must continue writing exclusively to `app/application/site/`.
+
 | Package | Owns | Must Not Own | Representative Files |
 |---|---|---|---|
 | `app/foundation/` | 无状态、无配置和无 I/O 的底层机制：反射/动态导入、加密、DOM、身份、集合、单例、文本、URL 和版本比较 | `settings`、DB/SystemConfig、网络请求、运行日志、MoviePilot 业务规则、旧导入路径 | `reflection.py`, `crypto.py`, `collections.py`, `text.py`, `url.py` |

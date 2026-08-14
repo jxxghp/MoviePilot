@@ -8,6 +8,14 @@ MoviePilot keeps the established product packages such as `app/chain`,
 `app/helper` and `app/utils` roots are virtual compatibility packages only;
 physical Python sources must not be recreated there.
 
+The sole filesystem exception is the non-Python `app/helper/.resource-compat`
+marker retained in source archives for old Docker images whose updater still
+writes compiled site resources to `/app/app/helper`. When the canonical site
+extension is absent, `app/application/site/__init__.py` may add that directory
+as a package search fallback. Current images and update flows must still write
+only to `app/application/site/`; no Python implementation may return to the
+legacy root.
+
 Capabilities migrated out of those legacy roots are organized by technical
 responsibility:
 
