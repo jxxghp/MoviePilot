@@ -283,68 +283,19 @@ def test_agenttask_list_for_user_filters_by_owner_and_enabled(db):
         == ["t-off"]
 
 
-def test_agenttask_update_and_delete_enforce_ownership(db):
+def test_agenttask_update_enforces_ownership(db):
     """
-    更新与删除都必须校验归属，并如实返回是否命中。
+    更新必须校验归属，并如实返回是否命中。
+
+    删除、认领执行（mark_running）与收尾计数（finish_task）已随运行记录的引入迁出本模型，
+    改由 AgentTaskRun / AgentTaskOper 承担，对应用例见 tests/test_agent_task_runs.py 与
+    tests/test_agent_scheduled_tasks.py，此处不再重复覆盖。
     """
     task_id = AgentTask.add_task(db.session, **_task("t-own", user_id="alice"))
 
     assert AgentTask.update_task(db.session, task_id, {"name": "改名"}, user_id="bob") is False
     assert AgentTask.update_task(db.session, task_id, {"name": "改名"}, user_id="alice") is True
     assert AgentTask.get_for_user(db.session, task_id).name == "改名"
-
-    assert AgentTask.delete_task(db.session, task_id, user_id="bob") is False
-    assert AgentTask.delete_task(db.session, task_id, user_id="alice") is True
-    assert AgentTask.get_for_user(db.session, task_id) is None
-
-
-def test_agenttask_mark_running_is_a_guard_against_double_execution(db):
-    """
-    标记运行中同时充当并发闸门：已在运行或已停用的任务不能再次被领取。
-
-    这个条件更新失效即为同一任务被并发执行两次。
-    """
-    task_id = AgentTask.add_task(db.session, **_task("t-run"))
-
-    assert AgentTask.mark_running(db.session, task_id, "2026-08-13T10:00:00+08:00") is True
-    assert AgentTask.mark_running(db.session, task_id, "2026-08-13T10:00:01+08:00") is False
-
-    disabled_id = AgentTask.add_task(db.session, **_task("t-disabled", enabled=False))
-    assert AgentTask.mark_running(db.session, disabled_id, "2026-08-13T10:00:00+08:00") is False
-
-
-def test_agenttask_finish_task_increments_run_count_in_sql(db):
-    """
-    完成计数必须在 SQL 侧自增。
-
-    先读后写会在并发执行时丢失计数；这里连续两次完成后计数必须是 2。
-    """
-    task_id = AgentTask.add_task(db.session, **_task("t-finish"))
-
-    assert AgentTask.finish_task(db.session, task_id, success=True, result="ok") is True
-    assert AgentTask.finish_task(db.session, task_id, success=False, result="err") is True
-
-    task = AgentTask.get_for_user(db.session, task_id)
-    assert task.run_count == 2
-    assert task.last_status == "failed"
-
-
-def test_agenttask_finish_task_can_disable_one_shot_task(db):
-    """
-    单次任务完成后应被关闭，否则会被反复调度。
-    """
-    task_id = AgentTask.add_task(db.session, **_task("t-once"))
-
-    AgentTask.finish_task(db.session, task_id, success=True, result="ok", disable=True)
-
-    assert AgentTask.get_for_user(db.session, task_id).enabled is False
-
-
-def test_agenttask_finish_task_reports_missing_task(db):
-    """
-    对不存在的任务返回 False，调用方据此判断任务是否已被删除。
-    """
-    assert AgentTask.finish_task(db.session, -1, success=True, result="ok") is False
 
 
 # --------------------------------------------------------------------------- #
