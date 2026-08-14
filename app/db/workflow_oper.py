@@ -19,13 +19,13 @@ class WorkflowOper(DbOper):
             return True, "新增工作流成功"
         return False, "工作流已存在"
 
-    def get(self, wid: int) -> Workflow:
+    def get(self, wid: int) -> Optional[Workflow]:
         """
         查询单个工作流
         """
         return Workflow.get(self._db, wid)
 
-    async def async_get(self, wid: int) -> Workflow:
+    async def async_get(self, wid: int) -> Optional[Workflow]:
         """
         异步查询单个工作流
         """
@@ -37,7 +37,7 @@ class WorkflowOper(DbOper):
         """
         return Workflow.list(self._db)
 
-    async def async_list(self) -> Coroutine[Any, Any, Sequence[Any]]:
+    async def async_list(self) -> List[Workflow]:
         """
         异步获取所有工作流列表
         """
@@ -67,7 +67,7 @@ class WorkflowOper(DbOper):
         """
         return Workflow.get_by_name(self._db, name)
 
-    async def async_get_by_name(self, name: str) -> Workflow:
+    async def async_get_by_name(self, name: str) -> Optional[Workflow]:
         """
         异步按名称获取工作流
         """

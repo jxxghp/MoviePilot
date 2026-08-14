@@ -5,10 +5,11 @@
 按需创建，未池化的全局引擎在此创建。两者的构建参数在这里收口。
 """
 import asyncio
-from typing import Dict
+from typing import Dict, cast
 
 from sqlalchemy import NullPool, QueuePool, create_engine, text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.engine import Engine as SyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine, create_async_engine
 
 from app.runtime.config import settings
 from app.db.diagnostics import _register_database_error_logging
@@ -196,10 +197,12 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
 
 
 # 同步数据库引擎
-Engine = _get_database_engine(is_async=False)
+# 工厂按 is_async 返回两类引擎，静态类型只能推出联合类型；这里断言各自的实际类型，
+# 否则 Base.metadata.create_all(bind=Engine) 之类只收同步引擎的调用处会一路报错
+Engine: SyncEngine = cast(SyncEngine, _get_database_engine(is_async=False))
 
 # 异步数据库引擎（未池化的全局引擎，供非常驻事件循环回退使用）
-AsyncEngine = _get_database_engine(is_async=True)
+AsyncEngine: SaAsyncEngine = cast(SaAsyncEngine, _get_database_engine(is_async=True))
 
 def _async_pool_enabled() -> bool:
     """
@@ -251,8 +254,10 @@ def check_connection_budget() -> bool:
         return True
     try:
         with Engine.connect() as conn:  # noqa
-            max_conn = int(conn.execute(text("SHOW max_connections")).scalar())
-            reserved = int(conn.execute(text("SHOW superuser_reserved_connections")).scalar())
+            max_conn = int(conn.execute(text("SHOW max_connections")).scalar() or 0)
+            reserved = int(
+                conn.execute(text("SHOW superuser_reserved_connections")).scalar() or 0
+            )
     except Exception as err:
         logger.warn(f"无法读取 PostgreSQL 连接上限，跳过额度校验: {err}")
         return True

@@ -4,14 +4,36 @@ ORM 基类与数据访问基类。
 Base 提供声明式基类与通用的行为（字典转换、增删改查便利方法）；
 DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 """
-from typing import Any, List, Self, Union
+from typing import Any, List, Optional, Self, Union, cast
 
-from sqlalchemy import Identity, Integer, Sequence, and_, delete, inspect, select
+from sqlalchemy import (CursorResult, Executable, Identity, Integer, Sequence,
+                        and_, delete, inspect, select)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
 from app.runtime.config import settings
 from app.db.decorators import async_db_query, async_db_update, db_query, db_update
+
+
+def execute_dml(db: Session, statement: Executable,
+                execution_options: Optional[dict] = None) -> int:
+    """
+    执行 DML 语句并返回影响行数。
+
+    ``Session.execute`` 的类型标注一律是 ``Result``，只有运行期真正拿到的
+    ``CursorResult`` 才带 ``rowcount``——2.0 只为 ``Connection.execute`` 加了
+    ``CursorResult`` 重载。这里把转换收口一次，免得每个模型各写一遍 cast。
+    :param db: 数据库会话
+    :param statement: delete()/update() 等 DML 语句
+    :param execution_options: 执行选项；不传即沿用 SQLAlchemy 默认的会话同步策略
+    :return: 影响行数
+    """
+    if execution_options is None:
+        result = db.execute(statement)
+    else:
+        result = db.execute(statement, execution_options=execution_options)
+    return cast(CursorResult[Any], result).rowcount
+
 
 def get_id_column() -> Mapped[int]:
     """
@@ -52,12 +74,12 @@ class Base(DeclarativeBase):
 
     @classmethod
     @db_query
-    def get(cls, db: Session, rid: int) -> Self:
+    def get(cls, db: Session, rid: int) -> Optional[Self]:
         return db.execute(select(cls).where(and_(cls.id == rid))).scalars().first()
 
     @classmethod
     @async_db_query
-    async def async_get(cls, db: AsyncSession, rid: int) -> Self:
+    async def async_get(cls, db: AsyncSession, rid: int) -> Optional[Self]:
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         return result.scalars().first()
 
@@ -101,20 +123,20 @@ class Base(DeclarativeBase):
     @classmethod
     @db_query
     def list(cls, db: Session) -> List[Self]:
-        return db.execute(select(cls)).scalars().all()
+        return list(db.execute(select(cls)).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list(cls, db: AsyncSession) -> Sequence[Self]:
+    async def async_list(cls, db: AsyncSession) -> List[Self]:
         result = await db.execute(select(cls))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     def to_dict(self):
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}  # noqa
 
-    @declared_attr
-    def __tablename__(self) -> str:
-        return self.__name__.lower()
+    @declared_attr.directive
+    def __tablename__(cls) -> str:  # noqa: N805  declared_attr 的第一个参数即类本身
+        return cls.__name__.lower()
 
 
 class DbOper:
@@ -122,5 +144,5 @@ class DbOper:
     数据库操作基类
     """
 
-    def __init__(self, db: Union[Session, AsyncSession] = None):
+    def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
         self._db = db

@@ -80,8 +80,8 @@ class AgentChat(Base):
     def list_by_page(
         cls,
         db: Session,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
     ) -> list["AgentChat"]:
@@ -95,19 +95,19 @@ class AgentChat(Base):
             statement = statement.where(cls.user_id == user_id)
         elif username is not None:
             statement = statement.where(cls.username == username)
-        return db.execute(
+        return list(db.execute(
             statement.order_by(cls.updated_at.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_by_page(
         cls,
         db: AsyncSession,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
     ) -> list["AgentChat"]:
@@ -126,4 +126,4 @@ class AgentChat(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())

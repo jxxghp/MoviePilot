@@ -27,13 +27,13 @@ class PluginData(Base):
     @classmethod
     @db_query
     def get_plugin_data(cls, db: Session, plugin_id: str):
-        return db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all()
+        return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_get_plugin_data(cls, db: AsyncSession, plugin_id: str):
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -65,7 +65,7 @@ class PluginData(Base):
     @classmethod
     @db_query
     def get_plugin_data_by_plugin_id(cls, db: Session, plugin_id: str):
-        return db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all()
+        return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     @async_db_query
@@ -73,4 +73,4 @@ class PluginData(Base):
         cls, db: AsyncSession, plugin_id: str
     ):
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
-        return result.scalars().all()
+        return list(result.scalars().all())

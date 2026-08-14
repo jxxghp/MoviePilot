@@ -99,7 +99,7 @@ class MessageOper(DbOper):
 
         return await Message(**kwargs).async_create(self._db)
 
-    def list_by_page(self, page: Optional[int] = 1, count: Optional[int] = 30) -> list[Message]:
+    def list_by_page(self, page: int = 1, count: int = 30) -> list[Message]:
         """
         分页获取消息记录。
         """
@@ -115,7 +115,7 @@ class MessageOper(DbOper):
         return Message.exists_by_source(self._db, source)
 
     async def async_list_by_page(
-            self, page: Optional[int] = 1, count: Optional[int] = 30
+            self, page: int = 1, count: int = 30
     ) -> list[Message]:
         """
         分页获取消息记录。
@@ -124,8 +124,8 @@ class MessageOper(DbOper):
 
     async def async_list_sent_by_page(
             self,
-            page: Optional[int] = 1,
-            count: Optional[int] = 30,
+            page: int = 1,
+            count: int = 30,
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,

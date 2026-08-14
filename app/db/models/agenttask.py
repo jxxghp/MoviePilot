@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
 
 
 class AgentTask(Base):
@@ -90,9 +90,9 @@ class AgentTask(Base):
             statement = statement.where(cls.user_id == user_id)
         if enabled is not None:
             statement = statement.where(cls.enabled.is_(enabled))
-        return db.execute(
+        return list(db.execute(
             statement.order_by(cls.created_at.desc(), cls.id.desc())
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -115,4 +115,4 @@ class AgentTask(Base):
         )
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
-        return bool(db.execute(statement.values(payload)).rowcount)
+        return bool(execute_dml(db, statement.values(payload)))

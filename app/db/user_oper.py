@@ -132,19 +132,19 @@ class UserOper(DbOper):
         user = User(**kwargs)
         user.create(self._db)
 
-    def get_by_name(self, name: str) -> User:
+    def get_by_name(self, name: str) -> Optional[User]:
         """
         根据用户名获取用户
         """
         return User.get_by_name(self._db, name)
 
-    async def async_get_by_name(self, name: str) -> User:
+    async def async_get_by_name(self, name: str) -> Optional[User]:
         """
         异步根据用户名获取用户。
         """
         return await User.async_get_by_name(self._db, name)
 
-    async def async_get_by_id(self, user_id: int) -> User:
+    async def async_get_by_id(self, user_id: int) -> Optional[User]:
         """
         异步根据用户 ID 获取用户。
         """

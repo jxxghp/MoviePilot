@@ -12,7 +12,7 @@
 历史上这些代码全部堆在本文件里（782 行），既让包入口承担了实现职责、
 使依赖图难以理清，也让「import 即建立数据库连接」这一副作用被固化下来。
 """
-from app.db.base import Base, DbOper, get_id_column
+from app.db.base import Base, DbOper, execute_dml, get_id_column
 from app.db.decorators import async_db_query, async_db_update, db_query, db_update
 from app.db.engine import (
     AsyncEngine,
@@ -47,6 +47,7 @@ __all__ = [
     "connection_budget",
     "db_query",
     "db_update",
+    "execute_dml",
     "get_async_db",
     "get_async_engine",
     "get_db",

@@ -107,18 +107,18 @@ class SubscribeHistory(Base):
 
     @classmethod
     @db_query
-    def list_by_type(cls, db: Session, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
-        return db.execute(
+    def list_by_type(cls, db: Session, mtype: str, page: int = 1, count: int = 30):
+        return list(db.execute(
             select(cls).where(
                 cls.type == mtype
             ).order_by(
                 cls.date.desc()
             ).offset((page - 1) * count).limit(count)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: Optional[int] = 1, count: Optional[int] = 30):
+    async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: int = 1, count: int = 30):
         result = await db.execute(
             select(cls).filter(
                 cls.type == mtype
@@ -126,7 +126,7 @@ class SubscribeHistory(Base):
                 cls.date.desc()
             ).offset((page - 1) * count).limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
@@ -135,8 +135,8 @@ class SubscribeHistory(Base):
             db: AsyncSession,
             mtype: str,
             username: str,
-            page: Optional[int] = 1,
-            count: Optional[int] = 30
+            page: int = 1,
+            count: int = 30
     ):
         """
         按订阅 owner 查询指定类型的历史分页。
@@ -151,7 +151,7 @@ class SubscribeHistory(Base):
                 cls.date.desc()
             ).offset((page - 1) * count).limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     def _identity_condition(

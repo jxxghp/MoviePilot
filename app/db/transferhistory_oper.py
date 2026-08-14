@@ -16,14 +16,14 @@ class TransferHistoryOper(DbOper):
     转移历史管理
     """
 
-    def get(self, historyid: int) -> TransferHistory:
+    def get(self, historyid: int) -> Optional[TransferHistory]:
         """
         获取转移历史
         :param historyid: 转移历史id
         """
         return TransferHistory.get(self._db, historyid)
 
-    async def async_get(self, historyid: int) -> TransferHistory:
+    async def async_get(self, historyid: int) -> Optional[TransferHistory]:
         """
         异步获取转移历史。
         """
@@ -32,8 +32,8 @@ class TransferHistoryOper(DbOper):
     async def async_list_by_title(
         self,
         title: str,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
         status: Optional[bool] = None,
     ) -> List[TransferHistory]:
         """
@@ -45,8 +45,8 @@ class TransferHistoryOper(DbOper):
 
     async def async_list_by_page(
         self,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
         status: Optional[bool] = None,
     ) -> List[TransferHistory]:
         """
@@ -56,7 +56,7 @@ class TransferHistoryOper(DbOper):
             self._db, page=page, count=count, status=status
         )
 
-    async def async_count(self, status: Optional[bool] = None) -> int:
+    async def async_count(self, status: Optional[bool] = None) -> Optional[int]:
         """
         异步统计转移记录数量。
         """
@@ -66,7 +66,7 @@ class TransferHistoryOper(DbOper):
         self,
         title: str,
         status: Optional[bool] = None,
-    ) -> int:
+    ) -> Optional[int]:
         """
         异步按标题统计转移记录数量。
         """
@@ -172,7 +172,7 @@ class TransferHistoryOper(DbOper):
         })
         TransferHistory(**kwargs).create(self._db)
 
-    def statistic(self, days: Optional[int] = 7) -> List[Any]:
+    def statistic(self, days: int = 7) -> List[Any]:
         """
         统计最近days天的下载历史数量
         """
@@ -198,7 +198,7 @@ class TransferHistoryOper(DbOper):
     def get_by_media_identity(
             self, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
-    ) -> TransferHistory:
+    ) -> Optional[TransferHistory]:
         """按规范媒体身份和类型查询整理记录。"""
         return TransferHistory.get_by_media_identity(
             db=self._db,
@@ -225,7 +225,7 @@ class TransferHistoryOper(DbOper):
         """
         TransferHistory.truncate(self._db)
 
-    def add_force(self, **kwargs) -> TransferHistory:
+    def add_force(self, **kwargs) -> Optional[TransferHistory]:
         """
         新增转移历史，并以同源存储的记录为准替换旧记录。
         """

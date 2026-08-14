@@ -4,7 +4,7 @@ from sqlalchemy import Integer, String, JSON, Index, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import db_query, db_update, Base, get_id_column, async_db_query
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 
 
 class Message(Base):
@@ -50,16 +50,16 @@ class Message(Base):
 
     @classmethod
     @db_query
-    def list_by_page(cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30) -> List["Message"]:
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30) -> List["Message"]:
         """
         分页获取消息记录。
         """
-        return db.execute(
+        return list(db.execute(
             select(cls)
             .order_by(cls.reg_time.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_query
@@ -78,7 +78,7 @@ class Message(Base):
     @classmethod
     @async_db_query
     async def async_list_by_page(
-            cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
+            cls, db: AsyncSession, page: int = 1, count: int = 30
     ) -> List["Message"]:
         """
         异步分页获取消息记录。
@@ -89,15 +89,15 @@ class Message(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_sent_by_page(
             cls,
             db: AsyncSession,
-            page: Optional[int] = 1,
-            count: Optional[int] = 30,
+            page: int = 1,
+            count: int = 30,
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
@@ -130,7 +130,7 @@ class Message(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_update
@@ -151,7 +151,7 @@ class Message(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

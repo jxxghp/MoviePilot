@@ -102,6 +102,8 @@ class SubscribeOper(DbOper):
                                                          **identity_params)
             else:
                 subscribe = Subscribe.exists(self._db, **identity_params)
+            if not subscribe:
+                return 0, "新增订阅失败"
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"
@@ -159,6 +161,8 @@ class SubscribeOper(DbOper):
                                                                      **identity_params)
             else:
                 subscribe = await Subscribe.async_exists(self._db, **identity_params)
+            if not subscribe:
+                return 0, "新增订阅失败"
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"
@@ -180,13 +184,13 @@ class SubscribeOper(DbOper):
         }
         return bool(Subscribe.exists(self._db, **identity_params))
 
-    def get(self, sid: int) -> Subscribe:
+    def get(self, sid: int) -> Optional[Subscribe]:
         """
         获取订阅
         """
         return Subscribe.get(self._db, rid=sid)
 
-    async def async_get(self, sid: int) -> Subscribe:
+    async def async_get(self, sid: int) -> Optional[Subscribe]:
         """
         获取订阅
         """
@@ -244,7 +248,7 @@ class SubscribeOper(DbOper):
         """
         await Subscribe.async_delete(self._db, rid=sid)
 
-    async def async_update(self, sid: int, payload: dict) -> Subscribe:
+    async def async_update(self, sid: int, payload: dict) -> Optional[Subscribe]:
         """
         异步更新订阅。
         """
@@ -254,13 +258,15 @@ class SubscribeOper(DbOper):
             await subscribe.async_update(self._db, payload)
         return subscribe
 
-    async def async_update_filter_groups(self, sid: int, filter_groups: list) -> Subscribe:
+    async def async_update_filter_groups(
+            self, sid: int, filter_groups: List[str]
+    ) -> Optional[Subscribe]:
         """
         异步更新订阅使用的过滤规则组。
         """
         return await self.async_update(sid, {"filter_groups": filter_groups})
 
-    def update(self, sid: int, payload: dict) -> Subscribe:
+    def update(self, sid: int, payload: dict) -> Optional[Subscribe]:
         """
         更新订阅
         """
@@ -277,7 +283,7 @@ class SubscribeOper(DbOper):
         """
         return Subscribe.list_by_username(self._db, username=username, state=state, mtype=mtype)
 
-    def list_by_type(self, mtype: str, days: Optional[int] = 7) -> Subscribe:
+    def list_by_type(self, mtype: str, days: int = 7) -> List[Subscribe]:
         """
         获取指定类型的订阅
         """

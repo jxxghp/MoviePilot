@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, Index, Integer, JSON, String, delete, func, or_,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, Base, async_db_query
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
@@ -94,7 +94,7 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def list_by_title(cls, db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
+    def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
                       status: bool = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
@@ -117,11 +117,11 @@ class TransferHistory(Base):
         if count >= 0:
             statement = statement.offset((page - 1) * count).limit(count)
 
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
+    async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
                                   status: bool = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
@@ -145,11 +145,11 @@ class TransferHistory(Base):
             query = query.offset((page - 1) * count).limit(count)
 
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
-    def list_by_page(cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: bool = None):
         statement = select(cls)
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -159,11 +159,11 @@ class TransferHistory(Base):
         if count >= 0:
             statement = statement.offset((page - 1) * count).limit(count)
 
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30,
+    async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
                                  status: bool = None):
         if status is not None:
             query = select(cls).filter(
@@ -181,7 +181,7 @@ class TransferHistory(Base):
             query = query.offset((page - 1) * count).limit(count)
         
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -290,7 +290,7 @@ class TransferHistory(Base):
             statement = statement.where(cls.src == normalized_src)
         if storage:
             statement = statement.where(cls.src_storage == storage)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
@@ -333,18 +333,18 @@ class TransferHistory(Base):
             statement = statement.where(cls.dest == normalized_dest)
         if storage:
             statement = statement.where(cls.dest_storage == storage)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
     def list_by_hash(cls, db: Session, download_hash: str):
-        return db.execute(
+        return list(db.execute(
             select(cls).where(cls.download_hash == download_hash)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_query
-    def statistic(cls, db: Session, days: Optional[int] = 7):
+    def statistic(cls, db: Session, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
         """
@@ -355,9 +355,9 @@ class TransferHistory(Base):
             cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                       time.localtime(time.time() - 86400 * days))
         ).subquery()
-        return db.execute(
+        return list(db.execute(
             select(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date)
-        ).all()
+        ).all())
 
     @classmethod
     @db_query
@@ -427,7 +427,7 @@ class TransferHistory(Base):
 
     @classmethod
     @async_db_query
-    async def async_statistic(cls, db: AsyncSession, days: Optional[int] = 7):
+    async def async_statistic(cls, db: AsyncSession, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
         """
@@ -522,9 +522,9 @@ class TransferHistory(Base):
                                           cls.year == year)
         elif mtype and season is not None and dest:
             # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
-            return db.execute(select(cls).where(cls.type == mtype,
+            return list(db.execute(select(cls).where(cls.type == mtype,
                                                 cls.seasons == season,
-                                                cls.dest.like(f"{dest}%"))).scalars().all()
+                                                cls.dest.like(f"{dest}%"))).scalars().all())
         else:
             return []
         if season is not None and episode:
@@ -538,7 +538,7 @@ class TransferHistory(Base):
         elif dest:
             # 电影：没有季集，用目标路径区分不同版本
             statement = statement.where(cls.dest == dest)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
@@ -594,9 +594,9 @@ class TransferHistory(Base):
         """
         查询某时间之后的转移历史
         """
-        return db.execute(
+        return list(db.execute(
             select(cls).where(cls.date > date).order_by(cls.id.desc())
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -617,7 +617,7 @@ class TransferHistory(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

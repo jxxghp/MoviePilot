@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, async_db_query, Base
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
 from app.schemas.types import MediaSource
 
@@ -74,13 +74,14 @@ class MediaServerItem(Base):
     @classmethod
     @db_update
     def delete_stale(cls, db: Session, server: str, sync_time: str):
-        return db.execute(
+        return execute_dml(
+            db,
             delete(cls).where(
                 cls.server == server,
                 or_(cls.lst_mod_date.is_(None), cls.lst_mod_date != sync_time),
             ),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )
 
     @classmethod
     @db_update
@@ -90,9 +91,9 @@ class MediaServerItem(Base):
             statement = statement.where(
                 or_(cls.server.is_(None), ~cls.server.in_(servers))
             )
-        return db.execute(
-            statement, execution_options={"synchronize_session": False}
-        ).rowcount
+        return execute_dml(
+            db, statement, execution_options={"synchronize_session": False}
+        )
 
     @classmethod
     @db_query

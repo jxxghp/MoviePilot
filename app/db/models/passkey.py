@@ -37,9 +37,9 @@ class PassKey(Base):
     @db_query
     def get_by_user_id(cls, db: Session, user_id: int):
         """获取用户的所有PassKey"""
-        return db.execute(
+        return list(db.execute(
             select(cls).where(cls.user_id == user_id, cls.is_active.is_(True))
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
@@ -48,7 +48,7 @@ class PassKey(Base):
         result = await db.execute(
             select(cls).filter(cls.user_id == user_id, cls.is_active.is_(True))
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query

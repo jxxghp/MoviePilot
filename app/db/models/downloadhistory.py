@@ -5,7 +5,7 @@ from sqlalchemy import Integer, String, JSON, Index, delete, select, func, updat
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, Base, async_db_query
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
 from app.schemas.types import MediaSource
 
@@ -132,24 +132,24 @@ class DownloadHistory(Base):
         )
         if music_type:
             statement = statement.where(DownloadHistory.music_type == music_type)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
     def list_by_page(
-        cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30
+        cls, db: Session, page: int = 1, count: int = 30
     ):
-        return db.execute(
+        return list(db.execute(
             select(DownloadHistory)
             .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_by_page(
-        cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
+        cls, db: AsyncSession, page: int = 1, count: int = 30
     ):
         result = await db.execute(
             select(cls)
@@ -157,7 +157,7 @@ class DownloadHistory(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
@@ -165,15 +165,15 @@ class DownloadHistory(Base):
         cls,
         db: AsyncSession,
         title: str,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
     ):
         query = (
             select(cls).filter(_title_like(cls.title, title)).order_by(cls.date.desc())
         )
         query = query.offset((page - 1) * count).limit(count)
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
@@ -230,9 +230,9 @@ class DownloadHistory(Base):
             statement = statement.where(DownloadHistory.seasons == season)
             if episode:
                 statement = statement.where(DownloadHistory.episodes == episode)
-        return db.execute(
+        return list(db.execute(
             statement.order_by(DownloadHistory.id.desc())
-        ).scalars().all()
+        ).scalars().all())
 
 
     @classmethod
@@ -244,9 +244,9 @@ class DownloadHistory(Base):
         statement = select(DownloadHistory).where(DownloadHistory.date < date)
         if username:
             statement = statement.where(DownloadHistory.username == username)
-        return db.execute(
+        return list(db.execute(
             statement.order_by(DownloadHistory.id.desc())
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_query
@@ -270,14 +270,14 @@ class DownloadHistory(Base):
         )
         if seasons:
             statement = statement.where(DownloadHistory.seasons == seasons)
-        return db.execute(
+        return list(db.execute(
             statement.order_by(DownloadHistory.id.desc())
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_query
     def list_by_type(cls, db: Session, mtype: str, days: int):
-        return db.execute(
+        return list(db.execute(
             select(DownloadHistory).where(
                 DownloadHistory.type == mtype,
                 DownloadHistory.date
@@ -285,7 +285,7 @@ class DownloadHistory(Base):
                     "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400 * int(days))
                 ),
             )
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -306,10 +306,10 @@ class DownloadHistory(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )
 
 
 class DownloadFiles(Base):
@@ -344,7 +344,7 @@ class DownloadFiles(Base):
         statement = select(cls).where(cls.download_hash == download_hash)
         if state is not None:
             statement = statement.where(cls.state == state)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
@@ -352,12 +352,12 @@ class DownloadFiles(Base):
         result = db.execute(
             select(cls).where(cls.fullpath == fullpath).order_by(cls.id.desc())
         ).scalars()
-        return result.all() if all_files else result.first()
+        return list(result.all()) if all_files else result.first()
 
     @classmethod
     @db_query
     def get_by_savepath(cls, db: Session, savepath: str):
-        return db.execute(select(cls).where(cls.savepath == savepath)).scalars().all()
+        return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 
     @classmethod
     @db_update
@@ -391,7 +391,7 @@ class DownloadFiles(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

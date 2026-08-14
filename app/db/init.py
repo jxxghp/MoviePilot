@@ -22,7 +22,7 @@ def init_db():
     import app.db.models  # noqa: F401
 
     # 全量建表
-    Base.metadata.create_all(bind=Engine)  # noqa
+    Base.metadata.create_all(bind=Engine)
 
 
 def update_db():

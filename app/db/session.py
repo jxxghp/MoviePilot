@@ -12,8 +12,9 @@ import asyncio
 import threading
 import time
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, Generator, Optional
+from typing import Any, AsyncGenerator, Dict, Generator, Optional, cast
 
+from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -67,7 +68,7 @@ def _pooled_loop() -> Optional[Any]:
     return loop
 
 
-def get_async_engine():
+def get_async_engine() -> SaAsyncEngine:
     """
     按事件循环获取异步引擎：常驻主循环用池化引擎，其余回退全局 NullPool 引擎。
     :return: 异步引擎
@@ -82,7 +83,7 @@ def get_async_engine():
     with _pooled_async_lock:
         engine = _pooled_async_engines.get(key)
         if engine is None:
-            engine = _get_database_engine(is_async=True, pooled=True)
+            engine = cast(SaAsyncEngine, _get_database_engine(is_async=True, pooled=True))
             _pooled_async_engines[key] = engine
             logger.info(f"异步数据库连接池已启用: pool_size={settings.DB_ASYNC_POOL_SIZE}, "
                         f"max_overflow={settings.DB_ASYNC_MAX_OVERFLOW}")

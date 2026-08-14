@@ -75,24 +75,24 @@ class Site(Base):
     @classmethod
     @db_query
     def get_actives(cls, db: Session):
-        return db.execute(select(cls).where(cls.is_active)).scalars().all()
+        return list(db.execute(select(cls).where(cls.is_active)).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_get_actives(cls, db: AsyncSession):
         result = await db.execute(select(cls).where(cls.is_active))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def list_order_by_pri(cls, db: Session):
-        return db.execute(select(cls).order_by(cls.pri)).scalars().all()
+        return list(db.execute(select(cls).order_by(cls.pri)).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_order_by_pri(cls, db: AsyncSession):
         result = await db.execute(select(cls).order_by(cls.pri))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query

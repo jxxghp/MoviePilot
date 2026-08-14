@@ -5,7 +5,7 @@ from sqlalchemy import Integer, String, Float, JSON, Index, delete, func, or_, s
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import db_query, db_update, Base, get_id_column, async_db_query
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 
 
 class SiteUserData(Base):
@@ -68,7 +68,7 @@ class SiteUserData(Base):
                                         cls.updated_time == worktime)
         elif workdate:
             statement = statement.where(cls.updated_day == workdate)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
@@ -79,12 +79,12 @@ class SiteUserData(Base):
         elif workdate:
             query = query.filter(cls.updated_day == workdate)
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def get_by_date(cls, db: Session, date: str):
-        return db.execute(select(cls).where(cls.updated_day == date)).scalars().all()
+        return list(db.execute(select(cls).where(cls.updated_day == date)).scalars().all())
 
     @classmethod
     @db_query
@@ -103,13 +103,13 @@ class SiteUserData(Base):
         )
 
         # 主查询：按 domain 和 updated_day 获取最新的记录
-        return db.execute(
+        return list(db.execute(
             select(cls).join(
                 subquery,
                 (cls.domain == subquery.c.domain) &
                 (cls.updated_day == subquery.c.latest_update_day)
             ).order_by(cls.updated_time.desc())
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
@@ -134,7 +134,7 @@ class SiteUserData(Base):
                 (cls.domain == subquery.c.domain) &
                 (cls.updated_day == subquery.c.latest_update_day)
             ).order_by(cls.updated_time.desc()))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_update
@@ -155,7 +155,7 @@ class SiteUserData(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

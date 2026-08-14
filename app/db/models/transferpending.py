@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy import Index, String, delete, select
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
 
 
 class TransferPending(Base):
@@ -68,10 +68,10 @@ class TransferPending(Base):
         """
         if not storage or not src_path:
             return 0
-        return db.execute(
-            delete(cls).where(cls.storage == storage, cls.src_path == src_path),
+        return execute_dml(
+            db, delete(cls).where(cls.storage == storage, cls.src_path == src_path),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )
 
     @classmethod
     @db_query
@@ -85,11 +85,11 @@ class TransferPending(Base):
         :param limit: 单次回放上限
         :return: 待整理登记列表
         """
-        return db.execute(
+        return list(db.execute(
             select(cls)
             .order_by(cls.created_at.asc(), cls.id.asc())
             .limit(limit)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -99,7 +99,7 @@ class TransferPending(Base):
         :param db: 数据库会话
         :return: 删除的记录数
         """
-        return db.execute(
-            delete(cls),
+        return execute_dml(
+            db, delete(cls),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

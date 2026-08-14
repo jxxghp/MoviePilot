@@ -236,7 +236,7 @@ class Subscribe(Base):
         if state:
             # 如果传入的状态不为空，拆分成多个状态
             statement = statement.where(cls.state.in_(state.split(',')))
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
@@ -249,7 +249,7 @@ class Subscribe(Base):
             result = await db.execute(
                 select(cls).filter(cls.state.in_(state.split(',')))
             )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -286,7 +286,7 @@ class Subscribe(Base):
             result = await db.execute(
                 select(cls).filter(cls.name == title)
             )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -302,7 +302,7 @@ class Subscribe(Base):
         )
         if condition is None:
             return []
-        return db.execute(select(cls).where(condition)).scalars().all()
+        return list(db.execute(select(cls).where(condition)).scalars().all())
 
     @classmethod
     @async_db_query
@@ -319,7 +319,7 @@ class Subscribe(Base):
         if condition is None:
             return []
         result = await db.execute(select(cls).filter(condition))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -400,7 +400,7 @@ class Subscribe(Base):
             statement = statement.where(cls.state == state)
         if mtype:
             statement = statement.where(cls.type == mtype)
-        return db.execute(statement).scalars().all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
@@ -424,18 +424,18 @@ class Subscribe(Base):
                 result = await db.execute(
                     select(cls).filter(cls.username == username)
                 )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def list_by_type(cls, db: Session, mtype: str, days: int):
-        return db.execute(
+        return list(db.execute(
             select(cls).where(
                 cls.type == mtype,
                 cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                           time.localtime(time.time() - 86400 * int(days)))
             )
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @async_db_query
@@ -447,4 +447,4 @@ class Subscribe(Base):
                                           time.localtime(time.time() - 86400 * int(days)))
             )
         )
-        return result.scalars().all()
+        return list(result.scalars().all())

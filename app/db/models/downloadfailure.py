@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy import Float, Index, Integer, String, delete, select
 from sqlalchemy.orm import Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
 
 
@@ -74,10 +74,10 @@ class DownloadFailure(Base):
         normalized = list(dict.fromkeys([fingerprint for fingerprint in fingerprints if fingerprint]))
         if not normalized:
             return []
-        return db.execute(
+        return list(db.execute(
             select(cls)
             .where(cls.fingerprint.in_(normalized), cls.next_retry_at > now_time)
-        ).scalars().all()
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -134,7 +134,7 @@ class DownloadFailure(Base):
         ).scalars().all()
         if not ids:
             return 0
-        return db.execute(
-            delete(cls).where(cls.id.in_(ids)),
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
             execution_options={"synchronize_session": False},
-        ).rowcount
+        )

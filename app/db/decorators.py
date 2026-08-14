@@ -5,12 +5,19 @@
 未显式传入会话时自动创建，并在结束时归还——异步路径经 async_session_scope 收口，
 连接池与配额都在那里生效。
 """
-from typing import Optional, Tuple
+from typing import Any, Awaitable, Callable, Optional, Tuple, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.session import ScopedSession, async_session_scope
+
+_R = TypeVar("_R")
+
+# 四个装饰器都会重写实参列表：未传会话时自行创建一个并塞回 db 位置。因此包装后的可调用
+# 对象接受的实参与被包装函数的签名并不一致——用 Callable[..., _R] 如实表达「参数由装饰器
+# 接管、返回值原样透传」。否则调用方传 None 或传异步会话都会被判成类型不符，而这恰恰是
+# 装饰器存在的理由（各 Oper 的 self._db 常态就是 None）。
 
 def _get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     """
@@ -76,12 +83,12 @@ def _update_args_async_db(args: tuple, kwargs: dict, db: AsyncSession) -> Tuple[
     return args, kwargs
 
 
-def db_update(func):
+def db_update(func: Callable[..., _R]) -> Callable[..., _R]:
     """
     数据库更新类操作装饰器，第一个参数必须是数据库会话或存在db参数
     """
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> _R:
         # 是否关闭数据库会话
         _close_db = False
         # 从参数中获取数据库会话
@@ -111,14 +118,15 @@ def db_update(func):
     return wrapper
 
 
-def async_db_update(func):
+def async_db_update(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitable[_R]]:
     """
     异步数据库更新类操作装饰器，第一个参数必须是异步数据库会话或存在db参数
     """
 
-    async def wrapper(*args, **kwargs):
-        # 是否关闭数据库会话
+    async def wrapper(*args: Any, **kwargs: Any) -> _R:
+        # 是否关闭数据库会话；作用域与 _scope 同生共死，先置空以便静态检查看清
         _close_db = False
+        _scope = None
         # 从参数中获取异步数据库会话
         db = _get_args_async_db(args, kwargs)
         if not db:
@@ -141,7 +149,7 @@ def async_db_update(func):
             raise err
         finally:
             # 关闭数据库会话
-            if _close_db:
+            if _close_db and _scope is not None:
                 # 退出会话上下文而不是只 close：配额的释放绑定在 __aexit__ 上，
                 # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死
                 await _scope.__aexit__(None, None, None)
@@ -150,13 +158,13 @@ def async_db_update(func):
     return wrapper
 
 
-def db_query(func):
+def db_query(func: Callable[..., _R]) -> Callable[..., _R]:
     """
     数据库查询操作装饰器，第一个参数必须是数据库会话或存在db参数
     注意：db.query列表数据时，需要转换为list返回
     """
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> _R:
         # 是否关闭数据库会话
         _close_db = False
         # 从参数中获取数据库会话
@@ -182,15 +190,16 @@ def db_query(func):
     return wrapper
 
 
-def async_db_query(func):
+def async_db_query(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitable[_R]]:
     """
     异步数据库查询操作装饰器，第一个参数必须是异步数据库会话或存在db参数
     注意：db.query列表数据时，需要转换为list返回
     """
 
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> _R:
         # 是否关闭数据库会话
         _close_db = False
+        _scope = None
         # 从参数中获取异步数据库会话
         db = _get_args_async_db(args, kwargs)
         if not db:
@@ -209,7 +218,7 @@ def async_db_query(func):
             raise err
         finally:
             # 关闭数据库会话
-            if _close_db:
+            if _close_db and _scope is not None:
                 # 退出会话上下文而不是只 close：配额的释放绑定在 __aexit__ 上，
                 # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死
                 await _scope.__aexit__(None, None, None)

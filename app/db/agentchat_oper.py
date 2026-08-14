@@ -16,7 +16,7 @@ class AgentChatOper(DbOper):
     Agent 会话历史数据管理。
     """
 
-    def __init__(self, db: Union[Session, AsyncSession] = None):
+    def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
         super().__init__(db)
 
     @staticmethod
@@ -96,7 +96,7 @@ class AgentChatOper(DbOper):
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
-    ) -> AgentChat:
+    ) -> Optional[AgentChat]:
         """
         确保 Agent 会话记录存在，并刷新基础渠道信息。
         """
@@ -151,6 +151,8 @@ class AgentChatOper(DbOper):
             chat = self.get(session_id=session_id)
         if not chat:
             chat = self.ensure_session(session_id=session_id, user_id=user_id)
+        if not chat:
+            return
         chat.update(
             self._db,
             {
@@ -186,6 +188,8 @@ class AgentChatOper(DbOper):
             original_chat_id=original_chat_id,
             client_session_id=client_session_id,
         )
+        if not chat:
+            return
         if self.has_custom_title(chat.title):
             return
         chat.update(
@@ -207,7 +211,7 @@ class AgentChatOper(DbOper):
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
         title: Optional[str] = None,
-    ) -> AgentChat:
+    ) -> Optional[AgentChat]:
         """
         保存用户可见的 Agent 会话消息。
         """
@@ -221,6 +225,8 @@ class AgentChatOper(DbOper):
             original_chat_id=original_chat_id,
             client_session_id=client_session_id,
         )
+        if not chat:
+            return None
         normalized_title = (
             chat.title
             if self.has_custom_title(chat.title)
@@ -248,7 +254,7 @@ class AgentChatOper(DbOper):
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
-    ) -> AgentChat:
+    ) -> Optional[AgentChat]:
         """
         追加一组用户可见的 Agent 会话消息。
         """
@@ -261,6 +267,8 @@ class AgentChatOper(DbOper):
             original_chat_id=original_chat_id,
             client_session_id=client_session_id,
         )
+        if not chat:
+            return None
         display_messages = self._normalize_messages(chat.display_messages)
         display_messages.extend(self._normalize_messages(messages))
         title = chat.title if self.has_custom_title(chat.title) else None
@@ -278,8 +286,8 @@ class AgentChatOper(DbOper):
 
     async def async_list_by_page(
         self,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
     ) -> list[AgentChat]:

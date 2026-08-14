@@ -56,31 +56,20 @@ class Workflow(Base):
 
     @classmethod
     @db_query
-    def list(cls, db):
-        return db.execute(select(cls)).scalars().all()
-
-    @classmethod
-    @async_db_query
-    async def async_list(cls, db: AsyncSession):
-        result = await db.execute(select(cls))
-        return result.scalars().all()
-
-    @classmethod
-    @db_query
     def get_enabled_workflows(cls, db):
-        return db.execute(select(cls).where(cls.state != 'P')).scalars().all()
+        return list(db.execute(select(cls).where(cls.state != 'P')).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_get_enabled_workflows(cls, db: AsyncSession):
         result = await db.execute(select(cls).where(cls.state != 'P'))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def get_timer_triggered_workflows(cls, db):
         """获取定时触发的工作流"""
-        return db.execute(select(cls).where(
+        return list(db.execute(select(cls).where(
             and_(
                 or_(
                     cls.trigger_type == 'timer',
@@ -88,7 +77,7 @@ class Workflow(Base):
                 ),
                 cls.state != 'P'
             )
-        )).scalars().all()
+        )).scalars().all())
 
     @classmethod
     @async_db_query
@@ -103,18 +92,18 @@ class Workflow(Base):
                 cls.state != 'P'
             )
         ))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def get_event_triggered_workflows(cls, db):
         """获取事件触发的工作流"""
-        return db.execute(select(cls).where(
+        return list(db.execute(select(cls).where(
             and_(
                 cls.trigger_type == 'event',
                 cls.state != 'P'
             )
-        )).scalars().all()
+        )).scalars().all())
 
     @classmethod
     @async_db_query
@@ -126,7 +115,7 @@ class Workflow(Base):
                 cls.state != 'P'
             )
         ))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
