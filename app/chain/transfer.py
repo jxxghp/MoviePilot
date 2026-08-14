@@ -44,8 +44,6 @@ from app.schemas import (
     EpisodeFormat,
     FileItem,
     TransferDirectoryConf,
-    TransferTask,
-    TransferQueue,
     TransferJob,
     TransferJobTask,
     TmdbEpisode,
@@ -66,6 +64,7 @@ from app.schemas.types import (
     MediaSource,
 )
 from app.runtime.reload import ConfigReloadMixin
+from app.application.transfer import TransferQueue, TransferTask
 from app.domain.media import normalize_music_type
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
@@ -154,7 +153,8 @@ class JobManager:
         return meta.name, season
 
     @staticmethod
-    def __get_media_id(media: MediaInfo = None, season: Optional[int] = None) -> Tuple:
+    def __get_media_id(media: Optional[Union[MediaInfo, MusicInfo]] = None,
+                       season: Optional[int] = None) -> Tuple:
         """
         获取媒体ID；音乐额外区分实体类型，并为无远端ID的曲目构造稳定身份。
         """
@@ -223,7 +223,7 @@ class JobManager:
         return self.__get_id(task)
 
     @staticmethod
-    def __get_media(task: TransferTask) -> schemas.MediaInfo:
+    def __get_media(task: TransferTask) -> Union[schemas.MediaInfo, schemas.MusicInfo]:
         """
         获取媒体信息
         """
@@ -760,7 +760,7 @@ class JobManager:
             )
 
     def success_tasks(
-            self, media: MediaInfo, season: Optional[int] = None
+            self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None
     ) -> List[TransferJobTask]:
         """
         获取作业中所有成功的任务
@@ -787,7 +787,7 @@ class JobManager:
                 return []
             return self._job_view[__mediaid__].tasks
 
-    def count(self, media: MediaInfo, season: Optional[int] = None) -> int:
+    def count(self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None) -> int:
         """
         获取作业中成功总数
         """
@@ -803,7 +803,7 @@ class JobManager:
                 ]
             )
 
-    def size(self, media: MediaInfo, season: Optional[int] = None) -> int:
+    def size(self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None) -> int:
         """
         获取作业中所有成功文件总大小
         """
@@ -856,7 +856,7 @@ class JobManager:
             return list(self._job_view.values())
 
     def season_episodes(
-            self, media: MediaInfo, season: Optional[int] = None
+            self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None
     ) -> List[int]:
         """
         获取作业的季集清单
@@ -1274,7 +1274,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             history: TransferHistory,
             src_path: Path,
-    ) -> Optional[MusicInfo]:
+    ) -> Optional[Union[MusicInfo, MediaInfo]]:
         """
         重新整理重试时恢复音乐信息。
 
@@ -2285,7 +2285,9 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         try:
             # 识别
             transferhis = TransferHistoryOper()
-            mediainfo = task.mediainfo
+            # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
+            # 结果（MediaInfo），不标注时会被推断成其中一种，另一种就成了假错误
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = task.mediainfo
             mediainfo_changed = False
             need_obtain_images = False
             if not mediainfo:
@@ -2302,8 +2304,10 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             and download_history.media_id
                             and not history_year_conflict
                     ):
-                        # 下载记录中已存在识别信息
-                        mediainfo: Optional[MediaInfo] = MediaChain().recognize_media(
+                        # 下载记录中已存在识别信息。这里不再重复标注类型：函数开头
+                        # 已把 mediainfo 声明为 MediaInfo | MusicInfo | None，重复
+                        # 声明会遮蔽它，把音乐识别结果判成类型错误
+                        mediainfo = MediaChain().recognize_media(
                             mtype=task.mtype or MediaType(download_history.type),
                             media_source=download_history.media_source,
                             media_id=download_history.media_id,
@@ -3177,7 +3181,11 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @staticmethod
     def _is_movie_year_conflict(
-            file_meta: MetaBase, media: Union[DownloadHistory, MediaInfo]
+            file_meta: MetaBase,
+            # 两种 DownloadHistory 都会进来：库模型（本文件按 ORM 行查历史）与
+            # schemas DTO（TransferTask.download_history）。本函数只按 getattr 取
+            # year 与 type，对两者一视同仁
+            media: Union[DownloadHistory, schemas.DownloadHistory, MediaInfo, MusicInfo]
     ) -> bool:
         """
         判断文件名年份是否与已识别电影年份冲突。
@@ -3461,7 +3469,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             fileitem: FileItem,
             meta: MetaBase = None,
-            mediainfo: MediaInfo = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
@@ -4697,7 +4705,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def send_transfer_message(
             self,
             meta: MetaBase,
-            mediainfo: MediaInfo,
+            mediainfo: Union[MediaInfo, MusicInfo],
             transferinfo: TransferInfo,
             season_episode: Optional[str] = None,
             episodes_info: Optional[List[TmdbEpisode]] = None,

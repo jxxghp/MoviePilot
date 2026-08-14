@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -79,56 +79,10 @@ class DownloadingTorrent(DownloaderTorrent):
     """
 
 
-class TransferTask(OptionalMediaIdentityMixin, BaseModel):
-    """
-    文件整理任务。
-
-    与同文件的 TransferJob / TransferJobTask 不同，本模型是整理链的**进程内工作项**
-    而非出网的 DTO：meta 装的是领域侧的 MetaBase 子类（MetaInfo / MetaMusic），
-    mediainfo 装的是领域侧的 MediaInfo / MusicInfo，都带行为而非纯数据——to_dict()
-    存在正是因为它自己序列化不了。TransferJobTask 才是它面向前端的投影，那里的
-    meta / media 用的是 app.schemas 的同名 DTO。
-    """
-    fileitem: FileItem
-    # 这两个 Any 是承重的，不是漏标。app.schemas 不能命名领域类型：
-    # app.schemas -> app.schemas.transfer -> app.domain.* -> app.schemas.types -> app.schemas
-    # 会闭环，仓库自己的 test_migrated_modules_are_not_in_import_cycles 就会红（已实测）。
-    # 改标注前先把本模型搬出 app.schemas，否则只是把环换个地方藏。
-    # 另注：收紧后 app/chain/transfer.py 会净增 4 条 pyright 错误，指向该文件里
-    # MusicInfo 被传给要求 MediaInfo 的参数（约 12 处）——那是真实的建模不一致，
-    # 但属于整理链自己的工程，不是本字段能顺手带走的。
-    meta: Optional[Any] = None
-    mediainfo: Optional[Any] = None
-    media_source: Optional[MediaSource] = None
-    media_id: Optional[str] = None
-    mtype: Optional[MediaType] = None
-    target_directory: Optional[TransferDirectoryConf] = None
-    target_storage: Optional[str] = None
-    target_path: Optional[Path] = None
-    transfer_type: Optional[str] = None
-    scrape: Optional[bool] = False
-    library_type_folder: Optional[bool] = False
-    library_category_folder: Optional[bool] = False
-    episodes_info: Optional[List[TmdbEpisode]] = None
-    username: Optional[str] = None
-    downloader: Optional[str] = None
-    download_hash: Optional[str] = None
-    download_history: Optional[DownloadHistory] = None
-    transfer_batch_id: Optional[str] = None
-    manual: Optional[bool] = False
-    background: Optional[bool] = True
-    preview: Optional[bool] = False
-
-    def to_dict(self):
-        """
-        返回字典
-        """
-        dicts = vars(self).copy()
-        dicts["fileitem"] = self.fileitem.model_dump() if self.fileitem else None
-        dicts["meta"] = self.meta.model_dump() if self.meta else None
-        dicts["mediainfo"] = self.mediainfo.model_dump() if self.mediainfo else None
-        dicts["target_directory"] = self.target_directory.model_dump() if self.target_directory else None
-        return dicts
+# TransferTask 已迁至 app/application/transfer.py：它是整理链的进程内工作项，装的是
+# 领域对象而非 DTO，留在这里只能把两个字段标成 Any——app.schemas 命名领域类型会让
+# app.schemas -> app.schemas.transfer -> app.domain.* -> app.schemas.types -> app.schemas
+# 闭环。下面的 TransferJob / TransferJobTask 才是它面向前端的投影，用本包的同名 DTO。
 
 
 class TransferJobTask(BaseModel):
@@ -193,18 +147,6 @@ class TransferInfo(BaseModel):
         dicts["fileitem"] = self.fileitem.model_dump() if self.fileitem else None
         dicts["target_item"] = self.target_item.model_dump() if self.target_item else None
         return dicts
-
-
-class TransferQueue(BaseModel):
-    """
-    异步整理队列信息
-    """
-    # 任务信息
-    task: Optional[TransferTask] = None
-    # 回调函数
-    callback: Optional[Callable] = None
-    # 整理结果
-    result: Optional[TransferInfo] = None
 
 
 class EpisodeFormat(BaseModel):

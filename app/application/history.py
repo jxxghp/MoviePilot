@@ -1,6 +1,6 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -438,7 +438,8 @@ def describe_history_gate(history: Optional[TransferHistory],
 # 表的读写规则放在一起，字段含义只有一处需要维护。
 # --------------------------------------------------------------------------- #
 
-def _history_title(meta: MetaBase, mediainfo: Optional[MediaInfo] = None) -> Optional[str]:
+def _history_title(meta: MetaBase,
+                   mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None) -> Optional[str]:
     """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
     if isinstance(meta, MetaMusic) and meta.title:
         return meta.title
@@ -448,7 +449,7 @@ def _history_title(meta: MetaBase, mediainfo: Optional[MediaInfo] = None) -> Opt
 
 
 def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
-                         mediainfo: MediaInfo, transferinfo: TransferInfo,
+                         mediainfo: Union[MediaInfo, MusicInfo], transferinfo: TransferInfo,
                          downloader: Optional[str] = None,
                          download_hash: Optional[str] = None,
                          transfer_history_oper: Optional[TransferHistoryOper] = None
@@ -499,7 +500,7 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
 
 
 def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
-                      mediainfo: Optional[MediaInfo] = None,
+                      mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
                       transferinfo: Optional[TransferInfo] = None,
                       downloader: Optional[str] = None,
                       download_hash: Optional[str] = None,

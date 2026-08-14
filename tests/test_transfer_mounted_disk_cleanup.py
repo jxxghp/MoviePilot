@@ -3,7 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.chain.transfer import TransferChain
-from app.schemas import FileItem, TransferDirectoryConf, TransferTask
+from app.schemas import FileItem, TransferDirectoryConf
+from app.application.transfer import TransferTask
 from app.adapters.system.host import SystemUtils
 
 

@@ -2,14 +2,26 @@
 
 from app.chain import transfer
 from app.chain.transfer import JobManager
-from app.schemas import FileItem, TransferTask
+from app.domain.meta.metabase import MetaBase
+from app.schemas import FileItem
+from app.application.transfer import TransferTask
 from app.schemas.types import MediaType
 
 
-class _FakeMeta:
-    """提供整理任务分组需要的最小元数据。"""
+class _FakeMeta(MetaBase):
+    """
+    提供整理任务分组需要的最小元数据。
+
+    继承 MetaBase 而非鸭子类型：TransferTask.meta 已标注为 MetaBase，pydantic 会做
+    isinstance 校验。三个类级属性用来遮蔽 MetaBase 上的同名 property。
+    """
+
+    name = None
+    episode_list = None
+    season_episode = None
 
     def __init__(self):
+        super().__init__(title="Test Show S01E01")
         self.name = "Test Show"
         self.title = "Test Show S01E01"
         self.year = "2026"

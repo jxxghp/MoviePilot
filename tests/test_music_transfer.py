@@ -12,7 +12,8 @@ from app.domain.context import MusicInfo
 from app.application.messaging.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.transfer import TransferInfo, TransferTask, TransferTorrent
+from app.schemas.transfer import TransferInfo, TransferTorrent
+from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaType
 
 

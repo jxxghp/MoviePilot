@@ -5,7 +5,9 @@ import pytest
 from app.chain.transfer import TransferChain
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
-from app.schemas import DownloadHistory, FileItem, TransferTask
+from app.domain.meta.metabase import MetaBase
+from app.schemas import DownloadHistory, FileItem
+from app.application.transfer import TransferTask
 from app.schemas.types import MediaType
 
 
@@ -31,16 +33,29 @@ def _make_chain() -> TransferChain:
     return chain
 
 
-def _make_file_meta(year: str = "2013") -> SimpleNamespace:
+class _FileMeta(MetaBase):
+    """
+    电影合集文件的元数据。
+
+    继承 MetaBase 而非 SimpleNamespace：TransferTask.meta 已标注为 MetaBase，
+    pydantic 会做 isinstance 校验。name 是 MetaBase 上的 property，用类级属性遮蔽。
+    """
+
+    name = None
+
+    def __init__(self, year: str = "2013"):
+        super().__init__(title="The Hunger Games Catching Fire")
+        self.name = "The Hunger Games Catching Fire"
+        self.year = year
+        self.type = MediaType.UNKNOWN
+        self.begin_season = None
+        self.begin_episode = None
+        self.part = None
+
+
+def _make_file_meta(year: str = "2013") -> _FileMeta:
     """构造电影合集文件的元数据。"""
-    return SimpleNamespace(
-        name="The Hunger Games Catching Fire",
-        year=year,
-        type=MediaType.UNKNOWN,
-        begin_season=None,
-        begin_episode=None,
-        part=None,
-    )
+    return _FileMeta(year=year)
 
 
 def _make_history() -> SimpleNamespace:
@@ -175,13 +190,16 @@ def test_movie_collection_conflict_only_drops_automatic_media(
     monkeypatch.setattr("app.chain.transfer.StorageChain", lambda: SimpleNamespace())
     monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)
 
+    # 用真 MediaInfo 而非 SimpleNamespace：它会被装进 TransferTask.mediainfo，
+    # 那个字段已标注为 MusicInfo | MediaInfo，pydantic 会做 isinstance 校验
+    conflicting_media = MediaInfo()
+    conflicting_media.tmdb_id = 70160
+    conflicting_media.type = MediaType.MOVIE
+    conflicting_media.year = "2012"
+
     chain.do_transfer(
         fileitem=source_file,
-        mediainfo=SimpleNamespace(
-            tmdb_id=70160,
-            type=MediaType.MOVIE,
-            year="2012",
-        ),
+        mediainfo=conflicting_media,
         download_hash=history.download_hash,
         background=False,
         manual=manual,

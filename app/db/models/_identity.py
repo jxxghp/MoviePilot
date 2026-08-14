@@ -47,8 +47,9 @@ def _normalize_identity(mapper: Mapper, connection: Any, target: Any) -> None:
         media_source=raw_source, media_id=raw_id
     )
     if not (media_source and media_id):
+        # 用映射类名而非 local_table.name：后者的静态类型是 FromClause，没有 name
         logger.warn(
-            f"{mapper.local_table.name} 的媒体身份不成对，已清空："
+            f"{mapper.class_.__name__} 的媒体身份不成对，已清空："
             f"media_source={raw_source!r}, media_id={raw_id!r}"
         )
     target.media_source = media_source.value if media_source else None

@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metavideo import MetaVideo
 from app.chain.transfer import JobManager, TransferChain
 from app.application.history import (
@@ -13,7 +14,8 @@ from app.application.history import (
     record_transfer_failure,
 )
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas import EpisodeFormat, FileItem, TransferInfo, TransferTask
+from app.schemas import EpisodeFormat, FileItem, TransferInfo
+from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaSource, MediaType
 
 
@@ -22,8 +24,21 @@ def _reset_failed_retries(src_path, storage=None):
     clear_transfer_failures(src_path, storage)
 
 
-class FakeMeta:
+class FakeMeta(MetaBase):
+    """
+    整理任务分组需要的最小剧集元数据。
+
+    继承 MetaBase 而非鸭子类型：TransferTask.meta 已标注为 MetaBase，pydantic 会做
+    isinstance 校验。下面三个类级属性用来遮蔽 MetaBase 上的同名 property，好让
+    __init__ 能直接赋值。
+    """
+
+    name = None
+    episode_list = None
+    season_episode = None
+
     def __init__(self, episode: int, season: int = 1):
+        super().__init__(title=f"Test Show S{season:02d}E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S{season:02d}E{episode:02d}"
         self.year = "2026"
@@ -64,9 +79,17 @@ class FakeMeta:
         }
 
 
-class FakeMedia:
+class FakeMedia(MediaInfo):
+    """
+    与正式 MediaInfo 身份字段一致的测试媒体对象。
+
+    继承 MediaInfo 而非鸭子类型：TransferTask.mediainfo 已标注为 MusicInfo | MediaInfo，
+    pydantic 会做 isinstance 校验。
+    """
+
     def __init__(self, tmdb_id: int = 12345):
         """构造与正式 MediaInfo 身份字段一致的测试媒体对象。"""
+        super().__init__()
         self.tmdb_id = tmdb_id
         self.douban_id = None
         self.bangumi_id = None
