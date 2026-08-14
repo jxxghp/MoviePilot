@@ -108,7 +108,7 @@ class SiteOper(DbOper):
         """
         return await Site.async_get_by_name(self._db, name)
 
-    def get_domains_by_ids(self, ids: List[int]) -> List[str]:
+    def get_domains_by_ids(self, ids: List[int]) -> List[Optional[str]]:
         """
         按ID获取站点域名
         """

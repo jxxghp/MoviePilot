@@ -1,6 +1,7 @@
+from typing import Any, Optional
 from sqlalchemy import String, JSON, Index, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import (
     db_query,
@@ -16,9 +17,9 @@ class PluginData(Base):
     插件数据表
     """
     id = get_id_column()
-    plugin_id = mapped_column(String, nullable=False)
-    key = mapped_column(String, nullable=False)
-    value = mapped_column(JSON)
+    plugin_id: Mapped[str] = mapped_column(String, nullable=False)
+    key: Mapped[str] = mapped_column(String, nullable=False)
+    value: Mapped[Optional[Any]] = mapped_column(JSON)
 
     __table_args__ = (
         Index('ix_plugindata_plugin_id_key', 'plugin_id', 'key'),

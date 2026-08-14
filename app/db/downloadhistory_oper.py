@@ -112,7 +112,7 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.delete_by_fullpath(self._db, fullpath)
 
-    def get_hash_by_fullpath(self, fullpath: str) -> str:
+    def get_hash_by_fullpath(self, fullpath: str) -> Optional[str]:
         """
         按fullpath查询下载文件记录hash
         :param fullpath: 数据key

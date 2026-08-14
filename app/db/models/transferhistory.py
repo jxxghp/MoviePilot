@@ -1,11 +1,11 @@
 import re
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import Boolean, Index, Integer, JSON, String, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
@@ -25,64 +25,64 @@ class TransferHistory(Base):
     """
     id = get_id_column()
     # 源路径
-    src = mapped_column(String, index=True)
+    src: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 源存储
-    src_storage = mapped_column(String, nullable=False, default="local")
+    src_storage: Mapped[str] = mapped_column(String, nullable=False, default="local")
     # 源文件项
-    src_fileitem = mapped_column(JSON, default=dict)
+    src_fileitem: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     # 目标路径
-    dest = mapped_column(String)
+    dest: Mapped[Optional[str]] = mapped_column(String)
     # 目标存储
-    dest_storage = mapped_column(String)
+    dest_storage: Mapped[Optional[str]] = mapped_column(String)
     # 目标文件项
-    dest_fileitem = mapped_column(JSON, default=dict)
+    dest_fileitem: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     # 转移模式 move/copy/link...
-    mode = mapped_column(String)
+    mode: Mapped[Optional[str]] = mapped_column(String)
     # 类型 电影/电视剧
-    type = mapped_column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)
     # 二级分类
-    category = mapped_column(String)
+    category: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = mapped_column(String, index=True)
+    title: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 年份
-    year = mapped_column(String)
+    year: Mapped[Optional[str]] = mapped_column(String)
     # 媒体数据源与原生ID
-    media_source = mapped_column(String, index=True)
-    media_id = mapped_column(String, index=True)
+    media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
+    media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
-    music_type = mapped_column(String)
+    music_type: Mapped[Optional[str]] = mapped_column(String)
     # 专辑预期总曲目数
-    total_tracks = mapped_column(Integer)
+    total_tracks: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际音频格式
-    audio_format = mapped_column(String)
+    audio_format: Mapped[Optional[str]] = mapped_column(String)
     # 是否无损音频
-    audio_lossless = mapped_column(Boolean)
+    audio_lossless: Mapped[Optional[bool]] = mapped_column(Boolean)
     # 实际位深（bit）
-    bit_depth = mapped_column(Integer)
+    bit_depth: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际采样率（Hz）
-    sample_rate = mapped_column(Integer)
+    sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际码率（bps）
-    bitrate = mapped_column(Integer)
+    bitrate: Mapped[Optional[int]] = mapped_column(Integer)
     # Sxx
-    seasons = mapped_column(String)
+    seasons: Mapped[Optional[str]] = mapped_column(String)
     # Exx
-    episodes = mapped_column(String)
+    episodes: Mapped[Optional[str]] = mapped_column(String)
     # 海报
-    image = mapped_column(String)
+    image: Mapped[Optional[str]] = mapped_column(String)
     # 下载器
-    downloader = mapped_column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载器hash
-    download_hash = mapped_column(String, index=True)
+    download_hash: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 转移成功状态
-    status = mapped_column(Boolean(), default=True)
+    status: Mapped[Optional[bool]] = mapped_column(Boolean(), default=True)
     # 转移失败信息
-    errmsg = mapped_column(String)
+    errmsg: Mapped[Optional[str]] = mapped_column(String)
     # 时间
-    date = mapped_column(String)
+    date: Mapped[Optional[str]] = mapped_column(String)
     # 文件清单，以JSON存储
-    files = mapped_column(JSON, default=list)
+    files: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 剧集组
-    episode_group = mapped_column(String)
+    episode_group: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("transferhistory"),

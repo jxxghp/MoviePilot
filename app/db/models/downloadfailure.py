@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from sqlalchemy import Float, Index, Integer, String, delete, select
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, db_query, db_update, execute_dml, get_id_column
 from app.db.models.media_identity import media_identity_constraint
@@ -14,44 +14,44 @@ class DownloadFailure(Base):
 
     id = get_id_column()
     # 资源失败指纹
-    fingerprint = mapped_column(String, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
     # 类型 电影/电视剧
-    type = mapped_column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = mapped_column(String)
+    title: Mapped[Optional[str]] = mapped_column(String)
     # 年份
-    year = mapped_column(String)
+    year: Mapped[Optional[str]] = mapped_column(String)
     # 媒体数据源与原生ID
-    media_source = mapped_column(String)
-    media_id = mapped_column(String)
+    media_source: Mapped[Optional[str]] = mapped_column(String)
+    media_id: Mapped[Optional[str]] = mapped_column(String)
     # Sxx
-    seasons = mapped_column(String)
+    seasons: Mapped[Optional[str]] = mapped_column(String)
     # Exx
-    episodes = mapped_column(String)
+    episodes: Mapped[Optional[str]] = mapped_column(String)
     # 站点ID
-    site = mapped_column(Integer)
+    site: Mapped[Optional[int]] = mapped_column(Integer)
     # 站点名称
-    site_name = mapped_column(String)
+    site_name: Mapped[Optional[str]] = mapped_column(String)
     # 种子资源键
-    torrent_id = mapped_column(String)
+    torrent_id: Mapped[Optional[str]] = mapped_column(String)
     # 种子名称
-    torrent_name = mapped_column(String)
+    torrent_name: Mapped[Optional[str]] = mapped_column(String)
     # 种子大小
-    torrent_size = mapped_column(Float)
+    torrent_size: Mapped[Optional[float]] = mapped_column(Float)
     # 下载器
-    downloader = mapped_column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载来源
-    source = mapped_column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
     # 失败原因
-    error_message = mapped_column(String)
+    error_message: Mapped[Optional[str]] = mapped_column(String)
     # 重试次数
-    retry_count = mapped_column(Integer, default=0)
+    retry_count: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 首次失败时间
-    first_failed_at = mapped_column(String)
+    first_failed_at: Mapped[Optional[str]] = mapped_column(String)
     # 最近失败时间
-    last_failed_at = mapped_column(String)
+    last_failed_at: Mapped[Optional[str]] = mapped_column(String)
     # 下次允许重试时间
-    next_retry_at = mapped_column(String)
+    next_retry_at: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("downloadfailure"),

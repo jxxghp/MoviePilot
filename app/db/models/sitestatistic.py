@@ -1,8 +1,9 @@
+from typing import Any, Optional
 from datetime import datetime
 
 from sqlalchemy import Integer, String, JSON, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query
 
@@ -13,19 +14,19 @@ class SiteStatistic(Base):
     """
     id = get_id_column()
     # 域名Key
-    domain = mapped_column(String, index=True)
+    domain: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 成功次数
-    success = mapped_column(Integer)
+    success: Mapped[Optional[int]] = mapped_column(Integer)
     # 失败次数
-    fail = mapped_column(Integer)
+    fail: Mapped[Optional[int]] = mapped_column(Integer)
     # 平均耗时 秒
-    seconds = mapped_column(Integer)
+    seconds: Mapped[Optional[int]] = mapped_column(Integer)
     # 最后一次访问状态 0-成功 1-失败
-    lst_state = mapped_column(Integer)
+    lst_state: Mapped[Optional[int]] = mapped_column(Integer)
     # 最后访问时间
-    lst_mod_date = mapped_column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    lst_mod_date: Mapped[Optional[str]] = mapped_column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     # 耗时记录 Json
-    note = mapped_column(JSON)
+    note: Mapped[Optional[Any]] = mapped_column(JSON)
 
     @classmethod
     @db_query

@@ -1,8 +1,8 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import Integer, String, JSON, Index, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 
@@ -13,27 +13,27 @@ class Message(Base):
     """
     id = get_id_column()
     # 消息渠道
-    channel = mapped_column(String)
+    channel: Mapped[Optional[str]] = mapped_column(String)
     # 消息来源
-    source = mapped_column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
     # 消息类型
-    mtype = mapped_column(String)
+    mtype: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = mapped_column(String)
+    title: Mapped[Optional[str]] = mapped_column(String)
     # 文本内容
-    text = mapped_column(String)
+    text: Mapped[Optional[str]] = mapped_column(String)
     # 图片
-    image = mapped_column(String)
+    image: Mapped[Optional[str]] = mapped_column(String)
     # 链接
-    link = mapped_column(String)
+    link: Mapped[Optional[str]] = mapped_column(String)
     # 用户ID
-    userid = mapped_column(String)
+    userid: Mapped[Optional[str]] = mapped_column(String)
     # 登记时间
-    reg_time = mapped_column(String)
+    reg_time: Mapped[Optional[str]] = mapped_column(String)
     # 消息方向：0-接收息，1-发送消息
-    action = mapped_column(Integer)
+    action: Mapped[Optional[int]] = mapped_column(Integer)
     # 附件json
-    note = mapped_column(JSON)
+    note: Mapped[Optional[Any]] = mapped_column(JSON)
 
     __table_args__ = (
         Index('ix_message_reg_time_id', 'reg_time', 'id'),

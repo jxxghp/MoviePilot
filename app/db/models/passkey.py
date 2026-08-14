@@ -1,6 +1,7 @@
+from typing import Optional
 from sqlalchemy import Integer, String, Boolean, DateTime, Text, select, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 from datetime import datetime
 
 from app.db import Base, db_query, db_update, async_db_query, async_db_update, get_id_column
@@ -13,25 +14,25 @@ class PassKey(Base):
     # ID
     id = get_id_column()
     # 用户ID
-    user_id = mapped_column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('user.id'), nullable=False, index=True)
     # 凭证ID (credential_id)
-    credential_id = mapped_column(String, nullable=False, unique=True, index=True)
+    credential_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     # 凭证公钥
-    public_key = mapped_column(Text, nullable=False)
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
     # 签名计数器
-    sign_count = mapped_column(Integer, default=0)
+    sign_count: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 凭证名称（用户自定义）
-    name = mapped_column(String, default="通行密钥")
+    name: Mapped[Optional[str]] = mapped_column(String, default="通行密钥")
     # AAGUID (Authenticator Attestation GUID)
-    aaguid = mapped_column(String, nullable=True)
+    aaguid: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # 创建时间
-    created_at = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=datetime.now)
     # 最后使用时间
-    last_used_at = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     # 是否启用
-    is_active = mapped_column(Boolean, default=True)
+    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, default=True)
     # 传输方式 (usb, nfc, ble, internal)
-    transports = mapped_column(String, nullable=True)
+    transports: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
     @db_query

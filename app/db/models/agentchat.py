@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import Integer, String, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, async_db_query, db_query, get_id_column
 
@@ -14,33 +14,33 @@ class AgentChat(Base):
 
     id = get_id_column()
     # Agent 内部会话 ID，用于恢复 LangGraph 对话上下文
-    session_id = mapped_column(String, nullable=False)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
     # 前端或渠道侧传入的原始会话标识
-    client_session_id = mapped_column(String)
+    client_session_id: Mapped[Optional[str]] = mapped_column(String)
     # 用户 ID
-    user_id = mapped_column(String)
+    user_id: Mapped[Optional[str]] = mapped_column(String)
     # 用户名称
-    username = mapped_column(String)
+    username: Mapped[Optional[str]] = mapped_column(String)
     # 消息渠道
-    channel = mapped_column(String)
+    channel: Mapped[Optional[str]] = mapped_column(String)
     # 渠道来源配置名
-    source = mapped_column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
     # 原聊天 ID，用于区分群聊、频道或私聊
-    original_chat_id = mapped_column(String)
+    original_chat_id: Mapped[Optional[str]] = mapped_column(String)
     # 会话标题
-    title = mapped_column(String)
+    title: Mapped[Optional[str]] = mapped_column(String)
     # 会话预览文本
-    preview = mapped_column(String)
+    preview: Mapped[Optional[str]] = mapped_column(String)
     # 原始 LangChain messages，用于继续会话
-    agent_messages = mapped_column(JSON)
+    agent_messages: Mapped[Optional[Any]] = mapped_column(JSON)
     # 展示给用户的消息记录，包含文字、工具提示、附件与选择卡片
-    display_messages = mapped_column(JSON)
+    display_messages: Mapped[Optional[Any]] = mapped_column(JSON)
     # 展示消息数量
-    message_count = mapped_column(Integer, default=0)
+    message_count: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 创建时间
-    created_at = mapped_column(String)
+    created_at: Mapped[Optional[str]] = mapped_column(String)
     # 更新时间
-    updated_at = mapped_column(String)
+    updated_at: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         Index("ix_agentchat_session_user", "session_id", "user_id"),

@@ -1,6 +1,7 @@
+from typing import Any, Optional
 from sqlalchemy import String, JSON, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import db_query, db_update, Base, async_db_query, get_id_column
 
@@ -11,9 +12,9 @@ class SystemConfig(Base):
     """
     id = get_id_column()
     # 主键
-    key = mapped_column(String, index=True)
+    key: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 值
-    value = mapped_column(JSON)
+    value: Mapped[Optional[Any]] = mapped_column(JSON)
 
     @classmethod
     @db_query

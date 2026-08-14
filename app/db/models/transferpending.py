@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from sqlalchemy import Index, String, delete, select
-from sqlalchemy.orm import Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, db_query, db_update, execute_dml, get_id_column
 
@@ -22,11 +22,11 @@ class TransferPending(Base):
 
     id = get_id_column()
     # 存储
-    storage = mapped_column(String, nullable=False)
+    storage: Mapped[str] = mapped_column(String, nullable=False)
     # 源文件路径
-    src_path = mapped_column(String, nullable=False)
+    src_path: Mapped[str] = mapped_column(String, nullable=False)
     # 登记时间
-    created_at = mapped_column(String)
+    created_at: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         # 同一个文件重复入队只保留一条，回放时不会重复送入整理链
