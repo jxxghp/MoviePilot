@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.domain.meta.runtime import get_metainfo_accelerator
 
 

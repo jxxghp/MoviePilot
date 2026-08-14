@@ -37,11 +37,8 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
 )
-from app.domain.media import (
-    is_music_media_source,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
 from app.foundation.text import convert as zhconv_convert
 from app.domain.string import StringUtils

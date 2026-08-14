@@ -11,7 +11,7 @@ from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.chain.bangumi import BangumiChain
 from app.runtime.log import logger
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 
 
 class SearchPersonCreditsInput(BaseModel):

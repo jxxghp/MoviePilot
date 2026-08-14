@@ -31,7 +31,7 @@ from app.schemas.types import (
     EventType,
     SystemConfigKey,
 )
-from app.domain.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
 

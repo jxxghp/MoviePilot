@@ -17,7 +17,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.mediaserver import MediaServerHelper
 from app.schemas import MediaType, NotExistMediaInfo
 from app.schemas.types import MediaSource, SystemConfigKey
-from app.domain.media import build_media_key, resolve_media_identity
+from app.schemas.media import build_media_key, resolve_media_identity
 
 router = ResponseAPIRouter()
 

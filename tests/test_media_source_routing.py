@@ -4,11 +4,8 @@ from app.chain import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import (
-    build_media_key,
-    parse_media_source_selection,
-    resolve_media_identity,
-)
+from app.domain.media import parse_media_source_selection
+from app.schemas.media import build_media_key, resolve_media_identity
 
 
 def _chain_without_init() -> ChainBase:

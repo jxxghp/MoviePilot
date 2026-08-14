@@ -18,7 +18,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.adapters.network.http import RequestUtils
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.domain.string import StringUtils
 
 

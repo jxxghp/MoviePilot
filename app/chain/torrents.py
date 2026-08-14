@@ -19,7 +19,7 @@ from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.domain.string import StringUtils
 
 

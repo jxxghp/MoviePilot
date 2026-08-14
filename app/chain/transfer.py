@@ -66,11 +66,8 @@ from app.schemas.types import (
     MediaSource,
 )
 from app.runtime.reload import ConfigReloadMixin
-from app.domain.media import (
-    normalize_media_source,
-    normalize_music_type,
-    resolve_media_identity,
-)
+from app.domain.media import normalize_music_type
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
 from app.domain.string import StringUtils
 from app.adapters.system.host import SystemUtils

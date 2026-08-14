@@ -10,7 +10,7 @@ from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import normalize_media_source
+from app.schemas.media import normalize_media_source
 
 
 def test_media_source_normalization_accepts_plugin_source() -> None:

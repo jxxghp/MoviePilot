@@ -47,3 +47,4 @@ def update_db():
             f'数据库更新失败：{str(error)} - {traceback.format_exc()}'
         )
         raise
+

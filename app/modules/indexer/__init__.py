@@ -17,7 +17,7 @@ from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.schemas.types import MediaSource
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType

@@ -4,7 +4,6 @@ from typing import Any, List, Optional
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource
-from app.domain.media import normalize_media_identity_payload
 
 
 class TransferHistoryOper(DbOper):
@@ -162,7 +161,6 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史
         """
-        kwargs = normalize_media_identity_payload(kwargs)
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
@@ -225,7 +223,6 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史，并以同源存储的记录为准替换旧记录。
         """
-        kwargs = normalize_media_identity_payload(kwargs)
         # 文件项的默认存储是 local；归一化旧调用传入的 None，确保运行时语义与
         # (src, src_storage) 唯一索引一致。
         kwargs["src_storage"] = kwargs.get("src_storage") or "local"

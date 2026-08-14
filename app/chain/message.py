@@ -42,7 +42,7 @@ from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.adapters.network.http import RequestUtils
-from app.domain.media import build_media_key, resolve_media_identity
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 
 

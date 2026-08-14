@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, cast
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.schemas.types import MediaSource
-from app.domain.media import normalize_media_identity_payload
 
 
 class DownloadHistoryOper(DbOper):
@@ -57,7 +56,6 @@ class DownloadHistoryOper(DbOper):
         """
         新增下载历史
         """
-        kwargs = normalize_media_identity_payload(kwargs)
         DownloadHistory(**kwargs).create(self._db)
 
     def add_files(self, file_items: List[dict]):

@@ -19,11 +19,8 @@ from app.schemas.types import (
     MusicTargetEntityType,
 )
 from app.foundation.crypto import HashUtils
-from app.domain.media import (
-    is_music_media_source,
-    normalize_music_type,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source, normalize_music_type
+from app.schemas.media import resolve_media_identity
 
 router = ResponseAPIRouter()
 

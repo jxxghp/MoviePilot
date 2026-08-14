@@ -18,7 +18,7 @@ from typing import Optional, Tuple
 
 from app.db.oper.subscribe import SubscribeOper
 from app.domain.context import MediaInfo, MusicInfo
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 
 # 身份不完整时的固定返回。身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，

@@ -43,11 +43,8 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.adapters.network.http import RequestUtils
-from app.domain.media import (
-    is_music_media_source,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import Singleton
 from app.domain.string import StringUtils

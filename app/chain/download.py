@@ -38,7 +38,7 @@ from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
 from app.adapters.network.http import RequestUtils
-from app.domain.media import build_media_key, resolve_media_identity
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 from app.adapters.system.host import SystemUtils
 

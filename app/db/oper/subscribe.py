@@ -14,7 +14,6 @@ from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.schemas.types import MediaSource
-from app.domain.media import normalize_media_identity_payload
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
 
@@ -254,7 +253,6 @@ class SubscribeOper(DbOper):
         """
         # 去除kwargs中 SubscribeHistory 没有的字段
         kwargs = {k: v for k, v in kwargs.items() if hasattr(SubscribeHistory, k)}
-        kwargs = normalize_media_identity_payload(kwargs)
         kwargs = _normalize_integer_flags(kwargs)
         # 更新完成订阅时间
         kwargs.update({"date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())})

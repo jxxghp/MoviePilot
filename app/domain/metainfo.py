@@ -23,7 +23,7 @@ from app.domain.meta.runtime import (
     get_metainfo_accelerator,
 )
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 
 
 _ANIME_BRACKET_RE = re.compile(r'【[+0-9XVPI-]+】\s*【', re.IGNORECASE)

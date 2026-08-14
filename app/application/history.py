@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 from app.domain.context import MediaInfo
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import TTLCache

@@ -50,12 +50,8 @@ from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
     ContentType
-from app.domain.media import (
-    MUSIC_SUBSCRIBABLE_TYPES,
-    build_media_key,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
+from app.schemas.media import build_media_key, normalize_media_source, resolve_media_identity
 
 subscribe_interaction_manager = SlashInteractionManager()
 

@@ -42,7 +42,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.foundation.identity import normalize_internal_user_id
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (

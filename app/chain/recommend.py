@@ -19,7 +19,7 @@ from app.schemas.types import (
     MediaSource,
 )
 from app.runtime.execution import log_execution_time
-from app.domain.media import normalize_media_source
+from app.schemas.media import normalize_media_source
 from app.foundation.singleton import Singleton
 
 

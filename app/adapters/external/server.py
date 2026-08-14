@@ -20,7 +20,8 @@ from app.schemas.types import (
     media_type_to_agent,
 )
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.media import normalize_music_type, resolve_media_identity
+from app.domain.media import normalize_music_type
+from app.schemas.media import resolve_media_identity
 from app.adapters.system.host import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
 

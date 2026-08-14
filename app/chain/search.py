@@ -35,11 +35,7 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.domain.media import (
-    build_media_key,
-    parse_media_key,
-    resolve_media_identity,
-)
+from app.schemas.media import build_media_key, parse_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 from app.foundation.text import convert as zhconv_convert
 
