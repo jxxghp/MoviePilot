@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from app.core.context import (
+from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
@@ -12,7 +12,7 @@ from app.schemas.types import (
     MUSIC_SUBSCRIBABLE_TYPES,
     media_type_to_agent,
 )
-from app.utils.media import normalize_music_type
+from app.domain.media import normalize_music_type
 
 
 MUSIC_TRACK_PREVIEW_LIMIT = 100

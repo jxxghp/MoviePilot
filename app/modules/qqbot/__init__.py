@@ -8,18 +8,18 @@ import json
 from urllib.parse import quote, unquote
 from typing import Optional, List, Tuple, Union, Any
 
-from app.core.context import MediaInfo, Context
-from app.helper.agent import (
+from app.domain.context import MediaInfo, Context
+from app.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.log import logger
+from app.platform.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.qqbot.qqbot import QQBot
 from app.schemas import CommingMessage, MessageChannel, Notification
 from app.schemas.types import ModuleType
-from app.utils.http import RequestUtils
+from app.foundation.http import RequestUtils
 
 
 register_channel_admin_resolver(

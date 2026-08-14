@@ -8,9 +8,9 @@ from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import search as search_endpoint
 from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
-from app.utils.media import normalize_media_source
+from app.domain.media import normalize_media_source
 
 
 def test_media_source_normalization_accepts_plugin_source() -> None:

@@ -1,8 +1,14 @@
 from types import SimpleNamespace
 
-from app.helper import rss as rss_module
-from app.helper.rss import RssHelper
-from app.utils.http import RequestUtils
+from app.infrastructure import rss as rss_module
+from app.infrastructure.rss import RssHelper
+from app.foundation.http import RequestUtils
+
+
+def test_rss_site_domain_prefers_configured_multilevel_domain():
+    """RSS 站点域名匹配应保留配置中的多级域名，并为普通域名回退。"""
+    assert RssHelper._get_site_domain("https://u2.dmhy.org/getrss.php") == "u2.dmhy.org"
+    assert RssHelper._get_site_domain("https://tracker.example.com/rss") == "example.com"
 
 
 def test_rss_helper_decodes_utf8_xml_before_python_parser(monkeypatch):

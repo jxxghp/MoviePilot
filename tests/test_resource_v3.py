@@ -1,7 +1,8 @@
 from pathlib import Path
 
-from app.core.config import settings
-from app.helper.resource import ResourceHelper
+from app.platform.config import settings
+from app.infrastructure.resource import ResourceHelper
+from app.startup import modules_initializer
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -14,6 +15,42 @@ def test_resource_helper_uses_v3_only():
     assert ResourceHelper._repo.endswith("/package.v3.json")
     assert ResourceHelper._files_api.endswith("/resources.v3")
     assert ResourceHelper._get_needed_files()[0] == "user.sites.v3.bin"
+    assert ResourceHelper._resource_target == Path("app/infrastructure")
+
+
+def test_startup_owns_restart_after_resource_update(monkeypatch):
+    """资源适配器只返回更新结果，进程重启必须由启动组合层触发。"""
+    restart_calls = []
+    monkeypatch.setattr(
+        modules_initializer,
+        "ResourceHelper",
+        lambda: type("ResourceStub", (), {"check": lambda self: True})(),
+    )
+    monkeypatch.setattr(
+        modules_initializer.SystemHelper,
+        "restart",
+        lambda: restart_calls.append(True) or (True, "ok"),
+    )
+
+    modules_initializer.update_resources()
+
+    assert restart_calls == [True]
+
+
+def test_startup_does_not_restart_without_resource_update(monkeypatch):
+    """没有成功安装新资源时启动层不得请求重启。"""
+    monkeypatch.setattr(
+        modules_initializer,
+        "ResourceHelper",
+        lambda: type("ResourceStub", (), {"check": lambda self: False})(),
+    )
+    monkeypatch.setattr(
+        modules_initializer.SystemHelper,
+        "restart",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重启")),
+    )
+
+    modules_initializer.update_resources()
 
 
 def test_install_and_docker_paths_do_not_reference_v2_resources():
@@ -29,6 +66,7 @@ def test_install_and_docker_paths_do_not_reference_v2_resources():
         assert "resources.v2" not in content
         assert "user.sites.v2.bin" not in content
         assert "resources.v3" in content
+        assert "app/infrastructure" in content
 
 
 def test_v3_release_workflows_use_main_wiki_and_isolated_images():

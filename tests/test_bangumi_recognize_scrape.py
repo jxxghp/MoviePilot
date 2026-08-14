@@ -1,8 +1,8 @@
 from unittest.mock import Mock
 from xml.dom import minidom
 
-from app.core.meta import MetaBase
-from app.helper.scraper import MediaScraperHelper
+from app.domain.meta.metabase import MetaBase
+from app.domain.scraper import MediaScraperHelper
 from app.modules.bangumi import BangumiModule
 from app.schemas.types import MediaSource, MediaType
 

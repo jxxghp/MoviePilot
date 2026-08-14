@@ -4,12 +4,12 @@ import re
 from typing import Tuple, List, Optional
 from urllib.parse import urlparse
 
-from app.core.config import settings
+from app.platform.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas import MediaType
-from app.utils.http import RequestUtils, AsyncRequestUtils
-from app.utils.string import StringUtils
+from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.domain.string import StringUtils
 
 
 class MTorrentSpider:

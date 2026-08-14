@@ -5,6 +5,9 @@ from typing import Callable
 
 from fastapi import FastAPI
 
+from app.startup.cache_initializer import configure_cache_dependencies
+# 缓存装饰器会在业务模块导入时创建后端，必须先完成适配器装配。
+configure_cache_dependencies()
 # urllib3-future 覆盖 urllib3 命名空间后删除了 format_header_param，导致 telebot 崩溃，需在加载模块前打补丁
 try:
     import urllib3.fields as _urllib3_fields
@@ -19,11 +22,12 @@ except Exception:
     pass
 
 from app.chain.system import SystemChain
-from app.core.config import global_vars, settings
-from app.helper.server import MoviePilotServerHelper
-from app.helper.system import SystemHelper
-from app.log import logger, LoggerManager
+from app.platform.config import global_vars, settings
+from app.integrations.server import MoviePilotServerHelper
+from app.platform.runtime import SystemHelper
+from app.platform.log import logger, LoggerManager
 from app.startup.command_initializer import init_command, stop_command, restart_command
+from app.startup.domain_initializer import configure_domain_dependencies
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
 from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
@@ -35,7 +39,10 @@ from app.startup.scheduler_initializer import (
 )
 from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
-from app.utils.http import aclose_shared_async_transports
+from app.foundation.http import (
+    aclose_shared_async_transports,
+    configure_default_user_agent,
+)
 
 
 async def init_extra():
@@ -75,6 +82,10 @@ async def lifespan(app: FastAPI):
     定义应用的生命周期事件
     """
     print("Starting up...")
+    # HTTP 基础能力不反向读取平台配置，由启动层注入宿主标识。
+    configure_default_user_agent(settings.USER_AGENT)
+    # 领域层只消费显式注入的配置和适配器，不自行读取平台或数据库。
+    configure_domain_dependencies()
     # 存储当前循环
     global_vars.set_loop(asyncio.get_event_loop())
     # 初始化路由

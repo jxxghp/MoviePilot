@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
 from app.chain.transfer import TransferChain
-from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
+from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.schemas import FileItem, TransferDirectoryConf, TransferTask
 from app.schemas.types import MediaSource, MediaType
 

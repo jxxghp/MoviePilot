@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.core.config import settings
+from app.platform.config import settings
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.schemas.types import MediaSource, MediaType
 

@@ -1,13 +1,14 @@
 import time
 from typing import Any, List, Optional
 
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase, MetaMusic
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import TransferInfo, FileItem
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
-from app.utils.media import normalize_media_identity_payload, resolve_media_identity
+from app.domain.media import normalize_media_identity_payload, resolve_media_identity
 
 
 class TransferHistoryOper(DbOper):

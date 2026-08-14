@@ -5,12 +5,12 @@ from typing import Optional
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.core.config import global_vars
+from app.platform.config import global_vars
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.schemas import ActionParams, ActionContext
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
-from app.log import logger
+from app.platform.log import logger
 
 
 class TransferFileParams(ActionParams):

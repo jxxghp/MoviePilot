@@ -13,33 +13,34 @@ from app import schemas
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.core.cache import FileCache
-from app.core.config import settings, global_vars
-from app.core.context import (
+from app.platform.cache import FileCache
+from app.platform.config import settings, global_vars
+from app.domain.context import (
     Context,
     MediaInfo,
     MusicInfo,
     SubtitleInfo,
     TorrentInfo,
 )
-from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfo
+from app.platform.events import eventmanager, Event
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.db.downloadfailure_oper import DownloadFailureOper
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
-from app.helper.directory import DirectoryHelper, validate_download_save_path
-from app.helper.thread import ThreadHelper
-from app.helper.torrent import TorrentHelper
-from app.log import logger
+from app.services.directory import DirectoryHelper, validate_download_save_path
+from app.platform.thread import ThreadHelper
+from app.services.torrent import TorrentHelper
+from app.platform.log import logger
 from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Notification, ResourceSelectionEventData, \
     ResourceDownloadEventData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
-from app.utils.http import RequestUtils
-from app.utils.media import build_media_key, resolve_media_identity
-from app.utils.string import StringUtils
-from app.utils.system import SystemUtils
+from app.foundation.http import RequestUtils
+from app.domain.media import build_media_key, resolve_media_identity
+from app.domain.string import StringUtils
+from app.infrastructure.system import SystemUtils
 
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60

@@ -8,8 +8,8 @@ from app.chain.listenbrainz import ListenBrainzChain
 from app.chain.lrclib import LrclibChain
 from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.theaudiodb import TheAudioDbChain
-from app.core.context import MusicAlbumInfo, MusicInfo, MusicLyrics
-from app.core.meta import MetaMusic
+from app.domain.context import MusicAlbumInfo, MusicInfo, MusicLyrics
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource
 
 

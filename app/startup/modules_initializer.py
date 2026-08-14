@@ -2,34 +2,61 @@ import inspect
 import sys
 from typing import Callable
 
-from app.helper.redis import RedisHelper, AsyncRedisHelper
+from app.infrastructure.redis import RedisHelper, AsyncRedisHelper
+from app.chain.mediaserver import MediaServerChain
+from app.chain.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.helper.sites import SitesHelper  # noqa
+    from app.infrastructure.sites import SitesHelper  # noqa
 except ImportError as e:
     SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
-from app.utils.system import SystemUtils
-from app.log import logger
-from app.core.config import settings
-from app.core.module import ModuleManager
-from app.core.event import EventManager
-from app.helper.thread import ThreadHelper
-from app.helper.display import DisplayHelper
-from app.helper.doh import DohHelper
-from app.helper.resource import ResourceHelper
-from app.helper.message import MessageHelper, stop_message
-from app.helper.server import MoviePilotServerHelper
+from app.infrastructure.system import SystemUtils
+from app.platform.log import logger
+from app.platform.config import settings
+from app.extensions.module_manager import ModuleManager
+from app.platform.events import EventManager
+from app.platform.runtime import SystemHelper
+from app.platform.thread import ThreadHelper
+from app.infrastructure.display import DisplayHelper
+from app.infrastructure.doh import DohHelper
+from app.infrastructure.resource import ResourceHelper
+from app.messaging.message import MessageHelper, stop_message
+from app.integrations.server import MoviePilotServerHelper
 from app.db import close_database
 from app.db.systemconfig_oper import SystemConfigOper
 from app.command import CommandChain
 from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
+from app.security.access import set_superuser_token_payload_provider
+from app.security.auth import build_superuser_token_payload
+from app.services.image import configure_wallpaper_providers
+
+
+def configure_wallpaper_services() -> None:
+    """把需要 Chain 编排的壁纸来源注入图片服务。"""
+    configure_wallpaper_providers(
+        tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
+        tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
+        mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(),
+        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(
+            count=count
+        ),
+    )
+
+
+def notify_event_error(title: str, message: str) -> None:
+    """将事件总线错误转发到系统消息通道。"""
+    MessageHelper().put(
+        title=title,
+        message=message,
+        role="system",
+    )
 
 
 def start_frontend():
@@ -127,6 +154,15 @@ def check_auth():
         )
 
 
+def update_resources() -> None:
+    """安装可用资源更新，并由组合根统一决定是否重启进程。"""
+    if ResourceHelper().check() is not True:
+        return
+    restarted, message = SystemHelper.restart()
+    if not restarted:
+        logger.error(f"资源更新完成但自动重启失败：{message}")
+
+
 async def stop_modules():
     """
     服务关闭
@@ -158,16 +194,22 @@ async def init_modules():
     """
     启动模块
     """
+    # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
+    configure_wallpaper_services()
+    # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
+    set_superuser_token_payload_provider(build_superuser_token_payload)
     # 虚拟显示
     DisplayHelper()
     # DoH
     DohHelper()
     # 站点管理
     SitesHelper()
-    # 资源包检测
-    ResourceHelper()
+    # 资源适配器只负责下载安装，是否重启由启动组合层决定。
+    update_resources()
     # 用户认证
     user_auth()
+    # 事件错误通知由启动组合层接入消息服务。
+    EventManager().set_error_notifier(notify_event_error)
     # 加载模块
     ModuleManager()
     # 启动事件消费

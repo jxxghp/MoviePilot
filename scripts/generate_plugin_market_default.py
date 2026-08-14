@@ -7,7 +7,7 @@ import ast
 from pathlib import Path
 from typing import Optional
 
-from app.helper.market import extract_plugin_market_repos_from_wiki
+from app.integrations.market import extract_plugin_market_repos_from_wiki
 
 
 OFFICIAL_PLUGIN_MARKET = "https://github.com/jxxghp/MoviePilot-Plugins"

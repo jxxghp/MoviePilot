@@ -12,7 +12,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.core.config import settings
+from app.platform.config import settings
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "skills" / "feedback-issue" / "scripts"

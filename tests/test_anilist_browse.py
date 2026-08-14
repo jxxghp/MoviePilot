@@ -3,7 +3,7 @@ from datetime import date
 from unittest.mock import AsyncMock, Mock
 
 from app.api.endpoints import anilist as anilist_endpoint
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.modules.anilist import AniListModule
 from app.modules.anilist.anilist import AniListApi
 

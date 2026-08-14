@@ -7,17 +7,17 @@ from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
-from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
-from app.core.security import verify_token
+from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.security.access import verify_token
 from app.db import get_async_db
 from app.db.mediaserver_oper import MediaServerOper
 from app.db.models import MediaServerItem
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.mediaserver import MediaServerHelper
+from app.services.mediaserver import MediaServerHelper
 from app.schemas import MediaType, NotExistMediaInfo
 from app.schemas.types import MediaSource, SystemConfigKey
-from app.utils.media import build_media_key, resolve_media_identity
+from app.domain.media import build_media_key, resolve_media_identity
 
 router = ResponseAPIRouter()
 

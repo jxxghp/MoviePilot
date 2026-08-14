@@ -4,10 +4,10 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.api.endpoints.torrent import reidentify_cache, torrents_cache
-from app.core.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo, TorrentInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaType
-from app.utils.crypto import HashUtils
+from app.foundation.crypto import HashUtils
 
 
 def _album_context() -> Context:

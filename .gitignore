@@ -10,10 +10,7 @@ rust/**/target/
 nginx/
 test.py
 safety_report.txt
-app/helper/sites.py
-app/helper/*.so
-app/helper/*.pyd
-app/helper/*.bin
+app/infrastructure/*.bin
 app/plugins/**
 !app/plugins/__init__.py
 config/cookies/

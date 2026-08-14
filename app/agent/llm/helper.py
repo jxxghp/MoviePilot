@@ -10,8 +10,8 @@ from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 
 if TYPE_CHECKING:
     from app.agent.llm.server_tools import ServerToolResolution

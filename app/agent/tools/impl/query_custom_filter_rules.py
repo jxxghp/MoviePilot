@@ -13,7 +13,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     get_rule_groups,
     serialize_custom_rule,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 class QueryCustomFilterRulesInput(BaseModel):

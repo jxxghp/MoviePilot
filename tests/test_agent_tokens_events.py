@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 
 from app.agent import MoviePilotAgent
 from app.agent.memory import memory_manager
-from app.core.config import settings
+from app.platform.config import settings
 from app.schemas.types import ChainEventType, EventType
 
 
@@ -62,11 +62,11 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
 
     with (
         patch(
-            "app.agent.eventmanager.async_send_event",
+            "app.agent.orchestrator.eventmanager.async_send_event",
             new=AsyncMock(side_effect=select_provider),
         ) as send_event,
         patch(
-            "app.agent.LLMHelper.get_llm",
+            "app.agent.orchestrator.LLMHelper.get_llm",
             new=AsyncMock(return_value=fake_llm),
         ) as get_llm,
     ):
@@ -132,7 +132,7 @@ def test_execute_agent_broadcasts_usage_on_success() -> None:
     with (
         patch.object(agent, "_create_agent", new=create_agent),
         patch.object(memory_manager, "save_agent_messages"),
-        patch("app.agent.eventmanager.send_event") as send_event,
+        patch("app.agent.orchestrator.eventmanager.send_event") as send_event,
     ):
         asyncio.run(agent._execute_agent([]))
 
@@ -174,7 +174,7 @@ def test_execute_agent_broadcasts_usage_on_failure() -> None:
 
     with (
         patch.object(agent, "_create_agent", new=create_agent),
-        patch("app.agent.eventmanager.send_event") as send_event,
+        patch("app.agent.orchestrator.eventmanager.send_event") as send_event,
     ):
         result, _ = asyncio.run(agent._execute_agent([]))
 

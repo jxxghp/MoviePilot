@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app.api.endpoints.media import recognize
-from app.core.context import MediaInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MediaInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaType
 
 

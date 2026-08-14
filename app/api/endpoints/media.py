@@ -10,17 +10,18 @@ from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
-from app.core.config import settings
-from app.core.context import Context, MusicInfo
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfo, MetaInfoPath
-from app.core.security import verify_token, verify_apitoken
+from app.platform.config import settings
+from app.domain.context import Context, MusicInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.security.access import verify_token, verify_apitoken
 from app.db.models import User
 from app.db.user_oper import get_current_active_user, get_current_active_superuser
 from app.schemas import MediaType
 from app.schemas.category import CategoryConfig
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
-from app.utils.media import (
+from app.domain.media import (
     is_music_media_source,
     normalize_media_source,
     normalize_music_type,

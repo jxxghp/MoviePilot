@@ -16,8 +16,8 @@ from app.agent.policy import (
 from app.agent.tools.base import ToolExecutionTimeoutError, format_tool_result_for_agent
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.core.plugin import PluginManager
-from app.log import logger
+from app.extensions.plugin_manager import PluginManager
+from app.platform.log import logger
 
 
 class ToolDefinition:

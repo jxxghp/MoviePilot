@@ -8,11 +8,11 @@ from fastapi.responses import JSONResponse
 from app import schemas
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.chain.user import MfaRequired, UserChain
-from app.core import security
-from app.core.config import settings
+from app.security import access as security
+from app.platform.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.sites import SitesHelper  # noqa
-from app.helper.image import WallpaperHelper
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.services.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()

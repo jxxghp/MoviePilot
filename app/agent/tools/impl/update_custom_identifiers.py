@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.core.metainfo import clear_rust_parse_options_cache
+from app.domain.metainfo import clear_rust_parse_options_cache
 from app.db.systemconfig_oper import SystemConfigOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.types import SystemConfigKey
 
 

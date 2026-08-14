@@ -1,7 +1,7 @@
 from app.workflow.actions import BaseAction, ActionChain
-from app.core.config import global_vars
+from app.platform.config import global_vars
 from app.schemas import ActionParams, ActionContext
-from app.log import logger
+from app.platform.log import logger
 
 
 class FetchDownloadsParams(ActionParams):

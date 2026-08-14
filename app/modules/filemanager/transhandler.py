@@ -4,15 +4,16 @@ from typing import Optional, List, Tuple
 
 from jinja2 import Template
 
-from app.core.config import settings
-from app.core.context import MediaInfo, MusicInfo
-from app.core.event import eventmanager
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfoPath
-from app.helper.audio import AudioMetadataHelper
-from app.helper.directory import DirectoryHelper
-from app.helper.message import TemplateHelper
-from app.log import logger
+from app.platform.config import settings
+from app.domain.context import MediaInfo, MusicInfo
+from app.platform.events import eventmanager
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfoPath
+from app.services.audio import AudioMetadataHelper
+from app.services.directory import DirectoryHelper
+from app.messaging.message import TemplateHelper
+from app.platform.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import (
     TransferInfo,
@@ -26,7 +27,7 @@ from app.schemas import (
 )
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import MediaType, ChainEventType
-from app.utils.system import SystemUtils
+from app.infrastructure.system import SystemUtils
 
 
 class TransHandler:

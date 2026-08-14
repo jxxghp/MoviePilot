@@ -2,11 +2,11 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core.context import MediaInfo, TorrentInfo
-from app.helper.torrent import TorrentHelper
+from app.domain.context import MediaInfo, TorrentInfo
+from app.services.torrent import TorrentHelper
 from app.modules.filter import FilterModule
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
-from app.utils import rust_accel
+from app.infrastructure import rust as rust_accel
 
 
 class _RuleHelper:

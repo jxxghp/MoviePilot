@@ -2,13 +2,13 @@ import re
 from typing import List, Optional, Tuple, Union
 
 from app.chain import ChainBase
-from app.helper.interaction import (
+from app.messaging.interaction import (
     build_navigation_buttons,
     page_items,
     supports_interaction_buttons,
     update_or_post_message, skills_interaction_manager, PendingSkillsInteraction,
 )
-from app.helper.skill import SkillHelper, SkillInfo
+from app.agent.skills.registry import SkillHelper, SkillInfo
 from app.schemas import Notification
 from app.schemas.types import MessageChannel
 

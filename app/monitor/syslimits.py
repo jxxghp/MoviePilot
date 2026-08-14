@@ -3,9 +3,9 @@ import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.core.config import settings
-from app.log import logger
-from app.utils.system import SystemUtils
+from app.platform.config import settings
+from app.platform.log import logger
+from app.infrastructure.system import SystemUtils
 
 
 def count_directory_entries(directory: Path, max_check: int = 10000) -> Tuple[int, int]:

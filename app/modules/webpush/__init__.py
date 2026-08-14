@@ -3,15 +3,15 @@ from typing import Union, Tuple
 
 from pywebpush import webpush, WebPushException
 
-from app.core.config import global_vars, settings
-from app.helper.webpush import is_webpush_subscription_gone, webpush_options_for_endpoint
-from app.log import logger
+from app.platform.config import global_vars, settings
+from app.platform.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
 from app.schemas.types import ModuleType, MessageChannel
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
+    """通过浏览器 Web Push 通道发送通知消息。"""
 
     def init_module(self) -> None:
         """
@@ -46,6 +46,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         return 6
 
     def stop(self):
+        """Web Push 模块没有需要释放的长连接资源。"""
         pass
 
     def test(self) -> Tuple[bool, str]:
@@ -55,6 +56,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """Web Push 使用全局 VAPID 配置，不提供模块级设置。"""
         pass
 
     def post_message(self, message: Notification, **kwargs) -> None:
@@ -84,6 +86,13 @@ class WebPushModule(_ModuleBase, _MessageBase):
                 for sub in global_vars.get_subscriptions():
                     logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
                     try:
+                        endpoint = sub.get("endpoint")
+                        webpush_options = {}
+                        if endpoint and "notify.windows.com" in endpoint:
+                            webpush_options = {
+                                "ttl": 86400,
+                                "headers": {"X-WNS-Cache-Policy": "cache"},
+                            }
                         webpush(
                             subscription_info=sub,
                             data=json.dumps({
@@ -95,11 +104,17 @@ class WebPushModule(_ModuleBase, _MessageBase):
                             vapid_claims={
                                 "sub": settings.VAPID.get("subject")
                             },
-                            **webpush_options_for_endpoint(sub.get("endpoint")),
+                            **webpush_options,
                         )
                     except WebPushException as err:
                         logger.error(f"WebPush发送失败: {str(err)}")
-                        if is_webpush_subscription_gone(err) and global_vars.remove_subscription(sub):
+                        response = getattr(err, "response", None)
+                        status_code = getattr(response, "status_code", None) or getattr(
+                            response,
+                            "status",
+                            None,
+                        )
+                        if status_code in {404, 410} and global_vars.remove_subscription(sub):
                             logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
 
             except Exception as msg_e:

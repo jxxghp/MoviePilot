@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.tools.impl._torrent_search_utils import simplify_search_result
 from app.agent.tools.impl.get_search_results import GetSearchResultsTool
-from app.core.context import Context, TorrentInfo
+from app.domain.context import Context, TorrentInfo
 
 
 def _build_context(

@@ -4,10 +4,10 @@ import copy
 import re
 from typing import Any, Dict, Iterable, Optional
 
-from app.core.event import eventmanager
+from app.platform.events import eventmanager
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.rule import RuleHelper
+from app.services.filter import RuleHelper
 from app.modules.filter.RuleParser import RuleParser
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
 from app.schemas import CustomRule, FilterRuleGroup

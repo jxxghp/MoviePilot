@@ -2,11 +2,11 @@ from pathlib import Path
 from typing import Optional, Tuple
 from xml.dom import minidom
 
-from app.core.config import settings
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.platform.config import settings
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaType
-from app.utils.dom import DomUtils
+from app.foundation.dom import DomUtils
 from app.modules.themoviedb.tmdbapi import TmdbApi
 
 

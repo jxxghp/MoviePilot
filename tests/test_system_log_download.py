@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from starlette.responses import Response
 
 from app.api.endpoints import system as system_endpoint
-from app.core.config import settings
+from app.platform.config import settings
 
 
 def test_logging_routes_use_superuser_dependency():

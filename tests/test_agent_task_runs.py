@@ -337,7 +337,7 @@ async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> N
 @pytest.mark.anyio
 async def test_agent_manager_records_manual_trigger_source(monkeypatch) -> None:
     """真实执行入口应把手动触发来源写入对应 run。"""
-    monkeypatch.setattr("app.agent.settings.AI_AGENT_ENABLE", True)
+    monkeypatch.setattr("app.agent.orchestrator.settings.AI_AGENT_ENABLE", True)
     task = _add_task("run-manager")
     manager = AgentManager()
     captured = {}

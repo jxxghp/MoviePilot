@@ -8,8 +8,8 @@ from app.chain.media import MediaChain
 from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.recommend import RecommendChain
 from app.chain.search import SearchChain
-from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.types import MediaSource, MediaType
 

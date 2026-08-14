@@ -1,8 +1,8 @@
 from typing import Optional, Union
 
 from app.chain import ChainBase
-from app.core.context import MusicInfo, MusicLyrics
-from app.core.meta import MetaMusic
+from app.domain.context import MusicInfo, MusicLyrics
+from app.domain.meta.metamusic import MetaMusic
 
 
 class LrclibChain(ChainBase):

@@ -26,7 +26,7 @@ def test_update_download_tasks_resolves_downloader_and_updates_all_supported_fie
     未显式传下载器时，应先按 Hash 解析任务所属下载器，再一次性执行多项修改。
     """
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _download_dirs(),
     )
     hash_value = "a" * 40

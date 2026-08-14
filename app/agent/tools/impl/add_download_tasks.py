@@ -12,14 +12,14 @@ from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.core.config import settings
-from app.core.context import Context
-from app.core.metainfo import MetaInfo
+from app.platform.config import settings
+from app.domain.context import Context
+from app.domain.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
-from app.helper.directory import DirectoryHelper, validate_download_save_path
-from app.log import logger
+from app.services.directory import DirectoryHelper, validate_download_save_path
+from app.platform.log import logger
 from app.schemas import FileURI
-from app.utils.crypto import HashUtils
+from app.foundation.crypto import HashUtils
 
 
 class AddDownloadTasksInput(BaseModel):

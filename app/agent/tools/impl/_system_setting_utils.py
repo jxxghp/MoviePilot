@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.agent.policy.secret_fields import is_secret_setting_key
-from app.core.config import Settings
+from app.platform.config import Settings
 from app.schemas.types import SystemConfigKey
 
 

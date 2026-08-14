@@ -5,8 +5,8 @@ import pytest
 from webauthn.helpers.exceptions import InvalidRegistrationResponse
 
 from app.api.endpoints import mfa as mfa_endpoint
-from app.helper import passkey as passkey_helper
-from app.helper.passkey import (
+from app.security import passkey as passkey_helper
+from app.security.passkey import (
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,
     PassKeyRegistrationVerificationError,

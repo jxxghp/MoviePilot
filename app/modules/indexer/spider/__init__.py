@@ -9,13 +9,13 @@ from fastapi.concurrency import run_in_threadpool
 from jinja2 import Template
 from pyquery import PyQuery
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.schemas.types import MediaType
-from app.utils import rust_accel
-from app.utils.http import RequestUtils, AsyncRequestUtils
-from app.utils.string import StringUtils
-from app.utils.url import UrlUtils
+from app.infrastructure import rust as rust_accel
+from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.domain.string import StringUtils
+from app.foundation.url import UrlUtils
 
 
 def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]) -> list[dict]:

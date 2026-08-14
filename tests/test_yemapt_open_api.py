@@ -3,7 +3,7 @@ import base64
 import json
 
 from app.chain.download import DownloadChain
-from app.core.context import TorrentInfo
+from app.domain.context import TorrentInfo
 from app.modules.indexer.parser.yema import YemaSiteUserInfo
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import MediaType

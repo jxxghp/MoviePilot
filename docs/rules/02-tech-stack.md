@@ -17,7 +17,7 @@
 | Web framework | FastAPI |
 | ASGI server | Uvicorn |
 | Data validation | Pydantic v2 (`BaseModel`, `BaseSettings`, `model_validator`) |
-| Settings management | `pydantic-settings` (`BaseSettings` class in `app/core/config.py`) |
+| Settings management | `pydantic-settings` (`BaseSettings` class in `app/platform/config.py`) |
 
 ---
 
@@ -37,7 +37,7 @@
 
 | Item | Detail |
 |---|---|
-| File-based cache | `FileCache` / `AsyncFileCache` in `app/core/cache.py` |
+| File-based cache | `FileCache` / `AsyncFileCache` in `app/platform/cache.py` |
 | Redis | Optional; `app/modules/redis/` module; used for distributed caching when configured |
 | In-process cache | Decorator helpers `fresh` / `async_fresh` on `FileCache` |
 

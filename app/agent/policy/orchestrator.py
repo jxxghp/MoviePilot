@@ -25,7 +25,7 @@ from app.agent.policy.sanitizer import (
     summarize_input,
     summarize_result,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 _HookResult = TypeVar("_HookResult")

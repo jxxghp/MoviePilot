@@ -7,12 +7,12 @@ from urllib.parse import parse_qs, urlparse
 
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
-from app.log import logger
+from app.services.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.platform.log import logger
 from app.modules.ugreen.api import Api
 from app.schemas import MediaType
 from app.schemas.types import MediaSource, SystemConfigKey
-from app.utils.url import UrlUtils
+from app.foundation.url import UrlUtils
 
 
 class Ugreen:

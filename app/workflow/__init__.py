@@ -4,15 +4,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.core.config import global_vars
-from app.core.event import eventmanager, Event
+from app.platform.config import global_vars
+from app.platform.events import eventmanager, Event
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
-from app.helper.module import ModuleHelper
-from app.log import logger
+from app.foundation.module import ModuleHelper
+from app.platform.log import logger
 from app.schemas import ActionContext, Action, ActionResult
 from app.schemas.types import EventType
-from app.utils.singleton import Singleton
+from app.foundation.singleton import Singleton
 
 
 class WorkFlowManager(metaclass=Singleton):

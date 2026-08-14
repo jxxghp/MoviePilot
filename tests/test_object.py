@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from app.utils.object import ObjectUtils
+from app.foundation.object import ObjectUtils
 
 
 class ObjectUtilsTest(TestCase):

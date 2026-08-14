@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.chain.subscribe import SubscribeChain
-from app.core.context import Context, MediaInfo, TorrentInfo
+from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 
 

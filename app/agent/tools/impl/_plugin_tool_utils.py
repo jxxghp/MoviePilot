@@ -4,11 +4,11 @@ import json
 import shutil
 from typing import Any, Optional
 
-from app.core.config import settings
-from app.core.plugin import PluginManager
+from app.platform.config import settings
+from app.extensions.plugin_manager import PluginManager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.server import MoviePilotServerHelper
-from app.helper.plugin import PluginHelper
+from app.integrations.server import MoviePilotServerHelper
+from app.integrations.market import PluginHelper
 from app.schemas.types import SystemConfigKey
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。

@@ -1,4 +1,4 @@
-from app.utils.jieba import cut
+from app.foundation.jieba import cut
 
 
 def test_cut_accepts_legacy_hmm_argument():

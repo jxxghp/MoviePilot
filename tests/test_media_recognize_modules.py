@@ -2,8 +2,8 @@ import asyncio
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.scraper import TmdbScraper

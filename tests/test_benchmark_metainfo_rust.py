@@ -19,7 +19,7 @@ def test_build_inputs_separates_video_and_music_domains():
         "title",
         "path",
     }
-    assert all(not value.lower().endswith(tuple(benchmark.metainfo_module.settings.RMT_AUDIOEXT))
+    assert all(not value.lower().endswith(benchmark.get_audio_extensions())
                for kind, value, _subtitle in music_once if kind == "music_query")
 
 
@@ -49,7 +49,7 @@ def test_parse_input_uses_public_production_entries(monkeypatch):
 
 def test_selected_meta_parser_disables_and_restores_all_fast_paths(monkeypatch):
     """Python 对照上下文应屏蔽影视和音乐 Rust 入口，并完整恢复原函数。"""
-    rust_accel = benchmark.metainfo_module.rust_accel
+    rust_accel = benchmark.rust_accel
     parser_names = (
         "parse_metainfo",
         "parse_metainfo_path",
@@ -142,7 +142,7 @@ def test_video_projection_ignores_python_parser_internal_state():
 
 def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
     """运行前检查应拒绝关闭的 Rust 和缺少音乐入口的旧扩展。"""
-    rust_accel = benchmark.metainfo_module.rust_accel
+    rust_accel = benchmark.rust_accel
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=False))
 
     with pytest.raises(RuntimeError, match="未启用"):
@@ -158,7 +158,7 @@ def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
 
 def test_validate_rust_runtime_requires_successful_music_probe(monkeypatch):
     """音乐 Rust 入口存在但实际回退 Python 时也必须拒绝执行基准。"""
-    rust_accel = benchmark.metainfo_module.rust_accel
+    rust_accel = benchmark.rust_accel
     extension = SimpleNamespace(parse_metamusic_fast=Mock())
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=True))
     monkeypatch.setattr(rust_accel, "_moviepilot_rust", extension)

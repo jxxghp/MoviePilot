@@ -1,8 +1,8 @@
 from unittest.mock import Mock, patch
 
 from app.chain.search import SearchChain
-from app.core.meta import MetaMusic
-from app.core.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.context import MusicInfo
 from app.schemas.context import TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 

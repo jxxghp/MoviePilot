@@ -3,9 +3,9 @@ import json
 from typing import Optional, Tuple
 from urllib.parse import urlencode, urljoin
 
-from app.log import logger
+from app.platform.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class SunnyPTSiteUserInfo(SiteParserBase):

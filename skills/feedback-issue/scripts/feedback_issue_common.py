@@ -28,7 +28,7 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.config import settings  # noqa: E402
+from app.platform.config import settings  # noqa: E402
 
 
 FEEDBACK_REPO_OWNER = "jxxghp"

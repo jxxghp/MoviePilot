@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.core.config import settings
+from app.platform.config import settings
 
 
 def test_update_float_setting_accepts_json_integer(monkeypatch) -> None:

@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.acoustid import AcoustIdChain
 from app.chain.media import MediaChain
-from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.anilist import AniListModule
 from app.modules.bangumi import BangumiModule
 from app.modules.musicbrainz import MusicBrainzModule
@@ -306,7 +306,7 @@ def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatc
     monkeypatch.setattr(chain.eventmanager, "check", Mock(return_value=False))
 
     with patch(
-            "app.helper.server.MoviePilotServerHelper.report_recognize_share"
+            "app.integrations.server.MoviePilotServerHelper.report_recognize_share"
     ):
         result = chain.recognize_media(
             mtype=MediaType.MUSIC,
@@ -580,7 +580,7 @@ def test_chain_recognize_media_returns_musicinfo_and_reports_share():
     with patch.object(
         chain, "recognize_music_from_source", return_value=expected
     ), patch(
-            "app.helper.server.MoviePilotServerHelper.report_recognize_share"
+            "app.integrations.server.MoviePilotServerHelper.report_recognize_share"
     ) as report_mock:
         result = chain.recognize_media(meta=MetaMusic(title="晴天"))
 
@@ -598,7 +598,7 @@ def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
             "async_recognize_music_from_source",
             AsyncMock(return_value=expected),
     ), patch(
-        "app.helper.server.MoviePilotServerHelper.async_report_recognize_share",
+        "app.integrations.server.MoviePilotServerHelper.async_report_recognize_share",
         AsyncMock(),
     ) as report_mock:
         async def runner():

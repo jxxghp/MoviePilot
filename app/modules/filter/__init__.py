@@ -3,16 +3,16 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import List, Tuple, Union, Dict, Optional
 
-from app.core.context import TorrentInfo, MediaInfo
-from app.core.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
-from app.helper.rule import RuleHelper
-from app.log import logger
+from app.domain.context import TorrentInfo, MediaInfo
+from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
+from app.services.filter import RuleHelper
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
-from app.utils import rust_accel
-from app.utils.string import StringUtils
+from app.infrastructure import rust as rust_accel
+from app.domain.string import StringUtils
 
 
 _SIZE_UNIT = 1024 * 1024

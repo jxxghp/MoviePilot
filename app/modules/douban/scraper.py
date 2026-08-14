@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Optional
 from xml.dom import minidom
 
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.schemas.types import MediaType
-from app.utils.dom import DomUtils
+from app.foundation.dom import DomUtils
 
 
 class DoubanScraper:

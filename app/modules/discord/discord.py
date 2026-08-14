@@ -9,12 +9,12 @@ import discord
 from discord import app_commands
 import httpx
 
-from app.core.config import settings
-from app.core.context import MediaInfo, Context
-from app.core.metainfo import MetaInfo
-from app.log import logger
+from app.platform.config import settings
+from app.domain.context import MediaInfo, Context
+from app.domain.metainfo import MetaInfo
+from app.platform.log import logger
 from app.schemas.types import NotificationType
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 # Discord embed 字段解析白名单
 # 只有这些消息类型会使用复杂的字段解析逻辑

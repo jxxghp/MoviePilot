@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_result
 from app.agent.tools.tags import ToolTag
-from app.log import logger
+from app.platform.log import logger
 
 # 活动日志保留天数
 DEFAULT_RETENTION_DAYS = 7

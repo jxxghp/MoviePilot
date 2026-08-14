@@ -1,10 +1,10 @@
 from datetime import date
 from typing import Optional
 
-from app.core.cache import cached
-from app.core.config import settings
-from app.log import logger
-from app.utils.http import AsyncRequestUtils, RequestUtils
+from app.platform.cache import cached
+from app.platform.config import settings
+from app.platform.log import logger
+from app.foundation.http import AsyncRequestUtils, RequestUtils
 
 
 class AniListApi:

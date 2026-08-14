@@ -4,7 +4,7 @@ from pathlib import Path
 from alembic.config import Config as AlembicConfig
 from alembic.command import revision as alembic_revision
 
-from app.core.config import settings
+from app.platform.config import settings
 
 # 导入模块，避免建表缺失
 for module in Path(__file__).with_name("models").glob("*.py"):

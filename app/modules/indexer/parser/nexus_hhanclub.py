@@ -5,7 +5,7 @@ from lxml import etree
 
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):

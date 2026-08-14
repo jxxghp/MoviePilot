@@ -15,23 +15,24 @@ from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
-from app.core.config import settings, global_vars
-from app.core.context import (
+from app.platform.config import settings, global_vars
+from app.domain.context import (
     Context,
     MediaInfo,
     MusicInfo,
     TorrentInfo,
 )
-from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase, MetaMusic
-from app.core.meta.words import WordsMatcher
-from app.core.metainfo import MetaInfo
+from app.platform.events import eventmanager, Event
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.words import WordsMatcher
+from app.domain.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.interaction import (
+from app.messaging.interaction import (
     SlashInteractionManager,
     build_navigation_buttons,
     format_markdown_table,
@@ -40,15 +41,15 @@ from app.helper.interaction import (
     supports_markdown,
     update_or_post_message,
 )
-from app.helper.mediaserver import MediaServerHelper
-from app.helper.server import MoviePilotServerHelper
-from app.helper.torrent import TorrentHelper
-from app.log import logger
+from app.services.mediaserver import MediaServerHelper
+from app.integrations.server import MoviePilotServerHelper
+from app.services.torrent import TorrentHelper
+from app.platform.log import logger
 from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
     ContentType
-from app.utils.media import (
+from app.domain.media import (
     MUSIC_SUBSCRIBABLE_TYPES,
     build_media_key,
     normalize_media_source,

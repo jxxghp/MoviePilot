@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.core.event import Event, EventManager
-from app.core.plugin import PluginManager
+from app.platform.events import Event, EventManager
+from app.extensions.plugin_manager import PluginManager
 from app.schemas.types import ChainEventType
 
 
@@ -48,10 +48,8 @@ async def test_plugin_event_error_uses_public_display_name(monkeypatch):
     event_manager._EventManager__invoke_handler_by_type_sync(
         FailingDiscoverPlugin.handle, event
     )
-    await event_manager._EventManager__invoke_plugin_method_async(
-        plugin_manager,
-        FailingDiscoverPlugin.__name__,
-        "handle",
+    await event_manager._EventManager__invoke_handler_by_type_async(
+        FailingDiscoverPlugin.handle,
         event,
     )
 

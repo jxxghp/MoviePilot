@@ -3,10 +3,10 @@ import json
 from urllib.parse import urljoin
 from typing import Optional, Tuple
 
-from app.log import logger
-from app.core.config import settings
-from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.platform.log import logger
+from app.platform.config import settings
+from app.foundation.http import RequestUtils
+from app.domain.string import StringUtils
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 

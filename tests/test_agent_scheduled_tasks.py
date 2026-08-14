@@ -36,13 +36,13 @@ from app.agent.tools.impl.update_agent_task import (
     UpdateAgentTaskTool,
 )
 from app.agent.tools.tags import ToolTag
-from app.core.config import settings
+from app.platform.config import settings
 from app.db import SessionFactory
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.schemas import ScheduleInfo
 from app.scheduler import Scheduler
-from app.utils.timer import TimerUtils
+from app.platform.scheduling import TimerUtils
 
 
 class _FakeAgentTaskScheduler:
@@ -385,7 +385,7 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     scheduler.init_agent_task_jobs()
 
     process_message = AsyncMock(return_value="执行完成")
-    monkeypatch.setattr("app.agent.agent_manager.process_message", process_message)
+    monkeypatch.setattr("app.agent.orchestrator.agent_manager.process_message", process_message)
 
     assert await scheduler.execute_agent_task(
         task.id,
@@ -410,7 +410,7 @@ async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> Non
     task = _add_agent_task("cron", "0 * * * *", "scheduled-source")
     scheduler = _build_agent_task_scheduler()
     execute = AsyncMock(return_value=(True, "执行完成"))
-    monkeypatch.setattr("app.agent.agent_manager.execute_scheduled_task", execute)
+    monkeypatch.setattr("app.agent.orchestrator.agent_manager.execute_scheduled_task", execute)
 
     assert await scheduler.execute_agent_task(task.id) == (True, "执行完成")
     execute.assert_awaited_once_with(task.id, trigger_source="scheduled")
@@ -1131,7 +1131,7 @@ async def test_background_agent_final_message_is_broadcast() -> None:
     )
 
     with patch(
-        "app.agent.AgentChain.async_post_message",
+        "app.agent.orchestrator.AgentChain.async_post_message",
         new_callable=AsyncMock,
     ) as post_message:
         await agent.send_agent_message("任务完成", title="MoviePilot助手")

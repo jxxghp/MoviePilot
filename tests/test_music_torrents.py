@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.torrents import TorrentsChain
-from app.core.meta import MetaMusic
-from app.core.context import Context, MusicInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.context import Context, MusicInfo, TorrentInfo
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import MediaType
 

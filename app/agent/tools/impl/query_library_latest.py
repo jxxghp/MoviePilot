@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.mediaserver import MediaServerChain
-from app.helper.service import ServiceConfigHelper
-from app.log import logger
+from app.extensions.service_registry import ServiceConfigHelper
+from app.platform.log import logger
 
 PAGE_SIZE = 20
 

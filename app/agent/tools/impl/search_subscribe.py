@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.subscribe import SubscribeChain
 from app.db.subscribe_oper import SubscribeOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.types import media_type_to_agent
 
 

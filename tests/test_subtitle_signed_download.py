@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import app.api.endpoints.download as download_endpoint
 import app.api.endpoints.search as search_endpoint
 from app import schemas
-from app.core.context import SubtitleInfo
-from app.utils.security import SecurityUtils
+from app.domain.context import SubtitleInfo
+from app.security.url import SecurityUtils
 
 
 SUBTITLE_SITE_ID = 1001

@@ -7,10 +7,10 @@ from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import urlencode
 
 from app import schemas
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.types import MediaType
-from app.utils.http import RequestUtils
-from app.utils.url import UrlUtils
+from app.foundation.http import RequestUtils
+from app.foundation.url import UrlUtils
 
 
 class Navidrome:

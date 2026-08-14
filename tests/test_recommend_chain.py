@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.chain.recommend import RecommendChain
-from app.core.cache import TTLCache
-from app.core.context import MusicInfo
+from app.platform.cache import TTLCache
+from app.domain.context import MusicInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM
 
 SYNC_EMPTY_CACHE_CASES = [

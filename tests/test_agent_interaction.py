@@ -10,12 +10,12 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.helper.interaction import (
+from app.messaging.interaction import (
     AgentInteractionOption,
     agent_interaction_manager,
 )
 from app.chain.message import MessageChain
-from app.core.config import settings
+from app.platform.config import settings
 from app.schemas.types import MessageChannel
 
 

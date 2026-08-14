@@ -7,10 +7,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.core.config import settings
-from app.helper.directory import DirectoryHelper
-from app.helper.message import MessageHelper
-from app.log import logger
+from app.platform.config import settings
+from app.services.directory import DirectoryHelper
+from app.messaging.message import MessageHelper
+from app.platform.log import logger
 from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.poller import RemotePoller
 from app.monitor.recovery import RecoveryExecutor, RecoveryState, probe_path
@@ -18,9 +18,9 @@ from app.monitor.snapshot import SnapshotStore
 from app.monitor.syslimits import decide_monitor_mode, get_system_optimization_tips
 from app.monitor.watcher import LocalDirectoryWatcher
 from app.schemas.types import SystemConfigKey
-from app.utils.mixins import ConfigReloadMixin
-from app.utils.singleton import SingletonClass
-from app.utils.system import SystemUtils
+from app.platform.reload import ConfigReloadMixin
+from app.foundation.singleton import SingletonClass
+from app.infrastructure.system import SystemUtils
 
 
 class Monitor(ConfigReloadMixin, metaclass=SingletonClass):

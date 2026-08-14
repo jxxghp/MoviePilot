@@ -2,21 +2,24 @@ import asyncio
 import os
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.core.cache import (
+from app.infrastructure.cache import (
     AsyncFileBackend,
-    AsyncMemoryBackend,
     AsyncRedisBackend,
-    AsyncFileCache,
     FileBackend,
+    RedisBackend,
+)
+from app.platform.cache import (
+    AsyncFileCache,
+    AsyncMemoryBackend,
     FileCache,
     MemoryBackend,
-    RedisBackend,
     cached,
 )
-from app.core.config import settings
-from app.helper.redis import AsyncRedisHelper, RedisHelper, serialize
+from app.platform.config import settings
+from app.infrastructure.redis import AsyncRedisHelper, RedisHelper, serialize
 
 def test_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     """
@@ -142,7 +145,11 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     monkeypatch.setattr(modules_initializer, "DisplayHelper", lambda: None)
     monkeypatch.setattr(modules_initializer, "DohHelper", lambda: None)
     monkeypatch.setattr(modules_initializer, "SitesHelper", lambda: None)
-    monkeypatch.setattr(modules_initializer, "ResourceHelper", lambda: None)
+    monkeypatch.setattr(
+        modules_initializer,
+        "ResourceHelper",
+        lambda: SimpleNamespace(check=lambda: False),
+    )
     monkeypatch.setattr(modules_initializer, "user_auth", lambda: None)
     monkeypatch.setattr(modules_initializer, "ModuleManager", lambda: None)
     monkeypatch.setattr(modules_initializer.EventManager, "start", lambda self: None)
@@ -535,8 +542,8 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/2")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 7)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 3)
-    monkeypatch.setattr("app.helper.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.helper.redis.redis.Redis", FakeClient)
+    monkeypatch.setattr("app.infrastructure.redis.redis.BlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.infrastructure.redis.redis.Redis", FakeClient)
 
     helper = RedisHelper()
     helper.close()
@@ -614,8 +621,8 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     monkeypatch.setattr(settings, "CACHE_BACKEND_URL", "redis://cache:6379/3")
     monkeypatch.setattr(settings, "CACHE_REDIS_MAX_CONNECTIONS", 9)
     monkeypatch.setattr(settings, "CACHE_REDIS_POOL_TIMEOUT", 4)
-    monkeypatch.setattr("app.helper.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
-    monkeypatch.setattr("app.helper.redis.Redis", FakeAsyncClient)
+    monkeypatch.setattr("app.infrastructure.redis.AsyncBlockingConnectionPool.from_url", fake_from_url)
+    monkeypatch.setattr("app.infrastructure.redis.Redis", FakeAsyncClient)
 
     config_calls = asyncio.run(run_connect())
 

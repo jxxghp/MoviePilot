@@ -4,7 +4,7 @@ from threading import Lock
 from typing import Callable, Dict, List, Optional
 
 from app.chain.storage import StorageChain
-from app.log import logger
+from app.platform.log import logger
 from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.snapshot import SnapshotStore
 

@@ -9,9 +9,12 @@ from typing import Any, Callable, Optional
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.core import metainfo as metainfo_module
-from app.core.meta import MetaAnime, MetaMusic
-from app.core.metainfo import MetaInfo, MetaInfoPath
+from app.domain import metainfo as metainfo_module
+from app.domain.meta.metaanime import MetaAnime
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.runtime import get_audio_extensions
+from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.infrastructure import rust as rust_accel
 from tests.cases.meta import meta_cases
 
 
@@ -84,7 +87,6 @@ def selected_meta_parser(use_rust: bool):
         "find_metainfo",
         "parse_metamusic",
     )
-    rust_accel = metainfo_module.rust_accel
     original_parsers = {
         name: getattr(rust_accel, name)
         for name in parser_names
@@ -251,7 +253,6 @@ def benchmark_suite(
 
 def validate_rust_runtime() -> None:
     """确认 Rust 总开关和音乐扩展入口可用，拒绝静默回退形成伪基准。"""
-    rust_accel = metainfo_module.rust_accel
     if not rust_accel.is_enabled():
         raise RuntimeError("Rust 加速未启用或 moviepilot-rust 扩展不可用")
     if not callable(getattr(rust_accel, "parse_metamusic", None)):

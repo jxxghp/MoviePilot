@@ -13,11 +13,11 @@ from typing import Any, Callable, List, Optional, Tuple
 from pydantic import BaseModel
 
 from app.chain import ChainBase
-from app.core.config import global_vars
-from app.core.event import Event, eventmanager
+from app.platform.config import global_vars
+from app.platform.events import Event, eventmanager
 from app.db.models import Workflow
 from app.db.workflow_oper import WorkflowOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas import ActionContext, ActionFlow, Action, ActionExecution, ActionResult
 from app.schemas.types import EventType
 from app.workflow import WorkFlowManager

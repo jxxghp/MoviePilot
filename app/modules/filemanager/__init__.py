@@ -2,21 +2,22 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Union, Dict, Callable
 
 from app.chain.tmdb import TmdbChain
-from app.core.config import settings
-from app.core.context import MediaInfo, MusicInfo
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfo
-from app.helper.directory import DirectoryHelper
-from app.helper.message import MessageHelper
-from app.helper.module import ModuleHelper
-from app.log import logger
+from app.platform.config import settings
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.services.directory import DirectoryHelper
+from app.messaging.message import MessageHelper
+from app.foundation.module import ModuleHelper
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType
-from app.utils.system import SystemUtils
-from app.utils.string import StringUtils
+from app.infrastructure.system import SystemUtils
+from app.domain.string import StringUtils
 
 
 class FileManagerModule(_ModuleBase):

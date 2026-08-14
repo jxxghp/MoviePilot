@@ -6,8 +6,8 @@ QQ Bot API - Python 实现
 import time
 from typing import Optional, Literal
 
-from app.log import logger
-from app.utils.http import RequestUtils
+from app.platform.log import logger
+from app.foundation.http import RequestUtils
 
 API_BASE = "https://api.sgroup.qq.com"
 TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"

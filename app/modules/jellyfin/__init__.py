@@ -1,10 +1,10 @@
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.core.context import MediaInfo
-from app.core.event import eventmanager
-from app.helper.mediaserver import MusicMediaServerHelper
-from app.log import logger
+from app.domain.context import MediaInfo
+from app.platform.events import eventmanager
+from app.services.mediaserver import MusicMediaServerHelper
+from app.platform.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.schemas import AuthCredentials, AuthInterceptCredentials

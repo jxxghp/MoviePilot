@@ -202,7 +202,7 @@ def test_confirm_executes_once_without_model_or_history() -> None:
         patch.object(agent, "_is_system_admin_context", new=AsyncMock(return_value=True)),
         patch.object(agent, "_execute_agent", new=AsyncMock()) as execute_agent,
         patch.object(agent, "_save_display_history_messages") as save_display,
-        patch("app.agent.memory_manager.save_agent_messages") as save_messages,
+        patch("app.agent.orchestrator.memory_manager.save_agent_messages") as save_messages,
         patch.object(
             QuerySystemSettingsTool,
             "_load_setting_value",
@@ -402,7 +402,7 @@ def test_private_delivery_requests_literal_plain_text() -> None:
     response = SimpleNamespace(success=True)
 
     with patch(
-        "app.agent.AgentChain.send_direct_message",
+        "app.agent.orchestrator.AgentChain.send_direct_message",
         return_value=response,
     ) as send_direct:
         delivered = asyncio.run(

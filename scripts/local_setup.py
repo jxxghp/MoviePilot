@@ -28,7 +28,7 @@ from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_CONFIG_DIR = ROOT / "config"
-HELPER_DIR = ROOT / "app" / "helper"
+SITE_RESOURCE_DIR = ROOT / "app" / "infrastructure"
 PUBLIC_DIR = ROOT / "public"
 RUNTIME_DIR = ROOT / ".runtime"
 NODE_DIR = RUNTIME_DIR / "node"
@@ -999,8 +999,10 @@ def install_frontend(frontend_version: str, node_version: str) -> dict[str, str]
 
 
 def local_resource_status() -> bool:
-    return (HELPER_DIR / f"user.sites.{RESOURCE_VERSION_FLAG}.bin").exists() and bool(
-        list(HELPER_DIR.glob("sites*"))
+    return (
+        SITE_RESOURCE_DIR / f"user.sites.{RESOURCE_VERSION_FLAG}.bin"
+    ).exists() and bool(
+        list(SITE_RESOURCE_DIR.glob("sites*"))
     )
 
 
@@ -1012,13 +1014,13 @@ def copy_resource_files(source_dir: Path) -> list[str]:
     for source in sorted(source_dir.iterdir()):
         if source.is_dir():
             continue
-        target = HELPER_DIR / source.name
+        target = SITE_RESOURCE_DIR / source.name
         shutil.copy2(source, target)
         copied.append(source.name)
 
     if not copied:
         raise RuntimeError(f"资源目录中未找到可复制文件：{source_dir}")
-    print_step(f"已同步资源文件到 {HELPER_DIR}")
+    print_step(f"已同步资源文件到 {SITE_RESOURCE_DIR}")
     return copied
 
 
@@ -2125,7 +2127,7 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.helper.sites import SitesHelper  # noqa
+    from app.infrastructure.sites import SitesHelper  # noqa
 
     auth_sites = SitesHelper().get_authsites() or {}
     definitions: dict[str, Any] = {}
@@ -2462,7 +2464,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         system_config.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
-            from app.helper.sites import SitesHelper  # noqa
+            from app.infrastructure.sites import SitesHelper  # noqa
 
             status, msg = SitesHelper().check_user(
                 site_auth_item.get("site"), site_auth_item.get("params")
@@ -2494,8 +2496,8 @@ def _ensure_superuser_account_inner() -> None:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.core.config import settings
-    from app.core.security import get_password_hash
+    from app.platform.config import settings
+    from app.security.access import get_password_hash
     from app.db.user_oper import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
@@ -2545,7 +2547,7 @@ def _ensure_superuser_account_inner() -> None:
 
 
 def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
-    from app.core.config import settings
+    from app.platform.config import settings
     from app.db.user_oper import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
@@ -3436,7 +3438,7 @@ def _remove_installed_resource_files() -> list[Path]:
     removed: list[Path] = []
     seen: set[Path] = set()
     for pattern in RESOURCE_FILE_PATTERNS:
-        for path in sorted(HELPER_DIR.glob(pattern)):
+        for path in sorted(SITE_RESOURCE_DIR.glob(pattern)):
             if path in seen or not path.exists() or path.is_dir():
                 continue
             _remove_path(path)
@@ -3487,7 +3489,10 @@ def uninstall_local(
     print(f"  - 删除虚拟环境：{venv_dir}")
     print(f"  - 删除前端运行时目录：{PUBLIC_DIR}")
     print(f"  - 删除本地 Node 运行时目录：{RUNTIME_DIR}")
-    print(f"  - 删除资源文件：{HELPER_DIR}/sites*、{HELPER_DIR}/user.sites*.bin")
+    print(
+        f"  - 删除资源文件：{SITE_RESOURCE_DIR}/sites*、"
+        f"{SITE_RESOURCE_DIR}/user.sites*.bin"
+    )
     if linked_cli_paths:
         print("  - 删除全局 CLI 软链接：")
         for path in linked_cli_paths:
@@ -3668,7 +3673,7 @@ def run_agent_request(
     try:
         from app.db.init import init_db, update_db
         from app.agent import MoviePilotAgent
-        from app.core.config import settings
+        from app.platform.config import settings
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
@@ -3732,7 +3737,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     resources_parser = subparsers.add_parser(
-        "install-resources", help="下载资源文件并同步到 app/helper"
+        "install-resources", help="下载资源文件并同步到 app/infrastructure"
     )
     resources_parser.add_argument(
         "--resources-repo", help="本地 MoviePilot-Resources 仓库路径"

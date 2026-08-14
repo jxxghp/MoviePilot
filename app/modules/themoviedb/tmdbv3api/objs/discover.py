@@ -1,4 +1,4 @@
-from app.core.cache import cached
+from app.platform.cache import cached
 from ..tmdb import TMDb
 
 try:

@@ -34,15 +34,15 @@ try:
 except ImportError:
     from telegramify_markdown.type import ContentTypes, File, Photo, Text  # noqa: E402
 
-from app.core.config import settings  # noqa: E402
-from app.core.context import MediaInfo, Context  # noqa: E402
-from app.core.metainfo import MetaInfo  # noqa: E402
-from app.helper.image import ImageHelper  # noqa: E402
-from app.helper.thread import ThreadHelper  # noqa: E402
-from app.log import logger  # noqa: E402
-from app.utils.common import retry  # noqa: E402
-from app.utils.http import RequestUtils  # noqa: E402
-from app.utils.string import StringUtils  # noqa: E402
+from app.platform.config import settings  # noqa: E402
+from app.domain.context import MediaInfo, Context  # noqa: E402
+from app.domain.metainfo import MetaInfo  # noqa: E402
+from app.services.image import ImageHelper  # noqa: E402
+from app.platform.thread import ThreadHelper  # noqa: E402
+from app.platform.log import logger  # noqa: E402
+from app.platform.execution import retry  # noqa: E402
+from app.foundation.http import RequestUtils  # noqa: E402
+from app.domain.string import StringUtils  # noqa: E402
 
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"

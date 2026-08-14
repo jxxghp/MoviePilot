@@ -1,6 +1,6 @@
-from app.core.config import settings
-from app.core.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
-from app.core.meta import MetaMusic
+from app.platform.config import settings
+from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 
 

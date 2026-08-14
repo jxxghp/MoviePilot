@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent import HEARTBEAT_SESSION_PREFIX, MoviePilotAgent
 from app.agent.memory import memory_manager
 from app.db.agentchat_oper import AgentChatOper
-from app.utils.identity import SYSTEM_INTERNAL_USER_ID
+from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 
 def test_agent_chat_oper_saves_display_messages_with_channel():

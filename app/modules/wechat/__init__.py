@@ -5,22 +5,22 @@ import xml.dom.minidom
 from typing import Optional, Union, List, Tuple, Any, Dict
 from urllib.parse import quote
 
-from app.core.context import Context, MediaInfo
-from app.core.event import eventmanager
-from app.helper.agent import (
+from app.domain.context import Context, MediaInfo
+from app.platform.events import eventmanager
+from app.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.log import logger
+from app.platform.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
 from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData
 from app.schemas.types import ModuleType, ChainEventType
-from app.utils.dom import DomUtils
-from app.utils.structures import DictUtils
+from app.foundation.dom import DomUtils
+from app.foundation.structures import DictUtils
 
 
 def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:

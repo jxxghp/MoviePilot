@@ -6,7 +6,7 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.modules.feishu.feishu import Feishu
 from app.schemas import Notification
 

@@ -2,8 +2,8 @@
 from unittest.mock import Mock
 
 from app import schemas
-from app.core.module import ModuleManager
-from app.core.context import MusicInfo
+from app.extensions.module_manager import ModuleManager
+from app.domain.context import MusicInfo
 from app.modules.navidrome import NavidromeModule
 from app.modules.navidrome.navidrome import Navidrome
 from app.schemas.types import MediaServerType, ModuleType
@@ -28,7 +28,7 @@ def test_navidrome_module_is_loaded_by_module_manager():
 
 def test_navidrome_module_ignores_non_music_media():
     """Navidrome 只管理音乐，影视存在性检查应交给其它媒体服务器。"""
-    from app.core.context import MediaInfo
+    from app.domain.context import MediaInfo
     from app.schemas.types import MediaType
 
     mediainfo = MediaInfo()

@@ -3,14 +3,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.chain.media import MediaChain
-from app.core.context import MusicInfo
-from app.core.meta.metamusic import (
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import (
     audio_quality_score,
     audio_quality_tier,
     format_audio_quality,
     parse_audio_quality,
 )
-from app.helper.audio import AudioMetadataHelper
+from app.services.audio import AudioMetadataHelper
 from app.schemas.types import MUSIC_ENTITY_ALBUM
 
 
@@ -38,7 +38,7 @@ def test_read_audio_metadata_maps_easy_tags(monkeypatch):
             sample_rate=44100,
         ),
     )
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     meta = AudioMetadataHelper.read(Path("/music/08 - Get Lucky.flac"))
 
@@ -100,7 +100,7 @@ def test_music_info_serialization_exposes_derived_audio_quality():
 
 def test_music_info_from_meta_preserves_track_and_audio_evidence():
     """核心元数据转换应保留整理、刮削和通知依赖的曲序与实际音频参数。"""
-    from app.core.meta import MetaMusic
+    from app.domain.meta.metamusic import MetaMusic
 
     info = MusicInfo.from_meta(MetaMusic(
         title="Get Lucky",
@@ -142,7 +142,7 @@ def test_parse_compact_audio_quality_tokens_without_false_sample_bitrate():
 
 def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
     """无法读取标签时应保留可用于手动整理的文件名元数据。"""
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: None)
 
     meta = AudioMetadataHelper.read(Path("/music/Unknown Track.mp3"))
 
@@ -156,7 +156,7 @@ def test_read_audio_tags_does_not_fill_from_filename(monkeypatch):
         tags={"title": ["Tagged Title"]},
         info=SimpleNamespace(length=180),
     )
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     meta = AudioMetadataHelper.read_tags(Path("/music/Daft Punk - Get Lucky 2013.flac"))
 
@@ -174,7 +174,7 @@ def test_read_audio_tags_ignores_invalid_musicbrainz_id(monkeypatch):
         },
         info=SimpleNamespace(length=180),
     )
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     meta = AudioMetadataHelper.read_tags(Path("/music/track.flac"))
 
@@ -201,7 +201,7 @@ def test_read_audio_metadata_fallback_uses_dynamic_filename_parser(tmp_path, mon
         "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
     )
     audio_path.write_bytes(b"fake-flac")
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: None)
 
     meta = AudioMetadataHelper.read(audio_path)
 
@@ -227,7 +227,7 @@ def test_read_audio_metadata_partial_tags_use_filename_for_missing_fields(
             sample_rate=44100,
         ),
     )
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     meta = AudioMetadataHelper.read(audio_path)
 
@@ -251,7 +251,7 @@ def test_read_audio_metadata_distinguishes_alac_inside_m4a(monkeypatch):
             sample_rate=96000,
         ),
     )
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     meta = AudioMetadataHelper.read(Path("/music/Lossless Track.m4a"))
 
@@ -276,7 +276,7 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
             self.saved = True
 
     audio = FakeAudio()
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     success = AudioMetadataHelper.write(
         Path("/music/08 - Get Lucky.flac"),
@@ -319,7 +319,7 @@ def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypat
             """模拟 Mutagen 保存。"""
 
     audio = FakeAudio()
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
     success = AudioMetadataHelper.write(
         Path("/music/Random Access Memories.flac"),
@@ -338,7 +338,7 @@ def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypat
 def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch):
     """音乐封面策略应能在标签策略关闭时独立执行。"""
     audio = SimpleNamespace(tags={"title": ["Original"]})
-    monkeypatch.setattr("app.helper.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+    monkeypatch.setattr("app.services.audio.MutagenFile", lambda *_args, **_kwargs: audio)
     write_cover = Mock()
     monkeypatch.setattr(AudioMetadataHelper, "_write_cover", write_cover)
 

@@ -10,15 +10,15 @@ from typing import Any, Dict, Optional
 import yaml
 
 from app.agent.llm.capability import AgentCapabilityManager
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.schemas import (
     ChannelCapability,
     ChannelCapabilities,
     MessageChannel,
     ChannelCapabilityManager,
 )
-from app.utils.system import SystemUtils
+from app.infrastructure.system import SystemUtils
 
 SYSTEM_TASKS_FILE = "System Tasks.yaml"
 SYSTEM_TASKS_SCHEMA_VERSION = 2

@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.modules.filemanager import FileManagerModule
 from app.schemas.types import MediaType
 

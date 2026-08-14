@@ -6,10 +6,10 @@ from jinja2 import Template
 
 from app.chain.media import MediaChain
 from app.chain.transfer import JobManager, TransferChain
-from app.core.config import settings
-from app.core.meta import MetaMusic
-from app.core.context import MusicInfo
-from app.helper.message import TemplateHelper
+from app.platform.config import settings
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.context import MusicInfo
+from app.messaging.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo, TransferTask, TransferTorrent
@@ -280,7 +280,7 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
     audio_file = tmp_path / "03. 晴天.flac"
     audio_file.write_bytes(b"fake-flac")
 
-    from app.helper.audio import AudioMetadataHelper
+    from app.services.audio import AudioMetadataHelper
 
     monkeypatch.setattr(
         AudioMetadataHelper,
@@ -325,7 +325,7 @@ def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path,
     audio_file = tmp_path / "07.幸福.flac"
     audio_file.write_bytes(b"fake-flac")
 
-    from app.helper.audio import AudioMetadataHelper
+    from app.services.audio import AudioMetadataHelper
 
     monkeypatch.setattr(
         AudioMetadataHelper,

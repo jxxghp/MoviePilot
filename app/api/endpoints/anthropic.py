@@ -16,8 +16,8 @@ from app.api.openai_utils import (
     build_prompt,
     build_session_id,
 )
-from app.core.config import settings
-from app.core.security import anthropic_api_key_header
+from app.platform.config import settings
+from app.security.access import anthropic_api_key_header
 from app.schemas.types import MessageChannel
 
 ANTHROPIC_ERROR_RESPONSES = {

@@ -1,12 +1,12 @@
 import re
 from typing import Tuple, List, Optional
 
-from app.core.cache import cached
-from app.core.config import settings
-from app.log import logger
-from app.utils.http import RequestUtils, AsyncRequestUtils
-from app.utils.singleton import SingletonClass
-from app.utils.string import StringUtils
+from app.platform.cache import cached
+from app.platform.config import settings
+from app.platform.log import logger
+from app.foundation.http import RequestUtils, AsyncRequestUtils
+from app.foundation.singleton import SingletonClass
+from app.domain.string import StringUtils
 
 
 class TNodeSpider(metaclass=SingletonClass):

@@ -10,10 +10,10 @@ TemplateContextBuilder 的并发安全单元测试。
 """
 import threading
 
-from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
-from app.core.meta import MetaMusic
-from app.helper.message import TemplateContextBuilder
+from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.messaging.message import TemplateContextBuilder
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode

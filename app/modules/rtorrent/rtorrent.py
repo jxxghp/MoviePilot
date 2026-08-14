@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Union, Tuple, List, Dict
 from urllib.parse import urlparse
 
-from app.log import logger
+from app.platform.log import logger
 
 
 class SCGITransport(xmlrpc.client.Transport):

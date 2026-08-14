@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app import schemas
 from app.api.endpoints.plugin import plugin_rating, plugin_ratings, rate_plugin
-from app.helper.server import MoviePilotServerHelper
+from app.integrations.server import MoviePilotServerHelper
 
 
 def test_server_helper_uses_plugin_rating_endpoints() -> None:
@@ -14,7 +14,7 @@ def test_server_helper_uses_plugin_rating_endpoints() -> None:
 
     async def run_scenario() -> None:
         with (
-            patch("app.helper.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"),
+            patch("app.integrations.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"),
             patch.object(
                 MoviePilotServerHelper,
                 "_async_get",

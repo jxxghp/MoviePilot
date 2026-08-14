@@ -10,8 +10,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ARTIST,
@@ -19,7 +19,7 @@ from app.schemas.types import (
     MediaType,
     media_type_to_agent,
 )
-from app.utils.media import normalize_media_source
+from app.domain.media import normalize_media_source
 from ._music_utils import normalize_music_type, simplify_music_info
 
 

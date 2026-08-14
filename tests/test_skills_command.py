@@ -15,7 +15,7 @@ ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
 from app.chain.skills import SkillsChain, skills_interaction_manager
-from app.helper.skill import (
+from app.agent.skills.registry import (
     SkillHelper,
     SkillInfo,
     SkillMarketSource,

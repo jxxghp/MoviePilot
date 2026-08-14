@@ -1,5 +1,5 @@
 """
-覆盖 app/helper/transferhistory.py 的整理历史查重闸。
+覆盖 app/services/history.py 的整理历史查重闸。
 
 监控分发（app/monitor/dispatcher.py）与整理链计划整理段（app/chain/transfer.py）
 共用这套判定，本文件只测判定本身的真值表与查询辅助函数，不涉及调用方。
@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.config import settings
-from app.helper import transferhistory as transferhistory_helper
-from app.helper.transferhistory import (
+from app.platform.config import settings
+from app.services import history as transfer_history_helper
+from app.services.history import (
     HistoryGateAction,
     clear_transfer_failures,
     coerce_size,
@@ -258,8 +258,8 @@ def test_legacy_integer_retry_count_is_upgraded_after_new_version_failure(monkey
     src_path = "/downloads/gate-test-legacy-retry-state.mkv"
     _reset_failed_retries(src_path, "local")
     try:
-        key = transferhistory_helper.failed_retry_key(src_path, "local")
-        transferhistory_helper._failed_retry_counts[key] = 2
+        key = transfer_history_helper.failed_retry_key(src_path, "local")
+        transfer_history_helper._failed_retry_counts[key] = 2
         history = make_history(
             status=False,
             size=1024,

@@ -2,7 +2,7 @@ from typing import Dict, List, Optional
 
 from app.db import DbOper
 from app.db.models.downloadfailure import DownloadFailure
-from app.utils.media import normalize_media_identity_payload
+from app.domain.media import normalize_media_identity_payload
 
 
 class DownloadFailureOper(DbOper):

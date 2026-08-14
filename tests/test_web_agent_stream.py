@@ -30,11 +30,11 @@ from app.api.endpoints.agent import (
     _resolve_web_agent_choice_payload,
     _split_web_agent_output,
 )
-from app.core.event import Event
+from app.platform.events import Event
 from app.db.agentchat_oper import AgentChatOper
 from app.db.models.agentchat import AgentChat
-from app.helper.agent import build_web_agent_message_update_event
-from app.helper.interaction import AgentInteractionOption, agent_interaction_manager, skills_interaction_manager
+from app.messaging.agent import build_web_agent_message_update_event
+from app.messaging.interaction import AgentInteractionOption, agent_interaction_manager, skills_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, MessageChannel, NotificationType

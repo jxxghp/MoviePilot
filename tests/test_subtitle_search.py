@@ -2,11 +2,11 @@ import pytest
 
 from app.api.endpoints.search import _parse_media_type, _resolve_media_season
 from app.chain.search import SearchChain
-from app.core.context import MediaInfo, SubtitleInfo
+from app.domain.context import MediaInfo, SubtitleInfo
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import MediaType
-from app.utils import rust_accel
+from app.infrastructure import rust as rust_accel
 
 
 AUDIENCES_SUBTITLE_HTML = """

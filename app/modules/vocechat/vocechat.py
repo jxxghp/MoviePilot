@@ -4,12 +4,12 @@ import base64
 from typing import Optional, List, Tuple
 from urllib.parse import quote
 
-from app.core.context import MediaInfo, Context
-from app.core.metainfo import MetaInfo
-from app.log import logger
-from app.utils.common import retry
-from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.domain.context import MediaInfo, Context
+from app.domain.metainfo import MetaInfo
+from app.platform.log import logger
+from app.platform.execution import retry
+from app.foundation.http import RequestUtils
+from app.domain.string import StringUtils
 
 lock = threading.Lock()
 

@@ -311,7 +311,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             }
 
             with patch(
-                    "app.agent._async_start_processing_status",
+                    "app.agent.orchestrator._async_start_processing_status",
                     new_callable=AsyncMock,
                     return_value=status,
             ) as start_status:
@@ -348,7 +348,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                     calls.append(kwargs)
                     return status
 
-            with patch("app.agent.AgentChain", FakeAgentChain):
+            with patch("app.agent.orchestrator.AgentChain", FakeAgentChain):
                 result = await _async_start_processing_status(task)
 
             self.assertEqual(calls, [{
@@ -442,7 +442,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             )
 
             with patch(
-                    "app.agent._async_finish_processing_status",
+                    "app.agent.orchestrator._async_finish_processing_status",
                     new_callable=AsyncMock,
             ) as finish_status:
                 await manager._finish_task_processing_status(task)
@@ -488,7 +488,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             ))
 
             with patch(
-                    "app.agent._async_start_processing_status",
+                    "app.agent.orchestrator._async_start_processing_status",
                     new_callable=AsyncMock,
                     side_effect=[first_status, second_status],
             ) as start_status, patch.object(
@@ -496,7 +496,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                     "_process_message_internal",
                     new_callable=AsyncMock,
             ), patch(
-                    "app.agent._async_finish_processing_status",
+                    "app.agent.orchestrator._async_finish_processing_status",
                     new_callable=AsyncMock,
             ) as finish_status:
                 manager._session_workers["session-1"] = asyncio.create_task(

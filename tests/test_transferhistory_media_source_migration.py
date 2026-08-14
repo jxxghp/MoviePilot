@@ -6,8 +6,9 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
-from app.core.meta import MetaBase, MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.schemas import FileItem, TransferInfo
 

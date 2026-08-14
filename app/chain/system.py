@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Union, Optional
 
 from app.chain import ChainBase
-from app.core.config import settings
-from app.core.plugin import PluginManager
-from app.helper.system import SystemHelper
-from app.log import logger
+from app.platform.config import settings
+from app.extensions.plugin_manager import PluginManager
+from app.platform.runtime import SystemHelper
+from app.platform.log import logger
 from app.schemas import Notification, MessageChannel
-from app.utils.http import RequestUtils
-from app.utils.system import SystemUtils
+from app.foundation.http import RequestUtils
+from app.infrastructure.system import SystemUtils
 from version import FRONTEND_VERSION, APP_VERSION
 
 

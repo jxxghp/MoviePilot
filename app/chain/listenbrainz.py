@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.chain import ChainBase
-from app.core.context import MusicInfo
+from app.domain.context import MusicInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 

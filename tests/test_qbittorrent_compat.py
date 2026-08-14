@@ -19,13 +19,13 @@ def _load_qbittorrent_modules():
     modules_module.__path__ = []
     qbittorrent_package_module = types.ModuleType("app.modules.qbittorrent")
     qbittorrent_package_module.__path__ = []
-    log_module = types.ModuleType("app.log")
-    cache_module = types.ModuleType("app.core.cache")
-    config_module = types.ModuleType("app.core.config")
-    metainfo_module = types.ModuleType("app.core.metainfo")
+    log_module = types.ModuleType("app.platform.log")
+    cache_module = types.ModuleType("app.platform.cache")
+    config_module = types.ModuleType("app.platform.config")
+    metainfo_module = types.ModuleType("app.domain.metainfo")
     schemas_module = types.ModuleType("app.schemas")
     schema_types_module = types.ModuleType("app.schemas.types")
-    string_module = types.ModuleType("app.utils.string")
+    string_module = types.ModuleType("app.domain.string")
     torrentool_module = types.ModuleType("torrentool")
     torrentool_module.__path__ = []
     torrentool_torrent_module = types.ModuleType("torrentool.torrent")
@@ -160,16 +160,16 @@ def _load_qbittorrent_modules():
     stub_modules = {
         "app": app_module,
         "app.core": core_module,
-        "app.core.cache": cache_module,
-        "app.core.config": config_module,
-        "app.core.metainfo": metainfo_module,
-        "app.log": log_module,
+        "app.platform.cache": cache_module,
+        "app.platform.config": config_module,
+        "app.domain.metainfo": metainfo_module,
+        "app.platform.log": log_module,
         "app.modules": modules_module,
         "app.modules.qbittorrent": qbittorrent_package_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,
         "app.utils": utils_module,
-        "app.utils.string": string_module,
+        "app.domain.string": string_module,
         "qbittorrentapi": qbittorrentapi_module,
         "qbittorrentapi.client": qbittorrentapi_client_module,
         "qbittorrentapi.transfer": qbittorrentapi_transfer_module,

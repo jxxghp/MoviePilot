@@ -10,7 +10,7 @@ import asyncio
 from typing import List
 from unittest import IsolatedAsyncioTestCase
 
-from app.utils.coalesce import (
+from app.platform.coalesce import (
     CoalesceDecision,
     CoalesceSummary,
     EventCoalescer,

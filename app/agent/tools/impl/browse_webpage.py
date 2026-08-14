@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.helper.browser import BrowserSessionHelper
-from app.log import logger
+from app.infrastructure.browser import BrowserSessionHelper
+from app.platform.log import logger
 
 # 页面内容最大长度；保留在全局工具结果兜底上限以内。
 MAX_CONTENT_LENGTH = 12_000

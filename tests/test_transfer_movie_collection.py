@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.chain.transfer import TransferChain
-from app.core.config import settings
-from app.core.context import MediaInfo
+from app.platform.config import settings
+from app.domain.context import MediaInfo
 from app.schemas import DownloadHistory, FileItem, TransferTask
 from app.schemas.types import MediaType
 

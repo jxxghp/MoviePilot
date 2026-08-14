@@ -120,14 +120,14 @@ oper.set(user_id=1, key="notification_enabled", value=True)
 
 **Purpose:** Deployment-level, environment-level, and startup-time configuration such as ports, paths, proxies, switches, API keys, and third-party service addresses.
 
-**Location:** `ConfigModel` and `Settings` in `app/core/config.py`
+**Location:** `ConfigModel` and `Settings` in `app/platform/config.py`
 
 These values are read from environment variables (or `.moviepilot.env`) at startup and are immutable at runtime. They are not stored in the database.
 
 **Access:**
 
 ```python
-from app.core.config import settings
+from app.platform.config import settings
 
 host = settings.QB_HOST
 port = settings.QB_PORT
@@ -139,12 +139,12 @@ port = settings.QB_PORT
 
 ### FileCache / AsyncFileCache
 
-**Location:** `app/core/cache.py`
+**Location:** `app/platform/cache.py`
 
 Used to cache expensive external API responses to disk. Cache entries have a configurable TTL.
 
 ```python
-from app.core.cache import FileCache, fresh
+from app.platform.cache import FileCache, fresh
 
 cache = FileCache(cache_name="tmdb", ttl=3600)
 
@@ -174,4 +174,4 @@ When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cac
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-14*

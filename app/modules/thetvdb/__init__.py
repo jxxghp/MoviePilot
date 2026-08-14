@@ -1,8 +1,8 @@
 from threading import Lock
 from typing import Optional, Tuple, Union
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdb_v4_official
 from app.schemas.types import ModuleType, MediaRecognizeType

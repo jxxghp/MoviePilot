@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Optional, List, Union
 
 from app import schemas
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.utils.string import StringUtils
-from app.utils.system import SystemUtils
+from app.domain.string import StringUtils
+from app.infrastructure.system import SystemUtils
 
 _MAX_FOLDER_LOCKS = 4096
 _folder_locks: OrderedDict[str, threading.Lock] = OrderedDict()

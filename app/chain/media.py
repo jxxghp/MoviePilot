@@ -12,20 +12,21 @@ from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
 from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
-from app.core.cache import async_fresh, fresh
-from app.core.config import settings
-from app.core.context import (
+from app.platform.cache import async_fresh, fresh
+from app.platform.config import settings
+from app.domain.context import (
     Context,
     MediaInfo,
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
 )
-from app.core.event import eventmanager, Event
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfo, MetaInfoPath
-from app.helper.audio import AudioMetadataHelper
-from app.log import logger
+from app.platform.events import eventmanager, Event
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.services.audio import AudioMetadataHelper
+from app.platform.log import logger
 from app.schemas import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -36,13 +37,13 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
 )
-from app.utils.media import (
+from app.domain.media import (
     is_music_media_source,
     normalize_media_source,
     resolve_media_identity,
 )
-from app.utils.singleton import Singleton
-from app.utils.string import StringUtils
+from app.foundation.singleton import Singleton
+from app.domain.string import StringUtils
 
 recognize_lock = Lock()
 

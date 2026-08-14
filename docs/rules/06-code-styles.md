@@ -25,7 +25,7 @@
 - All request body and response models must be defined as Pydantic `BaseModel` subclasses in `app/schemas/`.
 - Use `Field(...)` for required fields; use `Field(default=...)` or `Field(None)` for optional fields.
 - Do not define ad-hoc `dict` return types for API responses — define a schema class.
-- Settings and deployment configuration live in `ConfigModel` / `Settings` in `app/core/config.py` using `pydantic-settings`.
+- Settings and deployment configuration live in `ConfigModel` / `Settings` in `app/platform/config.py` using `pydantic-settings`.
 - Use `model_validator` for cross-field validation logic.
 
 ---
@@ -34,7 +34,7 @@
 
 - Prefer `async def` for I/O-bound operations (network requests, database queries, file operations).
 - Use `await` consistently; do not mix sync and async code paths in the same function without using `run_in_threadpool` from FastAPI or `asyncio.to_thread`.
-- For CPU-bound work that must not block the event loop, submit to `ThreadHelper` (see `app/helper/thread.py`).
+- For CPU-bound work that must not block the event loop, submit to `ThreadHelper` (see `app/platform/thread.py`).
 - Do not use bare `threading.Thread` in new code; use `ThreadHelper.submit()`.
 
 ---
@@ -62,7 +62,7 @@ Within each group, sort alphabetically. Do not use wildcard imports (`from modul
 
 - In **chain and module layers**: do not raise HTTP exceptions. Catch exceptions, log them, and return `None` or a domain-level error object so the caller can decide how to proceed.
 - In **endpoint layer**: use FastAPI's `HTTPException` or the project's standard response schemas for errors.
-- Never swallow exceptions silently. At minimum log the error with `logger.error(f"...: {str(err)}")`.
+- Application and adapter layers must not swallow operational failures silently. Log or re-raise them according to the owning contract. Foundation primitives do not log; they return their documented fallback value or raise, leaving operational reporting to the caller.
 - Do not use bare `except:` — always catch a specific exception type or at minimum `Exception`.
 
 ```python
@@ -84,7 +84,7 @@ except:
 
 ## Logging
 
-- Use `logger` from `app/log.py`. Do not import the standard library `logging` directly in application code.
+- Host code uses `logger` from `app.platform.log`; new plugins use `app.sdk.logging`. The historical `app.log` path is compatibility-only. Do not import the standard library `logging` directly in application code.
 - Log levels:
   - `logger.debug(...)` — detailed diagnostic information, disabled by default.
   - `logger.info(...)` — normal operational events.
@@ -103,10 +103,11 @@ except:
 
 ## File Organization
 
-- One primary class per file is the norm for chains, modules, and helpers.
-- Private helper functions in the same file are preferable to extracting a new helper for single-use logic.
-- Under `app/api/endpoints/`, `app/chain/`, `app/helper/`, and `app/utils/`, add code to an existing domain file whenever the domain already exists.
-- New files under those directories must use a single noun filename such as `package.py`; avoid role-suffix names such as `package_installer.py` unless an established framework convention requires it.
+- One primary class per file is the norm for chains, modules, services, and adapters.
+- Private functions in the same file are preferable to extracting a new module for single-use logic.
+- Add code to the canonical capability package that owns it, and extend an existing domain file whenever that domain already exists.
+- Do not recreate generic `core`, `helper`, or `utils` buckets; see `05-architecture.md` for placement rules.
+- New files should use a focused noun name; a role suffix is appropriate only when it distinguishes ownership, such as `plugin_manager.py`; otherwise prefer the package-owned noun, such as `infrastructure/package.py`.
 - Keep files focused on one domain concern.
 
 ---
@@ -114,10 +115,10 @@ except:
 ## What Not To Do
 
 - Do not introduce new third-party libraries without placing them in the correct dependency entry: runtime packages in `requirements.in`, test/lint/build tooling in `requirements-dev.in`.
-- Do not use `requests` or `httpx` directly for external HTTP calls — use `RequestUtils` from `app/utils/http.py`.
+- Do not use `requests` or `httpx` directly for external HTTP calls - host code uses `RequestUtils` from `app/foundation/http.py`; plugins use `app.sdk.network`.
 - Do not issue raw SQLAlchemy queries from chains, modules, or endpoints — use the `*_oper.py` classes.
 - Do not add TODO or FIXME without context. Only keep one if it is genuinely deferred and cannot be addressed in the current task.
 - Do not add noisy markers like `# change starts here`, `# important`, or `# this is a fix`.
 - Do not write comments that restate what the code already clearly says.
 
-*Last Updated: 2026-06-23*
+*Last Updated: 2026-08-14*

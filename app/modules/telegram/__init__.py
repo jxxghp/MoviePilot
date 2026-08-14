@@ -3,14 +3,14 @@ import json
 import re
 from typing import Dict, Optional, Union, List, Tuple, Any
 
-from app.core.context import MediaInfo, Context
-from app.core.event import eventmanager
-from app.helper.agent import (
+from app.domain.context import MediaInfo, Context
+from app.platform.events import eventmanager
+from app.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.log import logger
+from app.platform.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas import (
@@ -22,7 +22,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.schemas.types import ModuleType, ChainEventType
-from app.utils.structures import DictUtils
+from app.foundation.structures import DictUtils
 
 
 register_channel_admin_resolver(

@@ -7,9 +7,9 @@ from enum import Enum
 from typing import List, Optional, Union
 from urllib.parse import quote
 
-from app.core.config import settings
-from app.log import logger
-from app.utils.http import RequestUtils, requests
+from app.platform.config import settings
+from app.platform.log import logger
+from app.foundation.http import RequestUtils, requests
 
 
 @dataclass

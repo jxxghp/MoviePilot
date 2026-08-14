@@ -1,6 +1,24 @@
-from app.core.config import global_vars
-from app.core.plugin import PluginManager
-from app.log import logger
+from app.compat.diagnostics import (
+    configure_legacy_import_diagnostics,
+    scan_plugin_legacy_imports,
+)
+from app.platform.config import global_vars
+from app.extensions.plugin_manager import (
+    PluginManager,
+    configure_plugin_install_reporter,
+    configure_plugin_legacy_import_services,
+)
+from app.integrations.server import MoviePilotServerHelper
+from app.platform.log import logger
+
+
+def _configure_plugin_services() -> None:
+    """把兼容诊断和远程上报能力装配到插件管理器。"""
+    configure_plugin_legacy_import_services(
+        diagnostics_configurator=configure_legacy_import_diagnostics,
+        import_scanner=scan_plugin_legacy_imports,
+    )
+    configure_plugin_install_reporter(MoviePilotServerHelper.install_plugin_reg)
 
 
 async def sync_plugins() -> bool:
@@ -8,6 +26,7 @@ async def sync_plugins() -> bool:
     初始化安装插件，并动态注册后台任务及API
     """
     try:
+        _configure_plugin_services()
         loop = global_vars.loop
         plugin_manager = PluginManager()
 
@@ -60,6 +79,7 @@ def init_plugins():
     """
     初始化插件
     """
+    _configure_plugin_services()
     PluginManager().start()
     register_plugin_api()
 

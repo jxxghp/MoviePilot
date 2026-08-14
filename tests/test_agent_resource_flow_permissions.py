@@ -14,7 +14,7 @@ from app.agent.tools.impl.read_file import ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent import MoviePilotAgent
-from app.core.config import settings
+from app.platform.config import settings
 from app.modules.feishu import FeishuModule
 from app.modules.telegram import TelegramModule
 from app.schemas.types import MessageChannel
@@ -355,7 +355,7 @@ def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
         username="normal-user",
     )
 
-    with patch("app.agent.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.UserOper") as user_oper:
         user_oper.return_value.async_get_by_name.return_value = SimpleNamespace(
             is_superuser=False
         )
@@ -377,7 +377,7 @@ def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
     )
     agent.is_channel_admin = False
 
-    with patch("app.agent.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.UserOper") as user_oper:
         user_oper.return_value.async_get_by_name = AsyncMock(
             return_value=SimpleNamespace(is_superuser=True)
         )
@@ -400,7 +400,7 @@ def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
     )
     agent.is_channel_admin = True
 
-    with patch("app.agent.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.UserOper") as user_oper:
         context = asyncio.run(
             agent._build_tool_context(should_dispatch_reply=True)
         )

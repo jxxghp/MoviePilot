@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.agent import MoviePilotAgent
-from app.core.config import settings
+from app.platform.config import settings
 from app.schemas import AgentLLMProviderEventData
 from app.schemas.types import ChainEventType
 
@@ -20,7 +20,7 @@ def test_resolve_llm_runtime_config_uses_system_thinking_level(monkeypatch) -> N
         return SimpleNamespace(event_data=AgentLLMProviderEventData())
 
     with patch(
-        "app.agent.eventmanager.async_send_event",
+        "app.agent.orchestrator.eventmanager.async_send_event",
         new=AsyncMock(side_effect=return_empty_config),
     ):
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
@@ -39,7 +39,7 @@ def test_resolve_llm_runtime_config_prefers_plugin_thinking_level(monkeypatch) -
         return SimpleNamespace(event_data=event_data)
 
     with patch(
-        "app.agent.eventmanager.async_send_event",
+        "app.agent.orchestrator.eventmanager.async_send_event",
         new=AsyncMock(side_effect=override_thinking_level),
     ):
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
@@ -59,7 +59,7 @@ def test_resolve_llm_runtime_config_uses_system_api_protocol(monkeypatch) -> Non
         return SimpleNamespace(event_data=AgentLLMProviderEventData())
 
     with patch(
-        "app.agent.eventmanager.async_send_event",
+        "app.agent.orchestrator.eventmanager.async_send_event",
         new=AsyncMock(side_effect=return_empty_config),
     ):
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
@@ -78,7 +78,7 @@ def test_resolve_llm_runtime_config_prefers_plugin_api_protocol(monkeypatch) -> 
         return SimpleNamespace(event_data=event_data)
 
     with patch(
-        "app.agent.eventmanager.async_send_event",
+        "app.agent.orchestrator.eventmanager.async_send_event",
         new=AsyncMock(side_effect=override_api_protocol),
     ):
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())
@@ -97,7 +97,7 @@ def test_resolve_llm_runtime_config_prefers_plugin_web_search_mode(monkeypatch) 
         return SimpleNamespace(event_data=event_data)
 
     with patch(
-        "app.agent.eventmanager.async_send_event",
+        "app.agent.orchestrator.eventmanager.async_send_event",
         new=AsyncMock(side_effect=override_web_search_mode),
     ):
         runtime_config = asyncio.run(agent._resolve_llm_runtime_config())

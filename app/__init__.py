@@ -1,5 +1,7 @@
 import warnings
 
+from app.compat.imports import install_legacy_import_hook
+
 
 def _filter_third_party_startup_warnings() -> None:
     """
@@ -13,3 +15,4 @@ def _filter_third_party_startup_warnings() -> None:
 
 
 _filter_third_party_startup_warnings()
+install_legacy_import_hook()

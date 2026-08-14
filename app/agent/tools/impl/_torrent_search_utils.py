@@ -3,10 +3,10 @@
 import re
 from typing import List, Optional
 
-from app.core.context import Context
+from app.domain.context import Context
 from app.schemas.types import MediaType, media_type_to_agent
-from app.utils.crypto import HashUtils
-from app.utils.string import StringUtils
+from app.foundation.crypto import HashUtils
+from app.domain.string import StringUtils
 from ._music_utils import simplify_music_info
 
 SEARCH_RESULT_CACHE_FILE = "__search_result__"

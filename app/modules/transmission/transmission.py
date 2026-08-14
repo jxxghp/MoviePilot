@@ -4,8 +4,8 @@ import transmission_rpc
 from transmission_rpc import Client, Torrent, File
 from transmission_rpc.session import SessionStats, Session
 
-from app.log import logger
-from app.utils.url import UrlUtils
+from app.platform.log import logger
+from app.foundation.url import UrlUtils
 
 
 class Transmission:

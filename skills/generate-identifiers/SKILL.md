@@ -264,7 +264,7 @@ OldTitle => NewTitle && \[Baha\] <> \[1080P\] >> EP-12
 
 ## WordsMatcher Processing Logic Reference
 
-The `WordsMatcher.prepare()` method (in `app/core/meta/words.py`) processes each rule in order:
+The `WordsMatcher.prepare()` method (in `app/domain/meta/words.py`) processes each rule in order:
 
 1. Skip empty lines and lines starting with `#`
 2. Detect format by checking operator presence:

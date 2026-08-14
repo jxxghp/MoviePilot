@@ -11,9 +11,9 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.chain.message import MessageChain
-from app.helper.message import MessageQueueManager
+from app.messaging.message import MessageQueueManager
 from app.schemas import Notification
-from app.utils.identity import (
+from app.foundation.identity import (
     SYSTEM_INTERNAL_USER_ID,
     is_internal_user_id,
     normalize_internal_user_id,

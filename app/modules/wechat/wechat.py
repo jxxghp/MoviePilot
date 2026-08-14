@@ -7,13 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
-from app.core.context import MediaInfo, Context
-from app.core.metainfo import MetaInfo
-from app.log import logger
-from app.utils.common import retry
-from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
-from app.utils.url import UrlUtils
+from app.domain.context import MediaInfo, Context
+from app.domain.metainfo import MetaInfo
+from app.platform.log import logger
+from app.platform.execution import retry
+from app.foundation.http import RequestUtils
+from app.domain.string import StringUtils
+from app.foundation.url import UrlUtils
 
 lock = threading.Lock()
 

@@ -5,8 +5,8 @@ from fastapi import Depends
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.tmdb import TmdbChain
-from app.core.config import settings
-from app.core.security import verify_token
+from app.platform.config import settings
+from app.security.access import verify_token
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser_async

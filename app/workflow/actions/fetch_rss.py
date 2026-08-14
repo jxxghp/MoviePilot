@@ -4,11 +4,11 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.chain.media import MediaChain
-from app.core.config import settings, global_vars
-from app.core.context import Context, TorrentInfo
-from app.core.metainfo import MetaInfo
-from app.helper.rss import RssHelper
-from app.log import logger
+from app.platform.config import settings, global_vars
+from app.domain.context import Context, TorrentInfo
+from app.domain.metainfo import MetaInfo
+from app.infrastructure.rss import RssHelper
+from app.platform.log import logger
 from app.schemas import ActionParams, ActionContext
 
 

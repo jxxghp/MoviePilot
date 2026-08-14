@@ -2,7 +2,7 @@ from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.helper.locale import LocaleHelper
+from app.platform.localization import LocaleHelper
 
 
 DataT = TypeVar("DataT")

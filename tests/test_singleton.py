@@ -1,4 +1,4 @@
-from app.utils.singleton import Singleton, SingletonClass
+from app.foundation.singleton import Singleton, SingletonClass
 
 
 def test_singleton_class_can_read_existing_instance_without_creating(monkeypatch):

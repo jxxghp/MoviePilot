@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
-from app.core.context import (
+from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
@@ -12,7 +12,7 @@ from app.core.context import (
     MusicInfo,
     TorrentInfo,
 )
-from app.core.meta import MetaMusic
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
 
 

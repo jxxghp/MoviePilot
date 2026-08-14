@@ -140,7 +140,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
             "metadata": {"kind": "typing"},
         }
 
-        with patch("app.agent.AgentChain") as chain_cls:
+        with patch("app.agent.orchestrator.AgentChain") as chain_cls:
             _finish_processing_status(status, user_id="fallback")
 
         chain_cls.return_value.finish_message_processing_status.assert_called_once_with(

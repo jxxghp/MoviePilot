@@ -4,13 +4,13 @@ from unittest.mock import Mock
 
 from app.api.endpoints.message import clear_notification_message, get_notification_message
 from app.chain import ChainBase
-from app.core.context import Context, MediaInfo, TorrentInfo
-from app.core.meta import MetaBase
+from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.db import AsyncSessionFactory, SessionFactory
 from app.db.message_oper import MessageOper
 from app.db.models.message import Message
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.message import MessageHelper
+from app.messaging.message import MessageHelper
 from app.schemas import Notification, NotificationClearScope
 from app.schemas.types import MediaType, NotificationType, SystemConfigKey
 

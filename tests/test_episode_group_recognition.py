@@ -9,8 +9,8 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.chain import ChainBase
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType
 
 

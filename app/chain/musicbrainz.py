@@ -1,8 +1,8 @@
 from typing import Any, Optional
 
 from app.chain import ChainBase
-from app.core.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
 
 

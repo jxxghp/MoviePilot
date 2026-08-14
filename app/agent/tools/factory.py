@@ -87,8 +87,8 @@ from app.agent.tools.impl.update_custom_identifiers import UpdateCustomIdentifie
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.llm.capability import AgentCapabilityManager
-from app.core.plugin import PluginManager
-from app.log import logger
+from app.extensions.plugin_manager import PluginManager
+from app.platform.log import logger
 from app.schemas.message import ChannelCapabilityManager
 from app.schemas.types import MessageChannel
 from .base import MoviePilotTool

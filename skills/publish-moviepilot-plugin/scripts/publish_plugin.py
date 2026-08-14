@@ -436,7 +436,7 @@ def load_request_utils_class() -> type:
         root = Path(__file__).resolve().parents[3]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from app.utils.http import RequestUtils  # pylint: disable=import-outside-toplevel
+        from app.foundation.http import RequestUtils  # pylint: disable=import-outside-toplevel
 
         return RequestUtils
     except Exception:
@@ -584,7 +584,7 @@ def load_moviepilot_settings() -> Any:
         root = Path(__file__).resolve().parents[3]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from app.core.config import settings  # pylint: disable=import-outside-toplevel
+        from app.platform.config import settings  # pylint: disable=import-outside-toplevel
 
         return settings
     except Exception:

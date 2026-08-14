@@ -13,7 +13,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     load_market_plugins,
     summarize_plugin,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 class InstallPluginInput(BaseModel):

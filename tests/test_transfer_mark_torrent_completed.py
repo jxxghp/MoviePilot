@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 from app.chain.transfer import JobManager, TransferChain
-from app.core.config import settings
+from app.platform.config import settings
 from app.schemas import FileItem, TransferTask
 from app.schemas.types import MediaType
 

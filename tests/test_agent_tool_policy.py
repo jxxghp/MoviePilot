@@ -7,7 +7,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
-import app.agent as agent_module
+import app.agent.orchestrator as agent_module
 from app.agent.middleware.activity_log import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware

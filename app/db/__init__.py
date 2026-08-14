@@ -7,8 +7,8 @@ from sqlalchemy.engine import Engine as SQLAlchemyEngine, ExceptionContext
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 
 
 def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:

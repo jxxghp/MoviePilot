@@ -2,7 +2,7 @@ from typing import Optional
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 
 
 class AniListChain(ChainBase):

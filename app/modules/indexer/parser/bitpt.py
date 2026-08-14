@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlencode
 
 from bs4 import BeautifulSoup
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 class BitptSiteUserInfo(SiteParserBase):
     schema = SiteSchema.Bitpt

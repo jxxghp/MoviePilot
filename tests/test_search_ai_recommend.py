@@ -14,7 +14,7 @@ ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil",
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent import ReplyMode
 from app.chain.search import SearchChain
-from app.core.config import settings
+from app.platform.config import settings
 from app.modules.indexer import IndexerModule
 from app.schemas.types import MediaType
 

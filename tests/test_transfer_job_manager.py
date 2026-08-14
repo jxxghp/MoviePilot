@@ -3,11 +3,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
-from app.core.config import settings
-from app.core.context import MediaInfo
-from app.core.meta import MetaVideo
+from app.platform.config import settings
+from app.domain.context import MediaInfo
+from app.domain.meta.metavideo import MetaVideo
 from app.chain.transfer import JobManager, TransferChain
-from app.helper.transferhistory import (
+from app.services.history import (
     clear_transfer_failures,
     failed_retry_count,
     record_transfer_failure,

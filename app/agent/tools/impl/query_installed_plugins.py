@@ -16,7 +16,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     summarize_candidates,
     summarize_plugin,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 class QueryInstalledPluginsInput(BaseModel):

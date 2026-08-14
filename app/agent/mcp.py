@@ -13,14 +13,14 @@ from typing import Any, Optional
 from urllib.parse import urljoin
 
 from app.db.systemconfig_oper import SystemConfigOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.agent import (
     AgentMcpServerConfig,
     AgentMcpServerTestResult,
     AgentMcpServerToolInfo,
 )
 from app.schemas.types import SystemConfigKey
-from app.utils.http import AsyncRequestUtils
+from app.foundation.http import AsyncRequestUtils
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 MCP_CLIENT_NAME = "MoviePilot Agent"

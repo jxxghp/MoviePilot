@@ -6,15 +6,15 @@ from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
-from app.core.meta import MetaMusic
-from app.core.metainfo import MetaInfo
-from app.core.security import verify_token
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.security.access import verify_token
 from app.db.models.user import User
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
-from app.helper.directory import DirectoryHelper
+from app.services.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
@@ -22,8 +22,8 @@ from app.schemas.types import (
     MusicTargetEntityType,
     SystemConfigKey,
 )
-from app.utils.media import is_music_media_source, normalize_music_type
-from app.utils.security import SecurityUtils
+from app.domain.media import is_music_media_source, normalize_music_type
+from app.security.url import SecurityUtils
 
 router = ResponseAPIRouter()
 

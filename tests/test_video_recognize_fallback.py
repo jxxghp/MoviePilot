@@ -5,8 +5,8 @@ from typing import Optional
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType
 
 

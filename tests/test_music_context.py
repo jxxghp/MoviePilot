@@ -1,6 +1,6 @@
-from app.core.context import Context, MediaInfo
-from app.core.meta import MetaMusic
-from app.core.context import MusicInfo
+from app.domain.context import Context, MediaInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.context import MusicInfo
 from app.schemas.context import Context as ContextSchema
 from app.schemas.context import MediaInfo as MediaInfoSchema
 from app.schemas.music import MusicInfo as MusicInfoSchema

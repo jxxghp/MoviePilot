@@ -11,9 +11,9 @@ import app.chain.download as download_module
 from app.agent.tools.impl.add_download_tasks import AddDownloadTasksTool
 from app.agent.tools.impl.update_download_tasks import UpdateDownloadTasksTool
 from app.chain.download import DownloadChain
-from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
-from app.core.metainfo import MetaInfo
-from app.helper.directory import validate_download_save_path
+from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
+from app.domain.metainfo import MetaInfo
+from app.services.directory import validate_download_save_path
 from app.schemas import DownloaderTorrent, TransferDirectoryConf
 from app.schemas.types import MediaSource, MediaType
 
@@ -133,7 +133,7 @@ def _nested_download_dirs():
 @pytest.fixture(autouse=True)
 def patch_download_dirs(monkeypatch):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _download_dirs(),
     )
 
@@ -158,7 +158,7 @@ def test_validate_download_save_path_accepts_legacy_remote_path_without_storage_
 def test_validate_download_save_path_prefers_configured_local_root(monkeypatch):
     """无前缀路径同时命中本地和远程根目录时应保持本地语义。"""
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: [
             TransferDirectoryConf(
                 name="远程下载",
@@ -191,7 +191,7 @@ def test_validate_download_save_path_accepts_windows_configured_root_and_childre
     expected,
 ):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _windows_download_dirs(),
     )
 
@@ -213,7 +213,7 @@ def test_validate_download_save_path_rejects_windows_paths_outside_configured_ro
     save_path,
 ):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _windows_download_dirs(),
     )
 
@@ -255,7 +255,7 @@ def _build_tv_media() -> MediaInfo:
 
 def test_resolve_media_download_dir_applies_configured_root_classification(monkeypatch):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
 
@@ -271,7 +271,7 @@ def test_resolve_media_download_dir_applies_configured_root_classification(monke
 
 def test_resolve_media_download_dir_keeps_configured_child_path_exact(monkeypatch):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
 
@@ -287,7 +287,7 @@ def test_resolve_media_download_dir_keeps_configured_child_path_exact(monkeypatc
 
 def test_resolve_media_download_dir_applies_remote_root_classification(monkeypatch):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
 
@@ -304,7 +304,7 @@ def test_resolve_media_download_dir_applies_remote_root_classification(monkeypat
 def test_resolve_media_download_dir_accepts_legacy_remote_root_without_storage_prefix(monkeypatch):
     """订阅中的旧版远程根路径应按对应存储和分类配置解析。"""
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
 
@@ -320,7 +320,7 @@ def test_resolve_media_download_dir_accepts_legacy_remote_root_without_storage_p
 
 def test_resolve_media_download_dir_uses_matching_media_specific_root(monkeypatch):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _media_specific_download_dirs(),
     )
 
@@ -348,7 +348,7 @@ def test_resolve_media_download_dir_uses_exact_nested_root_configuration(
     expected,
 ):
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _nested_download_dirs(),
     )
 
@@ -429,7 +429,7 @@ def test_download_single_rejects_event_overridden_bad_save_path_before_downloade
 def test_download_single_applies_configured_root_classification(monkeypatch):
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
     chain = _build_download_chain()
@@ -450,7 +450,7 @@ def test_download_single_accepts_legacy_remote_root_without_storage_prefix(monke
     """旧订阅的无前缀远程根应以正确 FileURI 提交给下载模块。"""
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        "app.helper.directory.DirectoryHelper.get_download_dirs",
+        "app.services.directory.DirectoryHelper.get_download_dirs",
         lambda _self: _classified_download_dirs(),
     )
     chain = _build_download_chain()

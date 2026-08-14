@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.schemas.types import MediaSource
-from app.utils.media import normalize_media_identity_payload
+from app.domain.media import normalize_media_identity_payload
 
 
 class DownloadHistoryOper(DbOper):

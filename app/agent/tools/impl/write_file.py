@@ -13,7 +13,7 @@ from app.agent.tools.impl._file_write_utils import (
     calculate_file_sha256,
 )
 from app.agent.tools.tags import ToolTag
-from app.log import logger
+from app.platform.log import logger
 
 
 class WriteFileInput(BaseModel):

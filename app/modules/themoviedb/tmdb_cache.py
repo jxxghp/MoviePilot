@@ -5,12 +5,12 @@ from threading import RLock
 from time import time
 from typing import Any
 
-from app.core.cache import FileCache, TTLCache
-from app.core.config import settings
-from app.core.meta import MetaBase
-from app.log import logger
+from app.platform.cache import FileCache, TTLCache
+from app.platform.config import settings
+from app.domain.meta.metabase import MetaBase
+from app.platform.log import logger
 from app.schemas.types import MediaSource, MediaType
-from app.utils.singleton import WeakSingleton
+from app.foundation.singleton import WeakSingleton
 
 lock = RLock()
 PERSISTENCE_VERSION = 1

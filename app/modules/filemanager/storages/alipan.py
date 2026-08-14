@@ -9,15 +9,15 @@ from typing import List, Optional, Tuple, Union
 import requests
 
 from app import schemas
-from app.core.config import settings, global_vars
-from app.log import logger
+from app.platform.config import settings, global_vars
+from app.platform.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.utils.http import RequestUtils
-from app.utils.singleton import WeakSingleton
-from app.utils.string import StringUtils
+from app.foundation.http import RequestUtils
+from app.foundation.singleton import WeakSingleton
+from app.domain.string import StringUtils
 
 lock = threading.Lock()
 

@@ -2,9 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
-from app.core.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
-from app.core.event import Event
-from app.core.meta import MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
+from app.platform.events import Event
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas import FileItem
 from app.schemas.types import EventType, ScrapingPolicy
 

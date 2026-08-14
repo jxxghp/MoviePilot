@@ -11,9 +11,9 @@ from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.command import Command
-from app.core.event import eventmanager
-from app.core.plugin import PluginManager
-from app.core.security import verify_token
+from app.platform.events import eventmanager
+from app.extensions.plugin_manager import PluginManager
+from app.security.access import verify_token
 from app.db import get_db, get_async_db
 from app.db.models import User
 from app.db.models.site import Site
@@ -28,11 +28,11 @@ from app.db.user_oper import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.helper.sites import SitesHelper  # noqa
-from app.log import logger
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.platform.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType, MediaType
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 router = ResponseAPIRouter()
 

@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 
 # 搜索超时时间（秒）
 SEARCH_TIMEOUT = 20

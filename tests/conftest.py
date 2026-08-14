@@ -6,7 +6,7 @@
 import sys
 
 # 必须早于首个 import app.db（其在 import 期即按 CONFIG_PATH 连库）：prepare_backend 内部
-# 先隔离 CONFIG_DIR、补 app.helper.sites 垫片，再建表。app/testing 仅依赖标准库、import 不连库，
+# 先隔离 CONFIG_DIR、补 app.infrastructure.sites 垫片，再建表。app/testing 仅依赖标准库、import 不连库，
 # 故此处先 import 再调用是安全的。
 from app.testing.bootstrap import prepare_backend
 
@@ -33,7 +33,7 @@ def pytest_sessionfinish(session, exitstatus):
         _report_session_cleanup_error(session, "agent blocking executors", err)
 
     try:
-        from app.helper.thread import ThreadHelper
+        from app.platform.thread import ThreadHelper
 
         helper = ThreadHelper.get_existing_instance()
         if helper:
@@ -42,14 +42,14 @@ def pytest_sessionfinish(session, exitstatus):
         _report_session_cleanup_error(session, "thread helper", err)
 
     try:
-        from app.helper.message import stop_message
+        from app.messaging.message import stop_message
 
         stop_message()
     except Exception as err:
         _report_session_cleanup_error(session, "message service", err)
 
     try:
-        from app.log import LoggerManager
+        from app.platform.log import LoggerManager
 
         LoggerManager.shutdown()
     except Exception as err:

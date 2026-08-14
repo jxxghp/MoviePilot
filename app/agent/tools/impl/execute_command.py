@@ -23,7 +23,7 @@ from app.agent.tools.impl._terminal_session import (
     TERMINAL_WAIT_DEFAULT_MS,
     terminal_session_manager,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 DEFAULT_TIMEOUT_SECONDS = 60

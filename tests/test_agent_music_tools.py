@@ -25,7 +25,7 @@ from app.agent.tools.impl.recognize_media import RecognizeMediaTool
 from app.agent.tools.impl.scrape_metadata import ScrapeMetadataTool
 from app.agent.tools.impl.search_media import SearchMediaTool
 from app.agent.tools.impl.search_torrents import SearchTorrentsTool
-from app.core.context import (
+from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
     Context,
@@ -34,7 +34,7 @@ from app.core.context import (
     MusicInfo,
     TorrentInfo,
 )
-from app.core.meta import MetaMusic
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
 
 

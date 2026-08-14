@@ -28,7 +28,7 @@ from typing_extensions import TypedDict  # noqa
 
 from app.agent.llm import LLMHelper
 from app.agent.tools.tags import ToolTag
-from app.log import logger
+from app.platform.log import logger
 
 MIN_SELECTED_TOOL_COUNT = 4
 RECENT_SELECTION_CONTEXT_MESSAGE_LIMIT = 6

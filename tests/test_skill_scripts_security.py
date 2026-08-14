@@ -36,7 +36,7 @@ def test_mp_api_uses_settings_without_prompt_token(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(module, "_ensure_project_import", lambda: None)
     monkeypatch.setattr(module, "read_config", lambda: ("http://file-host", "file-token"))
     monkeypatch.setattr(
-        "app.core.config.settings",
+        "app.platform.config.settings",
         FakeSettings,
         raising=False,
     )

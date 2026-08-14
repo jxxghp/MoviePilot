@@ -1,8 +1,8 @@
 from unittest.mock import patch
 
 from app.chain.transfer import TransferChain
-from app.core.context import MediaInfo
-from app.core.meta.metabase import MetaBase
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.schemas import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.types import ContentType, MediaType, NotificationType

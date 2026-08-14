@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.agent.tools.impl._command_safety import validate_command_safety
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 
 if os.name == "posix":
     import fcntl as _fcntl

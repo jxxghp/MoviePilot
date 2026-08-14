@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from app.helper.system import SystemHelper
-from app.core.config import ConfigModel, settings
-from app.utils.system import SystemUtils
+from app.platform.runtime import SystemHelper
+from app.platform.config import ConfigModel, settings
+from app.infrastructure.system import SystemUtils
 
 
 class SystemUtilsTest(TestCase):
@@ -28,7 +28,7 @@ class SystemUtilsTest(TestCase):
             stderr="",
         )
 
-        with patch("app.utils.system.subprocess.run", side_effect=error):
+        with patch("app.infrastructure.system.subprocess.run", side_effect=error):
             success, message = SystemUtils.execute_with_subprocess(["pip", "check"])
 
         self.assertFalse(success)
@@ -46,7 +46,7 @@ class SystemUtilsTest(TestCase):
             stderr="",
         )
 
-        with patch("app.utils.system.subprocess.run", side_effect=error):
+        with patch("app.infrastructure.system.subprocess.run", side_effect=error):
             success, message = SystemUtils.execute_with_subprocess(["pip", "check"])
 
         self.assertFalse(success)
@@ -68,10 +68,10 @@ class SystemHelperRestartTest(TestCase):
                 settings.TEMP_PATH / "moviepilot.intentional_restart"
             )
             try:
-                with patch("app.helper.system.SystemUtils.is_docker", return_value=True), \
+                with patch("app.platform.runtime.SystemUtils.is_docker", return_value=True), \
                         patch.object(SystemHelper, "_check_restart_policy", return_value=True), \
                         patch.object(SystemHelper, "_start_graceful_shutdown_monitor"), \
-                        patch("app.helper.system.os.kill") as kill_mock:
+                        patch("app.platform.runtime.os.kill") as kill_mock:
                     ret, msg = SystemHelper.restart()
 
                 self.assertTrue(ret)
@@ -84,7 +84,7 @@ class SystemHelperRestartTest(TestCase):
 
 
 def test_execute_with_subprocess_passes_env_to_subprocess():
-    with patch("app.utils.system.subprocess.run") as run_mock:
+    with patch("app.infrastructure.system.subprocess.run") as run_mock:
         run_mock.return_value.stdout = "ok"
         run_mock.return_value.stderr = ""
 
@@ -107,7 +107,7 @@ def test_execute_with_subprocess_uses_safe_command_in_failure_message():
     )
 
     command = ["pip", "install", "-i", "https://user:pass@mirror.example/simple"]
-    with patch("app.utils.system.subprocess.run", side_effect=error) as run_mock:
+    with patch("app.infrastructure.system.subprocess.run", side_effect=error) as run_mock:
         success, message = SystemUtils.execute_with_subprocess(
             command,
             safe_command=["pip", "install", "-i", "https://mirror.example/simple"],
@@ -127,7 +127,7 @@ def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():
         stderr="Proxy failed: http://proxy_user:proxy_pass@proxy.example:7890",
     )
 
-    with patch("app.utils.system.subprocess.run", side_effect=error):
+    with patch("app.infrastructure.system.subprocess.run", side_effect=error):
         success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
 
     assert not success
@@ -145,7 +145,7 @@ def test_execute_with_subprocess_redacts_userinfo_from_non_http_scheme():
         stderr="Resolved direct URL: git+https://git_user:git_pass@example.com/org/repo.git",
     )
 
-    with patch("app.utils.system.subprocess.run", side_effect=error):
+    with patch("app.infrastructure.system.subprocess.run", side_effect=error):
         success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
 
     assert not success
@@ -156,7 +156,7 @@ def test_execute_with_subprocess_redacts_userinfo_from_non_http_scheme():
 
 
 def test_execute_with_subprocess_redacts_success_output_userinfo():
-    with patch("app.utils.system.subprocess.run") as run_mock:
+    with patch("app.infrastructure.system.subprocess.run") as run_mock:
         run_mock.return_value.stdout = "Using https://user:pass@mirror.example/simple\n"
         run_mock.return_value.stderr = "Proxy socks5://proxy_user:proxy_pass@proxy.example:7890\n"
 
@@ -171,7 +171,7 @@ def test_execute_with_subprocess_redacts_success_output_userinfo():
 
 def test_execute_with_subprocess_redacts_unknown_error_userinfo_and_invalid_port():
     with patch(
-        "app.utils.system.subprocess.run",
+        "app.infrastructure.system.subprocess.run",
         side_effect=RuntimeError("bad url https://user:pass@example.com:notaport/simple"),
     ):
         success, message = SystemUtils.execute_with_subprocess(["pip", "install"])
@@ -208,7 +208,7 @@ def _fill_fs_info(fsid, num_devices=1, truncate=False):
 @pytest.fixture
 def linux_platform(monkeypatch):
     """将当前用例的平台标识切换为 Linux amd64。"""
-    monkeypatch.setattr("app.utils.system.sys.platform", "linux")
+    monkeypatch.setattr("app.infrastructure.system.sys.platform", "linux")
     monkeypatch.setattr(SystemUtils, "is_x86_64", lambda: True)
     monkeypatch.setattr(SystemUtils, "is_aarch64", lambda: False)
 
@@ -216,9 +216,9 @@ def linux_platform(monkeypatch):
 @pytest.mark.parametrize("num_devices", [1, 2])
 def test_get_btrfs_fsid_reads_kernel_result_and_closes_fd(num_devices, linux_platform):
     fsid = bytes.fromhex("88e3aff5fa2946d591a55977be984655")
-    with patch("app.utils.system.os.open", return_value=42), \
-            patch("app.utils.system.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices)), \
-            patch("app.utils.system.os.close") as close_mock:
+    with patch("app.infrastructure.system.os.open", return_value=42), \
+            patch("app.infrastructure.system.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices)), \
+            patch("app.infrastructure.system.os.close") as close_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result == fsid
@@ -227,9 +227,9 @@ def test_get_btrfs_fsid_reads_kernel_result_and_closes_fd(num_devices, linux_pla
 
 @pytest.mark.parametrize("error_number", [errno.ENOTTY, errno.EACCES, errno.EPERM, errno.EINVAL])
 def test_get_btrfs_fsid_falls_back_on_expected_ioctl_errors(error_number, linux_platform):
-    with patch("app.utils.system.os.open", return_value=42), \
-            patch("app.utils.system.fcntl.ioctl", side_effect=OSError(error_number, os.strerror(error_number))), \
-            patch("app.utils.system.os.close") as close_mock:
+    with patch("app.infrastructure.system.os.open", return_value=42), \
+            patch("app.infrastructure.system.fcntl.ioctl", side_effect=OSError(error_number, os.strerror(error_number))), \
+            patch("app.infrastructure.system.os.close") as close_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result is None
@@ -237,8 +237,8 @@ def test_get_btrfs_fsid_falls_back_on_expected_ioctl_errors(error_number, linux_
 
 
 def test_get_btrfs_fsid_falls_back_when_directory_cannot_be_opened(linux_platform):
-    with patch("app.utils.system.os.open", side_effect=OSError(errno.EACCES, "denied")), \
-            patch("app.utils.system.os.close") as close_mock:
+    with patch("app.infrastructure.system.os.open", side_effect=OSError(errno.EACCES, "denied")), \
+            patch("app.infrastructure.system.os.close") as close_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result is None
@@ -254,9 +254,9 @@ def test_get_btrfs_fsid_falls_back_when_directory_cannot_be_opened(linux_platfor
     ],
 )
 def test_get_btrfs_fsid_rejects_invalid_kernel_results(fsid, num_devices, truncate, linux_platform):
-    with patch("app.utils.system.os.open", return_value=42), \
-            patch("app.utils.system.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices, truncate)), \
-            patch("app.utils.system.os.close") as close_mock:
+    with patch("app.infrastructure.system.os.open", return_value=42), \
+            patch("app.infrastructure.system.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices, truncate)), \
+            patch("app.infrastructure.system.os.close") as close_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result is None
@@ -264,8 +264,8 @@ def test_get_btrfs_fsid_rejects_invalid_kernel_results(fsid, num_devices, trunca
 
 
 def test_get_btrfs_fsid_is_disabled_outside_linux():
-    with patch("app.utils.system.sys.platform", "darwin"), \
-            patch("app.utils.system.os.open") as open_mock:
+    with patch("app.infrastructure.system.sys.platform", "darwin"), \
+            patch("app.infrastructure.system.os.open") as open_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result is None
@@ -273,10 +273,10 @@ def test_get_btrfs_fsid_is_disabled_outside_linux():
 
 
 def test_get_btrfs_fsid_is_disabled_on_unsupported_linux_architecture():
-    with patch("app.utils.system.sys.platform", "linux"), \
+    with patch("app.infrastructure.system.sys.platform", "linux"), \
             patch.object(SystemUtils, "is_x86_64", return_value=False), \
             patch.object(SystemUtils, "is_aarch64", return_value=False), \
-            patch("app.utils.system.os.open") as open_mock:
+            patch("app.infrastructure.system.os.open") as open_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
 
     assert result is None
@@ -292,7 +292,7 @@ def test_space_usage_default_path_does_not_read_fsid():
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid") as fsid_mock, \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -308,13 +308,13 @@ def test_space_usage_opt_in_does_not_read_fsid_outside_linux(system_platform):
     path = MagicMock()
     path.exists.return_value = True
     path.drive = "D:"
-    with patch("app.utils.system.sys.platform", system_platform), \
+    with patch("app.infrastructure.system.sys.platform", system_platform), \
             patch.object(SystemUtils, "is_x86_64") as x86_mock, \
             patch.object(SystemUtils, "is_aarch64") as arm_mock, \
             patch.object(SystemUtils, "_get_btrfs_fsid") as fsid_mock, \
             patch.object(SystemUtils, "total_space", return_value=2.0), \
             patch.object(SystemUtils, "free_space", return_value=1.0), \
-            patch("app.utils.system.os.stat", return_value=MagicMock(st_dev=38)):
+            patch("app.infrastructure.system.os.stat", return_value=MagicMock(st_dev=38)):
         total, free = SystemUtils.space_usage([path], btrfs_fsid_dedup=True)
 
     assert total == 2.0
@@ -328,10 +328,10 @@ def test_space_usage_opt_in_uses_original_behavior_on_unsupported_linux_architec
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
-        with patch("app.utils.system.sys.platform", "linux"), \
+        with patch("app.infrastructure.system.sys.platform", "linux"), \
                 patch.object(SystemUtils, "is_x86_64", return_value=False), \
                 patch.object(SystemUtils, "is_aarch64", return_value=False), \
-                patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+                patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid") as fsid_mock, \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -344,14 +344,14 @@ def test_space_usage_opt_in_uses_original_behavior_on_unsupported_linux_architec
 
 @pytest.mark.parametrize(("is_x86_64", "is_aarch64"), [(True, False), (False, True)])
 def test_space_usage_merges_btrfs_subvolumes_with_same_fsid(is_x86_64, is_aarch64, monkeypatch):
-    monkeypatch.setattr("app.utils.system.sys.platform", "linux")
+    monkeypatch.setattr("app.infrastructure.system.sys.platform", "linux")
     monkeypatch.setattr(SystemUtils, "is_x86_64", lambda: is_x86_64)
     monkeypatch.setattr(SystemUtils, "is_aarch64", lambda: is_aarch64)
     fsid = bytes.fromhex("88e3aff5fa2946d591a55977be984655")
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=[fsid, fsid]), \
                 patch.object(SystemUtils, "total_space", return_value=3.49 * 1024 ** 4), \
                 patch.object(SystemUtils, "free_space", return_value=1.94 * 1024 ** 4):
@@ -365,7 +365,7 @@ def test_space_usage_counts_different_btrfs_fsids_separately(linux_platform):
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=[b"a" * 16, b"b" * 16]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -379,7 +379,7 @@ def test_space_usage_falls_back_to_st_dev_when_fsid_is_unavailable(linux_platfor
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 60, str(paths[1]): 60}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", return_value=None), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -394,7 +394,7 @@ def test_space_usage_keeps_st_dev_dedup_when_fsid_availability_differs(fsids, li
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=fsids), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -408,7 +408,7 @@ def test_space_usage_keeps_st_dev_dedup_when_fsid_is_consistent(linux_platform):
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=[b"a" * 16, b"a" * 16]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -422,7 +422,7 @@ def test_space_usage_does_not_merge_different_st_devs_when_one_fsid_is_unavailab
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=[b"a" * 16, None]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -449,7 +449,7 @@ def test_space_usage_merges_consistent_fsid_observed_within_same_st_dev(linux_pl
             tempfile.TemporaryDirectory() as tmp3:
         paths = [Path(tmp1), Path(tmp2), Path(tmp3)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 38, str(paths[2]): 32}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=[None, b"a" * 16, b"a" * 16]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -469,7 +469,7 @@ def test_space_usage_transitive_merge_is_independent_of_path_order(linux_platfor
             path.exists.return_value = True
         dev_by_path = {str(path): record[1] for path, record in zip(paths, permutation)}
         fsid_by_path = {str(path): record[2] for path, record in zip(paths, permutation)}
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=lambda path: fsid_by_path[str(path)]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
                 patch.object(SystemUtils, "free_space", return_value=1.0):
@@ -489,7 +489,7 @@ def test_space_usage_conflicting_fsids_do_not_bridge_independent_groups(linux_pl
             str(paths[2]): 32,
             str(paths[3]): 101,
         }
-        with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+        with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
                 patch.object(SystemUtils, "_get_btrfs_fsid",
                              side_effect=[b"a" * 16, b"b" * 16, b"a" * 16, b"b" * 16]), \
                 patch.object(SystemUtils, "total_space", return_value=2.0), \
@@ -508,7 +508,7 @@ def test_space_usage_uses_earliest_path_for_each_final_group(linux_platform):
     dev_by_path = {str(paths[0]): 38, str(paths[1]): 38, str(paths[2]): 32, str(paths[3]): 101}
     fsid_by_path = {str(paths[0]): None, str(paths[1]): fsid, str(paths[2]): fsid, str(paths[3]): None}
 
-    with patch("app.utils.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
+    with patch("app.infrastructure.system.os.stat", side_effect=_fake_stat_with_devs(dev_by_path)), \
             patch.object(SystemUtils, "_get_btrfs_fsid", side_effect=lambda path: fsid_by_path[str(path)]), \
             patch.object(SystemUtils, "total_space", side_effect=[2.0, 3.0]) as total_mock, \
             patch.object(SystemUtils, "free_space", side_effect=[1.0, 1.5]) as free_mock:
@@ -524,7 +524,7 @@ def test_space_usage_keeps_windows_drive_behavior_without_fsid_lookup():
     path = MagicMock()
     path.exists.return_value = True
     path.drive = "D:"
-    with patch("app.utils.system.os.name", "nt"), \
+    with patch("app.infrastructure.system.os.name", "nt"), \
             patch.object(SystemUtils, "_get_btrfs_fsid") as fsid_mock, \
             patch.object(SystemUtils, "total_space", return_value=2.0), \
             patch.object(SystemUtils, "free_space", return_value=1.0):

@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
-from app.core.context import SubtitleInfo, TorrentInfo
+from app.domain.context import SubtitleInfo, TorrentInfo
 from app.db.site_oper import SiteOper
-from app.helper.module import ModuleHelper
-from app.helper.sites import SitesHelper  # noqa
-from app.log import logger
+from app.foundation.module import ModuleHelper
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider import SiteSpider
@@ -17,11 +17,11 @@ from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.schemas.types import MediaSource
-from app.utils.media import resolve_media_identity
+from app.domain.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 SPIDER_PARSER_CLASSES = {
     "TNodeSpider": TNodeSpider,

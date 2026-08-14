@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
-from app.core.cache import TTLCache
-from app.helper.passkey import PasskeyChallengeStore
+from app.platform.cache import TTLCache
+from app.security.passkey import PasskeyChallengeStore
 
 
 def setup_function():

@@ -27,8 +27,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 
 # worker 脚本路径。用绝对路径直接执行，而不是 -m 或 import：
 # 直接执行文件不会触发 app/__init__.py 的导入链，代理启动才是毫秒级的

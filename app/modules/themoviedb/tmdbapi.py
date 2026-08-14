@@ -2,11 +2,11 @@ import re
 import traceback
 from typing import Optional, List
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.schemas.types import MediaType
-from app.utils.string import StringUtils
-from app.utils.zhconv import convert as zhconv_convert
+from app.domain.string import StringUtils
+from app.foundation.zhconv import convert as zhconv_convert
 from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
 from .tmdbv3api.exceptions import TMDbException, TMDbConnectionError
 

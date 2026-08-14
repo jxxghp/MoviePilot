@@ -6,19 +6,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.helper import rss as rss_module
-from app.helper.rss import RssHelper
-from app.core import metainfo as metainfo_module
-from app.core.config import settings
-from app.core.meta.customization import CustomizationMatcher
-from app.core.meta.releasegroup import ReleaseGroupsMatcher
-from app.core.meta.streamingplatform import StreamingPlatforms
+from app.infrastructure import rss as rss_module
+from app.infrastructure.rss import RssHelper
+from app.domain import metainfo as metainfo_module
+from app.platform.config import settings
+from app.domain.meta.customization import CustomizationMatcher
+from app.domain.meta.releasegroup import ReleaseGroupsMatcher
+from app.domain.meta.streamingplatform import StreamingPlatforms
 from app.db.systemconfig_oper import SystemConfigOper
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import SystemConfigKey
 from app.schemas.types import MediaType
-from app.utils import rust_accel
-from app.utils.http import RequestUtils
+from app.infrastructure import rust as rust_accel
+from app.foundation.http import RequestUtils
 
 
 pytestmark = pytest.mark.skipif(
@@ -295,7 +295,7 @@ def test_metainfo_public_entry_uses_rust(monkeypatch):
     MetaInfo 公共入口应调用 Rust 解析器，而不是直接进入 Python 旧解析逻辑。
     """
     calls = []
-    original_parse = metainfo_module.rust_accel.parse_metainfo
+    original_parse = rust_accel.parse_metainfo
 
     def wrapped_parse(*args, **kwargs):
         """
@@ -304,7 +304,7 @@ def test_metainfo_public_entry_uses_rust(monkeypatch):
         calls.append(args[0])
         return original_parse(*args, **kwargs)
 
-    monkeypatch.setattr(metainfo_module.rust_accel, "parse_metainfo", wrapped_parse)
+    monkeypatch.setattr(rust_accel, "parse_metainfo", wrapped_parse)
 
     meta = metainfo_module.MetaInfo("旧名 第03集", custom_words=["旧名 => 新名 && 第 <> 集 >> EP+1"])
 

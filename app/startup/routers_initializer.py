@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.core.config import settings
+from app.platform.config import settings
 
 
 def init_routers(app: FastAPI):

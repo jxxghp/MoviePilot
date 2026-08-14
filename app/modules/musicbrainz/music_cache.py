@@ -5,13 +5,13 @@ from threading import RLock
 from time import time
 from typing import Optional
 
-from app.core.cache import FileCache, TTLCache
-from app.core.config import settings
-from app.core.context import MusicInfo
-from app.core.meta import MetaMusic
-from app.log import logger
+from app.platform.cache import FileCache, TTLCache
+from app.platform.config import settings
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.platform.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING
-from app.utils.singleton import WeakSingleton
+from app.foundation.singleton import WeakSingleton
 
 lock = RLock()
 PERSISTENCE_VERSION = 1

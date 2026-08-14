@@ -50,14 +50,14 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
 
-from app.core.config import settings
-from app.core.context import Context, MediaInfo
+from app.platform.config import settings
+from app.domain.context import Context, MediaInfo
 from app.db.user_oper import UserOper
-from app.helper.agent import matches_channel_admin
-from app.log import logger
+from app.messaging.agent import matches_channel_admin
+from app.platform.log import logger
 from app.schemas import CommingMessage, Notification
 from app.schemas.types import MessageChannel, NotificationType
-from app.utils.http import RequestUtils
+from app.foundation.http import RequestUtils
 
 
 class Feishu:

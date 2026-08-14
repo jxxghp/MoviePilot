@@ -84,12 +84,12 @@ result = await self.async_run_module("method_name", kwarg1=val1)
 
 **When to use:** Triggering cross-cutting reactions (e.g., notifying the media server after a transfer completes, reloading a module after config changes, dispatching user messages to message channels).
 
-**Core classes:** `EventManager` (singleton instance `eventmanager`) and `Event` in `app/core/event.py`.
+**Core classes:** `EventManager` (singleton instance `eventmanager`) and `Event` in `app/platform/events.py`.
 
 **Registering a handler:**
 
 ```python
-from app.core.event import eventmanager, Event
+from app.platform.events import eventmanager, Event
 from app.schemas.types import EventType
 
 @eventmanager.register(EventType.TransferComplete)
@@ -136,7 +136,7 @@ oper.add(Subscribe(name="Example", type="电影"))
 
 **When to use:** A chain, module, or helper holds a long-lived object that must be rebuilt when specific configuration keys change (e.g., a downloader client reconnects when its host/port changes).
 
-**Mixin:** `ConfigReloadMixin` in `app/utils/mixins.py`
+**Mixin:** `ConfigReloadMixin` in `app/platform/reload.py`
 
 **How it works:**
 1. Inherit `ConfigReloadMixin`.
@@ -161,10 +161,10 @@ class MyChain(ChainBase, ConfigReloadMixin):
 
 **When to use:** Classes that must have exactly one instance shared application-wide (e.g., `EventManager`, `ModuleManager`, `PluginManager`).
 
-**Implementation:** Inherit from `Singleton` in `app/utils/singleton.py`.
+**Implementation:** Inherit from `Singleton` in `app/foundation/singleton.py`.
 
 ```python
-from app.utils.singleton import Singleton
+from app.foundation.singleton import Singleton
 
 class MyManager(metaclass=Singleton):
     ...
@@ -209,11 +209,11 @@ Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
 
 | Anti-Pattern | Correct Alternative |
 |---|---|
-| `module -> chain` coupling | Move shared logic into `chain` or down into `helper` |
+| `module -> chain` coupling | Move orchestration into `chain` and shared logic into its owning canonical package |
 | `module -> module` direct calls | Use `chain` to orchestrate cross-module workflows |
-| `helper -> chain` dependency | `helper` must remain a low-level utility; move orchestration to `chain` |
+| Lower-level module importing a chain or manager | Register a callback/resolver from `app/startup/` or move orchestration to `chain` |
 | Raw SQLAlchemy queries in endpoints or chains | Use the corresponding `*_oper.py` class |
 | Raw string keys for SystemConfig | Define and use a `SystemConfigKey` enum entry |
-| HTTP requests via `requests` or `httpx` directly | Use `RequestUtils` from `app/utils/http.py` |
+| HTTP requests via `requests` or `httpx` directly | Host code uses `RequestUtils` from `app/foundation/http.py`; plugins use `app.sdk.network` |
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-14*

@@ -8,8 +8,8 @@ Create Date: 2025-08-20 17:50:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-from app.log import logger
-from app.core.config import settings
+from app.platform.log import logger
+from app.platform.config import settings
 
 # revision identifiers, used by Alembic.
 revision = 'a946dae52526'

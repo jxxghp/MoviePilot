@@ -12,20 +12,21 @@ from fastapi.concurrency import run_in_threadpool
 from qbittorrentapi import TorrentFilesList
 from transmission_rpc import File
 
-from app.core.cache import FileCache, AsyncFileCache, fresh, async_fresh
-from app.core.config import settings
-from app.core.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
-from app.core.event import Event, EventManager
-from app.core.meta import MetaBase, MetaMusic
-from app.core.module import ModuleManager
-from app.core.plugin import PluginManager
+from app.platform.cache import FileCache, AsyncFileCache, fresh, async_fresh
+from app.platform.config import settings
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.platform.events import Event, EventManager
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.extensions.module_manager import ModuleManager
+from app.extensions.plugin_manager import PluginManager
 from app.db.message_oper import MessageOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import UserOper
-from app.helper.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
-from app.helper.server import MoviePilotServerHelper
-from app.helper.service import ServiceConfigHelper
-from app.log import logger
+from app.messaging.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
+from app.integrations.server import MoviePilotServerHelper
+from app.extensions.service_registry import ServiceConfigHelper
+from app.platform.log import logger
 from app.schemas import (
     RateLimitExceededException,
     TransferInfo,
@@ -40,8 +41,8 @@ from app.schemas import (
     TransferDirectoryConf,
     MessageResponse,
 )
-from app.utils.identity import normalize_internal_user_id
-from app.utils.media import resolve_media_identity
+from app.foundation.identity import normalize_internal_user_id
+from app.domain.media import resolve_media_identity
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
@@ -55,7 +56,7 @@ from app.schemas.types import (
     MediaSource,
     SystemConfigKey,
 )
-from app.utils.object import ObjectUtils
+from app.foundation.object import ObjectUtils
 
 
 class ChainBase(metaclass=ABCMeta):
@@ -2088,7 +2089,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         if channel == MessageChannel.WebAgent:
             try:
-                from app.helper.agent import edit_web_agent_message
+                from app.messaging.agent import edit_web_agent_message
 
                 return edit_web_agent_message(
                     user_id=str((metadata or {}).get("userid") or ""),

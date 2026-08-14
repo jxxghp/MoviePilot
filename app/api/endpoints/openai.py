@@ -15,9 +15,10 @@ from app.api.openai_utils import (
     build_responses_input,
     build_session_id,
 )
-from app.agent import MoviePilotAgent, StreamingHandler
-from app.core.config import settings
-from app.core.security import openai_bearer_scheme
+from app.agent.callback import StreamingHandler
+from app.agent.orchestrator import MoviePilotAgent
+from app.platform.config import settings
+from app.security.access import openai_bearer_scheme
 from app.schemas.types import MessageChannel
 
 OPENAI_ERROR_RESPONSES = {

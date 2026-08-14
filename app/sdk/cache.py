@@ -1,0 +1,46 @@
+"""插件可用的缓存契约、适配器工厂和装饰器。"""
+
+from app.infrastructure.cache import (
+    AsyncFileBackend,
+    AsyncRedisBackend,
+    FileBackend,
+    RedisBackend,
+)
+from app.platform.cache import (
+    AsyncCache,
+    AsyncCacheBackend,
+    AsyncFileCache,
+    AsyncMemoryBackend,
+    Cache,
+    CacheBackend,
+    FileCache,
+    LRUCache,
+    MemoryBackend,
+    TTLCache,
+    async_fresh,
+    cached,
+    fresh,
+    is_fresh,
+)
+
+
+__all__ = [
+    "AsyncCache",
+    "AsyncCacheBackend",
+    "AsyncFileBackend",
+    "AsyncFileCache",
+    "AsyncMemoryBackend",
+    "AsyncRedisBackend",
+    "Cache",
+    "CacheBackend",
+    "FileBackend",
+    "FileCache",
+    "LRUCache",
+    "MemoryBackend",
+    "RedisBackend",
+    "TTLCache",
+    "async_fresh",
+    "cached",
+    "fresh",
+    "is_fresh",
+]

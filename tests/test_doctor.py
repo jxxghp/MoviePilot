@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from app.core.config import settings
+from app.platform.config import settings
 from app.doctor import checks, run_doctor
 from app.doctor.formatters import format_json_report, format_text_report
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorSeverity

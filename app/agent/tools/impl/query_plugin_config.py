@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._plugin_tool_utils import get_plugin_snapshot
-from app.core.plugin import PluginManager
-from app.log import logger
+from app.extensions.plugin_manager import PluginManager
+from app.platform.log import logger
 
 
 class QueryPluginConfigInput(BaseModel):

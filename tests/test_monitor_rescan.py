@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 from watchfiles import Change
 
-from app.core.config import settings
+from app.platform.config import settings
 from app.monitor.watcher import LocalDirectoryWatcher
 
 

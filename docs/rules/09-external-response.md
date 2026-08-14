@@ -2,7 +2,7 @@
 
 ## HTTP Client Conventions
 
-**Rule:** All outbound HTTP requests must go through `RequestUtils` from `app/utils/http.py`. Do not use `requests`, `httpx`, or `aiohttp` directly.
+**Rule:** Host outbound HTTP requests must go through `RequestUtils` from `app/foundation/http.py`. Plugins import it from `app.sdk.network`. Do not use `requests`, `httpx`, or `aiohttp` directly.
 
 `RequestUtils` handles:
 - Proxy configuration (from `settings.PROXY_*`)
@@ -12,7 +12,7 @@
 - Retry logic
 
 ```python
-from app.utils.http import RequestUtils
+from app.foundation.http import RequestUtils
 
 res = RequestUtils(
     ua=settings.USER_AGENT,
@@ -136,7 +136,7 @@ Internal notifications use the `Notification` schema and the event system:
 ```python
 from app.schemas import Notification
 from app.schemas.types import NotificationType, MessageChannel
-from app.core.event import eventmanager
+from app.platform.events import eventmanager
 from app.schemas.types import EventType
 
 eventmanager.send_event(
@@ -171,4 +171,4 @@ Webhook payloads arrive at `app/api/endpoints/webhook.py` and are dispatched via
 
 Do not add webhook-specific business logic directly in the endpoint. The endpoint parses the payload and fires the event; the chain handles the response.
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-14*

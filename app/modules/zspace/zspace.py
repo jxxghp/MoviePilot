@@ -8,12 +8,12 @@ from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 from requests import Response
 
 from app import schemas
-from app.helper.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
-from app.log import logger
+from app.services.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.platform.log import logger
 from app.schemas import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
-from app.utils.http import RequestUtils
-from app.utils.url import UrlUtils
+from app.foundation.http import RequestUtils
+from app.foundation.url import UrlUtils
 
 
 DEFAULT_ITEMS_PAGE_SIZE = 100

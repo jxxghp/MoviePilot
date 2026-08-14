@@ -1,5 +1,5 @@
-from app.core.context import MediaInfo
-from app.helper.message import TemplateContextBuilder
+from app.domain.context import MediaInfo
+from app.messaging.message import TemplateContextBuilder
 from app.schemas.types import MediaSource, MediaType
 
 

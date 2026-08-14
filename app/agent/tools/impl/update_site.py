@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.core.event import eventmanager
+from app.platform.events import eventmanager
 from app.db.site_oper import SiteOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.types import EventType
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class UpdateSiteInput(BaseModel):

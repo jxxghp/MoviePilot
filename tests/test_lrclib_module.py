@@ -1,4 +1,4 @@
-from app.core.context import MusicInfo
+from app.domain.context import MusicInfo
 from app.modules.lrclib import LrclibModule
 
 

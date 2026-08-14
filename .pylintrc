@@ -73,5 +73,5 @@ ignore-imports=yes
 [TYPECHECK]
 # 生成缺失成员提示的类列表
 generated-members=requests.packages.urllib3
-# app.helper.sites 会主动隐藏模块属性枚举，避免误报 no-name-in-module
-ignored-modules=app.helper.sites
+# app.infrastructure.sites 会主动隐藏模块属性枚举，接口由同目录 sites.pyi 声明
+ignored-modules=app.infrastructure.sites

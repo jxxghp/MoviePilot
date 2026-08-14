@@ -5,10 +5,10 @@ from qbittorrentapi import TorrentFilesList
 from torrentool.torrent import Torrent
 
 from app import schemas
-from app.core.cache import FileCache
-from app.core.config import settings
-from app.core.metainfo import MetaInfo
-from app.log import logger
+from app.platform.cache import FileCache
+from app.platform.config import settings
+from app.domain.metainfo import MetaInfo
+from app.platform.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import DownloaderTorrent
@@ -19,7 +19,7 @@ from app.schemas.types import (
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",

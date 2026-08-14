@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app import agent as agent_module
+import app.agent.orchestrator as agent_module
 from app.agent import AgentManager
 from app.agent.memory import MemoryManager
 from app.startup import agent_initializer, modules_initializer

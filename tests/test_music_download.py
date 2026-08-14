@@ -2,8 +2,8 @@ from unittest.mock import Mock, patch
 
 from app.api.endpoints.download import add, download
 from app.chain.download import DownloadChain
-from app.core.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.schemas import ExistMediaInfo
 from app.schemas.context import TorrentInfo
 from app.schemas.music import MusicInfo as MusicInfoSchema

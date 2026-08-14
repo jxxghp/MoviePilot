@@ -112,22 +112,22 @@ def _prepend_sys_path(path: Path) -> None:
 
 
 def ensure_sites_stub() -> None:
-    """为 ``app.helper.sites`` 补最小垫片（仅在缺失时）。
+    """为 ``app.infrastructure.sites`` 补最小垫片（仅在缺失时）。
 
-    ``app.helper.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.chain.*`` /
+    ``app.infrastructure.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.chain.*`` /
     ``app.modules.*`` 在 import 期依赖它。统一补一个最小垫片，省去各测试文件各自打桩；若真实模块
     已存在（本地已拉取）则用真实模块、不覆盖，不影响真实行为。须在隔离 CONFIG_DIR 之后调用，
-    以免试探性 ``import app.helper.sites`` 触发的连库落到真实库。
+    以免试探性 ``import app.infrastructure.sites`` 触发的连库落到真实库。
     """
-    if "app.helper.sites" in sys.modules:
+    if "app.infrastructure.sites" in sys.modules:
         return
     try:
-        import app.helper.sites  # noqa: F401  本地已拉取时用真实模块
+        import app.infrastructure.sites  # noqa: F401  本地已拉取时用真实模块
     except (ModuleNotFoundError, ImportError):
         from types import ModuleType
-        stub = ModuleType("app.helper.sites")
+        stub = ModuleType("app.infrastructure.sites")
         stub.SitesHelper = _SitesHelperStub
-        sys.modules["app.helper.sites"] = stub
+        sys.modules["app.infrastructure.sites"] = stub
 
 
 def ensure_optional_stub(name: str, **attrs) -> None:
@@ -160,7 +160,7 @@ def prepare_backend() -> None:
     """隔离 CONFIG_DIR、补 sites 垫片并建表（后端须已在 ``sys.path`` 上）。
 
     主程序中后端即当前包；插件仓由其 ``tests/_bootstrap.py`` shim 在 import 本模块前
-    先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再补 ``app.helper.sites`` 垫片，
+    先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再补 ``app.infrastructure.sites`` 垫片，
     最后建表——隔离出的临时库为空，运行期查 ``systemconfig`` 等表会报 no such table，故建表；
     ``init_db`` 仅 import models + create_all，无 alembic/网络、幂等、毫秒级。
     """
@@ -168,6 +168,12 @@ def prepare_backend() -> None:
     ensure_sites_stub()
     from app.db.init import init_db
     init_db()
+    # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
+    from app.startup.cache_initializer import configure_cache_dependencies
+    configure_cache_dependencies()
+    # 测试与生产使用同一组合入口，确保领域解析器获得隔离库和测试 settings。
+    from app.startup.domain_initializer import configure_domain_dependencies
+    configure_domain_dependencies()
 
 
 def prepare_v2_backend(plugins_repo: Path) -> None:

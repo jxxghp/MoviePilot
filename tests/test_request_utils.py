@@ -1,6 +1,7 @@
 import requests
 
-from app.utils.http import RequestUtils
+from app.foundation import http as http_module
+from app.foundation.http import AsyncRequestUtils, RequestUtils
 
 
 class _FakeSession:
@@ -39,6 +40,19 @@ def _make_response(status_code: int = 200) -> requests.Response:
     response = requests.Response()
     response.status_code = status_code
     return response
+
+
+def test_configured_user_agent_marks_plugin_requests(monkeypatch):
+    """启动层注入宿主 UA 后，同步和异步客户端仍应标记插件调用来源。"""
+    monkeypatch.setattr(http_module, "_default_user_agent", None)
+    monkeypatch.setattr(http_module, "get_caller", lambda: "DemoPlugin")
+    http_module.configure_default_user_agent("MoviePilot-Test")
+
+    request_utils = RequestUtils(ua="MoviePilot-Test")
+    async_request_utils = AsyncRequestUtils(ua="MoviePilot-Test")
+
+    assert request_utils._headers["User-Agent"] == "MoviePilot-Test Plugin/DemoPlugin"
+    assert async_request_utils._headers["User-Agent"] == "MoviePilot-Test Plugin/DemoPlugin"
 
 
 def test_request_utils_retries_idempotent_session_connection_error():

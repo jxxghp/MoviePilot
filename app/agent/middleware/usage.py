@@ -11,7 +11,7 @@ from langchain.agents.middleware.types import (
 from langchain_core.messages import AIMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
-from app.log import logger
+from app.platform.log import logger
 
 
 class UsageMiddleware(AgentMiddleware):

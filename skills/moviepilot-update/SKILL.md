@@ -12,7 +12,7 @@ Use this skill for MoviePilot restart and upgrade operations.
 
 ## Setup
 
-This skill reuses the `moviepilot-api` client. When running inside the MoviePilot project, the API client imports `app.core.config.settings` and reads the local host, port, and API token directly. Do not ask the user for `API_TOKEN`.
+This skill reuses the `moviepilot-api` client. When running inside the MoviePilot project, the API client imports `app.platform.config.settings` and reads the local host, port, and API token directly. Do not ask the user for `API_TOKEN`.
 
 ## Preferred Commands
 

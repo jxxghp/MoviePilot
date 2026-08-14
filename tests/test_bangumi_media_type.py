@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
 

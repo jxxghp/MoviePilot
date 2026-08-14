@@ -12,7 +12,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     serialize_builtin_rule,
     RULE_STRING_SYNTAX,
 )
-from app.log import logger
+from app.platform.log import logger
 
 
 class QueryBuiltinFilterRulesInput(BaseModel):

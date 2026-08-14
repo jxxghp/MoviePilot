@@ -11,7 +11,7 @@ from typing import Callable, List, Optional
 
 import websocket
 
-from app.log import logger
+from app.platform.log import logger
 
 # QQ Bot intents
 INTENT_GROUP_AND_C2C = 1 << 25  # 群聊和 C2C 私聊

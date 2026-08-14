@@ -16,13 +16,13 @@ from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
-from app.core.cache import FileCache
-from app.core.config import settings
-from app.core.context import Context, MediaInfo
-from app.core.metainfo import MetaInfo
-from app.log import logger
-from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.platform.cache import FileCache
+from app.platform.config import settings
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.platform.log import logger
+from app.foundation.http import RequestUtils
+from app.domain.string import StringUtils
 
 
 @dataclass

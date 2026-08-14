@@ -5,8 +5,8 @@ from fastapi import Depends, Query
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.anilist import AniListChain
-from app.core.context import MediaInfo
-from app.core.security import verify_token
+from app.domain.context import MediaInfo
+from app.security.access import verify_token
 
 router = ResponseAPIRouter()
 

@@ -9,7 +9,7 @@ from app.agent.tools.impl._system_setting_utils import list_setting_specs
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.core.config import Settings, settings
+from app.platform.config import Settings, settings
 from app.schemas.types import SystemConfigKey
 
 

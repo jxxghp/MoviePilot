@@ -26,11 +26,20 @@ MoviePilot is a self-hosted media automation platform targeting Chinese-language
 | `app/api/endpoints/` | HTTP endpoint handlers |
 | `app/chain/` | Business orchestration layer |
 | `app/modules/` | Pluggable backend integrations (downloaders, media servers, etc.) |
-| `app/helper/` | Reusable low-level utilities |
 | `app/db/` | SQLAlchemy models and data access wrappers |
-| `app/core/` | Config, event system, module manager, plugin manager, security |
+| `app/foundation/` | Stateless general-purpose primitives |
+| `app/domain/` | Media-domain models, parsing, and rules |
+| `app/platform/` | Config, events, caching, and process-wide coordination |
+| `app/infrastructure/` | Network, filesystem, process, Redis, and site-resource adapters |
+| `app/extensions/` | Module, plugin, market, and service lifecycle management |
+| `app/integrations/` | Downloader, media-server, RSS, OCR, storage, and remote-service adapters |
+| `app/messaging/` | Messaging, interaction, notification, and push capabilities |
+| `app/security/` | Authentication and access-control capabilities |
+| `app/services/` | Focused application services |
+| `app/sdk/` | Stable imports for plugins |
+| `app/compat/` | Virtual legacy import compatibility and DEBUG diagnostics |
 | `app/schemas/` | Pydantic request/response models and shared enums |
-| `app/agent/` | LLM agent runtime |
+| `app/agent/` | LLM Agent runtime, tools, middleware, and Skill lifecycle |
 | `app/workflow/` | Workflow engine |
 | `database/versions/` | Alembic migration scripts |
 | `docs/` | CLI, MCP/API, and development workflow documentation |
@@ -81,4 +90,4 @@ An alternative for users running from source. The `moviepilot` CLI handles insta
 | Skill | A packaged AI agent capability that can be invoked via the MCP interface |
 | SystemConfig | Runtime key-value configuration stored in the database and managed via `SystemConfigKey` |
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-14*

@@ -4,10 +4,10 @@ from typing import Optional, List, Tuple, Union, Dict
 import cn2an
 
 from app import schemas
-from app.core.config import settings
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
-from app.log import logger
+from app.platform.config import settings
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
@@ -23,13 +23,13 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.utils.http import RequestUtils
-from app.utils.media import (
+from app.foundation.http import RequestUtils
+from app.domain.media import (
     is_media_source_enabled,
     is_media_source_selected,
     normalize_media_source,
 )
-from app.utils.zhconv import convert as zhconv_convert
+from app.foundation.zhconv import convert as zhconv_convert
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from app.utils.structures import ListUtils
+from app.foundation.structures import ListUtils
 
 
 class ListUtilsTest(TestCase):

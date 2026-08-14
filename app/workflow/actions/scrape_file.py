@@ -1,8 +1,8 @@
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
-from app.core.config import global_vars
-from app.log import logger
+from app.platform.config import global_vars
+from app.platform.log import logger
 from app.schemas import ActionParams, ActionContext
 from app.workflow.actions import BaseAction
 

@@ -10,20 +10,47 @@ from starlette.responses import PlainTextResponse
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.message import MessageChain
-from app.core.config import settings, global_vars
-from app.core.security import verify_token, verify_apitoken
+from app.platform.config import settings, global_vars
+from app.security.access import verify_token, verify_apitoken
 from app.db import get_async_db
 from app.db.models import User
 from app.db.message_oper import MessageOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
-from app.helper.service import ServiceConfigHelper
-from app.helper.webpush import is_webpush_subscription_gone, webpush_options_for_endpoint
-from app.log import logger
+from app.extensions.service_registry import ServiceConfigHelper
+from app.platform.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel, SystemConfigKey
 
 router = ResponseAPIRouter()
+
+_WNS_DEFAULT_TTL = 86400
+
+
+def is_webpush_subscription_gone(error: WebPushException) -> bool:
+    """判断 Web Push 订阅是否已在浏览器或推送服务侧失效。"""
+    response: Any = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None) or getattr(
+        response,
+        "status",
+        None,
+    )
+    return status_code in {404, 410}
+
+
+def is_wns_endpoint(endpoint: str | None) -> bool:
+    """判断是否为 Microsoft WNS 推送端点。"""
+    return bool(endpoint and "notify.windows.com" in endpoint)
+
+
+def webpush_options_for_endpoint(endpoint: str | None) -> dict[str, Any]:
+    """返回指定推送端点需要的 pywebpush 附加参数。"""
+    if not is_wns_endpoint(endpoint):
+        return {}
+    return {
+        "ttl": _WNS_DEFAULT_TTL,
+        "headers": {"X-WNS-Cache-Policy": "cache"},
+    }
 
 
 def _normalize_notification_clear_timestamp(value: Any) -> int:

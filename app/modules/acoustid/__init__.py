@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 from uuid import UUID
 
-from app.core.config import settings
-from app.log import logger
+from app.platform.config import settings
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
-from app.utils.http import AsyncRequestUtils, RequestUtils
+from app.foundation.http import AsyncRequestUtils, RequestUtils
 
 
 class AcoustIdModule(_ModuleBase):

@@ -1,7 +1,7 @@
 import time
 
-from app.helper.message import MessageQueueManager, TemplateHelper, stop_message
-from app.utils.singleton import SingletonClass
+from app.messaging.message import MessageQueueManager, TemplateHelper, stop_message
+from app.foundation.singleton import SingletonClass
 
 
 def test_message_queue_stop_wakes_idle_monitor(monkeypatch):

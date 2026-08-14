@@ -5,8 +5,8 @@ from fastapi import Depends, HTTPException, status
 from app import schemas
 from app.api.response import ResponseAPIRouter
 from app.chain.recommend import RecommendChain
-from app.core.event import eventmanager
-from app.core.security import verify_token
+from app.platform.events import eventmanager
+from app.security.access import verify_token
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
 from app.schemas import RecommendSourceEventData
 from app.schemas.types import ChainEventType

@@ -9,8 +9,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.search import SearchChain
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.sites import SitesHelper  # noqa
-from app.log import logger
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.platform.log import logger
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from ._music_utils import normalize_music_type
 from ._torrent_search_utils import (

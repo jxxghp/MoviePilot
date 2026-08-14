@@ -11,9 +11,9 @@ from fastapi.routing import APIRoute
 
 from app import schemas
 from app.api.response import ERROR_RESPONSES
-from app.core.config import settings
-from app.log import logger
-from app.utils.crypto import CryptoJsUtils, HashUtils
+from app.platform.config import settings
+from app.platform.log import logger
+from app.foundation.crypto import CryptoJsUtils, HashUtils
 
 
 class GzipRequest(Request):

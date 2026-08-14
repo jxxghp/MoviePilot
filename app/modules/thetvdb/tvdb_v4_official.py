@@ -7,9 +7,9 @@ import json
 import urllib.parse
 from http import HTTPStatus
 
-from app.core.cache import cached
-from app.core.config import settings
-from app.utils.http import RequestUtils
+from app.platform.cache import cached
+from app.platform.config import settings
+from app.foundation.http import RequestUtils
 
 
 class Auth:

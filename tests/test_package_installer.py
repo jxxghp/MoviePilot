@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from app.helper.package import (
+from app.infrastructure.package import (
     PackageInstallRequest,
     build_package_install_env,
     build_package_install_strategies,
@@ -106,7 +106,7 @@ def test_build_strategies_uses_pip_only_when_uv_missing(tmp_path):
         config_dir=tmp_path / "config",
     )
 
-    with patch("app.helper.package._find_uv", return_value=None):
+    with patch("app.infrastructure.package._find_uv", return_value=None):
         strategies = build_package_install_strategies(request)
 
     assert [strategy.strategy_name for strategy in strategies] == ["pip:直连"]

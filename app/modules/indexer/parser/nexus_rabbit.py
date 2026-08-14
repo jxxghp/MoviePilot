@@ -4,10 +4,10 @@ import json
 from typing import Optional
 from lxml import etree
 from urllib.parse import urljoin
-from app.log import logger
+from app.platform.log import logger
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser import SiteParserBase
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class NexusRabbitSiteUserInfo(SiteParserBase):

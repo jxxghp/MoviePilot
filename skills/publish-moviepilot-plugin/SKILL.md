@@ -35,9 +35,9 @@ through GitHub while protecting local secrets and unrelated plugins.
 ## Ground Truth
 
 - Local plugin development rules: `skills/create-moviepilot-plugin/SKILL.md`.
-- Local plugin source discovery: `app/helper/plugin.py`,
+- Local plugin source discovery: `app/integrations/market.py`,
   `PluginHelper.get_local_repo_paths()`.
-- GitHub token settings: `app/core/config.py`, especially `GITHUB_TOKEN` and
+- GitHub token settings: `app/platform/config.py`, especially `GITHUB_TOKEN` and
   `REPO_GITHUB_TOKEN`.
 - Plugin package layouts:
   - V2: `package.v2.json` and `plugins.v2/<plugin_id_lower>/`

@@ -157,10 +157,17 @@ function install_backend_and_download_resources() {
     INFO "→ 正在备份站点资源目录..."
     rm -rf /resources_bakcup
     mkdir /resources_bakcup
-    if [ -f /app/app/helper/user.sites.v3.bin ]; then
-        cp -a /app/app/helper/user.sites.v3.bin /resources_bakcup
+    resource_source_dir=/app/app/infrastructure
+    if [ ! -d "${resource_source_dir}" ] && [ -d /app/app/helper ]; then
+        # 从旧版本升级时允许读取一次旧目录，恢复目标始终使用新目录。
+        resource_source_dir=/app/app/helper
     fi
-    cp -a /app/app/helper/sites.cp* /resources_bakcup
+    if [ -f "${resource_source_dir}/user.sites.v3.bin" ]; then
+        cp -a "${resource_source_dir}/user.sites.v3.bin" /resources_bakcup
+    fi
+    for resource_file in "${resource_source_dir}"/sites.cp*; do
+        [ -f "${resource_file}" ] && cp -a "${resource_file}" /resources_bakcup
+    done
     # 清空程序目录
     rm -rf /app
     mkdir -p /app
@@ -183,18 +190,19 @@ function install_backend_and_download_resources() {
         arch_suffix="x86_64-linux-gnu"
     fi
     INFO "当前 Python 版本：${python_version}，架构：${arch}"
+    mkdir -p /app/app/infrastructure
     # 下载 V3 站点索引
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/helper/user.sites.v3.bin; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/infrastructure/user.sites.v3.bin; then
         if [ -f /resources_bakcup/user.sites.v3.bin ]; then
-            cp -a /resources_bakcup/user.sites.v3.bin /app/app/helper/
+            cp -a /resources_bakcup/user.sites.v3.bin /app/app/infrastructure/
         fi
         WARN "user.sites.v3.bin 下载失败，继续使用旧的资源来启动..."
     fi
     # 下载对应平台的 sites 文件
     sites_file="sites.${python_version}-${arch_suffix}.so"
-    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" -o "/app/app/helper/${sites_file}"; then
+    if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" -o "/app/app/infrastructure/${sites_file}"; then
         if [ -f "/resources_bakcup/${sites_file}" ]; then
-            cp -a "/resources_bakcup/${sites_file}" /app/app/helper/
+            cp -a "/resources_bakcup/${sites_file}" /app/app/infrastructure/
         fi
         WARN "${sites_file} 下载失败，继续使用旧的资源来启动..."
     fi

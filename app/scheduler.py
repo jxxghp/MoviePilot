@@ -25,9 +25,9 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
-from app.core.config import settings, global_vars
-from app.core.event import Event, eventmanager
-from app.core.plugin import PluginManager
+from app.platform.config import settings, global_vars
+from app.platform.events import Event, eventmanager
+from app.extensions.plugin_manager import PluginManager
 from app.db import SessionFactory
 from app.db.agenttask_oper import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -35,19 +35,19 @@ from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.image import WallpaperHelper
-from app.helper.message import MessageHelper
-from app.helper.progress import ProgressHelper
-from app.helper.server import MoviePilotServerHelper
-from app.helper.service import ServiceConfigHelper
-from app.helper.sites import SitesHelper  # noqa
-from app.log import logger
+from app.services.image import WallpaperHelper
+from app.messaging.message import MessageHelper
+from app.platform.progress import ProgressHelper
+from app.integrations.server import MoviePilotServerHelper
+from app.extensions.service_registry import ServiceConfigHelper
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.platform.log import logger
 from app.schemas import Notification, NotificationType, Workflow
 from app.schemas.types import EventType, SystemConfigKey
-from app.utils.gc import get_memory_usage
-from app.utils.mixins import ConfigReloadMixin
-from app.utils.singleton import SingletonClass
-from app.utils.timer import TimerUtils
+from app.platform.gc import get_memory_usage
+from app.platform.reload import ConfigReloadMixin
+from app.foundation.singleton import SingletonClass
+from app.platform.scheduling import TimerUtils
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
@@ -1220,7 +1220,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
-        from app.agent import agent_manager
+        from app.agent.orchestrator import agent_manager
 
         try:
             return await agent_manager.execute_scheduled_task(
@@ -1536,7 +1536,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         智能体心跳唤醒：检查并执行待处理的定时任务
         """
-        from app.agent import agent_manager
+        from app.agent.orchestrator import agent_manager
 
         await agent_manager.heartbeat_check_jobs()
 

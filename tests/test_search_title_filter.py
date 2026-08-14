@@ -10,7 +10,7 @@ ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil",
 
 from app.chain import search as search_module
 from app.chain.search import SearchChain
-from app.core.context import TorrentInfo
+from app.domain.context import TorrentInfo
 from app.schemas.types import SystemConfigKey
 
 

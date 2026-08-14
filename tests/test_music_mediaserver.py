@@ -6,8 +6,8 @@ from unittest.mock import Mock
 import pytest
 
 from app import schemas
-from app.core.context import MusicInfo
-from app.helper.mediaserver import MusicMediaServerHelper
+from app.domain.context import MusicInfo
+from app.services.mediaserver import MusicMediaServerHelper
 from app.modules.emby import EmbyModule
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin import JellyfinModule

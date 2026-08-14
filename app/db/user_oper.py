@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.core.security import verify_token
+from app.security.access import verify_token
 from app.db import DbOper, get_db, get_async_db
 from app.db.models.user import User
 

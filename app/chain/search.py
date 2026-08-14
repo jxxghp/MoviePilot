@@ -14,18 +14,18 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.core.config import global_vars, settings
-from app.core.context import Context
-from app.core.context import MediaInfo, SubtitleInfo, TorrentInfo
-from app.core.event import eventmanager, Event
-from app.core.meta import MetaMusic
-from app.core.metainfo import MetaInfo
-from app.core.context import MusicInfo
+from app.platform.config import global_vars, settings
+from app.domain.context import Context
+from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
+from app.platform.events import eventmanager, Event
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.domain.context import MusicInfo
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.progress import ProgressHelper
-from app.helper.sites import SitesHelper  # noqa
-from app.helper.torrent import TorrentHelper
-from app.log import logger
+from app.platform.progress import ProgressHelper
+from app.infrastructure.sites import SitesHelper  # noqa
+from app.services.torrent import TorrentHelper
+from app.platform.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -35,13 +35,13 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.utils.media import (
+from app.domain.media import (
     build_media_key,
     parse_media_key,
     resolve_media_identity,
 )
-from app.utils.string import StringUtils
-from app.utils.zhconv import convert as zhconv_convert
+from app.domain.string import StringUtils
+from app.foundation.zhconv import convert as zhconv_convert
 
 
 class SearchChain(ChainBase):
@@ -513,7 +513,7 @@ class SearchChain(ChainBase):
         """
         通过统一后台提示词机制执行资源推荐。
         """
-        from app.agent import ReplyMode, agent_manager
+        from app.agent.orchestrator import ReplyMode, agent_manager
         from app.agent.prompt import prompt_manager
 
         prompt = prompt_manager.render_system_task_message(

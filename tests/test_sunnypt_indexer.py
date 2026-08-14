@@ -7,8 +7,8 @@ import pytest
 
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
-from app.core.config import settings
-from app.core.context import TorrentInfo
+from app.platform.config import settings
+from app.domain.context import TorrentInfo
 from app.db.message_oper import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo

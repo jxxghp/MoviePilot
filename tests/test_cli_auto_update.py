@@ -46,8 +46,8 @@ def load_cli_module():
         app_module = ModuleType("app")
         core_module = ModuleType("app.core")
         helper_module = ModuleType("app.helper")
-        config_module = ModuleType("app.core.config")
-        system_module = ModuleType("app.helper.system")
+        config_module = ModuleType("app.platform.config")
+        system_module = ModuleType("app.platform.runtime")
         version_module = ModuleType("version")
         psutil_module = ModuleType("psutil")
 
@@ -68,8 +68,8 @@ def load_cli_module():
             "app": app_module,
             "app.core": core_module,
             "app.helper": helper_module,
-            "app.core.config": config_module,
-            "app.helper.system": system_module,
+            "app.platform.config": config_module,
+            "app.platform.runtime": system_module,
             "version": version_module,
             "psutil": psutil_module,
         }

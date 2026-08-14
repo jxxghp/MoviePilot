@@ -1,6 +1,6 @@
 import socket
 
-from app.helper import doh
+from app.infrastructure import doh
 
 
 def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):

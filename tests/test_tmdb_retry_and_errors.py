@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import app.modules.themoviedb as themoviedb_module
-from app.core.metainfo import MetaInfo
+from app.domain.metainfo import MetaInfo
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi

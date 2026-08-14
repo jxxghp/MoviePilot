@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInfo
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 def test_audiences_userbar_metrics_override_generic_nexus_regex():

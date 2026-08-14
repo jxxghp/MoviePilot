@@ -299,7 +299,7 @@ bash scripts/collect-site-adapter.sh
 # Run after activating the project virtual environment
 python -m scripts.generate_plugin_market_default \
   --wiki-file /path/to/MoviePilot-Wiki/plugin.md \
-  --config-file app/core/config.py
+  --config-file app/platform/config.py
 ```
 
 **Rules:**

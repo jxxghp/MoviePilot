@@ -8,10 +8,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo, MusicInfo
-from app.core.meta import MetaBase, MetaMusic
-from app.core.metainfo import MetaInfo
-from app.helper.server import MoviePilotServerHelper
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.integrations.server import MoviePilotServerHelper
 from app.schemas.types import MediaSource, MediaType
 
 

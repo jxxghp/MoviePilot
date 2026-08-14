@@ -6,8 +6,8 @@ import pytest
 
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
-from app.core.context import MUSIC_ENTITY_ALBUM, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.douban import DoubanModule
 from app.modules.theaudiodb import TheAudioDbModule
 from app.schemas.types import MediaRecognizeType, MediaSource, MediaType

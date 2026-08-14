@@ -4,8 +4,8 @@ from typing import Any, Iterator
 import pytest
 from fastapi import HTTPException
 
-from app.core.plugin import PluginManager
-from app.utils.singleton import Singleton
+from app.extensions.plugin_manager import PluginManager
+from app.foundation.singleton import Singleton
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-from app.helper.service import ServiceConfigHelper
+from app.extensions.service_registry import ServiceConfigHelper
 from app.schemas.system import MediaServerConf
 from app.schemas.types import SystemConfigKey
 
@@ -16,7 +16,7 @@ def test_mediaserver_conf_tolerates_blank_sync_interval():
 def test_get_configs_skips_invalid_entries(monkeypatch):
     """单条配置校验失败时应跳过该条，不影响其它服务配置的加载。"""
     monkeypatch.setattr(
-        "app.helper.service.SystemConfigOper.get",
+        "app.extensions.service_registry.SystemConfigOper.get",
         lambda self, key: [
             {"name": "good", "type": "emby", "enabled": True},
             "bad-format",

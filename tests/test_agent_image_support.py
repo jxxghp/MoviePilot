@@ -15,7 +15,7 @@ from app.agent.tools.impl.send_local_file import SendLocalFileInput
 from app.agent import MoviePilotAgent, AgentChain
 from app.agent.llm import AgentCapabilityManager
 from app.chain.message import MessageChain
-from app.core.config import settings
+from app.platform.config import settings
 from app.agent.llm import LLMHelper
 from app.modules.discord import DiscordModule
 from app.modules.qqbot import QQBotModule

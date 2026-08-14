@@ -9,8 +9,8 @@ from app.api.response import ERROR_RESPONSES
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tvdb import TvdbChain
-from app.core.metainfo import MetaInfo
-from app.core.security import verify_apikey
+from app.domain.metainfo import MetaInfo
+from app.security.access import verify_apikey
 from app.db import get_db, get_async_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries

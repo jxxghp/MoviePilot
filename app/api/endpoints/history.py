@@ -9,15 +9,15 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.agent import ReplyMode, agent_manager
+from app.agent.orchestrator import ReplyMode, agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
 )
 from app.chain.storage import StorageChain
-from app.core.config import settings, global_vars
-from app.core.event import eventmanager
-from app.core.security import verify_token
+from app.platform.config import settings, global_vars
+from app.platform.events import eventmanager
+from app.security.access import verify_token
 from app.db import get_async_db, get_db
 from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -27,10 +27,10 @@ from app.db.user_oper import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.helper.progress import ProgressHelper
-from app.helper.transferhistory import clear_transfer_failures
+from app.platform.progress import ProgressHelper
+from app.services.history import clear_transfer_failures
 from app.schemas.types import EventType
-from app.utils.jieba import cut as jieba_cut
+from app.foundation.jieba import cut as jieba_cut
 
 router = ResponseAPIRouter()
 

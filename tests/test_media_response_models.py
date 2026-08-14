@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app import schemas
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
-from app.core.context import MediaInfo as CoreMediaInfo
+from app.domain.context import MediaInfo as CoreMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
 

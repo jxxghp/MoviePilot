@@ -91,7 +91,7 @@ def read_local_config() -> tuple[str, str]:
     """Return host and key from local MoviePilot settings when available."""
     try:
         _ensure_project_import()
-        from app.core.config import settings  # pylint: disable=import-outside-toplevel
+        from app.platform.config import settings  # pylint: disable=import-outside-toplevel
     except Exception:
         return "", ""
 

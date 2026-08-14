@@ -17,7 +17,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import Command
 
 from app.agent.middleware.usage import UsageMiddleware
-from app.log import logger
+from app.platform.log import logger
 
 try:
     _internal_call_metadata = import_module(

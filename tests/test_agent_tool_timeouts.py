@@ -180,7 +180,7 @@ def test_create_agent_config_uses_llm_max_iterations():
 
         agent._create_agent = _create_agent
         agent.stream_handler.stop_streaming = lambda: asyncio.sleep(0, result=(False, ""))
-        with patch("app.agent.settings.LLM_MAX_ITERATIONS", 7):
+        with patch("app.agent.orchestrator.settings.LLM_MAX_ITERATIONS", 7):
             await agent._execute_agent([])
         return fake_agent.config
 

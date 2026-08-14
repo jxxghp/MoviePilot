@@ -3,24 +3,24 @@ import re
 import traceback
 from typing import Callable, Dict, List, Union, Optional
 
-from app.helper.sites import SitesHelper  # noqa
+from app.infrastructure.sites import SitesHelper  # noqa
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.core.config import settings, global_vars
-from app.core.context import TorrentInfo, Context, MediaInfo
-from app.core.context import MusicInfo
-from app.core.meta import MetaMusic
-from app.core.metainfo import MetaInfo
+from app.platform.config import settings, global_vars
+from app.domain.context import TorrentInfo, Context, MediaInfo
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.rss import RssHelper
-from app.helper.torrent import TorrentHelper
-from app.log import logger
+from app.infrastructure.rss import RssHelper
+from app.services.torrent import TorrentHelper
+from app.platform.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
-from app.utils.media import resolve_media_identity
-from app.utils.string import StringUtils
+from app.domain.media import resolve_media_identity
+from app.domain.string import StringUtils
 
 
 class TorrentsChain(ChainBase):

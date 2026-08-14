@@ -16,7 +16,7 @@ from app.agent.tools.catalog import (
     ToolIdentityAmbiguousError,
 )
 from app.agent.tools.impl.mcp import create_external_mcp_tools
-from app.core.config import settings
+from app.platform.config import settings
 from app.schemas.agent import AgentMcpServerConfig
 
 
@@ -75,12 +75,12 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
         "_agent_bundle_signature",
         new=AsyncMock(return_value=("sig",)),
     ), patch(
-        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
         return_value=0,
     ), patch(
-        "app.agent.agent_mcp_manager.config_signature",
+        "app.agent.orchestrator.agent_mcp_manager.config_signature",
         return_value="mcp-config",
-    ), patch("app.agent.create_agent") as create_agent:
+    ), patch("app.agent.orchestrator.create_agent") as create_agent:
         graph = await agent._create_agent(streaming=False)
 
     assert graph is cached_graph
@@ -117,13 +117,13 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
         "_initialize_local_tool_catalogs",
         side_effect=AssertionError("tool catalog rebuilt"),
     ), patch(
-        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
         return_value=0,
     ), patch(
-        "app.agent.agent_mcp_manager.config_signature",
+        "app.agent.orchestrator.agent_mcp_manager.config_signature",
         return_value="mcp-config",
     ), patch(
-        "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
         new=AsyncMock(side_effect=AssertionError("MCP discovery called")),
     ):
         graph = await agent._create_agent(streaming=False)
@@ -182,28 +182,28 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         agent,
         "_sync_model_profile",
     ), patch(
-        "app.agent.ServerToolRegistry.resolve_web_search",
+        "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
         return_value=SimpleNamespace(use_local_web_search=True),
     ), patch(
-        "app.agent.LLMHelper.get_server_tools",
+        "app.agent.orchestrator.LLMHelper.get_server_tools",
         return_value=[],
     ), patch(
-        "app.agent.prompt_manager.get_agent_prompt",
+        "app.agent.orchestrator.prompt_manager.get_agent_prompt",
         return_value="prompt",
     ), patch(
-        "app.agent.SkillsMiddleware",
+        "app.agent.orchestrator.SkillsMiddleware",
         return_value=SimpleNamespace(name="skills", tools=[]),
     ), patch(
-        "app.agent.create_subagent_middlewares",
+        "app.agent.orchestrator.create_subagent_middlewares",
         return_value=([], []),
     ), patch(
-        "app.agent.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
         return_value=0,
     ), patch(
-        "app.agent.agent_mcp_manager.config_signature",
+        "app.agent.orchestrator.agent_mcp_manager.config_signature",
         return_value="mcp-config",
     ), patch(
-        "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
         new=AsyncMock(return_value=[]),
     ):
         graph = await agent._create_agent(streaming=False)
@@ -412,69 +412,69 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
         ),
         patch.object(agent, "_sync_model_profile"),
         patch(
-            "app.agent.PluginManager.get_plugin_agent_tools_revision",
+            "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
             return_value=0,
         ),
         patch(
-            "app.agent.agent_mcp_manager.config_signature",
+            "app.agent.orchestrator.agent_mcp_manager.config_signature",
             return_value="mcp-config",
         ),
         patch(
-            "app.agent.agent_mcp_manager.list_enabled_tool_specs",
+            "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
             new=AsyncMock(return_value=specs),
         ),
         patch(
-            "app.agent.ServerToolRegistry.resolve_web_search",
+            "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
             return_value=SimpleNamespace(use_local_web_search=True),
         ),
-        patch("app.agent.LLMHelper.get_server_tools", return_value=[]),
-        patch("app.agent.prompt_manager.get_agent_prompt", return_value="prompt"),
+        patch("app.agent.orchestrator.LLMHelper.get_server_tools", return_value=[]),
+        patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="prompt"),
         patch(
-            "app.agent.create_subagent_middlewares",
+            "app.agent.orchestrator.create_subagent_middlewares",
             side_effect=_capture_subagents,
         ),
         patch(
-            "app.agent.MoviePilotToolFactory.get_tool_selector_always_include_names",
+            "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
             return_value=[],
         ),
         patch(
-            "app.agent.SkillsMiddleware",
+            "app.agent.orchestrator.SkillsMiddleware",
             return_value=SimpleNamespace(name="skills", tools=[skill_tool]),
         ),
         patch(
-            "app.agent.ActivityLogMiddleware",
+            "app.agent.orchestrator.ActivityLogMiddleware",
             return_value=SimpleNamespace(name="activity", tools=[activity_tool]),
         ),
         patch(
-            "app.agent.JobsMiddleware",
+            "app.agent.orchestrator.JobsMiddleware",
             return_value=SimpleNamespace(name="jobs"),
         ),
         patch(
-            "app.agent.RuntimeConfigMiddleware",
+            "app.agent.orchestrator.RuntimeConfigMiddleware",
             return_value=SimpleNamespace(name="runtime"),
         ),
         patch(
-            "app.agent.MemoryMiddleware",
+            "app.agent.orchestrator.MemoryMiddleware",
             return_value=SimpleNamespace(name="memory"),
         ),
         patch(
-            "app.agent.SummarizationMiddleware",
+            "app.agent.orchestrator.SummarizationMiddleware",
             return_value=SimpleNamespace(name="summary"),
         ),
         patch(
-            "app.agent.PatchToolCallsMiddleware",
+            "app.agent.orchestrator.PatchToolCallsMiddleware",
             return_value=SimpleNamespace(name="patch"),
         ),
         patch(
-            "app.agent.UsageMiddleware",
+            "app.agent.orchestrator.UsageMiddleware",
             return_value=SimpleNamespace(name="usage"),
         ),
         patch(
-            "app.agent.ToolSelectorMiddleware",
+            "app.agent.orchestrator.ToolSelectorMiddleware",
             side_effect=_capture_selector,
         ),
-        patch("app.agent.InMemorySaver", return_value=object()),
-        patch("app.agent.create_agent", side_effect=_capture_agent),
+        patch("app.agent.orchestrator.InMemorySaver", return_value=object()),
+        patch("app.agent.orchestrator.create_agent", side_effect=_capture_agent),
         patch.object(settings, "LLM_MAX_TOOLS", max_tools),
     ]
     with ExitStack() as stack:
@@ -539,7 +539,7 @@ async def test_execute_agent_sends_only_latest_message_on_cache_hit():
     agent._create_agent = _create_agent
     messages = [HumanMessage(content="上一轮"), HumanMessage(content="本轮")]
 
-    with patch("app.agent.eventmanager.send_event"):
+    with patch("app.agent.orchestrator.eventmanager.send_event"):
         await agent._execute_agent(messages)
 
     assert agent._streamed_output == "ok"

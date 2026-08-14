@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from app.modules.indexer import parser as parser_module
 from app.modules.indexer.parser.torrent_leech import TorrentLeechSiteUserInfo
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 PROFILE_VIEW_HTML = """

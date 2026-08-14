@@ -26,56 +26,16 @@ from pydantic import BaseModel, Field
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.policy import sanitize_for_host, summarize_error
 from app.agent.tools.tags import ToolTag
-from app.log import logger
+from app.agent.skills.metadata import (
+    MAX_SKILL_FILE_SIZE,
+    SkillMetadata,
+    parse_skill_metadata,
+)
+from app.platform.log import logger
 
-# 磁盘读取上限与模型返回上限分离，避免异常大的 Skill 文件撑爆内存或上下文。
-MAX_SKILL_FILE_SIZE = 1 * 1024 * 1024
+# 模型返回上限独立于领域层的磁盘读取上限，避免异常内容撑爆上下文。
 MAX_SKILL_RESULT_CHARS = 64 * 1024
 SKILL_CONTENT_TRUNCATION_SUFFIX = "\n...(Skill 内容已截断)"
-
-# Agent Skills 规范约束 (https://agentskills.io/specification)
-MAX_SKILL_NAME_LENGTH = 64
-MAX_SKILL_DESCRIPTION_LENGTH = 1024
-MAX_SKILL_COMPATIBILITY_LENGTH = 500
-
-
-class SkillMetadata(TypedDict):
-    """Skill 元数据，符合 Agent Skills 规范。"""
-
-    path: str
-    """SKILL.md 文件路径。"""
-
-    id: str
-    """Skill 标识符。
-    约束: 1-64 字符，仅限小写字母/数字/连字符，不能以连字符开头或结尾，无连续连字符，需与父目录名一致。
-    """
-
-    name: str
-    """Skill 名称。
-    约束: Skill中文描述。
-    """
-
-    version: int
-    """Skill 版本号。
-    用于内置技能的版本管理，同步时比较版本号决定是否覆盖用户目录中的旧版本。
-    """
-
-    description: str
-    """Skill 功能描述。
-    约束: 1-1024 字符，应说明功能及适用场景。
-    """
-
-    license: str | None
-    """许可证信息。"""
-
-    compatibility: str | None
-    """环境依赖或兼容性要求 (最多 500 字符)。"""
-
-    metadata: dict[str, str]
-    """附加元数据。"""
-
-    allowed_tools: list[str]
-    """(实验性) Skill 建议使用的工具列表。"""
 
 
 class SkillsState(AgentState):
@@ -99,123 +59,6 @@ class SkillToolInput(BaseModel):
         ...,
         description="Skill name or id from the available skills list.",
     )
-
-
-def _parse_skill_metadata(  # noqa: C901
-    content: str,
-    skill_path: str,
-    skill_id: str,
-) -> SkillMetadata | None:
-    """从 SKILL.md 内容中解析 YAML 前言并验证元数据。"""
-    if len(content) > MAX_SKILL_FILE_SIZE:
-        logger.warning(
-            "Skipping %s: content too large (%d bytes)", skill_path, len(content)
-        )
-        return None
-
-    # 匹配 --- 分隔的 YAML 前言
-    frontmatter_pattern = r"^---\s*\n(.*?)\n---\s*\n"
-    match = re.match(frontmatter_pattern, content, re.DOTALL)
-    if not match:
-        logger.warning("Skipping %s: no valid YAML frontmatter found", skill_path)
-        return None
-    frontmatter_str = match.group(1)
-
-    # 解析 YAML
-    try:
-        frontmatter_data = yaml.safe_load(frontmatter_str)
-    except yaml.YAMLError as e:
-        logger.warning("Invalid YAML in %s: %s", skill_path, summarize_error(e))
-        return None
-
-    if not isinstance(frontmatter_data, dict):
-        logger.warning("Skipping %s: frontmatter is not a mapping", skill_path)
-        return None
-
-    # SKill名称和描述
-    name = str(frontmatter_data.get("name", "")).strip()
-    description = str(frontmatter_data.get("description", "")).strip()
-    if not name or not description:
-        logger.warning(
-            "Skipping %s: missing required 'name' or 'description'", skill_path
-        )
-        return None
-    description_str = description
-    if len(description_str) > MAX_SKILL_DESCRIPTION_LENGTH:
-        logger.warning(
-            "Description exceeds %d characters in %s, truncating",
-            MAX_SKILL_DESCRIPTION_LENGTH,
-            skill_path,
-        )
-        description_str = description_str[:MAX_SKILL_DESCRIPTION_LENGTH]
-
-    # 可选的工具列表，支持空格或逗号分隔
-    raw_tools = frontmatter_data.get("allowed-tools")
-    if isinstance(raw_tools, str):
-        allowed_tools = [
-            t.strip(",")  # 兼容 Claude Code 风格的逗号分隔
-            for t in raw_tools.split()
-            if t.strip(",")
-        ]
-    else:
-        if raw_tools is not None:
-            logger.warning(
-                "Ignoring non-string 'allowed-tools' in %s (got %s)",
-                skill_path,
-                type(raw_tools).__name__,
-            )
-        allowed_tools = []
-
-    # 能力或环境兼容性说明，最多 500 字符
-    compatibility_str = str(frontmatter_data.get("compatibility", "")).strip() or None
-    if compatibility_str and len(compatibility_str) > MAX_SKILL_COMPATIBILITY_LENGTH:
-        logger.warning(
-            "Compatibility exceeds %d characters in %s, truncating",
-            MAX_SKILL_COMPATIBILITY_LENGTH,
-            skill_path,
-        )
-        compatibility_str = str(compatibility_str)[:MAX_SKILL_COMPATIBILITY_LENGTH]
-
-    # 版本号，默认为 0（表示未设置版本）
-    raw_version = frontmatter_data.get("version")
-    version = 0
-    if raw_version is not None:
-        try:
-            version = int(raw_version)
-        except (ValueError, TypeError):
-            logger.warning(
-                "Invalid 'version' in %s (got %r), defaulting to 0",
-                skill_path,
-                raw_version,
-            )
-
-    return SkillMetadata(
-        id=skill_id,
-        name=name,
-        version=version,
-        description=description_str,
-        path=skill_path,
-        metadata=_validate_metadata(frontmatter_data.get("metadata", {}), skill_path),
-        license=str(frontmatter_data.get("license", "")).strip() or None,
-        compatibility=compatibility_str,
-        allowed_tools=allowed_tools,
-    )
-
-
-def _validate_metadata(
-    raw: object,
-    skill_path: str,
-) -> dict[str, str]:
-    """验证并规范化 YAML 前言中的元数据字段，确保为 dict[str, str] 类型。"""
-    if not isinstance(raw, dict):
-        if raw:
-            logger.warning(
-                "Ignoring non-dict metadata in %s (got %s)",
-                skill_path,
-                type(raw).__name__,
-            )
-        return {}
-    return {str(k): str(v) for k, v in raw.items()}
 
 
 def _format_skill_annotations(skill: SkillMetadata) -> str:
@@ -264,7 +107,7 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
         )
 
         # 解析元数据
-        skill_metadata = _parse_skill_metadata(
+        skill_metadata = parse_skill_metadata(
             content=skill_content,
             skill_path=str(skill_md_path),
             skill_id=skill_path.name,
@@ -303,7 +146,7 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
         skill_content = skill_md_path.read_bytes().decode(
             "utf-8", errors="replace"
         )
-        skill_metadata = _parse_skill_metadata(
+        skill_metadata = parse_skill_metadata(
             content=skill_content,
             skill_path=str(skill_md_path),
             skill_id=skill_path.name,

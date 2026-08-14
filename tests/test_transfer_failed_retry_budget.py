@@ -1,7 +1,7 @@
 """
 有界重试预算的端到端行为验证。
 
-app/helper/transferhistory.py 的查重闸真值表与计数器 API 已在
+app/services/history.py 的查重闸真值表与计数器 API 已在
 tests/test_transfer_history_gate.py 逐项覆盖，本文件换一个角度：把「同一源路径
 连续多个监控事件」串成一条时间线，验证瞬时故障能在预算内自愈、耗尽预算后被拦、
 以及删除整理记录会让预算重新满额，贴近真实使用场景。
@@ -9,8 +9,8 @@ tests/test_transfer_history_gate.py 逐项覆盖，本文件换一个角度：�
 from types import SimpleNamespace
 
 from app import schemas
-from app.core.config import settings
-from app.helper.transferhistory import (
+from app.platform.config import settings
+from app.services.history import (
     HistoryGateAction,
     clear_transfer_failures,
     evaluate_history_gate,

@@ -3,7 +3,7 @@ from typing import Optional
 
 import pytest
 
-from app.core.meta import (
+from app.domain.meta.metamusic import (
     MetaMusic,
     MusicNameContext,
     MusicNameParseResult,
@@ -11,7 +11,7 @@ from app.core.meta import (
     MusicNamePattern,
     MusicNameRegistry,
 )
-from app.core.metainfo import MetaInfo, MetaInfoPath
+from app.domain.metainfo import MetaInfo, MetaInfoPath
 
 
 def parse_title(title: str) -> MetaMusic:
@@ -48,7 +48,7 @@ def test_music_name_registry_supports_dynamic_pattern_and_parser(monkeypatch):
     )
     try:
         monkeypatch.setattr(
-            "app.core.meta.metamusic.rust_accel.parse_metamusic",
+            "app.infrastructure.rust.parse_metamusic",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("自定义注册表不应调用 Rust")
             ),
@@ -100,7 +100,7 @@ def test_music_name_registry_same_name_replacement_falls_back_to_python(monkeypa
     MusicNameRegistry.register_parser(replacement, replace=True)
     try:
         monkeypatch.setattr(
-            "app.core.meta.metamusic.rust_accel.parse_metamusic",
+            "app.infrastructure.rust.parse_metamusic",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("同名替换解析器时不应调用 Rust")
             ),
@@ -139,7 +139,7 @@ def test_parse_query_uses_rust_and_maps_music_fields(monkeypatch):
         return parsed
 
     monkeypatch.setattr(
-        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        "app.infrastructure.rust.parse_metamusic",
         parse_metamusic,
     )
 
@@ -155,7 +155,7 @@ def test_parse_query_uses_rust_and_maps_music_fields(monkeypatch):
 def test_apply_title_preserves_existing_fields_from_rust(monkeypatch):
     """Rust 解析只应补充空字段，不覆盖标签或文件后缀证据。"""
     monkeypatch.setattr(
-        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        "app.infrastructure.rust.parse_metamusic",
         lambda *_args, **_kwargs: {
             "title": "Rust 曲名",
             "artists": ["Rust 歌手"],
@@ -202,7 +202,7 @@ def test_apply_title_preserves_existing_fields_from_rust(monkeypatch):
 def test_apply_title_falls_back_when_rust_returns_none(monkeypatch):
     """Rust wrapper 不可用时应完整执行现有 Python 命名解析。"""
     monkeypatch.setattr(
-        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        "app.infrastructure.rust.parse_metamusic",
         lambda *_args, **_kwargs: None,
     )
 
@@ -231,7 +231,7 @@ def test_metainfo_audio_suffix_remains_authoritative_with_rust(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        "app.infrastructure.rust.parse_metamusic",
         parse_metamusic,
     )
     filename = "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
@@ -263,7 +263,7 @@ def test_metainfo_path_uses_rust_once_and_keeps_python_directory_context(
         }
 
     monkeypatch.setattr(
-        "app.core.meta.metamusic.rust_accel.parse_metamusic",
+        "app.infrastructure.rust.parse_metamusic",
         parse_metamusic,
     )
     path = MetaInfoPath(

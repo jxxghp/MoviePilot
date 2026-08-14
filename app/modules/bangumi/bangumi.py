@@ -3,9 +3,9 @@ from typing import Optional
 
 import requests
 
-from app.core.cache import cached
-from app.core.config import settings
-from app.utils.http import RequestUtils, AsyncRequestUtils
+from app.platform.cache import cached
+from app.platform.config import settings
+from app.foundation.http import RequestUtils, AsyncRequestUtils
 
 
 class BangumiApi(object):

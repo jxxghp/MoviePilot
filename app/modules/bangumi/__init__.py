@@ -1,11 +1,11 @@
 from typing import List, Optional, Tuple, Union
 
 from app import schemas
-from app.core.config import settings
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
-from app.helper.scraper import MediaScraperHelper
-from app.log import logger
+from app.platform.config import settings
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.scraper import MediaScraperHelper
+from app.platform.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
 from app.schemas.types import (
@@ -15,8 +15,8 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.utils.http import RequestUtils
-from app.utils.media import is_media_source_enabled
+from app.foundation.http import RequestUtils
+from app.domain.media import is_media_source_enabled
 
 
 class BangumiModule(_ModuleBase):

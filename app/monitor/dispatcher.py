@@ -5,14 +5,14 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.chain.transfer import TransferChain
-from app.core.cache import TTLCache
-from app.core.config import settings
+from app.platform.cache import TTLCache
+from app.platform.config import settings
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.helper.directory import DirectoryHelper
-from app.helper.transferhistory import (HistoryGateAction, describe_history_gate,
+from app.services.directory import DirectoryHelper
+from app.services.history import (HistoryGateAction, describe_history_gate,
                                         evaluate_history_gate, is_skip_action,
                                         max_failed_retries, resolve_history)
-from app.log import logger
+from app.platform.log import logger
 from app.modules.filemanager.fsproxy import fsproxy
 from app.schemas import FileItem
 from app.schemas.types import MediaType
@@ -92,7 +92,7 @@ class TransferDispatcher:
         """
         依据整理历史判断本次是否跳过整理。
 
-        判定策略由 app/helper/transferhistory.py 统一提供，整理链的计划整理段使用
+        判定策略由 app/services/history.py 统一提供，整理链的计划整理段使用
         同一套判定，避免此处放行的文件在下游被另一套「存在记录即拦」的策略收回。
         :param storage: 存储
         :param src_path: 整理记录使用的源路径

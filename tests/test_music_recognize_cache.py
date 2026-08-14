@@ -9,8 +9,8 @@ import pickle
 from unittest.mock import Mock
 
 from app.api.endpoints import music as music_endpoint
-from app.core.context import MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.db.user_oper import get_current_active_superuser_async
 from app.modules.musicbrainz import music_cache as music_cache_module
 from app.modules.musicbrainz import MusicBrainzModule

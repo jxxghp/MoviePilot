@@ -13,7 +13,7 @@ def _load_rtorrent_client_module():
 
     app_module = types.ModuleType("app")
     app_module.__path__ = []
-    log_module = types.ModuleType("app.log")
+    log_module = types.ModuleType("app.platform.log")
 
     class _Logger:
         """
@@ -43,7 +43,7 @@ def _load_rtorrent_client_module():
 
     stub_modules = {
         "app": app_module,
-        "app.log": log_module,
+        "app.platform.log": log_module,
     }
 
     rtorrent_path = repo_root / "app" / "modules" / "rtorrent" / "rtorrent.py"

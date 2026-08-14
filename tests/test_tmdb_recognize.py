@@ -7,9 +7,9 @@ from unittest import TestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from app.core.metainfo import MetaInfo
+from app.domain.metainfo import MetaInfo
 from app.chain import ChainBase
-from app.helper.server import MoviePilotServerHelper
+from app.integrations.server import MoviePilotServerHelper
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
 from app.schemas.types import MediaSource, MediaType

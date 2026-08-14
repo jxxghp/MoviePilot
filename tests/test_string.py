@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class StringUtilsTest(TestCase):

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from app.chain.transfer import TransferChain
 from app.schemas import FileItem, TransferDirectoryConf, TransferTask
-from app.utils.system import SystemUtils
+from app.infrastructure.system import SystemUtils
 
 
 def _make_task(
@@ -137,8 +137,8 @@ def test_cleanup_detection_includes_local_fuse_mounts():
         stdout="Filesystem Type 1K-blocks Used Available Use% Mounted on\n"
                "shfs fuse.shfs 1 1 1 1% /mnt/user\n",
     )
-    with patch("app.utils.system.platform.system", return_value="Linux"), patch(
-            "app.utils.system.subprocess.run", return_value=df_result
+    with patch("app.infrastructure.system.platform.system", return_value="Linux"), patch(
+            "app.infrastructure.system.subprocess.run", return_value=df_result
     ):
         assert SystemUtils.is_network_filesystem(Path("/mnt/user")) is False
         assert SystemUtils.is_network_filesystem(

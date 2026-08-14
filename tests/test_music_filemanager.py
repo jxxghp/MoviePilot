@@ -2,11 +2,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.core.config import settings
-from app.core.context import MusicInfo
-from app.core.meta import MetaMusic
-from app.helper.audio import AudioMetadataHelper
-from app.helper.directory import DirectoryHelper
+from app.platform.config import settings
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.services.audio import AudioMetadataHelper
+from app.services.directory import DirectoryHelper
 from app.modules.filemanager import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import FileItem, TransferDirectoryConf

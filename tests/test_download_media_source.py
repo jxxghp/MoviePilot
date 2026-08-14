@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from app import schemas
 from app.api.endpoints import download as download_endpoint
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
 

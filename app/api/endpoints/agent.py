@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.agent import MoviePilotAgent, ReplyMode, StreamingHandler, agent_manager
+from app.agent.callback import StreamingHandler
+from app.agent.orchestrator import MoviePilotAgent, ReplyMode, agent_manager
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
 from app.chain.message import MessageChain
@@ -28,17 +29,17 @@ from app.chain.site import site_interaction_manager
 from app.chain.skills import skills_interaction_manager
 from app.chain.subscribe import subscribe_interaction_manager
 from app.command import Command
-from app.core.config import global_vars, settings
-from app.core.event import Event, EventManager
+from app.platform.config import global_vars, settings
+from app.platform.events import Event, EventManager
 from app.db import get_async_db
 from app.db.agentchat_oper import AgentChatOper
 from app.db.models import User
 from app.db.models.agentchat import AgentChat
 from app.db.user_oper import UserOper, get_current_active_user
-from app.helper.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
-from app.helper.interaction import agent_interaction_manager, media_interaction_manager
-from app.helper.locale import LocaleHelper
-from app.log import logger
+from app.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
+from app.messaging.interaction import agent_interaction_manager, media_interaction_manager
+from app.platform.localization import LocaleHelper
+from app.platform.log import logger
 from app.schemas.types import EventType, MessageChannel
 
 router = ResponseAPIRouter()

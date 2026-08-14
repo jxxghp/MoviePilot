@@ -36,7 +36,7 @@ from feedback_issue_common import (
     validate_enum,
     validate_target_repo_for_issue,
 )
-from app.utils.http import RequestUtils
+from app.foundation.http import RequestUtils
 
 
 REQUIRED_PAYLOAD_FIELDS = (

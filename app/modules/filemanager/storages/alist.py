@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
-from app.core.cache import cached
-from app.core.config import settings, global_vars
-from app.log import logger
+from app.platform.cache import cached
+from app.platform.config import settings, global_vars
+from app.platform.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import OperationInterrupted, StorageQueryError
 from app.schemas.types import StorageSchema
-from app.utils.http import RequestUtils
-from app.utils.singleton import WeakSingleton
-from app.utils.url import UrlUtils
+from app.foundation.http import RequestUtils
+from app.foundation.singleton import WeakSingleton
+from app.foundation.url import UrlUtils
 
 
 # OpenList/AList 在 per_page<=0 时会退回后端默认 200，显式指定最大页大小避免大目录被截断。

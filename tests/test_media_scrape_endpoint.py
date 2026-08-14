@@ -4,9 +4,10 @@ import pytest
 
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints.media import recognize_file, scrape
-from app.core.context import Context, MediaInfo
-from app.core.meta import MetaBase, MetaMusic
-from app.core.context import MusicInfo
+from app.domain.context import Context, MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.context import MusicInfo
 from app.schemas import FileItem, MediaType
 from app.schemas.types import MediaSource
 

@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.helper.browser import BrowserSessionHelper
-from app.helper.ocr import OcrHelper
-from app.log import logger
+from app.infrastructure.browser import BrowserSessionHelper
+from app.integrations.ocr import OcrHelper
+from app.platform.log import logger
 
 
 class RecognizeCaptchaInput(BaseModel):

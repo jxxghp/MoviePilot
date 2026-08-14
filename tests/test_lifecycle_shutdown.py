@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.startup import lifecycle, modules_initializer
-from app.utils import http as http_utils
+from app.foundation import http as http_utils
 
 
 def _assert_completed_once(mock: MagicMock) -> None:
@@ -227,7 +227,7 @@ def test_restart_endpoint_failure_preserves_stop_state(
 def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):
     """命令重启失败时进程仍在运行，不能提前发布停止请求"""
     from app.chain.system import SystemChain
-    from app.core.config import global_vars
+    from app.platform.config import global_vars
 
     stop_event = threading.Event()
     monkeypatch.setattr(global_vars, "STOP_EVENT", stop_event)
@@ -320,9 +320,6 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
 
     monkeypatch.setattr(http_utils, "_MAX_SHARED_TRANSPORTS_PER_LOOP", 1)
     monkeypatch.setattr(http_utils.httpx, "AsyncHTTPTransport", FakeTransport)
-    debug = MagicMock()
-    monkeypatch.setattr(http_utils.logger, "debug", debug)
-
     async def run_test():
         transport_kwargs = {
             "proxy": None,
@@ -358,6 +355,7 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
             await close_task
             await asyncio.sleep(0)
             assert eviction_tasks[0].done()
+            assert isinstance(eviction_tasks[0].exception(), RuntimeError)
             assert evicted_transport.closed
             assert active_transport.closed
             with http_utils._shared_async_transports_lock:
@@ -372,12 +370,6 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
             await http_utils.aclose_shared_async_transports()
 
     asyncio.run(run_test())
-
-    debug.assert_any_call(
-        "LRU 淘汰共享 transport 时关闭失败: "
-        "RuntimeError('eviction close failed')"
-    )
-
 
 def test_shared_http_close_ignores_eviction_from_other_loop():
     """当前事件循环关闭不能等待其他循环持有的淘汰任务"""

@@ -43,7 +43,7 @@ def _ensure_project_import() -> None:
 def _load_settings() -> Any:
     """读取 MoviePilot 运行配置。"""
     _ensure_project_import()
-    from app.core.config import settings  # pylint: disable=import-outside-toplevel
+    from app.platform.config import settings  # pylint: disable=import-outside-toplevel
 
     return settings
 

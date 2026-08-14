@@ -3,9 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from app.chain import ChainBase
-from app.core.context import MediaInfo
-from app.core.meta import MetaBase
-from app.helper.server import MoviePilotServerHelper
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.integrations.server import MoviePilotServerHelper
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 

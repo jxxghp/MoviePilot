@@ -409,12 +409,12 @@ function chown_plugin_runtime_path() {
     chown -h moviepilot:moviepilot "${plugin_path}"
 }
 
-function correct_helper_resource_permissions() {
-    local helper_dir="${IMAGE_HELPER_DIR:-/app/app/helper}"
-    [ -e "${helper_dir}" ] || return 0
+function correct_site_resource_permissions() {
+    local resource_dir="${IMAGE_RESOURCE_DIR:-/app/app/infrastructure}"
+    [ -e "${resource_dir}" ] || return 0
 
-    INFO "→ 正在修复资源包目录权限：${helper_dir}"
-    chown -R moviepilot:moviepilot "${helper_dir}"
+    INFO "→ 正在修复资源包目录权限：${resource_dir}"
+    chown -R moviepilot:moviepilot "${resource_dir}"
 }
 
 function correct_file_permissions() {
@@ -424,7 +424,7 @@ function correct_file_permissions() {
 
     INFO "→ 正在校正文件权限..."
     force_chown_image_paths_if_requested /app /public
-    correct_helper_resource_permissions
+    correct_site_resource_permissions
     chown_plugin_runtime_path /app/app/plugins
     correct_home_permissions
     chown -R moviepilot:moviepilot \

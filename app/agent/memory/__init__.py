@@ -6,9 +6,9 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
-from app.core.config import settings
+from app.platform.config import settings
 from app.db.agentchat_oper import AgentChatOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.agent import ConversationMemory
 
 

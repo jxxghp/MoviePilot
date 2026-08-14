@@ -23,7 +23,7 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import Field
 
-import app.agent as agent_module
+import app.agent.orchestrator as agent_module
 from app.agent.memory import memory_manager
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.summarization import (
@@ -1221,7 +1221,7 @@ def test_summary_failure_preserves_database_history():
     agent.send_agent_message = AsyncMock()
 
     with (
-        patch("app.agent.eventmanager.send_event") as send_usage_event,
+        patch("app.agent.orchestrator.eventmanager.send_event") as send_usage_event,
     ):
         result, _ = asyncio.run(
             agent._execute_agent(

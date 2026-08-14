@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from app.core.context import MediaInfo, Context, TorrentInfo
-from app.core.metainfo import MetaInfo
+from app.domain.context import MediaInfo, Context, TorrentInfo
+from app.domain.metainfo import MetaInfo
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas import Notification

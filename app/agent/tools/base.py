@@ -10,7 +10,7 @@ from typing import Any, Callable, ClassVar, Optional
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
-from app.agent import StreamingHandler
+from app.agent.callback import StreamingHandler
 from app.agent.policy.sanitizer import (
     summarize_error,
     summarize_input,
@@ -18,10 +18,10 @@ from app.agent.policy.sanitizer import (
 )
 from app.agent.tools.tags import ToolTag
 from app.chain import ChainBase
-from app.core.config import settings
-from app.helper.agent import matches_channel_admin
-from app.helper.service import ServiceConfigHelper
-from app.log import logger
+from app.platform.config import settings
+from app.messaging.agent import matches_channel_admin
+from app.extensions.service_registry import ServiceConfigHelper
+from app.platform.log import logger
 from app.schemas import Notification
 from app.schemas.types import MessageChannel, NotificationType
 

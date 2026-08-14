@@ -29,7 +29,7 @@ class LocalSetupUninstallTests(unittest.TestCase):
 
         temp_path = Path(temp_dir.name)
         root_dir = temp_path / "MoviePilot"
-        helper_dir = root_dir / "app" / "helper"
+        resource_dir = root_dir / "app" / "infrastructure"
         runtime_dir = root_dir / ".runtime"
         public_dir = root_dir / "public"
         venv_dir = root_dir / "venv"
@@ -37,15 +37,15 @@ class LocalSetupUninstallTests(unittest.TestCase):
         config_dir = root_dir / "config" if legacy_config else temp_path / "moviepilot-config"
         temp_config_dir = config_dir / "temp"
 
-        helper_dir.mkdir(parents=True)
+        resource_dir.mkdir(parents=True)
         runtime_dir.mkdir(parents=True)
         public_dir.mkdir(parents=True)
         venv_dir.mkdir(parents=True)
         temp_config_dir.mkdir(parents=True)
         install_env_file.write_text("CONFIG_DIR=/tmp/moviepilot-config\n", encoding="utf-8")
         (root_dir / "moviepilot").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-        (helper_dir / "sites.py").write_text("generated\n", encoding="utf-8")
-        (helper_dir / "user.sites.v3.bin").write_bytes(b"binary")
+        (resource_dir / "sites.py").write_text("generated\n", encoding="utf-8")
+        (resource_dir / "user.sites.v3.bin").write_bytes(b"binary")
         (temp_config_dir / "moviepilot.runtime.json").write_text("{}", encoding="utf-8")
         (temp_config_dir / "moviepilot.frontend.runtime.json").write_text(
             "{}", encoding="utf-8"
@@ -54,7 +54,7 @@ class LocalSetupUninstallTests(unittest.TestCase):
         stack = ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(patch.object(module, "ROOT", root_dir))
-        stack.enter_context(patch.object(module, "HELPER_DIR", helper_dir))
+        stack.enter_context(patch.object(module, "SITE_RESOURCE_DIR", resource_dir))
         stack.enter_context(patch.object(module, "RUNTIME_DIR", runtime_dir))
         stack.enter_context(patch.object(module, "PUBLIC_DIR", public_dir))
         stack.enter_context(patch.object(module, "INSTALL_ENV_FILE", install_env_file))
@@ -109,8 +109,12 @@ class LocalSetupUninstallTests(unittest.TestCase):
         self.assertFalse(venv_dir.exists())
         self.assertFalse((root_dir / ".runtime").exists())
         self.assertFalse((root_dir / "public").exists())
-        self.assertFalse((root_dir / "app" / "helper" / "sites.py").exists())
-        self.assertFalse((root_dir / "app" / "helper" / "user.sites.v3.bin").exists())
+        self.assertFalse(
+            (root_dir / "app" / "infrastructure" / "sites.py").exists()
+        )
+        self.assertFalse(
+            (root_dir / "app" / "infrastructure" / "user.sites.v3.bin").exists()
+        )
         self.assertFalse(cli_link.exists())
 
     def test_uninstall_deletes_external_config_when_requested(self):

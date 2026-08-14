@@ -5,7 +5,7 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 
 
 class TorrentLeechSiteUserInfo(SiteParserBase):

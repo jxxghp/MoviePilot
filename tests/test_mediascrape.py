@@ -9,15 +9,15 @@ from app.testing import stub_modules
 _systemconfig_stub = MagicMock()
 _systemconfig_stub.SystemConfigOper.return_value.get.return_value = None
 with stub_modules({
-    'app.helper.sites': MagicMock(),
+    'app.infrastructure.sites': MagicMock(),
     'app.db.systemconfig_oper': _systemconfig_stub,
 }):
     from app import schemas
     from app.chain.media import MediaChain
     from app.chain.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
-    from app.core.context import MediaInfo
-    from app.core.event import Event
-    from app.core.metainfo import MetaInfo
+    from app.domain.context import MediaInfo
+    from app.platform.events import Event
+    from app.domain.metainfo import MetaInfo
     from app.schemas.types import EventType, MediaType, ScrapingTarget, ScrapingMetadata, ScrapingPolicy
 
 

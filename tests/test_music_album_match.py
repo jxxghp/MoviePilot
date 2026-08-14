@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.chain.media import MediaChain
-from app.core.context import MusicAlbumInfo, MusicInfo
-from app.core.meta import MetaMusic
+from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 
 

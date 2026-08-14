@@ -16,10 +16,10 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.core.config import settings
-from app.core.event import eventmanager
+from app.platform.config import settings
+from app.platform.events import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.log import logger
+from app.platform.log import logger
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
 

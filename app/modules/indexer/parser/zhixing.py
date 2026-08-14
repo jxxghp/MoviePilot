@@ -8,7 +8,7 @@ import re
 from typing import Optional, Tuple
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.utils.string import StringUtils
+from app.domain.string import StringUtils
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 

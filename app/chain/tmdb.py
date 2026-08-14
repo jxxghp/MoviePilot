@@ -3,7 +3,7 @@ from typing import Optional, List
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.context import MediaInfo
+from app.domain.context import MediaInfo
 from app.schemas import MediaType
 
 
