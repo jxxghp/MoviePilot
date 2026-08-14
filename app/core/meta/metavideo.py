@@ -90,7 +90,7 @@ class MetaVideo(MetaBase):
     _resources_pix_re = r"^[SBUHD]*(\d{3,4}[PI]+)|\d{3,4}X(\d{3,4})"
     _resources_pix_re2 = r"(^[248]+K)"
     _video_encode_re = r"^(H26[45])$|^(x26[45])$|^AVC$|^HEVC$|^VC\d?$|^MPEG\d?$|^Xvid$|^DivX$|^AV1$|^HDR\d*$|^AVS(\+|[23])$"
-    _audio_encode_re = r"^DTS\d?$|^DTSHD$|^DTSHDMA$|^Atmos$|^TrueHD\d?$|^AC3$|^\dAudios?$|^DDP\d?$|^DD\+\d?$|^DD\d?$|^LPCM\d?$|^AAC\d?$|^FLAC\d?$|^HD\d?$|^MA\d?$|^HR\d?$|^Opus\d?$|^Vorbis\d?$|^AV[3S]A$"
+    _audio_encode_re = r"^DTS\d?$|^DTSHD$|^DTSHDMA$|^Atmos$|^TrueHD\d?$|^AC3$|^EAC3\d?$|^\dAudios?$|^DDP\d?$|^DD\+\d?$|^DD\d?$|^LPCM\d?$|^AAC\d?$|^FLAC\d?$|^HD\d?$|^MA\d?$|^HR\d?$|^Opus\d?$|^Vorbis\d?$|^AV[3S]A$"
     _fps_re = r"(\d{2,3})(?=FPS)"
     _season_pattern = re.compile(_season_re, re.IGNORECASE)
     _episode_pattern = re.compile(_episode_re, re.IGNORECASE)
@@ -809,7 +809,7 @@ class MetaVideo(MetaBase):
             if self.audio_encode:
                 if self._last_token.isdigit():
                     self.audio_encode = "%s.%s" % (self.audio_encode, token)
-                elif self.audio_encode[-1].isdigit():
+                elif self.audio_encode[-1].isdigit() and self.audio_encode.upper() not in {"AC3", "EAC3"}:
                     self.audio_encode = "%s %s.%s" % (self.audio_encode[:-1], self.audio_encode[-1], token)
                 else:
                     self.audio_encode = "%s %s" % (self.audio_encode, token)
