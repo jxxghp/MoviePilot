@@ -1,9 +1,8 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.schemas.types import MediaSource
-from app.domain.media import normalize_media_identity_payload
 
 
 class DownloadHistoryOper(DbOper):
@@ -11,14 +10,14 @@ class DownloadHistoryOper(DbOper):
     下载历史管理
     """
 
-    def get_by_path(self, path: str) -> DownloadHistory:
+    def get_by_path(self, path: str) -> Optional[DownloadHistory]:
         """
         按路径查询下载记录
         :param path: 数据key
         """
         return DownloadHistory.get_by_path(self._db, path)
 
-    def get_by_hash(self, download_hash: str) -> DownloadHistory:
+    def get_by_hash(self, download_hash: str) -> Optional[DownloadHistory]:
         """
         按Hash查询下载记录
         :param download_hash: 数据key
@@ -57,7 +56,6 @@ class DownloadHistoryOper(DbOper):
         """
         新增下载历史
         """
-        kwargs = normalize_media_identity_payload(kwargs)
         DownloadHistory(**kwargs).create(self._db)
 
     def add_files(self, file_items: List[dict]):
@@ -82,19 +80,21 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadFiles.get_by_hash(self._db, download_hash, state)
 
-    def get_file_by_fullpath(self, fullpath: str) -> DownloadFiles:
+    def get_file_by_fullpath(self, fullpath: str) -> Optional[DownloadFiles]:
         """
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
-        return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False)
+        return cast(Optional[DownloadFiles],
+                    DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False))
 
     def get_files_by_fullpath(self, fullpath: str) -> List[DownloadFiles]:
         """
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
-        return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=True)
+        return cast(List[DownloadFiles],
+                    DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=True))
 
     def get_files_by_savepath(self, fullpath: str) -> List[DownloadFiles]:
         """
@@ -110,17 +110,18 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.delete_by_fullpath(self._db, fullpath)
 
-    def get_hash_by_fullpath(self, fullpath: str) -> str:
+    def get_hash_by_fullpath(self, fullpath: str) -> Optional[str]:
         """
         按fullpath查询下载文件记录hash
         :param fullpath: 数据key
         """
-        fileinfo: DownloadFiles = DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False)
+        fileinfo = cast(Optional[DownloadFiles],
+                        DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False))
         if fileinfo:
             return fileinfo.download_hash
         return ""
 
-    def list_by_page(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[DownloadHistory]:
+    def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
         """
         分页查询下载历史
         """
@@ -177,7 +178,7 @@ class DownloadHistoryOper(DbOper):
                                             media_id=media_id,
                                             seasons=seasons)
 
-    def list_by_type(self, mtype: str, days: Optional[int] = 7) -> List[DownloadHistory]:
+    def list_by_type(self, mtype: str, days: int = 7) -> List[DownloadHistory]:
         """
         获取指定类型的下载历史
         """

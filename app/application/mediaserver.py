@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from app import schemas
 from app.domain.context import MusicInfo
-from app.domain.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas import MediaServerConf, ServiceInfo
 from app.schemas.types import (

@@ -75,8 +75,8 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from app.runtime.config import settings
-from app.db import Engine
-from app.db.init import init_db, update_db
+from app.db import get_engine
+from app.startup.database_initializer import init_db, update_db
 
 media_tables = {media_tables!r}
 legacy_identity_columns = {legacy_identity_columns!r}
@@ -91,7 +91,7 @@ init_db()
 update_db()
 update_db()
 
-with Engine.connect() as connection:
+with get_engine().connect() as connection:
     version = connection.execute(
         text("SELECT version_num FROM alembic_version")
     ).scalar_one()

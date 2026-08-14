@@ -18,7 +18,7 @@ from app.runtime.config import global_vars
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.message import Notification
 from app.schemas.tmdb import TmdbEpisode

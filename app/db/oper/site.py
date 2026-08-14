@@ -23,13 +23,13 @@ class SiteOper(DbOper):
             return True, "新增站点成功"
         return False, "站点已存在"
 
-    def get(self, sid: int) -> Site:
+    def get(self, sid: int) -> Optional[Site]:
         """
         查询单个站点
         """
         return Site.get(self._db, sid)
 
-    async def async_get(self, sid: int) -> Site:
+    async def async_get(self, sid: int) -> Optional[Site]:
         """
         异步查询单个站点
         """
@@ -71,15 +71,17 @@ class SiteOper(DbOper):
         """
         Site.delete(self._db, sid)
 
-    def update(self, sid: int, payload: dict) -> Site:
+    def update(self, sid: int, payload: dict) -> Optional[Site]:
         """
         更新站点
         """
         site = Site.get(self._db, sid)
+        if not site:
+            return None
         site.update(self._db, payload)
         return site
 
-    async def async_update(self, sid: int, payload: dict) -> Site:
+    async def async_update(self, sid: int, payload: dict) -> Optional[Site]:
         """
         异步更新站点。
         """
@@ -88,25 +90,25 @@ class SiteOper(DbOper):
             await site.async_update(self._db, payload)
         return site
 
-    def get_by_domain(self, domain: str) -> Site:
+    def get_by_domain(self, domain: str) -> Optional[Site]:
         """
         按域名获取站点
         """
         return Site.get_by_domain(self._db, domain)
 
-    async def async_get_by_domain(self, domain: str) -> Site:
+    async def async_get_by_domain(self, domain: str) -> Optional[Site]:
         """
         异步按域名获取站点
         """
         return await Site.async_get_by_domain(self._db, domain)
 
-    async def async_get_by_name(self, name: str) -> Site:
+    async def async_get_by_name(self, name: str) -> Optional[Site]:
         """
         异步按名称获取站点
         """
         return await Site.async_get_by_name(self._db, name)
 
-    def get_domains_by_ids(self, ids: List[int]) -> List[str]:
+    def get_domains_by_ids(self, ids: List[int]) -> List[Optional[str]]:
         """
         按ID获取站点域名
         """
@@ -201,7 +203,7 @@ class SiteOper(DbOper):
         """
         return SiteUserData.get_latest(self._db)
 
-    def get_icon_by_domain(self, domain: str) -> SiteIcon:
+    def get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
         """
         按域名获取站点图标
         """

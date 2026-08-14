@@ -7,9 +7,9 @@ from app.chain import ChainBase
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.db import AsyncSessionFactory, SessionFactory
-from app.db.message_oper import MessageOper
+from app.db.oper.message import MessageOper
 from app.db.models.message import Message
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.message import MessageHelper
 from app.schemas import Notification, NotificationClearScope
 from app.schemas.types import MediaType, NotificationType, SystemConfigKey

@@ -17,17 +17,12 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.application.security.access import verify_token, verify_apitoken
 from app.db.models import User
-from app.db.user_oper import get_current_active_user, get_current_active_superuser
+from app.api.deps import get_current_active_user, get_current_active_superuser
 from app.schemas import MediaType
 from app.schemas.category import CategoryConfig
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
-from app.domain.media import (
-    is_music_media_source,
-    normalize_media_source,
-    normalize_music_type,
-    parse_media_source_selection,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
+from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
 

@@ -9,9 +9,9 @@ from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.db.subscribe_oper import SubscribeOper
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.workflow_oper import WorkflowOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
@@ -20,7 +20,8 @@ from app.schemas.types import (
     media_type_to_agent,
 )
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.media import normalize_music_type, resolve_media_identity
+from app.domain.media import normalize_music_type
+from app.schemas.media import resolve_media_identity
 from app.adapters.system.host import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
 

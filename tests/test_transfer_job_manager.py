@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metavideo import MetaVideo
 from app.chain.transfer import JobManager, TransferChain
 from app.application.history import (
@@ -13,7 +14,8 @@ from app.application.history import (
     record_transfer_failure,
 )
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas import EpisodeFormat, FileItem, TransferInfo, TransferTask
+from app.schemas import EpisodeFormat, FileItem, TransferInfo
+from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaSource, MediaType
 
 
@@ -22,8 +24,21 @@ def _reset_failed_retries(src_path, storage=None):
     clear_transfer_failures(src_path, storage)
 
 
-class FakeMeta:
+class FakeMeta(MetaBase):
+    """
+    整理任务分组需要的最小剧集元数据。
+
+    继承 MetaBase 而非鸭子类型：TransferTask.meta 已标注为 MetaBase，pydantic 会做
+    isinstance 校验。下面三个类级属性用来遮蔽 MetaBase 上的同名 property，好让
+    __init__ 能直接赋值。
+    """
+
+    name = None
+    episode_list = None
+    season_episode = None
+
     def __init__(self, episode: int, season: int = 1):
+        super().__init__(title=f"Test Show S{season:02d}E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S{season:02d}E{episode:02d}"
         self.year = "2026"
@@ -64,9 +79,17 @@ class FakeMeta:
         }
 
 
-class FakeMedia:
+class FakeMedia(MediaInfo):
+    """
+    与正式 MediaInfo 身份字段一致的测试媒体对象。
+
+    继承 MediaInfo 而非鸭子类型：TransferTask.mediainfo 已标注为 MusicInfo | MediaInfo，
+    pydantic 会做 isinstance 校验。
+    """
+
     def __init__(self, tmdb_id: int = 12345):
         """构造与正式 MediaInfo 身份字段一致的测试媒体对象。"""
+        super().__init__()
         self.tmdb_id = tmdb_id
         self.douban_id = None
         self.bangumi_id = None
@@ -403,8 +426,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
-            return_value=SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+        ), patch(
+            "app.chain.transfer.add_transfer_success",
+            lambda **kwargs: SimpleNamespace(id=1),
         ):
             state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
 
@@ -823,12 +848,13 @@ class TransferJobManagerTest(unittest.TestCase):
                 transfer_type="copy",
                 need_notify=False,
             )
-            failed_history_oper = SimpleNamespace(
-                add_fail=lambda **kwargs: SimpleNamespace(id=1),
-            )
+            failed_history_oper = SimpleNamespace()
             with patch(
                 "app.chain.transfer.TransferHistoryOper",
                 return_value=failed_history_oper,
+            ), patch(
+                "app.chain.transfer.add_transfer_fail",
+                lambda **kwargs: SimpleNamespace(id=1),
             ), patch(
                 "app.chain.transfer.settings.AI_AGENT_ENABLE", False
             ), patch(
@@ -864,8 +890,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             )
             with patch(
-                "app.chain.transfer.TransferHistoryOper",
-                return_value=SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=2)),
+                "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            ), patch(
+                "app.chain.transfer.add_transfer_success",
+                lambda **kwargs: SimpleNamespace(id=2),
             ):
                 state, _ = chain._TransferChain__default_callback(task, success_transferinfo)
 
@@ -889,13 +917,14 @@ class TransferJobManagerTest(unittest.TestCase):
         task.download_hash = "abc123"
         self.assertTrue(chain.jobview.add_task(task))
 
-        transfer_history_oper = SimpleNamespace(
-            add_fail=lambda **kwargs: SimpleNamespace(id=1)
-        )
+        transfer_history_oper = SimpleNamespace()
 
         with patch(
             "app.chain.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
+        ), patch(
+            "app.chain.transfer.add_transfer_fail",
+            lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
             "app.chain.transfer.MediaChain"
         ) as media_chain_cls, patch(
@@ -910,6 +939,103 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual("未识别到媒体信息", errmsg)
         self.assertEqual([("abc123", "qbittorrent")], completed)
         self.assertEqual([], chain.jobview.list_jobs())
+
+    def test_unrecognized_task_survives_missing_failure_history(self):
+        """
+        写整理历史失败（``add_transfer_fail`` 返回 None）时，未识别分支仍须走完
+        通知、作业清理与种子完成标记：历史落库是通知的附属信息，不是前置条件。
+        通知正文只省去 ``/redo`` 指引，不得因读取 ``his.id`` 抛 NoneType。
+        """
+        chain = make_transfer_chain()
+        notifications = []
+        chain.post_message = lambda message, **_kwargs: notifications.append(message)
+        completed = []
+
+        def fake_transfer_completed(hashs, downloader):
+            completed.append((hashs, downloader))
+
+        chain.transfer_completed = fake_transfer_completed
+        chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100)]
+        task = make_task(1)
+        task.downloader = "qbittorrent"
+        task.download_hash = "abc123"
+        self.assertTrue(chain.jobview.add_task(task))
+
+        with patch(
+            "app.chain.transfer.TransferHistoryOper",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "app.chain.transfer.add_transfer_fail",
+            lambda **kwargs: None,
+        ), patch(
+            "app.chain.transfer.MediaChain"
+        ) as media_chain_cls, patch(
+            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+        ), patch(
+            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+        ):
+            media_chain_cls.return_value.recognize_by_meta.return_value = None
+            state, errmsg = chain._TransferChain__handle_transfer(task)
+
+        self.assertFalse(state)
+        self.assertEqual("未识别到媒体信息", errmsg)
+        # 种子完成标记与作业清理都排在通知之后，通知崩掉会把它们一并跳过
+        self.assertEqual([("abc123", "qbittorrent")], completed)
+        self.assertEqual([], chain.jobview.list_jobs())
+        # 通知照发，但不含无法使用的 /redo 指引
+        self.assertEqual(1, len(notifications))
+        notification = notifications[0]
+        self.assertIn("未识别到媒体信息", notification.text)
+        self.assertNotIn("/redo", notification.text)
+        self.assertIsNone(notification.buttons)
+
+    def test_unrecognized_task_keeps_redo_hint_when_history_written(self):
+        """
+        整理历史正常落库时，未识别通知须保留两条 ``/redo`` 指引与操作按钮，
+        防止上一条用例被「一律删掉 /redo」这种偷懒实现蒙混过关。
+        """
+        chain = make_transfer_chain()
+        notifications = []
+        chain.post_message = lambda message, **_kwargs: notifications.append(message)
+        chain.transfer_completed = lambda *args, **kwargs: None
+        chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100)]
+        task = make_task(1)
+        task.downloader = "qbittorrent"
+        task.download_hash = "abc123"
+        self.assertTrue(chain.jobview.add_task(task))
+
+        with patch(
+            "app.chain.transfer.TransferHistoryOper",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "app.chain.transfer.add_transfer_fail",
+            lambda **kwargs: SimpleNamespace(id=77),
+        ), patch(
+            "app.chain.transfer.MediaChain"
+        ) as media_chain_cls, patch(
+            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+        ), patch(
+            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+        ):
+            media_chain_cls.return_value.recognize_by_meta.return_value = None
+            chain._TransferChain__handle_transfer(task)
+
+        self.assertEqual(1, len(notifications))
+        notification = notifications[0]
+        self.assertIn("/redo 77\n", notification.text)
+        self.assertIn("/redo 77 [media_source]|[media_id]|[类型]", notification.text)
+        self.assertEqual(
+            [
+                [
+                    {"text": "重试", "callback_data": "transfer_retry_77"},
+                    {
+                        "text": "智能助手接管",
+                        "callback_data": "transfer_ai_retry_77",
+                    },
+                ]
+            ],
+            notification.buttons,
+        )
 
     def test_do_transfer_syncs_same_stem_extra_files_by_default(self):
         chain = make_transfer_chain()
@@ -1338,8 +1464,10 @@ class TransferJobManagerTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
-            return_value=SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+        ), patch(
+            "app.chain.transfer.add_transfer_success",
+            lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
             "app.chain.transfer.StorageChain"
         ) as storage_chain_cls:
@@ -1402,8 +1530,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
-            return_value=SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+        ), patch(
+            "app.chain.transfer.add_transfer_success",
+            lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
             "app.chain.transfer.StorageChain"
         ) as storage_chain_cls:

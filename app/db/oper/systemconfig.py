@@ -87,7 +87,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 self.__SYSTEMCONF[key] = copy.deepcopy(value)
             return True
 
-    def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
+    def get(self, key: Optional[Union[str, SystemConfigKey]] = None) -> Any:
         """
         获取系统设置
         """

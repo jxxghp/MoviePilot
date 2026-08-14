@@ -4,7 +4,7 @@ import pickle
 from unittest.mock import Mock
 
 from app.api.endpoints import tmdb as tmdb_endpoint
-from app.db.user_oper import get_current_active_superuser_async
+from app.api.deps import get_current_active_superuser_async
 from app.modules.themoviedb import tmdb_cache as tmdb_cache_module
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.schemas.types import MediaType, SystemConfigKey

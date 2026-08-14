@@ -37,6 +37,7 @@ from app.startup.scheduler_initializer import (
     init_scheduler,
     init_plugin_scheduler,
 )
+from app.db import check_connection_budget, get_engine, get_global_async_engine
 from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.adapters.network.http import (
@@ -88,6 +89,30 @@ async def lifespan(app: FastAPI):
     configure_domain_dependencies()
     # 存储当前循环
     global_vars.set_loop(asyncio.get_event_loop())
+    # 同步与异步引擎各预热一次。引擎改为惰性创建后，两者的首次创建时机都不再由启动路径
+    # 决定，这一步把它们拉回来。必须排在所有 init_* 之前，两个理由：
+    #
+    # 其一，fail-fast 的落点。异步驱动缺失、异步 URL 拼错这类问题若不在这里暴露，会一路
+    # 推迟到第一个异步查询——表现为用户请求 500 或调度任务静默失败，而不是启动即崩。
+    # 故意不 try/except：起不来就该起不来，吞掉它等于把 fail-fast 又还回去了。而既然会抛，
+    # 就必须抛在 init_routers / init_modules 之前——下面的 try/finally 关停块要到 yield 处
+    # 才开始，在它之后抛异常，已经初始化好的模块就拿不到 stop_modules() 了。
+    #
+    # 其二，同步引擎的首次创建要落在单线程期。init_db() 会顺带预热它，但那只对
+    # run_application() 入口成立；外部 supervisor 直挂 ASGI app（如
+    # `gunicorn -k uvicorn.workers.UvicornWorker app.factory:app`）时 init_db() 根本不执行，
+    # 首次创建便退到运行期——而那时 init_scheduler() / init_monitor() 已经放出上百个线程，
+    # 引擎构建里那段 PRAGMA journal_mode 会让它们一起堵在创建锁上。
+    #
+    # 代价：异步侧几乎为零，create_async_engine 只校验 URL 与驱动导入、不建立连接；同步侧
+    # 会连一次库、设一遍 journal mode，在事件循环上阻塞一小会儿——但那一次本来就免不了，
+    # 放在这里至少还独占着单线程，而且此刻 uvicorn 尚未开始接请求。
+    get_engine()
+    get_global_async_engine()
+    # 核算数据库连接理论峰值。各连接池是彼此独立配置的，没有任何地方核算总和，
+    # 超额只会在突发并发时以 TooManyConnectionsError 的形式暴露；这里在启动期
+    # 就对照数据库的真实上限校验一次，把问题前移到可见的位置
+    check_connection_budget()
     # 初始化路由
     init_routers(app)
     # 初始化模块

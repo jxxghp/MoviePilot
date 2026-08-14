@@ -6,7 +6,7 @@ from app.api.endpoints.transfer import (
 )
 from app.chain.transfer import TransferChain
 from app.runtime.config import settings
-from app.db.transferhistory_oper import TransferHistoryOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,

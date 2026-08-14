@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.db.agenttask_oper import AgentTaskOper
+from app.db.oper.agenttask import AgentTaskOper
 
 
 class DeleteAgentTaskInput(BaseModel):

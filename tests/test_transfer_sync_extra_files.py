@@ -2,17 +2,25 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.chain.transfer import JobManager, TransferChain
+from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas import EpisodeFormat, FileItem
 from app.schemas.types import MediaType
 
 
-class FakeMeta:
+class FakeMeta(MetaBase):
     """
     构造整理链路所需的最小剧集元数据。
+
+    继承 MetaBase 而非鸭子类型：TransferTask.meta 已标注为 MetaBase，pydantic 会做
+    isinstance 校验。name 是 MetaBase 上的 property，用类级属性遮蔽；episode_list
+    在下方以 property 覆盖，不必再遮蔽。
     """
 
+    name = None
+
     def __init__(self, episode: int):
+        super().__init__(title=f"Test Show S01E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S01E{episode:02d}"
         self.year = "2026"

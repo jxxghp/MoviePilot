@@ -15,9 +15,8 @@ from app.schemas.types import EventType
 from tests.test_transfer_job_manager import FakeMedia, make_task, make_transfer_chain
 
 
-def make_history_oper(history=None, success_history=None, raise_on_query: bool = False,
-                      add_fail_calls=None):
-    """构造 __is_overwrite_declined / __default_callback 查询与写入整理历史使用的替身。"""
+def make_history_oper(history=None, success_history=None, raise_on_query: bool = False):
+    """构造 __is_overwrite_declined 查询整理历史使用的替身。"""
 
     def get_by_src(src, storage=None):
         if raise_on_query:
@@ -27,16 +26,20 @@ def make_history_oper(history=None, success_history=None, raise_on_query: bool =
     def get_success_by_src(src, storage=None):
         return success_history
 
-    def add_fail(**kwargs):
-        if add_fail_calls is not None:
-            add_fail_calls.append(kwargs)
-        return SimpleNamespace(id=1)
-
     return SimpleNamespace(
         get_by_src=get_by_src,
         get_success_by_src=get_success_by_src,
-        add_fail=add_fail,
     )
+
+
+def make_fail_recorder(calls):
+    """替换整理链的失败历史写入函数：只记录调用，不做字段翻译也不落库。"""
+
+    def add_transfer_fail(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(id=1)
+
+    return add_transfer_fail
 
 
 # ---------------------------------------------------------------------------
@@ -138,9 +141,7 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
     task = _make_failed_task()
     success_history = SimpleNamespace(id=99, status=True)
     add_fail_calls = []
-    transfer_history_oper = make_history_oper(
-        history=success_history, add_fail_calls=add_fail_calls
-    )
+    transfer_history_oper = make_history_oper(history=success_history)
 
     transferinfo = TransferInfo(
         success=False,
@@ -154,6 +155,9 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
     with patch(
         "app.chain.transfer.TransferHistoryOper",
         return_value=transfer_history_oper,
+    ), patch(
+        "app.chain.transfer.add_transfer_fail",
+        make_fail_recorder(add_fail_calls),
     ), patch(
         "app.chain.transfer.settings.AI_AGENT_ENABLE", False
     ), patch(
@@ -183,9 +187,7 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
 
     task = _make_failed_task()
     add_fail_calls = []
-    transfer_history_oper = make_history_oper(
-        history=None, add_fail_calls=add_fail_calls
-    )
+    transfer_history_oper = make_history_oper(history=None)
 
     transferinfo = TransferInfo(
         success=False,
@@ -199,6 +201,9 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
     with patch(
         "app.chain.transfer.TransferHistoryOper",
         return_value=transfer_history_oper,
+    ), patch(
+        "app.chain.transfer.add_transfer_fail",
+        make_fail_recorder(add_fail_calls),
     ), patch(
         "app.chain.transfer.settings.AI_AGENT_ENABLE", False
     ), patch(

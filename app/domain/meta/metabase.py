@@ -7,7 +7,7 @@ import cn2an
 import regex as re
 
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.domain.string import StringUtils
 
 

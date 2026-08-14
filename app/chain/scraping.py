@@ -26,7 +26,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.audio import AudioMetadataHelper
 from app.runtime.log import logger
 from app.schemas import FileItem
@@ -43,11 +43,8 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.adapters.network.http import RequestUtils
-from app.domain.media import (
-    is_music_media_source,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import Singleton
 from app.domain.string import StringUtils

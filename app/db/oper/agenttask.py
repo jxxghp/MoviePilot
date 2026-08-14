@@ -19,7 +19,7 @@ class AgentTaskOper(DbOper):
         """生成当前数据库时间字符串。"""
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def add(self, **kwargs: object) -> AgentTask:
+    def add(self, **kwargs: object) -> Optional[AgentTask]:
         """
         新增 Agent 定时任务。
         """

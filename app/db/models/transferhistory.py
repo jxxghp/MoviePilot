@@ -1,14 +1,14 @@
 import re
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import Boolean, Column, Index, Integer, JSON, String, func, or_, select
+from sqlalchemy import Boolean, Index, Integer, JSON, String, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, Base, async_db_query
-from app.db.models.media_identity import media_identity_constraint
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
+from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
 
@@ -25,64 +25,64 @@ class TransferHistory(Base):
     """
     id = get_id_column()
     # 源路径
-    src = Column(String, index=True)
+    src: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 源存储
-    src_storage = Column(String, nullable=False, default="local")
+    src_storage: Mapped[str] = mapped_column(String, nullable=False, default="local")
     # 源文件项
-    src_fileitem = Column(JSON, default=dict)
+    src_fileitem: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     # 目标路径
-    dest = Column(String)
+    dest: Mapped[Optional[str]] = mapped_column(String)
     # 目标存储
-    dest_storage = Column(String)
+    dest_storage: Mapped[Optional[str]] = mapped_column(String)
     # 目标文件项
-    dest_fileitem = Column(JSON, default=dict)
+    dest_fileitem: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     # 转移模式 move/copy/link...
-    mode = Column(String)
+    mode: Mapped[Optional[str]] = mapped_column(String)
     # 类型 电影/电视剧
-    type = Column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)
     # 二级分类
-    category = Column(String)
+    category: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = Column(String, index=True)
+    title: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 年份
-    year = Column(String)
+    year: Mapped[Optional[str]] = mapped_column(String)
     # 媒体数据源与原生ID
-    media_source = Column(String, index=True)
-    media_id = Column(String, index=True)
+    media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
+    media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
-    music_type = Column(String)
+    music_type: Mapped[Optional[str]] = mapped_column(String)
     # 专辑预期总曲目数
-    total_tracks = Column(Integer)
+    total_tracks: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际音频格式
-    audio_format = Column(String)
+    audio_format: Mapped[Optional[str]] = mapped_column(String)
     # 是否无损音频
-    audio_lossless = Column(Boolean)
+    audio_lossless: Mapped[Optional[bool]] = mapped_column(Boolean)
     # 实际位深（bit）
-    bit_depth = Column(Integer)
+    bit_depth: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际采样率（Hz）
-    sample_rate = Column(Integer)
+    sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际码率（bps）
-    bitrate = Column(Integer)
+    bitrate: Mapped[Optional[int]] = mapped_column(Integer)
     # Sxx
-    seasons = Column(String)
+    seasons: Mapped[Optional[str]] = mapped_column(String)
     # Exx
-    episodes = Column(String)
+    episodes: Mapped[Optional[str]] = mapped_column(String)
     # 海报
-    image = Column(String)
+    image: Mapped[Optional[str]] = mapped_column(String)
     # 下载器
-    downloader = Column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载器hash
-    download_hash = Column(String, index=True)
+    download_hash: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 转移成功状态
-    status = Column(Boolean(), default=True)
+    status: Mapped[Optional[bool]] = mapped_column(Boolean(), default=True)
     # 转移失败信息
-    errmsg = Column(String)
+    errmsg: Mapped[Optional[str]] = mapped_column(String)
     # 时间
-    date = Column(String)
+    date: Mapped[Optional[str]] = mapped_column(String)
     # 文件清单，以JSON存储
-    files = Column(JSON, default=list)
+    files: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 剧集组
-    episode_group = Column(String)
+    episode_group: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("transferhistory"),
@@ -94,8 +94,8 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def list_by_title(cls, db: Session, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
-                      status: bool = None, wildcard: bool = False):
+    def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
+                      status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -108,21 +108,21 @@ class TransferHistory(Base):
                 _text_like(cls.src, f'%{title}%'),
                 _text_like(cls.dest, f'%{title}%'),
             )
-        query = db.query(cls).filter(text_filter)
+        statement = select(cls).where(text_filter)
         if status is not None:
-            query = query.filter(cls.status == status)
-        query = query.order_by(cls.date.desc())
+            statement = statement.where(cls.status == status)
+        statement = statement.order_by(cls.date.desc())
 
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
-            query = query.offset((page - 1) * count).limit(count)
+            statement = statement.offset((page - 1) * count).limit(count)
 
-        return query.all()
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list_by_title(cls, db: AsyncSession, title: str, page: Optional[int] = 1, count: Optional[int] = 30,
-                                  status: bool = None, wildcard: bool = False):
+    async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
+                                  status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -145,32 +145,26 @@ class TransferHistory(Base):
             query = query.offset((page - 1) * count).limit(count)
 
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
-    def list_by_page(cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30, status: bool = None):
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None):
+        statement = select(cls)
         if status is not None:
-            query = db.query(cls).filter(
-                cls.status == status
-            ).order_by(
-                cls.date.desc()
-            )
-        else:
-            query = db.query(cls).order_by(
-                cls.date.desc()
-            )
-        
+            statement = statement.where(cls.status == status)
+        statement = statement.order_by(cls.date.desc())
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
-            query = query.offset((page - 1) * count).limit(count)
-        
-        return query.all()
+            statement = statement.offset((page - 1) * count).limit(count)
+
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
-    async def async_list_by_page(cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30,
-                                 status: bool = None):
+    async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
+                                 status: Optional[bool] = None):
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
@@ -187,12 +181,14 @@ class TransferHistory(Base):
             query = query.offset((page - 1) * count).limit(count)
         
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def get_by_hash(cls, db: Session, download_hash: str):
-        return db.query(cls).filter(cls.download_hash == download_hash).first()
+        return db.execute(
+            select(cls).where(cls.download_hash == download_hash)
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -207,11 +203,12 @@ class TransferHistory(Base):
         :param storage: 源存储类型
         :return: 命中的整理记录，未命中时返回 None
         """
+        statement = select(cls).where(cls.src == src)
         if storage:
-            query = db.query(cls).filter(cls.src == src, cls.src_storage == storage)
-        else:
-            query = db.query(cls).filter(cls.src == src)
-        return query.order_by(cls.id.desc()).first()
+            statement = statement.where(cls.src_storage == storage)
+        return db.execute(
+            statement.order_by(cls.id.desc())
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -228,10 +225,12 @@ class TransferHistory(Base):
         :param storage: 源存储类型
         :return: 命中的成功整理记录，未命中时返回 None
         """
-        query = db.query(cls).filter(cls.src == src, cls.status.is_(True))
+        statement = select(cls).where(cls.src == src, cls.status.is_(True))
         if storage:
-            query = query.filter(cls.src_storage == storage)
-        return query.order_by(cls.id.desc()).first()
+            statement = statement.where(cls.src_storage == storage)
+        return db.execute(
+            statement.order_by(cls.id.desc())
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -246,10 +245,12 @@ class TransferHistory(Base):
         :param storage: 目标存储类型
         :return: 命中的整理记录，未命中时返回 None
         """
-        query = db.query(cls).filter(cls.dest == dest)
+        statement = select(cls).where(cls.dest == dest)
         if storage:
-            query = query.filter(cls.dest_storage == storage)
-        return query.order_by(cls.id.desc()).first()
+            statement = statement.where(cls.dest_storage == storage)
+        return db.execute(
+            statement.order_by(cls.id.desc())
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -272,24 +273,24 @@ class TransferHistory(Base):
         normalized_src = (
             Path(str(src).replace("\\", "/")).as_posix().rstrip("/") or "/"
         )
-        query = db.query(cls).filter(cls.status.is_(True))
+        statement = select(cls).where(cls.status.is_(True))
         if recursive:
             escaped_src = (
                 normalized_src.replace("\\", "\\\\")
                 .replace("%", "\\%")
                 .replace("_", "\\_")
             )
-            query = query.filter(
+            statement = statement.where(
                 or_(
                     cls.src == normalized_src,
                     cls.src.like(f"{escaped_src.rstrip('/')}/%", escape="\\"),
                 )
             )
         else:
-            query = query.filter(cls.src == normalized_src)
+            statement = statement.where(cls.src == normalized_src)
         if storage:
-            query = query.filter(cls.src_storage == storage)
-        return query.all()
+            statement = statement.where(cls.src_storage == storage)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
@@ -312,7 +313,7 @@ class TransferHistory(Base):
         normalized_dest = (
             Path(str(dest).replace("\\", "/")).as_posix().rstrip("/") or "/"
         )
-        query = db.query(cls).filter(
+        statement = select(cls).where(
             cls.status.is_(True),
             cls.mode.contains("move"),
         )
@@ -322,34 +323,41 @@ class TransferHistory(Base):
                 .replace("%", "\\%")
                 .replace("_", "\\_")
             )
-            query = query.filter(
+            statement = statement.where(
                 or_(
                     cls.dest == normalized_dest,
                     cls.dest.like(f"{escaped_dest.rstrip('/')}/%", escape="\\"),
                 )
             )
         else:
-            query = query.filter(cls.dest == normalized_dest)
+            statement = statement.where(cls.dest == normalized_dest)
         if storage:
-            query = query.filter(cls.dest_storage == storage)
-        return query.all()
+            statement = statement.where(cls.dest_storage == storage)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
     def list_by_hash(cls, db: Session, download_hash: str):
-        return db.query(cls).filter(cls.download_hash == download_hash).all()
+        return list(db.execute(
+            select(cls).where(cls.download_hash == download_hash)
+        ).scalars().all())
 
     @classmethod
     @db_query
-    def statistic(cls, db: Session, days: Optional[int] = 7):
+    def statistic(cls, db: Session, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
         """
-        sub_query = db.query(func.substr(cls.date, 1, 10).label('date'),
-                             cls.id.label('id')).filter(
+        sub_query = select(
+            func.substr(cls.date, 1, 10).label('date'),
+            cls.id.label('id')
+        ).where(
             cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
-                                      time.localtime(time.time() - 86400 * days))).subquery()
-        return db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
+                                      time.localtime(time.time() - 86400 * days))
+        ).subquery()
+        return list(db.execute(
+            select(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date)
+        ).all())
 
     @classmethod
     @db_query
@@ -361,11 +369,11 @@ class TransferHistory(Base):
         缺少集数时按单条成功整理记录计数；音乐按曲目身份去重，整专记录不能只按专辑 ID 合并。
         """
         month_prefix = time.strftime("%Y-%m-", time.localtime())
-        histories = db.query(cls).filter(
+        histories = db.execute(select(cls).where(
             cls.status.is_(True),
             cls.date.like(f"{month_prefix}%"),
             cls.type.in_([MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value]),
-        ).all()
+        )).scalars().all()
         movie_identities = set()
         tv_identities = set()
         episode_count = 0
@@ -419,7 +427,7 @@ class TransferHistory(Base):
 
     @classmethod
     @async_db_query
-    async def async_statistic(cls, db: AsyncSession, days: Optional[int] = 7):
+    async def async_statistic(cls, db: AsyncSession, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
         """
@@ -434,15 +442,15 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def count(cls, db: Session, status: bool = None):
+    def count(cls, db: Session, status: Optional[bool] = None):
+        statement = select(func.count(cls.id))
         if status is not None:
-            return db.query(func.count(cls.id)).filter(cls.status == status).first()[0]
-        else:
-            return db.query(func.count(cls.id)).first()[0]
+            statement = statement.where(cls.status == status)
+        return db.execute(statement).scalar()
 
     @classmethod
     @async_db_query
-    async def async_count(cls, db: AsyncSession, status: bool = None):
+    async def async_count(cls, db: AsyncSession, status: Optional[bool] = None):
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
@@ -455,7 +463,7 @@ class TransferHistory(Base):
 
     @classmethod
     @db_query
-    def count_by_title(cls, db: Session, title: str, status: bool = None, wildcard: bool = False):
+    def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -468,14 +476,14 @@ class TransferHistory(Base):
                 _text_like(cls.src, f'%{title}%'),
                 _text_like(cls.dest, f'%{title}%'),
             )
-        query = db.query(func.count(cls.id)).filter(text_filter)
+        statement = select(func.count(cls.id)).where(text_filter)
         if status is not None:
-            query = query.filter(cls.status == status)
-        return query.first()[0]
+            statement = statement.where(cls.status == status)
+        return db.execute(statement).scalar()
 
     @classmethod
     @async_db_query
-    async def async_count_by_title(cls, db: AsyncSession, title: str, status: bool = None, wildcard: bool = False):
+    async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -506,63 +514,31 @@ class TransferHistory(Base):
         按媒体身份、季集或标题年份查询整理记录。
         """
         if media_source and media_id and mtype:
-            # 电视剧某季某集
-            if season is not None and episode:
-                return db.query(cls).filter(cls.media_source == str(media_source),
-                                            cls.media_id == str(media_id),
-                                            cls.type == mtype,
-                                            cls.seasons == season,
-                                            cls.episodes == episode,
-                                            cls.dest == dest).all()
-            # 电视剧某季
-            elif season is not None:
-                return db.query(cls).filter(cls.media_source == str(media_source),
-                                            cls.media_id == str(media_id),
-                                            cls.type == mtype,
-                                            cls.seasons == season).all()
-            else:
-                if dest:
-                    # 电影
-                    return db.query(cls).filter(cls.media_source == str(media_source),
-                                                cls.media_id == str(media_id),
-                                                cls.type == mtype,
-                                                cls.dest == dest).all()
-                else:
-                    # 电视剧所有季集
-                    return db.query(cls).filter(cls.media_source == str(media_source),
-                                                cls.media_id == str(media_id),
-                                                cls.type == mtype).all()
-        # 标题 + 年份
+            statement = select(cls).where(cls.media_source == str(media_source),
+                                          cls.media_id == str(media_id),
+                                          cls.type == mtype)
         elif title and year:
-            # 电视剧某季某集
-            if season is not None and episode:
-                return db.query(cls).filter(cls.title == title,
-                                            cls.year == year,
-                                            cls.seasons == season,
-                                            cls.episodes == episode,
-                                            cls.dest == dest).all()
-            # 电视剧某季
-            elif season is not None:
-                return db.query(cls).filter(cls.title == title,
-                                            cls.year == year,
-                                            cls.seasons == season).all()
-            else:
-                if dest:
-                    # 电影
-                    return db.query(cls).filter(cls.title == title,
-                                                cls.year == year,
-                                                cls.dest == dest).all()
-                else:
-                    # 电视剧所有季集
-                    return db.query(cls).filter(cls.title == title,
-                                                cls.year == year).all()
-        # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
+            statement = select(cls).where(cls.title == title,
+                                          cls.year == year)
         elif mtype and season is not None and dest:
+            # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
+            return list(db.execute(select(cls).where(cls.type == mtype,
+                                                cls.seasons == season,
+                                                cls.dest.like(f"{dest}%"))).scalars().all())
+        else:
+            return []
+        if season is not None and episode:
+            # 电视剧某季某集：目标路径同样参与匹配，dest 为空即匹配空目标
+            statement = statement.where(cls.seasons == season,
+                                        cls.episodes == episode,
+                                        cls.dest == dest)
+        elif season is not None:
             # 电视剧某季
-            return db.query(cls).filter(cls.type == mtype,
-                                        cls.seasons == season,
-                                        cls.dest.like(f"{dest}%")).all()
-        return []
+            statement = statement.where(cls.seasons == season)
+        elif dest:
+            # 电影：没有季集，用目标路径区分不同版本
+            statement = statement.where(cls.dest == dest)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
@@ -571,19 +547,17 @@ class TransferHistory(Base):
             mtype: Optional[str] = None,
     ):
         """按规范媒体身份和类型查询整理记录。"""
-        return db.query(cls).filter(
+        return db.execute(select(cls).where(
             cls.media_source == str(media_source),
             cls.media_id == str(media_id),
             cls.type == mtype,
-        ).first()
+        )).scalars().first()
 
     @classmethod
     @db_update
     def update_download_hash(cls, db: Session, historyid: Optional[int] = None, download_hash: Optional[str] = None):
-        db.query(cls).filter(cls.id == historyid).update(
-            {
-                "download_hash": download_hash
-            }
+        db.execute(
+            update(cls).where(cls.id == historyid).values(download_hash=download_hash)
         )
 
     @classmethod
@@ -602,10 +576,13 @@ class TransferHistory(Base):
         src_storage = kwargs.get("src_storage") or "local"
         kwargs["src_storage"] = src_storage
         if src:
-            db.query(cls).filter(
-                cls.src == src,
-                cls.src_storage == src_storage,
-            ).delete(synchronize_session=False)
+            db.execute(
+                delete(cls).where(
+                    cls.src == src,
+                    cls.src_storage == src_storage,
+                ),
+                execution_options={"synchronize_session": False},
+            )
         history = cls(**kwargs)
         db.add(history)
         db.flush()
@@ -617,7 +594,9 @@ class TransferHistory(Base):
         """
         查询某时间之后的转移历史
         """
-        return db.query(cls).filter(cls.date > date).order_by(cls.id.desc()).all()
+        return list(db.execute(
+            select(cls).where(cls.date > date).order_by(cls.id.desc())
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -630,18 +609,15 @@ class TransferHistory(Base):
         """
         分批删除指定时间之前的整理历史。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
-            .filter(cls.date < before_time)
+        ids = db.execute(
+            select(cls.id)
+            .where(cls.date < before_time)
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return (
-            db.query(cls)
-            .filter(cls.id.in_(ids))
-            .delete(synchronize_session=False)
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
         )

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.runtime.config import global_vars
 from app.runtime.events import eventmanager, Event
 from app.db.models import Workflow
-from app.db.workflow_oper import WorkflowOper
+from app.db.oper.workflow import WorkflowOper
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
 from app.schemas import ActionContext, Action, ActionResult

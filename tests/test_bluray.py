@@ -176,7 +176,7 @@ class BluRayTest(TestCase):
 
     @patch("app.chain.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
     @patch("app.chain.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
-    @patch("app.db.transferhistory_oper.TransferHistoryOper.get_by_src")
+    @patch("app.db.oper.transferhistory.TransferHistoryOper.get_by_src")
     @patch("app.chain.storage.StorageChain.list_files")
     @patch("app.chain.storage.StorageChain.get_parent_item")
     @patch("app.chain.storage.StorageChain.get_file_item")

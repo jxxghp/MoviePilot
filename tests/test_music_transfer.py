@@ -12,7 +12,8 @@ from app.domain.context import MusicInfo
 from app.application.messaging.message import TemplateHelper
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.transfer import TransferInfo, TransferTask, TransferTorrent
+from app.schemas.transfer import TransferInfo, TransferTorrent
+from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaType
 
 
@@ -534,7 +535,11 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
 
     monkeypatch.setattr(
         "app.chain.transfer.TransferHistoryOper",
-        lambda: SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+        lambda: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.add_transfer_success",
+        lambda **kwargs: SimpleNamespace(id=1),
     )
 
     for task in tasks:

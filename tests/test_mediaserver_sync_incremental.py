@@ -9,7 +9,7 @@ from app import schemas
 from app.chain import mediaserver as MEDIA_SERVER_CHAIN_MODULE
 from app.chain.mediaserver import MediaServerChain
 from app.db import Base
-from app.db.mediaserver_oper import MediaServerOper
+from app.db.oper.mediaserver import MediaServerOper
 from app.db.models.mediaserver import MediaServerItem
 
 
@@ -99,7 +99,7 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
     )
     chain.episodes = lambda *_args, **_kwargs: pytest.fail("音乐条目不应查询电视剧分集")
 
-    with patch("app.db.ScopedSession", database), patch.object(
+    with patch("app.db.decorators.ScopedSession", database), patch.object(
         MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
         "get_mediaserver_configs",
         return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
@@ -186,7 +186,7 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
     )
     chain.episodes = lambda *_args, **_kwargs: []
 
-    with patch("app.db.ScopedSession", database), patch.object(
+    with patch("app.db.decorators.ScopedSession", database), patch.object(
         MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
         "get_mediaserver_configs",
         return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["movies"])],
@@ -264,7 +264,7 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     chain.items = items
     chain.episodes = lambda *_args, **_kwargs: []
 
-    with patch("app.db.ScopedSession", database), patch.object(
+    with patch("app.db.decorators.ScopedSession", database), patch.object(
         MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
         "get_mediaserver_configs",
         return_value=[

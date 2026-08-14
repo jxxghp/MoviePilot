@@ -2,7 +2,7 @@
 
 ## HTTP Client Conventions
 
-**Rule:** Host outbound HTTP requests must go through `RequestUtils` from `app/foundation/http.py`. Plugins import it from `app.sdk.network`. Do not use `requests`, `httpx`, or `aiohttp` directly.
+**Rule:** Host outbound HTTP requests must go through `RequestUtils` from `app/adapters/network/http.py`. Plugins import it from `app.sdk.network`. Do not use `requests`, `httpx`, or `aiohttp` directly.
 
 `RequestUtils` handles:
 - Proxy configuration (from `settings.PROXY_*`)

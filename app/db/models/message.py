@@ -1,10 +1,10 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import Column, Integer, String, JSON, Index, and_, or_, select
+from sqlalchemy import Integer, String, JSON, Index, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, db_update, Base, get_id_column, async_db_query
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
 
 
 class Message(Base):
@@ -13,27 +13,27 @@ class Message(Base):
     """
     id = get_id_column()
     # 消息渠道
-    channel = Column(String)
+    channel: Mapped[Optional[str]] = mapped_column(String)
     # 消息来源
-    source = Column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
     # 消息类型
-    mtype = Column(String)
+    mtype: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = Column(String)
+    title: Mapped[Optional[str]] = mapped_column(String)
     # 文本内容
-    text = Column(String)
+    text: Mapped[Optional[str]] = mapped_column(String)
     # 图片
-    image = Column(String)
+    image: Mapped[Optional[str]] = mapped_column(String)
     # 链接
-    link = Column(String)
+    link: Mapped[Optional[str]] = mapped_column(String)
     # 用户ID
-    userid = Column(String)
+    userid: Mapped[Optional[str]] = mapped_column(String)
     # 登记时间
-    reg_time = Column(String)
+    reg_time: Mapped[Optional[str]] = mapped_column(String)
     # 消息方向：0-接收息，1-发送消息
-    action = Column(Integer)
+    action: Mapped[Optional[int]] = mapped_column(Integer)
     # 附件json
-    note = Column(JSON)
+    note: Mapped[Optional[Any]] = mapped_column(JSON)
 
     __table_args__ = (
         Index('ix_message_reg_time_id', 'reg_time', 'id'),
@@ -50,17 +50,16 @@ class Message(Base):
 
     @classmethod
     @db_query
-    def list_by_page(cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30) -> List["Message"]:
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30) -> List["Message"]:
         """
         分页获取消息记录。
         """
-        return (
-            db.query(cls)
+        return list(db.execute(
+            select(cls)
             .order_by(cls.reg_time.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-            .all()
-        )
+        ).scalars().all())
 
     @classmethod
     @db_query
@@ -72,12 +71,14 @@ class Message(Base):
         :param source: 消息来源唯一标识
         :return: 是否存在匹配记录
         """
-        return db.query(cls.id).filter(cls.source == source).first() is not None
+        return db.execute(
+            select(cls.id).where(cls.source == source).limit(1)
+        ).scalars().first() is not None
 
     @classmethod
     @async_db_query
     async def async_list_by_page(
-            cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
+            cls, db: AsyncSession, page: int = 1, count: int = 30
     ) -> List["Message"]:
         """
         异步分页获取消息记录。
@@ -88,15 +89,15 @@ class Message(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_sent_by_page(
             cls,
             db: AsyncSession,
-            page: Optional[int] = 1,
-            count: Optional[int] = 30,
+            page: int = 1,
+            count: int = 30,
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
@@ -129,7 +130,7 @@ class Message(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_update
@@ -142,18 +143,15 @@ class Message(Base):
         """
         分批删除指定时间之前的消息记录。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
-            .filter(cls.reg_time < before_time)
+        ids = db.execute(
+            select(cls.id)
+            .where(cls.reg_time < before_time)
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return (
-            db.query(cls)
-            .filter(cls.id.in_(ids))
-            .delete(synchronize_session=False)
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
         )

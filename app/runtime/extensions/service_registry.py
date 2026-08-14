@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 from pydantic import ValidationError
 
 from app.runtime.extensions.module_manager import ModuleManager
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import DownloaderConf, MediaServerConf, NotificationConf, NotificationSwitchConf, ServiceInfo
 from app.schemas.types import NotificationType, SystemConfigKey, ModuleType

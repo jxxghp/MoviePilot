@@ -701,10 +701,13 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
     media_chain = Mock()
     media_chain.recognize_media = Mock(return_value=target)
     subscribe_oper = Mock()
-    subscribe_oper.add.return_value = (1, "")
+    # 落库入口已迁到 app/application/subscribe.py，链路层能截到的接缝是 add_subscribe，
+    # 它收到的正是链路交给写入路径的那份字段
+    add_subscribe = Mock(return_value=(1, ""))
 
     with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.add_subscribe", add_subscribe), \
             patch("app.chain.subscribe.MoviePilotServerHelper"), \
             patch("app.chain.subscribe.eventmanager"):
         sid, err_msg = SubscribeChain().add(
@@ -752,10 +755,11 @@ def test_subscribe_add_music_routes_new_album_sources(
     media_chain = Mock()
     media_chain.recognize_media = Mock(return_value=target)
     subscribe_oper = Mock()
-    subscribe_oper.add.return_value = (1, "")
+    add_subscribe = Mock(return_value=(1, ""))
 
     with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.add_subscribe", add_subscribe), \
             patch("app.chain.subscribe.MoviePilotServerHelper"), \
             patch("app.chain.subscribe.eventmanager"):
         sid, err_msg = SubscribeChain().add(
@@ -774,8 +778,8 @@ def test_subscribe_add_music_routes_new_album_sources(
     assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource(media_source)
     assert media_chain.recognize_media.call_args.kwargs["media_id"] == media_id
     assert media_chain.recognize_media.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
-    assert subscribe_oper.add.call_args.kwargs["media_source"] == MediaSource(media_source)
-    assert subscribe_oper.add.call_args.kwargs["media_id"] == media_id
+    assert add_subscribe.call_args.kwargs["media_source"] == MediaSource(media_source)
+    assert add_subscribe.call_args.kwargs["media_id"] == media_id
     media_chain.recognize_by_meta.assert_not_called()
 
 
@@ -784,9 +788,11 @@ def test_subscribe_add_rejects_music_entity_mismatch_before_database_write():
     media_chain = Mock()
     media_chain.recognize_media.return_value = _music_info()
     subscribe_oper = Mock()
+    add_subscribe = Mock()
 
     with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper):
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.add_subscribe", add_subscribe):
         sid, err_msg = SubscribeChain().add(
             title="叶惠美",
             year="2003",
@@ -800,7 +806,7 @@ def test_subscribe_add_rejects_music_entity_mismatch_before_database_write():
     assert sid is None
     assert "类型不匹配" in err_msg
     media_chain.recognize_by_meta.assert_not_called()
-    subscribe_oper.add.assert_not_called()
+    add_subscribe.assert_not_called()
 
 
 def test_subscribe_add_music_fails_fast_on_offline_fallback():
@@ -809,10 +815,11 @@ def test_subscribe_add_music_fails_fast_on_offline_fallback():
     media_chain = Mock()
     media_chain.recognize_by_meta = Mock(return_value=offline)
     subscribe_oper = Mock()
-    subscribe_oper.add.return_value = (1, "")
+    add_subscribe = Mock(return_value=(1, ""))
 
     with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper):
+            patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain.subscribe.add_subscribe", add_subscribe):
         sid, err_msg = SubscribeChain().add(
             title="未知曲目",
             year=None,
@@ -822,7 +829,7 @@ def test_subscribe_add_music_fails_fast_on_offline_fallback():
 
     assert sid is None
     assert err_msg == "未识别到媒体信息"
-    subscribe_oper.add.assert_not_called()
+    add_subscribe.assert_not_called()
 
 
 def test_follow_preserves_album_entity_and_track_count():

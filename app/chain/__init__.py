@@ -20,9 +20,9 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.db.message_oper import MessageOper
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import UserOper
+from app.db.oper.message import MessageOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.oper.user import UserOper
 from app.application.messaging.message import MessageHelper, MessageQueueManager, MessageTemplateHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_registry import ServiceConfigHelper
@@ -42,7 +42,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.foundation.identity import normalize_internal_user_id
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
@@ -1773,7 +1773,7 @@ class ChainBase(metaclass=ABCMeta):
             self,
             message: Optional[Notification] = None,
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
             **kwargs,
@@ -1889,7 +1889,7 @@ class ChainBase(metaclass=ABCMeta):
             self,
             message: Optional[Notification] = None,
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
             **kwargs,

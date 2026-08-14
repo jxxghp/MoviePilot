@@ -1,564 +1,112 @@
-import asyncio
-from typing import Any, Generator, List, Optional, Self, Tuple, AsyncGenerator, Union
+"""
+数据库包入口。
 
-from sqlalchemy import NullPool, QueuePool, and_, create_engine, event, inspect, text, select, delete, Column, Integer, \
-    Sequence, Identity
-from sqlalchemy.engine import Engine as SQLAlchemyEngine, ExceptionContext
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
+本模块只做符号再导出，不承载实现——具体职责分布在：
 
-from app.runtime.config import settings
-from app.runtime.log import logger
+- diagnostics  驱动错误的统一分类与日志
+- engine       引擎构建、连接额度核算
+- session      会话获取、异步连接池与配额
+- decorators   同步/异步事务装饰器
+- base         ORM 基类与数据访问基类
+- models       表结构声明，一实体一文件
+- oper         数据访问实现，与 models 同名文件一一对应
+
+历史上这些代码全部堆在本文件里（782 行），既让包入口承担了实现职责、
+使依赖图难以理清，也让「import 即建立数据库连接」这一副作用被固化下来。
+"""
+from typing import TYPE_CHECKING, Any
+
+from app.db.base import Base, DbOper, execute_dml, get_id_column
+from app.db.decorators import async_db_query, async_db_update, db_query, db_update
+from app.db.engine import (
+    check_connection_budget,
+    connection_budget,
+    get_engine,
+    get_global_async_engine,
+)
+from app.db.session import (
+    AsyncSessionFactory,
+    ScopedSession,
+    SessionFactory,
+    async_session_scope,
+    close_database,
+    get_async_db,
+    get_async_engine,
+    get_async_session_factory,
+    get_db,
+    get_scoped_session,
+    get_session_factory,
+)
+
+# ==================== 对外契约的分层 ====================
+# 下方 __all__ 是本包**对外承诺**的那一层，仓库外的插件只应依赖其中的名字：
+#
+# - 数据访问：继承 DbOper 子类（插件基类已备好 self.plugindata / self.systemconfig），
+#   或给自己的函数套 db_query / db_update / async_db_query / async_db_update 装饰器。
+#   会话的获取、提交、回滚、释放全部由装饰器收口。
+# - 引擎：Engine / AsyncEngine 保留在契约内。建表、Alembic 迁移、连接诊断这些用途
+#   确实需要引擎对象本身，装饰器覆盖不到，仓库外拿它是正当的。
+#
+# SessionFactory / AsyncSessionFactory / ScopedSession 三个名字**不在**契约内，已从
+# __all__ 移除，降级为内部实现细节。它们建出来的是绕过上述装饰器的裸会话——没有提交、
+# 没有回滚、没有释放，谁建谁自己兜底，本身就是误用的形状。仓库内确有几处直接
+# `from app.db import SessionFactory`（scheduler、postgresql 模块、Alembic 迁移脚本），
+# 那是包内部的既有用法，直接导入不受 __all__ 约束，照常可用。
+# 若确实需要真正的工厂对象（而非 `X()` 取一个会话），用 get_session_factory() /
+# get_scoped_session() / get_async_session_factory()——转发函数上没有 sessionmaker
+# 与 scoped_session 的实例接口（.remove() / .configure() / .begin() 等）。
+#
+# 实现上，三个工厂名字本身就是转发函数（见 session 模块），直接再导出即可——导入它们
+# 不会碰引擎。Engine / AsyncEngine 则不同：调用方拿到的必须是引擎**对象**而非函数，
+# 所以只能靠模块级 __getattr__ 在取属性时才创建。
+#
+# 注意这意味着 `from app.db import Engine` 仍会在 import 期把引擎建出来——那是调用方
+# 自己选的时机。本包自身及仓库内代码一律用 get_engine()，所以 `import app.db` 不连库。
+if TYPE_CHECKING:
+    # 只为静态检查声明这两个名字：运行期由下方 __getattr__ 解析，模块 __dict__ 里并不存在，
+    # 类型检查器无从知道它们属于本模块（__all__ 里的它们会被报成 reportUnsupportedDunderAll）。
+    # 这里同时把类型钉准，比 __getattr__ 的 Any 更有用：调用方拿到的确实是这两类引擎。
+    from sqlalchemy.engine import Engine as _SyncEngine
+    from sqlalchemy.ext.asyncio import AsyncEngine as _SaAsyncEngine
+
+    Engine: _SyncEngine
+    AsyncEngine: _SaAsyncEngine
 
 
-def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
-    """提取 SQLite 与 PostgreSQL 驱动提供的稳定错误分类字段。"""
-    metadata = {"error_type": type(error).__name__}
-
-    # DBAPI 驱动字段并不共享统一类型，动态读取可同时兼容 sqlite3、psycopg2 与 asyncpg。
-    sqlite_errorcode = getattr(error, "sqlite_errorcode", None)
-    sqlite_errorname = getattr(error, "sqlite_errorname", None)
-    if sqlite_errorcode is not None or sqlite_errorname:
-        if sqlite_errorcode is not None:
-            metadata["error_code"] = sqlite_errorcode
-        if sqlite_errorname:
-            metadata["error_name"] = sqlite_errorname
-        return metadata
-
-    sqlstate = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
-    if not sqlstate:
-        sqlstate = getattr(getattr(error, "diag", None), "sqlstate", None)
-    if sqlstate:
-        metadata["sqlstate"] = sqlstate
-        return metadata
-
-    return None
-
-
-def _log_database_error(exception_context: ExceptionContext) -> None:
-    """记录非敏感驱动错误码，并保持 SQLAlchemy 原有异常传播。"""
-    metadata = _database_error_metadata(exception_context.original_exception)
-    if not metadata:
-        return
-
-    dialect = exception_context.dialect
-    fields = {
-        "database": dialect.name,
-        "driver": dialect.driver,
-        **metadata,
-    }
-    logger.error(
-        "数据库驱动异常：" + ", ".join(f"{key}={value}" for key, value in fields.items())
-    )
-
-
-def _register_database_error_logging(engine: SQLAlchemyEngine) -> None:
-    """为主程序 Engine 注册统一的底层驱动错误诊断。"""
-    event.listen(engine, "handle_error", _log_database_error)
-
-
-def get_id_column():
+def __getattr__(name: str) -> Any:
     """
-    根据数据库类型返回合适的ID列定义
+    惰性解析 Engine / AsyncEngine 两个旧名字，保持仓库外插件的导入路径可用。
+    :param name: 属性名
+    :return: 对应的引擎
     """
-    if settings.DB_TYPE.lower() == "postgresql":
-        # PostgreSQL使用SERIAL类型，让数据库自动处理序列
-        return Column(Integer, Identity(start=1, cycle=True), primary_key=True)
-    else:
-        # SQLite使用Sequence
-        return Column(Integer, Sequence('id'), primary_key=True)
-
-
-def _get_database_engine(is_async: bool = False):
-    """
-    获取数据库连接参数并设置WAL模式
-    :param is_async: 是否创建异步引擎，True - 异步引擎, False - 同步引擎
-    :return: 返回对应的数据库引擎
-    """
-    # 根据数据库类型选择连接方式
-    if settings.DB_TYPE.lower() == "postgresql":
-        return _get_postgresql_engine(is_async)
-    else:
-        return _get_sqlite_engine(is_async)
-
-
-def _get_sqlite_engine(is_async: bool = False):
-    """
-    获取SQLite数据库引擎
-    """
-    # 连接参数
-    _connect_args = {
-        "timeout": settings.DB_TIMEOUT,
-    }
-    # 启用 WAL 模式时的额外配置
-    if settings.DB_WAL_ENABLE:
-        _connect_args["check_same_thread"] = False
-
-    # 创建同步引擎
-    if not is_async:
-        # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
-
-        # 数据库参数
-        _db_kwargs = {
-            "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "poolclass": _pool_class,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args
-        }
-
-        # 当使用 QueuePool 时，添加 QueuePool 特有的参数
-        if _pool_class == QueuePool:
-            _db_kwargs.update({
-                "pool_size": settings.DB_SQLITE_POOL_SIZE,
-                "pool_timeout": settings.DB_POOL_TIMEOUT,
-                "max_overflow": settings.DB_SQLITE_MAX_OVERFLOW
-            })
-
-        # 创建数据库引擎
-        engine = create_engine(**_db_kwargs)
-        _register_database_error_logging(engine)
-
-        # 设置WAL模式
-        _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
-        with engine.connect() as connection:
-            current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
-            print(f"SQLite database journal mode set to: {current_mode}")
-
-        return engine
-    else:
-        # 数据库参数，只能使用 NullPool
-        _db_kwargs = {
-            "url": f"sqlite+aiosqlite:///{settings.CONFIG_PATH}/user.db",
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "poolclass": NullPool,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args
-        }
-        # 创建异步数据库引擎
-        async_engine = create_async_engine(**_db_kwargs)
-        _register_database_error_logging(async_engine.sync_engine)
-
-        # 设置WAL模式
-        _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
-
-        async def set_async_wal_mode():
-            """
-            设置异步引擎的WAL模式
-            """
-            async with async_engine.connect() as _connection:
-                result = await _connection.execute(text(f"PRAGMA journal_mode={_journal_mode};"))
-                _current_mode = result.scalar()
-                print(f"Async SQLite database journal mode set to: {_current_mode}")
-
-        try:
-            asyncio.run(set_async_wal_mode())
-        except Exception as e:
-            print(f"Failed to set async SQLite WAL mode: {e}")
-
-        return async_engine
-
-
-def _get_postgresql_engine(is_async: bool = False):
-    """
-    获取PostgreSQL数据库引擎
-    """
-    db_url = settings.DB_POSTGRESQL_URL()
-
-    # PostgreSQL连接参数
-    _connect_args = {}
-
-    # 创建同步引擎
-    if not is_async:
-        # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
-
-        # 数据库参数
-        _db_kwargs = {
-            "url": db_url,
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "poolclass": _pool_class,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args
-        }
-
-        # 当使用 QueuePool 时，添加 QueuePool 特有的参数
-        if _pool_class == QueuePool:
-            _db_kwargs.update({
-                "pool_size": settings.DB_POSTGRESQL_POOL_SIZE,
-                "pool_timeout": settings.DB_POOL_TIMEOUT,
-                "max_overflow": settings.DB_POSTGRESQL_MAX_OVERFLOW
-            })
-
-        # 创建数据库引擎
-        engine = create_engine(**_db_kwargs)
-        _register_database_error_logging(engine)
-        print(f"PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
-
-        return engine
-    else:
-        async_db_url = settings.DB_POSTGRESQL_URL("asyncpg")
-
-        # 数据库参数，只能使用 NullPool
-        _db_kwargs = {
-            "url": async_db_url,
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "poolclass": NullPool,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args
-        }
-        # 创建异步数据库引擎
-        async_engine = create_async_engine(**_db_kwargs)
-        _register_database_error_logging(async_engine.sync_engine)
-        print(f"Async PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
-
-        return async_engine
-
-
-# 同步数据库引擎
-Engine = _get_database_engine(is_async=False)
-
-# 异步数据库引擎
-AsyncEngine = _get_database_engine(is_async=True)
-
-# 同步会话工厂
-SessionFactory = sessionmaker(bind=Engine)
-
-# 异步会话工厂
-AsyncSessionFactory = async_sessionmaker(bind=AsyncEngine, class_=AsyncSession)
-
-# 同步多线程全局使用的数据库会话
-ScopedSession = scoped_session(SessionFactory)
-
-
-def get_db() -> Generator:
-    """
-    获取数据库会话，用于WEB请求
-    :return: Session
-    """
-    db = None
-    try:
-        db = SessionFactory()
-        yield db
-    finally:
-        if db:
-            db.close()
-
-
-async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    获取异步数据库会话，用于WEB请求
-    :return: AsyncSession
-    """
-    async with AsyncSessionFactory() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
-
-async def close_database():
-    """
-    关闭所有数据库连接并清理资源
-    """
-    try:
-        # 释放同步连接池
-        Engine.dispose()  # noqa
-        # 释放异步连接池
-        await AsyncEngine.dispose()
-    except Exception as err:
-        print(f"Error while disposing database connections: {err}")
-
-
-def _get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
-    """
-    从参数中获取数据库Session对象
-    """
-    db = None
-    if args:
-        for arg in args:
-            if isinstance(arg, Session):
-                db = arg
-                break
-    if kwargs:
-        for key, value in kwargs.items():
-            if isinstance(value, Session):
-                db = value
-                break
-    return db
-
-
-def _get_args_async_db(args: tuple, kwargs: dict) -> Optional[AsyncSession]:
-    """
-    从参数中获取异步数据库AsyncSession对象
-    """
-    db = None
-    if args:
-        for arg in args:
-            if isinstance(arg, AsyncSession):
-                db = arg
-                break
-    if kwargs:
-        for key, value in kwargs.items():
-            if isinstance(value, AsyncSession):
-                db = value
-                break
-    return db
-
-
-def _update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict]:
-    """
-    更新参数中的数据库Session对象，关键字传参时更新db的值，否则更新第1或第2个参数
-    """
-    if kwargs and 'db' in kwargs:
-        kwargs['db'] = db
-    elif args:
-        if args[0] is None:
-            args = (db, *args[1:])
-        else:
-            args = (args[0], db, *args[2:])
-    return args, kwargs
-
-
-def _update_args_async_db(args: tuple, kwargs: dict, db: AsyncSession) -> Tuple[tuple, dict]:
-    """
-    更新参数中的异步数据库AsyncSession对象，关键字传参时更新db的值，否则更新第1或第2个参数
-    """
-    if kwargs and 'db' in kwargs:
-        kwargs['db'] = db
-    elif args:
-        if args[0] is None:
-            args = (db, *args[1:])
-        else:
-            args = (args[0], db, *args[2:])
-    return args, kwargs
-
-
-def db_update(func):
-    """
-    数据库更新类操作装饰器，第一个参数必须是数据库会话或存在db参数
-    """
-
-    def wrapper(*args, **kwargs):
-        # 是否关闭数据库会话
-        _close_db = False
-        # 从参数中获取数据库会话
-        db = _get_args_db(args, kwargs)
-        if not db:
-            # 如果没有获取到数据库会话，创建一个
-            db = ScopedSession()
-            # 标记需要关闭数据库会话
-            _close_db = True
-            # 更新参数中的数据库会话
-            args, kwargs = _update_args_db(args, kwargs, db)
-        try:
-            # 执行函数
-            result = func(*args, **kwargs)
-            # 提交事务
-            db.commit()
-        except Exception as err:
-            # 回滚事务
-            db.rollback()
-            raise err
-        finally:
-            # 关闭数据库会话
-            if _close_db:
-                db.close()
-        return result
-
-    return wrapper
-
-
-def async_db_update(func):
-    """
-    异步数据库更新类操作装饰器，第一个参数必须是异步数据库会话或存在db参数
-    """
-
-    async def wrapper(*args, **kwargs):
-        # 是否关闭数据库会话
-        _close_db = False
-        # 从参数中获取异步数据库会话
-        db = _get_args_async_db(args, kwargs)
-        if not db:
-            # 如果没有获取到异步数据库会话，创建一个
-            db = AsyncSessionFactory()
-            # 标记需要关闭数据库会话
-            _close_db = True
-            # 更新参数中的异步数据库会话
-            args, kwargs = _update_args_async_db(args, kwargs, db)
-        try:
-            # 执行函数
-            result = await func(*args, **kwargs)
-            # 提交事务
-            await db.commit()
-        except Exception as err:
-            # 回滚事务
-            await db.rollback()
-            raise err
-        finally:
-            # 关闭数据库会话
-            if _close_db:
-                await db.close()
-        return result
-
-    return wrapper
-
-
-def db_query(func):
-    """
-    数据库查询操作装饰器，第一个参数必须是数据库会话或存在db参数
-    注意：db.query列表数据时，需要转换为list返回
-    """
-
-    def wrapper(*args, **kwargs):
-        # 是否关闭数据库会话
-        _close_db = False
-        # 从参数中获取数据库会话
-        db = _get_args_db(args, kwargs)
-        if not db:
-            # 如果没有获取到数据库会话，创建一个
-            db = ScopedSession()
-            # 标记需要关闭数据库会话
-            _close_db = True
-            # 更新参数中的数据库会话
-            args, kwargs = _update_args_db(args, kwargs, db)
-        try:
-            # 执行函数
-            result = func(*args, **kwargs)
-        except Exception as err:
-            raise err
-        finally:
-            # 关闭数据库会话
-            if _close_db:
-                db.close()
-        return result
-
-    return wrapper
-
-
-def async_db_query(func):
-    """
-    异步数据库查询操作装饰器，第一个参数必须是异步数据库会话或存在db参数
-    注意：db.query列表数据时，需要转换为list返回
-    """
-
-    async def wrapper(*args, **kwargs):
-        # 是否关闭数据库会话
-        _close_db = False
-        # 从参数中获取异步数据库会话
-        db = _get_args_async_db(args, kwargs)
-        if not db:
-            # 如果没有获取到异步数据库会话，创建一个
-            db = AsyncSessionFactory()
-            # 标记需要关闭数据库会话
-            _close_db = True
-            # 更新参数中的异步数据库会话
-            args, kwargs = _update_args_async_db(args, kwargs, db)
-        try:
-            # 执行函数
-            result = await func(*args, **kwargs)
-        except Exception as err:
-            raise err
-        finally:
-            # 关闭数据库会话
-            if _close_db:
-                await db.close()
-        return result
-
-    return wrapper
-
-
-@as_declarative()
-class Base:
-    id: Any
-    __name__: str
-
-    @db_update
-    def create(self, db: Session):
-        db.add(self)
-
-    @async_db_update
-    async def async_create(self, db: AsyncSession):
-        db.add(self)
-        await db.flush()
-        return self
-
-    @classmethod
-    @db_query
-    def get(cls, db: Session, rid: int) -> Self:
-        return db.query(cls).filter(and_(cls.id == rid)).first()
-
-    @classmethod
-    @async_db_query
-    async def async_get(cls, db: AsyncSession, rid: int) -> Self:
-        result = await db.execute(select(cls).where(and_(cls.id == rid)))
-        return result.scalars().first()
-
-    @db_update
-    def update(self, db: Session, payload: dict):
-        for key, value in payload.items():
-            setattr(self, key, value)
-        if inspect(self).detached:
-            db.add(self)
-
-    @async_db_update
-    async def async_update(self, db: AsyncSession, payload: dict):
-        for key, value in payload.items():
-            setattr(self, key, value)
-        if inspect(self).detached:
-            db.add(self)
-
-    @classmethod
-    @db_update
-    def delete(cls, db: Session, rid):
-        db.query(cls).filter(and_(cls.id == rid)).delete()
-
-    @classmethod
-    @async_db_update
-    async def async_delete(cls, db: AsyncSession, rid):
-        result = await db.execute(select(cls).where(and_(cls.id == rid)))
-        user = result.scalars().first()
-        if user:
-            await db.delete(user)
-
-    @classmethod
-    @db_update
-    def truncate(cls, db: Session):
-        db.query(cls).delete()
-
-    @classmethod
-    @async_db_update
-    async def async_truncate(cls, db: AsyncSession):
-        await db.execute(delete(cls))
-
-    @classmethod
-    @db_query
-    def list(cls, db: Session) -> List[Self]:
-        return db.query(cls).all()
-
-    @classmethod
-    @async_db_query
-    async def async_list(cls, db: AsyncSession) -> Sequence[Self]:
-        result = await db.execute(select(cls))
-        return result.scalars().all()
-
-    def to_dict(self):
-        return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}  # noqa
-
-    @declared_attr
-    def __tablename__(self) -> str:
-        return self.__name__.lower()
-
-
-class DbOper:
-    """
-    数据库操作基类
-    """
-
-    def __init__(self, db: Union[Session, AsyncSession] = None):
-        self._db = db
+    if name == "Engine":
+        return get_engine()
+    if name == "AsyncEngine":
+        return get_global_async_engine()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "AsyncEngine",
+    "Base",
+    "DbOper",
+    "Engine",
+    "async_db_query",
+    "async_db_update",
+    "async_session_scope",
+    "check_connection_budget",
+    "close_database",
+    "connection_budget",
+    "db_query",
+    "db_update",
+    "execute_dml",
+    "get_async_db",
+    "get_async_engine",
+    "get_async_session_factory",
+    "get_db",
+    "get_engine",
+    "get_global_async_engine",
+    "get_id_column",
+    "get_scoped_session",
+    "get_session_factory",
+]

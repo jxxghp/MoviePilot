@@ -1,9 +1,9 @@
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, Index, Integer, String, Text
-from sqlalchemy.orm import Session
+from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
 
 
 class AgentTask(Base):
@@ -13,34 +13,34 @@ class AgentTask(Base):
 
     id = get_id_column()
     # 任务名称
-    name = Column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     # 交给 Agent 执行的完整任务内容
-    content = Column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     # 触发类型：date-单次触发，cron-周期触发
-    trigger_type = Column(String, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String, nullable=False)
     # 标准五段 cron 表达式
-    cron_expression = Column(String)
+    cron_expression: Mapped[Optional[str]] = mapped_column(String)
     # 单次触发时间，使用带时区的 ISO 8601 格式
-    run_at = Column(String)
+    run_at: Mapped[Optional[str]] = mapped_column(String)
     # 是否继续接受调度
-    enabled = Column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # 创建任务的用户与会话上下文
-    user_id = Column(String, nullable=False)
-    username = Column(String)
-    session_id = Column(String, nullable=False)
-    channel = Column(String)
-    source = Column(String)
-    original_chat_id = Column(String)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    channel: Mapped[Optional[str]] = mapped_column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
+    original_chat_id: Mapped[Optional[str]] = mapped_column(String)
     # 最近一次执行状态与结果
-    last_status = Column(String, nullable=False, default="waiting")
-    last_run_at = Column(String)
-    last_result = Column(Text)
+    last_status: Mapped[str] = mapped_column(String, nullable=False, default="waiting")
+    last_run_at: Mapped[Optional[str]] = mapped_column(String)
+    last_result: Mapped[Optional[str]] = mapped_column(Text)
     # 最新一次真实执行的公开 ID，用于保护 last_* 投影不被旧运行覆盖
-    last_run_id = Column(String)
+    last_run_id: Mapped[Optional[str]] = mapped_column(String)
     # 已收口执行次数；进程中断的未完成尝试不计入
-    run_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=False)
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
     __table_args__ = (
         Index("ix_agenttask_enabled", "enabled"),
@@ -69,10 +69,10 @@ class AgentTask(Base):
         """
         按任务 ID 和可选用户 ID 查询 Agent 定时任务。
         """
-        query = db.query(cls).filter(cls.id == task_id)
+        statement = select(cls).where(cls.id == task_id)
         if user_id is not None:
-            query = query.filter(cls.user_id == user_id)
-        return query.first()
+            statement = statement.where(cls.user_id == user_id)
+        return db.execute(statement).scalars().first()
 
     @classmethod
     @db_query
@@ -85,12 +85,14 @@ class AgentTask(Base):
         """
         按用户和启用状态查询 Agent 定时任务。
         """
-        query = db.query(cls)
+        statement = select(cls)
         if user_id is not None:
-            query = query.filter(cls.user_id == user_id)
+            statement = statement.where(cls.user_id == user_id)
         if enabled is not None:
-            query = query.filter(cls.enabled.is_(enabled))
-        return query.order_by(cls.created_at.desc(), cls.id.desc()).all()
+            statement = statement.where(cls.enabled.is_(enabled))
+        return list(db.execute(
+            statement.order_by(cls.created_at.desc(), cls.id.desc())
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -107,10 +109,10 @@ class AgentTask(Base):
         运行状态与配置必须在同一条条件更新中判定，避免执行认领后被并发配置写入
         覆盖回可再次执行的状态。
         """
-        query = db.query(cls).filter(
+        statement = update(cls).where(
             cls.id == task_id,
             cls.last_status != "running",
         )
         if user_id is not None:
-            query = query.filter(cls.user_id == user_id)
-        return bool(query.update(payload))
+            statement = statement.where(cls.user_id == user_id)
+        return bool(execute_dml(db, statement.values(payload)))

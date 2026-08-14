@@ -204,10 +204,27 @@ depend on this established runtime root.
 
 ### DB / Oper layer
 
-SQLAlchemy models stay under `app/db/models/`; `*_oper.py` classes encapsulate
-queries. Chains, modules, application services and endpoints use Oper classes
-instead of issuing SQLAlchemy queries directly. Every schema change requires an
-Alembic migration under `database/versions/`.
+SQLAlchemy models stay under `app/db/models/`; the data access classes live in
+`app/db/oper/` and mirror them one-for-one (`models/subscribe.py` ↔
+`oper/subscribe.py`), so a filename carries only the entity and the package name
+carries the role. Chains, modules, application services and endpoints use Oper
+classes instead of issuing SQLAlchemy queries directly. Every schema change
+requires an Alembic migration under `database/versions/`.
+
+Oper classes take and return persistence values, not domain objects. Translating
+`MediaInfo` / `MetaBase` into a row is business logic and belongs in
+`app/application/` — see `application/subscribe.py` and `application/history.py`
+for the two write paths. Column-type coercion (numeric year to string, boolean
+switches to integers) stays in the Oper because it follows the column, not the
+caller.
+
+Invariants that must hold for *every* write are enforced at the mapper rather
+than at each call site: `app/db/models/_identity.py` normalizes
+`media_source` / `media_id` on `before_insert` / `before_update`, so a new write
+path cannot forget them. Identity representation rules themselves
+(alias folding, trimming, rejecting zero) live in `app/schemas/media.py`
+alongside the two identity mixins; `app/domain/media.py` keeps only source
+policy. `app/db` therefore has no dependency on `app/domain`.
 
 ## Composition and Compatibility Boundaries
 

@@ -18,7 +18,7 @@ from app.agent.tools.impl._system_setting_utils import (
 )
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType

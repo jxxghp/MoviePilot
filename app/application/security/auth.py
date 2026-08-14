@@ -10,8 +10,8 @@ from app import schemas
 from app.application.security import access as security
 from app.runtime.config import settings
 from app.db.models.user import User
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import UserOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.oper.user import UserOper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton

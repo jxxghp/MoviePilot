@@ -1,12 +1,12 @@
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import Column, Integer, String, JSON, Index, select, func
+from sqlalchemy import Integer, String, JSON, Index, delete, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, Base, async_db_query
-from app.db.models.media_identity import media_identity_constraint
+from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
+from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
 
@@ -22,51 +22,51 @@ class DownloadHistory(Base):
 
     id = get_id_column()
     # 保存路径
-    path = Column(String, nullable=False, index=True)
+    path: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 类型 电影/电视剧/音乐
-    type = Column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
     # 标题
-    title = Column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
     # 年份
-    year = Column(String)
-    media_source = Column(String, index=True)
-    media_id = Column(String, index=True)
+    year: Mapped[Optional[str]] = mapped_column(String)
+    media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
+    media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
-    music_type = Column(String)
+    music_type: Mapped[Optional[str]] = mapped_column(String)
     # Sxx
-    seasons = Column(String)
+    seasons: Mapped[Optional[str]] = mapped_column(String)
     # Exx
-    episodes = Column(String)
+    episodes: Mapped[Optional[str]] = mapped_column(String)
     # 背景图
-    image = Column(String)
+    image: Mapped[Optional[str]] = mapped_column(String)
     # 海报
-    poster = Column(String)
+    poster: Mapped[Optional[str]] = mapped_column(String)
     # 下载器
-    downloader = Column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载任务Hash
-    download_hash = Column(String)
+    download_hash: Mapped[Optional[str]] = mapped_column(String)
     # 种子名称
-    torrent_name = Column(String)
+    torrent_name: Mapped[Optional[str]] = mapped_column(String)
     # 种子描述
-    torrent_description = Column(String)
+    torrent_description: Mapped[Optional[str]] = mapped_column(String)
     # 种子站点
-    torrent_site = Column(String)
+    torrent_site: Mapped[Optional[str]] = mapped_column(String)
     # 下载用户
-    userid = Column(String)
+    userid: Mapped[Optional[str]] = mapped_column(String)
     # 下载用户名/插件名
-    username = Column(String)
+    username: Mapped[Optional[str]] = mapped_column(String)
     # 下载渠道
-    channel = Column(String)
+    channel: Mapped[Optional[str]] = mapped_column(String)
     # 创建时间
-    date = Column(String)
+    date: Mapped[Optional[str]] = mapped_column(String)
     # 附加信息
-    note = Column(JSON)
+    note: Mapped[Optional[Any]] = mapped_column(JSON)
     # 自定义媒体类别
-    media_category = Column(String)
+    media_category: Mapped[Optional[str]] = mapped_column(String)
     # 剧集组
-    episode_group = Column(String)
+    episode_group: Mapped[Optional[str]] = mapped_column(String)
     # 自定义识别词（用于整理时应用）
-    custom_words = Column(String)
+    custom_words: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("downloadhistory"),
@@ -78,12 +78,11 @@ class DownloadHistory(Base):
     @classmethod
     @db_query
     def get_by_hash(cls, db: Session, download_hash: str):
-        return (
-            db.query(DownloadHistory)
-            .filter(DownloadHistory.download_hash == download_hash)
+        return db.execute(
+            select(DownloadHistory)
+            .where(DownloadHistory.download_hash == download_hash)
             .order_by(DownloadHistory.date.desc())
-            .first()
-        )
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -102,12 +101,11 @@ class DownloadHistory(Base):
         if not normalized_hashes:
             return []
 
-        histories = (
-            db.query(DownloadHistory)
-            .filter(DownloadHistory.download_hash.in_(normalized_hashes))
+        histories = db.execute(
+            select(DownloadHistory)
+            .where(DownloadHistory.download_hash.in_(normalized_hashes))
             .order_by(DownloadHistory.download_hash, DownloadHistory.date.desc())
-            .all()
-        )
+        ).scalars().all()
         latest_histories = {}
         for history in histories:
             if history.download_hash and history.download_hash not in latest_histories:
@@ -128,32 +126,30 @@ class DownloadHistory(Base):
         """按规范媒体身份查询下载历史。"""
         if not media_source or media_id is None or not str(media_id).strip():
             return []
-        query = db.query(DownloadHistory)
-        query = query.filter(
+        statement = select(DownloadHistory).where(
             DownloadHistory.media_source == str(media_source),
             DownloadHistory.media_id == str(media_id).strip(),
         )
         if music_type:
-            query = query.filter(DownloadHistory.music_type == music_type)
-        return query.all()
+            statement = statement.where(DownloadHistory.music_type == music_type)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
     def list_by_page(
-        cls, db: Session, page: Optional[int] = 1, count: Optional[int] = 30
+        cls, db: Session, page: int = 1, count: int = 30
     ):
-        return (
-            db.query(DownloadHistory)
+        return list(db.execute(
+            select(DownloadHistory)
             .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
             .offset((page - 1) * count)
             .limit(count)
-            .all()
-        )
+        ).scalars().all())
 
     @classmethod
     @async_db_query
     async def async_list_by_page(
-        cls, db: AsyncSession, page: Optional[int] = 1, count: Optional[int] = 30
+        cls, db: AsyncSession, page: int = 1, count: int = 30
     ):
         result = await db.execute(
             select(cls)
@@ -161,7 +157,7 @@ class DownloadHistory(Base):
             .offset((page - 1) * count)
             .limit(count)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
@@ -169,15 +165,15 @@ class DownloadHistory(Base):
         cls,
         db: AsyncSession,
         title: str,
-        page: Optional[int] = 1,
-        count: Optional[int] = 30,
+        page: int = 1,
+        count: int = 30,
     ):
         query = (
             select(cls).filter(_title_like(cls.title, title)).order_by(cls.date.desc())
         )
         query = query.offset((page - 1) * count).limit(count)
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @async_db_query
@@ -196,7 +192,9 @@ class DownloadHistory(Base):
     @classmethod
     @db_query
     def get_by_path(cls, db: Session, path: str):
-        return db.query(DownloadHistory).filter(DownloadHistory.path == path).first()
+        return db.execute(
+            select(DownloadHistory).where(DownloadHistory.path == path)
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -215,107 +213,46 @@ class DownloadHistory(Base):
         按媒体身份、季集或标题年份查询下载记录。
         """
         if media_source and media_id and mtype:
-            # 电视剧某季某集
-            if season is not None and episode:
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.media_source == str(media_source),
-                        DownloadHistory.media_id == str(media_id),
-                        DownloadHistory.type == mtype,
-                        DownloadHistory.seasons == season,
-                        DownloadHistory.episodes == episode,
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
-            # 电视剧某季
-            elif season is not None:
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.media_source == str(media_source),
-                        DownloadHistory.media_id == str(media_id),
-                        DownloadHistory.type == mtype,
-                        DownloadHistory.seasons == season,
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
-            else:
-                # 电视剧所有季集/电影
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.media_source == str(media_source),
-                        DownloadHistory.media_id == str(media_id),
-                        DownloadHistory.type == mtype,
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
-        # 标题 + 年份
+            statement = select(DownloadHistory).where(
+                DownloadHistory.media_source == str(media_source),
+                DownloadHistory.media_id == str(media_id),
+                DownloadHistory.type == mtype,
+            )
         elif title and year:
-            # 电视剧某季某集
-            if season is not None and episode:
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.title == title,
-                        DownloadHistory.year == year,
-                        DownloadHistory.seasons == season,
-                        DownloadHistory.episodes == episode,
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
-            # 电视剧某季
-            elif season is not None:
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.title == title,
-                        DownloadHistory.year == year,
-                        DownloadHistory.seasons == season,
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
-            else:
-                # 电视剧所有季集/电影
-                return (
-                    db.query(DownloadHistory)
-                    .filter(
-                        DownloadHistory.title == title, DownloadHistory.year == year
-                    )
-                    .order_by(DownloadHistory.id.desc())
-                    .all()
-                )
+            statement = select(DownloadHistory).where(
+                DownloadHistory.title == title,
+                DownloadHistory.year == year,
+            )
+        else:
+            return []
+        # 季、集逐级收窄：给出季才可能给集，与原六条分支等价
+        if season is not None:
+            statement = statement.where(DownloadHistory.seasons == season)
+            if episode:
+                statement = statement.where(DownloadHistory.episodes == episode)
+        return list(db.execute(
+            statement.order_by(DownloadHistory.id.desc())
+        ).scalars().all())
 
-        return []
 
     @classmethod
     @db_query
     def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None):
         """
-        查询某用户某时间之后的下载历史
+        查询某用户某时间之前的下载历史。
+
+        条件是 date < 传入时刻，等于该时刻的那条不计入；oper 层的同名方法描述一致。
+        :param db: 数据库会话
+        :param date: 时间水位，取该时刻之前的记录
+        :param username: 下载用户，不传则跨用户返回
+        :return: 下载历史列表，按主键倒序
         """
+        statement = select(DownloadHistory).where(DownloadHistory.date < date)
         if username:
-            return (
-                db.query(DownloadHistory)
-                .filter(
-                    DownloadHistory.date < date, DownloadHistory.username == username
-                )
-                .order_by(DownloadHistory.id.desc())
-                .all()
-            )
-        else:
-            return (
-                db.query(DownloadHistory)
-                .filter(DownloadHistory.date < date)
-                .order_by(DownloadHistory.id.desc())
-                .all()
-            )
+            statement = statement.where(DownloadHistory.username == username)
+        return list(db.execute(
+            statement.order_by(DownloadHistory.id.desc())
+        ).scalars().all())
 
     @classmethod
     @db_query
@@ -331,46 +268,30 @@ class DownloadHistory(Base):
         """
         查询某时间之后的下载历史
         """
+        statement = select(DownloadHistory).where(
+            DownloadHistory.date > date,
+            DownloadHistory.type == type,
+            DownloadHistory.media_source == str(media_source),
+            DownloadHistory.media_id == str(media_id),
+        )
         if seasons:
-            return (
-                db.query(DownloadHistory)
-                .filter(
-                    DownloadHistory.date > date,
-                    DownloadHistory.type == type,
-                    DownloadHistory.media_source == str(media_source),
-                    DownloadHistory.media_id == str(media_id),
-                    DownloadHistory.seasons == seasons,
-                )
-                .order_by(DownloadHistory.id.desc())
-                .all()
-            )
-        else:
-            return (
-                db.query(DownloadHistory)
-                .filter(
-                    DownloadHistory.date > date,
-                    DownloadHistory.type == type,
-                    DownloadHistory.media_source == str(media_source),
-                    DownloadHistory.media_id == str(media_id),
-                )
-                .order_by(DownloadHistory.id.desc())
-                .all()
-            )
+            statement = statement.where(DownloadHistory.seasons == seasons)
+        return list(db.execute(
+            statement.order_by(DownloadHistory.id.desc())
+        ).scalars().all())
 
     @classmethod
     @db_query
     def list_by_type(cls, db: Session, mtype: str, days: int):
-        return (
-            db.query(DownloadHistory)
-            .filter(
+        return list(db.execute(
+            select(DownloadHistory).where(
                 DownloadHistory.type == mtype,
                 DownloadHistory.date
                 >= time.strftime(
                     "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400 * int(days))
                 ),
             )
-            .all()
-        )
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -383,20 +304,17 @@ class DownloadHistory(Base):
         """
         分批删除指定时间之前的下载历史。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
-            .filter(cls.date < before_time)
+        ids = db.execute(
+            select(cls.id)
+            .where(cls.date < before_time)
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return (
-            db.query(cls)
-            .filter(cls.id.in_(ids))
-            .delete(synchronize_session=False)
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
         )
 
 
@@ -407,19 +325,19 @@ class DownloadFiles(Base):
 
     id = get_id_column()
     # 下载器
-    downloader = Column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载任务Hash
-    download_hash = Column(String)
+    download_hash: Mapped[Optional[str]] = mapped_column(String)
     # 完整路径
-    fullpath = Column(String)
+    fullpath: Mapped[Optional[str]] = mapped_column(String)
     # 保存路径
-    savepath = Column(String, index=True)
+    savepath: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 文件相对路径/名称
-    filepath = Column(String)
+    filepath: Mapped[Optional[str]] = mapped_column(String)
     # 种子名称
-    torrentname = Column(String)
+    torrentname: Mapped[Optional[str]] = mapped_column(String)
     # 状态 0-已删除 1-正常
-    state = Column(Integer, nullable=False, default=1)
+    state: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     __table_args__ = (
         Index('ix_downloadfiles_download_hash_state', 'download_hash', 'state'),
@@ -429,43 +347,29 @@ class DownloadFiles(Base):
     @classmethod
     @db_query
     def get_by_hash(cls, db: Session, download_hash: str, state: Optional[int] = None):
+        statement = select(cls).where(cls.download_hash == download_hash)
         if state is not None:
-            return (
-                db.query(cls)
-                .filter(cls.download_hash == download_hash, cls.state == state)
-                .all()
-            )
-        else:
-            return db.query(cls).filter(cls.download_hash == download_hash).all()
+            statement = statement.where(cls.state == state)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @db_query
     def get_by_fullpath(cls, db: Session, fullpath: str, all_files: bool = False):
-        if not all_files:
-            return (
-                db.query(cls)
-                .filter(cls.fullpath == fullpath)
-                .order_by(cls.id.desc())
-                .first()
-            )
-        else:
-            return (
-                db.query(cls)
-                .filter(cls.fullpath == fullpath)
-                .order_by(cls.id.desc())
-                .all()
-            )
+        result = db.execute(
+            select(cls).where(cls.fullpath == fullpath).order_by(cls.id.desc())
+        ).scalars()
+        return list(result.all()) if all_files else result.first()
 
     @classmethod
     @db_query
     def get_by_savepath(cls, db: Session, savepath: str):
-        return db.query(cls).filter(cls.savepath == savepath).all()
+        return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 
     @classmethod
     @db_update
     def delete_by_fullpath(cls, db: Session, fullpath: str):
-        db.query(cls).filter(cls.fullpath == fullpath, cls.state == 1).update(
-            {"state": 0}
+        db.execute(
+            update(cls).where(cls.fullpath == fullpath, cls.state == 1).values(state=0)
         )
 
     @classmethod
@@ -481,22 +385,19 @@ class DownloadFiles(Base):
         downloadfiles 没有时间字段，无法安全地按时间直接裁剪，
         因此只清理明确失去父记录的孤儿数据。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
+        ids = db.execute(
+            select(cls.id)
             .outerjoin(
                 DownloadHistory,
                 DownloadHistory.download_hash == cls.download_hash,
             )
-            .filter(DownloadHistory.id.is_(None))
+            .where(DownloadHistory.id.is_(None))
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return (
-            db.query(cls)
-            .filter(cls.id.in_(ids))
-            .delete(synchronize_session=False)
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
         )

@@ -5,11 +5,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.application.subscribe import add_subscribe, async_add_subscribe
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
-from app.db.subscribe_oper import SubscribeOper
+from app.db.oper.subscribe import SubscribeOper
 from app.domain.context import MusicInfo
 from app.schemas.types import MediaSource, MediaType
+
+
+def _add(**kwargs):
+    """
+    经应用层写入路径新增订阅。
+
+    媒体翻译住在 app/application/subscribe.py，查重与落库仍在 SubscribeOper——本文件
+    钉的是查重语义（谁被查、查几次、带哪些身份字段），所以从翻译入口进、把不带真会话
+    的 Oper 注进去，两层的契约一次跑通。
+    """
+    return add_subscribe(subscribe_oper=SubscribeOper(db=object()), **kwargs)
+
+
+async def _async_add(**kwargs):
+    """异步写入路径，与 _add 共用注入方式。"""
+    return await async_add_subscribe(subscribe_oper=SubscribeOper(db=object()), **kwargs)
 
 
 def _media(episode_group):
@@ -71,11 +88,11 @@ def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     persisted = SimpleNamespace(id=88)
     created = SimpleNamespace(create=MagicMock())
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.side_effect = [None, persisted]
         subscribe_model.return_value = created
 
-        sid, message = SubscribeOper(db=object()).add(
+        sid, message = _add(
             mediainfo=_media(episode_group),
             season=1,
         )
@@ -89,6 +106,112 @@ def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     created.create.assert_called_once()
 
 
+# 媒体身份的三种残缺形态。守卫写的是 ``not media_source or not media_id``——只测「两者都空」
+# 时 ``or`` 与 ``and`` 表现一致，必须把「只缺一半」的两种也测到，否则守卫被改宽也没人知道。
+# 注意：真实的 resolve_media_identity 只会返回「两个都有」或「两个都空」，构造不出半残身份，
+# 所以这里必须替换掉它才能把守卫本身的契约钉住。
+_INCOMPLETE_IDENTITIES = [
+    pytest.param((None, "987654321"), id="缺来源"),
+    pytest.param((MediaSource.TMDB, None), id="缺原生ID"),
+    pytest.param((None, None), id="两者皆缺"),
+]
+
+
+@pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
+def test_add_rejects_incomplete_media_identity(identity):
+    """
+    媒体身份只要缺一半就必须拒绝新增，且不得落库。
+
+    身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，后续按身份去重也会失效。
+    """
+    with patch("app.application.subscribe.resolve_media_identity", return_value=identity), \
+            patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        result = _add(mediainfo=_media(None), season=1)
+
+    assert result == (0, "媒体身份不完整")
+    # 守卫必须在查询与建模之前短路，而不是先写进去再补救
+    subscribe_model.exists.assert_not_called()
+    subscribe_model.assert_not_called()
+
+
+@pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
+def test_async_add_rejects_incomplete_media_identity(identity):
+    """异步新增与同步路径共用同一道身份守卫，两条链路不能一宽一严。"""
+    with patch("app.application.subscribe.resolve_media_identity", return_value=identity), \
+            patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock()
+
+        result = asyncio.run(_async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (0, "媒体身份不完整")
+    subscribe_model.async_exists.assert_not_awaited()
+    subscribe_model.assert_not_called()
+
+
+def test_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
+    """
+    创建后回查落空必须如实报「新增订阅失败」，不能把落空当成功返回。
+
+    回查落空意味着写入实际没生效（唯一约束冲突、事务回滚等）；此时若返回成功，
+    调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
+    """
+    created = SimpleNamespace(create=MagicMock())
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, None]
+        subscribe_model.return_value = created
+
+        result = _add(mediainfo=_media(None), season=1)
+
+    assert result == (0, "新增订阅失败")
+    created.create.assert_called_once()
+
+
+def test_async_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
+    """异步新增的回查落空路径与同步一致。"""
+    created = SimpleNamespace(async_create=AsyncMock())
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock(side_effect=[None, None])
+        subscribe_model.return_value = created
+
+        result = asyncio.run(_async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (0, "新增订阅失败")
+    created.async_create.assert_awaited_once()
+
+
+def test_add_reports_existing_subscription_without_creating():
+    """
+    首次查询即命中时返回既有订阅，不再建第二条。
+
+    重复建订阅会让同一部剧被两条订阅并行搜索、重复下载。
+    """
+    existing = SimpleNamespace(id=77)
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        subscribe_model.exists.return_value = existing
+
+        result = _add(mediainfo=_media(None), season=1)
+
+    assert result == (77, "订阅已存在")
+    assert subscribe_model.exists.call_count == 1
+    subscribe_model.assert_not_called()
+
+
+def test_async_add_reports_existing_subscription_without_creating():
+    """异步新增命中既有订阅时同样不建第二条。"""
+    existing = SimpleNamespace(id=78)
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock(return_value=existing)
+
+        result = asyncio.run(_async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (78, "订阅已存在")
+    assert subscribe_model.async_exists.await_count == 1
+    subscribe_model.assert_not_called()
+
+
 def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
     """音乐订阅应把 MusicBrainz 发行封面写入订阅海报和背景字段。"""
     persisted = SimpleNamespace(id=92)
@@ -100,11 +223,11 @@ def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
         cover_url="https://coverartarchive.org/release-group/example/front-500",
     )
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.side_effect = [None, persisted]
         subscribe_model.return_value = created
 
-        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+        sid, _ = _add(mediainfo=media, season=None)
 
     assert sid == 92
     payload = subscribe_model.call_args.kwargs
@@ -124,11 +247,11 @@ def test_music_subscribe_persists_numeric_year_as_string():
         cover_url="https://coverartarchive.org/release/example/front-500",
     )
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.side_effect = [None, persisted]
         subscribe_model.return_value = created
 
-        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+        sid, _ = _add(mediainfo=media, season=None)
 
     assert sid == 93
     payload = subscribe_model.call_args.kwargs
@@ -148,11 +271,11 @@ def test_music_album_subscription_persists_entity_and_track_count():
         total_tracks=11,
     )
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.side_effect = [None, persisted]
         subscribe_model.return_value = created
 
-        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+        sid, _ = _add(mediainfo=media, season=None)
 
     assert sid == 94
     payload = subscribe_model.call_args.kwargs
@@ -173,11 +296,11 @@ def test_music_recording_subscription_drops_album_track_count_and_scopes_identit
         total_tracks=11,
     )
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.side_effect = [None, persisted]
         subscribe_model.return_value = created
 
-        sid, _ = SubscribeOper(db=object()).add(mediainfo=media, season=None)
+        sid, _ = _add(mediainfo=media, season=None)
 
     assert sid == 95
     payload = subscribe_model.call_args.kwargs
@@ -195,11 +318,11 @@ def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     persisted = SimpleNamespace(id=89)
     created = SimpleNamespace(async_create=AsyncMock())
 
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.async_exists = AsyncMock(side_effect=[None, persisted])
         subscribe_model.return_value = created
 
-        sid, message = asyncio.run(SubscribeOper(db=object()).async_add(
+        sid, message = asyncio.run(_async_add(
             mediainfo=_media(episode_group),
             season=1,
         ))
@@ -218,11 +341,11 @@ def test_owner_scoped_add_forwards_episode_group_sync_and_async():
     media = _media("eg-owner")
     sync_persisted = SimpleNamespace(id=90)
     sync_created = SimpleNamespace(create=MagicMock())
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists_by_username.side_effect = [None, sync_persisted]
         subscribe_model.return_value = sync_created
 
-        sid, _ = SubscribeOper(db=object()).add(
+        sid, _ = _add(
             mediainfo=media,
             season=1,
             username="alice",
@@ -237,13 +360,13 @@ def test_owner_scoped_add_forwards_episode_group_sync_and_async():
 
     async_persisted = SimpleNamespace(id=91)
     async_created = SimpleNamespace(async_create=AsyncMock())
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.async_exists_by_username = AsyncMock(
             side_effect=[None, async_persisted]
         )
         subscribe_model.return_value = async_created
 
-        sid, _ = asyncio.run(SubscribeOper(db=object()).async_add(
+        sid, _ = asyncio.run(_async_add(
             mediainfo=media,
             season=1,
             username="alice",
@@ -260,7 +383,7 @@ def test_owner_scoped_add_forwards_episode_group_sync_and_async():
 def test_exists_defaults_to_main_season_episode_group():
     """省略剧集组时按主季查询，显式剧集组按对应范围查询。"""
     oper = SubscribeOper(db=object())
-    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+    with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.return_value = SimpleNamespace(id=1)
 
         assert oper.exists(
@@ -276,7 +399,7 @@ def test_exists_defaults_to_main_season_episode_group():
         ) is True
         assert subscribe_model.exists.call_args.kwargs["episode_group"] == "eg-1"
 
-    with patch("app.db.subscribe_oper.SubscribeHistory") as history_model:
+    with patch("app.db.oper.subscribe.SubscribeHistory") as history_model:
         history_model.exists.return_value = SimpleNamespace(id=2)
 
         assert oper.exist_history(

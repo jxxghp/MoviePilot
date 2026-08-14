@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from app import schemas
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 
 

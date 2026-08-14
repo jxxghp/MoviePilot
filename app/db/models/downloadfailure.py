@@ -1,10 +1,10 @@
 from typing import List, Optional
 
-from sqlalchemy import Column, Float, Index, Integer, String
-from sqlalchemy.orm import Session
+from sqlalchemy import Float, Index, Integer, String, delete, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
-from app.db.models.media_identity import media_identity_constraint
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
+from app.db.models._constraints import media_identity_constraint
 
 
 class DownloadFailure(Base):
@@ -14,44 +14,44 @@ class DownloadFailure(Base):
 
     id = get_id_column()
     # 资源失败指纹
-    fingerprint = Column(String, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
     # 类型 电影/电视剧
-    type = Column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)
     # 标题
-    title = Column(String)
+    title: Mapped[Optional[str]] = mapped_column(String)
     # 年份
-    year = Column(String)
+    year: Mapped[Optional[str]] = mapped_column(String)
     # 媒体数据源与原生ID
-    media_source = Column(String)
-    media_id = Column(String)
+    media_source: Mapped[Optional[str]] = mapped_column(String)
+    media_id: Mapped[Optional[str]] = mapped_column(String)
     # Sxx
-    seasons = Column(String)
+    seasons: Mapped[Optional[str]] = mapped_column(String)
     # Exx
-    episodes = Column(String)
+    episodes: Mapped[Optional[str]] = mapped_column(String)
     # 站点ID
-    site = Column(Integer)
+    site: Mapped[Optional[int]] = mapped_column(Integer)
     # 站点名称
-    site_name = Column(String)
+    site_name: Mapped[Optional[str]] = mapped_column(String)
     # 种子资源键
-    torrent_id = Column(String)
+    torrent_id: Mapped[Optional[str]] = mapped_column(String)
     # 种子名称
-    torrent_name = Column(String)
+    torrent_name: Mapped[Optional[str]] = mapped_column(String)
     # 种子大小
-    torrent_size = Column(Float)
+    torrent_size: Mapped[Optional[float]] = mapped_column(Float)
     # 下载器
-    downloader = Column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 下载来源
-    source = Column(String)
+    source: Mapped[Optional[str]] = mapped_column(String)
     # 失败原因
-    error_message = Column(String)
+    error_message: Mapped[Optional[str]] = mapped_column(String)
     # 重试次数
-    retry_count = Column(Integer, default=0)
+    retry_count: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 首次失败时间
-    first_failed_at = Column(String)
+    first_failed_at: Mapped[Optional[str]] = mapped_column(String)
     # 最近失败时间
-    last_failed_at = Column(String)
+    last_failed_at: Mapped[Optional[str]] = mapped_column(String)
     # 下次允许重试时间
-    next_retry_at = Column(String)
+    next_retry_at: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("downloadfailure"),
@@ -74,11 +74,10 @@ class DownloadFailure(Base):
         normalized = list(dict.fromkeys([fingerprint for fingerprint in fingerprints if fingerprint]))
         if not normalized:
             return []
-        return (
-            db.query(cls)
-            .filter(cls.fingerprint.in_(normalized), cls.next_retry_at > now_time)
-            .all()
-        )
+        return list(db.execute(
+            select(cls)
+            .where(cls.fingerprint.in_(normalized), cls.next_retry_at > now_time)
+        ).scalars().all())
 
     @classmethod
     @db_update
@@ -93,7 +92,9 @@ class DownloadFailure(Base):
         """
         新增或更新资源失败记录。
         """
-        failure = db.query(cls).filter(cls.fingerprint == fingerprint).first()
+        failure = db.execute(
+            select(cls).where(cls.fingerprint == fingerprint)
+        ).scalars().first()
         payload = {
             **kwargs,
             "fingerprint": fingerprint,
@@ -125,14 +126,15 @@ class DownloadFailure(Base):
         """
         分批清理已过期较久的失败冷却记录。
         """
-        ids = [
-            row[0]
-            for row in db.query(cls.id)
-            .filter(cls.next_retry_at < before_time)
+        ids = db.execute(
+            select(cls.id)
+            .where(cls.next_retry_at < before_time)
             .order_by(cls.id.asc())
             .limit(limit)
-            .all()
-        ]
+        ).scalars().all()
         if not ids:
             return 0
-        return db.query(cls).filter(cls.id.in_(ids)).delete(synchronize_session=False)
+        return execute_dml(
+            db, delete(cls).where(cls.id.in_(ids)),
+            execution_options={"synchronize_session": False},
+        )

@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 from app import schemas
 from app.domain.context import MediaInfo
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
 from app.adapters.system.host import SystemUtils

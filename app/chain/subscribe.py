@@ -27,11 +27,11 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.words import WordsMatcher
 from app.domain.metainfo import MetaInfo
-from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
-from app.db.site_oper import SiteOper
-from app.db.subscribe_oper import SubscribeOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.interaction import (
     SlashInteractionManager,
     build_navigation_buttons,
@@ -42,6 +42,7 @@ from app.application.messaging.interaction import (
     update_or_post_message,
 )
 from app.application.mediaserver import MediaServerHelper
+from app.application.subscribe import add_subscribe, async_add_subscribe
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
@@ -49,12 +50,8 @@ from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
     ContentType
-from app.domain.media import (
-    MUSIC_SUBSCRIBABLE_TYPES,
-    build_media_key,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
+from app.schemas.media import build_media_key, normalize_media_source, resolve_media_identity
 
 subscribe_interaction_manager = SlashInteractionManager()
 
@@ -989,7 +986,7 @@ class SubscribeChain(ChainBase):
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
         # 操作数据库
-        sid, err_msg = SubscribeOper().add(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -1193,7 +1190,7 @@ class SubscribeChain(ChainBase):
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
         # 操作数据库
-        sid, err_msg = await SubscribeOper().async_add(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = await async_add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:

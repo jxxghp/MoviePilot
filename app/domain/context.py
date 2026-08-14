@@ -20,7 +20,7 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.domain.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.domain.string import StringUtils
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})

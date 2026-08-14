@@ -38,7 +38,7 @@ from app.agent.tools.impl.update_agent_task import (
 from app.agent.tools.tags import ToolTag
 from app.runtime.config import settings
 from app.db import SessionFactory
-from app.db.agenttask_oper import AgentTaskOper
+from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.schemas import ScheduleInfo
 from app.scheduler import Scheduler

@@ -31,7 +31,7 @@ from app.adapters.system.resource import (
 from app.application.messaging.message import MessageHelper, stop_message
 from app.adapters.external.server import MoviePilotServerHelper
 from app.db import close_database
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.command import CommandChain
 from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey

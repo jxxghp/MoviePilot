@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.schemas.types import SystemConfigKey

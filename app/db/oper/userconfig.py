@@ -38,7 +38,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
             conf = UserConfig(username=username, key=key, value=value)
             conf.create(self._db)
 
-    def get(self, username: str, key: Union[str, UserConfigKey] = None) -> Any:
+    def get(self, username: str, key: Optional[Union[str, UserConfigKey]] = None) -> Any:
         """
         获取用户配置
         """

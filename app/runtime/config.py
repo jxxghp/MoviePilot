@@ -124,6 +124,11 @@ class ConfigModel(BaseModel):
 
     # ==================== 数据库配置 ====================
     # 数据库类型，支持 sqlite 和 postgresql，默认使用 sqlite
+    # API 服务的 worker 进程数。连接池是进程级的，每个 worker 各持一份，
+    # 数据库连接额度校验按它换算总用量。注意：当前主程序以单进程方式启动
+    # （uvicorn.Config 的 workers 仅在多进程 supervisor 路径下生效），
+    # 调大此项前需先解决调度器会在每个 worker 内重复执行的问题
+    API_WORKERS: int = 1
     DB_TYPE: str = "sqlite"
     # 是否在控制台输出 SQL 语句，默认关闭
     DB_ECHO: bool = False
@@ -157,6 +162,26 @@ class ConfigModel(BaseModel):
     DB_POSTGRESQL_POOL_SIZE: int = 10
     # PostgreSQL 连接池溢出数量
     DB_POSTGRESQL_MAX_OVERFLOW: int = 50
+    # 异步连接池类型：QueuePool / NullPool。
+    # NullPool 下每个异步会话独占一条物理连接、零复用且无上限，突发并发会直接顶穿
+    # PostgreSQL 的 max_connections（表现为 TooManyConnectionsError），在 SQLite 上
+    # 则表现为 WAL 写争用导致的长时间卡顿。默认 QueuePool：仅对常驻主事件循环池化，
+    # 其余事件循环自动回退 NullPool，避免跨循环复用连接。遇到兼容问题可设为 NullPool
+    # 回到旧行为。
+    DB_ASYNC_POOL_TYPE: str = "QueuePool"
+    # 异步连接池大小（每个被池化的事件循环）
+    DB_ASYNC_POOL_SIZE: int = 5
+    # 异步连接池溢出数量（每个被池化的事件循环）
+    DB_ASYNC_MAX_OVERFLOW: int = 10
+    # 未被池化的事件循环（临时循环）共享的全局并发连接配额。
+    # 池化路径由连接池自身限流，这里只为 NullPool 兜底路径补上背压，
+    # 防止临时循环上的突发并发再次无界增长。
+    # 实测常驻的 feishu/discord 循环不访问数据库，走此路径的只有插件与调度器
+    # 兜底分支的零星调用，因此取值不必大——它直接计入连接总额度
+    DB_ASYNC_FALLBACK_LIMIT: int = 10
+    # 驱动级连接参数，透传给 create_engine/create_async_engine 的 connect_args。
+    # 例如经 PgBouncer 事务模式接入时 asyncpg 需要 {"statement_cache_size": 0}
+    DB_CONNECT_ARGS: dict = Field(default_factory=dict)
 
     # ==================== 数据清理配置 ====================
     # 是否启用数据表定时清理
@@ -1129,6 +1154,15 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if self.DB_POSTGRESQL_PORT:
             return f"{self.DB_POSTGRESQL_HOST}:{self.DB_POSTGRESQL_PORT}"
         return self.DB_POSTGRESQL_HOST
+
+    def DB_SQLITE_URL(self, driver: Optional[str] = None) -> str:
+        """
+        SQLite 连接串。与 DB_POSTGRESQL_URL 对称，避免各调用点各自拼接后悄悄漂移
+        ——迁移与应用连到不同的库文件是不会报错的。
+        :param driver: 驱动名，如 aiosqlite；留空为同步驱动
+        """
+        scheme = "sqlite" if not driver else f"sqlite+{driver}"
+        return f"{scheme}:///{self.CONFIG_PATH}/user.db"
 
     def DB_POSTGRESQL_URL(self, driver: Optional[str] = None) -> str:
         """按同步或异步驱动构造 PostgreSQL SQLAlchemy URL。"""

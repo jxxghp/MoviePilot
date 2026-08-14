@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 from app.domain.context import SubtitleInfo, TorrentInfo
-from app.db.site_oper import SiteOper
+from app.db.oper.site import SiteOper
 from app.foundation.reflection import ModuleHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
@@ -17,7 +17,7 @@ from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.schemas.types import MediaSource
-from app.domain.media import resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType

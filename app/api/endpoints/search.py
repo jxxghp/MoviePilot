@@ -14,7 +14,8 @@ from app.application.security.access import verify_resource_token, verify_token
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
-from app.domain.media import normalize_music_type, resolve_media_identity
+from app.domain.media import normalize_music_type
+from app.schemas.media import resolve_media_identity
 from app.application.security.url import SecurityUtils
 
 router = ResponseAPIRouter()

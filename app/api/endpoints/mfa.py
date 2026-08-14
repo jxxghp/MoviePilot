@@ -18,8 +18,8 @@ from app.runtime.config import settings
 from app.db import get_async_db
 from app.db.models.passkey import PassKey
 from app.db.models.user import User
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_user, get_current_active_user_async
+from app.db.oper.systemconfig import SystemConfigOper
+from app.api.deps import get_current_active_user, get_current_active_user_async
 from app.application.security.passkey import (
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,

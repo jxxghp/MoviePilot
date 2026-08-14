@@ -10,7 +10,7 @@ from app.agent.tools.impl.send_message import SendMessageTool
 from app.chain.message import MessageChain
 from app.runtime.config import settings
 from app.db import SessionFactory
-from app.db.message_oper import MessageOper
+from app.db.oper.message import MessageOper
 from app.db.models.message import Message
 from app.application.messaging.interaction import AgentInteractionOption, agent_interaction_manager, media_interaction_manager
 from app.schemas.types import MessageChannel, NotificationType

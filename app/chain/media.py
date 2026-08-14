@@ -37,11 +37,8 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
 )
-from app.domain.media import (
-    is_music_media_source,
-    normalize_media_source,
-    resolve_media_identity,
-)
+from app.domain.media import is_music_media_source
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
 from app.foundation.text import convert as zhconv_convert
 from app.domain.string import StringUtils
@@ -643,9 +640,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
 
     def supplement_tmdb_info(
             self,
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             metainfo: Optional[MetaBase] = None,
-    ) -> Optional[MediaInfo]:
+    ) -> Optional[Union[MediaInfo, MusicInfo]]:
         """
         为任意主识别源补充 TMDB 辅助信息，同时保留原始媒体身份。
 
@@ -655,7 +652,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         if not mediainfo:
             return None
-        if mediainfo.type == MediaType.MUSIC:
+        # 音乐原样返回：下面全是 TMDB 影视字段，MusicInfo 上根本没有。用 isinstance
+        # 而不只看 type，一来静态检查能据此收窄（.type == 的比较收窄不了类型），二来
+        # type 没被正确赋值的 MusicInfo 也挡得住，不至于到下一行才 AttributeError
+        if isinstance(mediainfo, MusicInfo) or mediainfo.type == MediaType.MUSIC:
             return mediainfo
         if mediainfo.tmdb_id and mediainfo.tmdb_info and mediainfo.genre_ids:
             return mediainfo

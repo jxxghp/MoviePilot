@@ -72,9 +72,9 @@ from app.chain import ChainBase
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.db.agentchat_oper import AgentChatOper
-from app.db.agenttask_oper import AgentTaskOper
-from app.db.user_oper import UserOper
+from app.db.oper.agentchat import AgentChatOper
+from app.db.oper.agenttask import AgentTaskOper
+from app.db.oper.user import UserOper
 from app.runtime.log import logger
 from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Notification, NotificationType
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability

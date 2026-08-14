@@ -12,7 +12,7 @@ from app.runtime.config import settings
 from app.application.security.access import verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
-from app.db.user_oper import get_current_active_superuser
+from app.api.deps import get_current_active_superuser
 from app.application.directory import DirectoryHelper
 from app.scheduler import Scheduler
 from app.adapters.system.host import SystemUtils

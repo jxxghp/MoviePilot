@@ -10,7 +10,7 @@ from lxml import etree
 from app.chain.storage import StorageChain
 from app.runtime.config import settings
 from app.domain.context import Context
-from app.db.site_oper import SiteOper
+from app.db.oper.site import SiteOper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger

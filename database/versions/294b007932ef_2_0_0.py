@@ -12,7 +12,7 @@ from app.runtime.config import settings
 from app.application.security.access import get_password_hash
 from app.db import SessionFactory
 from app.db.models import *
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 

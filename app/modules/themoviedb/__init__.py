@@ -24,11 +24,8 @@ from app.schemas.types import (
     ModuleType,
 )
 from app.adapters.network.http import RequestUtils
-from app.domain.media import (
-    is_media_source_enabled,
-    is_media_source_selected,
-    normalize_media_source,
-)
+from app.domain.media import is_media_source_enabled, is_media_source_selected
+from app.schemas.media import normalize_media_source
 from app.foundation.text import convert as zhconv_convert
 
 

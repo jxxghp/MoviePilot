@@ -6,10 +6,11 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
+from app.application.history import add_transfer_fail, add_transfer_success
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.db.transferhistory_oper import TransferHistoryOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.schemas import FileItem, TransferInfo
 
 
@@ -69,7 +70,7 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
     meta.media_source = "anilist"
     meta.media_id = "154587"
 
-    oper.add_fail(
+    add_transfer_fail(
         fileitem=FileItem(
             storage="local",
             path="/downloads/Frieren.mkv",
@@ -77,6 +78,7 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
         ),
         mode="copy",
         meta=meta,
+        transfer_history_oper=oper,
     )
 
     call = oper.add_force.call_args
@@ -96,7 +98,7 @@ def test_failed_music_history_preserves_media_type_and_entity_namespace() -> Non
         media_id="recording-1",
     )
 
-    oper.add_fail(
+    add_transfer_fail(
         fileitem=FileItem(
             storage="local",
             path="/downloads/周杰伦 - 晴天.flac",
@@ -104,6 +106,7 @@ def test_failed_music_history_preserves_media_type_and_entity_namespace() -> Non
         ),
         mode="copy",
         meta=meta,
+        transfer_history_oper=oper,
     )
 
     call = oper.add_force.call_args
@@ -159,7 +162,7 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
         "downloadAdded": "custom download template",
     }
     monkeypatch.setattr(
-        "app.db.systemconfig_oper.SystemConfigOper",
+        "app.db.oper.systemconfig.SystemConfigOper",
         lambda: config_oper,
     )
 
@@ -222,7 +225,7 @@ def test_transfer_history_preserves_album_entity_context() -> None:
     meta = MetaMusic(title="叶惠美", artists=["周杰伦"], total_tracks=11)
     meta.apply_audio_quality("FLAC Lossless 24bit 96kHz 2304kbps")
 
-    oper.add_success(
+    add_transfer_success(
         fileitem=FileItem(
             storage="local",
             path="/downloads/叶惠美/01.flac",
@@ -238,6 +241,7 @@ def test_transfer_history_preserves_album_entity_context() -> None:
                 type="file",
             ),
         ),
+        transfer_history_oper=oper,
     )
 
     call = oper.add_force.call_args

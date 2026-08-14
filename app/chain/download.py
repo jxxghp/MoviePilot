@@ -26,9 +26,9 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.db.downloadfailure_oper import DownloadFailureOper
-from app.db.downloadhistory_oper import DownloadHistoryOper
-from app.db.mediaserver_oper import MediaServerOper
+from app.db.oper.downloadfailure import DownloadFailureOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.mediaserver import MediaServerOper
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.runtime.thread import ThreadHelper
 from app.application.torrent import TorrentHelper
@@ -38,7 +38,7 @@ from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
     ChainEventType
 from app.adapters.network.http import RequestUtils
-from app.domain.media import build_media_key, resolve_media_identity
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 from app.adapters.system.host import SystemUtils
 

@@ -1,12 +1,18 @@
-from typing import Optional, List
+"""
+API 层的公共依赖。
 
+这些是 FastAPI 的路由依赖：从令牌解出用户、校验激活状态与权限，失败一律以
+HTTPException 表达。它们此前住在 app/db/oper/user.py 里，与数据访问混在一处——
+鉴权是 HTTP 层的关注点，产出的是 403/400 而不是数据。放在 db 包里既让数据层反向
+依赖了 fastapi，也使这部分逻辑无法与数据访问分开度量。
+"""
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.application.security.access import verify_token
-from app.db import DbOper, get_db, get_async_db
+from app.db import get_async_db, get_db
 from app.db.models.user import User
 
 
@@ -112,80 +118,3 @@ async def get_current_active_superuser_async(
             status_code=400, detail="用户权限不足"
         )
     return current_user
-
-
-class UserOper(DbOper):
-    """
-    用户管理
-    """
-
-    def list(self) -> List[User]:
-        """
-        获取用户列表
-        """
-        return User.list(self._db)
-
-    def add(self, **kwargs):
-        """
-        新增用户
-        """
-        user = User(**kwargs)
-        user.create(self._db)
-
-    def get_by_name(self, name: str) -> User:
-        """
-        根据用户名获取用户
-        """
-        return User.get_by_name(self._db, name)
-
-    async def async_get_by_name(self, name: str) -> User:
-        """
-        异步根据用户名获取用户。
-        """
-        return await User.async_get_by_name(self._db, name)
-
-    async def async_get_by_id(self, user_id: int) -> User:
-        """
-        异步根据用户 ID 获取用户。
-        """
-        return await User.async_get_by_id(self._db, user_id)
-
-    def get_permissions(self, name: str) -> dict:
-        """
-        获取用户权限
-        """
-        user = User.get_by_name(self._db, name)
-        if user:
-            return user.permissions or {}
-        return {}
-
-    def get_settings(self, name: str) -> Optional[dict]:
-        """
-        获取用户个性化设置，返回None表示用户不存在
-        """
-        user = User.get_by_name(self._db, name)
-        if user:
-            return user.settings or {}
-        return None
-
-    def get_setting(self, name: str, key: str) -> Optional[str]:
-        """
-        获取用户个性化设置
-        """
-        settings = self.get_settings(name)
-        if settings:
-            return settings.get(key)
-        return None
-
-    def get_name(self, **kwargs) -> Optional[str]:
-        """
-        根据绑定账号获取用户名称
-        """
-        users = self.list()
-        for user in users:
-            user_setting = user.settings
-            if user_setting:
-                for k, v in kwargs.items():
-                    if user_setting.get(k) == str(v):
-                        return user.name
-        return None

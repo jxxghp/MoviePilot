@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.domain.context import MediaInfo
 from app.schemas import CustomRule, FilterRuleGroup
 from app.schemas.types import SystemConfigKey

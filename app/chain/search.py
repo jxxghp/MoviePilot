@@ -21,7 +21,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.progress import ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.torrent import TorrentHelper
@@ -35,11 +35,7 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.domain.media import (
-    build_media_key,
-    parse_media_key,
-    resolve_media_identity,
-)
+from app.schemas.media import build_media_key, parse_media_key, resolve_media_identity
 from app.domain.string import StringUtils
 from app.foundation.text import convert as zhconv_convert
 

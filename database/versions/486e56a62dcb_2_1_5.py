@@ -7,7 +7,7 @@ Create Date: 2025-05-13 19:49:51.271319
 """
 import re
 
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 
 # revision identifiers, used by Alembic.

@@ -17,8 +17,8 @@ from app.db import get_async_db, get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_user, get_current_active_user_async
+from app.db.oper.systemconfig import SystemConfigOper
+from app.api.deps import get_current_active_user, get_current_active_user_async
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
@@ -31,7 +31,7 @@ from app.schemas.types import (
     EventType,
     SystemConfigKey,
 )
-from app.domain.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
 

@@ -1,12 +1,12 @@
 import time
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import Column, Integer, String, Float, JSON, Index, or_, select
+from sqlalchemy import Integer, String, Float, JSON, Index, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import db_query, db_update, get_id_column, Base, async_db_query, async_db_update
-from app.db.models.media_identity import media_identity_constraint
+from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 
@@ -16,101 +16,101 @@ class Subscribe(Base):
     """
     id = get_id_column()
     # 标题
-    name = Column(String, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 年份
-    year = Column(String)
+    year: Mapped[Optional[str]] = mapped_column(String)
     # 类型
-    type = Column(String)
+    type: Mapped[Optional[str]] = mapped_column(String)
     # 搜索关键字
-    keyword = Column(String)
-    media_source = Column(String, index=True)
-    media_id = Column(String, index=True)
+    keyword: Mapped[Optional[str]] = mapped_column(String)
+    media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
+    media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
-    music_type = Column(String)
+    music_type: Mapped[Optional[str]] = mapped_column(String)
     # 专辑预期总曲目数，供整专资源完整性判断
-    total_tracks = Column(Integer)
+    total_tracks: Mapped[Optional[int]] = mapped_column(Integer)
     # 季号
-    season = Column(Integer)
+    season: Mapped[Optional[int]] = mapped_column(Integer)
     # 海报
-    poster = Column(String)
+    poster: Mapped[Optional[str]] = mapped_column(String)
     # 背景图
-    backdrop = Column(String)
+    backdrop: Mapped[Optional[str]] = mapped_column(String)
     # 评分，float
-    vote = Column(Float)
+    vote: Mapped[Optional[float]] = mapped_column(Float)
     # 简介
-    description = Column(String)
+    description: Mapped[Optional[str]] = mapped_column(String)
     # 过滤规则
-    filter = Column(String)
+    filter: Mapped[Optional[str]] = mapped_column(String)
     # 包含
-    include = Column(String)
+    include: Mapped[Optional[str]] = mapped_column(String)
     # 排除
-    exclude = Column(String)
+    exclude: Mapped[Optional[str]] = mapped_column(String)
     # 质量
-    quality = Column(String)
+    quality: Mapped[Optional[str]] = mapped_column(String)
     # 分辨率
-    resolution = Column(String)
+    resolution: Mapped[Optional[str]] = mapped_column(String)
     # 特效
-    effect = Column(String)
+    effect: Mapped[Optional[str]] = mapped_column(String)
     # 音乐音质等级：hires/lossless/lossy，可用正则组合
-    audio_quality = Column(String)
+    audio_quality: Mapped[Optional[str]] = mapped_column(String)
     # 音频格式，可用正则组合
-    audio_format = Column(String)
+    audio_format: Mapped[Optional[str]] = mapped_column(String)
     # 最低码率（bps）
-    min_bitrate = Column(Integer)
+    min_bitrate: Mapped[Optional[int]] = mapped_column(Integer)
     # 最低位深（bit）
-    min_bit_depth = Column(Integer)
+    min_bit_depth: Mapped[Optional[int]] = mapped_column(Integer)
     # 最低采样率（Hz）
-    min_sample_rate = Column(Integer)
+    min_sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 总集数
-    total_episode = Column(Integer)
+    total_episode: Mapped[Optional[int]] = mapped_column(Integer)
     # 开始集数
-    start_episode = Column(Integer)
+    start_episode: Mapped[Optional[int]] = mapped_column(Integer)
     # 缺失集数
-    lack_episode = Column(Integer)
+    lack_episode: Mapped[Optional[int]] = mapped_column(Integer)
     # 附加信息
-    note = Column(JSON)
+    note: Mapped[Optional[Any]] = mapped_column(JSON)
     # 状态：N-新建 R-订阅中 P-待定 S-暂停
-    state = Column(String, nullable=False, index=True, default='N')
+    state: Mapped[str] = mapped_column(String, nullable=False, index=True, default='N')
     # 最后更新时间
-    last_update = Column(String)
+    last_update: Mapped[Optional[str]] = mapped_column(String)
     # 创建时间
-    date = Column(String)
+    date: Mapped[Optional[str]] = mapped_column(String)
     # 订阅用户
-    username = Column(String, index=True)
+    username: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 订阅站点
-    sites = Column(JSON, default=list)
+    sites: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 下载器
-    downloader = Column(String)
+    downloader: Mapped[Optional[str]] = mapped_column(String)
     # 是否洗版
-    best_version = Column(Integer, default=0)
+    best_version: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 是否只洗全集整包，开启后电视剧洗版不按单集下载
-    best_version_full = Column(Integer, default=0)
+    best_version_full: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 当前优先级
-    current_priority = Column(Integer)
+    current_priority: Mapped[Optional[int]] = mapped_column(Integer)
     # 当前音乐版本格式
-    current_audio_format = Column(String)
+    current_audio_format: Mapped[Optional[str]] = mapped_column(String)
     # 当前音乐版本码率（bps）
-    current_bitrate = Column(Integer)
+    current_bitrate: Mapped[Optional[int]] = mapped_column(Integer)
     # 当前音乐版本位深（bit）
-    current_bit_depth = Column(Integer)
+    current_bit_depth: Mapped[Optional[int]] = mapped_column(Integer)
     # 当前音乐版本采样率（Hz）
-    current_sample_rate = Column(Integer)
+    current_sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 洗版时已下载剧集的优先级状态，格式：{"1": 90, "2": 100}
-    episode_priority = Column(JSON)
+    episode_priority: Mapped[Optional[Any]] = mapped_column(JSON)
     # 保存路径
-    save_path = Column(String)
+    save_path: Mapped[Optional[str]] = mapped_column(String)
     # 是否使用 imdbid 搜索
-    search_imdbid = Column(Integer, default=0)
+    search_imdbid: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 是否手动修改过总集数 0否 1是
-    manual_total_episode = Column(Integer, default=0)
+    manual_total_episode: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 自定义识别词
-    custom_words = Column(String)
+    custom_words: Mapped[Optional[str]] = mapped_column(String)
     # 自定义媒体类别
-    media_category = Column(String)
+    media_category: Mapped[Optional[str]] = mapped_column(String)
     # 过滤规则组
-    filter_groups = Column(JSON, default=list)
+    filter_groups: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 选择的剧集组
-    episode_group = Column(String)
+    episode_group: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
         media_identity_constraint("subscribe"),
@@ -152,11 +152,11 @@ class Subscribe(Base):
         )
         if condition is None:
             return None
-        query = db.query(cls).filter(condition)
+        statement = select(cls).where(condition)
         if season is not None:
-            query = query.filter(cls.season == season)
-        query = query.filter(cls.episode_group == episode_group)
-        return query.first()
+            statement = statement.where(cls.season == season)
+        statement = statement.where(cls.episode_group == episode_group)
+        return db.execute(statement).scalars().first()
 
     @classmethod
     @async_db_query
@@ -197,11 +197,11 @@ class Subscribe(Base):
         )
         if condition is None:
             return None
-        query = db.query(cls).filter(cls.username == username, condition)
+        statement = select(cls).where(cls.username == username, condition)
         if season is not None:
-            query = query.filter(cls.season == season)
-        query = query.filter(cls.episode_group == episode_group)
-        return query.first()
+            statement = statement.where(cls.season == season)
+        statement = statement.where(cls.episode_group == episode_group)
+        return db.execute(statement).scalars().first()
 
     @classmethod
     @async_db_query
@@ -232,11 +232,11 @@ class Subscribe(Base):
     @db_query
     def get_by_state(cls, db: Session, state: str):
         # 如果 state 为空或 None，返回所有订阅
-        if not state:
-            return db.query(cls).all()
-        else:
+        statement = select(cls)
+        if state:
             # 如果传入的状态不为空，拆分成多个状态
-            return db.query(cls).filter(cls.state.in_(state.split(','))).all()
+            statement = statement.where(cls.state.in_(state.split(',')))
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
@@ -249,15 +249,15 @@ class Subscribe(Base):
             result = await db.execute(
                 select(cls).filter(cls.state.in_(state.split(',')))
             )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def get_by_title(cls, db: Session, title: str, season: Optional[int] = None):
+        statement = select(cls).where(cls.name == title)
         if season is not None:
-            return db.query(cls).filter(cls.name == title,
-                                        cls.season == season).first()
-        return db.query(cls).filter(cls.name == title).first()
+            statement = statement.where(cls.season == season)
+        return db.execute(statement).scalars().first()
 
     @classmethod
     @async_db_query
@@ -286,7 +286,7 @@ class Subscribe(Base):
             result = await db.execute(
                 select(cls).filter(cls.name == title)
             )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -302,7 +302,7 @@ class Subscribe(Base):
         )
         if condition is None:
             return []
-        return db.query(cls).filter(condition).all()
+        return list(db.execute(select(cls).where(condition)).scalars().all())
 
     @classmethod
     @async_db_query
@@ -319,7 +319,7 @@ class Subscribe(Base):
         if condition is None:
             return []
         result = await db.execute(select(cls).filter(condition))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
@@ -336,10 +336,10 @@ class Subscribe(Base):
         )
         if condition is None:
             return None
-        query = db.query(cls).filter(condition, cls.type == type)
+        statement = select(cls).where(condition, cls.type == type)
         if season is not None:
-            query = query.filter(cls.season == season)
-        return query.first()
+            statement = statement.where(cls.season == season)
+        return db.execute(statement).scalars().first()
 
     @classmethod
     @async_db_query
@@ -368,13 +368,14 @@ class Subscribe(Base):
             season: Optional[int] = None,
     ) -> bool:
         """按规范媒体身份删除订阅。"""
-        query = db.query(type(self)).filter(
-            type(self).media_source == media_source,
-            type(self).media_id == str(media_id),
+        model = type(self)
+        statement = delete(model).where(
+            model.media_source == media_source,
+            model.media_id == str(media_id),
         )
         if season is not None:
-            query = query.filter(type(self).season == season)
-        query.delete(synchronize_session=False)
+            statement = statement.where(model.season == season)
+        db.execute(statement, execution_options={"synchronize_session": False})
         return True
 
     @async_db_update
@@ -394,20 +395,12 @@ class Subscribe(Base):
     @classmethod
     @db_query
     def list_by_username(cls, db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None):
+        statement = select(cls).where(cls.username == username)
+        if state:
+            statement = statement.where(cls.state == state)
         if mtype:
-            if state:
-                return db.query(cls).filter(cls.state == state,
-                                            cls.username == username,
-                                            cls.type == mtype).all()
-            else:
-                return db.query(cls).filter(cls.username == username,
-                                            cls.type == mtype).all()
-        else:
-            if state:
-                return db.query(cls).filter(cls.state == state,
-                                            cls.username == username).all()
-            else:
-                return db.query(cls).filter(cls.username == username).all()
+            statement = statement.where(cls.type == mtype)
+        return list(db.execute(statement).scalars().all())
 
     @classmethod
     @async_db_query
@@ -431,16 +424,18 @@ class Subscribe(Base):
                 result = await db.execute(
                     select(cls).filter(cls.username == username)
                 )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @classmethod
     @db_query
     def list_by_type(cls, db: Session, mtype: str, days: int):
-        return db.query(cls) \
-            .filter(cls.type == mtype,
-                    cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
-                                              time.localtime(time.time() - 86400 * int(days)))
-                    ).all()
+        return list(db.execute(
+            select(cls).where(
+                cls.type == mtype,
+                cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                          time.localtime(time.time() - 86400 * int(days)))
+            )
+        ).scalars().all())
 
     @classmethod
     @async_db_query
@@ -452,4 +447,4 @@ class Subscribe(Base):
                                           time.localtime(time.time() - 86400 * int(days)))
             )
         )
-        return result.scalars().all()
+        return list(result.scalars().all())

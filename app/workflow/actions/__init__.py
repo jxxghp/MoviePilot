@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Union
 
 from app.chain import ChainBase
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.schemas import ActionContext, ActionParams, ActionResult
 
 

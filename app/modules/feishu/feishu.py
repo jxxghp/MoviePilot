@@ -52,7 +52,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 
 from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo
-from app.db.user_oper import UserOper
+from app.db.oper.user import UserOper
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
 from app.schemas import CommingMessage, Notification

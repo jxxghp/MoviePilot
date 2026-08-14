@@ -11,7 +11,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.chain.transfer import TransferChain
-from app.schemas import FileItem, TransferTask
+from app.schemas import FileItem
+from app.application.transfer import TransferTask
 
 
 def _build_chain(pendingoper) -> TransferChain:

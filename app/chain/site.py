@@ -11,8 +11,8 @@ from app.chain import ChainBase
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, eventmanager
 from app.db.models.site import Site
-from app.db.site_oper import SiteOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
 from app.application.security.cookie import CookieHelper

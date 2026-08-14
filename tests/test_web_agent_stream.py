@@ -31,7 +31,7 @@ from app.api.endpoints.agent import (
     _split_web_agent_output,
 )
 from app.runtime.events import Event
-from app.db.agentchat_oper import AgentChatOper
+from app.db.oper.agentchat import AgentChatOper
 from app.db.models.agentchat import AgentChat
 from app.application.messaging.agent import build_web_agent_message_update_event
 from app.application.messaging.interaction import AgentInteractionOption, agent_interaction_manager, skills_interaction_manager
