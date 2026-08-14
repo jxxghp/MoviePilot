@@ -112,18 +112,18 @@ eventmanager.send_event(EventType.TransferComplete, data_dict)
 
 **When to use:** All database reads and writes. Never issue SQLAlchemy queries directly from chain, module, or endpoint code.
 
-**Convention:** Each SQLAlchemy model in `app/db/models/` has a corresponding `<Model>Oper` class in `app/db/<model>_oper.py`.
+**Convention:** Each SQLAlchemy model in `app/db/models/` has a corresponding `<Model>Oper` class in `app/db/oper/<model>.py` — the two packages mirror each other file for file, so the module name carries the entity and the package carries the role.
 
 ```
-app/db/models/subscribe.py       → app/db/subscribe_oper.py  (SubscribeOper)
-app/db/models/systemconfig.py    → app/db/systemconfig_oper.py (SystemConfigOper)
-app/db/models/transferhistory.py → app/db/transferhistory_oper.py (TransferHistoryOper)
+app/db/models/subscribe.py       → app/db/oper/subscribe.py       (SubscribeOper)
+app/db/models/systemconfig.py    → app/db/oper/systemconfig.py    (SystemConfigOper)
+app/db/models/transferhistory.py → app/db/oper/transferhistory.py (TransferHistoryOper)
 ```
 
 **Usage:**
 
 ```python
-from app.db.subscribe_oper import SubscribeOper
+from app.db.oper.subscribe import SubscribeOper
 
 oper = SubscribeOper()
 subscribe = oper.get(sid=1)
@@ -180,11 +180,11 @@ Do not introduce new singletons unless the class genuinely manages global shared
 
 **Enum:** `SystemConfigKey` in `app/schemas/types.py`
 
-**Oper class:** `SystemConfigOper` in `app/db/systemconfig_oper.py`
+**Oper class:** `SystemConfigOper` in `app/db/oper/systemconfig.py`
 
 ```python
 from app.schemas.types import SystemConfigKey
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 
 oper = SystemConfigOper()
 value = oper.get(SystemConfigKey.RssUrls)
@@ -199,7 +199,7 @@ oper.set(SystemConfigKey.RssUrls, ["https://..."])
 
 **When to use:** Per-user settings that must survive across sessions but differ by user.
 
-**Oper class:** `UserConfigOper` in `app/db/userconfig_oper.py`
+**Oper class:** `UserConfigOper` in `app/db/oper/userconfig.py`
 
 Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
 
@@ -214,6 +214,6 @@ Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
 | Lower-level module importing a chain or manager | Register a callback/resolver from `app/startup/` or move orchestration to `chain` |
 | Raw SQLAlchemy queries in endpoints or chains | Use the corresponding `*_oper.py` class |
 | Raw string keys for SystemConfig | Define and use a `SystemConfigKey` enum entry |
-| HTTP requests via `requests` or `httpx` directly | Host code uses `RequestUtils` from `app/foundation/http.py`; plugins use `app.sdk.network` |
+| HTTP requests via `requests` or `httpx` directly | Host code uses `RequestUtils` from `app/adapters/network/http.py`; plugins use `app.sdk.network` |
 
 *Last Updated: 2026-08-14*

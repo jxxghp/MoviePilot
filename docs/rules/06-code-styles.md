@@ -115,7 +115,7 @@ except:
 ## What Not To Do
 
 - Do not introduce new third-party libraries without placing them in the correct dependency entry: runtime packages in `requirements.in`, test/lint/build tooling in `requirements-dev.in`.
-- Do not use `requests` or `httpx` directly for external HTTP calls - host code uses `RequestUtils` from `app/foundation/http.py`; plugins use `app.sdk.network`.
+- Do not use `requests` or `httpx` directly for external HTTP calls - host code uses `RequestUtils` from `app/adapters/network/http.py`; plugins use `app.sdk.network`.
 - Do not issue raw SQLAlchemy queries from chains, modules, or endpoints — use the `*_oper.py` classes.
 - Do not add TODO or FIXME without context. Only keep one if it is genuinely deferred and cannot be addressed in the current task.
 - Do not add noisy markers like `# change starts here`, `# important`, or `# this is a fix`.
