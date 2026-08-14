@@ -89,6 +89,112 @@ def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
     created.create.assert_called_once()
 
 
+# 媒体身份的三种残缺形态。守卫写的是 ``not media_source or not media_id``——只测「两者都空」
+# 时 ``or`` 与 ``and`` 表现一致，必须把「只缺一半」的两种也测到，否则守卫被改宽也没人知道。
+# 注意：真实的 resolve_media_identity 只会返回「两个都有」或「两个都空」，构造不出半残身份，
+# 所以这里必须替换掉它才能把守卫本身的契约钉住。
+_INCOMPLETE_IDENTITIES = [
+    pytest.param((None, "987654321"), id="缺来源"),
+    pytest.param((MediaSource.TMDB, None), id="缺原生ID"),
+    pytest.param((None, None), id="两者皆缺"),
+]
+
+
+@pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
+def test_add_rejects_incomplete_media_identity(identity):
+    """
+    媒体身份只要缺一半就必须拒绝新增，且不得落库。
+
+    身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，后续按身份去重也会失效。
+    """
+    with patch("app.db.subscribe_oper.resolve_media_identity", return_value=identity), \
+            patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        result = SubscribeOper(db=object()).add(mediainfo=_media(None), season=1)
+
+    assert result == (0, "媒体身份不完整")
+    # 守卫必须在查询与建模之前短路，而不是先写进去再补救
+    subscribe_model.exists.assert_not_called()
+    subscribe_model.assert_not_called()
+
+
+@pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
+def test_async_add_rejects_incomplete_media_identity(identity):
+    """异步新增与同步路径共用同一道身份守卫，两条链路不能一宽一严。"""
+    with patch("app.db.subscribe_oper.resolve_media_identity", return_value=identity), \
+            patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock()
+
+        result = asyncio.run(SubscribeOper(db=object()).async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (0, "媒体身份不完整")
+    subscribe_model.async_exists.assert_not_awaited()
+    subscribe_model.assert_not_called()
+
+
+def test_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
+    """
+    创建后回查落空必须如实报「新增订阅失败」，不能把落空当成功返回。
+
+    回查落空意味着写入实际没生效（唯一约束冲突、事务回滚等）；此时若返回成功，
+    调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
+    """
+    created = SimpleNamespace(create=MagicMock())
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.side_effect = [None, None]
+        subscribe_model.return_value = created
+
+        result = SubscribeOper(db=object()).add(mediainfo=_media(None), season=1)
+
+    assert result == (0, "新增订阅失败")
+    created.create.assert_called_once()
+
+
+def test_async_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
+    """异步新增的回查落空路径与同步一致。"""
+    created = SimpleNamespace(async_create=AsyncMock())
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock(side_effect=[None, None])
+        subscribe_model.return_value = created
+
+        result = asyncio.run(SubscribeOper(db=object()).async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (0, "新增订阅失败")
+    created.async_create.assert_awaited_once()
+
+
+def test_add_reports_existing_subscription_without_creating():
+    """
+    首次查询即命中时返回既有订阅，不再建第二条。
+
+    重复建订阅会让同一部剧被两条订阅并行搜索、重复下载。
+    """
+    existing = SimpleNamespace(id=77)
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.exists.return_value = existing
+
+        result = SubscribeOper(db=object()).add(mediainfo=_media(None), season=1)
+
+    assert result == (77, "订阅已存在")
+    assert subscribe_model.exists.call_count == 1
+    subscribe_model.assert_not_called()
+
+
+def test_async_add_reports_existing_subscription_without_creating():
+    """异步新增命中既有订阅时同样不建第二条。"""
+    existing = SimpleNamespace(id=78)
+    with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        subscribe_model.async_exists = AsyncMock(return_value=existing)
+
+        result = asyncio.run(SubscribeOper(db=object()).async_add(
+            mediainfo=_media(None), season=1))
+
+    assert result == (78, "订阅已存在")
+    assert subscribe_model.async_exists.await_count == 1
+    subscribe_model.assert_not_called()
+
+
 def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
     """音乐订阅应把 MusicBrainz 发行封面写入订阅海报和背景字段。"""
     persisted = SimpleNamespace(id=92)

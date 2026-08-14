@@ -86,10 +86,11 @@ def test_plugindata_delete_all_clears_only_that_plugin(db):
 # Message
 # --------------------------------------------------------------------------- #
 
-def _message(reg_time: str, title: str, source: str = None, action: int = 1) -> Message:
+def _message(reg_time: str, title: str, source: str = None, action: int = 1,
+             image: str = None) -> Message:
     """构造一条消息记录。"""
     return Message(channel="wechat", source=source, mtype="Manual", title=title,
-                   text=title, reg_time=reg_time, action=action)
+                   text=title, reg_time=reg_time, action=action, image=image)
 
 
 def test_message_list_by_page_is_newest_first_and_paged(db):
@@ -144,6 +145,50 @@ def test_message_delete_before_is_batched_and_keeps_recent(db):
     assert Message.delete_before(db.session, before_time="2026-08-01", limit=100) == 0
 
     assert Message.list_by_page(db.session, page=1, count=1)[0].id == recent.id
+
+
+def test_message_delete_before_keeps_the_row_exactly_at_the_boundary(db):
+    """
+    保留时间点上的消息属于「保留期内」，不能被清理掉（``reg_time < before_time``）。
+
+    比较符若写成 ``<=``，每次清理都会多吃掉恰好落在保留起点的那一批消息；
+    数据从不压在边界上时这一字之差完全不可观测，故此处专门把行摆在边界上。
+    """
+    boundary = "2026-05-01 00:00:00"
+    at_boundary = db.add(_message(boundary, "边界上"))
+    db.add(_message("2026-04-30 23:59:59", "边界前一秒"))
+
+    assert Message.delete_before(db.session, before_time=boundary, limit=100) == 1
+
+    assert db.session.get(Message, at_boundary.id) is not None
+
+
+def test_message_async_list_sent_excludes_the_clear_boundary(db):
+    """
+    三个清理水位都取「严格晚于水位」的消息，正好落在水位上的必须被滤掉。
+
+    水位是「本次清空动作发生的时刻」，与它同一秒的消息属于已清空的那一批；
+    比较符放宽成 ``>=`` 会让用户清空后又看见最后一条旧消息。
+    """
+    boundary, after = "2026-03-01 10:00:00", "2026-03-01 10:00:01"
+    db.add(_message(boundary, "bd-系统-边界上"),
+           _message(after, "bd-系统-边界后"),
+           _message(boundary, "bd-媒体-边界上", image="http://img/1.jpg"),
+           _message(after, "bd-媒体-边界后", image="http://img/2.jpg"))
+
+    def _titles(**clears) -> set:
+        """取本用例写入的消息标题集合，隔离其他用例可能残留的消息。"""
+        rows = asyncio.run(Message.async_list_sent_by_page(page=1, count=100, **clears))
+        return {m.title for m in rows if m.title.startswith("bd-")}
+
+    # 全量清空水位：边界上的两条都属于被清空的那一批
+    assert _titles(all_clear_before=boundary) == {"bd-系统-边界后", "bd-媒体-边界后"}
+    # 系统消息（无图）清空水位：只吃无图消息，带图的媒体消息不受影响
+    assert _titles(system_clear_before=boundary) == {
+        "bd-系统-边界后", "bd-媒体-边界上", "bd-媒体-边界后"}
+    # 媒体消息（有图）清空水位：只吃带图消息，无图的系统消息不受影响
+    assert _titles(media_clear_before=boundary) == {
+        "bd-系统-边界上", "bd-系统-边界后", "bd-媒体-边界后"}
 
 
 def test_message_create_and_to_dict_returns_persisted_fields(db):
@@ -323,6 +368,24 @@ def test_download_failure_active_lookup_excludes_expired_cooldowns(db):
     assert [f.fingerprint for f in active] == ["fp-cold"]
 
 
+def test_download_failure_active_lookup_excludes_the_expiry_boundary(db):
+    """
+    冷却到点即结束：``next_retry_at`` 恰好等于当前时刻的记录不再算「冷却中」。
+
+    条件是 ``next_retry_at > now_time``；放宽成 ``>=`` 会让资源在到点那一秒仍被跳过，
+    而两侧数据都离边界一小时时，这一字之差查不出来。
+    """
+    now_time = "2026-08-13 12:00:00"
+    DownloadFailure.record_failure(db.session, **_failure("fp-at-boundary", now_time))
+    DownloadFailure.record_failure(
+        db.session, **_failure("fp-past-boundary", "2026-08-13 12:00:01"))
+
+    active = DownloadFailure.get_active_by_fingerprints(
+        db.session, ["fp-at-boundary", "fp-past-boundary"], now_time=now_time)
+
+    assert [f.fingerprint for f in active] == ["fp-past-boundary"]
+
+
 def test_download_failure_active_lookup_dedupes_and_ignores_blanks(db):
     """
     指纹列表去重并剔除空值，空列表直接短路返回。
@@ -372,3 +435,22 @@ def test_download_failure_delete_expired_is_batched(db):
 
     assert DownloadFailure.get_active_by_fingerprints(
         db.session, ["fp-live"], "2026-08-13 12:00:00")
+
+
+def test_download_failure_delete_expired_keeps_the_row_exactly_at_the_boundary(db):
+    """
+    ``next_retry_at`` 恰好等于清理水位的记录不算过期，必须留下（``next_retry_at < before_time``）。
+
+    比较符若写成 ``<=``，正好排到水位那一秒的冷却记录会被提前抹掉，该资源随即被重新
+    下载一遍——退避直接失效。上面那条分批用例的数据离水位有半年之遥，压不到边界。
+    """
+    boundary = "2026-05-01 00:00:00"
+    DownloadFailure.record_failure(db.session, **_failure("fp-at-boundary", boundary))
+    DownloadFailure.record_failure(
+        db.session, **_failure("fp-before-boundary", "2026-04-30 23:59:59"))
+
+    assert DownloadFailure.delete_expired(db.session, before_time=boundary, limit=100) == 1
+
+    remaining = DownloadFailure.get_active_by_fingerprints(
+        db.session, ["fp-at-boundary", "fp-before-boundary"], now_time="2026-01-01 00:00:00")
+    assert [f.fingerprint for f in remaining] == ["fp-at-boundary"]

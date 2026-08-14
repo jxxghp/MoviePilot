@@ -4,6 +4,17 @@
 同步/异步各一对：查询装饰器负责会话的获取与释放，更新装饰器额外负责提交与回滚。
 未显式传入会话时自动创建，并在结束时归还——异步路径经 async_session_scope 收口，
 连接池与配额都在那里生效。
+
+收尾故障（rollback / close / __aexit__ 自身抛异常）一律只记日志、不上抛，四个装饰器
+的处理一致。理由与代价都要写明，别当成漏写的 raise：
+
+- 连接断开、事务已失效这类故障恰恰最容易发生在「出错之后」的收尾阶段。裸写收尾语句时
+  它一抛错就顶替掉原始异常，调用方看到的只剩「connection reset」，业务异常连类型都被
+  换掉，按类型分流的 except（唯一约束冲突要重试、参数错误要报错）一并失配。
+- 代价是成功路径的行为随之改变：func() 成功、close() 失败时，调用方**静默拿到返回值**，
+  故障只进日志。这是有意为之——close() 失败时事务已经提交、业务确实成功了，且
+  SQLAlchemy 归还连接时已在池层吞掉异常并 invalidate 坏连接，再把释放故障升级成调用方
+  的异常，只会让一次已经落库的写入看起来像失败，诱发重复提交。
 """
 from typing import Any, Awaitable, Callable, Optional, Tuple, TypeVar
 
@@ -11,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.session import ScopedSession, async_session_scope
+from app.runtime.log import logger
 
 _R = TypeVar("_R")
 
@@ -106,13 +118,23 @@ def db_update(func: Callable[..., _R]) -> Callable[..., _R]:
             # 提交事务
             db.commit()
         except Exception as err:
-            # 回滚事务
-            db.rollback()
+            # 回滚事务。回滚自身失败不得顶替原始异常：连接断开、事务已失效这类收尾故障
+            # 恰恰最容易发生在「出错之后」，裸写 db.rollback() 时它一抛错，调用方看到的
+            # 就只剩「connection reset」，真正的业务异常连类型都被换掉、按类型分流的
+            # except 一并失配。故障本身另行记录，不静默吞掉
+            try:
+                db.rollback()
+            except Exception as rollback_err:  # noqa: BLE001  回滚失败不能掩盖原始异常
+                logger.error(f"事务回滚失败，原始异常将原样上抛：{rollback_err}")
             raise err
         finally:
-            # 关闭数据库会话
+            # 关闭数据库会话。释放失败只记录：既不顶替上面正在传播的业务异常，
+            # 成功路径下也不把一次已提交的写入变成调用方眼里的失败（见模块说明）
             if _close_db:
-                db.close()
+                try:
+                    db.close()
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变调用结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
         return result
 
     return wrapper
@@ -144,15 +166,22 @@ def async_db_update(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitab
             # 提交事务
             await db.commit()
         except Exception as err:
-            # 回滚事务
-            await db.rollback()
+            # 回滚事务；与同步路径同理，回滚失败只记录，不顶替原始异常
+            try:
+                await db.rollback()
+            except Exception as rollback_err:  # noqa: BLE001  回滚失败不能掩盖原始异常
+                logger.error(f"事务回滚失败，原始异常将原样上抛：{rollback_err}")
             raise err
         finally:
             # 关闭数据库会话
             if _close_db and _scope is not None:
                 # 退出会话上下文而不是只 close：配额的释放绑定在 __aexit__ 上，
-                # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死
-                await _scope.__aexit__(None, None, None)
+                # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死。
+                # 退出失败同样只记录，不改变调用结果（见模块说明）
+                try:
+                    await _scope.__aexit__(None, None, None)
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变调用结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
         return result
 
     return wrapper
@@ -182,9 +211,13 @@ def db_query(func: Callable[..., _R]) -> Callable[..., _R]:
         except Exception as err:
             raise err
         finally:
-            # 关闭数据库会话
+            # 关闭数据库会话。释放失败只记录，不顶替业务异常、也不影响成功路径的返回值
+            # （见模块说明）
             if _close_db:
-                db.close()
+                try:
+                    db.close()
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变调用结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
         return result
 
     return wrapper
@@ -220,8 +253,12 @@ def async_db_query(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitabl
             # 关闭数据库会话
             if _close_db and _scope is not None:
                 # 退出会话上下文而不是只 close：配额的释放绑定在 __aexit__ 上，
-                # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死
-                await _scope.__aexit__(None, None, None)
+                # 只关会话会让回退路径的全局配额永不归还，最终把自己饿死。
+                # 退出失败同样只记录，不改变调用结果（见模块说明）
+                try:
+                    await _scope.__aexit__(None, None, None)
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变调用结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
         return result
 
     return wrapper

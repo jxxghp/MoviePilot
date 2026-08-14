@@ -6,9 +6,11 @@
 这些都不会抛异常，只能靠对真实数据的断言暴露。
 """
 import asyncio
+import time as _time
 
 import pytest
 
+from app.db.models import subscribe as subscribe_module
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.schemas.types import MediaSource, MediaType
@@ -223,6 +225,29 @@ def test_list_by_type_only_returns_recent_days(db):
 
     assert "最近" in names
     assert "很久以前" not in names
+
+
+def test_list_by_type_includes_the_window_start_boundary(db, frozen_now):
+    """
+    时间窗是闭区间起点（``date >= 起点``），正好落在起点的订阅必须在结果里，同步异步一致。
+
+    起点由「调用时刻 - N 天」现算，不冻结时钟就摆不到边界上；上面那条用例用的是
+    2099/2000 两个极端值，比较符改成 ``>`` 照样绿。
+    """
+    now = frozen_now(subscribe_module)
+    window_start = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(now - 86400 * 7))
+    one_second_earlier = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                        _time.localtime(now - 86400 * 7 - 1))
+    db.add(_sub("窗口起点上", mtype=MediaType.TV.value, media_id="9303", date=window_start),
+           _sub("窗口起点前一秒", mtype=MediaType.TV.value, media_id="9304",
+                date=one_second_earlier))
+
+    names = {s.name for s in Subscribe.list_by_type(db.session, MediaType.TV.value, days=7)}
+    async_names = {s.name for s in asyncio.run(
+        Subscribe.async_list_by_type(mtype=MediaType.TV.value, days=7))}
+
+    assert "窗口起点上" in names and "窗口起点前一秒" not in names
+    assert "窗口起点上" in async_names and "窗口起点前一秒" not in async_names
 
 
 def test_delete_by_media_identity_removes_matching_seasons_only(db):

@@ -99,6 +99,44 @@ def db():
         session.close()
 
 
+@pytest.fixture
+def frozen_now(monkeypatch):
+    """
+    冻结指定模块看到的 ``time.time()``，其余时间函数原样透传标准库。
+
+    形如 ``date >= now - 86400 * days`` 的时间窗查询，窗口起点要到调用那一刻才算得出来，
+    不冻结就没法把数据精确摆在窗口起点上——而边界恰恰是 ``>=`` 与 ``>`` 唯一的分界，
+    数据不压在边界上，比较符写错也查不出来。
+
+    :return: ``freeze(module) -> float``，冻结该模块的时钟并返回冻结时刻的时间戳
+    """
+    import time as real_time
+
+    class _FrozenClock:
+        """只冻结 ``time()``，``localtime``/``strftime`` 等仍走标准库。"""
+
+        def __init__(self, now: float):
+            self.now = now
+
+        def time(self) -> float:
+            return self.now
+
+        def __getattr__(self, name):
+            return getattr(real_time, name)
+
+    def freeze(module) -> float:
+        """
+        把模块内的 ``time`` 名字换成冻结时钟。
+        :param module: 被测代码所在模块（其内以 ``time.time()`` 取当前时刻）
+        :return: 冻结时刻的时间戳
+        """
+        clock = _FrozenClock(real_time.time())
+        monkeypatch.setattr(module, "time", clock)
+        return clock.now
+
+    return freeze
+
+
 def _report_session_cleanup_error(session, name: str, err: Exception) -> None:
     """记录收尾错误；原测试绿色时将会话标记为失败。"""
     sys.stderr.write(f"\npytest session cleanup failed: {name}: {err!r}\n")

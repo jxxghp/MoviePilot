@@ -51,10 +51,12 @@ class Base(DeclarativeBase):
     """
     声明式基类。
 
-    2.0 的声明式系统会解释类级 PEP 484 注解，未包裹在 Mapped[] 中的注解会直接
-    报错。现有 22 个模型仍是 legacy Column() 写法（列由 Column 对象本身描述、
-    不依赖注解），因此开启 __allow_unmapped__ 让声明式系统忽略这类注解，
-    使模型可以逐个迁移而不必一次性全改。
+    2.0 的声明式系统会解释类级 PEP 484 注解，未包裹在 Mapped[] 中的注解会直接报错。
+
+    仓内模型已全部迁移到 mapped_column() + Mapped[] 注解，本仓自身不再需要
+    __allow_unmapped__。保留它纯粹是为了兼容仓外插件：插件可以继承本 Base 自定义模型，
+    其中不乏仍在用 legacy 注解风格的，关掉这个标志会让它们在 import 期就直接炸掉，
+    表现为插件加载失败而非可修复的运行期报错。
     """
 
     __allow_unmapped__ = True

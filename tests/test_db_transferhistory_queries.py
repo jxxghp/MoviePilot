@@ -10,6 +10,7 @@ import time as _time
 
 import pytest
 
+from app.db.models import transferhistory as transferhistory_module
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource, MediaType
 
@@ -438,6 +439,25 @@ def test_statistic_groups_by_day_within_the_window(db):
     assert "2000-01-01" not in rows
 
 
+def test_statistic_includes_the_window_start_boundary(db, frozen_now):
+    """
+    统计窗口是闭区间起点（``date >= 起点``），正好落在起点的记录必须计入，同步异步一致。
+
+    起点由「调用时刻 - N 天」现算，不冻结时钟就摆不到边界上；上面那条用例用的是「今天」
+    与 2000 年两个极端值，起点比较符改成 ``>`` 照样绿。
+    """
+    now = frozen_now(transferhistory_module)
+    window_start = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(now - 86400 * 7))
+    boundary_day = window_start[:10]
+    db.add(_hist("窗口起点上", src="/data/bstat.mkv", date=window_start))
+
+    rows = dict(TransferHistory.statistic(db.session, days=7))
+    async_rows = dict(asyncio.run(TransferHistory.async_statistic(days=7)))
+
+    assert rows.get(boundary_day, 0) == 1
+    assert async_rows.get(boundary_day, 0) == 1
+
+
 def test_list_by_date_returns_newest_first(db):
     """
     按时间查询返回该时间之后的记录，按主键倒序。
@@ -448,6 +468,22 @@ def test_list_by_date_returns_newest_first(db):
     titles = [h.title for h in TransferHistory.list_by_date(db.session, "2026-08-05")]
 
     assert titles == ["新"]
+
+
+def test_list_by_date_excludes_the_row_exactly_at_the_boundary(db):
+    """
+    取的是「该时刻之后」的记录（``date > date``），正好等于该时刻的那条不算在内。
+
+    上面那条用例两侧数据各离边界四天与七天，比较符放宽成 ``>=`` 一样绿；
+    这里把行压在边界上，让开闭区间之差可观测。
+    """
+    boundary = "2026-08-05 00:00:00"
+    db.add(_hist("边界上", src="/data/bd0.mkv", date=boundary),
+           _hist("边界后一秒", src="/data/bd1.mkv", date="2026-08-05 00:00:01"))
+
+    titles = [h.title for h in TransferHistory.list_by_date(db.session, boundary)]
+
+    assert titles == ["边界后一秒"]
 
 
 def test_delete_before_is_batched_and_keeps_recent(db):
@@ -464,3 +500,20 @@ def test_delete_before_is_batched_and_keeps_recent(db):
     assert TransferHistory.delete_before(db.session, before_time="2026-08-01", limit=100) == 0
 
     assert TransferHistory.get_by_src(db.session, "/data/recent.mkv") is not None
+
+
+def test_delete_before_keeps_the_row_exactly_at_the_boundary(db):
+    """
+    保留时间点上的整理历史属于「保留期内」，不能被清理（``date < before_time``）。
+
+    整理历史被删掉就等于丢失溯源，同一文件会被重新整理一次；
+    上面那条用例的数据离水位半年，``<`` 写成 ``<=`` 完全不可观测。
+    """
+    boundary = "2026-05-01 00:00:00"
+    db.add(_hist("边界上", src="/data/bdel0.mkv", date=boundary),
+           _hist("边界前一秒", src="/data/bdel1.mkv", date="2026-04-30 23:59:59"))
+
+    assert TransferHistory.delete_before(db.session, before_time=boundary, limit=100) == 1
+
+    assert TransferHistory.get_by_src(db.session, "/data/bdel0.mkv") is not None
+    assert TransferHistory.get_by_src(db.session, "/data/bdel1.mkv") is None

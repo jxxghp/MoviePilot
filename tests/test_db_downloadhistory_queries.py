@@ -6,9 +6,11 @@
 条件写宽会误删别的任务的文件。
 """
 import asyncio
+import time as _time
 
 import pytest
 
+from app.db.models import downloadhistory as downloadhistory_module
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.schemas.types import MediaSource, MediaType
 
@@ -189,6 +191,22 @@ def test_list_by_user_date_scopes_to_owner(db):
     assert {h.title for h in everyone} >= {"alice 的", "bob 的"}
 
 
+def test_list_by_user_date_excludes_the_row_exactly_at_the_boundary(db):
+    """
+    取的是「该时刻之前」的历史（``date < date``），正好等于该时刻的那条不算在内。
+
+    上面的用例数据离查询时刻有十天之遥，比较符放宽成 ``<=`` 也照样绿；
+    这里把行摆在边界上，让开闭区间之差可观测。
+    """
+    boundary = "2026-08-10 00:00:00"
+    db.add(_history("边界上", username="carol", date=boundary),
+           _history("边界前一秒", username="carol", date="2026-08-09 23:59:59"))
+
+    rows = DownloadHistory.list_by_user_date(db.session, boundary, username="carol")
+
+    assert [h.title for h in rows] == ["边界前一秒"]
+
+
 def test_list_by_date_optionally_narrows_by_season(db):
     """
     按时间与媒体身份查询时季号可选，给出即须生效。
@@ -206,6 +224,23 @@ def test_list_by_date_optionally_narrows_by_season(db):
     assert {h.title for h in both} == {"第一季", "第二季"}
 
 
+def test_list_by_date_excludes_the_row_exactly_at_the_boundary(db):
+    """
+    取的是「该时刻之后」的历史（``date > date``），正好等于该时刻的那条不算在内。
+
+    这个查询用于判断某媒体近期是否已下载过，边界放宽成 ``>=`` 会把上一轮刚好压线的
+    记录算成「已下过」，从而误跳过一次下载；两侧数据都离边界很远时看不出来。
+    """
+    boundary = "2026-08-01 00:00:00"
+    db.add(_history("边界上", media_id="7011", date=boundary),
+           _history("边界后一秒", media_id="7011", date="2026-08-01 00:00:01"))
+
+    rows = DownloadHistory.list_by_date(db.session, boundary, MediaType.TV.value,
+                                        MediaSource.TMDB, "7011")
+
+    assert [h.title for h in rows] == ["边界后一秒"]
+
+
 def test_list_by_type_only_returns_recent_days(db):
     """
     按类型取最近 N 天，超出窗口的不返回——否则首页统计会把全量历史拉出来。
@@ -216,6 +251,26 @@ def test_list_by_type_only_returns_recent_days(db):
     names = {h.title for h in DownloadHistory.list_by_type(db.session, MediaType.TV.value, days=7)}
 
     assert "最近" in names and "很久以前" not in names
+
+
+def test_list_by_type_includes_the_window_start_boundary(db, frozen_now):
+    """
+    时间窗是闭区间起点（``date >= 起点``），正好落在起点的那条必须在结果里。
+
+    窗口起点由「调用时刻 - N 天」现算，不冻结时钟就摆不到边界上；上面那条用例用的是
+    2099/2000 两个极端值，比较符改成 ``>`` 也照样绿。
+    """
+    now = frozen_now(downloadhistory_module)
+    window_start = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(now - 86400 * 7))
+    one_second_earlier = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                        _time.localtime(now - 86400 * 7 - 1))
+    db.add(_history("窗口起点上", media_id="7012", date=window_start),
+           _history("窗口起点前一秒", media_id="7012", date=one_second_earlier))
+
+    names = {h.title for h in DownloadHistory.list_by_type(db.session, MediaType.TV.value, days=7)}
+
+    assert "窗口起点上" in names
+    assert "窗口起点前一秒" not in names
 
 
 def test_delete_before_is_batched_and_keeps_recent(db):
@@ -231,6 +286,22 @@ def test_delete_before_is_batched_and_keeps_recent(db):
     assert DownloadHistory.delete_before(db.session, before_time="2026-08-01", limit=100) == 0
 
     assert DownloadHistory.list_by_page(db.session, page=1, count=1)[0].title == "recent"
+
+
+def test_delete_before_keeps_the_row_exactly_at_the_boundary(db):
+    """
+    保留时间点上的历史属于「保留期内」，不能被清理（``date < before_time``）。
+
+    上面那条用例的数据离水位有半年，``<`` 写成 ``<=`` 也不可观测；
+    这里把行压在水位上，让开闭区间之差暴露出来。
+    """
+    boundary = "2026-05-01 00:00:00"
+    at_boundary = db.add(_history("边界上", media_id="7013", date=boundary))
+    db.add(_history("边界前一秒", media_id="7013", date="2026-04-30 23:59:59"))
+
+    assert DownloadHistory.delete_before(db.session, before_time=boundary, limit=100) == 1
+
+    assert db.session.get(DownloadHistory, at_boundary.id) is not None
 
 
 def test_count_and_title_search_match_async_twins(db):

@@ -261,3 +261,20 @@ def test_userdata_delete_before_is_batched_and_bounded(db):
 
     remaining = SiteUserData.get_by_domain(db.session, "old.test")
     assert [r.updated_day for r in remaining] == ["2026-08-12"]
+
+
+def test_userdata_delete_before_keeps_the_row_exactly_at_the_boundary(db):
+    """
+    保留日期当天的快照属于「保留期内」，不能被清理（``updated_day < before_day``）。
+
+    上面那条用例的数据离水位有半年之遥，``<`` 写成 ``<=`` 也照样绿；
+    这里把行压在水位当天，让开闭区间之差可观测——差一天就是少一天的站点数据曲线。
+    """
+    boundary = "2026-05-01"
+    db.add(_userdata("boundary.test", boundary, "10:00:00"),
+           _userdata("boundary.test", "2026-04-30", "10:00:00"))
+
+    assert SiteUserData.delete_before(db.session, before_day=boundary, limit=100) == 1
+
+    remaining = SiteUserData.get_by_domain(db.session, "boundary.test")
+    assert [r.updated_day for r in remaining] == [boundary]

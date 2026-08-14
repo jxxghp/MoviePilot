@@ -239,7 +239,13 @@ class DownloadHistory(Base):
     @db_query
     def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None):
         """
-        查询某用户某时间之后的下载历史
+        查询某用户某时间之前的下载历史。
+
+        条件是 date < 传入时刻，等于该时刻的那条不计入；oper 层的同名方法描述一致。
+        :param db: 数据库会话
+        :param date: 时间水位，取该时刻之前的记录
+        :param username: 下载用户，不传则跨用户返回
+        :return: 下载历史列表，按主键倒序
         """
         statement = select(DownloadHistory).where(DownloadHistory.date < date)
         if username:
