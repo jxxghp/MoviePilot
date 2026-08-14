@@ -25,6 +25,63 @@ DB_PACKAGE = PROJECT_ROOT / "app" / "db"
 # 匹配 Mapped[...]、orm.Mapped[...] 等带限定前缀的写法；不带下标的裸 Mapped 不算
 MAPPED_ANNOTATION = re.compile(r"^(?:[\w.]+\.)?Mapped\[")
 
+SQLALCHEMY = "sqlalchemy"
+
+
+def _sqlalchemy_column_names(tree: ast.Module):
+    """
+    解析该模块的 import，产出「在本文件中指向 sqlalchemy.Column 的全部名字」。
+
+    照字面量 "Column" 硬匹配会两头出错：一头漏掉 ``from sqlalchemy import Column as Col``
+    这类别名，另一头误伤同名的无关符号（rich.table.Column 就叫这个名字，而 rich 是本仓
+    依赖）。按 import 绑定判定，两个方向都准，代价只是多解析一遍 import。
+
+    注意 ``sqlalchemy.Column`` 与 ``sqlalchemy.orm.mapped_column`` 是两个东西，这里
+    只认前者：mapped_column 名字里虽然也有 column，但它是 2.0 的正确写法，不该被拦。
+    """
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            # from sqlalchemy import Column [as Col] / from sqlalchemy.sql import Column
+            module = node.module or ""
+            if module == SQLALCHEMY or module.startswith(f"{SQLALCHEMY}."):
+                names.update(alias.asname or alias.name
+                             for alias in node.names if alias.name == "Column")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name != SQLALCHEMY and not alias.name.startswith(f"{SQLALCHEMY}."):
+                    continue
+                # import sqlalchemy as sa 绑定 sa；import sqlalchemy[.orm] 绑定顶层包名
+                bound = alias.asname or alias.name.split(".")[0]
+                names.add(f"{bound}.Column")
+    return names
+
+
+def _class_level_column_assignments(py_file: Path):
+    """
+    产出该文件中全部「类级 Column(...) 赋值」，形如 (类名, 属性名, 行号)。
+
+    取 ClassDef 直接子语句中的 Assign 与 AnnAssign：前者是 1.x 的典型写法
+    ``foo = Column(String)``（完全没有注解，因此上面那条注解守卫对它无感）；后者兜住
+    ``foo: Mapped[str] = Column(String)`` 这种注解已迁完、构造还留在 1.x 的半吊子状态。
+    赋值右侧用 ast.walk 递归找 Call，包一层（如 ``deferred(Column(...))``）也跑不掉。
+    """
+    tree = ast.parse(py_file.read_text(encoding="utf-8"))
+    column_names = _sqlalchemy_column_names(tree)
+    if not column_names:
+        return
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for stmt in node.body:
+            if not isinstance(stmt, (ast.Assign, ast.AnnAssign)) or stmt.value is None:
+                continue
+            if not any(isinstance(sub, ast.Call) and ast.unparse(sub.func) in column_names
+                       for sub in ast.walk(stmt.value)):
+                continue
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            yield (node.name, ", ".join(ast.unparse(t) for t in targets), stmt.lineno)
+
 
 def _class_level_annotations(py_file: Path):
     """
@@ -96,6 +153,40 @@ def test_no_unmapped_class_level_annotations_in_db_package():
         + "\n".join(f"  {item}" for item in offenders)
         + "\n请改用 mapped_column() + Mapped[]；若这条注解确实不该被映射，"
           "则需同步订正 app/db/base.py 中 Base 的 docstring。"
+    )
+
+
+def test_no_legacy_column_assignments_in_db_package():
+    """
+    app/db 内不存在 1.x 的 Column() 列声明——一律 mapped_column() + Mapped[]。
+
+    这条补的是上一条注解守卫的缝：它只校验「已有的注解是不是 Mapped[]」，对**完全没有
+    类级注解**的裸 ``foo = Column(String)`` 无感。上游新增的 app/db/models/agenttaskrun.py
+    整整 254 行、零注解、全是 Column()，就是这么从守卫底下溜过去的——直到 pyright app/db
+    从 0 退回 3 errors 才被发现。这一批工作的卖点是「app/db 全量迁到 SQLAlchemy 2.0」，
+    守卫拦不住 1.x 写法回流，卖点就只是一次性的。
+
+    与上一条分开报而不是合并：两者失败原因不同（注解形状 vs 列构造 API），修法也不同，
+    合成一条只会让 offender 列表里混着两种毛病、报错文案被迫说得含糊。
+
+    Column 按 import 绑定识别而非按名字字面量，别名（``from sqlalchemy import Column as Col``）
+    与限定写法（``sa.Column``）都算数，详见 _sqlalchemy_column_names。
+
+    变红时怎么办：把 ``foo = Column(String)`` 改成
+    ``foo: Mapped[str] = mapped_column(String)``（Optional 列写 Mapped[Optional[str]]），
+    主键用 get_id_column()。别靠 __allow_unmapped__ 兜着——它的保留理由是兼容仓外插件
+    自定义的 legacy 模型，不是仓内还有模型离不开它；仓内已全量 2.0，见上一条用例。
+    """
+    offenders = [
+        f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} {cls_name}.{attr}"
+        for py_file in sorted(DB_PACKAGE.rglob("*.py"))
+        for cls_name, attr, lineno in _class_level_column_assignments(py_file)
+    ]
+    assert not offenders, (
+        "app/db 内出现了 1.x 的 Column() 列声明，2.0 迁移被回流破坏：\n"
+        + "\n".join(f"  {item}" for item in offenders)
+        + "\n请改用 mapped_column() + Mapped[] 注解（主键用 get_id_column()）。"
+          "仓内已全量迁至 2.0，__allow_unmapped__ 只为仓外插件保留，不是给仓内兜底的。"
     )
 
 
