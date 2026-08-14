@@ -1,9 +1,9 @@
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Column, Index, Integer, String, Text, update
-from sqlalchemy.orm import Session
+from sqlalchemy import Index, Integer, String, Text, delete, select, update
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, db_query, db_update, get_id_column
+from app.db import Base, db_query, db_update, execute_dml, get_id_column
 from app.db.models.agenttask import AgentTask
 
 
@@ -12,27 +12,27 @@ class AgentTaskRun(Base):
 
     id = get_id_column()
     # 对外稳定的运行身份；内部自增主键不进入 Agent 合同
-    run_id = Column(String, nullable=False)
+    run_id: Mapped[str] = mapped_column(String, nullable=False)
     # 所属计划及触发入口
-    task_id = Column(Integer, nullable=False)
-    trigger_source = Column(String, nullable=False)
+    task_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    trigger_source: Mapped[str] = mapped_column(String, nullable=False)
     # 执行开始时的任务与用户上下文快照
-    name = Column(String, nullable=False)
-    content = Column(Text, nullable=False)
-    trigger_type = Column(String, nullable=False)
-    cron_expression = Column(String)
-    run_at = Column(String)
-    user_id = Column(String, nullable=False)
-    username = Column(String)
-    session_id = Column(String, nullable=False)
-    channel = Column(String)
-    message_source = Column(String)
-    original_chat_id = Column(String)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String, nullable=False)
+    cron_expression: Mapped[Optional[str]] = mapped_column(String)
+    run_at: Mapped[Optional[str]] = mapped_column(String)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    channel: Mapped[Optional[str]] = mapped_column(String)
+    message_source: Mapped[Optional[str]] = mapped_column(String)
+    original_chat_id: Mapped[Optional[str]] = mapped_column(String)
     # running-success/failed/interrupted；取消沿用 failed 和明确结果文本
-    status = Column(String, nullable=False)
-    started_at = Column(String, nullable=False)
-    finished_at = Column(String)
-    result = Column(Text)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    finished_at: Mapped[Optional[str]] = mapped_column(String)
+    result: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
         Index("ix_agenttaskrun_run_id", "run_id", unique=True),
@@ -117,32 +117,37 @@ class AgentTaskRun(Base):
             disable_date_task: bool = False,
     ) -> bool:
         """原子收口精确运行，并仅在仍为最新运行时更新任务投影。"""
-        run = db.query(cls).filter(
-            cls.run_id == run_id,
-        ).first()
+        run = db.execute(
+            select(cls).where(cls.run_id == run_id)
+        ).scalars().first()
         if not run:
             return False
         status = "success" if success else "failed"
-        finalized = db.query(cls).filter(
-            cls.run_id == run_id,
-            cls.status == "running",
-        ).update(
-            {
-                "status": status,
-                "result": result,
-                "finished_at": finished_at,
-            },
-            synchronize_session=False,
+        finalized = execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.run_id == run_id,
+                cls.status == "running",
+            )
+            .values(
+                status=status,
+                result=result,
+                finished_at=finished_at,
+            ),
+            execution_options={"synchronize_session": False},
         )
         if not finalized:
             return False
 
-        task = db.query(AgentTask).filter(
-            AgentTask.id == run.task_id,
-            AgentTask.last_run_id == run_id,
-        ).first()
+        task = db.execute(
+            select(AgentTask).where(
+                AgentTask.id == run.task_id,
+                AgentTask.last_run_id == run_id,
+            )
+        ).scalars().first()
         if task:
-            payload = {
+            payload: Dict[str, Any] = {
                 "last_status": status,
                 "last_result": result,
                 "run_count": AgentTask.run_count + 1,
@@ -155,10 +160,16 @@ class AgentTaskRun(Base):
                     and task.run_at == run.run_at
             ):
                 payload["enabled"] = False
-            db.query(AgentTask).filter(
-                AgentTask.id == run.task_id,
-                AgentTask.last_run_id == run_id,
-            ).update(payload, synchronize_session=False)
+            execute_dml(
+                db,
+                update(AgentTask)
+                .where(
+                    AgentTask.id == run.task_id,
+                    AgentTask.last_run_id == run_id,
+                )
+                .values(**payload),
+                execution_options={"synchronize_session": False},
+            )
         return True
 
     @classmethod
@@ -171,38 +182,46 @@ class AgentTaskRun(Base):
             finished_at: str,
     ) -> bool:
         """原子标记冷启动时遗留的最新运行及任务投影为结果未知。"""
-        task = db.query(AgentTask).filter(
-            AgentTask.id == task_id,
-            AgentTask.last_status == "running",
-        ).first()
+        task = db.execute(
+            select(AgentTask).where(
+                AgentTask.id == task_id,
+                AgentTask.last_status == "running",
+            )
+        ).scalars().first()
         if not task:
             return False
         if task.last_run_id:
-            interrupted = db.query(cls).filter(
-                cls.run_id == task.last_run_id,
-                cls.task_id == task.id,
-                cls.status == "running",
-            ).update(
-                {
-                    "status": "interrupted",
-                    "result": result,
-                    "finished_at": finished_at,
-                },
-                synchronize_session=False,
+            interrupted = execute_dml(
+                db,
+                update(cls)
+                .where(
+                    cls.run_id == task.last_run_id,
+                    cls.task_id == task.id,
+                    cls.status == "running",
+                )
+                .values(
+                    status="interrupted",
+                    result=result,
+                    finished_at=finished_at,
+                ),
+                execution_options={"synchronize_session": False},
             )
             if not interrupted:
                 return False
-        return bool(db.query(AgentTask).filter(
-            AgentTask.id == task.id,
-            AgentTask.last_status == "running",
-            AgentTask.last_run_id == task.last_run_id,
-        ).update(
-            {
-                "last_status": "interrupted",
-                "last_result": result,
-                "updated_at": finished_at,
-            },
-            synchronize_session=False,
+        return bool(execute_dml(
+            db,
+            update(AgentTask)
+            .where(
+                AgentTask.id == task.id,
+                AgentTask.last_status == "running",
+                AgentTask.last_run_id == task.last_run_id,
+            )
+            .values(
+                last_status="interrupted",
+                last_result=result,
+                updated_at=finished_at,
+            ),
+            execution_options={"synchronize_session": False},
         ))
 
     @classmethod
@@ -214,16 +233,22 @@ class AgentTaskRun(Base):
             user_id: Optional[str] = None,
     ) -> bool:
         """原子删除非运行中任务及其执行历史。"""
-        query = db.query(AgentTask).filter(
+        statement = delete(AgentTask).where(
             AgentTask.id == task_id,
             AgentTask.last_status != "running",
         )
         if user_id is not None:
-            query = query.filter(AgentTask.user_id == user_id)
-        deleted = query.delete(synchronize_session=False)
+            statement = statement.where(AgentTask.user_id == user_id)
+        deleted = execute_dml(
+            db, statement, execution_options={"synchronize_session": False}
+        )
         if not deleted:
             return False
-        db.query(cls).filter(cls.task_id == task_id).delete(synchronize_session=False)
+        execute_dml(
+            db,
+            delete(cls).where(cls.task_id == task_id),
+            execution_options={"synchronize_session": False},
+        )
         return True
 
     @classmethod
@@ -234,7 +259,9 @@ class AgentTaskRun(Base):
             run_id: str,
     ) -> Optional["AgentTaskRun"]:
         """按公开运行 ID 查询一次执行。"""
-        return db.query(cls).filter(cls.run_id == run_id).first()
+        return db.execute(
+            select(cls).where(cls.run_id == run_id)
+        ).scalars().first()
 
     @classmethod
     @db_query
@@ -244,11 +271,13 @@ class AgentTaskRun(Base):
             task_id: int,
             user_id: Optional[str] = None,
             limit: int = 10,
-    ) -> list["AgentTaskRun"]:
+    ) -> List["AgentTaskRun"]:
         """按父任务 owner 校验后返回最近的有界运行历史。"""
-        query = db.query(cls).join(AgentTask, AgentTask.id == cls.task_id).filter(
+        statement = select(cls).join(AgentTask, AgentTask.id == cls.task_id).where(
             cls.task_id == task_id,
         )
         if user_id is not None:
-            query = query.filter(AgentTask.user_id == user_id)
-        return query.order_by(cls.started_at.desc(), cls.id.desc()).limit(limit).all()
+            statement = statement.where(AgentTask.user_id == user_id)
+        return list(db.execute(
+            statement.order_by(cls.started_at.desc(), cls.id.desc()).limit(limit)
+        ).scalars().all())
