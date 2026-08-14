@@ -73,6 +73,10 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     src_storage: Optional[str] = None
     # 目标存储类型
     dest_storage: Optional[str] = None
+    # 源文件项（含文件大小等运行时字段，与 to_dict 直出保持一致）
+    src_fileitem: Optional[JsonData] = None
+    # 目标文件项
+    dest_fileitem: Optional[JsonData] = None
     # 源目录
     src: Optional[str] = None
     # 目的目录
@@ -121,6 +125,8 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     errmsg: Optional[str] = None
     # 日期
     date: Optional[str] = None
+    # 文件清单
+    files: Optional[JsonData] = None
 
     model_config = ConfigDict(from_attributes=True)
 

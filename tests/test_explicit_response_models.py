@@ -50,9 +50,15 @@ def test_stable_collections_serialize_without_changing_payload_shape():
         dest_storage="alist",
         src="/downloads/demo.mkv",
         dest="/media/demo.mkv",
+        src_fileitem={"path": "/downloads/demo.mkv", "size": 1024},
+        dest_fileitem={"path": "/media/demo.mkv", "size": 1024},
+        files=[{"path": "/downloads/demo.mkv"}],
     ).model_dump()
     assert history["src_storage"] == "local"
     assert history["dest_storage"] == "alist"
+    assert history["src_fileitem"]["size"] == 1024
+    assert history["dest_fileitem"]["size"] == 1024
+    assert history["files"][0]["path"] == "/downloads/demo.mkv"
     assert episode.model_dump()["crew"][0]["job"] == "Writer"
     assert episode.model_dump()["guest_stars"][0]["character"] == "Guest"
 
