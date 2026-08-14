@@ -171,6 +171,16 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.audio_encode == "DDP 5.1"
 
 
+def test_python_metainfo_fallback_recognizes_eac3_audio_codec():
+    """Python 兜底解析应识别 EAC3 及其声道信息。"""
+    with patch("app.core.metainfo.rust_accel.parse_metainfo", return_value=None):
+        meta = MetaInfo("Test.Movie.2026.1080p.BluRay.x264.EAC3.5.1-GROUP")
+
+    assert meta.resource_pix == "1080p"
+    assert meta.video_encode == "x264"
+    assert meta.audio_encode == "EAC3 5.1"
+
+
 RESOURCE_TYPE_CASES = [
     (
         "They.Will.Kill.You.2026.2160p.UHD.BluRay.Remux."
