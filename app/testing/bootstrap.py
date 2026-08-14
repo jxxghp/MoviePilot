@@ -124,9 +124,11 @@ def ensure_sites_stub() -> None:
     try:
         import app.infrastructure.sites  # noqa: F401  本地已拉取时用真实模块
     except (ModuleNotFoundError, ImportError):
+        from importlib.util import spec_from_loader
         from types import ModuleType
         stub = ModuleType("app.infrastructure.sites")
         stub.SitesHelper = _SitesHelperStub
+        stub.__spec__ = spec_from_loader("app.infrastructure.sites", None)
         sys.modules["app.infrastructure.sites"] = stub
 
 

@@ -14,6 +14,10 @@ def test_main_script_does_not_shadow_stdlib_platform(tmp_path):
         (
             "import runpy",
             "import sys",
+            # CI 无 app.infrastructure.sites 二进制模块，先补垫片再执行 main.py（与 conftest 同源）；
+            # 必须在篡改 sys.path / 摘除 platform 之前调用，避免真实模块依赖链误引被遮蔽的 app/platform。
+            "from app.testing.bootstrap import ensure_sites_stub",
+            "ensure_sites_stub()",
             f"sys.path.insert(0, {str(MAIN_PATH.parent)!r})",
             "sys.modules.pop('platform', None)",
             f"runpy.run_path({str(MAIN_PATH)!r}, run_name='pycharm_main_probe')",

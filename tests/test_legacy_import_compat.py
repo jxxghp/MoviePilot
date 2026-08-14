@@ -165,6 +165,9 @@ def test_manifest_aliases_reuse_real_canonical_modules():
     code = """
 import importlib
 from app.compat.manifest import MODULE_ALIASES
+# CI 无 app.infrastructure.sites 二进制模块，先补垫片再校验全部映射（与 conftest 同源）。
+from app.testing.bootstrap import ensure_sites_stub
+ensure_sites_stub()
 
 for legacy_name, alias in MODULE_ALIASES.items():
     try:
