@@ -174,7 +174,7 @@ def test_login_sets_resource_token_cookie(monkeypatch):
                 name=username,
                 is_superuser=False,
                 avatar="",
-                permissions={"discovery": True},
+                permissions={"discovery": True, "features": {}},
             )
 
     class FakeSystemConfigOper:
@@ -198,7 +198,7 @@ def test_login_sets_resource_token_cookie(monkeypatch):
     )
 
     assert token.user_id == 1
-    assert token.permissions == {"discovery": True}
+    assert token.permissions == {"discovery": True, "features": {}}
     assert "set-cookie" in response.headers
 
     resource_cookie = response.headers["set-cookie"].split("=", 1)[1].split(";", 1)[0]

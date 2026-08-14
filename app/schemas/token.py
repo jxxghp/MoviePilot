@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.user import UserPermissions
+
 
 class MfaChallenge(BaseModel):
     """密码认证通过后需要继续完成的二次验证信息。"""
@@ -28,7 +30,7 @@ class Token(BaseModel):
     # 权限级别
     level: int = 1
     # 详细权限
-    permissions: Optional[dict[str, bool]] = Field(default_factory=dict)
+    permissions: Optional[UserPermissions] = Field(default_factory=dict)
     # 是否显示配置向导
     wizard: Optional[bool] = None
 

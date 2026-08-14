@@ -10,7 +10,7 @@ from app.schemas.subscribe import Subscribe
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.token import Token
 from app.schemas.types import MediaSource
-from app.schemas.user import User
+from app.schemas.user import User, UserCreate, UserUpdate
 
 
 def _nonnull_branch(schema: dict) -> dict:
@@ -80,8 +80,12 @@ def test_site_and_subscribe_legacy_values_remain_compatible():
 
 
 def test_permissions_and_extension_json_keep_values_but_have_explicit_schemas():
-    """权限映射应为布尔值，扩展数据应通过递归 JSON Schema 展示合法类型。"""
-    permissions = {"manage": True, "search": False}
+    """权限分类和功能映射应保持原值，扩展数据应展示合法 JSON 类型。"""
+    permissions = {
+        "manage": True,
+        "search": False,
+        "features": {"search.resource": False},
+    }
     token = Token(
         access_token="token",
         token_type="bearer",
@@ -95,6 +99,8 @@ def test_permissions_and_extension_json_keep_values_but_have_explicit_schemas():
         permissions=permissions,
         settings={"nickname": "测试", "layout": {"dense": True}},
     )
+    user_create = UserCreate(name="created", permissions={"features": {}})
+    user_update = UserUpdate(id=1, name="updated", permissions=permissions)
     plugin = Plugin(history={"v1.0.0": "首次发布"})
     dashboard = PluginDashboard(
         attrs={"class": ["pa-2", {"active": True}]},
@@ -103,14 +109,24 @@ def test_permissions_and_extension_json_keep_values_but_have_explicit_schemas():
     )
 
     assert token.model_dump()["permissions"] == permissions
+    assert user.model_dump()["permissions"] == permissions
+    assert user_create.model_dump()["permissions"] == {"features": {}}
+    assert user_update.model_dump()["permissions"] == permissions
     assert user.model_dump()["settings"]["layout"] == {"dense": True}
     assert plugin.model_dump()["history"] == {"v1.0.0": "首次发布"}
     assert dashboard.model_dump()["elements"][0]["component"] == "VAlert"
 
     user_schema = User.model_json_schema()
     permission_schema = _nonnull_branch(user_schema["properties"]["permissions"])
+    permission_schema = user_schema["$defs"][permission_schema["$ref"].rsplit("/", 1)[-1]]
     settings_schema = _nonnull_branch(user_schema["properties"]["settings"])
-    assert permission_schema["additionalProperties"] == {"type": "boolean"}
+    assert permission_schema["properties"]["manage"] == {
+        "title": "Manage",
+        "type": "boolean",
+    }
+    assert permission_schema["properties"]["features"]["additionalProperties"] == {
+        "type": "boolean"
+    }
     assert settings_schema["additionalProperties"]["$ref"].endswith("/JsonData")
 
 
