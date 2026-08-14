@@ -105,7 +105,7 @@ The `API_TOKEN` value in `settings` is the source of truth. It is set at initial
 
 ## SQL Injection Prevention
 
-- All database access goes through SQLAlchemy ORM via the `*_oper.py` classes. No raw SQL string construction.
+- All database access goes through SQLAlchemy ORM via the Oper classes in `app/db/oper/`. No raw SQL string construction.
 - If a raw SQL query is ever genuinely necessary, use SQLAlchemy's `text()` with parameterized binds — never string interpolation.
 
 ---

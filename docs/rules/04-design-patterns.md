@@ -212,7 +212,7 @@ Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
 | `module -> chain` coupling | Move orchestration into `chain` and shared logic into its owning canonical package |
 | `module -> module` direct calls | Use `chain` to orchestrate cross-module workflows |
 | Lower-level module importing a chain or manager | Register a callback/resolver from `app/startup/` or move orchestration to `chain` |
-| Raw SQLAlchemy queries in endpoints or chains | Use the corresponding `*_oper.py` class |
+| Raw SQLAlchemy queries in endpoints or chains | Use the corresponding Oper class in `app/db/oper/` |
 | Raw string keys for SystemConfig | Define and use a `SystemConfigKey` enum entry |
 | HTTP requests via `requests` or `httpx` directly | Host code uses `RequestUtils` from `app/adapters/network/http.py`; plugins use `app.sdk.network` |
 

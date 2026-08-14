@@ -48,21 +48,38 @@ alembic revision -m "describe the change"
 
 **Location:** `app/db/`
 
-Each model has a corresponding `*_oper.py` file containing the data access class. Do not write SQLAlchemy queries directly in chain, module, or endpoint code.
+Each model has a corresponding file under `app/db/oper/` containing the data access
+class, mirroring `app/db/models/` one-for-one. Do not write SQLAlchemy queries
+directly in chain, module, or endpoint code.
 
 | Oper Class | File |
 |---|---|
-| `SubscribeOper` | `subscribe_oper.py` |
-| `SystemConfigOper` | `systemconfig_oper.py` |
-| `TransferHistoryOper` | `transferhistory_oper.py` |
-| `DownloadHistoryOper` | `downloadhistory_oper.py` |
-| `MediaServerOper` | `mediaserver_oper.py` |
-| `UserOper` | `user_oper.py` |
-| `UserConfigOper` | `userconfig_oper.py` |
-| `MessageOper` | `message_oper.py` |
-| `SiteOper` | `site_oper.py` |
-| `PluginDataOper` | `plugindata_oper.py` |
-| `WorkflowOper` | `workflow_oper.py` |
+| `AgentChatOper` | `oper/agentchat.py` |
+| `AgentTaskOper` | `oper/agenttask.py` |
+| `DownloadFailureOper` | `oper/downloadfailure.py` |
+| `DownloadHistoryOper` | `oper/downloadhistory.py` |
+| `MediaServerOper` | `oper/mediaserver.py` |
+| `MessageOper` | `oper/message.py` |
+| `PluginDataOper` | `oper/plugindata.py` |
+| `SiteOper` | `oper/site.py` |
+| `SubscribeHistoryOper` | `oper/subscribehistory.py` |
+| `SubscribeOper` | `oper/subscribe.py` |
+| `SystemConfigOper` | `oper/systemconfig.py` |
+| `TransferHistoryOper` | `oper/transferhistory.py` |
+| `TransferPendingOper` | `oper/transferpending.py` |
+| `UserConfigOper` | `oper/userconfig.py` |
+| `UserOper` | `oper/user.py` |
+| `WorkflowOper` | `oper/workflow.py` |
+
+Import by module (`from app.db.oper.subscribe import SubscribeOper`) — that is the
+preferred form in this repository. `app/db/oper/__init__.py` also resolves class
+names lazily for callers that only want a name, but it deliberately does not
+eagerly re-export: several tests isolate a single Oper by stubbing it in
+`sys.modules`, and an eager re-export would pull in the other fifteen and bypass
+the stub.
+
+Oper classes accept and return persistence values. Turning a `MediaInfo` or
+`MetaBase` into a row is business logic and lives in `app/application/`.
 
 **Standard Oper method conventions:**
 
