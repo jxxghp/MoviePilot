@@ -9,8 +9,8 @@ import asyncio
 
 import pytest
 
-from app.db.downloadhistory_oper import DownloadHistoryOper
-from app.db.mediaserver_oper import MediaServerOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.mediaserver import MediaServerOper
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.mediaserver import MediaServerItem
 from app.db.models.plugindata import PluginData
@@ -21,11 +21,11 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.models.workflow import Workflow
-from app.db.plugindata_oper import PluginDataOper
-from app.db.site_oper import SiteOper
-from app.db.user_oper import UserOper
-from app.db.userconfig_oper import UserConfigOper
-from app.db.workflow_oper import WorkflowOper
+from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.site import SiteOper
+from app.db.oper.user import UserOper
+from app.db.oper.userconfig import UserConfigOper
+from app.db.oper.workflow import WorkflowOper
 from app.schemas.types import MediaSource, MediaType
 
 TMDB = str(MediaSource.TMDB)

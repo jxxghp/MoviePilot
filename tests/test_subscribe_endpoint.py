@@ -654,13 +654,13 @@ class SubscribeEndpointTest(TestCase):
         """
         owner-aware 创建不应把他人已有订阅当作当前用户订阅。
         """
-        from app.db.subscribe_oper import SubscribeOper
+        from app.db.oper.subscribe import SubscribeOper
 
         other = _EndpointSubscribe(id=21, username="bob")
         own = _EndpointSubscribe(id=22, username="alice")
         created = SimpleNamespace(async_create=AsyncMock())
 
-        with patch("app.db.subscribe_oper.Subscribe") as subscribe_model:
+        with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
             subscribe_model.async_exists = AsyncMock(return_value=other)
             subscribe_model.async_exists_by_username = AsyncMock(
                 side_effect=[None, own]

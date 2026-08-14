@@ -12,7 +12,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     build_preview_payload,
     get_plugin_snapshot,
 )
-from app.db.plugindata_oper import PluginDataOper
+from app.db.oper.plugindata import PluginDataOper
 from app.runtime.log import logger
 
 

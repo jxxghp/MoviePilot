@@ -177,7 +177,7 @@ def prepare_backend() -> None:
     """
     isolate_config_dir()
     ensure_sites_stub()
-    from app.db.init import init_db
+    from app.startup.database_initializer import init_db
     init_db()
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
     from app.startup.cache_initializer import configure_cache_dependencies

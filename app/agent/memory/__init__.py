@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
 from app.runtime.config import settings
-from app.db.agentchat_oper import AgentChatOper
+from app.db.oper.agentchat import AgentChatOper
 from app.runtime.log import logger
 from app.schemas.agent import ConversationMemory
 

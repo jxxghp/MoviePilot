@@ -534,7 +534,11 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
 
     monkeypatch.setattr(
         "app.chain.transfer.TransferHistoryOper",
-        lambda: SimpleNamespace(add_success=lambda **kwargs: SimpleNamespace(id=1)),
+        lambda: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.add_transfer_success",
+        lambda **kwargs: SimpleNamespace(id=1),
     )
 
     for task in tasks:

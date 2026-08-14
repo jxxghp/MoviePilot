@@ -1,7 +1,7 @@
 from typing import Tuple, List, Optional
 
 from app.runtime.config import settings
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils

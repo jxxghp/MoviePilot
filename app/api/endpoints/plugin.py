@@ -24,7 +24,7 @@ from app.application.security.access import (
     verify_token,
 )
 from app.db.models import User
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async
 from app.factory import app
 from app.adapters.external.server import MoviePilotServerHelper

@@ -27,11 +27,11 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.words import WordsMatcher
 from app.domain.metainfo import MetaInfo
-from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
-from app.db.site_oper import SiteOper
-from app.db.subscribe_oper import SubscribeOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.interaction import (
     SlashInteractionManager,
     build_navigation_buttons,

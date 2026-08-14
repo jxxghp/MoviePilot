@@ -9,16 +9,16 @@ import asyncio
 
 import pytest
 
-from app.db.downloadfailure_oper import DownloadFailureOper
-from app.db.message_oper import MessageOper
+from app.db.oper.downloadfailure import DownloadFailureOper
+from app.db.oper.message import MessageOper
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.transferhistory import TransferHistory
-from app.db.subscribe_oper import SubscribeOper
-from app.db.subscribehistory_oper import SubscribeHistoryOper
-from app.db.transferhistory_oper import TransferHistoryOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.subscribehistory import SubscribeHistoryOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.schemas.types import MediaSource, MediaType
 
 TMDB = str(MediaSource.TMDB)

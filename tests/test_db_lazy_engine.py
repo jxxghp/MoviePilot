@@ -245,25 +245,54 @@ def test_pooled_path_does_not_create_the_global_async_engine(
     assert engine_module._async_engine is None, "池化路径把全局异步引擎创建了出来"
 
 
-def test_legacy_attribute_access_still_resolves(_reset_engines, monkeypatch):
+def test_engine_module_exposes_no_legacy_names(_reset_engines, monkeypatch):
     """
-    旧写法 app.db.engine.Engine 仍可用——仓库外的插件按这个名字取引擎。
+    app.db.engine 不再解析 Engine / AsyncEngine 两个旧名字。
 
-    与惰性并不冲突：属性访问发生在运行期，而不是 import 期。
+    这两个名字的对外契约是 `app.db.Engine`（由 app/db/__init__.py 的 __getattr__ 提供）。
+    app.db.engine 这个模块是拆分时才出现的，仓库外不可能有代码依赖它，实现模块上那份
+    同名转发因此是纯冗余——两处独立实现同一个契约，改一处漏一处就会各取到一个引擎。
+    仓库内一律用 get_engine() / get_global_async_engine()。
 
     工厂打桩而不是让它建真引擎：_reset_engines 还原槽位时会把真引擎丢掉，
-    那条连接就再没人 dispose 了；这里要验的只是「旧名字解析到与 getter 同一个对象」。
+    那条连接就再没人 dispose 了。
     """
     engine_module._sync_engine = engine_module._async_engine = None
     monkeypatch.setattr(engine_module, "_get_database_engine", lambda **kw: object())
 
-    assert engine_module.Engine is engine_module.get_engine()
-    assert engine_module.AsyncEngine is engine_module.get_global_async_engine()
-
-
-def test_unknown_attribute_still_raises():
-    """
-    模块级 __getattr__ 不能吞掉拼写错误。
-    """
     with pytest.raises(AttributeError):
-        _ = engine_module.NoSuchThing
+        _ = engine_module.Engine
+    with pytest.raises(AttributeError):
+        _ = engine_module.AsyncEngine
+    # 取过之后引擎槽位仍是空的：属性访问没有绕开 getter 把引擎建出来
+    assert engine_module._sync_engine is None
+    assert engine_module._async_engine is None
+
+
+def test_package_entry_resolves_legacy_names(_reset_engines, monkeypatch):
+    """
+    app.db.Engine / app.db.AsyncEngine 仍解析到与 getter 同一个引擎。
+
+    这才是真正的对外契约：仓库外的插件按这两个名字取引擎，建表、Alembic 迁移、连接
+    诊断这类用途确实需要引擎对象本身，装饰器覆盖不到。上一条用例删掉了实现模块上的
+    冗余转发，这条钉住包入口那份**不能**跟着删。
+
+    与惰性不冲突：属性访问发生在运行期，而不是 import 期。
+    """
+    import app.db as db_package
+
+    engine_module._sync_engine = engine_module._async_engine = None
+    monkeypatch.setattr(engine_module, "_get_database_engine", lambda **kw: object())
+
+    assert db_package.Engine is engine_module.get_engine()
+    assert db_package.AsyncEngine is engine_module.get_global_async_engine()
+
+
+def test_package_entry_unknown_attribute_still_raises():
+    """
+    包入口的模块级 __getattr__ 不能吞掉拼写错误。
+    """
+    import app.db as db_package
+
+    with pytest.raises(AttributeError):
+        _ = db_package.NoSuchThing

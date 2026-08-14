@@ -21,7 +21,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.progress import ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.torrent import TorrentHelper

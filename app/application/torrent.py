@@ -13,8 +13,8 @@ from app.domain.context import Context, TorrentInfo, MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import audio_quality_tier, normalize_audio_format, parse_audio_quality
 from app.domain.metainfo import MetaInfo
-from app.db.site_oper import SiteOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.adapters.network.http import RequestUtils

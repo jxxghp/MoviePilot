@@ -4,7 +4,7 @@ from sqlalchemy import Float, Index, Integer, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, db_query, db_update, execute_dml, get_id_column
-from app.db.models.media_identity import media_identity_constraint
+from app.db.models._constraints import media_identity_constraint
 
 
 class DownloadFailure(Base):

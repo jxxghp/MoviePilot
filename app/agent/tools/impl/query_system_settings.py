@@ -16,7 +16,7 @@ from app.agent.tools.impl._system_setting_utils import (
     should_redact_setting,
 )
 from app.runtime.config import settings
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 
 

@@ -5,7 +5,7 @@
 按事件循环池化的异步引擎由 session 模块创建。三者的构建参数在这里收口。
 """
 import threading
-from typing import Any, Dict, Optional, cast
+from typing import Dict, Optional, cast
 
 from sqlalchemy import NullPool, QueuePool, create_engine, text
 from sqlalchemy.engine import Engine as SyncEngine
@@ -247,22 +247,6 @@ def peek_async_engine() -> Optional[SaAsyncEngine]:
     """
     with _async_engine_lock:
         return _async_engine
-
-
-def __getattr__(name: str) -> Any:
-    """
-    兼容 Engine / AsyncEngine 这两个旧名字：属性访问发生在运行期，不破坏惰性。
-
-    仓库外的插件按这两个名字取引擎，不能直接删。注意 `from app.db.engine import Engine`
-    这种写法仍会在 import 期触发创建——那是调用方自己选择的时机，与本模块无关。
-    :param name: 属性名
-    :return: 对应的引擎
-    """
-    if name == "Engine":
-        return get_engine()
-    if name == "AsyncEngine":
-        return get_global_async_engine()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _async_pool_enabled() -> bool:

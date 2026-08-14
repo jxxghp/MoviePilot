@@ -2408,8 +2408,8 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.db.init import init_db, update_db
-        from app.db.systemconfig_oper import SystemConfigOper
+        from app.startup.database_initializer import init_db, update_db
+        from app.db.oper.systemconfig import SystemConfigOper
         from app.schemas.types import SystemConfigKey
     except ModuleNotFoundError as exc:
         raise RuntimeError(
@@ -2498,7 +2498,7 @@ def _ensure_superuser_account_inner() -> None:
 
     from app.runtime.config import settings
     from app.application.security.access import get_password_hash
-    from app.db.user_oper import UserOper
+    from app.db.oper.user import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
     username_error = _validate_superuser_name(username)
@@ -2548,7 +2548,7 @@ def _ensure_superuser_account_inner() -> None:
 
 def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
     from app.runtime.config import settings
-    from app.db.user_oper import UserOper
+    from app.db.oper.user import UserOper
 
     username = str(settings.SUPERUSER or "").strip()
     username_error = _validate_superuser_name(username)
@@ -2571,7 +2571,7 @@ def _sync_superuser_account_inner() -> None:
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.db.init import init_db, update_db
+        from app.startup.database_initializer import init_db, update_db
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
@@ -3671,7 +3671,7 @@ def run_agent_request(
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.db.init import init_db, update_db
+        from app.startup.database_initializer import init_db, update_db
         from app.agent import MoviePilotAgent
         from app.runtime.config import settings
     except ModuleNotFoundError as exc:

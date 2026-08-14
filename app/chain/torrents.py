@@ -12,8 +12,8 @@ from app.domain.context import TorrentInfo, Context, MediaInfo
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.db.site_oper import SiteOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.rss import RssHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger

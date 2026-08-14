@@ -8,6 +8,7 @@ TooManyConnectionsError），但本地开发与 CI 都跑 SQLite——PG 分支�
 这里用 mock 覆盖 PG 路径，不依赖真实 PostgreSQL 实例：额度核算是纯计算，
 校验逻辑只需要伪造 SHOW 查询的返回值。
 """
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,6 +33,20 @@ def _fake_pg_connection(max_connections: int, reserved: int) -> MagicMock:
     ctx.__enter__ = MagicMock(return_value=conn)
     ctx.__exit__ = MagicMock(return_value=False)
     return ctx
+
+
+def _patch_engine(monkeypatch, connect) -> None:
+    """
+    把额度校验取到的同步引擎换成只带 connect 的替身。
+
+    额度校验只用引擎做一件事：connect() 出来跑两条 SHOW。打桩 get_engine() 而不是
+    在真引擎上改 connect——后者会为了一次本可全 mock 的校验真的把引擎建出来、连库、
+    设 WAL，正是引擎惰性化要消掉的那种 import/取值副作用。
+    :param monkeypatch: pytest 的 monkeypatch 夹具
+    :param connect: 替身引擎的 connect 实现
+    """
+    monkeypatch.setattr(engine_module, "get_engine",
+                        lambda: SimpleNamespace(connect=connect))
 
 
 # --------------------------------------------------------------------------- #
@@ -100,8 +115,7 @@ def test_check_passes_when_within_available(monkeypatch):
     monkeypatch.setattr(engine_module, "connection_budget",
                         lambda: {"sync": 60, "async_pooled": 15, "async_fallback": 10,
                                  "per_worker": 85, "workers": 1, "total": 85})
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: _fake_pg_connection(100, 3))
 
     assert engine_module.check_connection_budget() is True
 
@@ -117,8 +131,7 @@ def test_check_fails_when_exceeding_available(monkeypatch):
     monkeypatch.setattr(engine_module, "connection_budget",
                         lambda: {"sync": 60, "async_pooled": 40, "async_fallback": 30,
                                  "per_worker": 130, "workers": 1, "total": 130})
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: _fake_pg_connection(100, 3))
     errors = []
     monkeypatch.setattr(engine_module.logger, "error", errors.append)
 
@@ -139,8 +152,7 @@ def test_check_uses_real_max_connections_not_assumption(monkeypatch):
                         lambda: {"sync": 200, "async_pooled": 15, "async_fallback": 10,
                                  "per_worker": 225, "workers": 1, "total": 225})
     # 数据库已调大到 500，225 应当通过
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: _fake_pg_connection(500, 3))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: _fake_pg_connection(500, 3))
 
     assert engine_module.check_connection_budget() is True
 
@@ -157,7 +169,7 @@ def test_check_tolerates_unreadable_limits(monkeypatch):
         """
         raise RuntimeError("permission denied for SHOW")
 
-    monkeypatch.setattr(engine_module.Engine, "connect", boom)
+    _patch_engine(monkeypatch, boom)
     warnings = []
     monkeypatch.setattr(engine_module.logger, "warn", warnings.append)
 
@@ -171,8 +183,7 @@ def test_check_skips_query_for_sqlite(monkeypatch):
     """
     monkeypatch.setattr(settings, "DB_TYPE", "sqlite", raising=False)
     called = []
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: called.append(1))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: called.append(1))
 
     assert engine_module.check_connection_budget() is True
     assert not called, "SQLite 不应连接数据库查询上限"
@@ -315,8 +326,7 @@ def test_check_fails_when_workers_multiply_past_the_limit(monkeypatch):
     monkeypatch.setattr(engine_module, "connection_budget",
                         lambda: {"sync": 60, "async_pooled": 15, "async_fallback": 10,
                                  "per_worker": 85, "workers": 4, "total": 340})
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: _fake_pg_connection(100, 3))
     errors = []
     monkeypatch.setattr(engine_module.logger, "error", errors.append)
 
@@ -334,7 +344,6 @@ def test_check_passes_when_workers_stay_within_the_limit(monkeypatch):
     monkeypatch.setattr(engine_module, "connection_budget",
                         lambda: {"sync": 20, "async_pooled": 5, "async_fallback": 5,
                                  "per_worker": 30, "workers": 3, "total": 90})
-    monkeypatch.setattr(engine_module.Engine, "connect",
-                        lambda *_a, **_kw: _fake_pg_connection(100, 3))
+    _patch_engine(monkeypatch, lambda *_a, **_kw: _fake_pg_connection(100, 3))
 
     assert engine_module.check_connection_budget() is True

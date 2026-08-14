@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.runtime.log import logger
 
 

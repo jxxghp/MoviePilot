@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from app.db import init as db_init
+from app.startup import database_initializer as db_init
 
 
 LOCAL_SETUP_PATH = (

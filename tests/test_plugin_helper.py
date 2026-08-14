@@ -916,7 +916,7 @@ class TestPluginHelper:
         """单插件版本查询不构建全部本地插件信息。"""
         try:
             from app.runtime.extensions.plugin_manager import PluginManager
-            from app.db.systemconfig_oper import SystemConfigOper
+            from app.db.oper.systemconfig import SystemConfigOper
             from app.schemas.types import SystemConfigKey
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")

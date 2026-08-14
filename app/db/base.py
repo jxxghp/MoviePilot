@@ -52,14 +52,14 @@ class Base(DeclarativeBase):
     声明式基类。
 
     2.0 的声明式系统会解释类级 PEP 484 注解，未包裹在 Mapped[] 中的注解会直接报错。
+    仓内模型已全部迁移到 mapped_column() + Mapped[] 注解，因此不设 __allow_unmapped__：
+    该标志此前只为「仓外插件可能继承本 Base 自定义 legacy 注解模型」保留，插件生态
+    确定迭代后这条理由不再成立。留着它反而会让回流的 1.x 写法在 import 期悄悄通过，
+    等到运行期才以「列不存在」的形式暴露。
 
-    仓内模型已全部迁移到 mapped_column() + Mapped[] 注解，本仓自身不再需要
-    __allow_unmapped__。保留它纯粹是为了兼容仓外插件：插件可以继承本 Base 自定义模型，
-    其中不乏仍在用 legacy 注解风格的，关掉这个标志会让它们在 import 期就直接炸掉，
-    表现为插件加载失败而非可修复的运行期报错。
+    继承本类的模型一律使用 mapped_column() + Mapped[] 注解；确需非映射的类级属性时
+    用 ClassVar 显式声明，而不是把这个标志加回来。
     """
-
-    __allow_unmapped__ = True
 
     # 由 get_id_column() 在各模型中提供实际的列定义，这里只声明类型供 IDE 使用
     id: Mapped[int]

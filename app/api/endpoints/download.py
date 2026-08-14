@@ -11,8 +11,8 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_token
 from app.db.models.user import User
-from app.db.site_oper import SiteOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.site import SiteOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.api.deps import get_current_active_user
 from app.application.directory import DirectoryHelper
 from app.schemas.types import (

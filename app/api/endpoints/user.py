@@ -11,7 +11,7 @@ from app.application.security.access import get_password_hash
 from app.db import get_async_db
 from app.db.models.user import User
 from app.api.deps import get_current_active_superuser_async, get_current_active_user_async, get_current_active_user
-from app.db.userconfig_oper import UserConfigOper
+from app.db.oper.userconfig import UserConfigOper
 
 router = ResponseAPIRouter()
 

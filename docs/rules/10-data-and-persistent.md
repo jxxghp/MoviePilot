@@ -83,11 +83,11 @@ oper.delete(sid=1)                    # Delete by key
 
 **Enum:** `SystemConfigKey` in `app/schemas/types.py`
 
-**Oper:** `SystemConfigOper` in `app/db/systemconfig_oper.py`
+**Oper:** `SystemConfigOper` in `app/db/oper/systemconfig.py`
 
 ```python
 from app.schemas.types import SystemConfigKey
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 
 oper = SystemConfigOper()
 
@@ -107,7 +107,7 @@ oper.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 **Purpose:** Settings that differ per user account. Uses `UserConfigOper`.
 
 ```python
-from app.db.userconfig_oper import UserConfigOper
+from app.db.oper.userconfig import UserConfigOper
 
 oper = UserConfigOper()
 value = oper.get(user_id=1, key="notification_enabled")

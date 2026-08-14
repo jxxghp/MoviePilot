@@ -9,7 +9,7 @@ from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
 from app.runtime.config import settings
 from app.domain.context import TorrentInfo
-from app.db.message_oper import MessageOper
+from app.db.oper.message import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider

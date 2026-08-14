@@ -20,8 +20,8 @@ from starlette import status
 from watchfiles import watch
 
 from app import schemas
-from app.db.plugindata_oper import PluginDataOper
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.crypto import RSAUtils
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton

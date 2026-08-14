@@ -57,7 +57,7 @@ elif SystemUtils.is_frozen():
 
 from app.factory import app
 from app.runtime.config import global_vars, settings
-from app.db.init import init_db, update_db
+from app.startup.database_initializer import init_db, update_db
 
 # 设置进程名
 setproctitle.setproctitle(settings.PROJECT_NAME)

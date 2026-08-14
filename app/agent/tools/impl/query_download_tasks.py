@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
-from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.runtime.log import logger
 from app.schemas import DownloaderTorrent
 from app.schemas.types import MUSIC_ENTITY_RECORDING, TorrentQueryStatus, media_type_to_agent

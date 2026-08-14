@@ -29,12 +29,12 @@ from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db import SessionFactory
-from app.db.agenttask_oper import AgentTaskOper
+from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import ProgressHelper

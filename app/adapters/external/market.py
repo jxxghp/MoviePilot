@@ -30,7 +30,7 @@ from requests import Response
 
 from app.runtime.cache import cached, is_fresh
 from app.runtime.config import settings
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.adapters.system.package import PackageInstallRequest, build_package_install_strategies
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey

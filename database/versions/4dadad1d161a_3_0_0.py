@@ -6,7 +6,7 @@ Revises: e8b1c4d7a2f9
 Create Date: 2026-08-10
 """
 
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 

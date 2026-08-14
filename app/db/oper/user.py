@@ -4,16 +4,20 @@
 模块级的认证依赖（get_current_user 等）已迁至 app/api/deps.py——那是 HTTP 层的
 关注点，产出 403/400 而非数据。本模块只保留 UserOper。
 
-旧导入路径经下方 __getattr__ 继续可用：第三方插件在仓库外、不可枚举，直接移除
-会让它们在 import 期崩。用惰性转发而不是模块级 re-import，是为了避免
-app.db.user_oper -> app.api.deps -> app.db 这条链在导入期成环。
+那八个名字仍能从本模块取到（见下方 __getattr__）：它们曾是用户数据访问模块的一部分，
+搬去 app.api.deps 属于分层归位而非删除，取属性时转发过去即可，调用方无需知道落点。
+用惰性转发而不是模块级 re-import，是为了避免 app.db.oper.user -> app.api.deps ->
+app.db 这条链在导入期成环。
+
+注：本模块自 app/db/user_oper.py 迁来，旧模块路径不再存在；下方转发覆盖的是名字，
+不是路径。
 """
 from typing import Any, List, Optional
 
 from app.db import DbOper
 from app.db.models.user import User
 
-# 已迁至 app/api/deps.py 的认证依赖，保留旧路径兼容
+# 已迁至 app/api/deps.py 的认证依赖，保留本模块上的旧名字
 _MOVED_TO_API_DEPS = (
     "get_current_user",
     "get_current_user_async",
@@ -28,7 +32,7 @@ _MOVED_TO_API_DEPS = (
 
 def __getattr__(name: str) -> Any:
     """
-    兼容旧导入路径：认证依赖已迁往 app.api.deps，按需转发。
+    兼容旧名字：认证依赖已迁往 app.api.deps，按需转发。
     :param name: 属性名
     :return: 迁移后的目标对象
     """

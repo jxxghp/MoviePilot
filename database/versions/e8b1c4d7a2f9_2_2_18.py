@@ -63,7 +63,7 @@ def upgrade() -> None:
     ])
 
     # 只升级系统旧默认模板；用户编辑过的模板保持原样。
-    from app.db.systemconfig_oper import SystemConfigOper
+    from app.db.oper.systemconfig import SystemConfigOper
     from app.schemas.types import SystemConfigKey
 
     legacy_organize = """

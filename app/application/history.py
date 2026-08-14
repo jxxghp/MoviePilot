@@ -1,10 +1,16 @@
 from typing import Any, Dict, Optional
 
+from app.domain.context import MediaInfo
+from app.domain.media import resolve_media_identity
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import TTLCache
 from app.runtime.config import settings
 from app.db.models.transferhistory import TransferHistory
-from app.db.transferhistory_oper import TransferHistoryOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.runtime.log import logger
+from app.schemas import FileItem, TransferInfo
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
 # 不该让文件永久漏整理，所以不允许关闭重试；上界为 10：永远识别不出的文件重试再多
@@ -420,3 +426,157 @@ def describe_history_gate(history: Optional[TransferHistory],
     if recorded_size is None and current_size is None:
         return f"成功记录 #{history.id}，大小不可比对"
     return f"成功记录 #{history.id}，大小 {recorded_size} -> {current_size}"
+
+
+# --------------------------------------------------------------------------- #
+# 整理历史的写入路径
+#
+# 这两个函数把 FileItem / MetaBase / MediaInfo / TransferInfo 四个领域对象翻译成
+# 一行整理历史，是整理历史表的唯一写入口。它们此前长在 TransferHistoryOper 上，但
+# 拼标题、拆季集、取海报、判音乐字段都是整理链的业务规则而非数据访问——Oper 只该
+# 收敛查询，领域对象不该出现在它的入参里。搬到本模块与查重闸（读侧）作伴：同一张
+# 表的读写规则放在一起，字段含义只有一处需要维护。
+# --------------------------------------------------------------------------- #
+
+def _history_title(meta: MetaBase, mediainfo: Optional[MediaInfo] = None) -> Optional[str]:
+    """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
+    if isinstance(meta, MetaMusic) and meta.title:
+        return meta.title
+    if mediainfo and mediainfo.title:
+        return mediainfo.title
+    return meta.name
+
+
+def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
+                         mediainfo: MediaInfo, transferinfo: TransferInfo,
+                         downloader: Optional[str] = None,
+                         download_hash: Optional[str] = None,
+                         transfer_history_oper: Optional[TransferHistoryOper] = None
+                         ) -> Optional[TransferHistory]:
+    """
+    新增转移成功历史记录。
+    :param fileitem: 源文件项
+    :param mode: 整理方式
+    :param meta: 文件名识别结果
+    :param mediainfo: 媒体识别结果
+    :param transferinfo: 整理结果
+    :param downloader: 下载器
+    :param download_hash: 种子 hash
+    :param transfer_history_oper: 复用的历史操作对象，未传时新建
+    :return: 落库后的整理记录
+    """
+    oper = transfer_history_oper or TransferHistoryOper()
+    media_source, media_id = resolve_media_identity(media=mediainfo)
+    return oper.add_force(
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+        src_fileitem=fileitem.model_dump(),
+        dest=transferinfo.target_item.path if transferinfo.target_item else None,
+        dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
+        dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
+        mode=mode,
+        type=mediainfo.type.value,
+        category=mediainfo.category,
+        title=_history_title(meta, mediainfo),
+        year=mediainfo.year,
+        media_source=media_source,
+        media_id=media_id,
+        music_type=getattr(mediainfo, "music_type", None),
+        total_tracks=getattr(mediainfo, "total_tracks", None),
+        audio_format=getattr(meta, "audio_format", None),
+        audio_lossless=getattr(meta, "audio_lossless", None),
+        bit_depth=getattr(meta, "bit_depth", None),
+        sample_rate=getattr(meta, "sample_rate", None),
+        bitrate=getattr(meta, "bitrate", None),
+        seasons=meta.season,
+        episodes=meta.episode,
+        image=mediainfo.get_poster_image(),
+        downloader=downloader,
+        download_hash=download_hash,
+        status=1,
+        files=transferinfo.file_list
+    )
+
+
+def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
+                      mediainfo: Optional[MediaInfo] = None,
+                      transferinfo: Optional[TransferInfo] = None,
+                      downloader: Optional[str] = None,
+                      download_hash: Optional[str] = None,
+                      transfer_history_oper: Optional[TransferHistoryOper] = None
+                      ) -> Optional[TransferHistory]:
+    """
+    新增转移失败历史记录。
+
+    识别结果与整理结果齐备时按完整字段落库；缺任一项则走「未识别到媒体信息」分支，
+    此时只有文件名解析出的元数据可用，不写目标路径。
+    :param fileitem: 源文件项
+    :param mode: 整理方式
+    :param meta: 文件名识别结果
+    :param mediainfo: 媒体识别结果，未识别时为 None
+    :param transferinfo: 整理结果，未进入整理时为 None
+    :param downloader: 下载器
+    :param download_hash: 种子 hash
+    :param transfer_history_oper: 复用的历史操作对象，未传时新建
+    :return: 落库后的整理记录
+    """
+    oper = transfer_history_oper or TransferHistoryOper()
+    if mediainfo and transferinfo:
+        media_source, media_id = resolve_media_identity(media=mediainfo)
+        his = oper.add_force(
+            src=fileitem.path,
+            src_storage=fileitem.storage,
+            src_fileitem=fileitem.model_dump(),
+            dest=transferinfo.target_item.path if transferinfo.target_item else None,
+            dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
+            dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
+            mode=mode,
+            type=mediainfo.type.value,
+            category=mediainfo.category,
+            title=_history_title(meta, mediainfo),
+            year=mediainfo.year or meta.year,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=getattr(mediainfo, "music_type", None),
+            total_tracks=getattr(mediainfo, "total_tracks", None),
+            audio_format=getattr(meta, "audio_format", None),
+            audio_lossless=getattr(meta, "audio_lossless", None),
+            bit_depth=getattr(meta, "bit_depth", None),
+            sample_rate=getattr(meta, "sample_rate", None),
+            bitrate=getattr(meta, "bitrate", None),
+            seasons=meta.season,
+            episodes=meta.episode,
+            image=mediainfo.get_poster_image(),
+            downloader=downloader,
+            download_hash=download_hash,
+            episode_group=mediainfo.episode_group,
+            status=0,
+            errmsg=transferinfo.message or '未知错误',
+            files=transferinfo.file_list
+        )
+    else:
+        media_source, media_id = resolve_media_identity(media=meta)
+        his = oper.add_force(
+            type=meta.type.value if meta.type else None,
+            title=_history_title(meta),
+            year=meta.year,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
+            audio_format=getattr(meta, "audio_format", None),
+            audio_lossless=getattr(meta, "audio_lossless", None),
+            bit_depth=getattr(meta, "bit_depth", None),
+            sample_rate=getattr(meta, "sample_rate", None),
+            bitrate=getattr(meta, "bitrate", None),
+            src=fileitem.path,
+            src_storage=fileitem.storage,
+            src_fileitem=fileitem.model_dump(),
+            mode=mode,
+            seasons=meta.season,
+            episodes=meta.episode,
+            downloader=downloader,
+            download_hash=download_hash,
+            status=0,
+            errmsg="未识别到媒体信息"
+        )
+    return his

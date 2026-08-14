@@ -11,9 +11,9 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_token
 from app.db import get_async_db
-from app.db.mediaserver_oper import MediaServerOper
+from app.db.oper.mediaserver import MediaServerOper
 from app.db.models import MediaServerItem
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.mediaserver import MediaServerHelper
 from app.schemas import MediaType, NotExistMediaInfo
 from app.schemas.types import MediaSource, SystemConfigKey

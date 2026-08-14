@@ -16,7 +16,7 @@ from app.chain import ChainBase
 from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.db.models import Workflow
-from app.db.workflow_oper import WorkflowOper
+from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
 from app.schemas import ActionContext, ActionFlow, Action, ActionExecution, ActionResult
 from app.schemas.types import EventType

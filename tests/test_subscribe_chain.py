@@ -333,7 +333,7 @@ def _load_subscribe_chain_class():
 
     db_model_module.Subscribe = _SubscribeModel
 
-    subscribe_oper_module = ensure_module("app.db.subscribe_oper", types.ModuleType("app.db.subscribe_oper"))
+    subscribe_oper_module = ensure_module("app.db.oper.subscribe", types.ModuleType("app.db.oper.subscribe"))
 
     class _SubscribeOper:
         def update(self, *args, **kwargs):
@@ -354,9 +354,9 @@ def _load_subscribe_chain_class():
     subscribe_oper_module.SubscribeOper = _SubscribeOper
 
     simple_oper_modules = {
-        "app.db.downloadhistory_oper": "DownloadHistoryOper",
-        "app.db.site_oper": "SiteOper",
-        "app.db.systemconfig_oper": "SystemConfigOper",
+        "app.db.oper.downloadhistory": "DownloadHistoryOper",
+        "app.db.oper.site": "SiteOper",
+        "app.db.oper.systemconfig": "SystemConfigOper",
     }
     for module_name_key, class_name in simple_oper_modules.items():
         module = ensure_module(module_name_key, types.ModuleType(module_name_key))

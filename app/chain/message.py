@@ -26,8 +26,8 @@ from app.runtime.config import settings, global_vars
 from app.domain.context import MediaInfo, Context
 from app.domain.meta.metabase import MetaBase
 from app.db.models import TransferHistory
-from app.db.transferhistory_oper import TransferHistoryOper
-from app.db.user_oper import UserOper
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.db.oper.user import UserOper
 from app.application.directory import DirectoryHelper
 from app.application.messaging.interaction import (
     agent_interaction_manager,

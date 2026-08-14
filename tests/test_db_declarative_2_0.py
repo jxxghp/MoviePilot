@@ -5,8 +5,9 @@ ORM 声明式写法的 2.0 迁移不变量。
 迁移到 mapped_column()。两者产出的表定义必须完全等价——迁移只改写法，不改
 schema，否则会与既有数据库和 alembic 迁移链产生偏差。
 
-仓内模型已全部迁移到 Mapped[] 注解，但 __allow_unmapped__ 仍需保留以兼容仓外插件
-自定义的 legacy 模型；这些测试守住这个标志，避免它被当作迁移残留误删。
+仓内模型已全部迁移到 Mapped[] 注解，__allow_unmapped__ 已随之移除；这些测试守住
+「标志不在、且仓内没有任何需要它的写法」这一组不变量，三条断言互为前提：标志一旦
+被加回来，下面两条 AST 守卫就会失去意义（legacy 写法将不再报错，只会静默通过）。
 """
 import ast
 import re
@@ -108,27 +109,33 @@ def test_base_uses_declarative_base():
     assert issubclass(Base, DeclarativeBase)
 
 
-def test_allow_unmapped_is_enabled():
+def test_allow_unmapped_is_not_set():
     """
-    __allow_unmapped__ 必须保持开启，即便仓内模型已全部用上 Mapped[] 注解。
+    __allow_unmapped__ 必须保持缺席。
 
-    它现在守的不是仓内模型，而是仓外插件：插件可以继承本 Base 自定义模型，其中不乏
-    仍是 legacy 注解风格的。一旦这个标志被当作迁移残留删掉，2.0 的声明式系统会尝试
-    解释那些未包裹在 Mapped[] 中的类级注解并直接报错——插件在 import 期就崩，
-    而仓内测试全绿，问题只会在装了插件的用户那里爆出来。
+    它此前唯一的存在理由是「仓外插件可能继承本 Base 自定义 legacy 注解模型」；插件
+    生态确定迭代后这条理由已不成立，标志随之移除。这里断言它不存在而不是删掉用例：
+    这个标志的危害在于**静默**——加回来之后，2.0 声明式系统不再拒绝未包裹在
+    Mapped[] 中的类级注解，本文件另外两条 AST 守卫拦下的 legacy 写法就会一路通过
+    映射，直到运行期以「列不存在」的形式暴露。没有这条断言，谁把它加回来都没人知道。
+
+    不用 getattr(..., False) is False：那样无法区分「没有这个属性」和
+    「显式设成了 False」，而后者同样是把这个开关重新引入了代码。
     """
-    assert getattr(Base, "__allow_unmapped__", False) is True
+    assert not hasattr(Base, "__allow_unmapped__")
 
 
 def test_no_unmapped_class_level_annotations_in_db_package():
     """
-    app/db 内不存在非 Mapped[] 的类级注解——即 __allow_unmapped__ 的保留理由确实是
-    「兼容仓外插件」，而不是「仓内还有模型离不开它」。
+    app/db 内不存在非 Mapped[] 的类级注解——这是移除 __allow_unmapped__ 的前提。
 
-    上一条用例只断言这个标志开着，守不住它的**理由**。而理由恰恰是会腐烂的那部分：
-    base.py 的 docstring 上一版还写着「现有 22 个模型仍是 legacy Column() 写法」，
-    在 329 列全部迁移完之后仍原样留了很久，主动误导读者。这条用例把那句话钉成可执行
-    断言——只要仓内重新出现 legacy 注解，说明「仅为仓外兼容」的说法不再成立，红给你看。
+    上一条用例断言标志不在，本条断言仓内确实不需要它。两者缺一不可：只断言标志不在，
+    则某天有人补进一条 legacy 注解、发现 import 就炸、顺手把标志加回来，上一条用例
+    会跟着被改绿；只断言注解形状，则标志被悄悄加回来时没有任何用例会响。
+
+    这条用例还把一句会腐烂的注释钉成了可执行断言：base.py 的 docstring 上一版写着
+    「现有 22 个模型仍是 legacy Column() 写法」，在 329 列全部迁移完之后仍原样留了
+    很久，主动误导读者。
 
     扫全部类而非只扫 Base 子类：判定 Base 子类要么靠运行期 Base.__subclasses__()，
     要么靠 AST 解析基类名。前者会漏掉「新增了模型文件但还没接进 app/db/models/__init__.py」
@@ -138,9 +145,10 @@ def test_no_unmapped_class_level_annotations_in_db_package():
 
     变红时怎么办（二选一，别直接把用例删了）：
     1. 常见情况——新模型忘了用 2.0 写法，把它改成 mapped_column() + Mapped[] 即可；
-    2. 若确实需要一条非映射的类级注解（例如 ClassVar），那么「仓内不再需要
-       __allow_unmapped__」这个前提就变了，请连同 base.py 中 Base 的 docstring
-       一起订正，别让注释和代码再次走散。
+    2. 若确实需要一条非映射的类级属性，用 ClassVar 显式声明——2.0 的声明式系统会
+       跳过 ClassVar，这条路不需要 __allow_unmapped__。本守卫比 SQLAlchemy 更严，
+       当下 app/db 里没有这种属性，所以不预留白名单；真要引入时请显式放宽本守卫
+       （在 MAPPED_ANNOTATION 之外放行 ClassVar），而不是把那个标志加回来。
     """
     offenders = [
         f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} {cls_name}.{attr} -> {annotation}"
@@ -149,10 +157,11 @@ def test_no_unmapped_class_level_annotations_in_db_package():
         if not MAPPED_ANNOTATION.match(annotation)
     ]
     assert not offenders, (
-        "app/db 内出现了非 Mapped[] 的类级注解，__allow_unmapped__ 已不只是为仓外插件保留：\n"
+        "app/db 内出现了非 Mapped[] 的类级注解，而 __allow_unmapped__ 已移除，"
+        "声明式系统会直接拒绝它们：\n"
         + "\n".join(f"  {item}" for item in offenders)
         + "\n请改用 mapped_column() + Mapped[]；若这条注解确实不该被映射，"
-          "则需同步订正 app/db/base.py 中 Base 的 docstring。"
+          "用 ClassVar 声明并显式放宽本守卫，不要把 __allow_unmapped__ 加回来。"
     )
 
 
@@ -174,8 +183,8 @@ def test_no_legacy_column_assignments_in_db_package():
 
     变红时怎么办：把 ``foo = Column(String)`` 改成
     ``foo: Mapped[str] = mapped_column(String)``（Optional 列写 Mapped[Optional[str]]），
-    主键用 get_id_column()。别靠 __allow_unmapped__ 兜着——它的保留理由是兼容仓外插件
-    自定义的 legacy 模型，不是仓内还有模型离不开它；仓内已全量 2.0，见上一条用例。
+    主键用 get_id_column()。注意 __allow_unmapped__ 已经移除，没有任何东西替你兜底：
+    仓内已全量 2.0，见上一条用例。
     """
     offenders = [
         f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} {cls_name}.{attr}"
@@ -186,7 +195,7 @@ def test_no_legacy_column_assignments_in_db_package():
         "app/db 内出现了 1.x 的 Column() 列声明，2.0 迁移被回流破坏：\n"
         + "\n".join(f"  {item}" for item in offenders)
         + "\n请改用 mapped_column() + Mapped[] 注解（主键用 get_id_column()）。"
-          "仓内已全量迁至 2.0，__allow_unmapped__ 只为仓外插件保留，不是给仓内兜底的。"
+          "仓内已全量迁至 2.0，__allow_unmapped__ 已移除，没有兜底可依赖。"
     )
 
 

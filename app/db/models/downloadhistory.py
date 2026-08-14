@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
-from app.db.models.media_identity import media_identity_constraint
+from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
 

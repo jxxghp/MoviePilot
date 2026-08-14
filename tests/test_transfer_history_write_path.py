@@ -1,20 +1,25 @@
 """
-整理历史的写入路径：add_success / add_fail。
+整理历史的写入路径：add_transfer_success / add_transfer_fail。
 
-这两个方法是整理历史表的**唯一**写入口，整理链的每一次成败都经由它们落库。
+这两个函数是整理历史表的**唯一**写入口，整理链的每一次成败都经由它们落库。
 它们干的不是数据访问，而是把 FileItem / MetaBase / MediaInfo / TransferInfo
 四个领域对象翻译成一行历史——字段映射错了不会报错，只会让历史里的季集、标题、
 来源静静地记错，而整理查重、媒体库溯源、失败重试全都读这张表。
 
 因此这里断言的是「落库后每个字段的实际值」，不是「调用了什么」。
+
+它们与同一张表的读侧规则（查重闸，见 test_transfer_history_gate.py）同住
+app/application/history.py；此前长在 TransferHistoryOper 上，故本文件旧名为
+test_db_transferhistory_write_path.py。
 """
 import pytest
 
 from app import schemas
+from app.application.history import add_transfer_fail, add_transfer_success
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.db.models.transferhistory import TransferHistory
-from app.db.transferhistory_oper import TransferHistoryOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -57,7 +62,7 @@ def _mediainfo(title: str = "识别标题", mtype: MediaType = MediaType.TV,
 
 
 # --------------------------------------------------------------------------- #
-# add_success
+# add_transfer_success
 # --------------------------------------------------------------------------- #
 
 def test_add_success_maps_every_field_onto_the_row(db):
@@ -70,10 +75,11 @@ def test_add_success_maps_every_field_onto_the_row(db):
     oper = TransferHistoryOper(db=db.session)
     meta = MetaInfo("片名.S01E02.2026.mkv")
 
-    oper.add_success(fileitem=_fileitem("/downloads/片名.S01E02.2026.mkv"),
-                     mode="move", meta=meta, mediainfo=_mediainfo(),
-                     transferinfo=_transferinfo(),
-                     downloader="qbittorrent", download_hash="hash-ok")
+    add_transfer_success(transfer_history_oper=oper,
+                         fileitem=_fileitem("/downloads/片名.S01E02.2026.mkv"),
+                         mode="move", meta=meta, mediainfo=_mediainfo(),
+                         transferinfo=_transferinfo(),
+                         downloader="qbittorrent", download_hash="hash-ok")
 
     row = oper.get_by_src("/downloads/片名.S01E02.2026.mkv")
     assert row.status is True
@@ -94,9 +100,10 @@ def test_add_success_persists_both_file_items(db):
     整理链回滚、重新整理都要拿原始 FileItem 复原，只存路径字符串不够。
     """
     oper = TransferHistoryOper(db=db.session)
-    oper.add_success(fileitem=_fileitem("/downloads/item.mkv"), mode="link",
-                     meta=MetaInfo("item.mkv"), mediainfo=_mediainfo(),
-                     transferinfo=_transferinfo(dest="/media/item.mkv"))
+    add_transfer_success(transfer_history_oper=oper,
+                         fileitem=_fileitem("/downloads/item.mkv"), mode="link",
+                         meta=MetaInfo("item.mkv"), mediainfo=_mediainfo(),
+                         transferinfo=_transferinfo(dest="/media/item.mkv"))
 
     row = oper.get_by_src("/downloads/item.mkv")
     assert row.src_fileitem["path"] == "/downloads/item.mkv"
@@ -110,9 +117,10 @@ def test_add_success_tolerates_missing_target_item(db):
     某些存储的整理只回传结果不回传条目，硬取 target_item.path 会直接抛。
     """
     oper = TransferHistoryOper(db=db.session)
-    oper.add_success(fileitem=_fileitem("/downloads/no-target.mkv"), mode="copy",
-                     meta=MetaInfo("no-target.mkv"), mediainfo=_mediainfo(),
-                     transferinfo=_transferinfo(with_target=False))
+    add_transfer_success(transfer_history_oper=oper,
+                         fileitem=_fileitem("/downloads/no-target.mkv"), mode="copy",
+                         meta=MetaInfo("no-target.mkv"), mediainfo=_mediainfo(),
+                         transferinfo=_transferinfo(with_target=False))
 
     row = oper.get_by_src("/downloads/no-target.mkv")
     assert (row.dest, row.dest_storage, row.dest_fileitem) == (None, None, None)
@@ -127,10 +135,11 @@ def test_add_success_replaces_the_previous_record_of_the_same_source(db):
     """
     oper = TransferHistoryOper(db=db.session)
     for title in ("第一次", "第二次"):
-        oper.add_success(fileitem=_fileitem("/downloads/dup.mkv"), mode="move",
-                         meta=MetaInfo("dup.mkv"),
-                         mediainfo=_mediainfo(title=title),
-                         transferinfo=_transferinfo())
+        add_transfer_success(transfer_history_oper=oper,
+                             fileitem=_fileitem("/downloads/dup.mkv"), mode="move",
+                             meta=MetaInfo("dup.mkv"),
+                             mediainfo=_mediainfo(title=title),
+                             transferinfo=_transferinfo())
 
     rows = oper.list_success_by_src("/downloads/dup.mkv")
     assert [r.title for r in rows] == ["第二次"]
@@ -145,10 +154,11 @@ def test_add_success_prefers_track_title_for_music(db):
     oper = TransferHistoryOper(db=db.session)
     music_meta = MetaInfo("周杰伦 - 晴天.flac")
 
-    oper.add_success(fileitem=_fileitem("/downloads/晴天.flac"), mode="move",
-                     meta=music_meta,
-                     mediainfo=_mediainfo(title="叶惠美", mtype=MediaType.MUSIC),
-                     transferinfo=_transferinfo(dest="/media/晴天.flac"))
+    add_transfer_success(transfer_history_oper=oper,
+                         fileitem=_fileitem("/downloads/晴天.flac"), mode="move",
+                         meta=music_meta,
+                         mediainfo=_mediainfo(title="叶惠美", mtype=MediaType.MUSIC),
+                         transferinfo=_transferinfo(dest="/media/晴天.flac"))
 
     assert oper.get_by_src("/downloads/晴天.flac").title == "晴天"
 
@@ -160,15 +170,16 @@ def test_add_success_falls_back_to_recognized_title(db):
     oper = TransferHistoryOper(db=db.session)
     meta = MetaInfo("片名.S01E02.2026.mkv")
 
-    oper.add_success(fileitem=_fileitem("/downloads/fallback.mkv"), mode="move",
-                     meta=meta, mediainfo=_mediainfo(title=None),
-                     transferinfo=_transferinfo())
+    add_transfer_success(transfer_history_oper=oper,
+                         fileitem=_fileitem("/downloads/fallback.mkv"), mode="move",
+                         meta=meta, mediainfo=_mediainfo(title=None),
+                         transferinfo=_transferinfo())
 
     assert oper.get_by_src("/downloads/fallback.mkv").title == meta.name
 
 
 # --------------------------------------------------------------------------- #
-# add_fail
+# add_transfer_fail
 # --------------------------------------------------------------------------- #
 
 def test_add_fail_records_the_transfer_error_message(db):
@@ -179,9 +190,10 @@ def test_add_fail_records_the_transfer_error_message(db):
     """
     oper = TransferHistoryOper(db=db.session)
 
-    oper.add_fail(fileitem=_fileitem("/downloads/fail.mkv"), mode="move",
-                  meta=MetaInfo("fail.mkv"), mediainfo=_mediainfo(),
-                  transferinfo=_transferinfo(message="目标路径不可写"))
+    add_transfer_fail(transfer_history_oper=oper,
+                      fileitem=_fileitem("/downloads/fail.mkv"), mode="move",
+                      meta=MetaInfo("fail.mkv"), mediainfo=_mediainfo(),
+                      transferinfo=_transferinfo(message="目标路径不可写"))
 
     row = oper.get_by_src("/downloads/fail.mkv")
     assert row.status is False
@@ -197,9 +209,10 @@ def test_add_fail_uses_a_default_message_when_none_given(db):
     """
     oper = TransferHistoryOper(db=db.session)
 
-    oper.add_fail(fileitem=_fileitem("/downloads/nomsg.mkv"), mode="move",
-                  meta=MetaInfo("nomsg.mkv"), mediainfo=_mediainfo(),
-                  transferinfo=_transferinfo(message=""))
+    add_transfer_fail(transfer_history_oper=oper,
+                      fileitem=_fileitem("/downloads/nomsg.mkv"), mode="move",
+                      meta=MetaInfo("nomsg.mkv"), mediainfo=_mediainfo(),
+                      transferinfo=_transferinfo(message=""))
 
     assert oper.get_by_src("/downloads/nomsg.mkv").errmsg == "未知错误"
 
@@ -210,10 +223,11 @@ def test_add_fail_persists_episode_group(db):
     """
     oper = TransferHistoryOper(db=db.session)
 
-    oper.add_fail(fileitem=_fileitem("/downloads/eg.mkv"), mode="move",
-                  meta=MetaInfo("eg.mkv"),
-                  mediainfo=_mediainfo(episode_group="eg-1"),
-                  transferinfo=_transferinfo(message="出错"))
+    add_transfer_fail(transfer_history_oper=oper,
+                      fileitem=_fileitem("/downloads/eg.mkv"), mode="move",
+                      meta=MetaInfo("eg.mkv"),
+                      mediainfo=_mediainfo(episode_group="eg-1"),
+                      transferinfo=_transferinfo(message="出错"))
 
     assert oper.get_by_src("/downloads/eg.mkv").episode_group == "eg-1"
 
@@ -227,8 +241,9 @@ def test_add_fail_without_recognition_takes_the_unidentified_branch(db):
     oper = TransferHistoryOper(db=db.session)
     meta = MetaInfo("无法识别的文件.S02E05.2020.mkv")
 
-    oper.add_fail(fileitem=_fileitem("/downloads/unknown.mkv"), mode="move",
-                  meta=meta)
+    add_transfer_fail(transfer_history_oper=oper,
+                      fileitem=_fileitem("/downloads/unknown.mkv"), mode="move",
+                      meta=meta)
 
     row = oper.get_by_src("/downloads/unknown.mkv")
     assert row.status is False
@@ -247,8 +262,9 @@ def test_add_fail_unidentified_music_is_marked_as_a_recording(db):
     """
     oper = TransferHistoryOper(db=db.session)
 
-    oper.add_fail(fileitem=_fileitem("/downloads/unknown.flac"), mode="move",
-                  meta=MetaInfo("周杰伦 - 晴天.flac"))
+    add_transfer_fail(transfer_history_oper=oper,
+                      fileitem=_fileitem("/downloads/unknown.flac"), mode="move",
+                      meta=MetaInfo("周杰伦 - 晴天.flac"))
 
     row = oper.get_by_src("/downloads/unknown.flac")
     assert row.music_type == "recording"
@@ -262,11 +278,13 @@ def test_add_fail_returns_the_persisted_row(db):
     """
     oper = TransferHistoryOper(db=db.session)
 
-    identified = oper.add_fail(fileitem=_fileitem("/downloads/r1.mkv"), mode="move",
-                               meta=MetaInfo("r1.mkv"), mediainfo=_mediainfo(),
-                               transferinfo=_transferinfo(message="错误"))
-    unidentified = oper.add_fail(fileitem=_fileitem("/downloads/r2.mkv"), mode="move",
-                                 meta=MetaInfo("r2.mkv"))
+    identified = add_transfer_fail(transfer_history_oper=oper,
+                                   fileitem=_fileitem("/downloads/r1.mkv"), mode="move",
+                                   meta=MetaInfo("r1.mkv"), mediainfo=_mediainfo(),
+                                   transferinfo=_transferinfo(message="错误"))
+    unidentified = add_transfer_fail(transfer_history_oper=oper,
+                                     fileitem=_fileitem("/downloads/r2.mkv"), mode="move",
+                                     meta=MetaInfo("r2.mkv"))
 
     assert identified.id is not None
     assert unidentified.id is not None

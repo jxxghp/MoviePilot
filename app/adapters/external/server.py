@@ -9,9 +9,9 @@ from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.db.subscribe_oper import SubscribeOper
-from app.db.systemconfig_oper import SystemConfigOper
-from app.db.workflow_oper import WorkflowOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,

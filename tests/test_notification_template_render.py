@@ -19,7 +19,7 @@ import pytest
 
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.db.systemconfig_oper import SystemConfigOper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
 from app.schemas.message import Notification
 from app.schemas.types import ContentType, SystemConfigKey

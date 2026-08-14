@@ -8,7 +8,7 @@
 import pytest
 
 from app.db.models.transferpending import TransferPending
-from app.db.transferpending_oper import TransferPendingOper
+from app.db.oper.transferpending import TransferPendingOper
 
 
 @pytest.fixture(autouse=True)

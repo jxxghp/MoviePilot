@@ -2,7 +2,7 @@
 API 层的公共依赖。
 
 这些是 FastAPI 的路由依赖：从令牌解出用户、校验激活状态与权限，失败一律以
-HTTPException 表达。它们此前住在 app/db/user_oper.py 里，与数据访问混在一处——
+HTTPException 表达。它们此前住在 app/db/oper/user.py 里，与数据访问混在一处——
 鉴权是 HTTP 层的关注点，产出的是 403/400 而不是数据。放在 db 包里既让数据层反向
 依赖了 fastapi，也使这部分逻辑无法与数据访问分开度量。
 """
