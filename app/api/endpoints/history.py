@@ -22,7 +22,7 @@ from app.db import get_async_db, get_db
 from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.transferhistory import TransferHistory
-from app.db.user_oper import (
+from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_superuser,
     get_current_active_superuser_async,

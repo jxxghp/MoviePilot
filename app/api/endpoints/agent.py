@@ -35,7 +35,8 @@ from app.db import get_async_db
 from app.db.agentchat_oper import AgentChatOper
 from app.db.models import User
 from app.db.models.agentchat import AgentChat
-from app.db.user_oper import UserOper, get_current_active_user
+from app.db.user_oper import UserOper
+from app.api.deps import get_current_active_user
 from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
 from app.application.messaging.interaction import agent_interaction_manager, media_interaction_manager
 from app.runtime.localization import LocaleHelper

@@ -15,7 +15,7 @@ from app.chain.transfer import TransferChain
 from app.runtime.config import settings
 from app.application.security.access import verify_token
 from app.db.models import User
-from app.db.user_oper import (
+from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_superuser,
     get_current_active_superuser_async,

@@ -18,7 +18,7 @@ from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
 from app.application.security.access import verify_resource_token
-from app.db.user_oper import (
+from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
     get_current_active_superuser,

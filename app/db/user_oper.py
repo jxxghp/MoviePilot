@@ -1,117 +1,42 @@
-from typing import Optional, List
+"""
+用户数据访问。
 
-from fastapi import Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+模块级的认证依赖（get_current_user 等）已迁至 app/api/deps.py——那是 HTTP 层的
+关注点，产出 403/400 而非数据。本模块只保留 UserOper。
 
-from app import schemas
-from app.application.security.access import verify_token
-from app.db import DbOper, get_db, get_async_db
+旧导入路径经下方 __getattr__ 继续可用：第三方插件在仓库外、不可枚举，直接移除
+会让它们在 import 期崩。用惰性转发而不是模块级 re-import，是为了避免
+app.db.user_oper -> app.api.deps -> app.db 这条链在导入期成环。
+"""
+from typing import Any, List, Optional
+
+from app.db import DbOper
 from app.db.models.user import User
 
-
-def get_current_user(
-        db: Session = Depends(get_db),
-        token_data: schemas.TokenPayload = Depends(verify_token)
-) -> User:
-    """
-    获取当前用户
-    """
-    user = User.get(db, rid=token_data.sub)
-    if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
-    return user
-
-
-async def get_current_user_async(
-        db: AsyncSession = Depends(get_async_db),
-        token_data: schemas.TokenPayload = Depends(verify_token)
-) -> User:
-    """
-    异步获取当前用户
-    """
-    user = await User.async_get(db, rid=token_data.sub)
-    if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
-    return user
+# 已迁至 app/api/deps.py 的认证依赖，保留旧路径兼容
+_MOVED_TO_API_DEPS = (
+    "get_current_user",
+    "get_current_user_async",
+    "get_current_active_user",
+    "get_current_active_user_async",
+    "get_current_active_manage_user",
+    "get_current_active_manage_user_async",
+    "get_current_active_superuser",
+    "get_current_active_superuser_async",
+)
 
 
-def get_current_active_user(
-        current_user: User = Depends(get_current_user),
-) -> User:
+def __getattr__(name: str) -> Any:
     """
-    获取当前激活用户
+    兼容旧导入路径：认证依赖已迁往 app.api.deps，按需转发。
+    :param name: 属性名
+    :return: 迁移后的目标对象
     """
-    if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
-    return current_user
+    if name in _MOVED_TO_API_DEPS:
+        from app.api import deps
 
-
-async def get_current_active_user_async(
-        current_user: User = Depends(get_current_user_async),
-) -> User:
-    """
-    异步获取当前激活用户
-    """
-    if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
-    return current_user
-
-
-def _ensure_manage_user(current_user: User) -> User:
-    """
-    校验用户具备全局管理权限。
-    """
-    permissions = current_user.permissions or {}
-    if not current_user.is_superuser and not bool(permissions.get("manage")):
-        raise HTTPException(
-            status_code=400, detail="用户权限不足"
-        )
-    return current_user
-
-
-def get_current_active_manage_user(
-        current_user: User = Depends(get_current_active_user),
-) -> User:
-    """
-    获取当前拥有管理权限的激活用户。
-    """
-    return _ensure_manage_user(current_user)
-
-
-async def get_current_active_manage_user_async(
-        current_user: User = Depends(get_current_active_user_async),
-) -> User:
-    """
-    异步获取当前拥有管理权限的激活用户。
-    """
-    return _ensure_manage_user(current_user)
-
-
-def get_current_active_superuser(
-        current_user: User = Depends(get_current_user),
-) -> User:
-    """
-    获取当前激活超级管理员
-    """
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=400, detail="用户权限不足"
-        )
-    return current_user
-
-
-async def get_current_active_superuser_async(
-        current_user: User = Depends(get_current_user_async),
-) -> User:
-    """
-    异步获取当前激活超级管理员
-    """
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=400, detail="用户权限不足"
-        )
-    return current_user
+        return getattr(deps, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class UserOper(DbOper):

@@ -13,7 +13,7 @@ from app.application.security.access import verify_token
 from app.db.models.user import User
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_user
+from app.api.deps import get_current_active_user
 from app.application.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,

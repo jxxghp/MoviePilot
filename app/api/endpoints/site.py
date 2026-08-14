@@ -22,7 +22,7 @@ from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import (
+from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
     get_current_active_superuser,

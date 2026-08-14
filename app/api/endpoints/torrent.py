@@ -11,10 +11,7 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.db.models import User
-from app.db.user_oper import (
-    get_current_active_superuser,
-    get_current_active_superuser_async,
-)
+from app.api.deps import get_current_active_superuser, get_current_active_superuser_async
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,

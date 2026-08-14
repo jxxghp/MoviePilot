@@ -18,7 +18,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.user_oper import get_current_active_user, get_current_active_user_async
+from app.api.deps import get_current_active_user, get_current_active_user_async
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
