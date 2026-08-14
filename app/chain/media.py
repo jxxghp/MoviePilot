@@ -43,6 +43,7 @@ from app.domain.media import (
     resolve_media_identity,
 )
 from app.foundation.singleton import Singleton
+from app.foundation.text import convert as zhconv_convert
 from app.domain.string import StringUtils
 
 recognize_lock = Lock()
@@ -58,6 +59,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
     _album_dir_cache: dict[str, tuple[tuple[str, ...], dict[str, MusicInfo]]] = {}
     _album_dir_cache_max = 128
     _album_match_min_files = 2
+    _music_simplified_text_fields = (
+        "title",
+        "album",
+        "album_artist",
+        "album_type",
+        "version",
+        "category",
+    )
+    _music_simplified_list_fields = ("artists", "genres", "names")
 
     @staticmethod
     def _music_source_chain(
@@ -206,7 +216,49 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 or str(result.media_id or "") != media_id
         ):
             return None
-        return result
+        return MediaChain._simplify_recognized_music_info(result)
+
+    @classmethod
+    def _simplify_recognized_music_info(cls, info: MusicInfo) -> MusicInfo:
+        """按开关转换标准音乐文本字段，并避免修改来源模块的缓存对象。"""
+        if not settings.MUSIC_METADATA_TO_SIMPLIFIED:
+            return info
+        updates: dict[str, Any] = {}
+        for field_name in cls._music_simplified_text_fields:
+            value = getattr(info, field_name, None)
+            if isinstance(value, str):
+                converted = zhconv_convert(value, "zh-hans")
+                if converted != value:
+                    updates[field_name] = converted
+        for field_name in cls._music_simplified_list_fields:
+            value = getattr(info, field_name, None)
+            if isinstance(value, list):
+                converted = [
+                    zhconv_convert(item, "zh-hans") if isinstance(item, str) else item
+                    for item in value
+                ]
+                if converted != value:
+                    updates[field_name] = converted
+        if not updates:
+            return info
+        simplified = deepcopy(info)
+        for field_name, value in updates.items():
+            setattr(simplified, field_name, value)
+        return simplified
+
+    @classmethod
+    def _simplify_recognized_music_mapping(
+            cls,
+            matched: dict[str, MusicInfo],
+    ) -> dict[str, MusicInfo]:
+        """转换目录识别结果，同时让缓存始终保留来源返回的原始文本。"""
+        simplified = {
+            path: cls._simplify_recognized_music_info(info)
+            for path, info in matched.items()
+        }
+        if all(simplified[path] is info for path, info in matched.items()):
+            return matched
+        return simplified
 
     def recognize_music_from_source(
             self,
@@ -1193,12 +1245,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
         signature = self._album_directory_signature(directory, files)
         cached = self._album_dir_cache.get(key)
         if cached and cached[0] == signature:
-            return cached[1]
+            return self._simplify_recognized_music_mapping(cached[1])
         matched = self._match_music_album_directory(directory, files)
         if len(self._album_dir_cache) >= self._album_dir_cache_max:
             self._album_dir_cache.clear()
         self._album_dir_cache[key] = signature, matched
-        return matched
+        return self._simplify_recognized_music_mapping(matched)
 
     async def async_recognize_music_album_directory(
             self,
@@ -1215,12 +1267,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
         signature = self._album_directory_signature(directory, files)
         cached = self._album_dir_cache.get(key)
         if cached and cached[0] == signature:
-            return cached[1]
+            return self._simplify_recognized_music_mapping(cached[1])
         matched = await self._async_match_music_album_directory(directory, files)
         if len(self._album_dir_cache) >= self._album_dir_cache_max:
             self._album_dir_cache.clear()
         self._album_dir_cache[key] = signature, matched
-        return matched
+        return self._simplify_recognized_music_mapping(matched)
 
     def recognize_music_by_path(
             self,
@@ -1259,7 +1311,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             matched = self._music_album_dir_fallback(path)
             if matched:
                 result = self._merge_music_audio_quality(matched, meta)
-        return meta, result
+        return meta, self._simplify_recognized_music_info(result)
 
     async def async_recognize_music_by_path(
             self,
@@ -1304,7 +1356,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             matched = await self._async_music_album_dir_fallback(path)
             if matched:
                 result = self._merge_music_audio_quality(matched, meta)
-        return meta, result
+        return meta, self._simplify_recognized_music_info(result)
 
     def _is_music_path_request(self, path: str, media_source: Optional[MediaSource]) -> bool:
         """路径识别请求是否属于音乐：音频后缀文件或显式指定音乐数据源。"""

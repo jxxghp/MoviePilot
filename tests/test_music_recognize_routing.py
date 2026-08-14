@@ -17,6 +17,7 @@ from app.modules.bangumi import BangumiModule
 from app.modules.musicbrainz import MusicBrainzModule
 from app.modules.theaudiodb import TheAudioDbModule
 from app.modules.themoviedb import TheMovieDbModule
+from app.runtime.config import ConfigModel
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -339,6 +340,101 @@ def test_media_chain_rejects_cross_entity_detail_result(monkeypatch):
 
     assert result is None
     assert source_chain.recognize_music.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+
+
+def test_music_metadata_simplified_conversion_defaults_to_enabled():
+    """音乐识别结果转简体开关应默认开启。"""
+    assert ConfigModel.model_fields["MUSIC_METADATA_TO_SIMPLIFIED"].default is True
+
+
+def test_media_chain_converts_recognized_music_metadata_without_mutating_source(monkeypatch):
+    """开启开关时应转换标准音乐字段，并保留模块缓存对象和歌词原文。"""
+    source_info = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-1",
+        title="後來的我們",
+        artists=["張學友"],
+        album="歲月如歌",
+        album_artist="張學友",
+        category="華語流行",
+        genres=["華語"],
+        names=["後來的我們", "歲月如歌"],
+        lyrics="後來的我們",
+    )
+    source_chain = Mock()
+    source_chain.recognize_music.return_value = source_info
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
+    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+
+    result = chain.recognize_music_from_source(
+        media_source="musicbrainz",
+        media_id="recording-1",
+    )
+
+    assert result is not source_info
+    assert result.title == "后来的我们"
+    assert result.artists == ["张学友"]
+    assert result.album == "岁月如歌"
+    assert result.album_artist == "张学友"
+    assert result.category == "华语流行"
+    assert result.genres == ["华语"]
+    assert result.names == ["后来的我们", "岁月如歌"]
+    assert result.lyrics == "後來的我們"
+    assert source_info.title == "後來的我們"
+    assert source_info.artists == ["張學友"]
+
+
+def test_media_chain_preserves_original_music_metadata_when_conversion_disabled(monkeypatch):
+    """关闭开关时识别结果应保持来源提供的原始繁简写法。"""
+    source_info = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-1",
+        title="後來的我們",
+        artists=["張學友"],
+    )
+    source_chain = Mock()
+    source_chain.recognize_music.return_value = source_info
+    chain = MediaChain()
+    monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
+    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", False)
+
+    result = chain.recognize_music_from_source(
+        media_source="musicbrainz",
+        media_id="recording-1",
+    )
+
+    assert result is source_info
+    assert result.title == "後來的我們"
+    assert result.artists == ["張學友"]
+
+
+def test_music_path_fallback_converts_local_tag_metadata(monkeypatch):
+    """远端未命中时，本地标签生成的音乐信息也应按开关转换为简体。"""
+    meta = MetaMusic(
+        title="後來的我們",
+        artists=["張學友"],
+        album="歲月如歌",
+    )
+    chain = MediaChain()
+    monkeypatch.setattr(
+        "app.chain.media.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(meta, meta, MetaMusic())),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=None),
+    )
+    monkeypatch.setattr(chain, "recognize_media", Mock(return_value=None))
+    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+
+    _, result = chain.recognize_music_by_path("track.flac")
+
+    assert result.title == "后来的我们"
+    assert result.artists == ["张学友"]
+    assert result.album == "岁月如歌"
+    assert meta.title == "後來的我們"
 
 
 def test_media_chain_rejects_replaced_explicit_identity(monkeypatch):

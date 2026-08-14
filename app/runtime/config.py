@@ -240,6 +240,8 @@ class ConfigModel(BaseModel):
     MUSIC_COVER_PROXY: str = ""
     # AcoustID 应用 API Key，用于查询本地音频的 Chromaprint 指纹
     ACOUSTID_API_KEY: str = "b1auxfOzAg"
+    # 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文
+    MUSIC_METADATA_TO_SIMPLIFIED: bool = True
     # TheAudioDB API Key，默认使用官方公开的免费 V1 Key，可通过环境变量覆盖
     THEAUDIODB_API_KEY: str = "123"
 
