@@ -1,4 +1,4 @@
-from typing import List, Annotated
+from typing import List, Optional, Annotated
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from app.api.response import ERROR_RESPONSES
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tvdb import TvdbChain
+from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_apikey
 from app.db import get_db, get_async_db
@@ -29,6 +30,27 @@ def _subscribe_tmdb_id(subscribe: Subscribe) -> int | None:
     ):
         return int(subscribe.media_id)
     return None
+
+
+def _resolve_series_media(
+    tvdbid: Optional[int] = None,
+    title: Optional[str] = None,
+    year: Optional[str | int] = None,
+) -> Optional[MediaInfo]:
+    """按 TVDB ID 或标题解析剧集媒体信息，用于补全 Seerr 请求体中缺失的媒体身份。"""
+    meta = None
+    if tvdbid:
+        tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
+        if tvdbinfo and tvdbinfo.get("name"):
+            meta = MetaInfo(tvdbinfo.get("name"))
+    if not meta and title:
+        meta = MetaInfo(title)
+    if not meta:
+        return None
+    meta.type = MediaType.TV
+    if year:
+        meta.year = year
+    return MediaChain().recognize_by_meta(meta, obtain_images=False)
 
 
 @arr_router.get(
@@ -571,8 +593,6 @@ def arr_series_lookup(
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
-    # 季信息
-    seas: List[int] = []
     # tvdbid 列表
     tvdbids: List[int] = []
     # 获取TVDBID
@@ -599,8 +619,7 @@ def arr_series_lookup(
                 and season["number"] > 0
             ]
         )
-        if sea_num:
-            seas = list(range(1, int(sea_num) + 1))
+        seas = list(range(1, int(sea_num) + 1)) if sea_num else []
 
         # 根据TVDB查询媒体信息
         meta = MetaInfo(tvdbinfo.get("name"))
@@ -611,6 +630,9 @@ def arr_series_lookup(
         )
         if not mediainfo:
             continue
+        # TVDB 未提供可用季信息时，按 TMDB 季集兜底，避免 Seerr 请求体季列表为空
+        if not seas and mediainfo.seasons:
+            seas = [season for season in mediainfo.seasons if season > 0]
         # 查询是否存在
         exists = MediaChain().media_exists(mediainfo)
         if exists:
@@ -722,14 +744,46 @@ async def arr_add_series(
     """
     新增Sonarr剧集订阅
     """
+    # Seerr 的请求体只携带 tvdbId、不携带 tmdbId，缺失时按 TVDB 信息补全媒体身份；
+    # 请求体季列表由 lookup 返回的季列表构造，lookup 季列表为空时请求体也会为空，此时按识别季集兜底
+    mediainfo = None
+    if not tv.tmdbId or not tv.seasons:
+        mediainfo = _resolve_series_media(
+            tvdbid=tv.tvdbId, title=tv.title, year=tv.year
+        )
+        if not tv.tmdbId:
+            if not mediainfo:
+                raise HTTPException(status_code=500, detail="添加订阅失败：未识别到媒体信息")
+            tv.tmdbId = mediainfo.tmdb_id
+        if mediainfo:
+            if not tv.title:
+                tv.title = mediainfo.title
+            if not tv.year:
+                tv.year = mediainfo.year
+    # 提取请求季与监控标记，排除特别季
+    seasons = [
+        (season.seasonNumber, season.monitored)
+        for season in tv.seasons
+        if season.seasonNumber
+    ]
+    if not seasons:
+        # 请求体未携带季信息时，订阅已识别的全部季，识别不到季则默认第 1 季
+        fallback_seasons = (
+            [season for season in (mediainfo.seasons or {}) if season > 0]
+            if mediainfo
+            else []
+        )
+        seasons = [(season, True) for season in (fallback_seasons or [1])]
     # 检查订阅是否存在
     left_seasons = []
-    for season in tv.seasons:
+    for season, monitored in seasons:
+        if not monitored:
+            continue
         subscribe = await Subscribe.async_exists(
             db,
             media_source=MediaSource.TMDB.value,
             media_id=str(tv.tmdbId),
-            season=season.seasonNumber,
+            season=season,
         )
         if subscribe:
             continue
@@ -741,12 +795,10 @@ async def arr_add_series(
     sid = 0
     message = ""
     for season in left_seasons:
-        if not season.monitored:
-            continue
         sid, message = await SubscribeChain().async_add(
             title=tv.title,
             year=tv.year,
-            season=season.seasonNumber,
+            season=season,
             media_source=MediaSource.TMDB,
             media_id=str(tv.tmdbId),
             mtype=MediaType.TV,
