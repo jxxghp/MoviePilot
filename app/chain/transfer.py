@@ -238,6 +238,20 @@ class JobManager:
         else:
             # 没有媒体信息
             meta: MetaBase = task.meta
+            if isinstance(meta, MetaMusic):
+                # 未识别的音乐按已解析元数据兜底展示；音乐年份为 int，
+                # 不能复用 MediaInfo（year 为 str），否则触发 pydantic 校验异常
+                return schemas.MusicInfo(
+                    title=meta.name,
+                    artists=list(meta.artists or []),
+                    artist=meta.artist,
+                    album=meta.album,
+                    album_artist=meta.album_artist,
+                    year=meta.year,
+                    title_year=f"{meta.name} ({meta.year})" if meta.year else meta.name,
+                    media_source=meta.media_source,
+                    media_id=meta.media_id,
+                )
             return schemas.MediaInfo(
                 title=meta.name,
                 year=meta.year,
