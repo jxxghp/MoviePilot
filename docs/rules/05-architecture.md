@@ -230,6 +230,15 @@ common `schemas.ManageRequest` body (`target` + `action` + `params`) and must
 never define target-specific names, parameters or response fields — the
 frontend supplies them and the endpoint passes them through untouched.
 
+LLM providers follow the same contract: `LLMProviderManager.provider_manage`
+dispatches actions from the shared `schemas.types.LlmProviderAction`
+vocabulary, seals default-value filling, key sanitization and error rewriting
+inside, and the endpoint layer exposes a single `POST /api/v1/llm/manage` with
+the same `ManageRequest` body. The only exception is the named OAuth callback
+route (`GET /api/v1/llm/provider-auth/callback/{provider_id}`), which stays
+named because external browsers redirect to that URL; the endpoint builds the
+callback URL from that route name and injects it as an action parameter.
+
 ### DB / Oper layer
 
 SQLAlchemy models stay under `app/db/models/`; the data access classes live in

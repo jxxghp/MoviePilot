@@ -23,7 +23,7 @@ import jwt
 from app.runtime.config import settings
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import LlmProviderAction, SystemConfigKey
 from app.foundation.singleton import Singleton
 
 
@@ -2958,6 +2958,155 @@ class LLMProviderManager(metaclass=Singleton):
         except Exception as err:
             self._mark_session_error(session, str(err))
         return self.get_session_status(session_id)
+
+    async def provider_manage(self, provider: str, action: str, **params: Any) -> Dict[str, Any]:
+        """
+        LLM 提供商统一管理入口。
+
+        按公共动作词汇表分发，统一返回 {"success", "message", "data"}，
+        临时配置默认值填充、密钥脱敏与错误归因改写均封闭在此，
+        上层透传时无需感知任何提供商特色。
+        """
+        normalized = action.value if isinstance(action, LlmProviderAction) else str(action)
+        try:
+            if normalized == LlmProviderAction.LIST_PROVIDERS.value:
+                return {"success": True, "message": "", "data": await self.list_providers_async()}
+            if normalized == LlmProviderAction.LIST_MODELS.value:
+                return await self._manage_list_models(provider, **params)
+            if normalized == LlmProviderAction.START_AUTH.value:
+                data = await self.start_auth(
+                    provider, str(params.get("method") or ""), params.get("callback_url")
+                )
+                return {"success": True, "message": "", "data": data}
+            if normalized == LlmProviderAction.AUTH_STATUS.value:
+                data = self.get_session_status(str(params.get("session_id") or ""))
+                return {"success": True, "message": "", "data": data}
+            if normalized == LlmProviderAction.POLL_AUTH.value:
+                data = await self.poll_auth_session(str(params.get("session_id") or ""))
+                return {"success": True, "message": "", "data": data}
+            if normalized == LlmProviderAction.DISCONNECT.value:
+                await self.clear_auth(provider)
+                return {"success": True, "message": "", "data": None}
+            if normalized == LlmProviderAction.TEST.value:
+                return await self._manage_test(provider, **params)
+            return {"success": False, "message": f"不支持的管理动作：{normalized}", "data": None}
+        except Exception as err:
+            return {"success": False, "message": self._sanitize_error(str(err)), "data": None}
+
+    async def _manage_list_models(self, provider: str, **params: Any) -> Dict[str, Any]:
+        """管理动作：查询模型目录，附带授权状态摘要。"""
+        from app.agent.llm.helper import LLMHelper
+
+        api_key = params.get("api_key")
+        try:
+            models = await LLMHelper().get_models(
+                provider=provider,
+                api_key=api_key,
+                base_url=params.get("base_url"),
+                base_url_preset=params.get("base_url_preset"),
+                user_agent=params.get("user_agent"),
+                use_proxy=params.get("use_proxy"),
+                force_refresh=bool(params.get("force_refresh", False)),
+            )
+        except Exception as err:
+            return {"success": False, "message": self._sanitize_error(str(err), api_key), "data": None}
+        return {
+            "success": True,
+            "message": "",
+            "data": {
+                "provider": provider,
+                "models": models,
+                "auth_status": self.get_auth_status(provider),
+            },
+        }
+
+    def _requires_api_key(self, provider_id: str) -> bool:
+        """判断测试调用是否必须 API Key：支持 OAuth 授权或已有保存凭据的提供商可豁免。"""
+        try:
+            spec = self.get_provider(provider_id)
+        except Exception:
+            return True
+        if self.get_saved_auth(provider_id):
+            return False
+        return not spec.oauth_methods
+
+    async def _manage_test(self, provider: str, **params: Any) -> Dict[str, Any]:
+        """管理动作：使用传入配置或当前已保存配置执行一次最小 LLM 调用。"""
+        from app.agent.llm.helper import LLMHelper, LLMTestTimeout
+
+        provider_name = provider or settings.LLM_PROVIDER
+        model = params.get("model") if params.get("model") is not None else settings.LLM_MODEL
+        enabled = params.get("enabled")
+        enabled = bool(enabled) if enabled is not None else bool(settings.AI_AGENT_ENABLE)
+        api_key = params.get("api_key") if params.get("api_key") is not None else settings.LLM_API_KEY
+
+        data = {"provider": provider_name, "model": model}
+        if not provider_name:
+            return {"success": False, "message": "请配置LLM提供商和模型", "data": None}
+        if not model or not model.strip():
+            return {"success": False, "message": "请先配置 LLM 模型", "data": None}
+        if not enabled:
+            return {"success": False, "message": "请先启用智能助手", "data": data}
+        if self._requires_api_key(provider_name) and (not api_key or not api_key.strip()):
+            return {"success": False, "message": "请先配置 LLM API Key", "data": data}
+
+        test_kwargs: Dict[str, Any] = {
+            "provider": provider_name,
+            "model": model,
+            "thinking_level": params.get("thinking_level"),
+            "api_key": api_key,
+            "base_url": params.get("base_url"),
+            "base_url_preset": params.get("base_url_preset"),
+            "user_agent": params.get("user_agent"),
+            "use_proxy": params.get("use_proxy"),
+            "api_protocol": params.get("api_protocol"),
+            "web_search_mode": params.get("web_search_mode"),
+        }
+        if params.get("temperature") is not None:
+            test_kwargs["temperature"] = params.get("temperature")
+
+        try:
+            result = await LLMHelper.test_current_settings(**test_kwargs)
+        except (LLMTestTimeout, TimeoutError) as err:
+            logger.warning(err)
+            return {"success": False, "message": "LLM 调用超时", "data": None}
+        except Exception as err:
+            return {"success": False, "message": self._sanitize_error(str(err), api_key), "data": None}
+        if not result.get("reply_preview"):
+            return {"success": False, "message": "模型响应为空", "data": result}
+        return {"success": True, "message": "", "data": result}
+
+    @staticmethod
+    def _sanitize_error(message: str, api_key: Optional[str] = None) -> str:
+        """清理错误信息中的敏感字段，并把 SDK 内部解析错误改写为可定位的基础地址提示。"""
+        if not message:
+            return "LLM 没有返回任何内容"
+
+        sanitized = message
+        if api_key:
+            sanitized = sanitized.replace(api_key, "***")
+        sanitized = re.sub(
+            r"(?i)(api[_-]?key\s*[:=]\s*)([^\s,;]+)",
+            r"\1***",
+            sanitized,
+        )
+        sanitized = re.sub(
+            r"(?i)authorization\s*:\s*bearer\s+[^\s,;]+",
+            "Authorization: ***",
+            sanitized,
+        )
+
+        normalized_message = sanitized.lower().replace("_", "").replace(" ", "")
+        if "str" in normalized_message and (
+            "modeldump" in normalized_message
+            or "setprivateattributes" in normalized_message
+        ):
+            return (
+                "服务返回内容不是兼容的模型响应，请检查基础地址是否填写为 "
+                "API Base URL，如果服务要求 /v1 等版本路径，请包含在基础地址中，"
+                "不要填写网页地址或完整的 chat/completions 路径"
+            )
+        return sanitized
 
     async def _exchange_chatgpt_code_for_tokens(
             self, code: str, redirect_uri: str, code_verifier: str

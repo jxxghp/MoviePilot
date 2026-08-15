@@ -531,6 +531,29 @@ class StorageAction(str, Enum):
     SUPPORT_TRANSTYPE = "support_transtype"
 
 
+# LLM 提供商通用管理动作
+class LlmProviderAction(str, Enum):
+    """
+    LLM 提供商通用管理动作
+
+    作为提供商管理契约的公共词汇表，具体动作的支持范围与参数语义由提供商实现自行解释
+    """
+    # 查询提供商目录
+    LIST_PROVIDERS = "list_providers"
+    # 查询模型目录
+    LIST_MODELS = "list_models"
+    # 启动授权会话
+    START_AUTH = "start_auth"
+    # 查询授权会话状态
+    AUTH_STATUS = "auth_status"
+    # 轮询授权会话
+    POLL_AUTH = "poll_auth"
+    # 断开授权
+    DISCONNECT = "disconnect"
+    # 测试调用
+    TEST = "test"
+
+
 # 下载器类型
 class DownloaderType(Enum):
     # Qbittorrent
