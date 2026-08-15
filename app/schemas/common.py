@@ -1,6 +1,6 @@
 """API 端点共享的小型业务数据模型。"""
 
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, Field, RootModel
 from typing_extensions import TypeAliasType
@@ -76,3 +76,15 @@ class TimeData(BaseModel):
     """网络请求耗时。"""
 
     time: int | float = Field(description="耗时毫秒数")
+
+
+class ManageRequest(BaseModel):
+    """通用管理请求：目标标识 + 管理动作 + 透传参数
+
+    用于通知渠道、网盘存储等统一管理能力入口，
+    动作与参数的具体语义由目标模块自行解释
+    """
+
+    target: str = Field(description="管理目标标识，如渠道名或存储类型")
+    action: str = Field(description="管理动作标识")
+    params: Dict[str, Any] = Field(default_factory=dict, description="表单与动作参数，透传给目标模块")

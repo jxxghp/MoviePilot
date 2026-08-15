@@ -509,6 +509,28 @@ class NotificationAction(str, Enum):
     MIGRATE_CACHE = "migrate_cache"
 
 
+class StorageAction(str, Enum):
+    """
+    网盘存储通用管理动作
+
+    作为存储管理契约的公共词汇表，具体动作的支持范围与参数语义由存储实现自行解释
+    """
+    # 保存存储配置
+    SAVE_CONFIG = "save_config"
+    # 重置存储配置
+    RESET_CONFIG = "reset_config"
+    # 生成登录二维码
+    GENERATE_QRCODE = "generate_qrcode"
+    # 生成 OAuth2 授权 URL
+    GENERATE_AUTH_URL = "generate_auth_url"
+    # 登录确认
+    CHECK_LOGIN = "check_login"
+    # 查询存储空间用量
+    USAGE = "usage"
+    # 查询支持的整理方式
+    SUPPORT_TRANSTYPE = "support_transtype"
+
+
 # 下载器类型
 class DownloaderType(Enum):
     # Qbittorrent

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List, Tuple, Union, Dict, Callable
+from typing import Any, Optional, List, Tuple, Union, Dict, Callable
 
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
@@ -13,8 +13,8 @@ from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType, StorageAction
 from app.adapters.system.host import SystemUtils
 from app.foundation import text as text_tools
 
@@ -122,17 +122,55 @@ class FileManagerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def support_transtype(self, storage: str) -> Optional[dict]:
+    def storage_manage(self, storage: str, action: StorageAction, **params) -> Dict[str, Any]:
         """
-        支持的整理方式
+        网盘存储统一管理入口，按存储标识路由
+
+        动作语义与参数解释交给具体存储实现，
+        统一返回 {"success": bool, "message": ..., "data": ...}
         """
+        try:
+            action = StorageAction(action)
+        except ValueError:
+            return {"success": False, "message": f"不支持的存储管理动作：{action}"}
         if storage not in self._support_storages:
-            return None
-        storage_oper = self.__get_storage_oper(storage)
+            return {"success": False, "message": f"不支持的存储类型：{storage}"}
+
+        if action == StorageAction.SAVE_CONFIG:
+            storage_oper = self.__get_storage_oper(storage)
+            if not storage_oper:
+                return {"success": False, "message": f"不支持 {storage} 的配置保存"}
+            storage_oper.set_config(params.get("conf") or {})
+            return {"success": True}
+        if action == StorageAction.RESET_CONFIG:
+            storage_oper = self.__get_storage_oper(storage)
+            if not storage_oper:
+                return {"success": False, "message": f"不支持 {storage} 的重置存储配置"}
+            storage_oper.reset_config()
+            return {"success": True}
+        if action == StorageAction.SUPPORT_TRANSTYPE:
+            storage_oper = self.__get_storage_oper(storage)
+            if not storage_oper:
+                return {"success": False, "message": f"不支持 {storage} 的整理方式获取"}
+            transtype = storage_oper.support_transtype()
+            return {"success": bool(transtype), "data": transtype}
+        if action == StorageAction.USAGE:
+            storage_oper = self.__get_storage_oper(storage)
+            if not storage_oper:
+                return {"success": False, "message": f"不支持 {storage} 的存储使用情况"}
+            usage = storage_oper.usage()
+            return {"success": bool(usage), "data": usage}
+
+        # 登录类动作：存储实现不支持时返回失败信息
+        oper_method = action.value
+        storage_oper = self.__get_storage_oper(storage, oper_method)
         if not storage_oper:
-            logger.error(f"不支持 {storage} 的整理方式获取")
-            return None
-        return storage_oper.support_transtype()
+            return {"success": False, "message": f"{storage} 不支持 {oper_method}"}
+        result = getattr(storage_oper, oper_method)(**params)
+        if result is None:
+            return {"success": False, "message": f"{storage} 的 {oper_method} 执行失败"}
+        data, errmsg = result
+        return {"success": bool(data), "message": errmsg, "data": data}
 
     @staticmethod
     def recommend_name(meta: MetaBase, mediainfo: MediaInfo,
@@ -156,56 +194,6 @@ class FileManagerModule(_ModuleBase):
                                                 file_ext=Path(meta.title).suffix)
         )
         return path.as_posix() if path else ""
-
-    def save_config(self, storage: str, conf: Dict) -> None:
-        """
-        保存存储配置
-        """
-        storage_oper = self.__get_storage_oper(storage)
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的配置保存")
-            return
-        storage_oper.set_config(conf)
-
-    def reset_config(self, storage: str) -> None:
-        """
-        重置存储配置
-        """
-        storage_oper = self.__get_storage_oper(storage)
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的重置存储配置")
-            return
-        storage_oper.reset_config()
-
-    def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
-        """
-        生成二维码
-        """
-        storage_oper = self.__get_storage_oper(storage, "generate_qrcode")
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的二维码生成")
-            return None
-        return storage_oper.generate_qrcode()
-
-    def generate_auth_url(self, storage: str) -> Optional[Tuple[dict, str]]:
-        """
-        生成 OAuth2 授权 URL
-        """
-        storage_oper = self.__get_storage_oper(storage, "generate_auth_url")
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的 OAuth2 授权")
-            return {}, f"不支持 {storage} 的 OAuth2 授权"
-        return storage_oper.generate_auth_url()
-
-    def check_login(self, storage: str, **kwargs) -> Optional[Dict[str, str]]:
-        """
-        登录确认
-        """
-        storage_oper = self.__get_storage_oper(storage, "check_login")
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的登录确认")
-            return None
-        return storage_oper.check_login(**kwargs)
 
     def list_files(self, fileitem: FileItem, recursion: Optional[bool] = False) -> Optional[List[FileItem]]:
         """
@@ -396,18 +384,6 @@ class FileManagerModule(_ModuleBase):
             max_depth=max_depth,
             previous_snapshot=previous_snapshot
         )
-
-    def storage_usage(self, storage: str) -> Optional[StorageUsage]:
-        """
-        存储使用情况
-        """
-        if storage not in self._support_storages:
-            return None
-        storage_oper = self.__get_storage_oper(storage)
-        if not storage_oper:
-            logger.error(f"不支持 {storage} 的存储使用情况")
-            return None
-        return storage_oper.usage()
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  target_directory: TransferDirectoryConf = None,

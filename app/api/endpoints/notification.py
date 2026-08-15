@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict
 
 from fastapi import Depends
 
@@ -7,157 +7,32 @@ from app.api.response import ResponseAPIRouter
 from app.chain.notification import NotificationChain
 from app.db.models import User
 from app.api.deps import get_current_active_superuser
-from app.schemas.types import MessageChannel, NotificationAction
 
 router = ResponseAPIRouter()
 
-@router.get(
-    "/wechatclawbot/status",
-    summary="查询微信 ClawBot 登录状态",
-    response_model=schemas.Response[schemas.WechatClawBotData],
+
+@router.post(
+    "/manage",
+    summary="通知渠道统一管理",
+    response_model=schemas.Response[Dict[str, Any]],
 )
-def wechatclawbot_status(
-    source: Optional[str] = None,
-    fallback_source: Optional[str] = None,
-    refresh_remote: bool = True,
-    auto_generate_qrcode: bool = True,
-    WECHATCLAWBOT_BASE_URL: Optional[str] = None,
-    WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
-    WECHATCLAWBOT_ADMINS: Optional[str] = None,
-    WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+def manage_channel(
+    request: schemas.ManageRequest,
     _: User = Depends(get_current_active_superuser),
 ):
-    """查询微信 ClawBot 登录状态和二维码。"""
+    """
+    通知渠道统一管理入口
+
+    端点层不定义任何渠道特定的名称与参数，
+    渠道标识、管理动作与表单参数由前端上送并原样透传给渠道模块
+    """
     result = NotificationChain().manage_channel(
-        channel=MessageChannel.WechatClawBot,
-        action=NotificationAction.STATUS,
-        source=source,
-        fallback_source=fallback_source,
-        refresh_remote=refresh_remote,
-        auto_generate_qrcode=auto_generate_qrcode,
-        WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
-        WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
-        WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
-        WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        channel=request.target,
+        action=request.action,
+        **request.params,
     )
     return schemas.Response(
         success=bool(result.get("success")),
         message=result.get("message"),
-        data=result if result.get("success") else None,
+        data=result.get("data"),
     )
-
-
-@router.post(
-    "/wechatclawbot/refresh",
-    summary="刷新微信 ClawBot 二维码",
-    response_model=schemas.Response[schemas.WechatClawBotData],
-)
-def refresh_wechatclawbot_qrcode(
-    source: Optional[str] = None,
-    fallback_source: Optional[str] = None,
-    WECHATCLAWBOT_BASE_URL: Optional[str] = None,
-    WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
-    WECHATCLAWBOT_ADMINS: Optional[str] = None,
-    WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
-    _: User = Depends(get_current_active_superuser),
-):
-    """刷新微信 ClawBot 二维码。"""
-    result = NotificationChain().manage_channel(
-        channel=MessageChannel.WechatClawBot,
-        action=NotificationAction.REFRESH_QRCODE,
-        source=source,
-        fallback_source=fallback_source,
-        WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
-        WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
-        WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
-        WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-    )
-    return schemas.Response(
-        success=bool(result.get("success")),
-        message=result.get("message"),
-        data=result,
-    )
-
-
-@router.post(
-    "/wechatclawbot/logout",
-    summary="退出微信 ClawBot 登录",
-    response_model=schemas.Response[schemas.WechatClawBotData],
-)
-def logout_wechatclawbot(
-    source: Optional[str] = None,
-    fallback_source: Optional[str] = None,
-    WECHATCLAWBOT_BASE_URL: Optional[str] = None,
-    WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
-    WECHATCLAWBOT_ADMINS: Optional[str] = None,
-    WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
-    _: User = Depends(get_current_active_superuser),
-):
-    """退出微信 ClawBot 登录。"""
-    result = NotificationChain().manage_channel(
-        channel=MessageChannel.WechatClawBot,
-        action=NotificationAction.LOGOUT,
-        source=source,
-        fallback_source=fallback_source,
-        WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
-        WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
-        WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
-        WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-    )
-    return schemas.Response(
-        success=bool(result.get("success")),
-        message=result.get("message"),
-        data=result,
-    )
-
-
-@router.get(
-    "/wechatclawbot/test",
-    summary="测试微信 ClawBot 连通性",
-    response_model=schemas.Response[None],
-)
-def test_wechatclawbot(
-    source: Optional[str] = None,
-    fallback_source: Optional[str] = None,
-    WECHATCLAWBOT_BASE_URL: Optional[str] = None,
-    WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
-    WECHATCLAWBOT_ADMINS: Optional[str] = None,
-    WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
-    _: User = Depends(get_current_active_superuser),
-):
-    """测试微信 ClawBot 当前登录态是否可用。"""
-    result = NotificationChain().manage_channel(
-        channel=MessageChannel.WechatClawBot,
-        action=NotificationAction.TEST_CONNECTION,
-        source=source,
-        fallback_source=fallback_source,
-        WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
-        WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
-        WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
-        WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-    )
-    return schemas.Response(success=bool(result.get("success")), message=result.get("message"))
-
-
-@router.post(
-    "/wechatclawbot/migrate",
-    summary="迁移微信 ClawBot 登录缓存",
-    response_model=schemas.Response[None],
-)
-def migrate_wechatclawbot_cache(
-    old_source: str,
-    new_source: str,
-    cleanup_old: bool = False,
-    overwrite: bool = False,
-    _: User = Depends(get_current_active_superuser),
-):
-    """在通知名称变更时迁移对应的微信 ClawBot 登录缓存。"""
-    result = NotificationChain().manage_channel(
-        channel=MessageChannel.WechatClawBot,
-        action=NotificationAction.MIGRATE_CACHE,
-        old_name=old_source,
-        new_name=new_source,
-        cleanup_old=cleanup_old,
-        overwrite=overwrite,
-    )
-    return schemas.Response(success=bool(result.get("success")), message=result.get("message"))

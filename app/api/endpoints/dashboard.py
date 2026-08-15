@@ -13,6 +13,7 @@ from app.application.security.access import verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.api.deps import get_current_active_superuser
+from app.schemas.types import StorageAction
 from app.application.directory import DirectoryHelper
 from app.scheduler import Scheduler
 from app.adapters.system.host import SystemUtils
@@ -65,7 +66,8 @@ def _build_storage() -> schemas.Storage:
         return schemas.Storage(total_storage=total, used_storage=total - available)
     storages = set([d.library_storage for d in dirs if d.library_storage])
     for _storage in storages:
-        _usage = StorageChain().storage_usage(_storage)
+        _result = StorageChain().manage_storage(storage=_storage, action=StorageAction.USAGE.value)
+        _usage = _result.get("data") if _result.get("success") else None
         if _usage:
             total += _usage.total
             available += _usage.available

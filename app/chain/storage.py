@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict
+from typing import Any, Optional, List, Dict
 
 from app import schemas
 from app.chain import ChainBase
@@ -13,35 +13,20 @@ class StorageChain(ChainBase):
     存储处理链
     """
 
-    def save_config(self, storage: str, conf: dict) -> None:
+    def manage_storage(self, storage: str, action: str, **params: Any) -> Dict[str, Any]:
         """
-        保存存储配置
-        """
-        self.run_module("save_config", storage=storage, conf=conf)
+        对指定网盘存储执行管理动作
 
-    def reset_config(self, storage: str) -> None:
-        """
-        重置存储配置
-        """
-        self.run_module("reset_config", storage=storage)
+        不包含任何存储特定逻辑：存储标识、动作语义与参数解释全部封闭在
+        实现 storage_manage 契约的模块内部
 
-    def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
+        :param storage: 存储类型标识，用于模块路由
+        :param action: 通用管理动作标识，具体语义由存储实现解释
+        :param params: 表单与动作参数，原样透传给模块
+        :return: 统一结构 {"success": bool, "message": ..., "data": ...}
         """
-        生成二维码
-        """
-        return self.run_module("generate_qrcode", storage=storage)
-
-    def generate_auth_url(self, storage: str) -> Optional[Tuple[dict, str]]:
-        """
-        生成 OAuth2 授权 URL
-        """
-        return self.run_module("generate_auth_url", storage=storage)
-
-    def check_login(self, storage: str, **kwargs) -> Optional[Tuple[dict, str]]:
-        """
-        登录确认
-        """
-        return self.run_module("check_login", storage=storage, **kwargs)
+        result = self.run_module("storage_manage", storage=storage, action=action, **params)
+        return result or {"success": False, "message": "该存储类型未启用或不支持此管理动作"}
 
     def list_files(self, fileitem: schemas.FileItem, recursion: bool = False) -> Optional[List[schemas.FileItem]]:
         """
@@ -135,18 +120,6 @@ class StorageChain(ChainBase):
         return self.run_module("snapshot_storage", storage=storage, path=path,
                                last_snapshot_time=last_snapshot_time, max_depth=max_depth,
                                previous_snapshot=previous_snapshot)
-
-    def storage_usage(self, storage: str) -> Optional[schemas.StorageUsage]:
-        """
-        存储使用情况
-        """
-        return self.run_module("storage_usage", storage=storage)
-
-    def support_transtype(self, storage: str) -> Optional[dict]:
-        """
-        获取支持的整理方式
-        """
-        return self.run_module("support_transtype", storage=storage)
 
     def is_bluray_folder(self, fileitem: Optional[schemas.FileItem]) -> bool:
         """

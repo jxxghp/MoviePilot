@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.chain.notification import NotificationChain
 from app.modules.wechatclawbot import WechatClawBotModule
 from app.schemas.types import MessageChannel, NotificationAction
 
@@ -95,7 +96,7 @@ def test_channel_manage_prefers_saved_instance(module, monkeypatch):
         source="已保存",
     )
     assert result["success"] is True
-    assert result["connected"] is True
+    assert result["data"]["connected"] is True
 
 
 def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypatch):
@@ -118,3 +119,43 @@ def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypa
         new_name="新名",
     )
     assert result == {"success": True, "message": "迁移成功"}
+
+
+def test_notification_chain_forwards_target_action_and_params(monkeypatch):
+    """链层接受字符串标识与透传参数，按 channel_manage 契约原样转发。"""
+    captured = {}
+
+    def fake_run_module(self, method, **kwargs):
+        captured.update(method=method, kwargs=kwargs)
+        return {"success": True, "data": {"connected": True}}
+
+    monkeypatch.setattr(NotificationChain, "run_module", fake_run_module)
+    chain = NotificationChain.__new__(NotificationChain)
+    result = chain.manage_channel(channel="WechatClawBot", action="status", source="预览")
+
+    assert captured["method"] == "channel_manage"
+    assert captured["kwargs"] == {
+        "channel": "WechatClawBot",
+        "action": "status",
+        "source": "预览",
+    }
+    assert result["success"] is True
+
+
+def test_notification_chain_reports_missing_module(monkeypatch):
+    """无模块实现 channel_manage 时返回统一失败结构。"""
+    monkeypatch.setattr(NotificationChain, "run_module", lambda self, method, **kwargs: None)
+    chain = NotificationChain.__new__(NotificationChain)
+    result = chain.manage_channel(channel="unknown", action="status")
+    assert result["success"] is False
+    assert result["message"]
+
+
+def test_channel_manage_accepts_plain_string_identifiers(module, monkeypatch):
+    """端点层透传的原始字符串渠道名与动作名可被模块正确路由与解释。"""
+    saved = SimpleNamespace()
+    saved.test_connection = lambda: (True, None)
+    monkeypatch.setattr(module, "get_instance", lambda name=None: saved)
+
+    result = module.channel_manage(channel="WechatClawBot", action="test_connection")
+    assert result == {"success": True, "message": None}

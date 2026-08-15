@@ -212,14 +212,23 @@ exceptions and value domains used by both modules and upper layers live in
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
-Channels that need login management or temporary-parameter initialization
-follow one generic contract instead of per-channel APIs: modules implement
-`channel_manage(channel, action, **params)`, route by the requested
-`MessageChannel` (returning `None` for other channels), and interpret actions
-from the shared `schemas.types.NotificationAction` vocabulary plus opaque form
-parameters themselves. `NotificationChain.manage_channel` forwards transparently
-and must stay free of any channel-specific names or logic; new channels adopt
-the same contract without touching the chain.
+Channels and storages that need login management or temporary-parameter
+initialization follow one generic contract instead of per-target APIs: modules
+implement `channel_manage(channel, action, **params)` or
+`storage_manage(storage, action, **params)`, route by the requested target
+identifier (returning `None` for other targets, accepting both enum members
+and plain strings), and interpret actions from the shared
+`schemas.types.NotificationAction` / `StorageAction` vocabulary plus opaque
+form parameters themselves. All results use the unified
+`{"success": bool, "message": ..., "data": ...}` shape.
+`NotificationChain.manage_channel` and `StorageChain.manage_storage` forward
+transparently and must stay free of any channel/storage-specific names or
+logic; new channels or storages adopt the same contract without touching the
+chains. The endpoint layer exposes this as two generic endpoints
+(`POST /api/v1/notification/manage`, `POST /api/v1/storage/manage`) taking the
+common `schemas.ManageRequest` body (`target` + `action` + `params`) and must
+never define target-specific names, parameters or response fields — the
+frontend supplies them and the endpoint passes them through untouched.
 
 ### DB / Oper layer
 

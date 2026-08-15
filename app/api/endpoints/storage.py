@@ -2,7 +2,7 @@ import fnmatch
 import math
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException
 from starlette.responses import FileResponse, Response
@@ -13,12 +13,10 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.config import settings
-from app.application.security.access import verify_token
 from app.db.models import User
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_superuser,
-    get_current_active_superuser_async,
 )
 from app.runtime.progress import ProgressHelper
 from app.schemas.types import ProgressKey
@@ -27,75 +25,28 @@ from app.foundation import text as text_tools
 router = ResponseAPIRouter()
 
 
-@router.get(
-    "/qrcode/{name}",
-    summary="生成二维码内容",
-    response_model=schemas.Response[schemas.StorageQrCodeData],
+@router.post(
+    "/manage", summary="网盘存储统一管理", response_model=schemas.Response[Dict[str, Any]]
 )
-def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    生成二维码
-    """
-    qrcode_data, errmsg = StorageChain().generate_qrcode(name)
-    if qrcode_data:
-        return schemas.Response(success=True, data=qrcode_data, message=errmsg)
-    return schemas.Response(success=False, message=errmsg)
-
-
-@router.get(
-    "/auth_url/{name}",
-    summary="获取 OAuth2 授权 URL",
-    response_model=schemas.Response[schemas.StorageAuthUrlData],
-)
-def auth_url(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    获取 OAuth2 授权 URL
-    """
-    auth_data, errmsg = StorageChain().generate_auth_url(name)
-    if auth_data:
-        return schemas.Response(success=True, data=auth_data)
-    return schemas.Response(success=False, message=errmsg)
-
-
-@router.get(
-    "/check/{name}",
-    summary="二维码登录确认",
-    response_model=schemas.Response[schemas.StorageLoginStatusData],
-)
-def check(
-    name: str,
-    ck: Optional[str] = None,
-    t: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+def manage(
+    request: schemas.ManageRequest, _: User = Depends(get_current_active_superuser)
 ) -> Any:
     """
-    二维码登录确认
-    """
-    if ck or t:
-        data, errmsg = StorageChain().check_login(name, ck=ck, t=t)
-    else:
-        data, errmsg = StorageChain().check_login(name)
-    if data:
-        return schemas.Response(success=True, data=data)
-    return schemas.Response(success=False, message=errmsg)
+    网盘存储统一管理入口
 
-
-@router.post("/save/{name}", summary="保存存储配置", response_model=schemas.Response[None])
-def save(name: str, conf: dict, _: User = Depends(get_current_active_superuser)) -> Any:
+    端点层不定义任何存储特定的名称与参数，
+    存储标识、管理动作与表单参数由前端上送并原样透传给存储模块
     """
-    保存存储配置
-    """
-    StorageChain().save_config(name, conf)
-    return schemas.Response(success=True)
-
-
-@router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response[None])
-def reset(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
-    """
-    重置存储配置
-    """
-    StorageChain().reset_config(name)
-    return schemas.Response(success=True)
+    result = StorageChain().manage_storage(
+        storage=request.target,
+        action=request.action,
+        **request.params,
+    )
+    return schemas.Response(
+        success=bool(result.get("success")),
+        message=result.get("message"),
+        data=result.get("data"),
+    )
 
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
@@ -293,33 +244,3 @@ def rename(
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
-
-
-@router.get(
-    "/usage/{name}", summary="存储空间信息", response_model=schemas.StorageUsage
-)
-def usage(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
-    """
-    查询存储空间
-    """
-    ret = StorageChain().storage_usage(name)
-    if ret:
-        return ret
-    return schemas.StorageUsage()
-
-
-@router.get(
-    "/transtype/{name}",
-    summary="支持的整理方式获取",
-    response_model=schemas.StorageTransType,
-)
-async def transtype(
-    name: str, _: User = Depends(get_current_active_superuser_async)
-) -> Any:
-    """
-    查询支持的整理方式
-    """
-    ret = StorageChain().support_transtype(name)
-    if ret:
-        return schemas.StorageTransType(transtype=ret)
-    return schemas.StorageTransType()

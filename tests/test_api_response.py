@@ -633,6 +633,10 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
         # 分类规则与 CookieCloud 解密载荷按设计接受扩展键。
         "CategoryRule",
         "CookieDecryptedPayload",
+        # 通用管理请求的 params 按设计透传模块个性化参数。
+        "ManageRequest",
+        # 通用管理响应的 data 为模块自定义结构，按设计不固定字段。
+        "Response_Dict_str__Any__",
     }
     allowed_empty_components = {"McpJsonRpcEmptyResult"}
     violations = []

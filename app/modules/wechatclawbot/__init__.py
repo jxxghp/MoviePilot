@@ -93,9 +93,12 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
 
         动作语义与表单参数全部由模块自行解释：优先使用已保存配置实例，
         无匹配配置时可基于表单参数构造临时实例（未保存配置的扫码预览）。
-        统一返回 {"success": bool, "message": ..., ...} 结构。
+        统一返回 {"success": bool, "message": ..., "data": ...} 结构。
         """
-        if channel != self.get_subtype():
+        # 路由标识归一化：兼容枚举名、枚举值与原始枚举对象
+        if isinstance(channel, str) and channel not in (self.get_subtype().name, self.get_subtype().value):
+            return None
+        if not isinstance(channel, str) and channel != self.get_subtype():
             return None
         try:
             action = NotificationAction(action)
@@ -116,14 +119,17 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             return {"success": False, "message": errmsg}
 
         if action == NotificationAction.STATUS:
-            return client.get_status(
+            data = client.get_status(
                 refresh_remote=bool(params.get("refresh_remote", True)),
                 auto_generate_qrcode=bool(params.get("auto_generate_qrcode", True)),
             )
+            return {"success": bool(data.get("success")), "message": data.get("message"), "data": data}
         if action == NotificationAction.REFRESH_QRCODE:
-            return client.refresh_qrcode()
+            data = client.refresh_qrcode()
+            return {"success": bool(data.get("success")), "message": data.get("message"), "data": data}
         if action == NotificationAction.LOGOUT:
-            return client.logout()
+            data = client.logout()
+            return {"success": bool(data.get("success")), "message": data.get("message"), "data": data}
         if action == NotificationAction.TEST_CONNECTION:
             state, message = client.test_connection()
             return {"success": state, "message": message}

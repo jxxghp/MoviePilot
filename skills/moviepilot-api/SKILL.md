@@ -329,23 +329,23 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/mediaserver/library` | Library list. Params: `server` (required), `hidden` |
 | GET | `/api/v1/mediaserver/clients` | Available media servers |
 
-### Storage / Files (13 endpoints)
+### Notification (1 endpoint)
 
 | Method | Path | Description |
 |--------|------|-------------|
+| POST | `/api/v1/notification/manage` | Unified notification-channel management. Body: ManageRequest JSON `{target, action, params}`; `target` is the channel name, `action` is one of `status`, `refresh_qrcode`, `logout`, `test_connection`, `migrate_cache`, `params` carries channel-specific form fields passed through to the channel module |
+
+### Storage / Files (7 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/storage/manage` | Unified storage management. Body: ManageRequest JSON `{target, action, params}`; `target` is the storage type, `action` is one of `save_config` (config in `params.conf`), `reset_config`, `generate_qrcode`, `generate_auth_url`, `check_login` (`params.ck`/`params.t`), `usage`, `support_transtype` |
 | POST | `/api/v1/storage/list` | List directory contents. Params: `sort`. Body: FileItem JSON |
 | POST | `/api/v1/storage/mkdir` | Create directory. Params: `name` (required). Body: FileItem |
 | POST | `/api/v1/storage/delete` | Delete file or directory. Body: FileItem JSON |
 | POST | `/api/v1/storage/download` | Download file. Body: FileItem JSON |
 | POST | `/api/v1/storage/image` | Preview image. Body: FileItem JSON |
 | POST | `/api/v1/storage/rename` | Rename file/dir. Params: `new_name` (required), `recursive`. Body: FileItem |
-| GET | `/api/v1/storage/usage/{name}` | Storage usage info |
-| GET | `/api/v1/storage/transtype/{name}` | Supported transfer types |
-| GET | `/api/v1/storage/qrcode/{name}` | Generate QR code for auth |
-| GET | `/api/v1/storage/auth_url/{name}` | Get OAuth2 auth URL |
-| GET | `/api/v1/storage/check/{name}` | Confirm QR login. Params: `ck`, `t` |
-| POST | `/api/v1/storage/save/{name}` | Save storage config. Body: JSON object |
-| GET | `/api/v1/storage/reset/{name}` | Reset storage config |
 
 ### Transfer (7 endpoints)
 
