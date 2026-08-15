@@ -45,3 +45,12 @@ class StorageQueryError(Exception):
     调用方不应把该状态当作文件不存在处理。
     """
     pass
+
+
+class TMDbException(Exception):
+    """
+    用于表示TheMovieDB数据源请求失败的跨层异常契约。
+    具体实现由TMDB模块内的异常子类继承本类，链层与API层只捕获本基类，
+    不依赖模块内部实现路径。
+    """
+    pass

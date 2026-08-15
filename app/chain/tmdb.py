@@ -4,11 +4,7 @@ from typing import Optional, List
 from app import schemas
 from app.chain import ChainBase
 from app.domain.context import MediaInfo
-from app.modules.themoviedb.tmdb_cache import TmdbCache
-from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
 from app.schemas import MediaType
-
-__all__ = ["TmdbChain", "TMDbException"]
 
 
 class TmdbChain(ChainBase):
@@ -325,23 +321,22 @@ class TmdbChain(ChainBase):
             return [info.backdrop_path for info in infos if info and info.backdrop_path][:num]
         return []
 
-    @staticmethod
-    def cache_items() -> list:
+    def cache_items(self) -> list:
         """
         查询TMDB识别缓存条目列表
         """
-        return TmdbCache().list_items()
+        result = self.run_module("tmdb_cache_items")
+        return result or []
 
-    @staticmethod
-    def delete_cache(cache_key: str) -> dict:
+    def delete_cache(self, cache_key: str) -> dict:
         """
         按缓存键删除单条TMDB识别缓存
         """
-        return TmdbCache().delete(cache_key)
+        result = self.run_module("tmdb_cache_delete", cache_key=cache_key)
+        return result or {}
 
-    @staticmethod
-    def clear_cache() -> None:
+    def clear_cache(self) -> None:
         """
         清空全部TMDB识别缓存
         """
-        TmdbCache().clear()
+        self.run_module("tmdb_cache_clear")

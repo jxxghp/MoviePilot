@@ -29,10 +29,7 @@ from app.domain.metainfo import MetaInfo
 from app.db.oper.downloadfailure import DownloadFailureOper
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.mediaserver import MediaServerOper
-from app.db.oper.site import SiteOper
 from app.application.directory import DirectoryHelper, validate_download_save_path
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
-from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.runtime.thread import ThreadHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
@@ -554,18 +551,8 @@ class DownloadChain(ChainBase):
 
     def _site_subtitle_links(self, context: Context) -> Optional[List[str]]:
         """
-        解析站点详情页的字幕下载链接，API 站点直接调用对应爬虫，
-        普通站点通过模块分发解析页面代码
+        解析站点详情页的字幕下载链接，模块内部自行区分页面解析与API站点
         """
-        torrent = context.torrent_info
-        if torrent.site is not None:
-            site = SiteOper().get(torrent.site)
-            if indexer := SitesHelper().get_indexer(site.domain):
-                if indexer.get("parser") == "mTorrent":
-                    return MTorrentSpider(indexer).get_subtitle_links(
-                        torrent.page_url
-                    )
-                # TODO 其它采用API访问的站点
         return self.run_module("site_subtitle_links", context=context)
 
     def download_site_subtitles(

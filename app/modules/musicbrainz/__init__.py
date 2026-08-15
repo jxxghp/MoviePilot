@@ -111,6 +111,19 @@ class MusicBrainzModule(_ModuleBase):
             self.cache.clear()
         logger.info("音乐识别缓存清除完成")
 
+    def music_cache_items(self) -> list[dict]:
+        """查询音乐识别缓存条目列表。"""
+        return self.cache.list_items() if self.cache else []
+
+    def music_cache_delete(self, cache_key: str) -> dict:
+        """按缓存键删除单条音乐识别缓存。"""
+        return self.cache.delete(cache_key) if self.cache else {}
+
+    def music_cache_clear(self) -> None:
+        """清空全部音乐识别缓存。"""
+        if self.cache:
+            self.cache.clear()
+
     def test(self) -> Tuple[bool, str]:
         """测试 MusicBrainz 搜索接口连通性。"""
         result = self._request_json(

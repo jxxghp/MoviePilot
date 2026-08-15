@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
-from app.domain.context import SubtitleInfo, TorrentInfo
+from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.db.oper.site import SiteOper
 from app.foundation.reflection import ModuleHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
@@ -93,6 +93,28 @@ class IndexerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """索引模块无需独立开关配置"""
         pass
+
+    def site_subtitle_links(self, context: Context) -> Optional[List[str]]:
+        """
+        解析采用API访问的站点的字幕下载链接，非API站点返回None交由页面解析模块处理
+        :param context: 上下文，包括识别信息、媒体信息、种子信息
+        :return: 字幕下载链接列表，不适用时返回None
+        """
+        torrent = context.torrent_info
+        if torrent.site is None:
+            return None
+        site = SiteOper().get(torrent.site)
+        if not site:
+            return None
+        indexer = SitesHelper().get_indexer(site.domain)
+        if not indexer:
+            return None
+        if indexer.get("parser") == "mTorrent":
+            return MTorrentSpider(indexer).get_subtitle_links(
+                torrent.page_url
+            )
+        # TODO 其它采用API访问的站点
+        return None
 
     @staticmethod
     def __search_check(site: dict, search_word: Optional[str] = None) -> bool:

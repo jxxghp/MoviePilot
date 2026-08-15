@@ -22,6 +22,28 @@ MUSIC_SUBSCRIBABLE_TYPES = frozenset({
     MUSIC_ENTITY_ALBUM,
 })
 
+# ListenBrainz 音乐探索能力的参数取值域契约，供入口层校验、链层与模块实现共用
+# ListenBrainz 全站统计支持的周期，取值与官方统计页面完全一致
+LISTENBRAINZ_CHART_RANGES = (
+    "this_week",
+    "this_month",
+    "this_year",
+    "week",
+    "month",
+    "quarter",
+    "half_yearly",
+    "year",
+    "all_time",
+)
+# ListenBrainz 官方新发行页面支持的排序方式
+LISTENBRAINZ_FRESH_SORTS = (
+    "release_date",
+    "artist_credit_name",
+    "release_name",
+)
+# ListenBrainz 新发行页面允许回溯或预告的最大天数
+LISTENBRAINZ_FRESH_MAX_DAYS = 90
+
 
 # 媒体类型
 class MediaType(Enum):

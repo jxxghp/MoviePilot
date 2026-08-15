@@ -27,7 +27,7 @@ def wechatclawbot_status(
     _: User = Depends(get_current_active_superuser),
 ):
     """查询微信 ClawBot 登录状态和二维码。"""
-    client, errmsg = MessageChain.get_wechatclawbot_client(
+    client, errmsg = MessageChain().get_wechatclawbot_client(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
@@ -62,7 +62,7 @@ def refresh_wechatclawbot_qrcode(
     _: User = Depends(get_current_active_superuser),
 ):
     """刷新微信 ClawBot 二维码。"""
-    client, errmsg = MessageChain.get_wechatclawbot_client(
+    client, errmsg = MessageChain().get_wechatclawbot_client(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
@@ -96,7 +96,7 @@ def logout_wechatclawbot(
     _: User = Depends(get_current_active_superuser),
 ):
     """退出微信 ClawBot 登录。"""
-    client, errmsg = MessageChain.get_wechatclawbot_client(
+    client, errmsg = MessageChain().get_wechatclawbot_client(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
@@ -130,7 +130,7 @@ def test_wechatclawbot(
     _: User = Depends(get_current_active_superuser),
 ):
     """测试微信 ClawBot 当前登录态是否可用。"""
-    client, errmsg = MessageChain.get_wechatclawbot_client(
+    client, errmsg = MessageChain().get_wechatclawbot_client(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
@@ -158,7 +158,7 @@ def migrate_wechatclawbot_cache(
     _: User = Depends(get_current_active_superuser),
 ):
     """在通知名称变更时迁移对应的微信 ClawBot 登录缓存。"""
-    success, message = MessageChain.migrate_wechatclawbot_cache(
+    success, message = MessageChain().migrate_wechatclawbot_cache(
         old_name=old_source,
         new_name=new_source,
         cleanup_old=cleanup_old,

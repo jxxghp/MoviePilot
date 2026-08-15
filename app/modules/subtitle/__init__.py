@@ -6,6 +6,8 @@ from lxml import etree
 
 from app.runtime.config import settings
 from app.domain.context import Context
+from app.db.oper.site import SiteOper
+from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
@@ -133,6 +135,12 @@ class SubtitleModule(_ModuleBase):
         torrent = context.torrent_info
         if not torrent.page_url:
             return None
+        # 采用API访问的站点由对应爬虫模块处理，详情页HTML不含字幕元素
+        if torrent.site is not None:
+            site = SiteOper().get(torrent.site)
+            if site and (indexer := SitesHelper().get_indexer(site.domain)):
+                if indexer.get("parser") == "mTorrent":
+                    return None
         request = RequestUtils(
             cookies=torrent.site_cookie,
             ua=torrent.site_ua,

@@ -111,7 +111,7 @@ async def music_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
 ) -> schemas.Response:
     """查询可管理的 MusicBrainz 识别缓存。"""
-    cache_items = MusicBrainzChain.cache_items()
+    cache_items = MusicBrainzChain().cache_items()
     recognized_count = sum(1 for item in cache_items if item["media_id"])
     return schemas.Response(
         success=True,
@@ -134,7 +134,7 @@ async def delete_music_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
 ) -> schemas.Response:
     """按缓存键删除单条 MusicBrainz 识别缓存。"""
-    deleted_item = MusicBrainzChain.delete_cache(cache_key)
+    deleted_item = MusicBrainzChain().delete_cache(cache_key)
     if not deleted_item:
         return schemas.Response(success=False, message="音乐识别缓存不存在")
     return schemas.Response(success=True, message="音乐识别缓存删除成功")
@@ -147,7 +147,7 @@ async def clear_music_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
 ) -> schemas.Response:
     """清空全部 MusicBrainz 识别缓存。"""
-    MusicBrainzChain.clear_cache()
+    MusicBrainzChain().clear_cache()
     return schemas.Response(success=True, message="音乐识别缓存清理完成")
 
 

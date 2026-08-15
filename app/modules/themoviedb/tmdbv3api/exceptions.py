@@ -1,5 +1,6 @@
-class TMDbException(Exception):
-    pass
+# TMDbException 是跨层异常契约，定义在 schemas 层，供链层与API层捕获；
+# 模块内部沿用原导入路径，保持类身份一致
+from app.schemas.exception import TMDbException  # noqa: F401
 
 
 class TMDbConnectionError(TMDbException):

@@ -818,6 +818,24 @@ class TheMovieDbModule(_ModuleBase):
         """
         return self.update_recognize_cache(meta=meta, mediainfo=mediainfo)
 
+    def tmdb_cache_items(self) -> list:
+        """
+        查询TMDB识别缓存条目列表
+        """
+        return self.cache.list_items()
+
+    def tmdb_cache_delete(self, cache_key: str) -> dict:
+        """
+        按缓存键删除单条TMDB识别缓存
+        """
+        return self.cache.delete(cache_key)
+
+    def tmdb_cache_clear(self) -> None:
+        """
+        清空全部TMDB识别缓存
+        """
+        self.cache.clear()
+
     def media_category(self) -> Optional[Dict[str, list]]:
         """
         获取媒体分类

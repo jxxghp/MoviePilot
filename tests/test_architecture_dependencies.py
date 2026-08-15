@@ -490,3 +490,26 @@ def test_chain_does_not_import_downloader_sdks():
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
     assert violations == []
+
+
+def test_chain_does_not_import_module_internals():
+    """链层与模块只能通过 run_module 方法名契约互联，禁止直接导入模块实现。
+
+    模块内容必须封闭在模块内部，链层不显式指定具体模块的类、异常或常量，
+    这样模块才是可插拔的。
+    """
+    modules = _discover_modules()
+    known_modules = set(modules)
+    violations: dict[str, set[str]] = {}
+    for module_name, path in modules.items():
+        if not module_name.startswith("app.chain"):
+            continue
+        dependencies = _resolve_imports(module_name, path, known_modules)
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.modules.")
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}

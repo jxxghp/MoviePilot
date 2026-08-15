@@ -83,6 +83,65 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         """初始化模块设置。"""
         pass
 
+    def wechatclawbot_client(
+            self,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+    ):
+        """按名称解析已加载的微信 ClawBot 客户端，候选名均无配置时返回默认实例。"""
+        source_name = str(source or "").strip() or None
+        fallback_name = str(fallback_source or "").strip() or None
+        candidate_names = []
+        for candidate in (fallback_name, source_name):
+            if candidate and candidate not in candidate_names:
+                candidate_names.append(candidate)
+        if candidate_names:
+            for candidate in candidate_names:
+                config = self.get_config(candidate)
+                if not config:
+                    continue
+                client = self.get_instance(config.name)
+                if client:
+                    return client
+            return None
+        return self.get_instance()
+
+    def wechatclawbot_temp_client(
+            self,
+            source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ):
+        """基于当前表单配置创建一个临时客户端，用于未保存时的扫码状态预览。"""
+        source_name = str(source or "").strip()
+        if not source_name:
+            return None
+        return WechatClawBot(
+            name=source_name,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+            auto_start_polling=False,
+        )
+
+    def wechatclawbot_migrate_cache(
+            self,
+            old_name: str,
+            new_name: str,
+            cleanup_old: bool = False,
+            overwrite: bool = False,
+    ):
+        """在通知名称变更时迁移对应的微信 ClawBot 登录缓存。"""
+        return WechatClawBot.migrate_cached_state(
+            old_name=old_name,
+            new_name=new_name,
+            cleanup_old=cleanup_old,
+            overwrite=overwrite,
+        )
+
     @staticmethod
     def _load_json(body: Any) -> Optional[dict]:
         """将内容解析为 JSON 字典。"""

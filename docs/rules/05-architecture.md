@@ -196,14 +196,20 @@ ownership.
 entrypoints. Chains may coordinate modules, application services, Oper classes,
 events and caches. New chain-to-chain dependencies are allowed only while the
 static graph remains acyclic. Backend protocol details and HTTP request objects
-do not belong here.
+do not belong here. Chains interact with modules exclusively through
+`run_module` dispatch on method-name contracts; direct imports of module
+internals (classes, exceptions, constants) are forbidden, so every module stays
+pluggable and a chain never names a concrete module implementation.
 
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
 message channels, indexers and storage providers. New direct module-to-module or
 module-to-chain dependencies are forbidden; cross-module orchestration belongs
-in a chain. The directory remains unchanged because discovery and plugin code
+in a chain. Module internals stay sealed inside the module: shared constants,
+exceptions and value domains used by both modules and upper layers live in
+`schemas`, and module capabilities are exposed to chains only as dispatched
+method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
 ### DB / Oper layer
@@ -269,7 +275,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | Direction | Status |
 |---|---|
 | `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
-| `chain -> module / application / Oper / canonical capability` | Allowed |
+| `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
 | `application -> domain / runtime / adapter / Oper` | Allowed |
 | `module -> canonical capability / Oper` | Allowed |
 | `module -> module / chain` | Forbidden for new code |
@@ -309,7 +315,8 @@ change. It rejects physical legacy or retired canonical sources, forbidden
 upward dependencies, SDK/compat backreferences, any strongly connected
 component containing a migrated module, module-to-module or module-to-chain
 imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
-`app.modules` internals, and downloader SDK (`qbittorrentapi`,
-`transmission_rpc`) imports inside `app/chain`.
+`app.modules` internals, chain imports of `app.modules` internals (chains reach
+modules only through `run_module` dispatch), and downloader SDK
+(`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-15*
+*Last Updated: 2026-08-16*
