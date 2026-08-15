@@ -675,7 +675,17 @@ class EventManager(metaclass=Singleton):
             return None
         method = getattr(binding.instance, method_name, None)
         if not callable(method):
-            return None
+            # 动态生成的处理器可能只同步了 __qualname__，__name__ 与类上方法名不一致时
+            # 回退到限定名末段重试；仍无法解析时记录告警，避免静默跳过
+            fallback_name = self.__parse_handler_names(handler)[1]
+            method = getattr(binding.instance, fallback_name, None)
+            if fallback_name == method_name or not callable(method):
+                logger.warning(
+                    f"事件处理器 {self.__get_handler_identifier(handler)} "
+                    f"无法解析为实例方法 {owner_class.__name__}.{method_name}，跳过执行"
+                )
+                return None
+            method_name = fallback_name
         return method, binding, owner_class.__name__, method_name
 
     def __broadcast_consumer_loop(self):

@@ -66,6 +66,9 @@ class ConfigReloadMixin:
         # 创建并设置处理函数
         handler = create_handler(is_async)
         handler.__module__ = cls.__module__
+        # 事件总线按 __name__ 在实例上解析方法，必须与类上的方法名保持一致，
+        # 否则闭包默认名 wrapper 会导致处理器被静默跳过
+        handler.__name__ = method_name
         handler.__qualname__ = f"{cls.__name__}.{method_name}"
         setattr(cls, method_name, handler)
         # 添加为事件处理器
