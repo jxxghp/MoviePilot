@@ -175,10 +175,25 @@ class MusicInfo:
     detail_link: str | None = None
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
+    # 内部标记：是否命中本地识别缓存，不参与序列化；与 MediaInfo 保持一致，
+    # 显式声明以保留 getattr(..., False) 的默认值语义（__getattr__ 兜底会覆盖它）
+    recognize_cache_hit = False
 
     def __post_init__(self) -> None:
         """将构造参数中的媒体身份规范化为统一成对字段。"""
         self.media_source, self.media_id = resolve_media_identity(media=self)
+
+    def __getattr__(self, name: str) -> None:
+        """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
+
+        兼容影视媒体共享的通用读写路径（通知、整理、历史等），任何缺失字段按
+        空值处理；真实字段仍由类定义接管，不受影响。dunder 特殊方法除外——
+        copy/pickle 等机制依赖 hasattr 探测 __setstate__ 等钩子，兜底返回 None
+        会导致探测误判而调用失败。注意这会掩盖属性名拼写错误，属于权衡取舍。
+        """
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return None
 
     @property
     def artist(self) -> str:

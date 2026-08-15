@@ -2509,6 +2509,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 task.target_storage = task.target_directory.library_storage
 
             if self._requires_automatic_category(task) and not task.mediainfo.category:
+                # MusicInfo 无 tmdb_id 字段，但模型 __getattr__ 已兜底返回 None
                 if task.mediainfo.tmdb_id:
                     error_message = "TMDB 信息未匹配到媒体分类，无法按媒体类别整理"
                 else:

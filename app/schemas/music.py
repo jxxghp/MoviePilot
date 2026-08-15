@@ -83,6 +83,17 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     overview: Optional[str] = None
     vote_average: float = 0.0
 
+    def __getattr__(self, name: str) -> None:
+        """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
+
+        与 domain 层的 MusicInfo 保持一致：通知、整理等共享影视字段的读写路径
+        直接访问缺失属性时按空值处理，而不是抛 AttributeError。dunder 特殊方法
+        除外，避免 copy/pickle 等机制对钩子的 hasattr 探测误判。
+        """
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return None
+
 
 class MusicRelease(BaseModel):
     """音乐专辑下的单个发行版本。"""
