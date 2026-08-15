@@ -40,7 +40,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.foundation.identity import normalize_internal_user_id
-from app.schemas.media import resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
@@ -626,7 +626,9 @@ class ChainBase(metaclass=ABCMeta):
         :param music_type: 音乐实体类型，显式音乐 ID 必须据此区分单曲与专辑
         :return: 识别的媒体信息，包括剧集信息
         """
-        explicit_identity = media_source is not None or media_id is not None
+        # 仅传数据源是请求级识别源约束（按名称识别限定数据源），显式 media_id 才要求来源成对
+        explicit_identity = media_id is not None
+        requested_source = normalize_media_source(media_source) or media_source
         media_source, media_id = resolve_media_identity(
             media=meta,
             media_source=media_source,
@@ -635,6 +637,12 @@ class ChainBase(metaclass=ABCMeta):
         if explicit_identity and (not media_source or not media_id):
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
+        if not media_id and requested_source is not None:
+            media_source = requested_source
+            # meta 自带同源身份（如 {tmdbid=} 标题）时直接按身份识别，避免退化为名称搜索
+            meta_source, meta_id = resolve_media_identity(media=meta)
+            if meta_id and meta_source == requested_source:
+                media_source, media_id = meta_source, meta_id
         if not episode_group and hasattr(meta, "episode_group"):
             episode_group = meta.episode_group
         if not mtype and not (media_source and media_id) and meta and meta.type in [
@@ -736,7 +744,9 @@ class ChainBase(metaclass=ABCMeta):
         :param music_type: 音乐实体类型，显式音乐 ID 必须据此区分单曲与专辑
         :return: 识别的媒体信息，包括剧集信息
         """
-        explicit_identity = media_source is not None or media_id is not None
+        # 仅传数据源是请求级识别源约束（按名称识别限定数据源），显式 media_id 才要求来源成对
+        explicit_identity = media_id is not None
+        requested_source = normalize_media_source(media_source) or media_source
         media_source, media_id = resolve_media_identity(
             media=meta,
             media_source=media_source,
@@ -745,6 +755,12 @@ class ChainBase(metaclass=ABCMeta):
         if explicit_identity and (not media_source or not media_id):
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
+        if not media_id and requested_source is not None:
+            media_source = requested_source
+            # meta 自带同源身份（如 {tmdbid=} 标题）时直接按身份识别，避免退化为名称搜索
+            meta_source, meta_id = resolve_media_identity(media=meta)
+            if meta_id and meta_source == requested_source:
+                media_source, media_id = meta_source, meta_id
         if not episode_group and hasattr(meta, "episode_group"):
             episode_group = meta.episode_group
         if not mtype and not (media_source and media_id) and meta and meta.type in [
