@@ -1,6 +1,6 @@
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
@@ -83,6 +83,12 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     overview: Optional[str] = None
     vote_average: float = 0.0
 
+    @field_validator("album_type", mode="before")
+    @classmethod
+    def _strip_album_type(cls, v: Optional[str]) -> Optional[str]:
+        """去除专辑类型字段两端的空白，防止数据源返回带空格的值。"""
+        return v.strip() if isinstance(v, str) and v.strip() else None
+
     def __getattr__(self, name: str) -> None:
         """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
 
@@ -143,6 +149,12 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     backdrop_path: Optional[str] = None
     overview: Optional[str] = None
     vote_average: float = 0.0
+
+    @field_validator("album_type", mode="before")
+    @classmethod
+    def _strip_album_type(cls, v: Optional[str]) -> Optional[str]:
+        """去除专辑类型字段两端的空白，防止数据源返回带空格的值。"""
+        return v.strip() if isinstance(v, str) and v.strip() else None
 
 
 class MusicArtistInfo(OptionalMediaIdentityMixin, BaseModel):

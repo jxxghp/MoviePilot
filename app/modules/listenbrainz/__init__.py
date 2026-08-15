@@ -265,10 +265,9 @@ class ListenBrainzModule(_ModuleBase):
             return None
         artist_name = str(release.get("artist_credit_name") or "").strip()
         release_date = release.get("release_date") or None
-        category_parts = [
-            release.get("release_group_primary_type"),
-            release.get("release_group_secondary_type"),
-        ]
+        primary_type = cls._stripped(release.get("release_group_primary_type"))
+        secondary_type = cls._stripped(release.get("release_group_secondary_type"))
+        category_parts = [primary_type, secondary_type]
         return MusicInfo(
             media_source=cls._source,
             media_id=str(media_id),
@@ -279,12 +278,12 @@ class ListenBrainzModule(_ModuleBase):
             album=str(title),
             album_artist=artist_name or None,
             album_id=str(media_id),
-            album_type=release.get("release_group_primary_type") or None,
+            album_type=primary_type,
             year=cls._year(release_date),
             release_date=release_date,
             cover_url=cls._release_cover(release.get("caa_release_mbid"))
             or cls._release_group_cover(media_id),
-            category=" / ".join(str(part) for part in category_parts if part),
+            category=" / ".join(part for part in category_parts if part),
             genres=[str(tag) for tag in release.get("release_tags") or [] if tag],
             names=[str(title)],
             detail_link=f"{cls._album_detail_url}/{media_id}",
@@ -320,6 +319,12 @@ class ListenBrainzModule(_ModuleBase):
         if not isinstance(artist_mbids, (list, tuple)):
             return []
         return [str(artist_mbids[0])] if artist_mbids and artist_mbids[0] else []
+
+    @staticmethod
+    def _stripped(value: Any) -> Optional[str]:
+        """去除 ListenBrainz 响应字段两端的空白，空值返回 None。"""
+        text = str(value).strip() if value is not None else ""
+        return text or None
 
     @staticmethod
     def _year(release_date: Any) -> Optional[int]:

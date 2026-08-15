@@ -729,8 +729,8 @@ class MusicBrainzModule(_ModuleBase):
             title=str(title),
             artists=artists,
             artist_ids=artist_ids,
-            album_type=release_group.get("primary-type"),
-            secondary_types=[str(item) for item in release_group.get("secondary-types") or []],
+            album_type=cls._stripped(release_group.get("primary-type")),
+            secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
             release_date=detail.get("date") or None,
             cover_url=cls._build_cover_url(group_id),
             genres=cls._names_of(detail.get("genres")),
@@ -1387,8 +1387,8 @@ class MusicBrainzModule(_ModuleBase):
         album = (release or {}).get("title")
         artists, artist_ids = cls._artist_credits(recording.get("artist-credit"))
         album_artists, _ = cls._artist_credits((release or {}).get("artist-credit"))
-        category_parts = [release_group.get("primary-type")]
-        category_parts.extend(release_group.get("secondary-types") or [])
+        category_parts = [cls._stripped(release_group.get("primary-type"))]
+        category_parts.extend(cls._stripped(item) for item in release_group.get("secondary-types") or [])
         return MusicInfo(
             media_source=cls._source,
             media_id=str(media_id),
@@ -1398,7 +1398,7 @@ class MusicBrainzModule(_ModuleBase):
             album=album,
             album_artist=" / ".join(album_artists) if album_artists else None,
             album_id=str(release_group["id"]) if release_group.get("id") else None,
-            album_type=release_group.get("primary-type"),
+            album_type=cls._stripped(release_group.get("primary-type")),
             year=cls._year(release_date),
             release_date=release_date,
             duration=cls._duration_seconds(recording.get("length")),
@@ -1427,8 +1427,8 @@ class MusicBrainzModule(_ModuleBase):
             title=str(title),
             artists=artists,
             artist_ids=artist_ids,
-            album_type=release_group.get("primary-type"),
-            secondary_types=[str(item) for item in release_group.get("secondary-types") or []],
+            album_type=cls._stripped(release_group.get("primary-type")),
+            secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
             release_date=release_group.get("first-release-date") or None,
             cover_url=cls._build_cover_url(media_id),
             genres=cls._names_of(release_group.get("genres")),
@@ -1626,6 +1626,12 @@ class MusicBrainzModule(_ModuleBase):
             return round(int(value) / 1000) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _stripped(value: Any) -> Optional[str]:
+        """去除 MusicBrainz 响应字段两端的空白，空值返回 None。"""
+        text = str(value).strip() if value is not None else ""
+        return text or None
 
     @staticmethod
     def _optional_int(value: Any) -> Optional[int]:
