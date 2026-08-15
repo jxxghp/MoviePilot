@@ -7,6 +7,7 @@
 3. 端点层的 ManageRequest 通用请求结构：target + action + params
 """
 from types import SimpleNamespace
+from typing import Any, Dict
 
 import pytest
 
@@ -105,18 +106,46 @@ def test_storage_manage_save_config_passes_conf_through(module):
 
 
 def test_storage_manage_usage_returns_oper_data(module):
-    """usage 动作返回存储实现的用量数据。"""
+    """usage 动作返回纯 dict 用量数据，空结果同样成功。"""
     result = module.storage_manage(storage="fakestore", action="usage")
     assert result["success"] is True
-    assert result["data"].total == 100
-    assert result["data"].available == 40
+    assert result["data"] == {"total": 100.0, "available": 40.0}
+
+
+def test_storage_manage_usage_data_passes_open_mapping_response(module):
+    """用量数据必须能透过通用响应 Response[Dict[str, Any]] 的开放映射校验。
+
+    回归守护：存储实现返回 pydantic 模型时若未转 dict，
+    端点响应校验会直接 500，前端存储页整体报未知错误。
+    """
+    result = module.storage_manage(storage="fakestore", action="usage")
+    response = schemas.Response[Dict[str, Any]](
+        success=result["success"], message=result.get("message"), data=result["data"]
+    )
+    assert response.data == {"total": 100.0, "available": 40.0}
+
+
+def test_storage_manage_usage_defaults_when_oper_returns_none(module, monkeypatch):
+    """存储实现查不到用量时返回成功的默认空结构而非业务失败。"""
+    monkeypatch.setattr(_FakeStorageOper, "usage", lambda self: None)
+    result = module.storage_manage(storage="fakestore", action="usage")
+    assert result["success"] is True
+    assert result["data"] == {"total": 0.0, "available": 0.0}
 
 
 def test_storage_manage_support_transtype(module):
-    """support_transtype 动作返回存储支持的整理方式。"""
+    """support_transtype 动作返回值包装为 transtype，与旧契约结构一致。"""
     result = module.storage_manage(storage="fakestore", action="support_transtype")
     assert result["success"] is True
-    assert result["data"] == {"move": True}
+    assert result["data"] == {"transtype": {"move": True}}
+
+
+def test_storage_manage_support_transtype_empty_still_succeeds(module, monkeypatch):
+    """存储不支持任何整理方式时返回成功空结构，避免前端把空结果当业务失败。"""
+    monkeypatch.setattr(_FakeStorageOper, "support_transtype", lambda self: {})
+    result = module.storage_manage(storage="fakestore", action="support_transtype")
+    assert result["success"] is True
+    assert result["data"] == {"transtype": {}}
 
 
 def test_storage_manage_login_action_forwards_params(module):

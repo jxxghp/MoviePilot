@@ -69,8 +69,8 @@ def _build_storage() -> schemas.Storage:
         _result = StorageChain().manage_storage(storage=_storage, action=StorageAction.USAGE.value)
         _usage = _result.get("data") if _result.get("success") else None
         if _usage:
-            total += _usage.total
-            available += _usage.available
+            total += _usage.get("total") or 0
+            available += _usage.get("available") or 0
     return schemas.Storage(total_storage=total, used_storage=total - available)
 
 

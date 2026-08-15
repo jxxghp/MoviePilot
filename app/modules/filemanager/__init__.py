@@ -13,7 +13,7 @@ from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType, StorageAction
 from app.adapters.system.host import SystemUtils
 from app.foundation import text as text_tools
@@ -152,14 +152,14 @@ class FileManagerModule(_ModuleBase):
             storage_oper = self.__get_storage_oper(storage)
             if not storage_oper:
                 return {"success": False, "message": f"不支持 {storage} 的整理方式获取"}
-            transtype = storage_oper.support_transtype()
-            return {"success": bool(transtype), "data": transtype}
+            # 与旧契约一致：返回值包装为 transtype，空结果同样返回成功空结构
+            return {"success": True, "data": {"transtype": storage_oper.support_transtype() or {}}}
         if action == StorageAction.USAGE:
             storage_oper = self.__get_storage_oper(storage)
             if not storage_oper:
                 return {"success": False, "message": f"不支持 {storage} 的存储使用情况"}
-            usage = storage_oper.usage()
-            return {"success": bool(usage), "data": usage}
+            # 实现返回 pydantic 模型，转为 dict 后才能透过通用响应的开放映射校验
+            return {"success": True, "data": (storage_oper.usage() or StorageUsage()).model_dump()}
 
         # 登录类动作：存储实现不支持时返回失败信息
         oper_method = action.value
