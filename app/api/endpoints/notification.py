@@ -4,7 +4,7 @@ from fastapi import Depends
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.chain.message import MessageChain
+from app.chain.notification import NotificationChain
 from app.db.models import User
 from app.api.deps import get_current_active_superuser
 
@@ -27,23 +27,20 @@ def wechatclawbot_status(
     _: User = Depends(get_current_active_superuser),
 ):
     """查询微信 ClawBot 登录状态和二维码。"""
-    client, errmsg = MessageChain().get_wechatclawbot_client(
+    result = NotificationChain().get_wechatclawbot_status(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
         WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
         WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
         WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-        allow_temporary=True,
+        refresh_remote=refresh_remote,
+        auto_generate_qrcode=auto_generate_qrcode,
     )
-    if not client:
-        return schemas.Response(success=False, message=errmsg)
     return schemas.Response(
-        success=True,
-        data=client.get_status(
-            refresh_remote=refresh_remote,
-            auto_generate_qrcode=auto_generate_qrcode,
-        ),
+        success=bool(result.get("success")),
+        message=result.get("message"),
+        data=result if result.get("success") else None,
     )
 
 
@@ -62,18 +59,14 @@ def refresh_wechatclawbot_qrcode(
     _: User = Depends(get_current_active_superuser),
 ):
     """刷新微信 ClawBot 二维码。"""
-    client, errmsg = MessageChain().get_wechatclawbot_client(
+    result = NotificationChain().refresh_wechatclawbot_qrcode(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
         WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
         WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
         WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-        allow_temporary=True,
     )
-    if not client:
-        return schemas.Response(success=False, message=errmsg)
-    result = client.refresh_qrcode()
     return schemas.Response(
         success=bool(result.get("success")),
         message=result.get("message"),
@@ -96,18 +89,14 @@ def logout_wechatclawbot(
     _: User = Depends(get_current_active_superuser),
 ):
     """退出微信 ClawBot 登录。"""
-    client, errmsg = MessageChain().get_wechatclawbot_client(
+    result = NotificationChain().logout_wechatclawbot(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
         WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
         WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
         WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-        allow_temporary=True,
     )
-    if not client:
-        return schemas.Response(success=False, message=errmsg)
-    result = client.logout()
     return schemas.Response(
         success=bool(result.get("success")),
         message=result.get("message"),
@@ -130,19 +119,15 @@ def test_wechatclawbot(
     _: User = Depends(get_current_active_superuser),
 ):
     """测试微信 ClawBot 当前登录态是否可用。"""
-    client, errmsg = MessageChain().get_wechatclawbot_client(
+    result = NotificationChain().test_wechatclawbot_connection(
         source=source,
         fallback_source=fallback_source,
         WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
         WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
         WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
         WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
-        allow_temporary=True,
     )
-    if not client:
-        return schemas.Response(success=False, message=errmsg)
-    state, message = client.test_connection()
-    return schemas.Response(success=state, message=message)
+    return schemas.Response(success=bool(result.get("success")), message=result.get("message"))
 
 
 @router.post(
@@ -158,7 +143,7 @@ def migrate_wechatclawbot_cache(
     _: User = Depends(get_current_active_superuser),
 ):
     """在通知名称变更时迁移对应的微信 ClawBot 登录缓存。"""
-    success, message = MessageChain().migrate_wechatclawbot_cache(
+    success, message = NotificationChain().migrate_wechatclawbot_cache(
         old_name=old_source,
         new_name=new_source,
         cleanup_old=cleanup_old,

@@ -1,5 +1,5 @@
 import json
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.runtime.cache import TTLCache
 from app.domain.context import Context, MediaInfo
@@ -83,14 +83,23 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         """初始化模块设置。"""
         pass
 
-    def wechatclawbot_client(
+    def _resolve_client(
             self,
             source: Optional[str] = None,
             fallback_source: Optional[str] = None,
-    ):
-        """按名称解析已加载的微信 ClawBot 客户端，候选名均无配置时返回默认实例。"""
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ) -> Tuple[Optional[Any], Optional[str]]:
+        """解析微信 ClawBot 客户端实例，返回 (客户端, 错误信息)。
+
+        优先使用已加载的配置实例，均无配置时退回到基于表单参数的临时客户端，
+        用于未保存配置的扫码状态预览。
+        """
         source_name = str(source or "").strip() or None
         fallback_name = str(fallback_source or "").strip() or None
+
         candidate_names = []
         for candidate in (fallback_name, source_name):
             if candidate and candidate not in candidate_names:
@@ -102,11 +111,121 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
                     continue
                 client = self.get_instance(config.name)
                 if client:
-                    return client
-            return None
-        return self.get_instance()
+                    return client, None
+        else:
+            client = self.get_instance()
+            if client:
+                return client, None
 
-    def wechatclawbot_temp_client(
+        temp_client = self._build_temp_client(
+            source=source_name or fallback_name,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        )
+        if temp_client:
+            return temp_client, None
+
+        if source_name:
+            return None, f"未找到名为 {source_name} 的微信 ClawBot 通知配置"
+        return None, "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道"
+
+    def wechatclawbot_status(
+            self,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+            refresh_remote: bool = True,
+            auto_generate_qrcode: bool = True,
+    ) -> Dict[str, Any]:
+        """查询微信 ClawBot 登录状态与二维码，实例解析全部封闭在模块内部。"""
+        client, errmsg = self._resolve_client(
+            source=source,
+            fallback_source=fallback_source,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        )
+        if not client:
+            return {"success": False, "message": errmsg}
+        return client.get_status(
+            refresh_remote=refresh_remote,
+            auto_generate_qrcode=auto_generate_qrcode,
+        )
+
+    def wechatclawbot_refresh_qrcode(
+            self,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """刷新微信 ClawBot 登录二维码。"""
+        client, errmsg = self._resolve_client(
+            source=source,
+            fallback_source=fallback_source,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        )
+        if not client:
+            return {"success": False, "message": errmsg}
+        return client.refresh_qrcode()
+
+    def wechatclawbot_logout(
+            self,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """退出微信 ClawBot 登录。"""
+        client, errmsg = self._resolve_client(
+            source=source,
+            fallback_source=fallback_source,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        )
+        if not client:
+            return {"success": False, "message": errmsg}
+        return client.logout()
+
+    def wechatclawbot_test_connection(
+            self,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """测试微信 ClawBot 当前登录态是否可用。"""
+        client, errmsg = self._resolve_client(
+            source=source,
+            fallback_source=fallback_source,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+        )
+        if not client:
+            return {"success": False, "message": errmsg}
+        state, message = client.test_connection()
+        return {"success": state, "message": message}
+
+    def _build_temp_client(
             self,
             source: Optional[str] = None,
             WECHATCLAWBOT_BASE_URL: Optional[str] = None,
