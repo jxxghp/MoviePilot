@@ -194,11 +194,34 @@ class Api:
         """
         登录飞牛影视
 
+        新版服务端已废弃 v1 明文登录接口，优先使用 v2 协议登录（密码传输 SHA256 摘要），
+        v2 接口不存在时回退旧版 v1 明文登录
+
         :return: 成功返回token 否则返回None
         """
         # 开启访问码后需先通过访问码校验，否则无法访问登录接口
         if not self.verify_access_code():
             return None
+        # v2 协议要求密码为明文密码的 SHA256 十六进制小写摘要
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        res = self.request(
+            "/user/loginByPassword",
+            data={
+                "username": username,
+                "password": password_hash,
+                "app_name": "trimemedia-web",
+            },
+            base_path="/api/v2",
+            suppress_log=True,
+        )
+        if res and res.success:
+            self._token = res.data.get("token")
+            return self._token
+        if res:
+            # v2 接口存在但登录失败（如账号密码错误），回退 v1 也无法成功
+            logger.error(f"飞牛影视登录失败，错误码：{res.code} {res.msg}")
+            return None
+        # v2 接口不可用（旧版服务端），回退 v1 明文登录
         if (
             res := self.request(
                 "/login",
@@ -511,11 +534,13 @@ class Api:
         method: Optional[str] = None,
         params: Optional[dict] = None,
         data: Optional[dict] = None,
+        base_path: Optional[str] = None,
         suppress_log=False,
     ):
         """
         请求飞牛影视API
 
+        :param base_path: 接口路径前缀（如 /api/v2），默认使用 v1 路径
         :param suppress_log: 是否禁止日志
         """
 
@@ -537,10 +562,11 @@ class Api:
 
         if not self._host or not api:
             return None
+        prefix = base_path if base_path is not None else self._api_path
         if not api.startswith("/"):
-            api_path = f"{self._api_path}/{api}"
+            api_path = f"{prefix}/{api}"
         else:
-            api_path = self._api_path + api
+            api_path = prefix + api
         url = self._host + api_path
         if method is None:
             method = "get" if data is None else "post"
