@@ -34,7 +34,8 @@ from app.runtime.events import Event
 from app.db.oper.agentchat import AgentChatOper
 from app.db.models.agentchat import AgentChat
 from app.application.messaging.agent import build_web_agent_message_update_event
-from app.application.messaging.interaction import AgentInteractionOption, agent_interaction_manager, skills_interaction_manager
+from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
+from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, MessageChannel, NotificationType
@@ -340,9 +341,9 @@ def test_build_web_agent_display_message_from_events_marks_done():
 
 def test_has_web_agent_traditional_interaction_detects_pending_skills():
     """WebAgent 应能识别命令后的传统交互上下文。"""
-    skills_interaction_manager.clear()
+    skill_interaction_manager.clear()
     try:
-        skills_interaction_manager.create_or_replace(
+        skill_interaction_manager.create_or_replace(
             user_id="1",
             channel=MessageChannel.WebAgent,
             source="web-agent",
@@ -352,7 +353,7 @@ def test_has_web_agent_traditional_interaction_detects_pending_skills():
         assert _has_web_agent_traditional_interaction("1") is True
         assert _has_web_agent_traditional_interaction("2") is False
     finally:
-        skills_interaction_manager.clear()
+        skill_interaction_manager.clear()
 
 
 def test_web_agent_admin_context_uses_current_user_id():

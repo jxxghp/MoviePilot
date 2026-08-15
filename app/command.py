@@ -7,13 +7,13 @@ from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.message import MessageChain
 from app.chain.site import SiteChain
-from app.chain.skills import SkillsChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.application.messaging.message import MessageHelper
+from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
@@ -25,7 +25,7 @@ from app.foundation.collections import DictUtils
 
 
 class CommandChain(ChainBase):
-    pass
+    """命令分发专用 Chain，仅作为命令侧的消息投递网关。"""
 
 
 def _finish_command_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -132,7 +132,7 @@ class Command(metaclass=Singleton):
                 "data": {},
             },
             "/skills": {
-                "func": SkillsChain().remote_manage,
+                "func": SkillInteractionHandler(messenger=CommandChain()).remote_manage,
                 "description": "管理技能",
                 "category": "智能体",
                 "data": {},

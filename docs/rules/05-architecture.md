@@ -62,7 +62,7 @@ to make the directory tree look symmetrical.
 |---|---|
 | `app/application/*.py` | Audio, directory, downloader, filter, formatting, transfer history, image, media-server, notification, recognition, RSS, storage and torrent application services |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules, runtime contracts, Oper classes and

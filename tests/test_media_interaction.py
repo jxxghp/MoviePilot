@@ -3,11 +3,17 @@ from unittest.mock import patch
 
 import pytest
 
-from app.chain.message import MediaInteractionChain, MessageChain
+from app.chain.message import MessageChain
+from app.chain.interaction import MediaInteractionChain
 from app.runtime.events import EventManager
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.application.messaging.interaction import media_interaction_manager, plugin_input_interaction_manager
+from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.media import media_interaction_manager
+from app.application.messaging.plugin import (
+    PluginInputInteractionHandler,
+    plugin_input_interaction_manager,
+)
 from app.schemas import CommingMessage, TransferDirectoryConf
 from app.schemas.types import EventType, MediaSource, MediaType, MessageChannel
 
@@ -175,7 +181,7 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     assert request is not None
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.MediaInteractionChain.handle_text_interaction",
+        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
@@ -270,8 +276,9 @@ def test_handle_message_keeps_legacy_positional_images_argument():
     chain = MessageChain()
     images = [CommingMessage.MessageImage(ref="tg://file_id/photo-1")]
 
-    with patch.object(
-        chain, "_handle_plugin_input_interaction", return_value=False
+    with patch(
+        "app.chain.message.PluginInputInteractionHandler.handle_text",
+        return_value=False,
     ), patch.object(
         chain, "_mark_message_processing_started", return_value=None
     ), patch.object(
@@ -319,7 +326,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
     )
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.MediaInteractionChain.handle_text_interaction",
+        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_media, patch.object(chain.eventmanager, "send_event") as send_event:
         chain.handle_message(
@@ -518,11 +525,13 @@ def test_plugin_input_session_ignores_none_text_messages():
     )
     image = CommingMessage.MessageImage(ref="https://example.invalid/image.jpg")
 
-    handled = chain._handle_plugin_input_interaction(
-        channel=MessageChannel.Telegram,
-        source="telegram-test",
-        userid="10001",
-        username="tester",
+    handled = PluginInputInteractionHandler(messenger=chain).handle_text(
+        context=InteractionContext(
+            channel=MessageChannel.Telegram,
+            source="telegram-test",
+            user_id="10001",
+            username="tester",
+        ),
         text=None,
         images=[image],
     )
@@ -1547,7 +1556,7 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
         "app.chain.media.MediaChain.search",
         return_value=(meta, medias),
     ) as search_media, patch(
-        "app.chain.message.MediaInteractionChain.post_medias_message"
+        "app.chain.interaction.MediaInteractionChain.post_medias_message"
     ) as post_medias_message, patch.object(
         chain, "_handle_ai_message"
     ) as handle_ai:
@@ -1591,7 +1600,7 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     ), patch(
         "app.chain.message.settings.AI_AGENT_GLOBAL", True
     ), patch(
-        "app.chain.message.MediaInteractionChain.handle_text_interaction",
+        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
@@ -1622,15 +1631,17 @@ def test_callback_routes_to_media_interaction_chain():
     )
 
     with patch(
-        "app.chain.message.MediaInteractionChain.handle_callback_interaction",
+        "app.chain.interaction.MediaInteractionChain.handle_callback_interaction",
         return_value=True,
     ) as handle_callback:
         chain._handle_callback(
-            text=f"CALLBACK:media:{request.request_id}:page-next",
-            channel=MessageChannel.Telegram,
-            source="telegram-test",
-            userid="10001",
-            username="tester",
+            callback_data=f"media:{request.request_id}:page-next",
+            context=InteractionContext(
+                channel=MessageChannel.Telegram,
+                source="telegram-test",
+                user_id="10001",
+                username="tester",
+            ),
         )
 
     handle_callback.assert_called_once()

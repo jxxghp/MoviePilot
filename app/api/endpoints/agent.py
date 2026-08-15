@@ -25,9 +25,6 @@ from app.agent.orchestrator import MoviePilotAgent, ReplyMode, agent_manager
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
 from app.chain.message import MessageChain
-from app.chain.site import site_interaction_manager
-from app.chain.skills import skills_interaction_manager
-from app.chain.subscribe import subscribe_interaction_manager
 from app.command import Command
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, EventManager
@@ -38,7 +35,13 @@ from app.db.models.agentchat import AgentChat
 from app.db.oper.user import UserOper
 from app.api.deps import get_current_active_user
 from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
-from app.application.messaging.interaction import agent_interaction_manager, media_interaction_manager
+from app.application.messaging.agent import agent_interaction_manager
+from app.application.messaging.agent import (
+    build_agent_choice_button_rows,
+    normalize_web_agent_button_rows,
+    parse_agent_choice_callback,
+)
+from app.application.messaging.router import has_pending_interaction
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
 from app.schemas.types import EventType, MessageChannel
@@ -979,52 +982,6 @@ def _merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[st
     return "\n".join(merged_parts).strip()
 
 
-def _parse_web_agent_choice_callback(callback_data: str) -> Optional[tuple[str, int]]:
-    """
-    解析 Web Agent 按钮选择回调数据。
-
-    :param callback_data: Agent 按钮携带的回调数据
-    :return: 请求 ID 与选项序号，格式无效时返回 None
-    """
-    if not callback_data.startswith("agent_interaction:choice:"):
-        return None
-    try:
-        _, _, request_id, option_index = callback_data.split(":", 3)
-    except ValueError:
-        return None
-    if not request_id or not option_index.isdigit():
-        return None
-    return request_id, int(option_index)
-
-
-def _normalize_web_agent_choice_button_rows(buttons: Optional[list[list[dict]]]) -> list[list[dict]]:
-    """
-    将消息渠道按钮二维结构转换为 Web 前端可渲染的按钮行。
-
-    :param buttons: Notification 中的按钮行
-    :return: Web 选择卡片按钮行
-    """
-    normalized_rows = []
-    for row in buttons or []:
-        normalized_row = []
-        for button in row or []:
-            text = str(button.get("text") or "").strip()
-            callback_data = str(button.get("callback_data") or "").strip()
-            if not text or not callback_data:
-                continue
-            description = str(button.get("description") or "").strip()
-            normalized_row.append(
-                {
-                    "label": text,
-                    "callback_data": callback_data,
-                    **({"description": description} if description else {}),
-                }
-            )
-        if normalized_row:
-            normalized_rows.append(normalized_row)
-    return normalized_rows
-
-
 def _build_web_agent_choice_event(notification: schemas.Notification) -> Optional[dict]:
     """
     将带按钮通知转换为 Web Agent 选择卡片事件。
@@ -1032,13 +989,13 @@ def _build_web_agent_choice_event(notification: schemas.Notification) -> Optiona
     :param notification: Agent 工具发出的按钮通知
     :return: 选择卡片事件，按钮为空时返回 None
     """
-    button_rows = _normalize_web_agent_choice_button_rows(notification.buttons)
+    button_rows = normalize_web_agent_button_rows(notification.buttons)
     buttons = [button for row in button_rows for button in row]
     if not buttons:
         return None
 
     choice_id = None
-    parsed = _parse_web_agent_choice_callback(buttons[0]["callback_data"])
+    parsed = parse_agent_choice_callback(buttons[0]["callback_data"])
     if parsed:
         choice_id = parsed[0]
 
@@ -1054,27 +1011,6 @@ def _build_web_agent_choice_event(notification: schemas.Notification) -> Optiona
     }
 
 
-def _build_web_agent_choice_buttons_from_request(
-    request,
-) -> tuple[list[dict], list[list[dict]]]:
-    """
-    根据待处理交互请求重建可持久化的按钮列表与按钮行。
-
-    :param request: 等待用户选择的交互请求
-    :return: 平铺按钮列表与按行分组的按钮结构
-    """
-    buttons = [
-        {
-            "label": option.label,
-            "callback_data": f"agent_interaction:choice:{request.request_id}:{index}",
-            "description": option.description or option.label,
-        }
-        for index, option in enumerate(request.options, start=1)
-    ]
-    button_rows = [[button] for button in buttons]
-    return buttons, button_rows
-
-
 def _resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Optional[dict]:
     """
     解析并消费 Web Agent 按钮选择，生成前端反馈与下一条用户消息。
@@ -1083,7 +1019,7 @@ def _resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Optio
     :param user_id: 当前登录用户 ID
     :return: 可返回给前端的数据，选择无效时返回 None
     """
-    parsed = _parse_web_agent_choice_callback(callback_data)
+    parsed = parse_agent_choice_callback(callback_data)
     if not parsed:
         return None
 
@@ -1097,7 +1033,7 @@ def _resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Optio
         return None
 
     request, option = resolved
-    buttons, button_rows = _build_web_agent_choice_buttons_from_request(request)
+    buttons, button_rows = build_agent_choice_button_rows(request)
     selected_description = option.description or option.label
     return {
         "message": option.value,
@@ -1223,15 +1159,7 @@ def _has_web_agent_traditional_interaction(user_id: str) -> bool:
     :param user_id: 当前登录用户 ID
     :return: 存在传统交互上下文时返回 True
     """
-    return any(
-        manager.get_by_user(user_id)
-        for manager in (
-            site_interaction_manager,
-            subscribe_interaction_manager,
-            skills_interaction_manager,
-            media_interaction_manager,
-        )
-    )
+    return has_pending_interaction(user_id)
 
 
 def _extract_web_agent_notification_from_event_data(
@@ -1695,7 +1623,7 @@ async def web_agent_callback(
     :param current_user: 当前登录用户
     :return: 下一条需要发送给 Agent 的用户消息与卡片反馈
     """
-    if not _parse_web_agent_choice_callback(payload.callback_data):
+    if not parse_agent_choice_callback(payload.callback_data):
         denied_message = _ensure_web_agent_command_allowed(current_user)
         if denied_message:
             return schemas.Response(success=False, message=denied_message)

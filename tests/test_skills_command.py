@@ -14,7 +14,9 @@ ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
-from app.chain.skills import SkillsChain, skills_interaction_manager
+from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.skill import SkillInteractionHandler
+from app.application.messaging.skill import skill_interaction_manager
 from app.agent.skills.registry import (
     SkillHelper,
     SkillInfo,
@@ -54,11 +56,11 @@ class _FakeResponse:
 
 class TestSkillsCommand(unittest.TestCase):
     def tearDown(self):
-        skills_interaction_manager.clear()
+        skill_interaction_manager.clear()
 
     def test_message_routes_text_reply_to_skills_interaction_before_ai(self):
         chain = MessageChain()
-        skills_interaction_manager.create_or_replace(
+        skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Wechat,
             source="wechat-test",
@@ -66,7 +68,7 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.message.SkillsChain.handle_text_interaction",
+            "app.chain.message.SkillInteractionHandler.handle_text_interaction",
             return_value=True,
         ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
             chain.handle_message(
@@ -81,15 +83,15 @@ class TestSkillsCommand(unittest.TestCase):
         handle_ai.assert_not_called()
 
     def test_skills_text_exit_skips_notification_history(self):
-        chain = SkillsChain()
-        skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
 
-        with patch.object(chain, "post_message") as post_message:
+        with patch.object(chain._messenger, "post_message") as post_message:
             handled = chain.handle_text_interaction(
                 channel=MessageChannel.Telegram,
                 source="telegram-test",
@@ -102,11 +104,11 @@ class TestSkillsCommand(unittest.TestCase):
         notification = post_message.call_args.args[0]
         self.assertEqual(notification.title, "技能交互已结束")
         self.assertFalse(notification.save_history)
-        self.assertIsNone(skills_interaction_manager.get_by_user("10001"))
+        self.assertIsNone(skill_interaction_manager.get_by_user("10001"))
 
     def test_callback_routes_to_skills_chain(self):
         chain = MessageChain()
-        request = skills_interaction_manager.create_or_replace(
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -114,15 +116,17 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.message.SkillsChain.handle_callback_interaction",
+            "app.chain.message.SkillInteractionHandler.handle_callback_interaction",
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(
-                text=f"CALLBACK:skills:{request.request_id}:market",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
+                callback_data=f"skills:{request.request_id}:market",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                ),
             )
 
         handle_callback.assert_called_once()
@@ -383,8 +387,8 @@ class TestSkillsCommand(unittest.TestCase):
         self.assertIn("内置默认源", message)
 
     def test_skills_chain_market_view_marks_clawhub_as_community_source(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -416,8 +420,8 @@ class TestSkillsCommand(unittest.TestCase):
         self.assertIn("ClawHub 属于社区注册表", text)
 
     def test_skills_chain_market_view_filters_by_search_query(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -460,8 +464,8 @@ class TestSkillsCommand(unittest.TestCase):
         self.assertEqual(buttons[0][0]["callback_data"], f"skills:{request.request_id}:clear-search")
 
     def test_skills_chain_root_view_uses_friendly_source_labels(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -503,8 +507,8 @@ class TestSkillsCommand(unittest.TestCase):
         self.assertIn("3. 管理技能源", text)
 
     def test_skills_chain_installed_view_builds_remove_buttons(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.WebAgent,
             source="web-agent",
@@ -545,8 +549,8 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
     def test_skills_chain_callback_enters_search_input_mode(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -568,8 +572,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_text_search_updates_market_query(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -593,8 +597,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_followup_text_applies_search_when_awaiting_input(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -618,8 +622,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_callback_enters_source_add_mode(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -641,8 +645,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_followup_text_adds_custom_market_source(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -656,7 +660,7 @@ class TestSkillsCommand(unittest.TestCase):
             "add_custom_market_source",
             return_value=(True, "已添加技能源：仓库来源 · acme/custom-skills"),
         ) as add_source, patch.object(chain, "_render_interaction") as render, patch.object(
-            chain, "post_message"
+            chain._messenger, "post_message"
         ) as post_message:
             handled = chain.handle_text_interaction(
                 channel=MessageChannel.Telegram,
@@ -673,8 +677,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_text_removes_custom_market_source_by_index(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -686,7 +690,7 @@ class TestSkillsCommand(unittest.TestCase):
             "_remove_market_source",
             return_value=(True, "已删除技能源：仓库来源 · acme/custom-skills"),
         ) as remove_source, patch.object(chain, "_render_interaction") as render, patch.object(
-            chain, "post_message"
+            chain._messenger, "post_message"
         ) as post_message:
             handled = chain.handle_text_interaction(
                 channel=MessageChannel.Telegram,
@@ -703,8 +707,8 @@ class TestSkillsCommand(unittest.TestCase):
         render.assert_called_once()
 
     def test_skills_chain_source_view_lists_custom_sources(self):
-        chain = SkillsChain()
-        request = skills_interaction_manager.create_or_replace(
+        chain = SkillInteractionHandler(messenger=MessageChain())
+        request = skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -743,11 +747,11 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
     def test_skills_chain_updates_buttons_via_edit_message(self):
-        chain = SkillsChain()
+        chain = SkillInteractionHandler(messenger=MessageChain())
         buttons = [[{"text": "安装 1", "callback_data": "skills:req:install:1"}]]
 
-        with patch.object(chain, "edit_message", return_value=True) as edit_message, patch.object(
-            chain, "post_message"
+        with patch.object(chain._messenger, "edit_message", return_value=True) as edit_message, patch.object(
+            chain._messenger, "post_message"
         ) as post_message:
             chain._update_or_post_message(
                 channel=MessageChannel.Telegram,

@@ -198,6 +198,8 @@ class CommingMessage(BaseModel):
     audio_refs: Optional[List[str]] = None
     # 文件附件列表
     files: Optional[List[MessageAttachment]] = None
+    # 结构化按钮回调数据（优先于 CALLBACK: 文本前缀）
+    callback_data: Optional[str] = None
 
     @field_validator("images", mode="before")
     @classmethod

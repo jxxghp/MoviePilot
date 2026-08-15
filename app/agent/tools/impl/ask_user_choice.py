@@ -6,9 +6,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.messaging.interaction import (
+from app.application.messaging.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
+    build_agent_choice_callback,
 )
 from app.runtime.log import logger
 from app.schemas import Notification, NotificationType
@@ -180,8 +181,8 @@ class AskUserChoiceTool(MoviePilotTool):
             current_row.append(
                 {
                     "text": self._truncate_button_text(option.label, max_text_length),
-                    "callback_data": (
-                        f"agent_interaction:choice:{request.request_id}:{index}"
+                    "callback_data": build_agent_choice_callback(
+                        request.request_id, index
                     ),
                 }
             )

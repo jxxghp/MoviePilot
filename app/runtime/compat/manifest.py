@@ -24,6 +24,12 @@ class SymbolAlias:
 
 # 只登记已经删除旧物理源码、并完成 canonical 路径验证的模块。
 MODULE_ALIASES: Dict[str, ModuleAlias] = {
+    "app.chain.media_interaction": ModuleAlias(
+        target="app.chain.interaction",
+        replacement="app.chain.interaction",
+        introduced="v3.0.0",
+        owner="chain",
+    ),
     "app.log": ModuleAlias(
         target="app.sdk.logging",
         replacement="app.sdk.logging",
@@ -674,6 +680,13 @@ PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
 # 物理模块仍存在、仅部分公开符号迁走时，由导入器在标准 Loader 执行后叠加惰性符号路由。
 # canonical 源码不反向依赖兼容层，目标符号也只在旧调用方真正取用时加载。
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.chain.message": {
+        "MediaInteractionChain": SymbolAlias(
+            target_module="app.chain.interaction",
+            target_name="MediaInteractionChain",
+            replacement="app.chain.interaction.MediaInteractionChain",
+        ),
+    },
     "app.domain.media": {
         name: SymbolAlias(
             target_module="app.schemas.media",

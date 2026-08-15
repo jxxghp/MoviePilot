@@ -10,10 +10,11 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.application.messaging.interaction import (
+from app.application.messaging.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
 )
+from app.application.messaging.interaction import InteractionContext
 from app.chain.message import MessageChain
 from app.runtime.config import settings
 from app.schemas.types import MessageChannel
@@ -201,13 +202,15 @@ class TestAgentInteraction(unittest.TestCase):
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
             handled = chain._handle_callback(
-                text=f"CALLBACK:agent_interaction:choice:{request.request_id}:1",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
-                original_message_id=123,
-                original_chat_id="456",
+                callback_data=f"agent_interaction:choice:{request.request_id}:1",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                    original_message_id=123,
+                    original_chat_id="456",
+                ),
             )
 
         self.assertTrue(handled)
@@ -246,11 +249,13 @@ class TestAgentInteraction(unittest.TestCase):
             chain.messagehelper, "put"
         ), patch.object(chain.messageoper, "add"):
             chain._handle_callback(
-                text=f"CALLBACK:agent_choice:{request.request_id}:1",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
+                callback_data=f"agent_choice:{request.request_id}:1",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                ),
             )
 
         handle_ai_message.assert_called_once()
@@ -269,9 +274,8 @@ class TestAgentInteraction(unittest.TestCase):
                     chain,
                     "_handle_ai_message",
                     return_value=True,
-                ) as handle_ai_message, patch.object(
-                    chain,
-                    "_handle_plugin_input_interaction",
+                ) as handle_ai_message, patch(
+                    "app.chain.message.PluginInputInteractionHandler.handle_text",
                 ) as handle_plugin_interaction, patch.object(
                     chain,
                     "_mark_message_processing_started",

@@ -11,21 +11,22 @@ ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
+from app.application.messaging.interaction import InteractionContext
 from app.chain.site import SiteChain, site_interaction_manager
-from app.chain.skills import skills_interaction_manager
+from app.application.messaging.skill import skill_interaction_manager
 from app.chain.subscribe import SubscribeChain, subscribe_interaction_manager
 from app.schemas.types import MessageChannel
 
 
 class TestSlashCommandInteractions(unittest.TestCase):
     def tearDown(self):
-        skills_interaction_manager.clear()
+        skill_interaction_manager.clear()
         site_interaction_manager.clear()
         subscribe_interaction_manager.clear()
 
     def test_message_routes_text_reply_to_latest_sites_interaction(self):
         chain = MessageChain()
-        skills_interaction_manager.create_or_replace(
+        skill_interaction_manager.create_or_replace(
             user_id="10001",
             channel=MessageChannel.Wechat,
             source="wechat-test",
@@ -43,7 +44,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             "app.chain.message.SiteChain.handle_text_interaction",
             return_value=True,
         ) as handle_site, patch(
-            "app.chain.message.SkillsChain.handle_text_interaction"
+            "app.chain.message.SkillInteractionHandler.handle_text_interaction"
         ) as handle_skills:
             chain.handle_message(
                 channel=MessageChannel.Wechat,
@@ -105,11 +106,13 @@ class TestSlashCommandInteractions(unittest.TestCase):
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(
-                text=f"CALLBACK:sites:{request.request_id}:refresh",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
+                callback_data=f"sites:{request.request_id}:refresh",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                ),
             )
 
         handle_callback.assert_called_once()
@@ -129,11 +132,13 @@ class TestSlashCommandInteractions(unittest.TestCase):
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(
-                text=f"CALLBACK:subscribes:{request.request_id}:refresh",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
+                callback_data=f"subscribes:{request.request_id}:refresh",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                ),
             )
 
         handle_callback.assert_called_once()

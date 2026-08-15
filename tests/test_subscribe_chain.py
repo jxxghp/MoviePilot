@@ -399,6 +399,8 @@ def _load_subscribe_chain_class():
 
 
 SUBSCRIBE_CHAIN_MODULE, SubscribeChain = _load_subscribe_chain_class()
+# 进度格式化已迁移到交互处理器，经由隔离加载的模块获取
+SubscribeInteractionHandler = SUBSCRIBE_CHAIN_MODULE.SubscribeInteractionHandler
 
 
 def _patch_media_recognize(module, result):
@@ -473,7 +475,7 @@ class SubscribeChainTest(TestCase):
         """订阅列表展示必须把 S0 当作合法季号，而不是回退到第 1 季。"""
         subscribe = self._build_subscribe(season=0, total_episode=5, lack_episode=2)
 
-        progress = SubscribeChain._format_subscribe_progress(subscribe)
+        progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
 
         self.assertEqual(progress, "第0季 [3/5]")
 
@@ -481,7 +483,7 @@ class SubscribeChainTest(TestCase):
         """S0 没有总集数时仍显示特别季季号。"""
         subscribe = self._build_subscribe(season=0, total_episode=None, lack_episode=None)
 
-        progress = SubscribeChain._format_subscribe_progress(subscribe)
+        progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
 
         self.assertEqual(progress, "第0季")
 

@@ -12,7 +12,9 @@ from app.runtime.config import settings
 from app.db import SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message
-from app.application.messaging.interaction import AgentInteractionOption, agent_interaction_manager, media_interaction_manager
+from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
+from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.media import media_interaction_manager
 from app.schemas.types import MessageChannel, NotificationType
 
 
@@ -39,7 +41,7 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
 
     try:
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.message.MediaInteractionChain.handle_text_interaction",
+            "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
             return_value=True,
         ) as handle_media_interaction, patch.object(
             chain, "_handle_ai_message", return_value=True
@@ -264,14 +266,16 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
             chain._handle_callback(
-                text=f"CALLBACK:agent_interaction:choice:{request.request_id}:1",
-                channel=MessageChannel.Telegram,
-                source="telegram-test",
-                userid="10001",
-                username="tester",
-                is_channel_admin=False,
-                original_message_id=123,
-                original_chat_id="456",
+                callback_data=f"agent_interaction:choice:{request.request_id}:1",
+                context=InteractionContext(
+                    channel=MessageChannel.Telegram,
+                    source="telegram-test",
+                    user_id="10001",
+                    username="tester",
+                    original_message_id=123,
+                    original_chat_id="456",
+                    is_channel_admin=False,
+                ),
             )
     finally:
         agent_interaction_manager.clear()

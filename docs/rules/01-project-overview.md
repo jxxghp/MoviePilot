@@ -32,7 +32,7 @@ MoviePilot is a self-hosted media automation platform targeting Chinese-language
 | `app/runtime/` | Config, events, logging, caching, concurrency, process state, extensions, and legacy compatibility |
 | `app/adapters/` | Cache, network, system, generated-resource, and named external-product adapters |
 | `app/runtime/extensions/` | Module, plugin, and configured-service lifecycle management |
-| `app/application/messaging/` | Messaging, interaction, and Agent-to-message capabilities |
+| `app/application/messaging/` | Messaging, interaction, and Agent-to-message capabilities (`interaction.py` contracts, `router.py` priority/callback dispatch, `site.py`/`subscribe.py`/`skill.py` command sessions, `media.py` media interaction state, `plugin.py` plugin input, `agent.py` agent choice bridge, `message.py` rendering and queue); not a public plugin SDK |
 | `app/application/security/` | Authentication and access-control capabilities |
 | `app/application/` | Focused application services |
 | `app/sdk/` | Stable imports for plugins |
