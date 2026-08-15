@@ -1,0 +1,22 @@
+schema_version = 1
+id = "SynologyChatModule"
+kind = "host_module"
+entrypoint = "app.modules.synologychat:SynologyChatModule"
+depends_on = []
+
+[metadata]
+name = "Synology Chat"
+type = "notification"
+subtype = "SynologyChat"
+priority = 5
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "synologychat"
+enabled_field = "enabled"

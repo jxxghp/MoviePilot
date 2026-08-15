@@ -1,0 +1,15 @@
+schema_version = 1
+id = "FilterModule"
+kind = "host_module"
+entrypoint = "app.modules.filter:FilterModule"
+depends_on = []
+
+[metadata]
+name = "过滤器"
+type = "other"
+subtype = "Filter"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = ["CustomFilterRules", "CustomIdentifiers", "CustomReleaseGroups", "Customization"]

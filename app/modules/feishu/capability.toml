@@ -1,0 +1,22 @@
+schema_version = 1
+id = "FeishuModule"
+kind = "host_module"
+entrypoint = "app.modules.feishu:FeishuModule"
+depends_on = []
+
+[metadata]
+name = "飞书"
+type = "notification"
+subtype = "Feishu"
+priority = 2
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "feishu"
+enabled_field = "enabled"

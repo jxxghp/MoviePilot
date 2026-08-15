@@ -1,0 +1,15 @@
+schema_version = 1
+id = "MusicBrainzModule"
+kind = "host_module"
+entrypoint = "app.modules.musicbrainz:MusicBrainzModule"
+depends_on = []
+
+[metadata]
+name = "MusicBrainz"
+type = "mediarecognize"
+subtype = "MusicBrainz"
+priority = 0
+
+[activation]
+policy = "bootstrap"
+watch = []

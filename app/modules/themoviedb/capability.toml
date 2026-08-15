@@ -1,0 +1,15 @@
+schema_version = 1
+id = "TheMovieDbModule"
+kind = "host_module"
+entrypoint = "app.modules.themoviedb:TheMovieDbModule"
+depends_on = []
+
+[metadata]
+name = "TheMovieDb"
+type = "mediarecognize"
+subtype = "TMDB"
+priority = 1
+
+[activation]
+policy = "bootstrap"
+watch = ["PROXY_HOST", "TMDB_API_DOMAIN", "TMDB_API_KEY", "TMDB_LOCALE"]

@@ -1,0 +1,22 @@
+schema_version = 1
+id = "QQBotModule"
+kind = "host_module"
+entrypoint = "app.modules.qqbot:QQBotModule"
+depends_on = []
+
+[metadata]
+name = "QQ"
+type = "notification"
+subtype = "QQ"
+priority = 10
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "qqbot"
+enabled_field = "enabled"

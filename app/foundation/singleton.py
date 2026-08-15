@@ -9,6 +9,7 @@ class Singleton(abc.ABCMeta, type):
     """
 
     _instances: dict = {}
+    _lock = threading.RLock()
 
     def get_existing_instance(cls, *args, **kwargs):
         """按相同参数返回已创建实例，不触发初始化"""
@@ -18,9 +19,10 @@ class Singleton(abc.ABCMeta, type):
     def __call__(cls, *args, **kwargs):
         """按类和构造参数创建或复用实例。"""
         key = (cls, args, frozenset(kwargs.items()))
-        if key not in cls._instances:
-            cls._instances[key] = super().__call__(*args, **kwargs)
-        return cls._instances[key]
+        with cls._lock:
+            if key not in cls._instances:
+                cls._instances[key] = super().__call__(*args, **kwargs)
+            return cls._instances[key]
 
 
 class AbstractSingleton(abc.ABC, metaclass=Singleton):
@@ -36,6 +38,7 @@ class SingletonClass(abc.ABCMeta, type):
     """
 
     _instances: dict = {}
+    _lock = threading.RLock()
 
     def get_existing_instance(cls):
         """返回已创建实例，不触发初始化"""
@@ -43,9 +46,10 @@ class SingletonClass(abc.ABCMeta, type):
 
     def __call__(cls, *args, **kwargs):
         """按类创建或复用唯一实例。"""
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
+        with cls._lock:
+            if cls not in cls._instances:
+                cls._instances[cls] = super().__call__(*args, **kwargs)
+            return cls._instances[cls]
 
 
 class AbstractSingletonClass(abc.ABC, metaclass=SingletonClass):

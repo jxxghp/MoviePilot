@@ -1,0 +1,22 @@
+schema_version = 1
+id = "TrimeMediaModule"
+kind = "host_module"
+entrypoint = "app.modules.trimemedia:TrimeMediaModule"
+depends_on = []
+
+[metadata]
+name = "飞牛影视"
+type = "mediaserver"
+subtype = "TrimeMedia"
+priority = 4
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "trimemedia"
+enabled_field = "enabled"

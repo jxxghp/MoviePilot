@@ -1,0 +1,22 @@
+schema_version = 1
+id = "TelegramModule"
+kind = "host_module"
+entrypoint = "app.modules.telegram:TelegramModule"
+depends_on = []
+
+[metadata]
+name = "Telegram"
+type = "notification"
+subtype = "Telegram"
+priority = 0
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "telegram"
+enabled_field = "enabled"

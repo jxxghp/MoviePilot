@@ -1,0 +1,22 @@
+schema_version = 1
+id = "TransmissionModule"
+kind = "host_module"
+entrypoint = "app.modules.transmission:TransmissionModule"
+depends_on = []
+
+[metadata]
+name = "Transmission"
+type = "downloader"
+subtype = "Transmission"
+priority = 2
+
+[activation]
+policy = "when_configured"
+watch = ["Downloaders"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Downloaders"
+match_field = "type"
+match_value = "transmission"
+enabled_field = "enabled"

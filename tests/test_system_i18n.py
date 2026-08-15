@@ -1,24 +1,18 @@
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from app.api.endpoints import system as system_endpoint
 from app.runtime.localization import LocaleHelper
 
 
-class _FakeDoubanModule:
-    """构造带中文名称的模块类，模拟真实 DoubanModule。"""
-
-    @staticmethod
-    def get_name() -> str:
-        """获取模块中文名称"""
-        return "豆瓣"
-
-
 class _FakeModuleManager:
     """提供 system 模块接口测试所需的最小模块管理器。"""
 
-    def get_modules(self) -> dict:
-        """返回模块字典"""
-        return {"DoubanModule": _FakeDoubanModule}
+    def list_specs(self) -> tuple:
+        """返回 manifest 元数据视图。"""
+        return (
+            SimpleNamespace(id="DoubanModule", metadata={"name": "豆瓣"}),
+        )
 
     def test(self, moduleid: str) -> tuple[bool, str]:
         """返回模块测试结果"""

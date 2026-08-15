@@ -1,0 +1,22 @@
+schema_version = 1
+id = "UgreenModule"
+kind = "host_module"
+entrypoint = "app.modules.ugreen:UgreenModule"
+depends_on = []
+
+[metadata]
+name = "绿联影视"
+type = "mediaserver"
+subtype = "Ugreen"
+priority = 5
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "ugreen"
+enabled_field = "enabled"

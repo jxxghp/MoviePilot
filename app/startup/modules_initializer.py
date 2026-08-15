@@ -184,7 +184,7 @@ async def stop_modules():
             logger.error(f"关闭{name}失败：{err}")
 
     await run_step("AI智能体", stop_agent)
-    await run_step("模块", lambda: ModuleManager().stop())
+    await run_step("模块", lambda: ModuleManager().shutdown())
     await run_step("事件消费", lambda: EventManager().stop())
     await run_step("虚拟显示", lambda: DisplayHelper().stop())
     await run_step("DoH服务", lambda: DohHelper().shutdown())

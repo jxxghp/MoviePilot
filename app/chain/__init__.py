@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import copy
 import inspect
 import pickle
 import traceback
 from abc import ABCMeta
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict

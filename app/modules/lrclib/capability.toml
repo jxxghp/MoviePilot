@@ -1,0 +1,15 @@
+schema_version = 1
+id = "LrclibModule"
+kind = "host_module"
+entrypoint = "app.modules.lrclib:LrclibModule"
+depends_on = []
+
+[metadata]
+name = "LRCLIB"
+type = "other"
+subtype = "Lrclib"
+priority = 5
+
+[activation]
+policy = "bootstrap"
+watch = []

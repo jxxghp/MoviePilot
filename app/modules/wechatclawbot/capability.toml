@@ -1,0 +1,22 @@
+schema_version = 1
+id = "WechatClawBotModule"
+kind = "host_module"
+entrypoint = "app.modules.wechatclawbot:WechatClawBotModule"
+depends_on = []
+
+[metadata]
+name = "微信 ClawBot"
+type = "notification"
+subtype = "WechatClawBot"
+priority = 2
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "wechatclawbot"
+enabled_field = "enabled"

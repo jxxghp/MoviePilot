@@ -1,0 +1,22 @@
+schema_version = 1
+id = "WechatModule"
+kind = "host_module"
+entrypoint = "app.modules.wechat:WechatModule"
+depends_on = []
+
+[metadata]
+name = "企业微信"
+type = "notification"
+subtype = "Wechat"
+priority = 1
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "wechat"
+enabled_field = "enabled"

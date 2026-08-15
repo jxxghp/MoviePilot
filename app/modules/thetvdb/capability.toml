@@ -1,0 +1,15 @@
+schema_version = 1
+id = "TheTvDbModule"
+kind = "host_module"
+entrypoint = "app.modules.thetvdb:TheTvDbModule"
+depends_on = []
+
+[metadata]
+name = "TheTvDb"
+type = "mediarecognize"
+subtype = "TVDB"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = []
