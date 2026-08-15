@@ -491,6 +491,24 @@ class MessageChannel(Enum):
     QQ = "QQ"
 
 
+class NotificationAction(str, Enum):
+    """
+    通知渠道通用管理动作
+
+    作为渠道管理契约的公共词汇表，具体动作的支持范围与参数语义由渠道模块自行解释
+    """
+    # 查询登录状态与二维码
+    STATUS = "status"
+    # 刷新登录二维码
+    REFRESH_QRCODE = "refresh_qrcode"
+    # 退出登录
+    LOGOUT = "logout"
+    # 测试连通性
+    TEST_CONNECTION = "test_connection"
+    # 迁移渠道名变更前的登录缓存
+    MIGRATE_CACHE = "migrate_cache"
+
+
 # 下载器类型
 class DownloaderType(Enum):
     # Qbittorrent

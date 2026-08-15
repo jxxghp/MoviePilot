@@ -212,6 +212,15 @@ exceptions and value domains used by both modules and upper layers live in
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
+Channels that need login management or temporary-parameter initialization
+follow one generic contract instead of per-channel APIs: modules implement
+`channel_manage(channel, action, **params)`, route by the requested
+`MessageChannel` (returning `None` for other channels), and interpret actions
+from the shared `schemas.types.NotificationAction` vocabulary plus opaque form
+parameters themselves. `NotificationChain.manage_channel` forwards transparently
+and must stay free of any channel-specific names or logic; new channels adopt
+the same contract without touching the chain.
+
 ### DB / Oper layer
 
 SQLAlchemy models stay under `app/db/models/`; the data access classes live in
