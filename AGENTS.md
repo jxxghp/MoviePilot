@@ -54,7 +54,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 The historical `app/core`, `app/helper`, and `app/utils` directories are compatibility-only virtual import roots. Never add physical Python source there and never use those imports from host code. Choose an owner by responsibility, not by whether a function is "shared" or has historically been called a helper.
 
-`app/helper/` may contain only the non-Python `.resource-compat` marker so source archives retain a write target for old Docker images whose updater is fixed to that path. If such an updater writes the compiled site resources there, `app/application/site/__init__.py` exposes that directory only as a fallback when the canonical extension is absent. New images and current update flows must continue writing exclusively to `app/application/site/`.
+The legacy roots have no physical directories in the source tree. Current images and update flows write site resources only to `app/application/site/`; plugin imports under `app.helper.*` are resolved exclusively by the exact runtime compatibility manifest.
 
 | Package | Owns | Must Not Own | Representative Files |
 |---|---|---|---|
@@ -156,4 +156,4 @@ For the full documentation map and cross-references, refer to:
 
 **[Documentation Hub Index](./docs/rules/README.md)**
 
-*Last Updated: 2026-08-14*
+*Last Updated: 2026-08-15*
