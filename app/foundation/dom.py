@@ -2,7 +2,12 @@ from typing import Union
 
 
 class DomUtils:
-    """提供 XML DOM 节点读取和创建辅助能力。"""
+    """提供不含业务状态的 XML/HTML DOM 基础能力。"""
+
+    @staticmethod
+    def has_child_elements(element) -> bool:
+        """判断 DOM 元素是否存在且至少包含一个子元素。"""
+        return element is not None and len(element) > 0
 
     @staticmethod
     def tag_value(tag_item, tag_name: str, attname: str = "", default: Union[str, int] = None):

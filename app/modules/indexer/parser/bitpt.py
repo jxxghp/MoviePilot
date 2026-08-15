@@ -10,7 +10,8 @@ from urllib.parse import urljoin, urlencode
 
 from bs4 import BeautifulSoup
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
 
 class BitptSiteUserInfo(SiteParserBase):
     schema = SiteSchema.Bitpt
@@ -52,10 +53,10 @@ class BitptSiteUserInfo(SiteParserBase):
         self.userid = info_dict.get('UID')
         self.username = info_dict.get('用户名').split('\xa0')[0] if '用户名' in info_dict else None
         self.user_level = info_dict.get('用户级别') if '用户级别' in info_dict else None
-        self.join_at = StringUtils.unify_datetime_str(info_dict.get('注册时间')) if '注册时间' in info_dict else None
+        self.join_at = time_tools.normalize_datetime(info_dict.get('注册时间')) if '注册时间' in info_dict else None
 
-        self.upload = StringUtils.num_filesize(info_dict.get('上传流量')) if '上传流量' in info_dict else 0
-        self.download = StringUtils.num_filesize(info_dict.get('下载流量')) if '下载流量' in info_dict else 0
+        self.upload = size_tools.parse_size(info_dict.get('上传流量')) if '上传流量' in info_dict else 0
+        self.download = size_tools.parse_size(info_dict.get('下载流量')) if '下载流量' in info_dict else 0
         self.ratio = float(info_dict.get('共享率')) if '共享率' in info_dict else 0
         bonus_str = info_dict.get('星辰', '')
         self.bonus = float(re.search(r'累计([\d\.]+)', bonus_str).group(1)) if re.search(r'累计([\d\.]+)', bonus_str) else 0
@@ -71,7 +72,7 @@ class BitptSiteUserInfo(SiteParserBase):
                 match = re.search(r'当前上传的种子\((\d+)个, 共([\d\.]+ [KMGT]B)\)', seeding_link)
                 if match:
                     self.seeding = int(match.group(1))
-                    self.seeding_size = StringUtils.num_filesize(match.group(2))
+                    self.seeding_size = size_tools.parse_size(match.group(2))
                 else:
                     self.seeding = 0
                     self.seeding_size = 0
@@ -102,7 +103,7 @@ class BitptSiteUserInfo(SiteParserBase):
                 size_text = size_a.text.strip() if size_a else size_td.text.strip()
                 if size_text:
                     page_seeding += 1
-                    page_seeding_size += StringUtils.num_filesize(size_text)
+                    page_seeding_size += size_tools.parse_size(size_text)
         return page_seeding, page_seeding_size
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:

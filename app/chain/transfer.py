@@ -68,7 +68,8 @@ from app.application.transfer import TransferQueue, TransferTask
 from app.domain.media import normalize_music_type
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
-from app.domain.string import StringUtils
+from app.domain import episode as episode_rules
+from app.foundation import text as text_tools
 from app.adapters.system.host import SystemUtils
 
 # 下载器锁
@@ -169,16 +170,16 @@ class JobManager:
                 return "music", source, media_id, music_type
 
             artists = tuple(
-                StringUtils.clear_upper(artist)
+                text_tools.normalize_upper(artist)
                 for artist in (getattr(media, "artists", None) or [])
-                if StringUtils.clear_upper(artist)
+                if text_tools.normalize_upper(artist)
             )
             if music_type == MUSIC_ENTITY_ALBUM:
-                album_artist = StringUtils.clear_upper(
+                album_artist = text_tools.normalize_upper(
                     getattr(media, "album_artist", None)
                     or (artists[0] if artists else "")
                 )
-                album = StringUtils.clear_upper(
+                album = text_tools.normalize_upper(
                     getattr(media, "album", None) or getattr(media, "title", None) or ""
                 )
                 return "music", "local", music_type, album_artist, album, getattr(media, "year", None)
@@ -188,8 +189,8 @@ class JobManager:
                 "local",
                 music_type,
                 artists,
-                StringUtils.clear_upper(getattr(media, "title", None) or ""),
-                StringUtils.clear_upper(getattr(media, "album", None) or ""),
+                text_tools.normalize_upper(getattr(media, "title", None) or ""),
+                text_tools.normalize_upper(getattr(media, "album", None) or ""),
                 getattr(media, "disc_number", None),
                 getattr(media, "track_number", None),
             )
@@ -1420,7 +1421,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         task.mediainfo, task.meta.begin_season
                     )
                     if season_episodes:
-                        se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
+                        se_str = f"{task.meta.season} {episode_rules.format_ranges(season_episodes)}"
                     else:
                         se_str = f"{task.meta.season}"
                 # 发送入库成功消息
@@ -3242,7 +3243,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
         if source_meta.type != target_meta.type:
             return False
-        if StringUtils.clear_upper(source_meta.name) != StringUtils.clear_upper(
+        if text_tools.normalize_upper(source_meta.name) != text_tools.normalize_upper(
                 target_meta.name
         ):
             return False

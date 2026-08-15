@@ -46,6 +46,7 @@ RETIRED_CANONICAL_FILES = (
     "app/security/url_safety.py",
     "app/domain/mediaserver.py",
     "app/domain/nfo.py",
+    "app/domain/string.py",
     "app/log.py",
     "app/foundation/diagnostics.py",
     "app/infrastructure/log.py",
@@ -226,6 +227,16 @@ def test_legacy_roots_contain_no_python_sources():
     assert leftovers == []
 
 
+def test_legacy_source_directories_do_not_exist():
+    """core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。"""
+    leftovers = [
+        root_name
+        for root_name in ("core", "helper", "utils")
+        if (APP_ROOT / root_name).exists()
+    ]
+    assert leftovers == []
+
+
 def test_retired_canonical_filenames_do_not_return():
     """能力包应使用包内语境明确的短文件名，避免再次出现冗余角色后缀。"""
     leftovers = [
@@ -324,6 +335,31 @@ def test_capability_packages_do_not_import_forbidden_upper_layers():
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
+
+
+def test_site_domain_uses_foundation_dom_boundary():
+    """站点领域规则应依赖 DOM 原语，不得重新耦合聚合字符串工具。"""
+    modules = _discover_modules()
+    dependencies = _resolve_imports(
+        "app.domain.site",
+        modules["app.domain.site"],
+        set(modules),
+    )
+    assert "app.foundation.dom" in dependencies
+    assert "app.domain.string" not in dependencies
+
+
+def test_host_code_does_not_use_string_utils_facade():
+    """聚合 StringUtils 只服务插件兼容，宿主实现必须使用拆分后的能力。"""
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] in {"plugins", "sdk"}:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        if any(isinstance(node, ast.Name) and node.id == "StringUtils" for node in ast.walk(tree)):
+            violations.append(str(relative))
+    assert violations == []
 
 
 def test_runtime_log_is_a_dependency_leaf():

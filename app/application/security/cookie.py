@@ -10,7 +10,7 @@ from app.application.security.twofactor import TwoFactorAuth
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
-from app.domain.string import StringUtils
+from app.foundation import url as url_tools
 
 
 class CookieHelper:
@@ -355,4 +355,4 @@ class CookieHelper:
             return ""
         if imageurl.startswith("/"):
             imageurl = imageurl[1:]
-        return "%s/%s" % (StringUtils.get_base_url(siteurl), imageurl)
+        return "%s/%s" % (url_tools.base_url(siteurl), imageurl)

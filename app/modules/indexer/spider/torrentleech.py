@@ -5,7 +5,8 @@ from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
 
 
 class TorrentLeech:
@@ -76,7 +77,7 @@ class TorrentLeech:
                 'enclosure': self._downloadurl % (self._indexer.get('domain'),
                                                   result.get('fid'),
                                                   result.get('filename')),
-                'pubdate': StringUtils.format_timestamp(result.get('addedTimestamp')),
+                'pubdate': time_tools.format_timestamp(result.get('addedTimestamp')),
                 'size': result.get('size'),
                 'seeders': result.get('seeders'),
                 'peers': result.get('leechers'),
@@ -104,7 +105,7 @@ class TorrentLeech:
         """
         搜索种子
         """
-        if StringUtils.is_chinese(keyword):
+        if text_tools.contains_chinese(keyword):
             # 不支持中文
             return True, []
 
@@ -141,7 +142,7 @@ class TorrentLeech:
         """
         异步搜索种子
         """
-        if StringUtils.is_chinese(keyword):
+        if text_tools.contains_chinese(keyword):
             # 不支持中文
             return True, []
 

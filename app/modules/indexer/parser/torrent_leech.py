@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class TorrentLeechSiteUserInfo(SiteParserBase):
@@ -26,7 +29,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         html = etree.HTML(html_text)
         current_userid = None
         try:
-            if StringUtils.is_valid_html_element(html):
+            if DomUtils.has_child_elements(html):
                 profile_routes = html.xpath(
                     '//span[contains(concat(" ", normalize-space(@class), " "), " centerTopBar ")]'
                     '//*[@onclick]/@onclick'
@@ -71,7 +74,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             username_html = html.xpath('//div[contains(concat(" ", normalize-space(@class), " "), '
@@ -85,13 +88,13 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
             upload_html = html.xpath('//div[contains(@class,"profile-uploaded")]//span/text()')
             if upload_html:
-                self.upload = StringUtils.num_filesize(upload_html[0])
+                self.upload = size_tools.parse_size(upload_html[0])
             download_html = html.xpath('//div[contains(@class,"profile-downloaded")]//span/text()')
             if download_html:
-                self.download = StringUtils.num_filesize(download_html[0])
+                self.download = size_tools.parse_size(download_html[0])
             ratio_html = html.xpath('//div[contains(@class,"profile-ratio")]//span/text()')
             if ratio_html:
-                self.ratio = StringUtils.str_float(ratio_html[0].replace('∞', '0'))
+                self.ratio = text_tools.parse_float(ratio_html[0].replace('∞', '0'))
 
             user_level_html = html.xpath('//table[contains(@class, "profileViewTable")]'
                                          '//tr/td[normalize-space()="Class"]/'
@@ -103,11 +106,11 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
                                       '//tr/td[normalize-space()="Registration date"]/'
                                       'following-sibling::td[1]/text()')
             if join_at_html:
-                self.join_at = StringUtils.unify_datetime_str(join_at_html[0].strip())
+                self.join_at = time_tools.normalize_datetime(join_at_html[0].strip())
 
             bonus_html = html.xpath('//span[contains(@class, "total-TL-points")]/text()')
             if bonus_html:
-                self.bonus = StringUtils.str_float(bonus_html[0].strip())
+                self.bonus = text_tools.parse_float(bonus_html[0].strip())
         finally:
             if html is not None:
                 del html
@@ -129,7 +132,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 2
@@ -144,8 +147,8 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
                 page_seeding = len(seeding_sizes)
 
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i])
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeding_seeders[i])
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])

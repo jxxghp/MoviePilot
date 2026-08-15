@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class SmallHorseSiteUserInfo(SiteParserBase):
@@ -44,17 +47,17 @@ class SmallHorseSiteUserInfo(SiteParserBase):
             tmps = html.xpath('//ul[@class = "stats nobullet"]')
             if tmps:
                 if tmps[1].xpath("li") and tmps[1].xpath("li")[0].xpath("span//text()"):
-                    self.join_at = StringUtils.unify_datetime_str(tmps[1].xpath("li")[0].xpath("span//text()")[0])
-                self.upload = StringUtils.num_filesize(str(tmps[1].xpath("li")[2].xpath("text()")[0]).split(":")[1].strip())
-                self.download = StringUtils.num_filesize(
+                    self.join_at = time_tools.normalize_datetime(tmps[1].xpath("li")[0].xpath("span//text()")[0])
+                self.upload = size_tools.parse_size(str(tmps[1].xpath("li")[2].xpath("text()")[0]).split(":")[1].strip())
+                self.download = size_tools.parse_size(
                     str(tmps[1].xpath("li")[3].xpath("text()")[0]).split(":")[1].strip())
                 if tmps[1].xpath("li")[4].xpath("span//text()"):
-                    self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[4].xpath("span//text()")[0]).replace('∞', '0'))
+                    self.ratio = text_tools.parse_float(str(tmps[1].xpath("li")[4].xpath("span//text()")[0]).replace('∞', '0'))
                 else:
-                    self.ratio = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
-                self.bonus = StringUtils.str_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
+                    self.ratio = text_tools.parse_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
+                self.bonus = text_tools.parse_float(str(tmps[1].xpath("li")[5].xpath("text()")[0]).split(":")[1])
                 self.user_level = str(tmps[3].xpath("li")[0].xpath("text()")[0]).split(":")[1].strip()
-                self.leeching = StringUtils.str_int(
+                self.leeching = text_tools.parse_int(
                     (tmps[4].xpath("li")[6].xpath("text()")[0]).split(":")[1].replace("[", ""))
         finally:
             if html is not None:
@@ -72,7 +75,7 @@ class SmallHorseSiteUserInfo(SiteParserBase):
          """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 6
@@ -87,8 +90,8 @@ class SmallHorseSiteUserInfo(SiteParserBase):
                 page_seeding = len(seeding_sizes)
 
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i].xpath("string(.)").strip())
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeding_seeders[i].xpath("string(.)").strip())
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])

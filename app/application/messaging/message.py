@@ -25,7 +25,8 @@ from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
 from app.foundation.singleton import Singleton, SingletonClass
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation.crypto import HashUtils
 
 
 class TemplateContextBuilder:
@@ -346,7 +347,7 @@ class TemplateContextBuilder:
             return
         if torrentinfo.size:
             if str(torrentinfo.size).replace(".", "").isdigit():
-                size = StringUtils.str_filesize(torrentinfo.size)
+                size = size_tools.format_compact_size(torrentinfo.size)
             else:
                 size = torrentinfo.size
         else:
@@ -391,7 +392,7 @@ class TemplateContextBuilder:
         ctx = {
             "transfer_type": transferinfo.transfer_type,
             "file_count": transferinfo.file_count,
-            "total_size": StringUtils.str_filesize(transferinfo.total_size),
+            "total_size": size_tools.format_compact_size(transferinfo.total_size),
             "err_msg": transferinfo.message,
         }
         context.update(ctx)
@@ -472,9 +473,9 @@ class TemplateHelper(metaclass=SingletonClass):
         """
         if isinstance(cuntent, dict):
             base_str = cuntent.get("title", '') + cuntent.get("text", '')
-            return StringUtils.md5_hash(json.dumps(base_str, sort_keys=True, ensure_ascii=False))
+            return HashUtils.md5(json.dumps(base_str, sort_keys=True, ensure_ascii=False))
 
-        return StringUtils.md5_hash(cuntent)
+        return HashUtils.md5(cuntent)
 
     def get_cache_context(self, cuntent: Union[str, dict]) -> Optional[dict]:
         """

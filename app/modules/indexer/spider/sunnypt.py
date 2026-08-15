@@ -7,7 +7,7 @@ from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 
 class SunnyPTSpider:
@@ -272,14 +272,14 @@ class SunnyPTSpider:
                 if promotion_active else 1.0
             upload_factor = float(promotion.get("up_multiplier", 1.0)) \
                 if promotion_active else 1.0
-            freedate = StringUtils.unify_datetime_str(promotion.get("until")) \
+            freedate = time_tools.normalize_datetime(promotion.get("until")) \
                 if promotion_active and promotion.get("until") else None
             torrent_id = result.get("id")
             torrents.append({
                 "title": result.get("title"),
                 "description": result.get("subtitle"),
                 "enclosure": self._build_download_url(torrent_id),
-                "pubdate": StringUtils.unify_datetime_str(result.get("created_at")),
+                "pubdate": time_tools.normalize_datetime(result.get("created_at")),
                 "size": int(result.get("size") or 0),
                 "seeders": int(result.get("seeders") or 0),
                 "peers": int(result.get("leechers") or 0),

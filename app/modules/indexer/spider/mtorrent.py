@@ -9,7 +9,8 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import temporal as time_tools
 
 
 class MTorrentSpider:
@@ -68,7 +69,7 @@ class MTorrentSpider:
         if indexer:
             self._indexerid = indexer.get('id')
             self._url = indexer.get('domain')
-            self._domain = StringUtils.get_url_domain(self._url)
+            self._domain = site_rules.extract_domain(self._url)
             self._searchurl = self._searchurl % self._domain
             self._name = indexer.get('name')
             if indexer.get('proxy'):
@@ -137,7 +138,7 @@ class MTorrentSpider:
                 'title': result.get('name'),
                 'description': result.get('smallDescr'),
                 'enclosure': self.__get_download_url(result.get('id')),
-                'pubdate': StringUtils.format_timestamp(result.get('createdDate')),
+                'pubdate': time_tools.format_timestamp(result.get('createdDate')),
                 'size': int(result.get('size') or '0'),
                 'seeders': int(status.get("seeders") or '0'),
                 'peers': int(status.get("leechers") or '0'),
@@ -150,18 +151,18 @@ class MTorrentSpider:
                 'category': category
             }
             if discount_end_time := status.get('discountEndTime'):
-                torrent['freedate'] = StringUtils.format_timestamp(discount_end_time)
+                torrent['freedate'] = time_tools.format_timestamp(discount_end_time)
             # 解析全站促销时的规则(当前馒头只有下载促销)
             if promotion_rule := status.get("promotionRule"):
                 discount = promotion_rule.get("discount", "NORMAL")
                 torrent["downloadvolumefactor"] = self.__get_downloadvolumefactor(discount)
                 if end_time := promotion_rule.get("endTime"):
-                    torrent["freedate"] = StringUtils.format_timestamp(end_time)
+                    torrent["freedate"] = time_tools.format_timestamp(end_time)
             if mall_single_free := status.get("mallSingleFree"):
                 if mall_single_free.get("status") == "ONGOING":
                     torrent["downloadvolumefactor"] = self.__get_downloadvolumefactor("FREE")
                     if end_date := mall_single_free.get("endDate"):
-                        torrent["freedate"] = StringUtils.format_timestamp(end_date)
+                        torrent["freedate"] = time_tools.format_timestamp(end_date)
             torrents.append(torrent)
         return torrents
 

@@ -21,7 +21,8 @@ from app.schemas.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import text as text_tools
 
 SPIDER_PARSER_CLASSES = {
     "TNodeSpider": TNodeSpider,
@@ -101,13 +102,13 @@ class IndexerModule(_ModuleBase):
         # 可能为关键字或ttxxxx
         if search_word \
                 and site.get('language') == "en" \
-                and StringUtils.is_chinese(search_word):
+                and text_tools.contains_chinese(search_word):
             # 不支持中文
             logger.warn(f"{site.get('name')} 不支持中文搜索")
             return False
 
         # 站点流控
-        state, msg = SitesHelper().check(StringUtils.get_url_domain(site.get("domain")))
+        state, msg = SitesHelper().check(site_rules.extract_domain(site.get("domain")))
         if state:
             logger.warn(msg)
             return False
@@ -124,14 +125,14 @@ class IndexerModule(_ModuleBase):
         if not text:
             return text
         # 去除特殊字符和多余空格
-        return StringUtils.clear(text, replace_word=" ", allow_space=True)
+        return text_tools.remove_punctuation(text, replacement=" ", allow_space=True)
 
     @staticmethod
     def __indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
         """
         索引器统计
         """
-        domain = StringUtils.get_url_domain(site.get("domain"))
+        domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
             SiteOper().fail(domain)
         else:
@@ -142,7 +143,7 @@ class IndexerModule(_ModuleBase):
         """
         异步索引器统计
         """
-        domain = StringUtils.get_url_domain(site.get("domain"))
+        domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
             await SiteOper().async_fail(domain)
         else:
@@ -633,7 +634,7 @@ class IndexerModule(_ModuleBase):
             site_obj.parse()
             logger.debug(f"站点 {site.get('name')} 数据解析完成")
             return SiteUserData(
-                domain=StringUtils.get_url_domain(site.get("url")),
+                domain=site_rules.extract_domain(site.get("url")),
                 userid=site_obj.userid,
                 username=site_obj.username,
                 user_level=site_obj.user_level,

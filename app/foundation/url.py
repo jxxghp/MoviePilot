@@ -1,4 +1,5 @@
 import mimetypes
+import re
 from pathlib import Path
 from typing import Optional, Union, Tuple
 from urllib import parse
@@ -70,6 +71,7 @@ class UrlUtils:
         except Exception:
             return None
 
+
     @staticmethod
     def get_mime_type(path_or_url: Union[str, Path], default_type: str = "application/octet-stream") -> str:
         """
@@ -135,3 +137,77 @@ class UrlUtils:
             return protocol, hostname, port, path
         except Exception:
             return None
+
+
+def split_netloc(url: str) -> Tuple[str, str]:
+    """返回 URL 的协议与网络位置，并兼容未带协议的历史输入。"""
+    if not url:
+        return "", ""
+    if not url.startswith("http"):
+        return "http", url
+    address = urlparse(url)
+    return address.scheme, address.netloc
+
+
+def second_level_label(url: str) -> str:
+    """返回不含端口的倒数第二级域名标签，IP 则保持原值。"""
+    if not url:
+        return ""
+    _scheme, netloc = split_netloc(url)
+    if not netloc:
+        return ""
+    labels = netloc.split(":")[0].split(".")
+    return labels[-2] if len(labels) >= 2 else labels[0]
+
+
+def host_label(url: str) -> str:
+    """返回兼容历史语义的一级主机标签。"""
+    if not url:
+        return ""
+    _scheme, netloc = split_netloc(url)
+    if not netloc:
+        return ""
+    return netloc.split(".")[-2]
+
+
+def base_url(url: str) -> str:
+    """返回由协议和网络位置组成的根地址。"""
+    if not url:
+        return ""
+    scheme, netloc = split_netloc(url)
+    return f"{scheme}://{netloc}"
+
+
+def parse_address(
+    address: str,
+    include_scheme: bool = True,
+) -> Tuple[Optional[str], Optional[int]]:
+    """按历史规则从服务地址中提取域名文本和端口。"""
+    if not address:
+        return None, None
+    address = address.rstrip("/")
+    if include_scheme and not address.startswith("http"):
+        address = f"http://{address}"
+    elif not include_scheme and address.startswith("http"):
+        address = address.split("://")[-1]
+    parts = address.split(":")
+    if len(parts) > 3:
+        return None, None
+    if len(parts) == 3:
+        port = int(parts[-1])
+        domain = ":".join(parts[:-1]).rstrip("/")
+    elif len(parts) == 2:
+        port = 443 if address.startswith("https") else 80
+        domain = address
+    else:
+        return None, None
+    return domain, port
+
+
+def is_link(value: str) -> bool:
+    """判断文本是否为受支持协议链接、IP 或域名形式。"""
+    if not value:
+        return False
+    if re.match(r"^(http|https|ftp|ftps|sftp|ws|wss)://", value):
+        return True
+    return re.match(r"^[a-zA-Z0-9.-]+(\.[a-zA-Z]{2,})?$", value) is not None

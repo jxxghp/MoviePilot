@@ -36,7 +36,7 @@ from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
-from app.domain.string import StringUtils
+
 from app.foundation.version import compare_version
 from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils

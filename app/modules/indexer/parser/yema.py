@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 
 class YemaSiteUserInfo(SiteParserBase):
@@ -65,7 +65,7 @@ class YemaSiteUserInfo(SiteParserBase):
         self.username = user_info.get("name")
         self.user_level = str(user_info.get("level")) \
             if user_info.get("level") is not None else None
-        self.join_at = StringUtils.unify_datetime_str(user_info.get("registerTime"))
+        self.join_at = time_tools.normalize_datetime(user_info.get("registerTime"))
         self.upload = int(user_info.get("promotionUploadSize") or 0)
         self.download = int(user_info.get("promotionDownloadSize") or 0)
         self.ratio = round(self.upload / (self.download or 1), 2)

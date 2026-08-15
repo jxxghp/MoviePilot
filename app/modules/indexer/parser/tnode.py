@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 
 class TNodeSiteUserInfo(SiteParserBase):
@@ -49,7 +49,7 @@ class TNodeSiteUserInfo(SiteParserBase):
         self.username = user_info.get("username")
         self.user_level = user_info.get("class", {}).get("name")
         self.join_at = user_info.get("regTime", 0)
-        self.join_at = StringUtils.unify_datetime_str(str(self.join_at))
+        self.join_at = time_tools.normalize_datetime(str(self.join_at))
 
         self.upload = user_info.get("upload")
         self.download = user_info.get("download")

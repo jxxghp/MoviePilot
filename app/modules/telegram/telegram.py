@@ -42,7 +42,7 @@ from app.runtime.thread import ThreadHelper  # noqa: E402
 from app.runtime.log import logger  # noqa: E402
 from app.runtime.execution import retry  # noqa: E402
 from app.adapters.network.http import RequestUtils  # noqa: E402
-from app.domain.string import StringUtils  # noqa: E402
+from app.foundation import size as size_tools  # noqa: E402
 
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
@@ -1036,7 +1036,7 @@ class Telegram:
                 title_link = self._format_link(title, link, parse_mode)
                 caption = (
                     f"{caption}\n{index}.【{site_name}】{title_link} "
-                    f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
+                    f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
                 )
                 index += 1
 

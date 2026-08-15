@@ -6,7 +6,8 @@ from typing import Optional, Tuple
 from app.runtime.log import logger
 from app.runtime.config import settings
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import temporal as time_tools
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
@@ -23,7 +24,7 @@ class RousiSiteUserInfo(SiteParserBase):
         配置 API 请求地址和请求头
         使用 API v1 的 /profile 接口获取用户信息
         """
-        self._base_url = f"https://{StringUtils.get_url_domain(self._site_url)}"
+        self._base_url = f"https://{site_rules.extract_domain(self._site_url)}"
         self._user_basic_page = "api/v1/profile?include_fields[user]=seeding_leeching_data"
         self._user_basic_params = {}
         self._user_basic_headers = {
@@ -97,7 +98,7 @@ class RousiSiteUserInfo(SiteParserBase):
         self.user_level = user_info.get("level_text") or user_info.get("role_text")
 
         # 注册时间：统一格式为 YYYY-MM-DD HH:MM:SS
-        join_at = StringUtils.unify_datetime_str(user_info.get("registered_at"))
+        join_at = time_tools.normalize_datetime(user_info.get("registered_at"))
         if join_at:
             # 确保格式为 YYYY-MM-DD HH:MM:SS (19位)
             if len(join_at) >= 19:
@@ -219,7 +220,7 @@ class RousiSiteUserInfo(SiteParserBase):
         self.message_unread = len(messages)
         for messsage in messages:
             head = messsage.get("title")
-            date = StringUtils.unify_datetime_str(messsage.get("created_at"))
+            date = time_tools.normalize_datetime(messsage.get("created_at"))
             content = messsage.get("content")
             logger.debug(f"{self._site_name} 标题 {head} 时间 {date} 内容 {content}")
             self.message_unread_contents.append((head, date, content))

@@ -36,7 +36,7 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.schemas.media import build_media_key, parse_media_key, resolve_media_identity
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 from app.foundation.text import convert as zhconv_convert
 
 
@@ -466,7 +466,7 @@ class SearchChain(ChainBase):
                 "index": index,
                 "title": torrent.torrent_info.title or "未知",
                 "size": (
-                    StringUtils.format_size(torrent.torrent_info.size)
+                    size_tools.format_size(torrent.torrent_info.size)
                     if torrent.torrent_info.size
                     else "0 B"
                 ),

@@ -17,7 +17,7 @@ from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType
 from app.adapters.system.host import SystemUtils
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 
 
 class FileManagerModule(_ModuleBase):
@@ -596,7 +596,7 @@ class FileManagerModule(_ModuleBase):
         return (
             file_meta.disc_number,
             file_meta.track_number,
-            StringUtils.clear_upper(file_meta.title or file_path.stem),
+            text_tools.normalize_upper(file_meta.title or file_path.stem),
         )
 
     @classmethod
@@ -606,7 +606,7 @@ class FileManagerModule(_ModuleBase):
             mediainfo: MusicInfo,
     ) -> bool:
         """按曲名和可用曲序判断单曲是否存在，避免专辑内任一文件造成误判。"""
-        target_title = StringUtils.clear_upper(mediainfo.title or "")
+        target_title = text_tools.normalize_upper(mediainfo.title or "")
         target_track = getattr(mediainfo, "track_number", None)
         target_disc = getattr(mediainfo, "disc_number", None)
         if not target_title:

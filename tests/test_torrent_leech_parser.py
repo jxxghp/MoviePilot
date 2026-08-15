@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from app.modules.indexer import parser as parser_module
 from app.modules.indexer.parser.torrent_leech import TorrentLeechSiteUserInfo
-from app.domain.string import StringUtils
+from app.foundation.size import parse_size
 
 
 PROFILE_VIEW_HTML = """
@@ -93,8 +93,8 @@ def test_torrent_leech_refresh_prefers_topbar_user_and_parses_profile_once(monke
 
     assert parser.userid == "example_user"
     assert parser.username == "example_user"
-    assert parser.upload == StringUtils.num_filesize("41.54 GB")
-    assert parser.download == StringUtils.num_filesize("10.16 GB")
+    assert parser.upload == parse_size("41.54 GB")
+    assert parser.download == parse_size("10.16 GB")
     assert parser.ratio == 4.089
     assert parser.user_level == "Registered"
     assert parser.join_at == "2022-09-04 00:00:00"

@@ -11,7 +11,7 @@ from app.runtime.events import eventmanager
 from app.db.oper.site import SiteOper
 from app.runtime.log import logger
 from app.schemas.types import EventType
-from app.domain.string import StringUtils
+from app.foundation import url as url_tools
 
 
 class UpdateSiteInput(BaseModel):
@@ -141,7 +141,7 @@ class UpdateSiteTool(MoviePilotTool):
 
             # URL处理（需要校正格式）
             if url is not None:
-                _scheme, _netloc = StringUtils.get_url_netloc(url)
+                _scheme, _netloc = url_tools.split_netloc(url)
                 site_dict["url"] = f"{_scheme}://{_netloc}/"
 
             if pri is not None:

@@ -13,7 +13,7 @@ from app.adapters.network.cloudflare import under_challenge
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 
 
 # 站点框架
@@ -183,7 +183,7 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         将站点页面中的文件大小文本转换为字节。
         """
-        return StringUtils.num_filesize(text)
+        return size_tools.parse_size(text)
 
     def parse(self):
         """

@@ -6,7 +6,7 @@ from typing import List, Optional
 from app.domain.context import Context
 from app.schemas.types import MediaType, media_type_to_agent
 from app.foundation.crypto import HashUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 from ._music_utils import simplify_music_info
 
 SEARCH_RESULT_CACHE_FILE = "__search_result__"
@@ -150,7 +150,7 @@ def simplify_search_result(
     if torrent_info:
         simplified["torrent_info"] = {
             "title": torrent_info.title,
-            "size": StringUtils.format_size(torrent_info.size),
+            "size": size_tools.format_size(torrent_info.size),
             "seeders": torrent_info.seeders,
             "peers": torrent_info.peers,
             "site_name": torrent_info.site_name,

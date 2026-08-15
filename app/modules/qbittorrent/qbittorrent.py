@@ -11,7 +11,8 @@ from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
 from app.runtime.log import logger
-from app.domain.string import StringUtils
+from app.domain import torrent as torrent_rules
+from app.foundation import url as url_tools
 
 
 class Qbittorrent:
@@ -32,7 +33,7 @@ class Qbittorrent:
         if host and port:
             self._host, self._port = host, port
         elif host:
-            self._host, self._port = StringUtils.get_domain_address(address=host, prefix=True)
+            self._host, self._port = url_tools.parse_address(address=host, include_scheme=True)
         else:
             logger.error("Qbittorrent配置不完整！")
             return
@@ -453,7 +454,7 @@ class Qbittorrent:
                 category = None
         try:
             cookie_to_use = cookie
-            if urls and cookie and not StringUtils.is_magnet_link(urls):
+            if urls and cookie and not torrent_rules.is_magnet_link(urls):
                 if self.__sync_download_cookies(url=urls, cookie_header=cookie):
                     cookie_to_use = None
 

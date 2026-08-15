@@ -8,7 +8,8 @@ from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import url as url_tools
 
 lock = Lock()
 
@@ -22,7 +23,7 @@ class SynologyChat:
         self._webhook_url = SYNOLOGYCHAT_WEBHOOK
         self._token = SYNOLOGYCHAT_TOKEN
         if self._webhook_url:
-            self._domain = StringUtils.get_base_url(self._webhook_url)
+            self._domain = url_tools.base_url(self._webhook_url)
 
     def check_token(self, token: str) -> bool:
         return True if token == self._token else False
@@ -161,7 +162,7 @@ class SynologyChat:
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
                 caption = f"{caption}\n{index}.【{site_name}】<{link}|{title}> " \
-                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
+                          f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
                           f"_{description}_"
                 index += 1
 

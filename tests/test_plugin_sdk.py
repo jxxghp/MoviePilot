@@ -19,13 +19,15 @@ def test_sdk_exports_canonical_plugin_interfaces():
     from app.domain.meta.metamusic import MetaMusic as CanonicalMetaMusic
     from app.domain.metainfo import MetaInfo as CanonicalMetaInfo
     from app.domain.scraper import NfoReader as CanonicalNfoReader
-    from app.domain.string import StringUtils as CanonicalStringUtils
+    LegacyDomainStringUtils = importlib.import_module(
+        "app.domain.string"
+    ).StringUtils
     from app.foundation.crypto import CryptoJsUtils
     from app.runtime.extensions.module_manager import ModuleManager as CanonicalModuleManager
     from app.runtime.extensions.plugin_manager import PluginManager as CanonicalPluginManager
     from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
     from app.application.rss import RssHelper as CanonicalRssHelper
-    from app.application.site.sites import SitesHelper as CanonicalSitesHelper
+    from app.application.site.sites import SitesHelper as CanonicalSitesHelper  # pylint: disable=no-name-in-module
     from app.runtime.cache import Cache as CanonicalCache
     from app.runtime.cache import cached as canonical_cached
     from app.runtime.config import settings as canonical_settings
@@ -49,7 +51,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert RssHelper is CanonicalRssHelper
     assert SitesHelper is CanonicalSitesHelper
     assert NotificationHelper is CanonicalNotificationHelper
-    assert UtilityStringUtils is CanonicalStringUtils
+    assert UtilityStringUtils is LegacyDomainStringUtils
     assert decrypt is CryptoJsUtils.decrypt
     assert encrypt is CryptoJsUtils.encrypt
     assert ModuleManager is CanonicalModuleManager

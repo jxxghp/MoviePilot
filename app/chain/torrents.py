@@ -20,7 +20,8 @@ from app.runtime.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
 from app.schemas.media import resolve_media_identity
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import text as text_tools
 
 
 class TorrentsChain(ChainBase):
@@ -355,7 +356,7 @@ class TorrentsChain(ChainBase):
         """
         归一标题用于低置信标题兜底匹配。
         """
-        return (StringUtils.clear_upper(value or "") or "").strip()
+        return (text_tools.normalize_upper(value or "") or "").strip()
 
     def clear_torrents(self):
         """
@@ -603,7 +604,7 @@ class TorrentsChain(ChainBase):
                         "current": indexer.get("id"),
                     },
                 )
-            domain = StringUtils.get_url_domain(indexer.get("domain"))
+            domain = site_rules.extract_domain(indexer.get("domain"))
             domains.append(domain)
             if stype == "spider":
                 # 刷新首页种子

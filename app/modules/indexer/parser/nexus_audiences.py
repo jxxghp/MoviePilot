@@ -8,7 +8,9 @@ from lxml import etree
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
@@ -32,7 +34,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 super()._parse_message_unread(html_text)
                 return
 
@@ -62,7 +64,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             message_links = self.__parse_table_unread_message_links(html)
@@ -86,7 +88,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         """
         html = etree.HTML(html_text)
         try:
-            if StringUtils.is_valid_html_element(html):
+            if DomUtils.has_child_elements(html):
                 head = self.__extract_first_text(
                     html,
                     '//*[contains(concat(" ", normalize-space(@class), " "), " pm-hero__title ")]'
@@ -350,7 +352,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             for user_node in html.xpath('//*[@data-uploader-url or @data-uploader-stats]'):
@@ -432,18 +434,18 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
         metric_key = field or tone or label
         if metric_key in {"uploaded", "上传量", "upload"}:
-            self.upload = StringUtils.num_filesize(value)
+            self.upload = size_tools.parse_size(value)
         elif metric_key in {"downloaded", "下载量", "download"}:
-            self.download = StringUtils.num_filesize(value)
+            self.download = size_tools.parse_size(value)
         elif metric_key in {"bonus", "爆米花"}:
-            self.bonus = StringUtils.str_float(value)
+            self.bonus = text_tools.parse_float(value)
         elif metric_key == "ratio":
-            self.ratio = StringUtils.str_float(value)
+            self.ratio = text_tools.parse_float(value)
         elif metric_key in {"active", "活跃"}:
             active_match = re.search(r"↑\s*(\d+)\s*/\s*↓\s*(\d+)", value)
             if active_match:
-                self.seeding = StringUtils.str_int(active_match.group(1))
-                self.leeching = StringUtils.str_int(active_match.group(2))
+                self.seeding = text_tools.parse_int(active_match.group(1))
+                self.leeching = text_tools.parse_int(active_match.group(2))
 
     def __parse_inbox_unread(self, message_link):
         """
@@ -482,7 +484,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
         inbox_count = re.search(r"(?:收件箱\s*)?(\d[\d,]*)\s*/\s*(\d[\d,]*)", text)
         if inbox_count:
-            return StringUtils.str_int(inbox_count.group(2))
+            return text_tools.parse_int(inbox_count.group(2))
 
         return None
 
@@ -500,7 +502,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
         single_count = re.fullmatch(r"(\d[\d,]*)", text)
         if single_count:
-            return StringUtils.str_int(single_count.group(1))
+            return text_tools.parse_int(single_count.group(1))
         return None
 
     @staticmethod
@@ -526,15 +528,15 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             return
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
             total_row = html.xpath('//table[@class="table table-bordered"]//tr[td[1][normalize-space()="Total"]]')
             if not total_row:
                 return
             seeding_count = total_row[0].xpath('./td[2]/text()')
             seeding_size = total_row[0].xpath('./td[3]/text()')
-            self.seeding = StringUtils.str_int(seeding_count[0]) if seeding_count else 0
-            self.seeding_size = StringUtils.num_filesize(seeding_size[0].strip()) if seeding_size else 0
+            self.seeding = text_tools.parse_int(seeding_count[0]) if seeding_count else 0
+            self.seeding_size = size_tools.parse_size(seeding_size[0].strip()) if seeding_size else 0
         finally:
             if html is not None:
                 del html

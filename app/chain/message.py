@@ -43,7 +43,9 @@ from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.adapters.network.http import RequestUtils
 from app.schemas.media import build_media_key, resolve_media_identity
-from app.domain.string import StringUtils
+from app.domain import episode as episode_rules
+from app.domain import title as title_rules
+from app.foundation import url as url_tools
 
 
 class MessageChain(ChainBase):
@@ -2562,9 +2564,9 @@ class MediaInteractionChain(ChainBase):
             return "ReSubscribe", re.sub(r"洗版[:：\s]*", "", text)
         if text.startswith("搜索") or text.startswith("下载"):
             return "ReSearch", re.sub(r"(搜索|下载)[:：\s]*", "", text)
-        if StringUtils.is_link(text):
+        if url_tools.is_link(text):
             return None, text
-        if not StringUtils.is_media_title_like(text):
+        if not title_rules.is_media_title_like(text):
             return None, text
         return "Search", text
 
@@ -3683,7 +3685,7 @@ class MediaInteractionChain(ChainBase):
         season_map = no_exists.get(mediakey) or {}
         if show_missing_only:
             return [
-                f"第 {sea} 季缺失 {StringUtils.str_series(no_exist.episodes) if no_exist.episodes else no_exist.total_episode} 集"
+                f"第 {sea} 季缺失 {episode_rules.compact_numbers(no_exist.episodes) if no_exist.episodes else no_exist.total_episode} 集"
                 for sea, no_exist in season_map.items()
             ]
         return [

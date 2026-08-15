@@ -21,7 +21,7 @@ from app.schemas.types import (
     MediaType,
 )
 from app.schemas.media import normalize_media_source, resolve_media_identity
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
 ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
@@ -779,7 +779,7 @@ class TorrentInfo:
         """
         if not self.freedate:
             return ""
-        return StringUtils.diff_time_str(self.freedate)
+        return time_tools.format_remaining(self.freedate)
 
     def pub_minutes(self) -> float:
         """

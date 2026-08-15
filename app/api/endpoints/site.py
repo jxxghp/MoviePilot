@@ -32,7 +32,8 @@ from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in
 from app.runtime.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType, MediaType
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import url as url_tools
 
 router = ResponseAPIRouter()
 
@@ -117,7 +118,7 @@ async def read_sites_by_media_type(
             continue
         if indexer.get("id") is not None:
             supported_ids.add(str(indexer.get("id")))
-        domain = StringUtils.get_url_domain(indexer.get("domain"))
+        domain = site_rules.extract_domain(indexer.get("domain"))
         if domain:
             supported_domains.add(domain)
 
@@ -146,7 +147,7 @@ async def add_site(
         return schemas.Response(
             success=False, message="用户未通过认证，无法使用站点功能！"
         )
-    domain = StringUtils.get_url_domain(site_in.url)
+    domain = site_rules.extract_domain(site_in.url)
     site_info = await SitesHelper().async_get_indexer(domain)
     if not site_info:
         return schemas.Response(
@@ -157,7 +158,7 @@ async def add_site(
     # 保存站点信息
     site_in.domain = domain
     # 校正地址格式
-    _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
+    _scheme, _netloc = url_tools.split_netloc(site_in.url)
     site_in.url = f"{_scheme}://{_netloc}/"
     site_in.name = site_info.get("name")
     site_in.id = None
@@ -183,9 +184,9 @@ async def update_site(
     if not site:
         return schemas.Response(success=False, message="站点不存在")
     # 校正地址格式
-    _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
+    _scheme, _netloc = url_tools.split_netloc(site_in.url)
     site_in.url = f"{_scheme}://{_netloc}/"
-    site_in.domain = StringUtils.get_url_domain(site_in.url)
+    site_in.domain = site_rules.extract_domain(site_in.url)
     await site.async_update(db, site_in.model_dump())
     # 通知站点更新
     await eventmanager.async_send_event(
@@ -521,7 +522,7 @@ async def read_site_by_domain(
     """
     通过域名获取站点信息
     """
-    domain = StringUtils.get_url_domain(site_url)
+    domain = site_rules.extract_domain(site_url)
     site = await Site.async_get_by_domain(db, domain)
     if not site:
         raise HTTPException(
@@ -544,7 +545,7 @@ async def read_statistic_by_domain(
     """
     通过域名获取站点统计信息
     """
-    domain = StringUtils.get_url_domain(site_url)
+    domain = site_rules.extract_domain(site_url)
     sitestatistic = await SiteStatistic.async_get_by_domain(db, domain)
     if sitestatistic:
         return sitestatistic

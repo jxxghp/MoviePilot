@@ -5,7 +5,8 @@ from app.runtime.config import settings
 from app.runtime.log import logger
 from app.foundation.crypto import CryptoJsUtils, HashUtils
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import text as text_tools
 from app.foundation.url import UrlUtils
 
 
@@ -23,8 +24,8 @@ class CookieCloudHelper:
         同步CookieCloud配置项
         """
         self._server = UrlUtils.standardize_base_url(settings.COOKIECLOUD_HOST)
-        self._key = StringUtils.safe_strip(settings.COOKIECLOUD_KEY)
-        self._password = StringUtils.safe_strip(settings.COOKIECLOUD_PASSWORD)
+        self._key = text_tools.strip_optional(settings.COOKIECLOUD_KEY)
+        self._password = text_tools.strip_optional(settings.COOKIECLOUD_PASSWORD)
         self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
         self._local_path = settings.COOKIE_PATH
 
@@ -83,7 +84,7 @@ class CookieCloudHelper:
         domain_groups = {}
         for site, cookies in contents.items():
             for cookie in cookies:
-                domain_key = StringUtils.get_url_domain(cookie.get("domain"))
+                domain_key = site_rules.extract_domain(cookie.get("domain"))
                 if not domain_groups.get(domain_key):
                     domain_groups[domain_key] = [cookie]
                 else:

@@ -12,7 +12,7 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.execution import retry
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 from app.foundation.url import UrlUtils
 
 lock = threading.Lock()
@@ -563,7 +563,7 @@ class WeChat:
                                 f"{meta.resource_term} " \
                                 f"{meta.video_term} " \
                                 f"{meta.release_group} " \
-                                f"{StringUtils.str_filesize(torrent.size)} " \
+                                f"{size_tools.format_compact_size(torrent.size)} " \
                                 f"{torrent.volume_factor} " \
                                 f"{torrent.seeders}↑"
                 torrent_title = re.sub(r"\s+", " ", torrent_title).strip()

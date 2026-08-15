@@ -6,7 +6,8 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import temporal as time_tools
 
 
 class HaiDanSpider:
@@ -63,7 +64,7 @@ class HaiDanSpider:
         if indexer:
             self._indexerid = indexer.get('id')
             self._url = indexer.get('domain')
-            self._domain = StringUtils.get_url_domain(self._url)
+            self._domain = site_rules.extract_domain(self._url)
             self._searchurl = self._searchurl % self._url
             self._name = indexer.get('name')
             if indexer.get('proxy'):
@@ -132,7 +133,7 @@ class HaiDanSpider:
                 'title': item.get('name'),
                 'description': item.get('small_descr'),
                 'enclosure': item.get('url'),
-                'pubdate': StringUtils.format_timestamp(item.get('added')),
+                'pubdate': time_tools.format_timestamp(item.get('added')),
                 'size': int(item.get('size') or '0'),
                 'seeders': int(item.get('seeders') or '0'),
                 'peers': int(item.get("leechers") or '0'),

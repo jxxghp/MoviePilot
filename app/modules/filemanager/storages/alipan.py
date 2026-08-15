@@ -17,7 +17,7 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 lock = threading.Lock()
 
@@ -305,7 +305,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 name=fileinfo.get("name"),
                 basename=fileinfo.get("name"),
                 size=fileinfo.get("size"),
-                modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at")),
+                modify_time=time_tools.parse_timestamp(fileinfo.get("updated_at")),
                 drive_id=fileinfo.get("drive_id"),
             )
         else:
@@ -319,7 +319,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 basename=Path(fileinfo.get("name")).stem,
                 size=fileinfo.get("size"),
                 extension=fileinfo.get("file_extension"),
-                modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at")),
+                modify_time=time_tools.parse_timestamp(fileinfo.get("updated_at")),
                 thumbnail=fileinfo.get("thumbnail"),
                 drive_id=fileinfo.get("drive_id"),
             )

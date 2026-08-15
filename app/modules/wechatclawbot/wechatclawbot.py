@@ -22,7 +22,7 @@ from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 
 
 @dataclass
@@ -2204,7 +2204,7 @@ class WechatClawBot:
             meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
             text = (
                 f"{index}.【{torrent.site_name}】{meta.season_episode} {meta.resource_term} "
-                f"{meta.video_term} {meta.release_group} {StringUtils.str_filesize(torrent.size)} "
+                f"{meta.video_term} {meta.release_group} {size_tools.format_compact_size(torrent.size)} "
                 f"{torrent.volume_factor} {torrent.seeders}↑"
             )
             text = re.sub(r"\s+", " ", text).strip()

@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class IptSiteUserInfo(SiteParserBase):
@@ -28,12 +31,12 @@ class IptSiteUserInfo(SiteParserBase):
 
             tmps = html.xpath('//div[@class = "stats"]/div/div')
             if tmps:
-                self.upload = StringUtils.num_filesize(str(tmps[0].xpath('span/text()')[1]).strip())
-                self.download = StringUtils.num_filesize(str(tmps[0].xpath('span/text()')[2]).strip())
-                self.seeding = StringUtils.str_int(tmps[0].xpath('a')[2].xpath('text()')[0])
-                self.leeching = StringUtils.str_int(tmps[0].xpath('a')[2].xpath('text()')[1])
-                self.ratio = StringUtils.str_float(str(tmps[0].xpath('span/text()')[0]).strip().replace('-', '0'))
-                self.bonus = StringUtils.str_float(tmps[0].xpath('a')[3].xpath('text()')[0])
+                self.upload = size_tools.parse_size(str(tmps[0].xpath('span/text()')[1]).strip())
+                self.download = size_tools.parse_size(str(tmps[0].xpath('span/text()')[2]).strip())
+                self.seeding = text_tools.parse_int(tmps[0].xpath('a')[2].xpath('text()')[0])
+                self.leeching = text_tools.parse_int(tmps[0].xpath('a')[2].xpath('text()')[1])
+                self.ratio = text_tools.parse_float(str(tmps[0].xpath('span/text()')[0]).strip().replace('-', '0'))
+                self.bonus = text_tools.parse_float(tmps[0].xpath('a')[3].xpath('text()')[0])
         finally:
             if html is not None:
                 del html
@@ -44,7 +47,7 @@ class IptSiteUserInfo(SiteParserBase):
     def _parse_user_detail_info(self, html_text: str):
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             user_levels_text = html.xpath('//tr/th[text()="Class"]/following-sibling::td[1]/text()')
@@ -54,7 +57,7 @@ class IptSiteUserInfo(SiteParserBase):
             # 加入日期
             join_at_text = html.xpath('//tr/th[text()="Join date"]/following-sibling::td[1]/text()')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(join_at_text[0].split(' (')[0])
+                self.join_at = time_tools.normalize_datetime(join_at_text[0].split(' (')[0])
         finally:
             if html is not None:
                 del html
@@ -62,7 +65,7 @@ class IptSiteUserInfo(SiteParserBase):
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
             # seeding start
             seeding_end_pos = 3
@@ -80,7 +83,7 @@ class IptSiteUserInfo(SiteParserBase):
                         per_size = per_size.split('(')[-1]
                         per_size = per_size.split(')')[0]
 
-                    page_seeding_size += StringUtils.num_filesize(per_size)
+                    page_seeding_size += size_tools.parse_size(per_size)
 
             self.seeding = page_seeding
             self.seeding_size = page_seeding_size

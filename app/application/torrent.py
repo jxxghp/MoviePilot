@@ -19,7 +19,9 @@ from app.runtime.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.adapters.network.http import RequestUtils
 from app.schemas.media import resolve_media_identity
-from app.domain.string import StringUtils
+from app.domain import torrent as torrent_rules
+from app.foundation import text as text_tools
+from app.foundation.crypto import HashUtils
 
 
 _SIZE_UNIT = 1024 * 1024
@@ -85,7 +87,7 @@ class TorrentHelper:
         if url.startswith("magnet:"):
             return None, url, "", [], f"磁力链接"
         # 构建 torrent 种子文件的缓存路径
-        cache_path = Path(StringUtils.md5_hash(url)).with_suffix(".torrent")
+        cache_path = Path(HashUtils.md5(url)).with_suffix(".torrent")
         # 缓存处理器
         cache_backend = FileCache()
         # 读取缓存的种子文件
@@ -249,7 +251,7 @@ class TorrentHelper:
             return "", []
 
         # 检查是否为磁力链接
-        if StringUtils.is_magnet_link(torrent_content):
+        if torrent_rules.is_magnet_link(torrent_content):
             return "", []
 
         try:
@@ -423,15 +425,15 @@ class TorrentHelper:
             return True
         # 要匹配的媒体标题、原标题
         media_titles = {
-                           StringUtils.clear_upper(mediainfo.title),
-                           StringUtils.clear_upper(mediainfo.original_title)
+                           text_tools.normalize_upper(mediainfo.title),
+                           text_tools.normalize_upper(mediainfo.original_title)
                        } - {""}
         # 要匹配的媒体别名、译名
-        media_names = {StringUtils.clear_upper(name) for name in mediainfo.names if name}
+        media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name}
         # 识别的种子中英文名
         meta_names = {
-                         StringUtils.clear_upper(torrent_meta.cn_name),
-                         StringUtils.clear_upper(torrent_meta.en_name)
+                         text_tools.normalize_upper(torrent_meta.cn_name),
+                         text_tools.normalize_upper(torrent_meta.en_name)
                      } - {""}
         # 比对种子识别类型
         if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
@@ -470,19 +472,19 @@ class TorrentHelper:
         # 标题拆分
         if torrent_meta.org_string:
             # 只拆分出标题中的非英文单词进行匹配，英文单词容易误匹配（带空格的多个单词组合除外）
-            titles = [StringUtils.clear_upper(t) for t in re.split(
+            titles = [text_tools.normalize_upper(t) for t in re.split(
                 r'[\s/【】.\[\]\-]+',
                 torrent_meta.org_string
-            ) if not StringUtils.is_english_word(t)]
+            ) if not text_tools.is_english_word(t)]
             # 在标题中判断是否存在标题、原语种标题
             if media_titles.intersection(titles):
                 logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
                 return True
         # 在副标题中（非英文单词）判断是否存在标题、原语种标题、别名、译名
         if torrent.description:
-            subtitles = {StringUtils.clear_upper(t) for t in re.split(
+            subtitles = {text_tools.normalize_upper(t) for t in re.split(
                 r'[\s/【】|]+',
-                torrent.description) if not StringUtils.is_english_word(t)}
+                torrent.description) if not text_tools.is_english_word(t)}
             if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                             f'副标题：{torrent.description}')

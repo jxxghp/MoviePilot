@@ -12,7 +12,8 @@ from app.agent.tools.tags import ToolTag
 from app.chain.storage import StorageChain
 from app.runtime.log import logger
 from app.schemas.file import FileItem
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import text as text_tools
 
 
 DEFAULT_DIRECTORY_PAGE_SIZE = 50
@@ -100,7 +101,7 @@ class ListDirectoryTool(MoviePilotTool):
             file_list.sort(
                 key=lambda x: (
                     0 if x.type == "dir" else 1,
-                    StringUtils.natural_sort_key(x.name or ""),
+                    text_tools.natural_sort_key(x.name or ""),
                 )
             )
 
@@ -115,7 +116,7 @@ class ListDirectoryTool(MoviePilotTool):
         ]
         simplified_items = []
         for item in limited_list:
-            size_str = StringUtils.str_filesize(item.size) if item.size else None
+            size_str = size_tools.format_compact_size(item.size) if item.size else None
             modify_time_str = None
             if item.modify_time:
                 try:

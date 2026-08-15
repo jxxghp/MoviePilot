@@ -101,6 +101,13 @@ def _load_transmission_module():
     app_module.__path__ = []
     core_module = types.ModuleType("app.core")
     core_module.__path__ = []
+    domain_module = types.ModuleType("app.domain")
+    domain_module.__path__ = []
+    foundation_module = types.ModuleType("app.foundation")
+    foundation_module.__path__ = []
+    torrent_rules_module = types.ModuleType("app.domain.torrent")
+    size_tools_module = types.ModuleType("app.foundation.size")
+    temporal_tools_module = types.ModuleType("app.foundation.temporal")
     cache_module = types.ModuleType("app.runtime.cache")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
@@ -112,9 +119,6 @@ def _load_transmission_module():
     config_module = types.ModuleType("app.runtime.config")
     metainfo_module = types.ModuleType("app.domain.metainfo")
     log_module = types.ModuleType("app.runtime.log")
-    utils_module = types.ModuleType("app.utils")
-    utils_module.__path__ = []
-    string_module = types.ModuleType("app.domain.string")
     transmission_rpc_module = types.ModuleType("transmission_rpc")
     torrentool_module = types.ModuleType("torrentool")
     torrentool_module.__path__ = []
@@ -172,22 +176,17 @@ def _load_transmission_module():
             self.season_episode = ""
             self.episode_list = []
 
-    class _StringUtils:
-        @staticmethod
-        def is_magnet_link(value):
-            return isinstance(value, str) and value.startswith("magnet:")
+    def _is_magnet_link(value):
+        """按生产领域规则识别测试磁力链接。"""
+        return isinstance(value, str) and value.startswith("magnet:")
 
-        @staticmethod
-        def generate_random_str(_length):
-            return "tmp-tag-01"
+    def _format_size(value):
+        """返回隔离测试需要的简化容量文本。"""
+        return str(value)
 
-        @staticmethod
-        def str_filesize(value):
-            return str(value)
-
-        @staticmethod
-        def str_secends(value):
-            return str(value)
+    def _format_duration(value):
+        """返回隔离测试需要的简化时长文本。"""
+        return str(value)
 
     class _FileCache:
         def get(self, *_args, **_kwargs):
@@ -211,28 +210,38 @@ def _load_transmission_module():
     log_module.logger = _Logger()
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
-    string_module.StringUtils = _StringUtils
+    torrent_rules_module.is_magnet_link = _is_magnet_link
+    size_tools_module.format_compact_size = _format_size
+    temporal_tools_module.format_duration = _format_duration
     transmission_rpc_module.File = object
     torrentool_torrent_module.Torrent = SimpleNamespace(
         from_string=lambda _content: SimpleNamespace(name="test", total_size=1)
     )
 
     app_module.core = core_module
+    app_module.domain = domain_module
+    app_module.foundation = foundation_module
     app_module.modules = modules_module
     app_module.schemas = schemas_module
-    app_module.utils = utils_module
+    domain_module.torrent = torrent_rules_module
+    foundation_module.size = size_tools_module
+    foundation_module.temporal = temporal_tools_module
     core_module.cache = cache_module
     core_module.config = config_module
     core_module.metainfo = metainfo_module
     modules_module.transmission = transmission_package_module
     transmission_package_module.transmission = transmission_client_module
     schemas_module.types = schema_types_module
-    utils_module.string = string_module
     torrentool_module.torrent = torrentool_torrent_module
 
     stub_modules = {
         "app": app_module,
         "app.core": core_module,
+        "app.domain": domain_module,
+        "app.domain.torrent": torrent_rules_module,
+        "app.foundation": foundation_module,
+        "app.foundation.size": size_tools_module,
+        "app.foundation.temporal": temporal_tools_module,
         "app.runtime.cache": cache_module,
         "app.runtime.config": config_module,
         "app.domain.metainfo": metainfo_module,
@@ -242,8 +251,6 @@ def _load_transmission_module():
         "app.modules.transmission.transmission": transmission_client_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,
-        "app.utils": utils_module,
-        "app.domain.string": string_module,
         "transmission_rpc": transmission_rpc_module,
         "torrentool": torrentool_module,
         "torrentool.torrent": torrentool_torrent_module,

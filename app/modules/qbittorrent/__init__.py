@@ -19,7 +19,10 @@ from app.schemas.types import (
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.domain.string import StringUtils
+from app.domain import torrent as torrent_rules
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",
@@ -147,7 +150,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
                 if torrent_content:
                     # 检查是否为磁力链接
-                    if StringUtils.is_magnet_link(torrent_content):
+                    if torrent_rules.is_magnet_link(torrent_content):
                         return None, torrent_content
                     else:
                         torrent_info = Torrent.from_string(torrent_content)
@@ -175,7 +178,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             return None
 
         # 生成随机Tag
-        tag = StringUtils.generate_random_str(10)
+        tag = text_tools.random_string(10)
         if label:
             tags = label.split(',') + [tag]
         elif settings.TORRENT_TAG:
@@ -341,9 +344,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                 seeding_time_limit=torrent_data.get('seeding_time_limit'),
                 progress=(torrent_data.get('progress') or 0) * 100,
                 state=self.__normalize_torrent_state(torrent_data.get('state')),
-                dlspeed=StringUtils.str_filesize(dlspeed),
-                upspeed=StringUtils.str_filesize(torrent_data.get('upspeed')),
-                left_time=StringUtils.str_secends(
+                dlspeed=size_tools.format_compact_size(dlspeed),
+                upspeed=size_tools.format_compact_size(torrent_data.get('upspeed')),
+                left_time=time_tools.format_duration(
                     (total_size - completed_size) / dlspeed
                 ) if dlspeed > 0 else '',
             )

@@ -6,7 +6,8 @@ import anitopy
 from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
-from app.domain.string import StringUtils
+from app.domain import title as title_rules
+from app.foundation import text as text_tools
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MediaType
 
@@ -64,11 +65,11 @@ class MetaAnime(MetaBase):
             if anitopy_info:
                 # 名称
                 name = anitopy_info.get("anime_title")
-                if not name or name in self._anime_no_words or (len(name) < 5 and not StringUtils.is_chinese(name)):
+                if not name or name in self._anime_no_words or (len(name) < 5 and not text_tools.contains_chinese(name)):
                     anitopy_info = anitopy.parse("[ANIME]" + title)
                     if anitopy_info:
                         name = anitopy_info.get("anime_title")
-                if not name or name in self._anime_no_words or (len(name) < 5 and not StringUtils.is_chinese(name)):
+                if not name or name in self._anime_no_words or (len(name) < 5 and not text_tools.contains_chinese(name)):
                     name_match = BRACKET_TITLE_RE.search(title)
                     if name_match and name_match.group(1):
                         name = name_match.group(1).strip()
@@ -78,12 +79,12 @@ class MetaAnime(MetaBase):
                     # 按/拆分中英文
                     if name.find("/") != -1:
                         names = name.split("/")
-                        if StringUtils.is_chinese(names[0]):
+                        if text_tools.contains_chinese(names[0]):
                             self.cn_name = names[0]
                             if len(names) > 1:
                                 self.en_name = names[1]
                             _split_flag = False
-                        elif StringUtils.is_chinese(names[-1]):
+                        elif text_tools.contains_chinese(names[-1]):
                             self.cn_name = names[-1]
                             if len(names) > 1:
                                 self.en_name = names[0]
@@ -103,19 +104,19 @@ class MetaAnime(MetaBase):
                                     self.cn_name = "%s %s" % (self.cn_name or "", word)
                                 elif lastword_type == "en":
                                     self.en_name = "%s %s" % (self.en_name or "", word)
-                            elif StringUtils.is_chinese(word):
+                            elif text_tools.contains_chinese(word):
                                 self.cn_name = "%s %s" % (self.cn_name or "", word)
                                 lastword_type = "cn"
                             else:
                                 self.en_name = "%s %s" % (self.en_name or "", word)
                                 lastword_type = "en"
                 if self.cn_name:
-                    _, self.cn_name, _, _, _, _ = StringUtils.get_keyword(self.cn_name)
+                    _, self.cn_name, _, _, _, _ = title_rules.parse_search_keyword(self.cn_name)
                     if self.cn_name:
                         self.cn_name = self._name_nostring_pattern.sub('', self.cn_name).strip()
                 if self.en_name:
                     self.en_name = self._name_nostring_pattern.sub('', self.en_name).strip().title()
-                    self._name = StringUtils.str_title(self.en_name)
+                    self._name = text_tools.title_case(self.en_name)
                 # 年份
                 year = anitopy_info.get("anime_year")
                 if str(year).isdigit():
@@ -271,7 +272,7 @@ class MetaAnime(MetaBase):
                     else:
                         titles.append("%s%s" % (left_char, name.split("/")[0].strip()))
                 elif name:
-                    if StringUtils.is_chinese(name) and not StringUtils.is_all_chinese(name):
+                    if text_tools.contains_chinese(name) and not text_tools.is_all_chinese(name):
                         if not NUMERIC_BRACKET_RE.search(name):
                             name = MIXED_CHINESE_TOKEN_RE.sub('', name).strip()
                         if not name or name.strip().isdigit():

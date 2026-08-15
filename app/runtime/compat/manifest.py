@@ -30,6 +30,12 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="sdk",
     ),
+    "app.domain.string": ModuleAlias(
+        target="app.sdk.string",
+        replacement="app.sdk.utilities",
+        introduced="v3.0.0",
+        owner="sdk",
+    ),
     "app.db.agentchat_oper": ModuleAlias(
         target="app.db.oper.agentchat",
         replacement="app.db.oper.agentchat",
@@ -283,10 +289,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="domain",
     ),
     "app.utils.string": ModuleAlias(
-        target="app.domain.string",
+        target="app.sdk.string",
         replacement="app.sdk.utilities",
         introduced="v3.0.0",
-        owner="domain",
+        owner="sdk",
     ),
     "app.utils.url": ModuleAlias(
         target="app.foundation.url",

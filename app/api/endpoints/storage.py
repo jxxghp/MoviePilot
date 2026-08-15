@@ -22,7 +22,7 @@ from app.api.deps import (
 )
 from app.runtime.progress import ProgressHelper
 from app.schemas.types import ProgressKey
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 
 router = ResponseAPIRouter()
 
@@ -119,7 +119,7 @@ def list_files(
             _pat = re.compile(fnmatch.translate(keyword), re.IGNORECASE)
             file_list = [f for f in file_list if _pat.match(f.name or "")]
         if sort == "name":
-            file_list.sort(key=lambda x: StringUtils.natural_sort_key(x.name or ""))
+            file_list.sort(key=lambda x: text_tools.natural_sort_key(x.name or ""))
         else:
             file_list.sort(key=lambda x: x.modify_time or -math.inf, reverse=True)
     return file_list

@@ -9,7 +9,7 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.execution import retry
 from app.adapters.network.http import RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 
 lock = threading.Lock()
 
@@ -215,7 +215,7 @@ class VoceChat:
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
+                          f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
                 index += 1
 
             if link:

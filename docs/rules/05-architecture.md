@@ -8,13 +8,10 @@ MoviePilot keeps the established product packages such as `app/chain`,
 `app/helper` and `app/utils` roots are virtual compatibility packages only;
 physical Python sources must not be recreated there.
 
-The sole filesystem exception is the non-Python `app/helper/.resource-compat`
-marker retained in source archives for old Docker images whose updater still
-writes compiled site resources to `/app/app/helper`. When the canonical site
-extension is absent, `app/application/site/__init__.py` may add that directory
-as a package search fallback. Current images and update flows must still write
-only to `app/application/site/`; no Python implementation may return to the
-legacy root.
+The legacy roots have no physical directories in the source tree. Current
+images and update flows write site resources only to `app/application/site/`;
+plugin imports under `app.helper.*` are resolved exclusively by the exact
+runtime compatibility manifest.
 
 Capabilities migrated out of those legacy roots are organized by technical
 responsibility:
@@ -125,15 +122,22 @@ mentions media, site or torrent:
 
 | Subdomain | Modules and ownership |
 |---|---|
-| Media | `context.py` owns `Context`, `MediaInfo` and `TorrentInfo`; `media.py` owns source/ID normalization; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
+| Media | `context.py` owns `Context`, `MediaInfo` and `TorrentInfo`; `media.py` owns source/ID normalization; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
-| Site | `site.py` interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, DOM parsing stays in foundation and network access stays in adapters |
-| Torrent | Identity/title semantics live in the domain model; configured download/cache/file behavior stays in `app/application/torrent.py` |
-| Shared business text | `string.py` contains MoviePilot-specific media/site/torrent normalization; generic text primitives stay in `app/foundation/text.py` |
+| Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
+| Torrent | `torrent.py` owns magnet-link semantics; configured download/cache/file behavior stays in `app/application/torrent.py` |
 
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services
 or initialize process runtime state.
+
+`StringUtils` is not a canonical implementation type. Generic text, capacity,
+time, URL, DOM, hash and version functions live under `app.foundation`; media
+title, episode, site and torrent rules live in their owning domain modules. Host
+code must import those implementations directly. `app.sdk.string.StringUtils`
+only composes the complete historical static-method surface for plugins, and
+both `app.utils.string` and the retired `app.domain.string` resolve to that same
+SDK module through the compatibility manifest.
 
 ## Established Packages That Stay in Place
 

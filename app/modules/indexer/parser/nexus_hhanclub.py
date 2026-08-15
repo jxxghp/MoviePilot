@@ -5,7 +5,10 @@ from lxml import etree
 
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
@@ -27,11 +30,11 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
                                     html.xpath('//*[@id="user-info-panel"]/div[2]/div[1]/div[1]/div/text()')[0])
 
             # 计算分享率
-            self.upload = StringUtils.num_filesize(upload_match.group(1).strip()) if upload_match else 0
-            self.download = StringUtils.num_filesize(download_match.group(1).strip()) if download_match else 0
+            self.upload = size_tools.parse_size(upload_match.group(1).strip()) if upload_match else 0
+            self.download = size_tools.parse_size(download_match.group(1).strip()) if download_match else 0
             # 优先使用页面上的分享率
             calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
-            self.ratio = StringUtils.str_float(ratio_match.group(1)) if (
+            self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
                     ratio_match and ratio_match.group(1).strip()) else calc_ratio
         finally:
             if html is not None:
@@ -47,12 +50,12 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
 
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
             # 加入时间
             join_at_text = html.xpath('//span[contains(text(), "加入日期")]/following-sibling::span/span/@title')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(join_at_text[0].strip())
+                self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
         finally:
             if html is not None:
                 del html

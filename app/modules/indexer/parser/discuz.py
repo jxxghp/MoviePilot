@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class DiscuzUserInfo(SiteParserBase):
@@ -38,7 +41,7 @@ class DiscuzUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             # 用户等级
@@ -49,29 +52,29 @@ class DiscuzUserInfo(SiteParserBase):
             # 加入日期
             join_at_text = html.xpath('//li[em[text()="注册时间"]]/text()')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(join_at_text[0].strip())
+                self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
 
             # 分享率
             ratio_text = html.xpath('//li[contains(.//text(), "分享率")]//text()')
             if ratio_text:
                 ratio_match = re.search(r"\(([\d,.]+)\)", ratio_text[0])
                 if ratio_match and ratio_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(ratio_match.group(1))
+                    self.bonus = text_tools.parse_float(ratio_match.group(1))
 
             # 积分
             bouns_text = html.xpath('//li[em[text()="积分"]]/text()')
             if bouns_text:
-                self.bonus = StringUtils.str_float(bouns_text[0].strip())
+                self.bonus = text_tools.parse_float(bouns_text[0].strip())
 
             # 上传
             upload_text = html.xpath('//li[em[contains(text(),"上传量")]]/text()')
             if upload_text:
-                self.upload = StringUtils.num_filesize(upload_text[0].strip().split('/')[-1])
+                self.upload = size_tools.parse_size(upload_text[0].strip().split('/')[-1])
 
             # 下载
             download_text = html.xpath('//li[em[contains(text(),"下载量")]]/text()')
             if download_text:
-                self.download = StringUtils.num_filesize(download_text[0].strip().split('/')[-1])
+                self.download = size_tools.parse_size(download_text[0].strip().split('/')[-1])
         finally:
             if html is not None:
                 del html
@@ -85,7 +88,7 @@ class DiscuzUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 3
@@ -108,8 +111,8 @@ class DiscuzUserInfo(SiteParserBase):
                 page_seeding = len(seeding_sizes)
 
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i])
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeding_seeders[i])
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])

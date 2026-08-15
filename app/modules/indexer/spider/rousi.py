@@ -7,7 +7,8 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.domain.string import StringUtils
+from app.domain import site as site_rules
+from app.foundation import temporal as time_tools
 
 
 class RousiSpider:
@@ -52,7 +53,7 @@ class RousiSpider:
         if indexer:
             self._indexerid = indexer.get('id')
             self._url = indexer.get('domain')
-            self._domain = StringUtils.get_url_domain(self._url)
+            self._domain = site_rules.extract_domain(self._url)
             self._searchurl = self._searchurl % self._domain
             self._downloadurl = self._downloadurl % (self._domain, "%s")
             self._name = indexer.get('name')
@@ -199,13 +200,13 @@ class RousiSpider:
                 uploadvolumefactor = float(promotion.get('up_multiplier', 1.0))
                 # 促销到期时间，格式化为 YYYY-MM-DD HH:MM:SS
                 if promotion.get('until'):
-                    freedate = StringUtils.unify_datetime_str(promotion.get('until'))
+                    freedate = time_tools.normalize_datetime(promotion.get('until'))
 
             torrent = {
                 'title': result.get('title'),
                 'description': result.get('subtitle'),
                 'enclosure': self.__get_download_url(result.get('id')),
-                'pubdate': StringUtils.unify_datetime_str(result.get('created_at')),
+                'pubdate': time_tools.normalize_datetime(result.get('created_at')),
                 'size': int(result.get('size') or 0),
                 'seeders': int(result.get('seeders') or 0),
                 'peers': int(result.get('leechers') or 0),

@@ -12,7 +12,7 @@ from app.modules.filter.RuleParser import RuleParser
 from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 
 
 _SIZE_UNIT = 1024 * 1024
@@ -388,7 +388,7 @@ class FilterModule(_ModuleBase):
             if not self.__match_size(torrent, size_range):
                 # 大小范围不匹配
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} 大小 "
-                             f"{StringUtils.str_filesize(torrent.size)} 不在范围 {size_range}MB")
+                             f"{size_tools.format_compact_size(torrent.size)} 不在范围 {size_range}MB")
                 return False
         if seeders:
             if torrent.seeders < int(seeders):

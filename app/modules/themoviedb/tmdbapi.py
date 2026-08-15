@@ -5,7 +5,7 @@ from typing import Optional, List
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas.types import MediaType
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 from app.foundation.text import convert as zhconv_convert
 from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
 from .tmdbv3api.exceptions import TMDbException, TMDbConnectionError
@@ -124,9 +124,9 @@ class TmdbApi:
             return False
         if not isinstance(tmdb_names, list):
             tmdb_names = [tmdb_names]
-        file_name = StringUtils.clear(file_name).upper()
+        file_name = text_tools.remove_punctuation(file_name).upper()
         for tmdb_name in tmdb_names:
-            tmdb_name = StringUtils.clear(tmdb_name).strip().upper()
+            tmdb_name = text_tools.remove_punctuation(tmdb_name).strip().upper()
             if file_name == tmdb_name:
                 return True
         return False
@@ -727,7 +727,7 @@ class TmdbApi:
                 iso_3166_1 = alternative_title.get("iso_3166_1")
                 if iso_3166_1 == "CN":
                     title = alternative_title.get("title")
-                    if title and StringUtils.is_chinese(title) \
+                    if title and text_tools.contains_chinese(title) \
                             and zhconv_convert(title, "zh-hans") == title:
                         return title
             return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
@@ -737,7 +737,7 @@ class TmdbApi:
             if tmdb_info.get("media_type") == MediaType.MOVIE \
             else tmdb_info.get("name")
         # 查找中文名
-        if not StringUtils.is_chinese(org_title):
+        if not text_tools.contains_chinese(org_title):
             cn_title = __get_tmdb_chinese_title(tmdb_info)
             if cn_title and cn_title != org_title:
                 # 使用中文别名
@@ -748,7 +748,7 @@ class TmdbApi:
             else:
                 # 使用新加坡名
                 sg_title = tmdb_info.get("sg_title")
-                if sg_title and sg_title != org_title and StringUtils.is_chinese(sg_title):
+                if sg_title and sg_title != org_title and text_tools.contains_chinese(sg_title):
                     if tmdb_info.get("media_type") == MediaType.MOVIE:
                         tmdb_info['title'] = sg_title
                     else:

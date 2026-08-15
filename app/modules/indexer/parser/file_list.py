@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class FileListSiteUserInfo(SiteParserBase):
@@ -46,22 +49,22 @@ class FileListSiteUserInfo(SiteParserBase):
         try:
             upload_html = html.xpath('//table//tr/td[text()="Uploaded"]/following-sibling::td//text()')
             if upload_html:
-                self.upload = StringUtils.num_filesize(upload_html[0])
+                self.upload = size_tools.parse_size(upload_html[0])
             download_html = html.xpath('//table//tr/td[text()="Downloaded"]/following-sibling::td//text()')
             if download_html:
-                self.download = StringUtils.num_filesize(download_html[0])
+                self.download = size_tools.parse_size(download_html[0])
 
             ratio_html = html.xpath('//table//tr/td[text()="Share ratio"]/following-sibling::td//text()')
             if ratio_html:
-                share_ratio = StringUtils.str_float(ratio_html[0])
+                share_ratio = text_tools.parse_float(ratio_html[0])
             else:
                 share_ratio = 0
             self.ratio = 0 if self.download == 0 else share_ratio
 
             seed_html = html.xpath('//table//tr/td[text()="Seed bonus"]/following-sibling::td//text()')
             if seed_html:
-                self.seeding = StringUtils.str_int(seed_html[1])
-                self.seeding_size = StringUtils.num_filesize(seed_html[3])
+                self.seeding = text_tools.parse_int(seed_html[1])
+                self.seeding_size = size_tools.parse_size(seed_html[3])
 
             user_level_html = html.xpath('//table//tr/td[text()="Class"]/following-sibling::td//text()')
             if user_level_html:
@@ -70,11 +73,11 @@ class FileListSiteUserInfo(SiteParserBase):
             join_at_html = html.xpath('//table//tr/td[contains(text(), "Join")]/following-sibling::td//text()')
             if join_at_html:
                 join_at = (join_at_html[0].split("("))[0].strip()
-                self.join_at = StringUtils.unify_datetime_str(join_at)
+                self.join_at = time_tools.normalize_datetime(join_at)
 
             bonus_html = html.xpath('//a[contains(@href, "shop.php")]')
             if bonus_html:
-                self.bonus = StringUtils.str_float(bonus_html[0].xpath("string(.)").strip())
+                self.bonus = text_tools.parse_float(bonus_html[0].xpath("string(.)").strip())
         finally:
             if html is not None:
                 del html
@@ -88,7 +91,7 @@ class FileListSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 6
@@ -100,8 +103,8 @@ class FileListSiteUserInfo(SiteParserBase):
             seeding_seeders = html.xpath(f'//table/tr[position()>1]/td[{seeders_col}]')
             if seeding_sizes and seeding_seeders:
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i].xpath("string(.)").strip())
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeding_seeders[i].xpath("string(.)").strip())
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])

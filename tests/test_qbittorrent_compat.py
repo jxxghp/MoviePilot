@@ -13,8 +13,15 @@ def _load_qbittorrent_modules():
     app_module.__path__ = []
     core_module = types.ModuleType("app.core")
     core_module.__path__ = []
-    utils_module = types.ModuleType("app.utils")
-    utils_module.__path__ = []
+    domain_module = types.ModuleType("app.domain")
+    domain_module.__path__ = []
+    foundation_module = types.ModuleType("app.foundation")
+    foundation_module.__path__ = []
+    torrent_rules_module = types.ModuleType("app.domain.torrent")
+    size_tools_module = types.ModuleType("app.foundation.size")
+    temporal_tools_module = types.ModuleType("app.foundation.temporal")
+    text_tools_module = types.ModuleType("app.foundation.text")
+    url_tools_module = types.ModuleType("app.foundation.url")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
     qbittorrent_package_module = types.ModuleType("app.modules.qbittorrent")
@@ -25,7 +32,6 @@ def _load_qbittorrent_modules():
     metainfo_module = types.ModuleType("app.domain.metainfo")
     schemas_module = types.ModuleType("app.schemas")
     schema_types_module = types.ModuleType("app.schemas.types")
-    string_module = types.ModuleType("app.domain.string")
     torrentool_module = types.ModuleType("torrentool")
     torrentool_module.__path__ = []
     torrentool_torrent_module = types.ModuleType("torrentool.torrent")
@@ -46,28 +52,27 @@ def _load_qbittorrent_modules():
         def error(self, *_args, **_kwargs):
             pass
 
-    class _StringUtils:
-        @staticmethod
-        def get_domain_address(address, prefix=False):
-            return address, 8080
+    def _is_magnet_link(value):
+        """按生产领域规则识别测试磁力链接。"""
+        if isinstance(value, bytes):
+            return value.startswith(b"magnet:")
+        return isinstance(value, str) and value.startswith("magnet:")
 
-        @staticmethod
-        def is_magnet_link(value):
-            if isinstance(value, bytes):
-                return value.startswith(b"magnet:")
-            return isinstance(value, str) and value.startswith("magnet:")
+    def _parse_address(address, include_scheme=False):
+        """返回隔离测试使用的主机和固定端口。"""
+        return address, 8080
 
-        @staticmethod
-        def generate_random_str(_length):
-            return "tmp-tag-01"
+    def _random_string(_length):
+        """生成可断言的固定临时标签。"""
+        return "tmp-tag-01"
 
-        @staticmethod
-        def str_filesize(value):
-            return str(value)
+    def _format_size(value):
+        """返回隔离测试需要的简化容量文本。"""
+        return str(value)
 
-        @staticmethod
-        def str_secends(value):
-            return str(value)
+    def _format_duration(value):
+        """返回隔离测试需要的简化时长文本。"""
+        return str(value)
 
     class _FileCache:
         def get(self, *_args, **_kwargs):
@@ -131,7 +136,11 @@ def _load_qbittorrent_modules():
     schema_types_module.DownloadTaskState = DownloadTaskState
     schema_types_module.ModuleType = ModuleType
     schema_types_module.DownloaderType = DownloaderType
-    string_module.StringUtils = _StringUtils
+    torrent_rules_module.is_magnet_link = _is_magnet_link
+    url_tools_module.parse_address = _parse_address
+    text_tools_module.random_string = _random_string
+    size_tools_module.format_compact_size = _format_size
+    temporal_tools_module.format_duration = _format_duration
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
     torrentool_torrent_module.Torrent = _Torrent
@@ -145,14 +154,19 @@ def _load_qbittorrent_modules():
     qbittorrentapi_transfer_module.TransferInfoDictionary = dict
 
     app_module.core = core_module
+    app_module.domain = domain_module
+    app_module.foundation = foundation_module
     app_module.log = log_module
     app_module.modules = modules_module
     app_module.schemas = schemas_module
-    app_module.utils = utils_module
+    domain_module.torrent = torrent_rules_module
+    foundation_module.size = size_tools_module
+    foundation_module.temporal = temporal_tools_module
+    foundation_module.text = text_tools_module
+    foundation_module.url = url_tools_module
     core_module.cache = cache_module
     core_module.config = config_module
     core_module.metainfo = metainfo_module
-    utils_module.string = string_module
     schemas_module.types = schema_types_module
     modules_module.qbittorrent = qbittorrent_package_module
     torrentool_module.torrent = torrentool_torrent_module
@@ -160,6 +174,13 @@ def _load_qbittorrent_modules():
     stub_modules = {
         "app": app_module,
         "app.core": core_module,
+        "app.domain": domain_module,
+        "app.domain.torrent": torrent_rules_module,
+        "app.foundation": foundation_module,
+        "app.foundation.size": size_tools_module,
+        "app.foundation.temporal": temporal_tools_module,
+        "app.foundation.text": text_tools_module,
+        "app.foundation.url": url_tools_module,
         "app.runtime.cache": cache_module,
         "app.runtime.config": config_module,
         "app.domain.metainfo": metainfo_module,
@@ -168,8 +189,6 @@ def _load_qbittorrent_modules():
         "app.modules.qbittorrent": qbittorrent_package_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,
-        "app.utils": utils_module,
-        "app.domain.string": string_module,
         "qbittorrentapi": qbittorrentapi_module,
         "qbittorrentapi.client": qbittorrentapi_client_module,
         "qbittorrentapi.transfer": qbittorrentapi_transfer_module,

@@ -1,7 +1,7 @@
 import regex as re
 
 from app.domain.meta.metabase import MetaBase
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 
 AUXILIARY_CN_STEM_FULLMATCH_RE = re.compile(
     r"^(双语|字幕|特效|内封|外挂|官译|简体|繁体|繁中|简中|中英|简英|多语|"
@@ -27,7 +27,7 @@ def should_use_parent_title_for_file_stem(
         return False
     if not PARENT_LATIN_TITLE_RE.search(parent_dir_name):
         return False
-    if not StringUtils.is_all_chinese(stem):
+    if not text_tools.is_all_chinese(stem):
         return False
     if len(stem) > 16:
         return False

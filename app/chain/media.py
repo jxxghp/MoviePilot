@@ -41,7 +41,7 @@ from app.domain.media import is_music_media_source
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.foundation.singleton import Singleton
 from app.foundation.text import convert as zhconv_convert
-from app.domain.string import StringUtils
+from app.domain import title as title_rules
 
 recognize_lock = Lock()
 
@@ -1412,7 +1412,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         # 提取要素
         mtype, key_word, season_num, episode_num, year, content = (
-            StringUtils.get_keyword(title)
+            title_rules.parse_search_keyword(title)
         )
         # 识别
         meta = MetaInfo(content)
@@ -1889,7 +1889,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         # 提取要素
         mtype, key_word, season_num, episode_num, year, content = (
-            StringUtils.get_keyword(title)
+            title_rules.parse_search_keyword(title)
         )
         # 识别
         meta = MetaInfo(content)

@@ -14,7 +14,9 @@ from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.system import rust as rust_accel
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import url as url_tools
 from app.foundation.url import UrlUtils
 
 
@@ -479,7 +481,7 @@ class SiteSpider:
         if download_link:
             if not download_link.startswith("http") \
                     and not download_link.startswith("magnet"):
-                _scheme, _domain = StringUtils.get_url_netloc(self.domain)
+                _scheme, _domain = url_tools.split_netloc(self.domain)
                 if _domain in download_link:
                     if download_link.startswith("/"):
                         self.torrents_info['enclosure'] = f"{_scheme}:{download_link}"
@@ -535,7 +537,7 @@ class SiteSpider:
             size_val = item.replace("\n", "").strip()
             size_val = self.__filter_text(size_val,
                                           selector.get('filters'))
-            self.torrents_info['size'] = StringUtils.num_filesize(size_val)
+            self.torrents_info['size'] = size_tools.parse_size(size_val)
         else:
             self.torrents_info['size'] = 0
 
@@ -600,7 +602,7 @@ class SiteSpider:
                 else:
                     datetime.datetime.strptime(str(self.torrents_info['pubdate']), '%Y-%m-%d %H:%M:%S')
             except (ValueError, TypeError):
-                self.torrents_info['pubdate'] = StringUtils.unify_datetime_str(str(self.torrents_info['pubdate']))
+                self.torrents_info['pubdate'] = time_tools.normalize_datetime(str(self.torrents_info['pubdate']))
             if self.__is_invalid_pubdate_text(self.torrents_info.get('pubdate')):
                 self.torrents_info.pop('pubdate', None)
 

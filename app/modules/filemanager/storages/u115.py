@@ -20,7 +20,7 @@ from app.modules.filemanager.storages import transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.foundation.singleton import WeakSingleton
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
 from app.runtime.rate import QpsRateLimiter, RateStats
 
 
@@ -690,7 +690,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                         if info_resp["file_category"] == "1"
                         else None,
                         pickcode=info_resp["pick_code"],
-                        size=StringUtils.num_filesize(info_resp["size"])
+                        size=size_tools.parse_size(info_resp["size"])
                         if info_resp["file_category"] == "1"
                         else None,
                         modify_time=info_resp["utime"],
@@ -742,7 +742,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(
-            f"【115】开始上传: {local_path} -> {target_path}，分片大小：{StringUtils.str_filesize(part_size)}"
+            f"【115】开始上传: {local_path} -> {target_path}，分片大小：{size_tools.format_compact_size(part_size)}"
         )
         progress_callback = transfer_process(local_path.as_posix())
 

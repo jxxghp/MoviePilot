@@ -5,7 +5,7 @@ from urllib.parse import urlencode, urljoin
 
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 
 class SunnyPTSiteUserInfo(SiteParserBase):
@@ -75,7 +75,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
         self.userid = user_info.get("id")
         self.username = user_info.get("username")
         self.user_level = user_info.get("level") or str(user_info.get("class") or "")
-        self.join_at = StringUtils.unify_datetime_str(user_info.get("registered_at"))
+        self.join_at = time_tools.normalize_datetime(user_info.get("registered_at"))
         self.upload = int(user_info.get("uploaded") or 0)
         self.download = int(user_info.get("downloaded") or 0)
         self.ratio = float(user_info.get("ratio") or 0)
@@ -122,7 +122,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
                 continue
             title = message.get("title")
             content = message.get("content")
-            created_at = StringUtils.unify_datetime_str(message.get("created_at"))
+            created_at = time_tools.normalize_datetime(message.get("created_at"))
             message_id = message.get("id")
             if title and content and created_at:
                 message_source = f"sunnypt-message:{message_id}" if message_id is not None else None

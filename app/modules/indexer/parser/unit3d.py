@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class Unit3dSiteUserInfo(SiteParserBase):
@@ -28,7 +31,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
                 bonus_text = tmps[0].xpath("string(.)")
                 bonus_match = re.search(r"([\d,.]+)", bonus_text)
                 if bonus_match and bonus_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(bonus_match.group(1))
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
         finally:
             if html is not None:
                 del html
@@ -44,7 +47,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             # 用户等级
@@ -57,7 +60,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
                                       'or contains(text(), "註冊日期") '
                                       'or contains(text(), "Registration date")]/text()')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(
+                self.join_at = time_tools.normalize_datetime(
                     join_at_text[0].replace('注册日期', '').replace('註冊日期', '').replace('Registration date', ''))
         finally:
             if html is not None:
@@ -72,7 +75,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 9
@@ -93,8 +96,8 @@ class Unit3dSiteUserInfo(SiteParserBase):
                 page_seeding = len(seeding_sizes)
 
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i].xpath("string(.)").strip())
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeding_seeders[i].xpath("string(.)").strip())
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])
@@ -120,12 +123,12 @@ class Unit3dSiteUserInfo(SiteParserBase):
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                  re.IGNORECASE)
-        self.upload = StringUtils.num_filesize(upload_match.group(1).strip()) if upload_match else 0
+        self.upload = size_tools.parse_size(upload_match.group(1).strip()) if upload_match else 0
         download_match = re.search(r"[^总子影力]下[载載]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                    re.IGNORECASE)
-        self.download = StringUtils.num_filesize(download_match.group(1).strip()) if download_match else 0
+        self.download = size_tools.parse_size(download_match.group(1).strip()) if download_match else 0
         ratio_match = re.search(r"分享率[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+)", html_text)
-        self.ratio = StringUtils.str_float(ratio_match.group(1)) if (
+        self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
                 ratio_match and ratio_match.group(1).strip()) else 0.0
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:

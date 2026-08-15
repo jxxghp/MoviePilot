@@ -5,7 +5,10 @@ from typing import Optional
 from lxml import etree
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class GazelleSiteUserInfo(SiteParserBase):
@@ -26,19 +29,19 @@ class GazelleSiteUserInfo(SiteParserBase):
 
             tmps = html.xpath('//*[@id="header-uploaded-value"]/@data-value')
             if tmps:
-                self.upload = StringUtils.num_filesize(tmps[0])
+                self.upload = size_tools.parse_size(tmps[0])
             else:
                 tmps = html.xpath('//li[@id="stats_seeding"]/span/text()')
                 if tmps:
-                    self.upload = StringUtils.num_filesize(tmps[0])
+                    self.upload = size_tools.parse_size(tmps[0])
 
             tmps = html.xpath('//*[@id="header-downloaded-value"]/@data-value')
             if tmps:
-                self.download = StringUtils.num_filesize(tmps[0])
+                self.download = size_tools.parse_size(tmps[0])
             else:
                 tmps = html.xpath('//li[@id="stats_leeching"]/span/text()')
                 if tmps:
-                    self.download = StringUtils.num_filesize(tmps[0])
+                    self.download = size_tools.parse_size(tmps[0])
 
             self.ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
 
@@ -46,14 +49,14 @@ class GazelleSiteUserInfo(SiteParserBase):
             if tmps:
                 bonus_match = re.search(r"([\d,.]+)", tmps[0])
                 if bonus_match and bonus_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(bonus_match.group(1))
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
             else:
                 tmps = html.xpath('//a[contains(@href, "bonus")]')
                 if tmps:
                     bonus_text = tmps[0].xpath("string(.)")
                     bonus_match = re.search(r"([\d,.]+)", bonus_text)
                     if bonus_match and bonus_match.group(1).strip():
-                        self.bonus = StringUtils.str_float(bonus_match.group(1))
+                        self.bonus = text_tools.parse_float(bonus_match.group(1))
         finally:
             if html is not None:
                 del html
@@ -69,7 +72,7 @@ class GazelleSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             # 用户等级
@@ -84,12 +87,12 @@ class GazelleSiteUserInfo(SiteParserBase):
             # 加入日期
             join_at_text = html.xpath('//*[@id="join-date-value"]/@data-value')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(join_at_text[0].strip())
+                self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
             else:
                 join_at_text = html.xpath(
                     '//div[contains(@class, "box_userinfo_stats")]//li[contains(text(), "加入时间")]/span/text()')
                 if join_at_text:
-                    self.join_at = StringUtils.unify_datetime_str(join_at_text[0].strip())
+                    self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
         finally:
             if html is not None:
                 del html
@@ -103,7 +106,7 @@ class GazelleSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             size_col = 3
@@ -122,7 +125,7 @@ class GazelleSiteUserInfo(SiteParserBase):
                 page_seeding = len(seeding_sizes)
 
                 for i in range(0, len(seeding_sizes)):
-                    size = StringUtils.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
+                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
                     seeders = int(seeding_seeders[i])
 
                     page_seeding_size += size

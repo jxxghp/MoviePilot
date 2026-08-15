@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInfo
-from app.domain.string import StringUtils
+from app.foundation.size import parse_size
 
 
 def test_audiences_userbar_metrics_override_generic_nexus_regex():
@@ -38,8 +38,8 @@ def test_audiences_userbar_metrics_override_generic_nexus_regex():
     assert parser.userid == "18978"
     assert parser.username == "jxxghp"
     assert parser.user_level == "(江湖儿女)Elite User"
-    assert parser.upload == StringUtils.num_filesize("10.150 TB")
-    assert parser.download == StringUtils.num_filesize("3.624 TB")
+    assert parser.upload == parse_size("10.150 TB")
+    assert parser.download == parse_size("3.624 TB")
     assert parser.ratio == 2.801
     assert parser.bonus == 1973896.2
     assert parser.seeding == 355

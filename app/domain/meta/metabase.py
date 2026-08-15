@@ -8,7 +8,7 @@ import regex as re
 
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import resolve_media_identity
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ class MetaBase(object):
         """
         返回名称
         """
-        if self.cn_name and StringUtils.is_all_chinese(self.cn_name):
+        if self.cn_name and text_tools.is_all_chinese(self.cn_name):
             return self.cn_name
         elif self.en_name:
             return self.en_name
@@ -141,7 +141,7 @@ class MetaBase(object):
         """
         设置名称
         """
-        if StringUtils.is_all_chinese(name):
+        if text_tools.is_all_chinese(name):
             self.cn_name = name
         else:
             self.en_name = name

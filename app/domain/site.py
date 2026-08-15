@@ -1,6 +1,42 @@
 from lxml import etree
 
-from app.domain.string import StringUtils
+from app.foundation.dom import DomUtils
+from app.foundation.url import split_netloc
+
+
+_SPECIAL_SITE_DOMAINS = (
+    "u2.dmhy.org",
+    "pt.ecust.pp.ua",
+    "pt.gtkpw.xyz",
+    "pt.gtk.pw",
+)
+
+
+def urls_match(first: str, second: str) -> bool:
+    """判断两个地址是否指向忽略 www 前缀后的同一站点。"""
+    if not first or not second:
+        return False
+    if first.startswith("http"):
+        _scheme, first = split_netloc(first)
+    if second.startswith("http"):
+        _scheme, second = split_netloc(second)
+    return first.replace("www.", "") == second.replace("www.", "")
+
+
+def extract_domain(url: str) -> str:
+    """按 MoviePilot 站点规则提取用于匹配的注册域名。"""
+    if not url:
+        return ""
+    for domain in _SPECIAL_SITE_DOMAINS:
+        if domain in url:
+            return domain
+    _scheme, netloc = split_netloc(url)
+    if not netloc:
+        return ""
+    labels = netloc.split(".")
+    if len(labels) > 3:
+        return netloc
+    return ".".join(labels[-2:])
 
 
 class SiteUtils:
@@ -16,7 +52,7 @@ class SiteUtils:
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return False
             # 存在明显的密码输入框，说明未登录
             if html.xpath("//input[@type='password']"):
@@ -49,7 +85,7 @@ class SiteUtils:
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return False
             # 站点签到支持的识别XPATH
             xpaths = [

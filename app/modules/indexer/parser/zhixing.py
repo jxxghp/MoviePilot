@@ -8,7 +8,7 @@ import re
 from typing import Optional, Tuple
 
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -68,7 +68,7 @@ class ZhixingSiteUserInfo(SiteParserBase):
         self.userid = info_dict.get('UID')
         self.username = info_dict.get('用户名')
         self.user_level = info_dict.get('用户组')
-        self.join_at = StringUtils.unify_datetime_str(info_dict.get('注册时间')) if '注册时间' in info_dict else None
+        self.join_at = time_tools.normalize_datetime(info_dict.get('注册时间')) if '注册时间' in info_dict else None
 
         def num_filesize_safe(s: str):
             if s:

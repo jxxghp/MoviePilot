@@ -7,7 +7,10 @@ from urllib.parse import urljoin
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser import SiteParserBase
-from app.domain.string import StringUtils
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class NexusRabbitSiteUserInfo(SiteParserBase):
@@ -73,7 +76,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
 
         for torrent in torrents:
             seeders = int(torrent.get("seeders", 0))
-            size = StringUtils.num_filesize(torrent.get("size"))
+            size = size_tools.parse_size(torrent.get("size"))
             seeding_size += size
             seeding_info.append([seeders, size])
 
@@ -115,13 +118,13 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
         """只有奶糖余额才需要在 base 中获取，其它均可以在详情页拿到"""
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
             bonus = html.xpath(
                 '//div[contains(text(), "奶糖余额")]/following-sibling::div[1]/text()'
             )
             if bonus:
-                self.bonus = StringUtils.str_float(bonus[0].strip())
+                self.bonus = text_tools.parse_float(bonus[0].strip())
         finally:
             if html is not None:
                 del html
@@ -129,7 +132,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
     def _parse_user_detail_info(self, html_text: str):
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
             # 缩小一下查找范围，所有的信息都在这个 div 里
             user_info = html.xpath('//div[contains(@class, "layui-hares-user-info-right")]')
@@ -147,20 +150,20 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             # 加入日期
             if join_date := user_info.xpath('.//span[contains(text(), "注册日期")]/text()'):
                 join_date = join_date[0].strip().split("\r")[0].removeprefix("注册日期：")
-                self.join_at = StringUtils.unify_datetime_str(join_date)
+                self.join_at = time_tools.normalize_datetime(join_date)
             # 上传量
             if upload := user_info.xpath('.//span[contains(text(), "上传量")]/text()'):
-                self.upload = StringUtils.num_filesize(
+                self.upload = size_tools.parse_size(
                     upload[0].strip().removeprefix("上传量：")
                 )
             # 下载量
             if download := user_info.xpath('.//span[contains(text(), "下载量")]/text()'):
-                self.download = StringUtils.num_filesize(
+                self.download = size_tools.parse_size(
                     download[0].strip().removeprefix("下载量：")
                 )
             # 分享率
             if ratio := user_info.xpath('.//span[contains(text(), "分享率")]/em/text()'):
-                self.ratio = StringUtils.str_float(ratio[0].strip())
+                self.ratio = text_tools.parse_float(ratio[0].strip())
         finally:
             if html is not None:
                 del html

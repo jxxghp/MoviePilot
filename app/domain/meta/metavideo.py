@@ -7,7 +7,7 @@ from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.schemas.types import MediaType
-from app.domain.string import StringUtils
+from app.foundation import text as text_tools
 from app.domain.tokens import Tokens
 from app.domain.meta.streamingplatform import StreamingPlatforms
 from app.domain.meta.runtime import get_media_extensions
@@ -218,7 +218,7 @@ class MetaVideo(MetaBase):
             self.init_subtitle(self.subtitle)
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
-        self.en_name = StringUtils.str_title(self.__fix_name(self.en_name))
+        self.en_name = text_tools.title_case(self.__fix_name(self.en_name))
         # 处理part
         if self.part and self.part.upper() == "PART":
             self.part = None
@@ -245,7 +245,7 @@ class MetaVideo(MetaBase):
         if not description:
             return None
         titles = DESCRIPTION_SPLIT_RE.split(description)
-        if StringUtils.is_chinese(titles[0]):
+        if text_tools.contains_chinese(titles[0]):
             return titles[0]
         return None
 
@@ -308,7 +308,7 @@ class MetaVideo(MetaBase):
         if token in self._name_se_words:
             self._last_token_type = 'name_se_words'
             return
-        if StringUtils.is_chinese(token):
+        if text_tools.contains_chinese(token):
             # 含有中文，直接做为标题（连着的数字或者英文会保留），且不再取用后面出现的中文
             self._last_token_type = "cnname"
             if not self.cn_name:

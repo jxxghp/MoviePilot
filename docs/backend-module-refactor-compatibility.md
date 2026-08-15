@@ -114,7 +114,8 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | `core.event` 中的 EventManager | `runtime.events` | 移除按类名猜路径及直接实例化 PluginManager/ModuleManager/MessageHelper |
 | `core.module`、`core.plugin` | `runtime.extensions` | 安装、发现、生命周期和业务上报通过接口/装配连接 |
 | `core.cache` | `app.runtime.cache` + `app.adapters.cache.backends` | runtime 保留契约、内存策略和装饰器；cache adapters 实现 Redis/文件 I/O；SDK 维持旧完整符号集 |
-| `utils.string/url/identity/coalesce/structures` 等纯函数 | `foundation` 对应领域文件 | 确认不读取全局配置、不执行 I/O、不导入高层模块 |
+| `utils.string` 聚合类 | `foundation.text/size/temporal/url/dom/crypto/version` + `domain.title/episode/site/torrent` | 宿主按真实职责直接调用；完整 `StringUtils` 静态方法面只在 `app.sdk.string` 组合，旧 `app.utils.string` 和 `app.domain.string` 精确映射到该 SDK 模块 |
+| `utils.url/identity/coalesce/structures` 等纯函数 | `foundation` 对应能力文件 | 确认不读取全局配置、不执行 I/O、不导入高层模块 |
 | `utils.http` | `app.adapters.network.http` | 去除对 `settings` 的反向读取，由启动层注入宿主 User-Agent |
 | `utils.web` | `app.adapters.external.location` | 外部 IP 归属服务是具体生态集成，不是通用网络基础设施 |
 | `utils.gc` | `app.runtime.gc` | 进程内存观测和回收是运行平台策略，不是外部适配器 |
@@ -512,7 +513,7 @@ SYMBOL_ALIASES = {
 
 ## 14. 实施结果
 
-1. `app/core`、`app/helper`、`app/utils` 已无物理 Python 源码，宿主全部使用 canonical 路径。
+1. `app/core`、`app/helper`、`app/utils` 物理目录均已删除，宿主全部使用 canonical 路径，插件旧导入只由虚拟兼容包解析。
 2. `app.runtime.compat` 在 `app` 包初始化时安装精确白名单 Finder，旧叶子模块与 canonical 模块保持同一身份。
 3. DEBUG 诊断通过运行时命中和插件 AST 扫描互补发现旧引用，生产模式静默。
 4. Event、模块、插件和安全边界改为由 startup composition root 注入 resolver、回调和错误处理器，迁移模块不再处于强连通分量。

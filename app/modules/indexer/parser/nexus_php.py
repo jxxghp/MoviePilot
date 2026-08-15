@@ -7,7 +7,9 @@ from lxml import etree
 
 from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
+from app.foundation.dom import DomUtils
 
 
 class NexusPhpSiteUserInfo(SiteParserBase):
@@ -40,7 +42,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             message_labels = html.xpath('//a[@href="messages.php"]/..')
@@ -52,9 +54,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 message_unread_match = re.findall(r"[^Date](信息箱\s*|\((?![^)]*:)|你有\xa0)(\d+)", message_text)
 
                 if message_unread_match and len(message_unread_match[-1]) == 2:
-                    self.message_unread = StringUtils.str_int(message_unread_match[-1][1])
+                    self.message_unread = text_tools.parse_int(message_unread_match[-1][1])
                 elif message_text.isdigit():
-                    self.message_unread = StringUtils.str_int(message_text)
+                    self.message_unread = text_tools.parse_int(message_text)
         finally:
             if html is not None:
                 del html
@@ -71,7 +73,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             ret = html.xpath(f'//a[contains(@href, "userdetails") and contains(@href, "{self.userid}")]//b//text()')
@@ -106,10 +108,10 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         # 计算分享率
         calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
         # 优先使用页面上的分享率
-        self.ratio = StringUtils.str_float(ratio_match.group(1)) if (
+        self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
                 ratio_match and ratio_match.group(1).strip()) else calc_ratio
         leeching_match = re.search(r"(Torrents leeching|下载中)[\u4E00-\u9FA5\D\s]+(\d+)[\s\S]+<", html_text)
-        self.leeching = StringUtils.str_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
+        self.leeching = text_tools.parse_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
             2).strip() else 0
         html = etree.HTML(html_text)
         try:
@@ -121,18 +123,18 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 bonus_text = str(tmps[0]).strip()
                 bonus_match = re.search(r"([\d,.]+)", bonus_text)
                 if bonus_match and bonus_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(bonus_match.group(1))
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
                     return
             bonus_match = re.search(r"mybonus.[\[\]:：<>/a-zA-Z_\-=\"'\s#;.(使用魔力值豆]+\s*([\d,.]+)[<()&\s]", html_text)
             try:
                 if bonus_match and bonus_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(bonus_match.group(1))
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
                     return
                 bonus_match = re.search(r"[魔力值|\]][\[\]:：<>/a-zA-Z_\-=\"'\s#;]+\s*([\d,.]+|\"[\d,.]+\")[<>()&\s]",
                                         html_text,
                                         flags=re.S)
                 if bonus_match and bonus_match.group(1).strip():
-                    self.bonus = StringUtils.str_float(bonus_match.group(1).strip('"'))
+                    self.bonus = text_tools.parse_float(bonus_match.group(1).strip('"'))
             except Exception as err:
                 logger.error(f"{self._site_name} 解析魔力值出错, 错误信息: {str(err)}")
         finally:
@@ -146,18 +148,18 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :param html:
         :return:
         """
-        if StringUtils.is_valid_html_element(html):
+        if DomUtils.has_child_elements(html):
             gold, silver, copper = None, None, None
 
             golds = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
             if golds:
-                gold = StringUtils.str_float(str(golds[-1]))
+                gold = text_tools.parse_float(str(golds[-1]))
             silvers = html.xpath('//span[@class = "ucoin-symbol ucoin-silver"]//text()')
             if silvers:
-                silver = StringUtils.str_float(str(silvers[-1]))
+                silver = text_tools.parse_float(str(silvers[-1]))
             coppers = html.xpath('//span[@class = "ucoin-symbol ucoin-copper"]//text()')
             if coppers:
-                copper = StringUtils.str_float(str(coppers[-1]))
+                copper = text_tools.parse_float(str(coppers[-1]))
             if gold or silver or copper:
                 gold = gold if gold else 0
                 silver = silver if silver else 0
@@ -174,7 +176,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(str(html_text).replace(r'\/', '/'))
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             # 首页存在扩展链接，使用扩展链接
@@ -215,7 +217,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
                 for i in range(0, len(seeding_sizes)):
                     size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = StringUtils.str_int(seeding_seeders[i])
+                    seeders = text_tools.parse_int(seeding_seeders[i])
 
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])
@@ -274,7 +276,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         """
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return
 
             self._get_user_level(html)
@@ -287,7 +289,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 '|//div/b[text()="加入日期"]/../text()'
                 '|//*[@id="outer"]/table/tr/td/div/div[1]/div[2]/div[3]/span[1]/span/@title')
             if join_at_text:
-                self.join_at = StringUtils.unify_datetime_str(join_at_text[0].split(' (')[0].strip())
+                self.join_at = time_tools.normalize_datetime(join_at_text[0].split(' (')[0].strip())
 
             # 做种体积 & 做种数
             # seeding 页面获取不到的话，此处再获取一次
@@ -300,7 +302,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             tmp_seeding_info = []
             for i in range(0, len(seeding_sizes)):
                 size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                seeders = StringUtils.str_int(seeding_seeders[i])
+                seeders = text_tools.parse_int(seeding_seeders[i])
 
                 tmp_seeding_size += size
                 tmp_seeding_info.append([seeders, size])
@@ -316,7 +318,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             if seeding_sizes:
                 seeding_match = re.search(r"总做种数:\s+(\d+)", seeding_sizes[0], re.IGNORECASE)
                 seeding_size_match = re.search(r"总做种体积:\s+([\d,.\s]+[KMGTPI]*B)", seeding_sizes[0], re.IGNORECASE)
-                tmp_seeding = StringUtils.str_int(seeding_match.group(1)) if (
+                tmp_seeding = text_tools.parse_int(seeding_match.group(1)) if (
                         seeding_match and seeding_match.group(1)) else 0
                 tmp_seeding_size = self.num_filesize(
                     seeding_size_match.group(1).strip()) if seeding_size_match else 0
@@ -396,7 +398,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None
 
             message_links = html.xpath('//tr[not(./td/img[@alt="Read"])]/td/a[contains(@href, "viewmessage")]/@href')
@@ -415,7 +417,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     def _parse_message_content(self, html_text):
         html = etree.HTML(html_text)
         try:
-            if not StringUtils.is_valid_html_element(html):
+            if not DomUtils.has_child_elements(html):
                 return None, None, None
             # 标题
             message_head_text = None
@@ -448,4 +450,4 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         if not self.bonus:
             bonus_text = html.xpath('//tr/td[text()="魔力值" or text()="猫粮"]/following-sibling::td[1]/text()')
             if bonus_text:
-                self.bonus = StringUtils.str_float(bonus_text[0].strip())
+                self.bonus = text_tools.parse_float(bonus_text[0].strip())

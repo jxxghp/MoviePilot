@@ -6,7 +6,7 @@ from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 
 
 class YemaSpider:
@@ -162,14 +162,14 @@ class YemaSpider:
                 "title": result.get("showName"),
                 "description": result.get("shortDesc"),
                 "enclosure": self._build_download_url(torrent_id),
-                "pubdate": StringUtils.unify_datetime_str(result.get("listingTime")),
+                "pubdate": time_tools.normalize_datetime(result.get("listingTime")),
                 "size": result.get("fileSize"),
                 "seeders": result.get("seedNum"),
                 "peers": result.get("leechNum"),
                 "grabs": result.get("completedNum"),
                 "downloadvolumefactor": self._download_factor(result.get("downloadPromotion")),
                 "uploadvolumefactor": self._upload_factor(result.get("uploadPromotion")),
-                "freedate": StringUtils.unify_datetime_str(result.get("downloadPromotionEndTime")),
+                "freedate": time_tools.normalize_datetime(result.get("downloadPromotionEndTime")),
                 "page_url": f"{self._site_url}/#/torrent/detail/{torrent_id}/",
                 "labels": labels,
                 "hit_and_run": bool(result.get("hrPunishEnable")),

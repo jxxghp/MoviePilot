@@ -12,7 +12,7 @@ from app.runtime.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.domain.string import StringUtils
+from app.foundation import temporal as time_tools
 from app.adapters.system.host import SystemUtils
 
 _MAX_FOLDER_LOCKS = 4096
@@ -127,7 +127,7 @@ class Rclone(StorageBase):
                 path=f"{parent}{item.get('Name')}" + "/",
                 name=item.get("Name"),
                 basename=item.get("Name"),
-                modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
+                modify_time=time_tools.parse_timestamp(item.get("ModTime"))
             )
         else:
             return schemas.FileItem(
@@ -138,7 +138,7 @@ class Rclone(StorageBase):
                 basename=Path(item.get("Name")).stem,
                 extension=Path(item.get("Name")).suffix[1:],
                 size=item.get("Size"),
-                modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
+                modify_time=time_tools.parse_timestamp(item.get("ModTime"))
             )
 
     @staticmethod

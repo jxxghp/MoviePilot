@@ -18,7 +18,10 @@ from app.schemas.types import (
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.domain.string import StringUtils
+from app.domain import torrent as torrent_rules
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
 
 
 class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
@@ -122,7 +125,7 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
                     torrent_content = content
 
                 if torrent_content:
-                    if StringUtils.is_magnet_link(torrent_content):
+                    if torrent_rules.is_magnet_link(torrent_content):
                         return None, torrent_content
                     else:
                         torrent_info = Torrent.from_string(torrent_content)
@@ -153,7 +156,7 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
             return None
 
         # 生成随机Tag
-        tag = StringUtils.generate_random_str(10)
+        tag = text_tools.random_string(10)
         if label:
             tags = label.split(",") + [tag]
         elif settings.TORRENT_TAG:
@@ -347,10 +350,10 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
                 state=self.__normalize_torrent_state(
                     torrent_data.get("state"), torrent_data.get("complete")
                 ),
-                dlspeed=StringUtils.str_filesize(dlspeed),
-                upspeed=StringUtils.str_filesize(upspeed),
+                dlspeed=size_tools.format_compact_size(dlspeed),
+                upspeed=size_tools.format_compact_size(upspeed),
                 tags=torrent_data.get("tags"),
-                left_time=StringUtils.str_secends((total_size - completed_size) / dlspeed)
+                left_time=time_tools.format_duration((total_size - completed_size) / dlspeed)
                 if dlspeed > 0
                 else "",
             )
