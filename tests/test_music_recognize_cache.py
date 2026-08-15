@@ -314,7 +314,9 @@ def test_music_cache_endpoint_returns_management_statistics(monkeypatch):
         "recognized": {"media_id": "rec-1", "title": "晴天"},
         "unrecognized": {"media_id": "", "title": "未知曲目"},
     })
-    monkeypatch.setattr(music_endpoint, "MusicBrainzCache", lambda: cache)
+    monkeypatch.setattr(
+        music_endpoint.MusicBrainzChain, "cache_items", staticmethod(cache.list_items)
+    )
 
     response = asyncio.run(music_endpoint.music_recognition_cache(None))
 
@@ -328,7 +330,9 @@ def test_music_cache_endpoint_returns_management_statistics(monkeypatch):
 def test_music_cache_delete_endpoint_reports_missing_item(monkeypatch):
     """删除接口应区分成功删除与缓存不存在。"""
     cache = _build_music_cache({"existing": {"media_id": "rec-1"}})
-    monkeypatch.setattr(music_endpoint, "MusicBrainzCache", lambda: cache)
+    monkeypatch.setattr(
+        music_endpoint.MusicBrainzChain, "delete_cache", staticmethod(cache.delete)
+    )
 
     deleted_response = asyncio.run(
         music_endpoint.delete_music_recognition_cache("existing", None)
@@ -344,7 +348,9 @@ def test_music_cache_delete_endpoint_reports_missing_item(monkeypatch):
 def test_music_cache_clear_endpoint_removes_all_items(monkeypatch):
     """清空接口应删除全部音乐识别缓存。"""
     cache = _build_music_cache({"existing": {"media_id": "rec-1"}})
-    monkeypatch.setattr(music_endpoint, "MusicBrainzCache", lambda: cache)
+    monkeypatch.setattr(
+        music_endpoint.MusicBrainzChain, "clear_cache", staticmethod(cache.clear)
+    )
 
     response = asyncio.run(music_endpoint.clear_music_recognition_cache(None))
 

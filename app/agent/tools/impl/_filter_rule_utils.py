@@ -8,8 +8,8 @@ from app.runtime.events import eventmanager
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.filter import RuleHelper
-from app.modules.filter.RuleParser import RuleParser
-from app.modules.filter.builtin_rules import BUILTIN_RULE_SET
+from app.application.filter_rules import RuleParser
+from app.application.filter_rules import BUILTIN_RULE_SET
 from app.schemas import CustomRule, FilterRuleGroup
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey

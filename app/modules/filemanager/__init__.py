@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Optional, List, Tuple, Union, Dict, Callable
 
-from app.chain.tmdb import TmdbChain
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -136,32 +135,18 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.support_transtype()
 
     @staticmethod
-    def recommend_name(meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
+    def recommend_name(meta: MetaBase, mediainfo: MediaInfo,
+                       episodes_info: Optional[List[TmdbEpisode]] = None) -> Optional[str]:
         """
         获取重命名后的名称
         :param meta: 元数据
         :param mediainfo: 媒体信息
+        :param episodes_info: 集信息，由调用方链层预先获取
         :return: 重命名后的名称（含目录）
         """
         handler = TransHandler()
         # 重命名格式
         rename_format = settings.RENAME_FORMAT(mediainfo.type)
-        # 获取集信息
-        episodes_info: Optional[List[TmdbEpisode]] = None
-        if mediainfo.type == MediaType.TV:
-            # 判断注意season为0的情况
-            season_num = mediainfo.season
-            if season_num is None and meta.season_seq:
-                if meta.season_seq.isdigit():
-                    season_num = int(meta.season_seq)
-            # 默认值1
-            if season_num is None:
-                season_num = 1
-            episodes_info = TmdbChain().tmdb_episodes(
-                tmdbid=mediainfo.tmdb_id,
-                season=season_num,
-                episode_group=mediainfo.episode_group,
-            )
         # 获取重命名后的名称
         path = handler.get_rename_path(
             template_string=rename_format,

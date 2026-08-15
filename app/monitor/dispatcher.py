@@ -13,7 +13,7 @@ from app.application.history import (HistoryGateAction, describe_history_gate,
                                         evaluate_history_gate, is_skip_action,
                                         max_failed_retries, resolve_history)
 from app.runtime.log import logger
-from app.modules.filemanager.fsproxy import fsproxy
+from app.adapters.system.fsproxy import fsproxy
 from app.schemas import FileItem
 from app.schemas.types import MediaType
 

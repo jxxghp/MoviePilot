@@ -35,6 +35,8 @@ from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.application.torrent import TorrentHelper
+from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
+from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.log import logger
 from app.schemas import CommingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Notification
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
@@ -1851,4 +1853,90 @@ class MessageChain(ChainBase):
         except Exception as e:
             logger.error(e)
             return None
+
+    @staticmethod
+    def _build_wechatclawbot_temp_client(
+            source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+    ):
+        """基于当前表单配置创建一个临时客户端，用于未保存时的扫码状态预览。"""
+        source_name = str(source or "").strip()
+        if not source_name:
+            return None
+        return WechatClawBot(
+            name=source_name,
+            WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+            WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+            WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+            WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+            auto_start_polling=False,
+        )
+
+    @classmethod
+    def get_wechatclawbot_client(
+            cls,
+            source: Optional[str] = None,
+            fallback_source: Optional[str] = None,
+            WECHATCLAWBOT_BASE_URL: Optional[str] = None,
+            WECHATCLAWBOT_DEFAULT_TARGET: Optional[str] = None,
+            WECHATCLAWBOT_ADMINS: Optional[str] = None,
+            WECHATCLAWBOT_POLL_TIMEOUT: Optional[int] = None,
+            allow_temporary: bool = False,
+    ):
+        """获取已加载的微信 ClawBot 客户端，必要时退回到临时客户端。"""
+        module = ModuleManager().get_running_module("WechatClawBotModule")
+        source_name = str(source or "").strip() or None
+        fallback_name = str(fallback_source or "").strip() or None
+
+        if module:
+            candidate_names = []
+            for candidate in (fallback_name, source_name):
+                if candidate and candidate not in candidate_names:
+                    candidate_names.append(candidate)
+
+            if candidate_names:
+                for candidate in candidate_names:
+                    config = module.get_config(candidate)
+                    if not config:
+                        continue
+                    client = module.get_instance(config.name)
+                    if client:
+                        return client, None
+            else:
+                client = module.get_instance()
+                if client:
+                    return client, None
+
+        if allow_temporary:
+            temp_client = cls._build_wechatclawbot_temp_client(
+                source=source_name or fallback_name,
+                WECHATCLAWBOT_BASE_URL=WECHATCLAWBOT_BASE_URL,
+                WECHATCLAWBOT_DEFAULT_TARGET=WECHATCLAWBOT_DEFAULT_TARGET,
+                WECHATCLAWBOT_ADMINS=WECHATCLAWBOT_ADMINS,
+                WECHATCLAWBOT_POLL_TIMEOUT=WECHATCLAWBOT_POLL_TIMEOUT,
+            )
+            if temp_client:
+                return temp_client, None
+
+        if source_name:
+            return None, f"未找到名为 {source_name} 的微信 ClawBot 通知配置"
+        return None, "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道"
+
+    @staticmethod
+    def migrate_wechatclawbot_cache(
+            old_name: str,
+            new_name: str,
+            cleanup_old: bool = False,
+            overwrite: bool = False,
+    ):
+        """在通知名称变更时迁移对应的微信 ClawBot 登录缓存。"""
+        return WechatClawBot.migrate_cached_state(
+            old_name=old_name,
+            new_name=new_name,
+            cleanup_old=cleanup_old,
+            overwrite=overwrite,
+        )
 

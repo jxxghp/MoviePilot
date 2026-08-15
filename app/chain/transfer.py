@@ -2623,6 +2623,31 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param mediainfo: 媒体信息
         :return: 重命名后的名称（含目录）
         """
+        # 获取集信息，供重命名模块使用
+        episodes_info: Optional[List[TmdbEpisode]] = None
+        if mediainfo.type == MediaType.TV:
+            # 判断注意season为0的情况
+            season_num = mediainfo.season
+            if season_num is None and meta.season_seq:
+                if meta.season_seq.isdigit():
+                    season_num = int(meta.season_seq)
+            # 默认值1
+            if season_num is None:
+                season_num = 1
+            episodes_info = self.run_module(
+                "tmdb_episodes",
+                tmdbid=mediainfo.tmdb_id,
+                season=season_num,
+                episode_group=mediainfo.episode_group,
+            )
+        if episodes_info:
+            return self.run_module(
+                "recommend_name",
+                meta=meta,
+                mediainfo=mediainfo,
+                episodes_info=episodes_info,
+            )
+        # 电影或无集信息时保持原有参数集，避免影响旧签名的模块实现
         return self.run_module("recommend_name", meta=meta, mediainfo=mediainfo)
 
     def recommend_episode_format(

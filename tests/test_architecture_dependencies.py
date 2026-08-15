@@ -428,3 +428,65 @@ def test_resource_adapter_does_not_restart_process():
         set(modules),
     )
     assert "app.runtime.state" not in dependencies
+
+
+def test_modules_do_not_import_other_modules_or_chain():
+    """模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。"""
+    modules = _discover_modules()
+    known_modules = set(modules)
+    violations: dict[str, set[str]] = {}
+    for module_name, path in modules.items():
+        if not module_name.startswith("app.modules."):
+            continue
+        own_package = module_name.split(".")[2]
+        dependencies = _resolve_imports(module_name, path, known_modules)
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.chain")
+            or (
+                dependency.startswith("app.modules.")
+                and dependency.split(".")[2] != own_package
+            )
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_entrypoints_do_not_import_module_internals():
+    """入口层不得穿透导入具体模块实现，应经由链层或应用服务。"""
+    modules = _discover_modules()
+    known_modules = set(modules)
+    entrypoint_roots = ("app.api", "app.agent", "app.monitor", "app.workflow", "app.doctor")
+    violations: dict[str, set[str]] = {}
+    for module_name, path in modules.items():
+        if not module_name.startswith(entrypoint_roots):
+            continue
+        dependencies = _resolve_imports(module_name, path, known_modules)
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.modules.")
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_chain_does_not_import_downloader_sdks():
+    """链层不得引入下载器后端协议类型，避免后端细节泄漏到编排层。"""
+    forbidden_sdks = {"qbittorrentapi", "transmission_rpc"}
+    violations: list[str] = []
+    for path in (APP_ROOT / "chain").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                names.append(node.module)
+            if any(name.split(".")[0] in forbidden_sdks for name in names):
+                violations.append(str(path.relative_to(PROJECT_ROOT)))
+                break
+    assert violations == []

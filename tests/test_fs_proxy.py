@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.filemanager.fsproxy import FileSystemProxy, FileSystemTimeout
+from app.adapters.system.fsproxy import FileSystemProxy, FileSystemTimeout
 
 
 @pytest.fixture
@@ -119,7 +119,7 @@ def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
     这是整个代理存在的意义：挂载不返回时，调用方必须在有限时间内拿到异常，
     而且冻住的进程要被真正杀掉——不能像线程那样永久悬挂。
     """
-    import app.modules.filemanager.fsproxy as fsproxy_module
+    import app.adapters.system.fsproxy as fsproxy_module
 
     # 用一个必定挂死的 worker 替身，模拟 stat 永不返回的挂载
     stuck_worker = tmp_path / "stuck_worker.py"
@@ -154,7 +154,7 @@ def test_proxy_recovers_after_timeout(tmp_path, monkeypatch):
     超时杀掉代理后，下一次调用要能用新代理正常工作——否则一次挂载抖动
     就会让文件操作永久不可用。
     """
-    import app.modules.filemanager.fsproxy as fsproxy_module
+    import app.adapters.system.fsproxy as fsproxy_module
 
     stuck_worker = tmp_path / "stuck_worker.py"
     stuck_worker.write_text("import time\nwhile True:\n    time.sleep(60)\n", encoding="utf-8")
@@ -195,7 +195,7 @@ def test_worker_does_not_import_app_package():
     worker 必须只依赖标准库：一旦触发 app/__init__.py 的导入链，启动成本会从
     毫秒级涨到秒级，代理被强杀后的重启就不再可行。
     """
-    worker = Path("app/modules/filemanager/fsworker.py").read_text(encoding="utf-8")
+    worker = Path("app/adapters/system/fsworker.py").read_text(encoding="utf-8")
 
     assert "from app." not in worker
     assert "import app" not in worker
@@ -206,7 +206,7 @@ def test_worker_runs_standalone_without_app_on_path(tmp_path):
     直接执行 worker 脚本必须成功，且不依赖项目根在 sys.path 上
     ——这是「绕开 app 导入链」这一设计前提的实证。
     """
-    worker_path = Path("app/modules/filemanager/fsworker.py").resolve()
+    worker_path = Path("app/adapters/system/fsworker.py").resolve()
     media = tmp_path / "x.mkv"
     media.write_bytes(b"xyz")
 

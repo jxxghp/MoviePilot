@@ -20,7 +20,7 @@ def count_directory_entries(directory: Path, max_check: int = 10000) -> Tuple[in
         # 恢复动作永久钉死，进而饿死其他健康目录的待重试项
         # 延迟导入：filemanager 包的 __init__ 会拖入整条 chain 依赖，
         # 模块级导入会破坏 monitor 包的轻量加载
-        from app.modules.filemanager.fsproxy import fsproxy
+        from app.adapters.system.fsproxy import fsproxy
         result = fsproxy.count_entries(directory, max_check=max_check)
         return result.get("file_count", 0), result.get("dir_count", 0)
     except Exception as err:

@@ -253,7 +253,7 @@ def test_watchdog_survives_blocking_exists_in_real_rebuild(tmp_path, monkeypatch
         return {"size": 0, "mtime": 0.0, "is_dir": True, "is_file": False}
 
     monkeypatch.setattr(
-        "app.modules.filemanager.fsproxy.fsproxy.stat", blocking_stat
+        "app.adapters.system.fsproxy.fsproxy.stat", blocking_stat
     )
     monkeypatch.setattr("app.monitor.monitor.probe_path", lambda *_a, **_kw: False)
 

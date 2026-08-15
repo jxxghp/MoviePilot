@@ -19,7 +19,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.api.deps import get_current_active_superuser
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
-from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
+from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.schemas.types import MessageChannel, SystemConfigKey
 
 router = ResponseAPIRouter()

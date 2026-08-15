@@ -8,7 +8,7 @@ from app import schemas
 from app.runtime.config import global_vars, settings
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
-from app.modules.filemanager.fsproxy import fsproxy
+from app.adapters.system.fsproxy import fsproxy
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema

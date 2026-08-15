@@ -274,7 +274,9 @@ def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):
         "unrecognized": {"id": 0},
     })
     get_system_config = Mock(return_value=7)
-    monkeypatch.setattr(tmdb_endpoint, "TmdbCache", lambda: cache)
+    monkeypatch.setattr(
+        tmdb_endpoint.TmdbChain, "cache_items", staticmethod(cache.list_items)
+    )
     monkeypatch.setattr(
         tmdb_endpoint,
         "SystemConfigOper",
@@ -298,7 +300,9 @@ def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):
 def test_tmdb_cache_delete_endpoint_reports_missing_item(monkeypatch):
     """删除接口应区分成功删除与缓存不存在。"""
     cache = _build_tmdb_cache({"existing": {"id": 1}})
-    monkeypatch.setattr(tmdb_endpoint, "TmdbCache", lambda: cache)
+    monkeypatch.setattr(
+        tmdb_endpoint.TmdbChain, "delete_cache", staticmethod(cache.delete)
+    )
 
     deleted_response = asyncio.run(
         tmdb_endpoint.delete_tmdb_recognition_cache("existing", None)
@@ -314,7 +318,9 @@ def test_tmdb_cache_delete_endpoint_reports_missing_item(monkeypatch):
 def test_tmdb_cache_clear_endpoint_removes_all_items(monkeypatch):
     """清空接口应删除全部识别缓存。"""
     cache = _build_tmdb_cache({"existing": {"id": 1}})
-    monkeypatch.setattr(tmdb_endpoint, "TmdbCache", lambda: cache)
+    monkeypatch.setattr(
+        tmdb_endpoint.TmdbChain, "clear_cache", staticmethod(cache.clear)
+    )
 
     response = asyncio.run(tmdb_endpoint.clear_tmdb_recognition_cache(None))
 

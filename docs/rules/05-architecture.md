@@ -211,7 +211,10 @@ depend on this established runtime root.
 SQLAlchemy models stay under `app/db/models/`; the data access classes live in
 `app/db/oper/` and mirror them one-for-one (`models/subscribe.py` ↔
 `oper/subscribe.py`), so a filename carries only the entity and the package name
-carries the role. Chains, modules, application services and endpoints use Oper
+carries the role. Two verified aggregation exceptions exist: the site family
+(`Passkey`, `SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
+`oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. Chains, modules,
+application services and endpoints use Oper
 classes instead of issuing SQLAlchemy queries directly. Every schema change
 requires an Alembic migration under `database/versions/`.
 
@@ -292,6 +295,9 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/runtime/cache.py` | Cache contracts, memory backend, decorators and proxies |
 | `app/adapters/cache/backends.py` | Redis and filesystem cache adapters |
 | `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
+| `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
+| `app/adapters/external/wechat_crypt.py` | WeChat enterprise-message XML encryption/decryption protocol |
+| `app/application/filter_rules.py` | Built-in torrent filter rule set and rule parser |
 | `app/adapters/external/market.py` | Plugin repository discovery and installation |
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
@@ -300,7 +306,10 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import
 change. It rejects physical legacy or retired canonical sources, forbidden
-upward dependencies, SDK/compat backreferences and any strongly connected
-component containing a migrated module.
+upward dependencies, SDK/compat backreferences, any strongly connected
+component containing a migrated module, module-to-module or module-to-chain
+imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
+`app.modules` internals, and downloader SDK (`qbittorrentapi`,
+`transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-14*
+*Last Updated: 2026-08-15*

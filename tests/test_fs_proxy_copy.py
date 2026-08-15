@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.filemanager.fsproxy import FileSystemProxy, FileSystemTimeout
+from app.adapters.system.fsproxy import FileSystemProxy, FileSystemTimeout
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def test_stalled_transfer_is_detected_and_killed(tmp_path, monkeypatch):
     """
     关键区分之二：传输彻底不推进时必须被判定并强杀，而不是永久等待。
     """
-    import app.modules.filemanager.fsproxy as fsproxy_module
+    import app.adapters.system.fsproxy as fsproxy_module
 
     # worker 替身：读到请求后完全不响应，模拟卡死在挂载上的传输
     stuck = tmp_path / "stuck_worker.py"
@@ -148,7 +148,7 @@ def test_copy_falls_back_to_direct_when_disabled(tmp_path, monkeypatch):
     """
     代理关闭时复制退回进程内直接执行，行为与引入代理之前一致。
     """
-    import app.modules.filemanager.fsproxy as fsproxy_module
+    import app.adapters.system.fsproxy as fsproxy_module
 
     monkeypatch.setattr(fsproxy_module.settings, "FS_PROXY_ENABLED", False, raising=False)
     src = tmp_path / "a.mkv"
@@ -169,7 +169,7 @@ def test_direct_copy_honours_cancel(tmp_path, monkeypatch):
     """
     关闭代理时取消同样要生效，否则关掉开关就丢了取消能力。
     """
-    import app.modules.filemanager.fsproxy as fsproxy_module
+    import app.adapters.system.fsproxy as fsproxy_module
 
     monkeypatch.setattr(fsproxy_module.settings, "FS_PROXY_ENABLED", False, raising=False)
     src = tmp_path / "a.mkv"
@@ -188,7 +188,7 @@ def test_worker_still_standalone_after_streaming_support():
     加了流式协议之后 worker 仍须只依赖标准库——一旦引入 app 导入链，
     强杀后的重启成本会从毫秒级涨到秒级，整个代理方案就不成立了。
     """
-    worker = Path("app/modules/filemanager/fsworker.py").read_text(encoding="utf-8")
+    worker = Path("app/adapters/system/fsworker.py").read_text(encoding="utf-8")
 
     assert "from app." not in worker
     assert "import app" not in worker

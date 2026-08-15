@@ -7,7 +7,7 @@ from app.api.response import ResponseAPIRouter
 from app.chain.recommend import RecommendChain
 from app.runtime.events import eventmanager
 from app.application.security.access import verify_token
-from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
+from app.chain.tmdb import TMDbException
 from app.schemas import RecommendSourceEventData
 from app.schemas.types import ChainEventType
 

@@ -114,7 +114,7 @@ class LocalDirectoryWatcher:
         # 经代理后超时会抛 OSError，由上层判定为挂载级故障并转入隔离
         # 延迟导入：filemanager 包的 __init__ 会拖入整条 chain 依赖，
         # 模块级导入会破坏 monitor 包的轻量加载
-        from app.modules.filemanager.fsproxy import fsproxy
+        from app.adapters.system.fsproxy import fsproxy
         info = fsproxy.stat(self._watch_path)
         if not info["is_dir"]:
             raise NotADirectoryError(f"监控路径不是目录: {self._watch_path}")

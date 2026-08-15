@@ -148,6 +148,7 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     chain = DownloadChain.__new__(DownloadChain)
     chain.download = MagicMock(return_value=("qb", "hash123", "Original", "添加下载成功"))
     chain.download_added = MagicMock()
+    chain.download_site_subtitles = MagicMock()
     chain.eventmanager = MagicMock()
     chain.eventmanager.send_event.return_value = None
     chain.post_message = MagicMock()
@@ -187,6 +188,11 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     task()
 
     chain.download_added.assert_called_once_with(
+        context=context,
+        download_dir=Path("/downloads"),
+        torrent_content=b"torrent-content",
+    )
+    chain.download_site_subtitles.assert_called_once_with(
         context=context,
         download_dir=Path("/downloads"),
         torrent_content=b"torrent-content",
@@ -268,6 +274,7 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
     chain = DownloadChain.__new__(DownloadChain)
     chain.download = MagicMock(return_value=("qb", "hash123", "Original", "添加下载成功"))
     chain.download_added = MagicMock()
+    chain.download_site_subtitles = MagicMock()
     chain.eventmanager = MagicMock()
     chain.eventmanager.send_event.return_value = None
     chain.post_message = MagicMock()

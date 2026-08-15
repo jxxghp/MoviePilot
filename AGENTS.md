@@ -64,9 +64,9 @@ The legacy roots have no physical directories in the source tree. Current images
 | `app/runtime/extensions/` | 模块、插件和配置化服务实现的发现、注册与生命周期 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `service_registry.py` |
 | `app/adapters/network/` | HTTP、浏览器、DNS、Cloudflare 和 IP 等通用网络技术适配 | RSS/站点业务编排、身份认证策略、命名外部产品流程 | `http.py`, `browser.py`, `doh.py`, `ip.py` |
 | `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
-| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `stdio.py`, `package.py`, `resource.py`, `rust.py` |
-| `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py` |
-| `app/application/` | 读取配置/持久化状态的聚焦应用服务和服务族规则 | 多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `notification.py`, `mediaserver.py`, `rss.py`, `site/sites.*` |
+| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
+| `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py`, `wechat_crypt.py` |
+| `app/application/` | 读取配置/持久化状态的聚焦应用服务和服务族规则 | 多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `filter_rules.py`, `notification.py`, `mediaserver.py`, `rss.py`, `site/sites.*` |
 | `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接：`interaction.py` 通用交互契约和视图工具；`router.py` 统一交互优先级和回调分发；`site.py`/`subscribe.py`/`skill.py` 对应命令的会话、输入解析和视图；`media.py` 媒体交互状态（业务工作流仍由 `MediaInteractionChain` 执行）；`plugin.py` 插件输入接管和插件按钮回调；`agent.py` Agent 选择状态、回调协议和 WebAgent 消息桥接；`message.py` 通知渲染、模板和队列。不作为推荐给插件直接使用的公开 SDK | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `message.py`, `interaction.py`, `router.py`, `agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
 | `app/chain/` | Reusable use-case orchestration across modules, services, Oper classes, events, and caches | Transport schemas, backend-specific protocol details, generic primitives | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |

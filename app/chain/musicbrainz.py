@@ -3,6 +3,7 @@ from typing import Any, Optional
 from app.chain import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.modules.musicbrainz.music_cache import MusicBrainzCache
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -287,3 +288,18 @@ class MusicBrainzChain(_MusicMetadataSourceChain):
             limit=limit,
         )
         return self._music_album(result)
+
+    @staticmethod
+    def cache_items() -> list[dict]:
+        """查询音乐识别缓存条目列表。"""
+        return MusicBrainzCache().list_items()
+
+    @staticmethod
+    def delete_cache(cache_key: str) -> dict:
+        """按缓存键删除单条音乐识别缓存。"""
+        return MusicBrainzCache().delete(cache_key)
+
+    @staticmethod
+    def clear_cache() -> None:
+        """清空全部音乐识别缓存。"""
+        MusicBrainzCache().clear()

@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from fastapi.concurrency import run_in_threadpool
-from qbittorrentapi import TorrentFilesList
-from transmission_rpc import File
 
 from app.runtime.cache import FileCache, AsyncFileCache, fresh, async_fresh
 from app.runtime.config import settings
@@ -1527,10 +1525,10 @@ class ChainBase(metaclass=ABCMeta):
             torrent_content: Union[str, bytes] = None,
     ) -> None:
         """
-        添加下载任务成功后，从站点下载字幕，保存到下载目录
+        添加下载任务成功后的模块附加处理分发，站点字幕下载由 DownloadChain 另行编排
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param download_dir:  下载目录
-        :param torrent_content:  种子内容，如果有则直接使用该内容，否则从context中获取种子文件路径
+        :param torrent_content: 种子内容，如果有则直接使用该内容，否则从 context 中获取种子文件路径
         :return: None，该方法可被多个模块同时处理
         """
         return self.run_module(
@@ -1735,12 +1733,12 @@ class ChainBase(metaclass=ABCMeta):
 
     def torrent_files(
             self, tid: str, downloader: Optional[str] = None
-    ) -> Optional[Union[TorrentFilesList, List[File]]]:
+    ) -> Optional[Any]:
         """
         获取种子文件
         :param tid:  种子Hash
         :param downloader:  下载器
-        :return: 种子文件
+        :return: 种子文件，具体类型由下载器实现决定（链层不引入下载器协议类型）
         """
         return self.run_module("torrent_files", tid=tid, downloader=downloader)
 
