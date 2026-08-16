@@ -407,7 +407,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
             patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="PROMPT"),
             patch("app.agent.orchestrator.create_subagent_middlewares", return_value=([], [])),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(
@@ -462,7 +462,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
             patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="PROMPT"),
             patch("app.agent.orchestrator.create_subagent_middlewares", return_value=([], [])),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(
@@ -514,7 +514,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
             patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="PROMPT"),
             patch("app.agent.orchestrator.create_subagent_middlewares", return_value=([], [])),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(
@@ -603,7 +603,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
             patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="PROMPT"),
             patch("app.agent.orchestrator.create_subagent_middlewares", return_value=([], [])),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(
@@ -667,7 +667,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(
@@ -718,7 +718,7 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
             patch("app.agent.orchestrator.prompt_manager.get_agent_prompt", return_value="PROMPT"),
             patch("app.agent.orchestrator.create_subagent_middlewares", return_value=([], [])),
             patch(
-                "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+                "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
                 return_value=[],
             ),
             patch(

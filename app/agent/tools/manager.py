@@ -10,19 +10,6 @@ from app.runtime.log import logger
 if TYPE_CHECKING:
     from app.agent.policy import AgentToolPolicyOrchestrator, ToolPolicyContext
     from app.agent.tools.catalog import ToolCatalogSnapshot
-else:
-    AgentToolPolicyOrchestrator = Any
-    ToolPolicyContext = Any
-    ToolCatalogSnapshot = Any
-
-
-def __getattr__(name: str) -> Any:
-    """按需保留直接访问 manager 工具工厂符号的兼容路径。"""
-    if name == "MoviePilotToolFactory":
-        from app.agent.runtime_loader import get_tool_factory
-
-        return get_tool_factory()
-    raise AttributeError(f"module 'app.agent.tools.manager' has no attribute {name!r}")
 
 
 class ToolDefinition:
@@ -147,10 +134,14 @@ class MoviePilotToolsManager:
                 return
             self._load_tools_locked()
 
-    def _ensure_policy_runtime(self) -> None:
-        """在真实工具调用前构造 direct 入口的策略上下文。"""
-        if self._policy_context is not None:
-            return
+    def _ensure_policy_runtime(
+        self,
+    ) -> tuple[AgentToolPolicyOrchestrator, ToolPolicyContext]:
+        """返回 direct 入口的策略对象，仅在真实工具调用前完成构造。"""
+        policy_orchestrator = self.policy_orchestrator
+        policy_context = self._policy_context
+        if policy_orchestrator is not None and policy_context is not None:
+            return policy_orchestrator, policy_context
 
         from app.agent.policy import (
             DEFAULT_TOOL_POLICY_ORCHESTRATOR,
@@ -160,18 +151,22 @@ class MoviePilotToolsManager:
             ToolPolicyContext,
         )
 
-        if self.policy_orchestrator is None:
-            self.policy_orchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR
-        self._policy_context = ToolPolicyContext(
-            session_id=self.session_id,
-            user_id=self.user_id,
-            origin=ToolOrigin.OPERATOR_DIRECT,
-            principal_type=PrincipalType.SYSTEM_ADMIN_INTEGRATION,
-            auth_source=AuthSource.API_TOKEN,
-            channel=None,
-            source="api",
-            agent_context={"is_admin": self.is_admin},
-        )
+        if policy_orchestrator is None:
+            policy_orchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR
+        if policy_context is None:
+            policy_context = ToolPolicyContext(
+                session_id=self.session_id,
+                user_id=self.user_id,
+                origin=ToolOrigin.OPERATOR_DIRECT,
+                principal_type=PrincipalType.SYSTEM_ADMIN_INTEGRATION,
+                auth_source=AuthSource.API_TOKEN,
+                channel=None,
+                source="api",
+                agent_context={"is_admin": self.is_admin},
+            )
+        self.policy_orchestrator = policy_orchestrator
+        self._policy_context = policy_context
+        return policy_orchestrator, policy_context
 
     def list_tools(self) -> List[ToolDefinition]:
         """
@@ -393,6 +388,7 @@ class MoviePilotToolsManager:
         )
 
         observation = None
+        policy_orchestrator = None
         try:
             permission_error = self._check_tool_permission(tool_instance)
             if permission_error:
@@ -400,14 +396,12 @@ class MoviePilotToolsManager:
 
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
-            self._ensure_policy_runtime()
-            assert self._policy_context is not None
-            assert self.policy_orchestrator is not None
-            self._policy_context.agent_context["is_admin"] = self.is_admin
+            policy_orchestrator, policy_context = self._ensure_policy_runtime()
+            policy_context.agent_context["is_admin"] = self.is_admin
             observation = call_policy_hook(
                 "start",
-                self.policy_orchestrator.start,
-                context=self._policy_context,
+                policy_orchestrator.start,
+                context=policy_context,
                 tool=tool_instance,
                 arguments=normalized_arguments,
             )
@@ -421,8 +415,8 @@ class MoviePilotToolsManager:
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
         except ToolExecutionTimeoutError as e:
-            if observation:
-                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
+            if observation is not None and policy_orchestrator is not None:
+                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
             error_summary = self._summarize_error(e)
             logger.warning(error_summary)
             return format_tool_result_for_agent(
@@ -431,8 +425,8 @@ class MoviePilotToolsManager:
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
         except Exception as e:
-            if observation:
-                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
+            if observation is not None and policy_orchestrator is not None:
+                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
             error_summary = self._summarize_error(e)
             logger.error(f"调用工具 {tool_name} 时发生错误: {error_summary}")
             error_msg = json.dumps(
@@ -440,10 +434,10 @@ class MoviePilotToolsManager:
                 ensure_ascii=False,
             )
             return error_msg
-        if observation:
+        if observation is not None and policy_orchestrator is not None:
             call_policy_hook(
                 "finish",
-                self.policy_orchestrator.finish,
+                policy_orchestrator.finish,
                 observation,
                 str_result,
             )

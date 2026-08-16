@@ -81,15 +81,6 @@ from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
 
 
-def __getattr__(name: str) -> Any:
-    """按需解析旧测试与扩展仍可能访问的工具工厂符号。"""
-    if name == "MoviePilotToolFactory":
-        from app.agent.runtime_loader import get_tool_factory
-
-        return get_tool_factory()
-    raise AttributeError(f"module 'app.agent.orchestrator' has no attribute {name!r}")
-
-
 def _finish_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
     """结束入站消息的渠道处理状态。"""
     if not status:
@@ -3123,14 +3114,3 @@ class AgentManager:
 
 # 全局智能体管理器实例
 agent_manager = AgentManager()
-
-# 星号导入过去会暴露模块中全部非私有名称；这里按同一规则锁定既有集合，
-# 仅追加由 __getattr__ 按需解析的兼容工厂符号。
-__all__ = sorted(
-    {
-        name
-        for name in globals()
-        if not name.startswith("_") and name != "MoviePilotToolFactory"
-    }
-    | {"MoviePilotToolFactory"}
-)

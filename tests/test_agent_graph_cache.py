@@ -434,7 +434,7 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
             side_effect=_capture_subagents,
         ),
         patch(
-            "app.agent.orchestrator.MoviePilotToolFactory.get_tool_selector_always_include_names",
+            "app.agent.tools.factory.MoviePilotToolFactory.get_tool_selector_always_include_names",
             return_value=[],
         ),
         patch(

@@ -297,7 +297,7 @@ class RuntimeAgent:
 class TestStreamingHandler(openai._OpenAIStreamingHandlerMixin):
     pass
 
-openai._OpenAIStreamingHandler = TestStreamingHandler
+openai._get_openai_streaming_handler_type = lambda: TestStreamingHandler
 agent_type = openai._build_collecting_agent_type(RuntimeAgent)
 agent = agent_type(session_id="stable", user_id="api")
 first_queue = asyncio.Queue()

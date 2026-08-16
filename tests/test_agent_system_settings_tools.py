@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agent.tools.catalog import ToolCatalogSnapshot
+from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl._system_setting_utils import list_setting_specs
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
@@ -330,10 +332,14 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
 
     def test_tool_manager_blocks_admin_tools_for_non_admin_context(self):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
+        catalog = ToolCatalogSnapshot.from_tools(
+            [tool], plugin_revision=0, factory_revision="test"
+        )
 
-        with patch(
-            "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
-            return_value=[tool],
+        with patch.object(
+            MoviePilotToolFactory,
+            "create_catalog",
+            return_value=catalog,
         ):
             manager = MoviePilotToolsManager(is_admin=False)
             result = asyncio.run(

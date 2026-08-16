@@ -366,13 +366,6 @@ _WEB_AGENT_STREAMING_HANDLER_TYPE_LOCK = Lock()
 _WEB_AGENT_STREAMING_HANDLER_TYPE: Optional[type] = None
 
 
-class _WebAgentStreamingHandler:
-    """保持原构造入口，同时把完整回调实现延迟到真实 Agent 请求。"""
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
-        return _get_web_agent_streaming_handler_type()(*args, **kwargs)
-
-
 class _WebAgentMoviePilotAgentMixin:
     """
     Web 前端专用 Agent，强制使用流式推理。
@@ -386,7 +379,9 @@ class _WebAgentMoviePilotAgentMixin:
     ) -> None:
         super().__init__(*args, **kwargs)
         self._notification_callback = notification_callback
-        self.stream_handler = _WebAgentStreamingHandler(self._emit_output)
+        self.stream_handler = _get_web_agent_streaming_handler_type()(
+            self._emit_output
+        )
 
     def _should_stream(self) -> bool:
         """Web 对话实时输出，复用会话执行后台任务时改用非流式广播。"""
@@ -475,23 +470,6 @@ def _get_web_agent_type() -> type:
         if _WEB_AGENT_TYPE is None:
             _WEB_AGENT_TYPE = _build_web_agent_type(get_moviepilot_agent_type())
         return _WEB_AGENT_TYPE
-
-
-class _WebAgentMoviePilotAgent:
-    """兼容既有构造入口；实例由按需组合的运行时类型提供。"""
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
-        return _get_web_agent_type()(*args, **kwargs)
-
-
-_DEFAULT_WEB_AGENT_FACTORY = _WebAgentMoviePilotAgent
-
-
-def _resolve_web_agent_factory() -> Callable[..., Any]:
-    """返回真实运行时类型，并保留测试或集成方替换构造入口的能力。"""
-    if _WebAgentMoviePilotAgent is not _DEFAULT_WEB_AGENT_FACTORY:
-        return _WebAgentMoviePilotAgent
-    return _get_web_agent_type()
 
 
 def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
@@ -2247,7 +2225,7 @@ async def web_agent_stream(
                         else None
                     ),
                     notification_callback=notification_callback,
-                    agent_factory=_resolve_web_agent_factory(),
+                    agent_factory=_get_web_agent_type(),
                     wait_for_completion=True,
                 )
             except asyncio.CancelledError:

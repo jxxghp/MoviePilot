@@ -49,7 +49,7 @@ class _CollectingMoviePilotAgentMixin:
         self.collected_messages: List[str] = []
         self.stream_mode = stream_mode
         if stream_mode:
-            self.stream_handler = _OpenAIStreamingHandler()
+            self.stream_handler = _get_openai_streaming_handler_type()()
 
     def _should_stream(self) -> bool:
         return self.stream_mode
@@ -68,7 +68,7 @@ class _CollectingMoviePilotAgentMixin:
             return
         if not stream_mode:
             return
-        self.stream_handler = _OpenAIStreamingHandler()
+        self.stream_handler = _get_openai_streaming_handler_type()()
         self.stream_handler.bind_queue(event_queue)
         # 已编译工具持有旧 handler；identity 变化时必须重建图和工具目录。
         self._compiled_agent_bundle = None
@@ -179,13 +179,6 @@ _OPENAI_STREAMING_HANDLER_TYPE_LOCK = Lock()
 _OPENAI_STREAMING_HANDLER_TYPE: Optional[type] = None
 
 
-class _OpenAIStreamingHandler:
-    """保持既有构造入口，并延迟完整回调实现的导入。"""
-
-    def __new__(cls, *args, **kwargs):
-        return _get_openai_streaming_handler_type()(*args, **kwargs)
-
-
 def _build_collecting_agent_type(agent_base_type: type) -> type:
     """为 OpenAI 与 Anthropic 兼容协议组合唯一的运行时类型。"""
     return type(
@@ -210,13 +203,6 @@ def _get_collecting_agent_type() -> type:
                 get_moviepilot_agent_type()
             )
         return _COLLECTING_AGENT_TYPE
-
-
-class _CollectingMoviePilotAgent:
-    """兼容既有构造入口；实例由按需组合的运行时类型提供。"""
-
-    def __new__(cls, *args, **kwargs):
-        return _get_collecting_agent_type()(*args, **kwargs)
 
 
 def _sse_payload(data: dict) -> str:
