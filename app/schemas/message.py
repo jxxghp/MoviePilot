@@ -20,7 +20,6 @@ class MessageClearScope(str, Enum):
     Media = "media"
 
 
-
 class MessageClearBefore(BaseModel):
     """
     通知中心按范围记录的清理时间。
@@ -32,7 +31,6 @@ class MessageClearBefore(BaseModel):
     system: int = 0
     # 媒体消息清理时间
     media: int = 0
-
 
 
 class MessageResponse(BaseModel):
@@ -85,7 +83,6 @@ class MessageHistoryItem(BaseModel):
     note: Optional[JsonData] = None
 
 
-
 class WebMessageItem(MessageHistoryItem):
     """Web 消息历史记录。"""
 
@@ -94,7 +91,6 @@ class MessageClearData(BaseModel):
     """消息中心各范围的清理时间。"""
 
     clear_before: MessageClearBefore = Field(description="各范围清理时间")
-
 
 
 class IncomingMessage(BaseModel):
@@ -122,10 +118,10 @@ class IncomingMessage(BaseModel):
                 return cls(ref=value)
             if isinstance(value, dict):
                 ref = (
-                    value.get("ref")
-                    or value.get("url")
-                    or value.get("image_url")
-                    or value.get("file_url")
+                        value.get("ref")
+                        or value.get("url")
+                        or value.get("image_url")
+                        or value.get("file_url")
                 )
                 if not ref:
                     return None
@@ -144,7 +140,7 @@ class IncomingMessage(BaseModel):
 
         @classmethod
         def normalize_list(
-            cls, values: Optional[Any]
+                cls, values: Optional[Any]
         ) -> Optional[List["IncomingMessage.MessageImage"]]:
             if not values:
                 return None
@@ -207,7 +203,7 @@ class IncomingMessage(BaseModel):
     @field_validator("images", mode="before")
     @classmethod
     def _normalize_images(
-        cls, value: Any
+            cls, value: Any
     ) -> Optional[List["IncomingMessage.MessageImage"]]:
         return cls.MessageImage.normalize_list(value)
 
@@ -220,7 +216,6 @@ class IncomingMessage(BaseModel):
             if isinstance(v, NotificationChannel):
                 items[k] = v.value
         return items
-
 
 
 class Message(BaseModel):
@@ -288,7 +283,6 @@ class Message(BaseModel):
             if isinstance(v, NotificationChannel) or isinstance(v, MessageType):
                 items[k] = v.value
         return items
-
 
 
 class NotificationSwitch(BaseModel):
