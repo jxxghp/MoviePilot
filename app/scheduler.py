@@ -300,6 +300,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     }
 
     def __init__(self):
+        """创建调度器状态；后台任务由应用生命周期显式启动。"""
         # 定时服务
         self._scheduler = None
         # 退出事件
@@ -314,10 +315,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self._auth_count = 0
         # 用户认证失败消息发送
         self._auth_message = False
-        # 对账上个进程未收口的 Agent 任务
-        self._reconcile_agent_task_interruptions()
-        # 初始化
-        self.init()
 
     def on_config_changed(self) -> None:
         """
@@ -408,6 +405,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         # 调试模式不启动定时服务
         if settings.DEV:
             return
+
+        # 对账上个进程未收口的 Agent 任务；进程内重复初始化不会重复改写状态。
+        self._reconcile_agent_task_interruptions()
 
         with lock:
             # 各服务的运行状态

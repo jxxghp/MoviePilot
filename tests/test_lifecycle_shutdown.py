@@ -28,6 +28,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_plugins",
         "init_scheduler",
         "init_monitor",
+        "replay_pending_transfers",
         "init_command",
         "init_workflow",
     ):

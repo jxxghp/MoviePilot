@@ -313,15 +313,10 @@ async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> N
     assert other_run
     assert oper.finish_run(other_run.run_id, success=True, result="其他用户")
 
-    class _SchedulerStub:
-        """为查询工具提供下一次触发时间，避免启动真实 APScheduler。"""
-
-        @staticmethod
-        def get_agent_task_next_run(_task_id):
-            """返回测试任务不需要的下一次触发时间。"""
-            return None
-
-    monkeypatch.setattr("app.scheduler.Scheduler", _SchedulerStub)
+    monkeypatch.setattr(
+        "app.application.scheduling.get_agent_task_next_run",
+        lambda _task_id: None,
+    )
     detail = json.loads(await _build_query_tool(task.user_id).run(task_id=task.id))
     assert detail["total"] == 1
     assert [run["run_id"] for run in detail["tasks"][0]["recent_runs"]] == expected[:10]

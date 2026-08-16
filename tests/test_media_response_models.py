@@ -1,6 +1,6 @@
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from app import schemas
 from app.api.endpoints import mediaserver as mediaserver_endpoint
@@ -9,7 +9,8 @@ from app.domain.context import MediaInfo as CoreMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
 
-def test_media_search_response_preserves_core_collection_fields() -> None:
+@pytest.mark.asyncio
+async def test_media_search_response_preserves_core_collection_fields() -> None:
     """媒体搜索响应模型应保留 Core MediaInfo 合集输出的全部兼容字段。"""
     media = CoreMediaInfo(tmdb_info={
         "id": 42,
@@ -36,7 +37,11 @@ def test_media_search_response_preserves_core_collection_fields() -> None:
 
     app = FastAPI()
     app.include_router(router)
-    response = TestClient(app).get("/media/search")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/media/search")
 
     assert response.status_code == 200
     result = response.json()["data"][0]
@@ -52,7 +57,8 @@ def test_media_search_response_preserves_core_collection_fields() -> None:
     assert "anilist_info" in result
 
 
-def test_media_response_accepts_cross_source_credit_shapes() -> None:
+@pytest.mark.asyncio
+async def test_media_response_accepts_cross_source_credit_shapes() -> None:
     """媒体响应应同时保留豆瓣姓名字符串和 TMDB 演职员对象。"""
     router = ResponseAPIRouter()
 
@@ -71,7 +77,11 @@ def test_media_response_accepts_cross_source_credit_shapes() -> None:
 
     app = FastAPI()
     app.include_router(router)
-    response = TestClient(app).get("/recommend")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/recommend")
 
     assert response.status_code == 200
     media = response.json()["data"][0]
@@ -83,7 +93,8 @@ def test_media_response_accepts_cross_source_credit_shapes() -> None:
     assert media["directors"][1]["name"] == "导演乙"
 
 
-def test_media_response_accepts_legacy_source_key() -> None:
+@pytest.mark.asyncio
+async def test_media_response_accepts_legacy_source_key() -> None:
     """媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。"""
     router = ResponseAPIRouter()
 
@@ -103,7 +114,11 @@ def test_media_response_accepts_legacy_source_key() -> None:
 
     app = FastAPI()
     app.include_router(router)
-    response = TestClient(app).get("/recommend")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/recommend")
 
     assert response.status_code == 200
     media = response.json()["data"][0]

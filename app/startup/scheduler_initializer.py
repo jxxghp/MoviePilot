@@ -9,7 +9,7 @@ def init_scheduler():
     """
     初始化定时器
     """
-    Scheduler()
+    Scheduler().init()
 
 
 def stop_scheduler():
