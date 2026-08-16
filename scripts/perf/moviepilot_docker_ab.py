@@ -31,6 +31,8 @@ DEFAULT_SUBSTRATE = (
     "sha256:925de1fdf1bb0312144bc818bc8ebaa999a9a159c6d14f1b48b0ff05edb7f720"
 )
 DEFAULT_BROWSER_SOURCE_VOLUME = "mp-perf-v3-browser-seed"
+DEFAULT_SCENARIO = "idle-default"
+SCENARIOS = (DEFAULT_SCENARIO, "browser-headless", "browser-headed")
 CAMPAIGN_LABEL = "org.moviepilot.perf.campaign"
 ROLE_LABEL = "org.moviepilot.perf.role"
 SOURCE_LABEL = "org.moviepilot.perf.source-commit"
@@ -587,6 +589,10 @@ def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, s
             {
                 "PYTHONPATH": "/opt/moviepilot-perf/instrument",
                 "MP_PERF_OUTPUT_DIR": "/opt/moviepilot-perf/out/modules",
+                "MP_PERF_SCENARIO": getattr(args, "scenario", DEFAULT_SCENARIO),
+                "MP_PERF_ACTIVATION_TIMEOUT": str(
+                    getattr(args, "activation_timeout", 180)
+                ),
             }
         )
     return environment
@@ -1103,7 +1109,9 @@ def sample_volume_names(
     index: int,
 ) -> tuple[str, str]:
     """返回单个样本的隔离配置和浏览器卷名称。"""
-    prefix = f"{resource_prefix(args)}-{variant}-{index}"
+    scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
+    scenario_segment = "" if scenario == DEFAULT_SCENARIO else f"-{scenario}"
+    prefix = f"{resource_prefix(args)}{scenario_segment}-{variant}-{index}"
     return f"{prefix}-config", f"{prefix}-browser"
 
 
@@ -1113,11 +1121,190 @@ def sample_result_directory(
     index: int,
 ) -> Path:
     """返回单个样本的原始结果目录。"""
-    return campaign_directory(args) / "samples" / f"{variant}-{index}"
+    scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
+    sample_root = campaign_directory(args) / "samples"
+    if scenario == DEFAULT_SCENARIO:
+        return sample_root / f"{variant}-{index}"
+    return sample_root / scenario / f"{variant}-{index}"
+
+
+def capture_activation_snapshot(
+    container,
+    output_dir: Path,
+    phase: str,
+) -> dict[str, Any]:
+    """采集浏览器激活边界的 Engine、进程和进程内 import 状态。"""
+    engine = capture_engine_stats(container)
+    processes = capture_processes(container)
+    modules = capture_modules(container, output_dir, processes["main_python"])
+    return {
+        "phase": phase,
+        "captured_at": utc_now(),
+        "engine": engine,
+        "processes": processes,
+        "modules": modules,
+    }
+
+
+def evaluate_browser_activation(
+    scenario: str,
+    pre: dict[str, Any],
+    post: dict[str, Any],
+    marker: dict[str, Any],
+    expected_pid: Optional[int] = None,
+) -> dict[str, Any]:
+    """按场景不变量判断浏览器与 display 的真实激活是否有效。"""
+    pre_xvfb = pre["processes"]["xvfb"]
+    post_xvfb = post["processes"]["xvfb"]
+    browser = marker.get("browser") or {}
+    managed_resource = browser.get("managed_resource") or {}
+    managed_before = managed_resource.get("before") or {}
+    managed_after = managed_resource.get("after") or {}
+    before_observations = managed_before.get("observations") or []
+    after_observations = managed_after.get("observations") or []
+    observation_prefix_matches = (
+        after_observations[: len(before_observations)] == before_observations
+    )
+    new_observations = (
+        after_observations[len(before_observations) :]
+        if observation_prefix_matches
+        else after_observations
+    )
+    display_starts = [
+        item
+        for item in new_observations
+        if item.get("operation") == "activate" and item.get("outcome") == "started"
+    ]
+    display_successes = [
+        item
+        for item in new_observations
+        if item.get("operation") == "activate" and item.get("outcome") == "succeeded"
+    ]
+    display_start_reasons = [item.get("reason") for item in display_starts]
+    before_generation = (managed_before.get("snapshot") or {}).get("generation")
+    after_generation = (managed_after.get("snapshot") or {}).get("generation")
+    errors: list[str] = []
+    if marker.get("scenario") != scenario:
+        errors.append("进程内 marker 的场景与采集请求不一致")
+    if expected_pid is not None and marker.get("pid") != expected_pid:
+        errors.append("进程内 marker 不是目标 MoviePilot Python 进程写出")
+    if not marker.get("success") or not browser.get("success"):
+        errors.append("主 MoviePilot Python 进程未完成浏览器激活")
+    if browser.get("retained_contexts") != 1:
+        errors.append("激活后必须保留一个浏览器上下文供 post activation 采样")
+    if not managed_before.get("available") or not managed_after.get("available"):
+        errors.append("主进程未提供 host.display managed resource 观测")
+    process_single_flight = browser.get("single_flight_probe") or {}
+
+    single_flight = {
+        "requested": scenario == "browser-headed",
+        "concurrent_callers": int(process_single_flight.get("concurrent_callers") or 0),
+        "successful_callers": int(process_single_flight.get("successful_callers") or 0),
+        "xvfb_process_delta": int(post_xvfb["count"]) - int(pre_xvfb["count"]),
+        "generation_before": before_generation,
+        "generation_after": after_generation,
+        "activation_start_count": len(display_starts),
+        "activation_success_count": len(display_successes),
+        "activation_start_reasons": display_start_reasons,
+        "observation_prefix_matches": observation_prefix_matches,
+        "passed": None,
+    }
+    if scenario == "browser-headless":
+        if pre_xvfb["count"] != 0 or post_xvfb["count"] != 0:
+            errors.append("headless 激活前后都不得存在 Xvfb")
+        if display_starts or before_generation != after_generation:
+            errors.append("headless 激活不得申请 host.display")
+    elif scenario == "browser-headed":
+        if pre_xvfb["count"] != 0:
+            errors.append("headed 冷激活前必须没有 Xvfb")
+        if post_xvfb["count"] != 1:
+            errors.append("headed 并发激活后必须恰好存在一个 Xvfb")
+        single_flight["passed"] = (
+            single_flight["concurrent_callers"] == 2
+            and single_flight["successful_callers"] == 2
+            and single_flight["xvfb_process_delta"] == 1
+            and single_flight["activation_start_count"] == 1
+            and single_flight["activation_success_count"] == 1
+            and single_flight["activation_start_reasons"] == ["headed_browser_launch"]
+            and before_generation is not None
+            and after_generation == before_generation + 1
+        )
+        if not single_flight["passed"]:
+            errors.append("headed 并发请求未证明 display single-flight")
+    else:
+        errors.append(f"未知浏览器场景：{scenario}")
+
+    return {
+        "passed": not errors,
+        "errors": errors,
+        "expected": ("Xvfb 0→0" if scenario == "browser-headless" else "Xvfb 0→1"),
+        "observed": {
+            "pre_xvfb_count": pre_xvfb["count"],
+            "pre_xvfb_pss_kib": pre_xvfb["pss_kib"],
+            "post_xvfb_count": post_xvfb["count"],
+            "post_xvfb_pss_kib": post_xvfb["pss_kib"],
+        },
+        "single_flight": single_flight,
+    }
+
+
+def activate_browser_scenario(
+    container,
+    output_dir: Path,
+    scenario: str,
+    timeout: float,
+) -> dict[str, Any]:
+    """通过 SIGUSR2 让目标 MoviePilot 解释器执行场景激活并回收 marker。"""
+    pre = capture_activation_snapshot(container, output_dir, "pre-activation")
+    main_python = pre["processes"]["main_python"]
+    if not main_python:
+        raise HarnessError("未找到主 Python 进程，无法触发浏览器场景")
+    marker_path = output_dir / "modules" / f"activation-{main_python['pid']}.json"
+    marker_path.unlink(missing_ok=True)
+
+    requested_at = time.monotonic()
+    result = container.exec_run(["kill", "-USR2", str(main_python["pid"])])
+    if result.exit_code != 0:
+        raise HarnessError("向主 Python 进程发送场景激活信号失败")
+    deadline = requested_at + timeout
+    while time.monotonic() < deadline:
+        if marker_path.exists():
+            break
+        if not container_running(container):
+            raise HarnessError("等待场景激活 marker 时容器提前退出")
+        time.sleep(0.05)
+    if not marker_path.exists():
+        raise HarnessError(f"浏览器场景激活在 {timeout:.0f}s 内未完成")
+
+    marker_received_at = time.monotonic()
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    post = capture_activation_snapshot(container, output_dir, "post-activation")
+    validation = evaluate_browser_activation(
+        scenario,
+        pre,
+        post,
+        marker,
+        expected_pid=main_python["pid"],
+    )
+    return {
+        "scenario": scenario,
+        "trigger": "SIGUSR2-to-main-python",
+        "main_python_pid": main_python["pid"],
+        "orchestrator_elapsed_seconds": marker_received_at - requested_at,
+        "post_capture_elapsed_seconds": time.monotonic() - marker_received_at,
+        "worker_elapsed_seconds": marker.get("elapsed_seconds"),
+        "pre": pre,
+        "post": post,
+        "marker": marker,
+        "validation": validation,
+    }
 
 
 def command_sample(args: argparse.Namespace) -> dict[str, Any]:
     """执行一个隔离样本并在约定时间点采集完整指标。"""
+    scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
+    if scenario != DEFAULT_SCENARIO and args.variant != "after":
+        raise HarnessError("浏览器激活场景只用于验证包含 app.sdk.browser 的 After 候选")
     client = require_docker_client()
     build = load_build_manifest(args)
     config_seed, browser_seed = require_seed_volumes(client, args)
@@ -1144,13 +1331,21 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
     clone_volume(client, image, browser_seed, browser_volume.name)
     browser_before = volume_fingerprint(client, image, browser_volume.name)
     network = ensure_internal_network(client, args)
-    container_name = f"{resource_prefix(args)}-{args.variant}-{args.index}"
+    scenario_segment = "" if scenario == DEFAULT_SCENARIO else f"-{scenario}"
+    container_name = (
+        f"{resource_prefix(args)}{scenario_segment}-{args.variant}-{args.index}"
+    )
+    role = (
+        f"sample-{args.variant}-{args.index}"
+        if scenario == DEFAULT_SCENARIO
+        else f"sample-{scenario}-{args.variant}-{args.index}"
+    )
     container = create_app_container(
         client,
         args,
         image=image,
         name=container_name,
-        role=f"sample-{args.variant}-{args.index}",
+        role=role,
         config_volume=config_volume.name,
         browser_volume=browser_volume.name,
         network_name=network.name,
@@ -1161,6 +1356,7 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
         "campaign": args.campaign,
         "variant": args.variant,
         "sample_index": args.index,
+        "scenario": scenario,
         "source_commit": build[f"{args.variant}_commit"],
         "image": image,
         "started_at": utc_now(),
@@ -1171,6 +1367,7 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
             "network": "internal",
             "database": "sqlite-seed-clone",
             "browser": "prewarmed-seed-clone",
+            "scenario": scenario,
         },
         "browser_before": browser_before,
         "measurements": [],
@@ -1191,9 +1388,27 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
         result["http_ready_seconds"] = ready_seconds
         result["settled_seconds"] = settled_at - started_at
         result["settled_wait_seconds_after_ready"] = settled_at - ready_at
+        measurement_origin_at = settled_at
+
+        if scenario != DEFAULT_SCENARIO:
+            activation = activate_browser_scenario(
+                container,
+                output_dir,
+                scenario,
+                args.activation_timeout,
+            )
+            result["activation"] = activation
+            atomic_write_json(output_dir / "result.partial.json", result)
+            if not activation["validation"]["passed"]:
+                details = "; ".join(activation["validation"]["errors"])
+                raise HarnessError(f"{scenario} 场景激活不满足验收条件：{details}")
+            measurement_origin_at = time.monotonic()
+            result["measurement_origin"] = "post-activation"
+        else:
+            result["measurement_origin"] = "settled"
 
         for point in args.points:
-            deadline = settled_at + point * 60
+            deadline = measurement_origin_at + point * 60
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 time.sleep(remaining)
@@ -1201,7 +1416,12 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
                 raise HarnessError(f"容器在 {point:g}m 采样前退出")
             print(f"[{args.variant}-{args.index}] sampling {point:g}m")
             result["measurements"].append(
-                capture_measurement(container, output_dir, point, settled_at)
+                capture_measurement(
+                    container,
+                    output_dir,
+                    point,
+                    measurement_origin_at,
+                )
             )
             atomic_write_json(output_dir / "result.partial.json", result)
         assert_no_app_env(container)
@@ -1236,7 +1456,7 @@ def load_sample_results(args: argparse.Namespace) -> list[dict[str, Any]]:
     results = []
     if not sample_root.exists():
         return results
-    for path in sorted(sample_root.glob("*/result.json")):
+    for path in sorted(sample_root.rglob("result.json")):
         results.append(json.loads(path.read_text(encoding="utf-8")))
     return results
 
@@ -1282,6 +1502,10 @@ def build_markdown_report(
     samples: list[dict[str, Any]],
 ) -> str:
     """生成不含本机路径和凭据的 Markdown 汇总。"""
+    scenarios = sorted(
+        {sample.get("scenario", DEFAULT_SCENARIO) for sample in samples}
+    ) or [DEFAULT_SCENARIO]
+    show_scenario = any(scenario != DEFAULT_SCENARIO for scenario in scenarios)
     points = sorted(
         {
             float(measurement["target_minute"])
@@ -1314,7 +1538,8 @@ def build_markdown_report(
         )
 
     headers = (
-        ["版本", "样本", "HTTP ready(s)"]
+        (["场景"] if show_scenario else [])
+        + ["版本", "样本", "HTTP ready(s)"]
         + [f"{point:g}m WS(MiB)" for point in points]
         + [
             "末次 Python PSS(MiB)",
@@ -1333,11 +1558,12 @@ def build_markdown_report(
     for sample in sorted(
         samples,
         key=lambda item: (
+            item.get("scenario", DEFAULT_SCENARIO),
             variant_order.get(item["variant"], 99),
             item["sample_index"],
         ),
     ):
-        row = [
+        row = ([sample.get("scenario", DEFAULT_SCENARIO)] if show_scenario else []) + [
             sample["variant"],
             str(sample["sample_index"]),
             f"{sample.get('http_ready_seconds', 0):.2f}"
@@ -1388,53 +1614,149 @@ def build_markdown_report(
         )
         lines.append("| " + " | ".join(row) + " |")
 
+    activated_samples = [sample for sample in samples if sample.get("activation")]
+    if activated_samples:
+        activation_headers = [
+            "场景",
+            "版本",
+            "样本",
+            "激活(s)",
+            "Pre WS(MiB)",
+            "Post WS(MiB)",
+            "Pre Python PSS(MiB)",
+            "Post Python PSS(MiB)",
+            "Pre Xvfb",
+            "Post Xvfb",
+            "Post Xvfb PSS(MiB)",
+            "Activation RX Δ(KiB)",
+            "Activation TX Δ(KiB)",
+            "Browser",
+            "Single-flight generation/start",
+            "验收",
+        ]
+        lines.extend(
+            [
+                "",
+                "## 场景激活",
+                "",
+                "| " + " | ".join(activation_headers) + " |",
+                "| " + " | ".join(["---"] * len(activation_headers)) + " |",
+            ]
+        )
+        for sample in sorted(
+            activated_samples,
+            key=lambda item: (
+                item.get("scenario", DEFAULT_SCENARIO),
+                variant_order.get(item["variant"], 99),
+                item["sample_index"],
+            ),
+        ):
+            activation = sample["activation"]
+            pre = activation["pre"]
+            post = activation["post"]
+            marker = activation["marker"]
+            validation = activation["validation"]
+            pre_python = pre["processes"].get("main_python") or {}
+            post_python = post["processes"].get("main_python") or {}
+            single_flight = validation["single_flight"]
+            activation_row = [
+                sample.get("scenario", DEFAULT_SCENARIO),
+                sample["variant"],
+                str(sample["sample_index"]),
+                f"{float(activation.get('worker_elapsed_seconds') or 0):.2f}",
+                format_mib(pre["engine"]["working_set_bytes"]),
+                format_mib(post["engine"]["working_set_bytes"]),
+                format_kib_as_mib(pre_python.get("pss_kib")),
+                format_kib_as_mib(post_python.get("pss_kib")),
+                str(pre["processes"]["xvfb"]["count"]),
+                str(post["processes"]["xvfb"]["count"]),
+                format_kib_as_mib(post["processes"]["xvfb"]["pss_kib"]),
+                format_bytes_as_kib(
+                    post["engine"]["network_rx_bytes"]
+                    - pre["engine"]["network_rx_bytes"]
+                ),
+                format_bytes_as_kib(
+                    post["engine"]["network_tx_bytes"]
+                    - pre["engine"]["network_tx_bytes"]
+                ),
+                "成功" if marker.get("success") else "失败",
+                (
+                    f"{single_flight.get('generation_after')}/"
+                    f"{single_flight.get('activation_start_count')}"
+                    if single_flight.get("passed") is True
+                    else "不适用"
+                    if single_flight.get("passed") is None
+                    else "失败"
+                ),
+                "通过" if validation["passed"] else "失败",
+            ]
+            lines.append("| " + " | ".join(activation_row) + " |")
+
     lines.extend(["", "## 中位数对照", ""])
-    if points:
-        lines.append("| 时间点 | Before(MiB) | After(MiB) | 净差(MiB) | 变化 |")
-        lines.append("| --- | ---: | ---: | ---: | ---: |")
-        for point in points:
-            before_values = [
-                measurement_at(sample, point)["engine"]["working_set_bytes"]
-                for sample in samples
-                if sample["variant"] == "before" and measurement_at(sample, point)
-            ]
-            after_values = [
-                measurement_at(sample, point)["engine"]["working_set_bytes"]
-                for sample in samples
-                if sample["variant"] == "after" and measurement_at(sample, point)
-            ]
-            before_median = median(before_values)
-            after_median = median(after_values)
-            if before_median is None or after_median is None:
-                lines.append(f"| {point:g}m | — | — | — | — |")
-                continue
-            delta = after_median - before_median
-            percent = delta / before_median * 100 if before_median else 0
-            lines.append(
-                f"| {point:g}m | {format_mib(before_median)} | "
-                f"{format_mib(after_median)} | {delta / 1024 / 1024:.1f} | {percent:.1f}% |"
+    for scenario in scenarios:
+        scenario_samples = [
+            sample
+            for sample in samples
+            if sample.get("scenario", DEFAULT_SCENARIO) == scenario
+        ]
+        if show_scenario:
+            lines.extend([f"### `{scenario}`", ""])
+        if points:
+            lines.append("| 时间点 | Before(MiB) | After(MiB) | 净差(MiB) | 变化 |")
+            lines.append("| --- | ---: | ---: | ---: | ---: |")
+            for point in points:
+                before_values = [
+                    measurement_at(sample, point)["engine"]["working_set_bytes"]
+                    for sample in scenario_samples
+                    if sample["variant"] == "before" and measurement_at(sample, point)
+                ]
+                after_values = [
+                    measurement_at(sample, point)["engine"]["working_set_bytes"]
+                    for sample in scenario_samples
+                    if sample["variant"] == "after" and measurement_at(sample, point)
+                ]
+                before_median = median(before_values)
+                after_median = median(after_values)
+                if before_median is None or after_median is None:
+                    lines.append(f"| {point:g}m | — | — | — | — |")
+                    continue
+                delta = after_median - before_median
+                percent = delta / before_median * 100 if before_median else 0
+                lines.append(
+                    f"| {point:g}m | {format_mib(before_median)} | "
+                    f"{format_mib(after_median)} | {delta / 1024 / 1024:.1f} | "
+                    f"{percent:.1f}% |"
+                )
+            lines.append("")
+
+    lines.extend(["## 启动时间", ""])
+    for scenario in scenarios:
+        scenario_samples = [
+            sample
+            for sample in samples
+            if sample.get("scenario", DEFAULT_SCENARIO) == scenario
+        ]
+        ready_before = median(
+            sample["http_ready_seconds"]
+            for sample in scenario_samples
+            if sample["variant"] == "before" and "http_ready_seconds" in sample
+        )
+        ready_after = median(
+            sample["http_ready_seconds"]
+            for sample in scenario_samples
+            if sample["variant"] == "after" and "http_ready_seconds" in sample
+        )
+        scenario_prefix = f"`{scenario}`：" if show_scenario else ""
+        if ready_before is not None and ready_after is not None:
+            startup_change = (
+                (ready_after - ready_before) / ready_before * 100 if ready_before else 0
             )
-    ready_before = median(
-        sample["http_ready_seconds"]
-        for sample in samples
-        if sample["variant"] == "before" and "http_ready_seconds" in sample
-    )
-    ready_after = median(
-        sample["http_ready_seconds"]
-        for sample in samples
-        if sample["variant"] == "after" and "http_ready_seconds" in sample
-    )
-    lines.extend(["", "## 启动时间", ""])
-    if ready_before is not None and ready_after is not None:
-        startup_change = (
-            (ready_after - ready_before) / ready_before * 100 if ready_before else 0
-        )
-        lines.append(
-            f"Before 中位数 {ready_before:.2f}s，After 中位数 {ready_after:.2f}s，"
-            f"变化 {startup_change:.1f}%。"
-        )
-    else:
-        lines.append("样本尚不完整。")
+            lines.append(
+                f"{scenario_prefix}Before 中位数 {ready_before:.2f}s，"
+                f"After 中位数 {ready_after:.2f}s，变化 {startup_change:.1f}%。"
+            )
+        else:
+            lines.append(f"{scenario_prefix}样本尚不完整。")
     lines.extend(
         [
             "",
@@ -1605,6 +1927,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory", default="2g")
     parser.add_argument("--ready-timeout", type=int, default=300)
     parser.add_argument("--settle-timeout", type=int, default=300)
+    parser.add_argument(
+        "--activation-timeout",
+        type=int,
+        default=180,
+        help="进程内场景激活完成 marker 的等待秒数",
+    )
     parser.add_argument("--stop-timeout", type=int, default=120)
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1623,6 +1951,12 @@ def build_parser() -> argparse.ArgumentParser:
     sample.add_argument("--index", type=int, choices=(1, 2, 3), required=True)
     sample.add_argument(
         "--points", type=parse_points, default=parse_points("1,5,10,30")
+    )
+    sample.add_argument(
+        "--scenario",
+        choices=SCENARIOS,
+        default=DEFAULT_SCENARIO,
+        help="样本场景；默认保持 PERF-001 idle-default 行为",
     )
     sample.add_argument("--replace", action="store_true")
 
@@ -1652,7 +1986,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             args.browser_source_volume = DEFAULT_BROWSER_SOURCE_VOLUME
     if args.cpus <= 0:
         parser.error("--cpus 必须大于 0")
-    if args.ready_timeout <= 0 or args.settle_timeout <= 0 or args.stop_timeout <= 0:
+    if (
+        args.ready_timeout <= 0
+        or args.settle_timeout <= 0
+        or args.activation_timeout <= 0
+        or args.stop_timeout <= 0
+    ):
         parser.error("timeout 必须大于 0")
     try:
         if args.command == "build":

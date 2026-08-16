@@ -22,7 +22,6 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.events import EventManager
 from app.runtime.state import SystemHelper
 from app.runtime.thread import ThreadHelper
-from app.adapters.system.display import DisplayHelper
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.resource import (
     ResourceHelper,
@@ -36,6 +35,10 @@ from app.command import CommandChain
 from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
+from app.startup.managed_resources_initializer import (
+    init_managed_resources,
+    stop_managed_resources,
+)
 from app.application.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
@@ -170,6 +173,13 @@ def update_resources() -> None:
         logger.error(f"资源更新完成但自动重启失败：{message}")
 
 
+def close_browser_sessions() -> None:
+    """在托管资源关闭前释放所有浏览器上下文及其工作线程。"""
+    from app.adapters.network.browser import BrowserSessionHelper
+
+    BrowserSessionHelper.close_all_sessions()
+
+
 async def stop_modules():
     """
     服务关闭
@@ -186,7 +196,8 @@ async def stop_modules():
     await run_step("AI智能体", stop_agent)
     await run_step("模块", lambda: ModuleManager().shutdown())
     await run_step("事件消费", lambda: EventManager().stop())
-    await run_step("虚拟显示", lambda: DisplayHelper().stop())
+    await run_step("浏览器会话", close_browser_sessions)
+    await run_step("托管资源", stop_managed_resources)
     await run_step("DoH服务", lambda: DohHelper().shutdown())
     await run_step("线程池", lambda: ThreadHelper().shutdown())
     await run_step("消息服务", stop_message)
@@ -201,12 +212,12 @@ async def init_modules():
     """
     启动模块
     """
+    # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
+    init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     set_superuser_token_payload_provider(build_superuser_token_payload)
-    # 虚拟显示
-    DisplayHelper()
     # DoH
     DohHelper()
     # 站点管理

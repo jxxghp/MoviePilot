@@ -50,6 +50,37 @@ ${PYTHON} scripts/perf/moviepilot_docker_ab.py \
 开发 harness 时可以用小数分钟做短冒烟，例如 `--points 0,0.02`。正式数据必须保持
 `1,5,10,30`。
 
+未指定 `--scenario` 时仍使用 `idle-default`，样本目录和 Docker 资源名称与既有命令保持一致。
+
+## 浏览器激活场景
+
+浏览器场景使用 campaign browser seed 的独立克隆卷，不直接挂载或写入固定来源卷，也不会在样本
+阶段下载浏览器。容器保持 internal network；探针只发送信号，`app.sdk.browser` 的导入、浏览器上下文
+创建和本地 `data:` 页面校验都发生在主 MoviePilot Python 进程中。
+
+非默认浏览器场景用于候选实现的 After 激活门禁；Before 不具备新 SDK，且旧实现启动时已经常驻
+Xvfb，因此不能用同一个 `0 → 0` / `0 → 1` 不变量衡量。三轮 Before/After 空载收益仍由默认
+`run` 的 `idle-default` 场景完成，浏览器场景用三个隔离的 After sample 记录冷激活成本。
+
+```bash
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-002-headless \
+  sample --variant after --index 1 --scenario browser-headless --points 1,5,10,30
+
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-002-headed \
+  sample --variant after --index 1 --scenario browser-headed --points 1,5,10,30
+```
+
+- `browser-headless`：一次真实 headless context 激活，要求 Xvfb `0 → 0`；
+- `browser-headed`：主进程内两个线程通过屏障并发调用
+  `launch_browser_context(headless=False)`；要求两个真实 SDK 冷启动调用成功、额外上下文关闭后只保留一个、
+  Capability observation 只有一个 `headed_browser_launch` generation/start，且 Xvfb `0 → 1`；
+- 激活完成后再开始 `1/5/10/30m` 计时，JSON 保留激活前后 Engine 网络、working set、进程
+  PSS/USS/RSS/线程、Xvfb 数量/PSS、`sys.modules` 和进程内 marker；
+- 非默认场景结果保存在 `samples/<scenario>/<variant>-<index>/`，可与同 campaign 的 idle 样本并存，
+  Markdown 中位数会按场景分组，不会混算。
+
 ## 完整三组 A/B
 
 ```bash

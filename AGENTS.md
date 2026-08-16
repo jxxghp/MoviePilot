@@ -60,19 +60,19 @@ The legacy roots have no physical directories in the source tree. Current images
 |---|---|---|---|
 | `app/foundation/` | 无状态、无配置和无 I/O 的底层机制：反射/动态导入、加密、DOM、身份、集合、单例、文本、URL 和版本比较 | `settings`、DB/SystemConfig、网络请求、运行日志、MoviePilot 业务规则、旧导入路径 | `reflection.py`, `crypto.py`, `collections.py`, `text.py`, `url.py` |
 | `app/domain/` | Pure MoviePilot business semantics and models for media, recognition, sites, and torrents | Persistence, global settings reads, network/filesystem clients, Rust imports, service discovery, process lifecycle | `context.py`, `media.py`, `metainfo.py`, `scraper.py`, `meta/` |
-| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `thread.py`, `state.py` |
-| `app/runtime/extensions/` | 模块、插件和配置化服务实现的发现、注册与生命周期 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `service_registry.py` |
+| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、托管资源门面、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `managed_resources.py`, `thread.py`, `state.py` |
+| `app/runtime/extensions/` | 模块、插件、配置化服务和托管资源实现的发现、注册与生命周期适配 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `managed_resource_adapter.py`, `service_registry.py` |
 | `app/adapters/network/` | HTTP、浏览器、DNS、Cloudflare 和 IP 等通用网络技术适配 | RSS/站点业务编排、身份认证策略、命名外部产品流程 | `http.py`, `browser.py`, `doh.py`, `ip.py` |
 | `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
-| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
+| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `display/`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
 | `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py`, `wechat_crypt.py` |
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务和服务族规则 | 多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `filter_rules.py`, `notification.py`, `mediaserver.py`, `rss.py`, `site/sites.*` |
 | `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接：`interaction.py` 通用交互契约和视图工具；`router.py` 统一交互优先级和回调分发；`site.py`/`subscribe.py`/`skill.py` 对应命令的会话、输入解析和视图；`media.py` 媒体交互状态（业务工作流仍由 `MediaInteractionChain` 执行）；`plugin.py` 插件输入接管和插件按钮回调；`agent.py` Agent 选择状态、回调协议和 WebAgent 消息桥接；`message.py` 通知渲染、模板和队列。不作为推荐给插件直接使用的公开 SDK | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `message.py`, `interaction.py`, `router.py`, `agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
 | `app/chain/` | Reusable use-case orchestration across modules, services, Oper classes, events, and caches; chains reach modules only through `run_module` dispatch on method-name contracts | Transport schemas, backend-specific protocol details, generic primitives, direct imports of module internals (classes, exceptions, constants) | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |
-| `app/startup/` | Composition root: inject providers/adapters, order initialization and shutdown, decide restart/lifecycle policy | Reusable business rules or adapter implementation details | `lifecycle.py`, `domain_initializer.py`, `cache_initializer.py`, `modules_initializer.py` |
-| `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
-| `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `diagnostics.py` |
+| `app/startup/` | Composition root: inject providers/adapters, order initialization and shutdown, decide restart/lifecycle policy | Reusable business rules or adapter implementation details | `lifecycle.py`, `domain_initializer.py`, `cache_initializer.py`, `managed_resources_initializer.py`, `modules_initializer.py` |
+| `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `browser.py`, `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
+| `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由、资源前置扫描和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `resource_imports.py`, `diagnostics.py` |
 
 容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
 
@@ -156,4 +156,4 @@ For the full documentation map and cross-references, refer to:
 
 **[Documentation Hub Index](./docs/rules/README.md)**
 
-*Last Updated: 2026-08-15*
+*Last Updated: 2026-08-16*

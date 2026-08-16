@@ -37,12 +37,17 @@ from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
 LegacyImportScanner = Callable[..., None]
+LegacyPluginImportPreparer = Callable[..., None]
 PluginInstallReporter = Callable[..., None]
 SiteAuthLevelProvider = Callable[[], int]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
     """在启动组合根尚未注入兼容服务时保持插件加载可用。"""
+
+
+def _ignore_plugin_resource_imports(**_kwargs) -> None:
+    """未进入应用启动组合时不主动创建进程级宿主资源。"""
 
 
 def _unavailable_site_auth_level() -> int:
@@ -54,6 +59,9 @@ _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
     _ignore_legacy_diagnostics
 )
 _legacy_import_scanner: LegacyImportScanner = _ignore_legacy_diagnostics
+_legacy_plugin_import_preparer: LegacyPluginImportPreparer = (
+    _ignore_plugin_resource_imports
+)
 _plugin_install_reporter: PluginInstallReporter = _ignore_legacy_diagnostics
 _site_auth_level_provider: SiteAuthLevelProvider = _unavailable_site_auth_level
 
@@ -67,6 +75,14 @@ def configure_plugin_legacy_import_services(
     global _legacy_diagnostics_configurator, _legacy_import_scanner
     _legacy_diagnostics_configurator = diagnostics_configurator
     _legacy_import_scanner = import_scanner
+
+
+def configure_plugin_resource_import_preparer(
+    preparer: LegacyPluginImportPreparer,
+) -> None:
+    """注入旧插件导入前的宿主资源准备器。"""
+    global _legacy_plugin_import_preparer
+    _legacy_plugin_import_preparer = preparer
 
 
 def configure_plugin_install_reporter(reporter: PluginInstallReporter) -> None:
@@ -317,6 +333,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 # 构建模块名
                 module_name = f"app.plugins.{plugin_dir.name}"
                 logger.debug(f"正在导入插件模块：{module_name}")
+
+                # 旧插件可能直接导入带宿主资源前置条件的第三方包。资源必须在
+                # Python 执行插件模块顶层代码前就绪，否则导入副作用无法安全回滚。
+                _legacy_plugin_import_preparer(
+                    plugin_id=plugin_dir.name,
+                    plugin_dir=plugin_dir,
+                )
 
                 _legacy_import_scanner(
                     plugin_id=plugin_dir.name,

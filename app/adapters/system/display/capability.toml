@@ -1,0 +1,12 @@
+schema_version = 1
+id = "host.display"
+kind = "managed_resource.sync"
+entrypoint = "app.adapters.system.display.resource:VirtualDisplayResource"
+depends_on = []
+
+[metadata]
+name = "Virtual Display"
+
+[activation]
+policy = "on_first_use"
+watch = []
