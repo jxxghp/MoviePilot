@@ -279,3 +279,32 @@ def test_llm_manage_endpoint_accepts_empty_target(monkeypatch):
     assert resp.success is True
     assert captured["provider"] == ""
     assert "callback_url" not in captured["params"]
+
+
+def test_llm_manage_endpoint_response_model_accepts_list_data():
+    """目录查询动作 data 为列表，响应模型须同时覆盖列表与映射形态。
+
+    回归守护：list_providers 返回 list[dict]，
+    若响应模型声明为 Dict[str, Any] 会在序列化校验时直接 500；
+    同时受响应模型守护测试约束，不得使用 Any/JsonData 弱类型。
+    """
+    from typing import Any, Dict, List, Union
+
+    from app.api.endpoints import llm as llm_endpoint
+
+    route = next(
+        r for r in llm_endpoint.router.routes if getattr(r, "path", "").endswith("/manage")
+    )
+    assert route.response_model is schemas.Response[
+        Union[List[Dict[str, Any]], Dict[str, Any]]
+    ]
+
+    list_resp = schemas.Response[Union[List[Dict[str, Any]], Dict[str, Any]]](
+        success=True, message="", data=[{"id": "openai", "name": "OpenAI 兼容"}]
+    )
+    assert list_resp.data == [{"id": "openai", "name": "OpenAI 兼容"}]
+
+    dict_resp = schemas.Response[Union[List[Dict[str, Any]], Dict[str, Any]]](
+        success=True, message="", data={"models": ["gpt-4o"]}
+    )
+    assert dict_resp.data == {"models": ["gpt-4o"]}

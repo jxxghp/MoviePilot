@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, Request, Response
 from fastapi.responses import HTMLResponse
@@ -15,7 +15,9 @@ router = ResponseAPIRouter()
 @router.post(
     "/manage",
     summary="LLM提供商统一管理",
-    response_model=schemas.Response[Dict[str, Any]],
+    # 各动作 data 形态不一：目录查询返回列表，其余动作返回映射，
+    # 须用具体联合类型声明，而非单一开放映射
+    response_model=schemas.Response[Union[List[Dict[str, Any]], Dict[str, Any]]],
 )
 async def manage_provider(
         request: Request,

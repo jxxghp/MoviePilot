@@ -637,6 +637,8 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
         "ManageRequest",
         # 通用管理响应的 data 为模块自定义结构，按设计不固定字段。
         "Response_Dict_str__Any__",
+        # LLM 提供商管理响应的 data 目录查询为列表、其余动作为映射。
+        "Response_Union_List_Dict_str__Any____Dict_str__Any___",
     }
     allowed_empty_components = {"McpJsonRpcEmptyResult"}
     violations = []
