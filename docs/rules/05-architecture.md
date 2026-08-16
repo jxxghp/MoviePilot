@@ -340,7 +340,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 |---|---|
 | `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
 | `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
-| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`, whose implementations are registered by `app/startup/agent_initializer.py` at import time |
+| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/agent_initializer.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugins.py`, `scheduling.py` and `commands.py` facades |
 | `api -> factory` | Forbidden; the FastAPI instance is injected into `app/application/plugins.py` by the composition root after creation |
 | `application -> domain / runtime / adapter / Oper` | Allowed |
@@ -357,7 +357,8 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 | Path | Purpose |
 |---|---|
-| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); Agent implementations register through `app/startup/agent_initializer.py`, no static `application -> agent` edge |
+| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/agent_initializer.py`, with no static `application -> agent` edge |
+| `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/plugins.py` | Plugin API dynamic route registration/removal; the FastAPI instance is injected by `app/factory.py` after creation |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
