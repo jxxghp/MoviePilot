@@ -4,10 +4,11 @@ import asyncio
 import sys
 import threading
 import types
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -62,6 +63,32 @@ class _Candidate:
     stopped: bool = False
 
 
+class _SampleCapability:
+    pass
+
+
+@pytest.fixture(autouse=True)
+def isolate_sample_entrypoints() -> Iterator[None]:
+    """隔离合成 adapter 在 sys.modules 中公开的 canonical entrypoint。"""
+    module_names = ("sample_implementation", "other_implementation")
+    previous = {name: sys.modules[name] for name in module_names if name in sys.modules}
+    for name in module_names:
+        sys.modules.pop(name, None)
+    yield
+    for name in module_names:
+        sys.modules.pop(name, None)
+        if name in previous:
+            sys.modules[name] = previous[name]
+
+
+def _materialize_sample(spec) -> type[_SampleCapability]:
+    module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
+    module = types.ModuleType(module_name)
+    setattr(module, symbol_name, _SampleCapability)
+    sys.modules[module_name] = module
+    return _SampleCapability
+
+
 class _SyncAdapter:
     execution_mode = AdapterExecutionMode.SYNC
 
@@ -84,7 +111,7 @@ class _SyncAdapter:
         self.materialize_calls += 1
         if self.fail_materialize:
             raise RuntimeError("materialize failed")
-        return object()
+        return _materialize_sample(spec)
 
     def create(self, spec, implementation: object, generation: int, previous: Any = None) -> _Candidate:
         self.create_calls += 1
@@ -139,7 +166,7 @@ class _AsyncAdapter:
         await asyncio.sleep(0)
         if self.fail_materialize:
             raise RuntimeError("async materialize failed")
-        return object()
+        return _materialize_sample(spec)
 
     async def create(self, spec, implementation: object, generation: int, previous: Any = None) -> _Candidate:
         self.create_calls += 1
@@ -208,6 +235,107 @@ def test_materialize_failure_does_not_claim_resource_lifecycle_failure(tmp_path:
     assert snapshot.materialization is CapabilityMaterializationState.FAILED
     assert snapshot.lifecycle is CapabilityLifecycleState.DISCOVERED
     assert snapshot.visible is False
+
+
+def test_materialize_rejects_missing_canonical_module(
+    tmp_path: Path,
+) -> None:
+    """adapter 未加载 manifest 指定模块时不得发布替代实现。"""
+    adapter = _SyncAdapter()
+    runtime = CapabilityRuntime(
+        _registry(tmp_path),
+        adapters={"sample": adapter},
+    )
+
+    with patch.object(adapter, "materialize", return_value=_SampleCapability), pytest.raises(
+        CapabilityOperationError,
+        match="canonical 模块.*未加载",
+    ):
+        runtime.materialize("sample.capability", reason="invalid_adapter")
+
+    snapshot = runtime.snapshot("sample.capability")
+    assert snapshot.materialization is CapabilityMaterializationState.FAILED
+    assert snapshot.lifecycle is CapabilityLifecycleState.DISCOVERED
+
+
+def test_materialize_rejects_missing_canonical_symbol(
+    tmp_path: Path,
+) -> None:
+    """adapter 未公开 manifest 指定符号时不得发布替代实现。"""
+    sys.modules["sample_implementation"] = types.ModuleType("sample_implementation")
+    adapter = _SyncAdapter()
+    runtime = CapabilityRuntime(
+        _registry(tmp_path),
+        adapters={"sample": adapter},
+    )
+
+    with patch.object(adapter, "materialize", return_value=_SampleCapability), pytest.raises(
+        CapabilityOperationError,
+        match="canonical 符号.*不存在",
+    ):
+        runtime.materialize("sample.capability", reason="invalid_adapter")
+
+    snapshot = runtime.snapshot("sample.capability")
+    assert snapshot.materialization is CapabilityMaterializationState.FAILED
+    assert snapshot.lifecycle is CapabilityLifecycleState.DISCOVERED
+
+
+def test_activate_revalidates_missing_canonical_module_on_retry(tmp_path: Path) -> None:
+    """同步激活的物化合同失败不得被记为已解析并在重试时绕过。"""
+    adapter = _SyncAdapter()
+    runtime = CapabilityRuntime(
+        _registry(tmp_path),
+        adapters={"sample": adapter},
+    )
+
+    with patch.object(
+        adapter,
+        "materialize",
+        return_value=_SampleCapability,
+    ) as materialize:
+        with pytest.raises(CapabilityOperationError, match="canonical 模块.*未加载"):
+            runtime.activate("sample.capability", reason="invalid_adapter")
+        with pytest.raises(CapabilityOperationError, match="canonical 模块.*未加载"):
+            runtime.activate(
+                "sample.capability",
+                reason="invalid_adapter_retry",
+                retry=True,
+            )
+
+    snapshot = runtime.snapshot("sample.capability")
+    assert snapshot.materialization is CapabilityMaterializationState.FAILED
+    assert snapshot.lifecycle is CapabilityLifecycleState.FAILED
+    assert adapter.create_calls == 0
+    assert materialize.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_activate_async_revalidates_missing_canonical_module_on_retry(
+    tmp_path: Path,
+) -> None:
+    """异步激活的物化合同失败不得被记为已解析并在重试时绕过。"""
+    adapter = _AsyncAdapter()
+    runtime = CapabilityRuntime(
+        _registry(tmp_path),
+        adapters={"sample": adapter},
+    )
+    materialize = AsyncMock(return_value=_SampleCapability)
+
+    with patch.object(adapter, "materialize", new=materialize):
+        with pytest.raises(CapabilityOperationError, match="canonical 模块.*未加载"):
+            await runtime.activate_async("sample.capability", reason="invalid_adapter")
+        with pytest.raises(CapabilityOperationError, match="canonical 模块.*未加载"):
+            await runtime.activate_async(
+                "sample.capability",
+                reason="invalid_adapter_retry",
+                retry=True,
+            )
+
+    snapshot = runtime.snapshot("sample.capability")
+    assert snapshot.materialization is CapabilityMaterializationState.FAILED
+    assert snapshot.lifecycle is CapabilityLifecycleState.FAILED
+    assert adapter.create_calls == 0
+    assert materialize.await_count == 2
 
 
 def test_state_read_calibrates_consumer_import_without_importing_new_module(tmp_path: Path) -> None:
