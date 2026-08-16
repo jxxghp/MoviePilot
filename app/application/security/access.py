@@ -8,23 +8,41 @@ import traceback
 from datetime import timedelta
 from typing import Any, Union, Annotated, Optional, Callable
 
+import bcrypt
 import jwt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from cryptography.fernet import Fernet
 from fastapi import HTTPException, status, Security, Request, Response
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader, APIKeyQuery, APIKeyCookie, HTTPBearer
-from passlib.context import CryptContext
-
 from app import schemas
 from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.runtime.log import logger
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+BCRYPT_PASSWORD_MAX_BYTES = 72
+BCRYPT_ROUNDS = 12
 ALGORITHM = "HS256"
 SuperuserTokenPayloadProvider = Callable[[], schemas.TokenPayload]
 _superuser_token_payload_provider: Optional[SuperuserTokenPayloadProvider] = None
+
+
+class PasswordTooLongError(ValueError):
+    """密码的 UTF-8 字节长度超过 bcrypt 可安全处理的上限。"""
+
+
+def _encode_bcrypt_password(
+        password: str, *, allow_legacy_truncation: bool = False
+) -> bytes:
+    """编码 bcrypt 密码；仅验证既有哈希时允许按历史语义截断。"""
+    password_bytes = password.encode("utf-8")
+    if len(password_bytes) > BCRYPT_PASSWORD_MAX_BYTES:
+        if allow_legacy_truncation:
+            return password_bytes[:BCRYPT_PASSWORD_MAX_BYTES]
+        raise PasswordTooLongError(
+            f"密码 UTF-8 编码后不能超过 {BCRYPT_PASSWORD_MAX_BYTES} 字节"
+        )
+    return password_bytes
 
 
 def set_superuser_token_payload_provider(
@@ -343,13 +361,24 @@ def verify_apikey(apikey: Annotated[str | None, Security(__get_api_key)]) -> str
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """校验明文密码是否匹配已保存的密码摘要。"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """验证既有 bcrypt 哈希，并保留超长历史密码的截断语义。"""
+    try:
+        return bcrypt.checkpw(
+            _encode_bcrypt_password(
+                plain_password, allow_legacy_truncation=True
+            ),
+            hashed_password.encode("ascii"),
+        )
+    except (UnicodeEncodeError, ValueError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    """生成适合持久化保存的密码摘要。"""
-    return pwd_context.hash(password)
+    """使用 $2b$ 前缀和 cost 12 生成可持久化的 bcrypt 密码哈希。"""
+    return bcrypt.hashpw(
+        _encode_bcrypt_password(password),
+        bcrypt.gensalt(rounds=BCRYPT_ROUNDS, prefix=b"2b"),
+    ).decode("ascii")
 
 
 def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
