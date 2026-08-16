@@ -433,8 +433,16 @@ class CapabilityRuntime:
         module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
         module = sys.modules.get(module_name)
         namespace = getattr(module, "__dict__", None) if module is not None else None
-        if not isinstance(namespace, dict) or symbol_name not in namespace:
-            return implementation
+        if not isinstance(namespace, dict):
+            raise CapabilityAdapterContractError(
+                f"adapter 返回 {spec.id} 的 implementation 后，"
+                f"canonical 模块 {module_name} 未加载"
+            )
+        if symbol_name not in namespace:
+            raise CapabilityAdapterContractError(
+                f"adapter 返回 {spec.id} 的 implementation 后，"
+                f"canonical 符号 {spec.entrypoint} 不存在"
+            )
         canonical = namespace[symbol_name]
         if implementation is not canonical:
             raise CapabilityAdapterContractError(
@@ -579,8 +587,8 @@ class CapabilityRuntime:
                         state.pending_cleanup_error = pending_error
                     raise
             if implementation is None:
-                implementation = self._sync_callback(adapter, "materialize", state.spec)
-                implementation = self._canonical_implementation(state.spec, implementation)
+                materialized = self._sync_callback(adapter, "materialize", state.spec)
+                implementation = self._canonical_implementation(state.spec, materialized)
             candidate = self._sync_callback(
                 adapter,
                 "create",
@@ -766,8 +774,8 @@ class CapabilityRuntime:
                         state.pending_cleanup_error = pending_error
                     raise
             if implementation is None:
-                implementation = await self._async_callback(adapter, "materialize", state.spec)
-                implementation = self._canonical_implementation(state.spec, implementation)
+                materialized = await self._async_callback(adapter, "materialize", state.spec)
+                implementation = self._canonical_implementation(state.spec, materialized)
             candidate = await self._async_callback(
                 adapter,
                 "create",
