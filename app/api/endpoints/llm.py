@@ -28,10 +28,13 @@ async def manage_provider(
     OAuth 回跳地址由具名回调路由统一构造后注入动作参数
     """
     params = dict(payload.params)
-    params.setdefault(
-        "callback_url",
-        str(request.url_for("llm_provider_auth_callback", provider_id=payload.target)),
-    )
+    # 目录类查询动作的 target 可为空，此时无需回跳地址；
+    # 且 url_for 的路径参数不允许空值，必须先行防护
+    if payload.target:
+        params.setdefault(
+            "callback_url",
+            str(request.url_for("llm_provider_auth_callback", provider_id=payload.target)),
+        )
     result = await LLMProviderManager().provider_manage(
         payload.target, payload.action, **params
     )

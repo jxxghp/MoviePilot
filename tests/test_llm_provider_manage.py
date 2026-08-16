@@ -250,3 +250,32 @@ def test_llm_manage_endpoint_passes_through_manage_request(monkeypatch):
     assert captured["action"] == "start_auth"
     assert captured["params"]["method"] == "browser_oauth"
     assert captured["params"]["callback_url"].endswith("/callback/chatgpt")
+
+
+def test_llm_manage_endpoint_accepts_empty_target(monkeypatch):
+    """目录类查询动作 target 可为空，不得因 url_for 空路径参数报 500。
+
+    回归守护：前端加载提供商目录时 target 为空字符串，
+    回调地址构造必须跳过空 target。
+    """
+    from app.api.endpoints import llm as llm_endpoint
+
+    captured = {}
+
+    async def fake_manage(self, provider, action, **params):
+        captured["provider"] = provider
+        captured["params"] = params
+        return {"success": True, "message": "", "data": []}
+
+    def fail_url_for(name, **kwargs):
+        raise AssertionError("空 target 不应构造回调地址")
+
+    monkeypatch.setattr(LLMProviderManager, "provider_manage", fake_manage)
+    request = SimpleNamespace(url_for=fail_url_for)
+    payload = schemas.ManageRequest(target="", action="list_providers")
+
+    resp = asyncio.run(llm_endpoint.manage_provider(request, payload, _="token"))
+
+    assert resp.success is True
+    assert captured["provider"] == ""
+    assert "callback_url" not in captured["params"]
