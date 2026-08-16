@@ -9,11 +9,11 @@ import asyncio
 from unittest.mock import patch
 
 from app.modules.themoviedb.tmdbv3api.tmdb import (
-    EMPTY_RESULT_CACHE_TTL,
     TMDb,
     _is_empty_result_snapshot,
 )
 from app.runtime.cache import MemoryBackend
+from app.runtime.config import settings
 
 from tests.test_tmdb_response_cache import _FakeResponse
 
@@ -41,7 +41,7 @@ def _make_tmdb() -> TMDb:
 
 def test_empty_result_cache_ttl_is_thirty_minutes():
     """空结果缓存的独立过期时间应为 30 分钟。"""
-    assert EMPTY_RESULT_CACHE_TTL == 30 * 60
+    assert settings.EMPTY_RESULT_CACHE_TTL == 30 * 60
 
 
 def test_empty_result_snapshot_predicate():
@@ -67,7 +67,7 @@ def test_empty_result_is_cached_but_expires_with_short_ttl():
 
     region_cache = _request_region_cache()
     started_at = region_cache.timer()
-    region_cache.expire(time=started_at + EMPTY_RESULT_CACHE_TTL + 1)
+    region_cache.expire(time=started_at + settings.EMPTY_RESULT_CACHE_TTL + 1)
 
     with patch.object(TMDb, "_request_once", return_value=fake) as req:
         tmdb.request("GET", url, None, None)
@@ -87,7 +87,7 @@ def test_non_empty_result_keeps_default_ttl():
     region_cache = _request_region_cache()
     started_at = region_cache.timer()
     # 推进到短 TTL 之后：非空结果不应在此刻过期
-    region_cache.expire(time=started_at + EMPTY_RESULT_CACHE_TTL + 1)
+    region_cache.expire(time=started_at + settings.EMPTY_RESULT_CACHE_TTL + 1)
 
     tmdb.request("GET", url, None, None)
     assert req.call_count == 1
@@ -106,7 +106,7 @@ def test_async_empty_result_is_cached_with_short_ttl():
 
     region_cache = _request_region_cache()
     started_at = region_cache.timer()
-    region_cache.expire(time=started_at + EMPTY_RESULT_CACHE_TTL + 1)
+    region_cache.expire(time=started_at + settings.EMPTY_RESULT_CACHE_TTL + 1)
 
     with patch.object(TMDb, "_async_request_once", return_value=fake) as req:
         asyncio.run(tmdb.async_request("GET", url, None, None))

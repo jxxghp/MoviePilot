@@ -255,6 +255,8 @@ class ConfigModel(BaseModel):
     TMDB_API_DOMAIN: str = "api.themoviedb.org"
     # TMDB元数据语言
     TMDB_LOCALE: str = "zh"
+    # TMDB空结果缓存独立过期时间（秒），故障期间产生的空响应快速过期，故障自愈后可自然恢复
+    EMPTY_RESULT_CACHE_TTL: int = 30 * 60
     # 刮削使用TMDB原始语种图片
     TMDB_SCRAP_ORIGINAL_IMAGE: bool = False
     # TMDB API Key

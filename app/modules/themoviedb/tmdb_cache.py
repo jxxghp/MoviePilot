@@ -11,7 +11,6 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.foundation.singleton import WeakSingleton
-from app.modules.themoviedb.tmdbv3api.tmdb import EMPTY_RESULT_CACHE_TTL
 
 lock = RLock()
 PERSISTENCE_VERSION = 1
@@ -262,7 +261,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 # 负识别缓存使用独立的短 TTL：故障期间「合法 JSON 但结果为空」会被
                 # 记为未识别，若按完整有效期固化，故障自愈后同名仍会被判无法识别；
                 # 短过期让恢复后可重新识别，真不存在的条目过期后重新确认一次即可
-                self._set(key, {"id": 0}, ttl=EMPTY_RESULT_CACHE_TTL)
+                self._set(key, {"id": 0}, ttl=settings.EMPTY_RESULT_CACHE_TTL)
 
     def save(self, force: bool = False) -> None:
         """

@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from app.runtime.config import settings
 from app.modules.themoviedb.tmdb_cache import TmdbCache
-from app.modules.themoviedb.tmdbv3api.tmdb import EMPTY_RESULT_CACHE_TTL
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -133,9 +132,9 @@ def test_update_negative_cache_uses_short_ttl():
 
     key = _key("电视剧")
     assert cache._cache.data[key] == {"id": 0}
-    assert cache._cache.ttls[key] == EMPTY_RESULT_CACHE_TTL
+    assert cache._cache.ttls[key] == settings.EMPTY_RESULT_CACHE_TTL
     # 持久化用的过期时间也应随短 TTL 计算，不能沿用默认有效期
-    assert cache._expires_at[key] <= time() + EMPTY_RESULT_CACHE_TTL + 5
+    assert cache._expires_at[key] <= time() + settings.EMPTY_RESULT_CACHE_TTL + 5
 
 
 def test_update_positive_cache_keeps_default_ttl():
