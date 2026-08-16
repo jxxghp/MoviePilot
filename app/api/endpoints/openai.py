@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import uuid
+from threading import Lock
 from typing import AsyncIterator, List, Optional, Tuple
 
 from fastapi import APIRouter, Request, Security
@@ -15,8 +16,11 @@ from app.api.openai_utils import (
     build_responses_input,
     build_session_id,
 )
-from app.agent.callback import StreamingHandler
-from app.agent.orchestrator import MoviePilotAgent
+from app.agent.runtime_loader import (
+    get_moviepilot_agent_type,
+    get_running_agent_manager,
+)
+from app.agent.contracts import ReplyMode
 from app.runtime.config import settings
 from app.application.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
@@ -35,7 +39,7 @@ MODEL_ID = "moviepilot-agent"
 SESSION_PREFIX = "openai:"
 
 
-class _CollectingMoviePilotAgent(MoviePilotAgent):
+class _CollectingMoviePilotAgentMixin:
     """
     捕获 Agent 最终输出，避免再通过消息渠道二次发送。
     """
@@ -45,10 +49,37 @@ class _CollectingMoviePilotAgent(MoviePilotAgent):
         self.collected_messages: List[str] = []
         self.stream_mode = stream_mode
         if stream_mode:
-            self.stream_handler = _OpenAIStreamingHandler()
+            self.stream_handler = _get_openai_streaming_handler_type()()
 
     def _should_stream(self) -> bool:
         return self.stream_mode
+
+    def configure_protocol_request(
+        self,
+        *,
+        stream_mode: bool,
+        event_queue: Optional[asyncio.Queue],
+    ) -> None:
+        """切换请求级输出目标，并保持已编译工具引用的 handler identity。"""
+        self.collected_messages = []
+        self.stream_mode = stream_mode
+        if isinstance(self.stream_handler, _OpenAIStreamingHandlerMixin):
+            self.stream_handler.bind_queue(event_queue if stream_mode else None)
+            return
+        if not stream_mode:
+            return
+        self.stream_handler = _get_openai_streaming_handler_type()()
+        self.stream_handler.bind_queue(event_queue)
+        # 已编译工具持有旧 handler；identity 变化时必须重建图和工具目录。
+        self._compiled_agent_bundle = None
+
+    def release_protocol_request(
+        self,
+        event_queue: Optional[asyncio.Queue],
+    ) -> None:
+        """释放已结束请求的输出队列，不影响同会话已重绑的新请求。"""
+        if isinstance(self.stream_handler, _OpenAIStreamingHandlerMixin):
+            self.stream_handler.unbind_queue(event_queue)
 
     async def send_agent_message(self, message: str, title: str = ""):
         text = (message or "").strip()
@@ -62,7 +93,7 @@ class _CollectingMoviePilotAgent(MoviePilotAgent):
                 self.stream_handler.emit(text)
 
 
-class _OpenAIStreamingHandler(StreamingHandler):
+class _OpenAIStreamingHandlerMixin:
     """
     将 Agent 流式输出转发到 OpenAI SSE 队列，不向站内消息系统落消息。
     """
@@ -71,8 +102,14 @@ class _OpenAIStreamingHandler(StreamingHandler):
         super().__init__()
         self._event_queue: Optional[asyncio.Queue] = None
 
-    def bind_queue(self, queue: asyncio.Queue):
+    def bind_queue(self, queue: Optional[asyncio.Queue]):
+        """绑定当前协议请求的输出队列。"""
         self._event_queue = queue
+
+    def unbind_queue(self, queue: Optional[asyncio.Queue]) -> None:
+        """仅当仍指向该请求时解除绑定，避免清掉已排队的新请求。"""
+        if self._event_queue is queue:
+            self._event_queue = None
 
     def emit(self, token: str):
         emitted = super().emit(token)
@@ -121,18 +158,67 @@ class _OpenAIStreamingHandler(StreamingHandler):
         return True, final_text
 
 
+def _get_openai_streaming_handler_type() -> type:
+    """首次兼容协议调用时才解析完整流式处理器。"""
+    global _OPENAI_STREAMING_HANDLER_TYPE
+    if _OPENAI_STREAMING_HANDLER_TYPE is not None:
+        return _OPENAI_STREAMING_HANDLER_TYPE
+    with _OPENAI_STREAMING_HANDLER_TYPE_LOCK:
+        if _OPENAI_STREAMING_HANDLER_TYPE is None:
+            from app.agent.callback import StreamingHandler
+
+            _OPENAI_STREAMING_HANDLER_TYPE = type(
+                "_RuntimeOpenAIStreamingHandler",
+                (_OpenAIStreamingHandlerMixin, StreamingHandler),
+                {"__module__": __name__},
+            )
+        return _OPENAI_STREAMING_HANDLER_TYPE
+
+
+_OPENAI_STREAMING_HANDLER_TYPE_LOCK = Lock()
+_OPENAI_STREAMING_HANDLER_TYPE: Optional[type] = None
+
+
+def _build_collecting_agent_type(agent_base_type: type) -> type:
+    """为 OpenAI 与 Anthropic 兼容协议组合唯一的运行时类型。"""
+    return type(
+        "_RuntimeCollectingMoviePilotAgent",
+        (_CollectingMoviePilotAgentMixin, agent_base_type),
+        {"__module__": __name__},
+    )
+
+
+_COLLECTING_AGENT_TYPE_LOCK = Lock()
+_COLLECTING_AGENT_TYPE: Optional[type] = None
+
+
+def _get_collecting_agent_type() -> type:
+    """在首个真实兼容协议请求边界 single-flight 解析 Agent 类型。"""
+    global _COLLECTING_AGENT_TYPE
+    if _COLLECTING_AGENT_TYPE is not None:
+        return _COLLECTING_AGENT_TYPE
+    with _COLLECTING_AGENT_TYPE_LOCK:
+        if _COLLECTING_AGENT_TYPE is None:
+            _COLLECTING_AGENT_TYPE = _build_collecting_agent_type(
+                get_moviepilot_agent_type()
+            )
+        return _COLLECTING_AGENT_TYPE
+
+
 def _sse_payload(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 async def _stream_response(
-    agent: _CollectingMoviePilotAgent,
+    manager,
+    session_id: str,
+    user_id: str,
+    username: str,
     prompt: str,
     images: List[str],
+    cleanup_session: bool,
 ) -> AsyncIterator[str]:
     event_queue: asyncio.Queue = asyncio.Queue()
-    if isinstance(agent.stream_handler, _OpenAIStreamingHandler):
-        agent.stream_handler.bind_queue(event_queue)
 
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -140,7 +226,19 @@ async def _stream_response(
 
     async def _run_agent():
         try:
-            await agent.process(prompt, images=images, files=None)
+            await _run_managed_agent(
+                manager=manager,
+                session_id=session_id,
+                user_id=user_id,
+                username=username,
+                source="openai",
+                prompt=prompt,
+                images=images,
+                stream_mode=True,
+                event_queue=event_queue,
+            )
+        except asyncio.CancelledError:
+            await event_queue.put({"error": "MoviePilot AI agent is unavailable."})
         except Exception as exc:
             await event_queue.put({"error": str(exc)})
         finally:
@@ -170,7 +268,17 @@ async def _stream_response(
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):
-                raise RuntimeError(str(item["error"]))
+                yield _sse_payload(
+                    {
+                        "error": {
+                            "message": str(item["error"]),
+                            "type": "server_error",
+                            "code": "agent_execution_failed",
+                        }
+                    }
+                )
+                yield "data: [DONE]\n\n"
+                return
             text = str(item or "")
             if not text:
                 continue
@@ -208,6 +316,10 @@ async def _stream_response(
         )
         yield "data: [DONE]\n\n"
     finally:
+        if cleanup_session:
+            await manager.clear_session(session_id=session_id, user_id=user_id)
+        elif not task.done():
+            await manager.stop_current_task(session_id)
         if not task.done():
             task.cancel()
             try:
@@ -216,6 +328,57 @@ async def _stream_response(
                 pass
         elif finished:
             await task
+
+
+def _is_manager_unavailable(error: BaseException) -> bool:
+    """识别 manager acceptance gate 的稳定错误，不导入完整编排模块。"""
+    return getattr(error, "code", None) == "agent_manager_unavailable"
+
+
+async def _run_managed_agent(
+    *,
+    manager,
+    session_id: str,
+    user_id: str,
+    username: str,
+    source: str,
+    prompt: str,
+    images: List[str],
+    stream_mode: bool,
+    event_queue: Optional[asyncio.Queue] = None,
+) -> tuple[str, List[str]]:
+    """通过 AgentManager 执行协议请求，并在 worker 内配置请求级输出。"""
+    agent_holder = {}
+
+    def configure_agent(agent) -> None:
+        agent.configure_protocol_request(
+            stream_mode=stream_mode,
+            event_queue=event_queue,
+        )
+        agent_holder["agent"] = agent
+
+    try:
+        result = await manager.process_message(
+            session_id=session_id,
+            user_id=user_id,
+            message=prompt,
+            images=images,
+            files=None,
+            channel=NotificationChannel.Web.value,
+            source=source,
+            username=username,
+            reply_mode=ReplyMode.CAPTURE_ONLY,
+            allow_message_tools=True,
+            agent_factory=_get_collecting_agent_type(),
+            agent_setup=configure_agent,
+            wait_for_completion=True,
+        )
+        agent = agent_holder.get("agent")
+        return result, list(agent.collected_messages if agent else [])
+    finally:
+        agent = agent_holder.get("agent")
+        if agent is not None:
+            agent.release_protocol_request(event_queue)
 
 
 def _error_response(
@@ -310,6 +473,14 @@ async def chat_completions(
             error_type="server_error",
             code="ai_agent_disabled",
         )
+    manager = get_running_agent_manager()
+    if manager is None:
+        return _error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="server_error",
+            code="ai_agent_unavailable",
+        )
 
     if not payload.messages:
         return _error_response(
@@ -337,19 +508,17 @@ async def chat_completions(
 
     session_id = build_session_id(session_key, SESSION_PREFIX)
     username = str(payload.user or "openai-client")
-    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
-    agent = _CollectingMoviePilotAgent(
-        session_id=session_id,
-        user_id=session_key,
-        channel=NotificationChannel.Web.value,
-        source="openai",
-        username=username,
-        stream_mode=payload.stream,
-    )
-
     if payload.stream:
         return StreamingResponse(
-            _stream_response(agent=agent, prompt=prompt, images=images),
+            _stream_response(
+                manager=manager,
+                session_id=session_id,
+                user_id=session_key,
+                username=username,
+                prompt=prompt,
+                images=images,
+                cleanup_session=not use_server_session,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -358,19 +527,39 @@ async def chat_completions(
             },
         )
 
+    collected_messages = []
     try:
-        result = await agent.process(prompt, images=images, files=None)
+        result, collected_messages = await _run_managed_agent(
+            manager=manager,
+            session_id=session_id,
+            user_id=session_key,
+            username=username,
+            source="openai",
+            prompt=prompt,
+            images=images,
+            stream_mode=False,
+        )
     except Exception as exc:
+        if _is_manager_unavailable(exc):
+            return _error_response(
+                "MoviePilot AI agent is unavailable.",
+                503,
+                error_type="server_error",
+                code="ai_agent_unavailable",
+            )
         return _error_response(
             str(exc),
             500,
             error_type="server_error",
             code="agent_execution_failed",
         )
+    finally:
+        if not use_server_session:
+            await manager.clear_session(session_id=session_id, user_id=session_key)
 
     content = "\n\n".join(
         message.strip()
-        for message in agent.collected_messages
+        for message in collected_messages
         if message and message.strip()
     ).strip()
     if not content and result:
@@ -403,6 +592,14 @@ async def responses(
             error_type="server_error",
             code="ai_agent_disabled",
         )
+    manager = get_running_agent_manager()
+    if manager is None:
+        return _error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="server_error",
+            code="ai_agent_unavailable",
+        )
 
     if payload.stream:
         return _error_response(
@@ -430,29 +627,39 @@ async def responses(
 
     session_key = str(payload.user or uuid.uuid4())
     session_id = build_session_id(session_key, SESSION_PREFIX)
-    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
-    agent = _CollectingMoviePilotAgent(
-        session_id=session_id,
-        user_id=session_key,
-        channel=NotificationChannel.Web.value,
-        source="openai.responses",
-        username=str(payload.user or "openai-client"),
-        stream_mode=False,
-    )
-
+    collected_messages = []
     try:
-        result = await agent.process(prompt, images=images, files=None)
+        result, collected_messages = await _run_managed_agent(
+            manager=manager,
+            session_id=session_id,
+            user_id=session_key,
+            username=str(payload.user or "openai-client"),
+            source="openai.responses",
+            prompt=prompt,
+            images=images,
+            stream_mode=False,
+        )
     except Exception as exc:
+        if _is_manager_unavailable(exc):
+            return _error_response(
+                "MoviePilot AI agent is unavailable.",
+                503,
+                error_type="server_error",
+                code="ai_agent_unavailable",
+            )
         return _error_response(
             str(exc),
             500,
             error_type="server_error",
             code="agent_execution_failed",
         )
+    finally:
+        if not payload.user:
+            await manager.clear_session(session_id=session_id, user_id=session_key)
 
     content = "\n\n".join(
         message.strip()
-        for message in agent.collected_messages
+        for message in collected_messages
         if message and message.strip()
     ).strip()
     if not content and result:

@@ -56,7 +56,7 @@ class RunAgentTaskTool(MoviePilotTool):
 
     async def run(self, task_id: int, **kwargs: object) -> str:
         """立即执行当前用户拥有且已启用的 Agent 自主定时任务。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import start_agent_task
 
         payload = RunAgentTaskInput(task_id=task_id)
         status, task_name = await self.run_blocking(
@@ -70,7 +70,7 @@ class RunAgentTaskTool(MoviePilotTool):
             return f"Agent 定时任务 {task_id} 已暂停，请先恢复后再执行"
         if status == "running":
             return f"Agent 定时任务 {task_id} 正在执行，请勿重复触发"
-        if not Scheduler().start_agent_task(payload.task_id):
+        if not start_agent_task(payload.task_id):
             return f"Agent 定时任务 {task_id} 尚未注册到运行时调度器，无法立即执行"
         return (
             f"Agent 定时任务 {task_id} 已提交立即执行：{task_name}。"

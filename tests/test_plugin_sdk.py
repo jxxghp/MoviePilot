@@ -1,4 +1,8 @@
 import importlib
+import subprocess
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 from app.sdk.cache import Cache, cached
 from app.sdk.config import settings
@@ -10,6 +14,9 @@ from app.sdk.plugins import ModuleManager, PluginManager
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
 from app.sdk.utilities import decrypt, encrypt
+
+
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_sdk_exports_canonical_plugin_interfaces():
@@ -68,3 +75,58 @@ def test_legacy_common_crypto_aliases_round_trip():
     passphrase = b"0123456789abcdef"
 
     assert legacy_decrypt(legacy_encrypt(message, passphrase), passphrase) == message
+
+
+def test_browser_sdk_import_is_provider_free():
+    """仅导入浏览器 SDK 不得加载浏览器或虚拟显示实现。"""
+    script = """
+import sys
+import app.sdk.browser
+
+for name in (
+    "cloakbrowser",
+    "pyvirtualdisplay",
+    "app.adapters.network.browser",
+    "app.adapters.system.display.resource",
+):
+    assert name not in sys.modules, name
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):
+    """SDK 只转发浏览器参数，不复制宿主生命周期实现。"""
+    from app.sdk import browser as browser_sdk
+    from app.adapters.network import browser as browser_adapter
+
+    sync_context = object()
+    async_context = object()
+    sync_launch = MagicMock(return_value=sync_context)
+    async_launch = AsyncMock(return_value=async_context)
+    monkeypatch.setattr(browser_adapter, "launch_browser_context", sync_launch)
+    monkeypatch.setattr(browser_adapter, "launch_browser_context_async", async_launch)
+
+    assert browser_sdk.launch_browser_context(headless=False, locale="zh-CN") is sync_context
+
+    async def run_async():
+        return await browser_sdk.launch_browser_context_async(
+            headless=True,
+            timezone="Asia/Shanghai",
+        )
+
+    import asyncio
+
+    assert asyncio.run(run_async()) is async_context
+    sync_launch.assert_called_once_with(headless=False, locale="zh-CN")
+    async_launch.assert_awaited_once_with(
+        headless=True,
+        timezone="Asia/Shanghai",
+    )

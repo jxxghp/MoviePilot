@@ -263,14 +263,15 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         ) as start_status, patch(
                 "app.chain.message.settings.AI_AGENT_ENABLE", True
         ), patch(
-                "app.chain.message.agent_manager.process_message",
-                new_callable=AsyncMock,
-        ) as process_message, patch(
+                "app.chain.message.get_running_agent_manager",
+        ) as get_running_manager, patch(
                 "app.chain.message.asyncio.run_coroutine_threadsafe",
                 side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ), patch.object(
                 chain, "_mark_message_processing_finished"
         ) as finish_status:
+            process_message = AsyncMock()
+            get_running_manager.return_value.process_message = process_message
             chain.handle_message(
                 channel=NotificationChannel.Telegram,
                 source="telegram-test",

@@ -1,0 +1,15 @@
+schema_version = 1
+id = "ListenBrainzModule"
+kind = "host_module"
+entrypoint = "app.modules.listenbrainz:ListenBrainzModule"
+depends_on = []
+
+[metadata]
+name = "ListenBrainz"
+type = "other"
+subtype = "ListenBrainz"
+priority = 5
+
+[activation]
+policy = "bootstrap"
+watch = []

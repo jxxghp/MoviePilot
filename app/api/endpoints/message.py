@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import json
 import time
-from typing import Union, Any, List, Optional
+from typing import Protocol, Union, Any, List, Optional
 
 from fastapi import BackgroundTasks, Depends, Request
-from pywebpush import WebPushException, webpush
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
@@ -27,7 +28,13 @@ router = ResponseAPIRouter()
 _WNS_DEFAULT_TTL = 86400
 
 
-def is_webpush_subscription_gone(error: WebPushException) -> bool:
+class WebPushError(Protocol):
+    """Web Push 订阅状态判断所需的最小异常协议。"""
+
+    response: Any  # 推送服务响应，状态码字段由具体 SDK 提供
+
+
+def is_webpush_subscription_gone(error: WebPushError) -> bool:
     """判断 Web Push 订阅是否已在浏览器或推送服务侧失效。"""
     response: Any = getattr(error, "response", None)
     status_code = getattr(response, "status_code", None) or getattr(
@@ -359,6 +366,8 @@ def send_notification(
     """
     发送webpush通知
     """
+    from pywebpush import WebPushException, webpush
+
     for sub in global_vars.get_subscriptions():
         try:
             webpush(

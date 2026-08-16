@@ -364,9 +364,8 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}
     for name, method_name in (
-        ("ModuleManager", "stop"),
+        ("ModuleManager", "shutdown"),
         ("EventManager", "stop"),
-        ("DisplayHelper", "stop"),
         ("DohHelper", "shutdown"),
         ("ThreadHelper", "shutdown"),
         ("RedisHelper", "close"),
@@ -381,10 +380,23 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
 
-    for name in ("stop_message", "stop_frontend", "clear_temp"):
+    for name in (
+        "close_browser_sessions",
+        "stop_message",
+        "stop_frontend",
+        "clear_temp",
+    ):
         dependency = MagicMock()
         monkeypatch.setattr(modules_initializer, name, dependency)
         dependencies[name] = dependency
+
+    stop_managed_resources = AsyncMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_managed_resources",
+        stop_managed_resources,
+    )
+    dependencies["stop_managed_resources"] = stop_managed_resources
 
     async_redis = MagicMock()
     async_redis.close = AsyncMock()
@@ -398,6 +410,23 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     monkeypatch.setattr(modules_initializer, "close_database", close_database)
     dependencies["close_database"] = close_database
     return dependencies
+
+
+def test_browser_sessions_close_before_managed_resources(monkeypatch) -> None:
+    """显示等宿主资源必须晚于浏览器会话释放，避免存活上下文失去依赖。"""
+    calls: list[str] = []
+    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    dependencies["close_browser_sessions"].side_effect = lambda: calls.append("browser")
+
+    async def stop_resources() -> None:
+        calls.append("resources")
+
+    dependencies["stop_managed_resources"].side_effect = stop_resources
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    assert calls == ["browser", "resources"]
 
 
 def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):

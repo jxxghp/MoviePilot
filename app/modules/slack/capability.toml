@@ -1,0 +1,22 @@
+schema_version = 1
+id = "SlackModule"
+kind = "host_module"
+entrypoint = "app.modules.slack:SlackModule"
+depends_on = []
+
+[metadata]
+name = "Slack"
+type = "notification"
+subtype = "Slack"
+priority = 3
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "slack"
+enabled_field = "enabled"

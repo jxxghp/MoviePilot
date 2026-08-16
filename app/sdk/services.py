@@ -3,7 +3,7 @@
 from app.runtime.extensions.service_registry import ServiceBaseHelper, ServiceConfigHelper
 from app.runtime.state import SystemHelper
 from app.application.downloader import DownloaderHelper
-from app.application.filter import RuleHelper
+from app.application.rules import RuleHelper
 from app.application.mediaserver import (
     MediaServerIdentityHelper,
     MediaServerHelper,

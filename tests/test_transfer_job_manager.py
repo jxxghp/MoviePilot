@@ -454,8 +454,8 @@ class TransferJobManagerTest(unittest.TestCase):
             (source_fileitem, False)
         ]
         chain._TransferChain__put_to_jobview = lambda task: True
-        chain._TransferChain__register_scrape_batch_task = lambda task: None
-        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._register_scrape_batch_task = lambda task: None
+        chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
             planned_episodes.append(task.meta.begin_episode)
@@ -1051,8 +1051,8 @@ class TransferJobManagerTest(unittest.TestCase):
             (main_fileitem, False)
         ]
         chain._TransferChain__put_to_jobview = lambda task: True
-        chain._TransferChain__register_scrape_batch_task = lambda task: None
-        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._register_scrape_batch_task = lambda task: None
+        chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
             planned.append(task.fileitem.path)
@@ -1161,8 +1161,8 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         chain._TransferChain__put_to_jobview = lambda task: True
-        chain._TransferChain__register_scrape_batch_task = lambda task: None
-        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._register_scrape_batch_task = lambda task: None
+        chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
             planned.append((task.fileitem.path, task.meta.begin_episode))
@@ -1236,8 +1236,8 @@ class TransferJobManagerTest(unittest.TestCase):
             (main_fileitem, False)
         ]
         chain._TransferChain__put_to_jobview = lambda task: True
-        chain._TransferChain__register_scrape_batch_task = lambda task: None
-        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._register_scrape_batch_task = lambda task: None
+        chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
             planned.append((task.fileitem.path, task.meta.begin_episode))
@@ -1331,8 +1331,8 @@ class TransferJobManagerTest(unittest.TestCase):
             (other_title_fileitem, False),
         ]
         chain._TransferChain__put_to_jobview = lambda task: True
-        chain._TransferChain__register_scrape_batch_task = lambda task: None
-        chain._TransferChain__close_scrape_batch = lambda batch_id: None
+        chain._register_scrape_batch_task = lambda task: None
+        chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
             planned.append((task.fileitem.path, task.meta.begin_episode))
@@ -1420,9 +1420,9 @@ class TransferJobManagerTest(unittest.TestCase):
             task.background = False
             task.manual = True
             self.assertTrue(chain._TransferChain__put_to_jobview(task))
-            chain._TransferChain__register_scrape_batch_task(task)
+            chain._register_scrape_batch_task(task)
 
-        chain._TransferChain__close_scrape_batch(batch_id)
+        chain._close_scrape_batch(batch_id)
 
         transferinfos = [
             TransferInfo(
@@ -1474,7 +1474,7 @@ class TransferJobManagerTest(unittest.TestCase):
             storage_chain_cls.return_value.is_bluray_folder.return_value = False
             for task, transferinfo in zip(tasks, transferinfos):
                 chain._TransferChain__default_callback(task, transferinfo)
-                chain._TransferChain__finish_scrape_batch_task(task)
+                chain._finish_scrape_batch_task(task)
 
         metadata_calls = [
             call

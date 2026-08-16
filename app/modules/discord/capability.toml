@@ -1,0 +1,22 @@
+schema_version = 1
+id = "DiscordModule"
+kind = "host_module"
+entrypoint = "app.modules.discord:DiscordModule"
+depends_on = []
+
+[metadata]
+name = "Discord"
+type = "notification"
+subtype = "Discord"
+priority = 4
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "discord"
+enabled_field = "enabled"

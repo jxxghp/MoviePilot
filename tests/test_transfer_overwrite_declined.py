@@ -53,7 +53,7 @@ def test_overwrite_declined_false_when_flag_not_set():
     transferinfo = TransferInfo(success=False, overwrite_skipped=False)
     transferhis = make_history_oper(raise_on_query=True)
 
-    result = TransferChain._TransferChain__is_overwrite_declined(
+    result = TransferChain._is_overwrite_declined(
         task, transferinfo, transferhis
     )
 
@@ -67,7 +67,7 @@ def test_overwrite_declined_true_when_success_history_exists():
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(history=success_history)
 
-    result = TransferChain._TransferChain__is_overwrite_declined(
+    result = TransferChain._is_overwrite_declined(
         task, transferinfo, transferhis
     )
 
@@ -80,7 +80,7 @@ def test_overwrite_declined_false_when_no_history():
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(history=None)
 
-    result = TransferChain._TransferChain__is_overwrite_declined(
+    result = TransferChain._is_overwrite_declined(
         task, transferinfo, transferhis
     )
 
@@ -94,7 +94,7 @@ def test_overwrite_declined_false_when_only_failed_history():
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(history=failed_history, success_history=None)
 
-    result = TransferChain._TransferChain__is_overwrite_declined(
+    result = TransferChain._is_overwrite_declined(
         task, transferinfo, transferhis
     )
 
@@ -107,7 +107,7 @@ def test_overwrite_declined_false_when_query_raises():
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(raise_on_query=True)
 
-    result = TransferChain._TransferChain__is_overwrite_declined(
+    result = TransferChain._is_overwrite_declined(
         task, transferinfo, transferhis
     )
 

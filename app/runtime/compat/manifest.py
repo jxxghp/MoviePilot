@@ -543,7 +543,7 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.rule": ModuleAlias(
-        target="app.application.filter", replacement="app.sdk.services",
+        target="app.application.rules", replacement="app.sdk.services",
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.scraper": ModuleAlias(
@@ -736,6 +736,18 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.agent.orchestrator": {
+        "AgentChain": SymbolAlias(
+            target_module="app.chain.agent",
+            target_name="AgentChain",
+            replacement="app.chain.agent.AgentChain",
+        ),
+        "ReplyMode": SymbolAlias(
+            target_module="app.schemas.agent",
+            target_name="ReplyMode",
+            replacement="app.schemas.agent.ReplyMode",
+        ),
+    },
     "app.chain.message": {
         "MediaInteractionChain": SymbolAlias(
             target_module="app.chain.interaction",

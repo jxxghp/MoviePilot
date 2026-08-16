@@ -1,0 +1,12 @@
+schema_version = 1
+id = "agent.tool_factory"
+kind = "agent_entrypoint"
+entrypoint = "app.agent.tools.factory:MoviePilotToolFactory"
+depends_on = []
+
+[metadata]
+name = "Agent Tool Factory"
+
+[activation]
+policy = "on_first_use"
+watch = []

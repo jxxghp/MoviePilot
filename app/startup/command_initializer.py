@@ -1,4 +1,8 @@
+from app.application.commands import register_command_class
 from app.command import Command
+
+# 导入期即向 application 门面注册命令类，保证工具调用时不依赖静态边。
+register_command_class(Command)
 
 
 def init_command():

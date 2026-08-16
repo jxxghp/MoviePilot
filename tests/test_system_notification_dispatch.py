@@ -36,7 +36,7 @@ class TestSystemNotificationDispatch(unittest.TestCase):
             text="任务完成",
         )
 
-        with patch("app.chain.MessageTemplateHelper.render", return_value=message), patch.object(
+        with patch("app.chain._messaging.MessageTemplateHelper.render", return_value=message), patch.object(
             chain.messagehelper, "put"
         ), patch.object(chain.messageoper, "add"), patch.object(
             chain.eventmanager, "send_event"

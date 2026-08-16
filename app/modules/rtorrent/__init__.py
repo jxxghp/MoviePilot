@@ -1,14 +1,11 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List, Dict
 
-from torrentool.torrent import Torrent
-
 from app import schemas
-from app.runtime.cache import FileCache
 from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.modules import _ModuleBase, _DownloaderBase
+from app.modules._base import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas import DownloaderTorrent
 from app.schemas.types import (
@@ -18,13 +15,12 @@ from app.schemas.types import (
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.domain import torrent as torrent_rules
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 
 
-class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
+class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
     def init_module(self) -> None:
         """
         初始化模块
@@ -61,30 +57,8 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
     def stop(self):
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """
-        测试模块连接性
-        """
-        if not self.get_instances():
-            return None
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                server.reconnect()
-            if not server.transfer_info():
-                return False, f"无法连接rTorrent下载器：{name}"
-        return True, ""
-
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    def scheduler_job(self) -> None:
-        """
-        定时任务，每10分钟调用一次
-        """
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                logger.info(f"rTorrent下载器 {name} 连接断开，尝试重连 ...")
-                server.reconnect()
 
     def download(
         self,
@@ -108,38 +82,11 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
 
-        def __get_torrent_info() -> Tuple[Optional[Torrent], Optional[bytes]]:
-            """
-            获取种子名称
-            """
-            torrent_info, torrent_content = None, None
-            try:
-                if isinstance(content, Path):
-                    if content.exists():
-                        torrent_content = content.read_bytes()
-                    else:
-                        torrent_content = FileCache().get(
-                            content.as_posix(), region="torrents"
-                        )
-                else:
-                    torrent_content = content
-
-                if torrent_content:
-                    if torrent_rules.is_magnet_link(torrent_content):
-                        return None, torrent_content
-                    else:
-                        torrent_info = Torrent.from_string(torrent_content)
-
-                return torrent_info, torrent_content
-            except Exception as e:
-                logger.error(f"获取种子名称失败：{e}")
-                return None, None
-
         if not content:
             return None, None, None, "下载内容为空"
 
         # 读取种子的名称
-        torrent_from_file, content = __get_torrent_info()
+        torrent_from_file, content = self._get_torrent_info(content)
         # 检查是否为磁力链接
         is_magnet = (
             isinstance(content, str)
@@ -311,7 +258,7 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
         else:
             servers: Dict[str, Rtorrent] = self.get_instances()
         ret_torrents = []
-        query_status = self.__normalize_query_status(status)
+        query_status = self._normalize_query_status(status)
         query_tags = None if include_all_tags else settings.TORRENT_TAG
 
         def __get_torrent_path(torrent_data: dict) -> Path:
@@ -423,41 +370,6 @@ class RtorrentModule(_ModuleBase, _DownloaderBase[Rtorrent]):
         else:
             return None
         return ret_torrents  # noqa
-
-    @staticmethod
-    def __normalize_query_status(
-            status: Optional[Union[TorrentStatus, TorrentQueryStatus, str]]
-    ) -> TorrentQueryStatus:
-        """
-        归一任务查询状态。
-        """
-        status_value = getattr(status, "value", status)
-        status_text = str(status_value or "").strip().lower()
-        if not status_text or status_text in {"all", "全部"}:
-            return TorrentQueryStatus.ALL
-        if status_text in {
-            TorrentStatus.TRANSFER.value,
-            TorrentQueryStatus.TRANSFER.value,
-            "transfer",
-        }:
-            return TorrentQueryStatus.TRANSFER
-        if status_text in {
-            TorrentStatus.DOWNLOADING.value,
-            TorrentQueryStatus.DOWNLOADING.value,
-            "downloading",
-        }:
-            return TorrentQueryStatus.DOWNLOADING
-        if status_text in {
-            TorrentQueryStatus.COMPLETED.value,
-            "complete",
-            "seeding",
-            "完成",
-            "已完成",
-        }:
-            return TorrentQueryStatus.COMPLETED
-        if status_text in {TorrentQueryStatus.PAUSED.value, "pause", "暂停", "已暂停"}:
-            return TorrentQueryStatus.PAUSED
-        return TorrentQueryStatus.ALL
 
     @staticmethod
     def __normalize_torrent_state(

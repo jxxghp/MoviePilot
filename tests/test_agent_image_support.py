@@ -286,15 +286,14 @@ class AgentImageSupportTest(unittest.TestCase):
             "feishu://file/om_audio/file_audio/voice.opus",
         ]
 
-        with patch.object(
-            AgentCapabilityManager, "is_audio_input_available", return_value=True
+        with patch(
+            "app.chain.message.is_audio_input_available", return_value=True
         ), patch.object(
             chain,
             "run_module",
             side_effect=[b"slack", b"discord", b"qq", b"vocechat", b"synology", b"feishu"],
-        ) as run_module, patch.object(
-            AgentCapabilityManager,
-            "transcribe_audio",
+        ) as run_module, patch(
+            "app.chain.message.transcribe_audio",
             side_effect=[
                 "slack text",
                 "discord text",
@@ -451,11 +450,13 @@ class AgentImageSupportTest(unittest.TestCase):
                 }
             ],
         ) as prepare_files, patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
-        ) as process_message, patch(
+            "app.chain.message.get_running_agent_manager"
+        ) as get_running_manager, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
         ) as run_coroutine_threadsafe:
+            process_message = AsyncMock()
+            get_running_manager.return_value.process_message = process_message
             chain._handle_ai_message(
                 text="/ai 帮我看看这张图",
                 channel=NotificationChannel.Telegram,
@@ -484,11 +485,13 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             chain, "_get_or_create_session_id", return_value="session-1"
         ), patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
-        ) as process_message, patch(
+            "app.chain.message.get_running_agent_manager"
+        ) as get_running_manager, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
         ):
+            process_message = AsyncMock()
+            get_running_manager.return_value.process_message = process_message
             chain._handle_ai_message(
                 text="帮我推荐一部电影",
                 channel=NotificationChannel.Telegram,

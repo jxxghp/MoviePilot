@@ -5,6 +5,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.agent.tools.catalog import ToolCatalogSnapshot
+from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.query_downloaders import QueryDownloadersTool
@@ -28,10 +30,16 @@ def test_non_admin_manager_exposes_resource_flow_helper_tools():
     """普通用户应能看到搜索、订阅、下载流程所需的辅助工具。"""
     site_tool = QuerySitesTool(session_id="session-1", user_id="10001")
     downloader_tool = QueryDownloadersTool(session_id="session-1", user_id="10001")
+    catalog = ToolCatalogSnapshot.from_tools(
+        [site_tool, downloader_tool],
+        plugin_revision=0,
+        factory_revision="test",
+    )
 
-    with patch(
-        "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
-        return_value=[site_tool, downloader_tool],
+    with patch.object(
+        MoviePilotToolFactory,
+        "create_catalog",
+        return_value=catalog,
     ):
         manager = MoviePilotToolsManager(is_admin=False)
 
@@ -48,10 +56,14 @@ def test_non_admin_manager_exposes_restricted_file_tools():
         EditFileTool(session_id="session-1", user_id="10001"),
         ListDirectoryTool(session_id="session-1", user_id="10001"),
     ]
+    catalog = ToolCatalogSnapshot.from_tools(
+        tools, plugin_revision=0, factory_revision="test"
+    )
 
-    with patch(
-        "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
-        return_value=tools,
+    with patch.object(
+        MoviePilotToolFactory,
+        "create_catalog",
+        return_value=catalog,
     ):
         manager = MoviePilotToolsManager(is_admin=False)
 

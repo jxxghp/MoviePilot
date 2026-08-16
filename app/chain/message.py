@@ -11,8 +11,12 @@ from pathlib import Path
 from typing import Any, Optional, Dict, Union, List, Tuple
 from urllib.parse import unquote, urlparse
 
-from app.agent.orchestrator import agent_manager
-from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.application.agent import (
+    get_running_agent_manager,
+    is_audio_input_available,
+    supports_image_input,
+    transcribe_audio,
+)
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -66,9 +70,14 @@ class MessageChain(ChainBase):
         """
         if not session_id:
             return
+        manager = get_running_agent_manager()
+        if manager is None:
+            return
         clear_task = None
         try:
-            clear_task = agent_manager.clear_session(session_id=session_id, user_id=str(userid))
+            clear_task = manager.clear_session(
+                session_id=session_id, user_id=str(userid)
+            )
             asyncio.run_coroutine_threadsafe(
                 clear_task,
                 global_vars.loop,
@@ -346,7 +355,8 @@ class MessageChain(ChainBase):
         if not session_info:
             return False
         session_id, _ = session_info
-        if not agent_manager.matches_secret_confirmation(
+        manager = get_running_agent_manager()
+        if manager is None or not manager.matches_secret_confirmation(
             session_id,
             str(userid),
             channel=channel.value,
@@ -964,19 +974,21 @@ class MessageChain(ChainBase):
 
         # 如果有会话ID，同时清除智能体的会话记忆
         if session_id:
+            manager = get_running_agent_manager()
             clear_task = None
-            try:
-                clear_task = agent_manager.clear_session(
-                    session_id=session_id, user_id=str(userid)
-                )
-                asyncio.run_coroutine_threadsafe(
-                    clear_task,
-                    global_vars.loop,
-                )
-            except Exception as e:
-                if clear_task:
-                    clear_task.close()
-                logger.warning(f"清除智能体会话记忆失败: {e}")
+            if manager is not None:
+                try:
+                    clear_task = manager.clear_session(
+                        session_id=session_id, user_id=str(userid)
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        clear_task,
+                        global_vars.loop,
+                    )
+                except Exception as e:
+                    if clear_task:
+                        clear_task.close()
+                    logger.warning(f"清除智能体会话记忆失败: {e}")
 
             self.post_message(
                 Message(
@@ -1013,12 +1025,16 @@ class MessageChain(ChainBase):
         session_info = self._user_sessions.get(userid)
         if session_info:
             session_id, _ = session_info
+            manager = get_running_agent_manager()
             try:
-                future = asyncio.run_coroutine_threadsafe(
-                    agent_manager.stop_current_task(session_id=session_id),
-                    global_vars.loop,
-                )
-                stopped = future.result(timeout=10)
+                if manager is None:
+                    stopped = False
+                else:
+                    future = asyncio.run_coroutine_threadsafe(
+                        manager.stop_current_task(session_id=session_id),
+                        global_vars.loop,
+                    )
+                    stopped = future.result(timeout=10)
             except Exception as e:
                 logger.warning(f"停止Agent推理失败: {e}")
                 stopped = False
@@ -1180,7 +1196,19 @@ class MessageChain(ChainBase):
             return
 
         session_id, _ = session_info
-        status = agent_manager.get_session_status(session_id=session_id)
+        manager = get_running_agent_manager()
+        if manager is None:
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    title="您当前没有活跃的智能体会话",
+                    userid=userid,
+                    save_history=False,
+                )
+            )
+            return
+        status = manager.get_session_status(session_id=session_id)
         self.post_message(
             Message(
                 channel=channel,
@@ -1225,6 +1253,20 @@ class MessageChain(ChainBase):
                 )
                 return False
 
+            manager = get_running_agent_manager()
+            if manager is None:
+                self.post_message(
+                    Message(
+                        channel=channel,
+                        source=source,
+                        userid=userid,
+                        username=username,
+                        title="MoviePilot智能助手服务尚未就绪，请稍后重试",
+                        save_history=False,
+                    )
+                )
+                return False
+
             images = IncomingMessage.MessageImage.normalize_list(images)
 
             # 提取用户消息
@@ -1254,7 +1296,7 @@ class MessageChain(ChainBase):
             # 将可直接输入给 LLM 的附件统一转换为 data URL
             original_images = images
             all_files = list(files or [])
-            if images and LLMHelper.supports_image_input(
+            if images and supports_image_input(
                     provider=settings.LLM_PROVIDER,
                     model=settings.LLM_MODEL,
             ):
@@ -1333,7 +1375,7 @@ class MessageChain(ChainBase):
                 process_kwargs["has_audio_input"] = True
             # 在事件循环中处理
             asyncio.run_coroutine_threadsafe(
-                agent_manager.process_message(**process_kwargs),
+                manager.process_message(**process_kwargs),
                 global_vars.loop,
             )
             return True
@@ -1353,7 +1395,7 @@ class MessageChain(ChainBase):
         """
         if not audio_refs:
             return None
-        if not AgentCapabilityManager.is_audio_input_available():
+        if not is_audio_input_available():
             logger.warning("音频输入能力未配置或未启用，跳过语音识别")
             return None
 
@@ -1460,7 +1502,7 @@ class MessageChain(ChainBase):
                     )
                     continue
 
-                transcript = AgentCapabilityManager.transcribe_audio(
+                transcript = transcribe_audio(
                     content=content, filename=filename
                 )
                 if transcript:

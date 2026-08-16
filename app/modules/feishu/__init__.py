@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Tuple, Union
 from app.domain.context import Context, MediaInfo
 from app.application.messaging.agent import register_channel_admin_resolver, resolve_config_principal_ids
 from app.runtime.log import logger
-from app.modules import _ModuleBase, _MessageBase
+from app.modules._base import _MessageChannelModuleBase
 from app.modules.feishu.feishu import Feishu
 from app.schemas import IncomingMessage, NotificationChannel, MessageResponse, Message
 from app.schemas.types import ModuleType
@@ -17,7 +17,7 @@ register_channel_admin_resolver(
 )
 
 
-class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
+class FeishuModule(_MessageChannelModuleBase[Feishu]):
     def init_module(self) -> None:
         super().init_service(service_name=Feishu.__name__.lower(), service_type=Feishu)
         self._channel = NotificationChannel.Feishu
@@ -38,6 +38,13 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
     def get_priority() -> int:
         return 2
 
+    def _commands_enabled(self, config: Optional[dict]) -> bool:
+        """
+        飞书机器人无斜杠命令概念，lark_oapi Client 也不提供命令注册/删除 API，
+        跳过命令注册，避免基类默认钩子调用不存在的 client.register_commands。
+        """
+        return False
+
     def stop(self) -> None:
         """停止模块"""
         for client in self.get_instances().values():
@@ -45,15 +52,6 @@ class FeishuModule(_ModuleBase, _MessageBase[Feishu]):
                 client.stop()
             except Exception as err:
                 logger.error(f"停止飞书模块实例失败：{err}")
-
-    def test(self) -> Optional[Tuple[bool, str]]:
-        if not self.get_instances():
-            return None
-        for name, client in self.get_instances().items():
-            state = client.get_state()
-            if not state:
-                return False, f"飞书 {name} 未就绪"
-        return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """通知模块通过系统通知配置控制实例化，这里不额外设置环境开关。"""

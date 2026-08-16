@@ -1,0 +1,22 @@
+schema_version = 1
+id = "NavidromeModule"
+kind = "host_module"
+entrypoint = "app.modules.navidrome:NavidromeModule"
+depends_on = []
+
+[metadata]
+name = "Navidrome"
+type = "mediaserver"
+subtype = "Navidrome"
+priority = 7
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "navidrome"
+enabled_field = "enabled"

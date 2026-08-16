@@ -5,11 +5,11 @@ from typing import List, Tuple, Union, Dict, Optional
 
 from app.domain.context import TorrentInfo, MediaInfo
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
-from app.application.filter import RuleHelper
+from app.application.rules import RuleHelper
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.application.filter_rules import RuleParser
-from app.application.filter_rules import BUILTIN_RULE_SET
+from app.application.rules import RuleParser
+from app.application.rules import BUILTIN_RULE_SET
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
 from app.foundation import size as size_tools

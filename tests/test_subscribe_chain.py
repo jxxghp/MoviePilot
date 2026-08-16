@@ -19,6 +19,11 @@ def _load_subscribe_chain_class():
         module = sys.modules[module_name]
         return module, module.SubscribeChain
 
+    # 交互处理器模块须在打桩上下文之外预先真实加载：其模块级会话管理器单例
+    # 由 SlashInteractionManager 构造，若在桩内导入会绑定桩类并残留 sys.modules，
+    # 污染依赖真实会话管理器的后续测试
+    import app.application.messaging.subscribe  # noqa: F401
+
     stub_deps = {}
 
     def ensure_module(name: str, module: types.ModuleType):
@@ -42,6 +47,12 @@ def _load_subscribe_chain_class():
             return None
 
     chain_module.ChainBase = _ChainBase
+
+    # 链内功能域 mixin：交互四件套委托与音乐订阅域，隔离加载以空 mixin 注入
+    interaction_mixin_module = ensure_module("app.chain._interaction", types.ModuleType("app.chain._interaction"))
+    interaction_mixin_module.InteractionChainMixin = type("InteractionChainMixin", (), {})
+    music_mixin_module = ensure_module("app.chain._music", types.ModuleType("app.chain._music"))
+    music_mixin_module.MusicSubscribeMixin = type("MusicSubscribeMixin", (), {})
 
     class _MediaChain:
         """提供订阅链隔离测试所需的统一媒体识别接口。"""
@@ -77,6 +88,8 @@ def _load_subscribe_chain_class():
         def remove(self, *args, **kwargs):
             return None
 
+    # 真实导入 app.application.messaging.subscribe 需要 MessageGateway 类型符号
+    interaction_module.MessageGateway = type("MessageGateway", (), {})
     interaction_module.SlashInteractionManager = _SlashInteractionManager
     interaction_module.build_navigation_buttons = lambda *args, **kwargs: []
     interaction_module.format_markdown_table = lambda *args, **kwargs: ""

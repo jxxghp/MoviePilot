@@ -19,6 +19,7 @@ app/plugins/**
 config/cookies/
 config/app.env
 config/user.db*
+config/systemconfig.db*
 config/sites/**
 config/agent/
 config/logs/
@@ -26,6 +27,9 @@ config/plugins/
 config/temp/
 config/cache/
 config/.cache/
+# 运行期设置持久化目录（settings 写回 app.env 的落点）与本地验证产物
+app/config/
+.verify_tmp/
 .runtime/
 public/
 .moviepilot.env

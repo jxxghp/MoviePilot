@@ -94,8 +94,8 @@ class TestAgentSessionStatus(unittest.TestCase):
 
         with (
             patch(
-                "app.chain.message.agent_manager.get_session_status",
-                return_value=status,
+                "app.chain.message.get_running_agent_manager",
+                return_value=SimpleNamespace(get_session_status=lambda **_: status),
             ),
             patch.object(chain, "post_message") as post_message,
         ):

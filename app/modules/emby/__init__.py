@@ -1,16 +1,16 @@
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.domain.context import MediaInfo
-from app.runtime.events import eventmanager
-from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
-from app.modules import _MediaServerBase, _ModuleBase
+from app.modules._base import _MediaServerModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
+from app.schemas.types import ModuleType, MediaServerType
 
 
-class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
+class EmbyModule(_MediaServerModuleBase[Emby]):
+
+    # 媒体库标识（ExistMediaInfo.server_type）
+    _server_type_value = "emby"
 
     def init_module(self) -> None:
         """
@@ -47,69 +47,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
     def stop(self):
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """
-        测试模块连接性
-        """
-        if not self.get_instances():
-            return None
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                server.reconnect()
-            if not server.get_user():
-                return False, f"无法连接Emby服务器：{name}"
-        return True, ""
-
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    def scheduler_job(self) -> None:
-        """
-        定时任务，每10分钟调用一次
-        """
-        # 定时重连
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                logger.info(f"Emby服务器 {name} 连接断开，尝试重连 ...")
-                server.reconnect()
-
-    def user_authenticate(self, credentials: schemas.AuthCredentials, service_name: Optional[str] = None) \
-            -> Optional[schemas.AuthCredentials]:
-        """
-        使用Emby用户辅助完成用户认证
-        :param credentials: 认证数据
-        :param service_name: 指定要认证的媒体服务器名称，若为 None 则认证所有服务
-        :return: 认证数据
-        """
-        # Emby认证
-        if not credentials or credentials.grant_type != "password":
-            return None
-        # 确定要认证的服务器列表
-        if service_name:
-            # 如果指定了服务名，获取该服务实例
-            servers = [(service_name, server)] if (server := self.get_instance(service_name)) else []
-        else:
-            # 如果没有指定服务名，遍历所有服务
-            servers = self.get_instances().items()
-        # 遍历要认证的服务器
-        for name, server in servers:
-            # 触发认证拦截事件
-            intercept_event = eventmanager.send_event(
-                etype=ChainEventType.AuthIntercept,
-                data=schemas.AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
-                                                      service=name, status="triggered")
-            )
-            if intercept_event and intercept_event.event_data:
-                intercept_data: schemas.AuthInterceptCredentials = intercept_event.event_data
-                if intercept_data.cancel:
-                    continue
-            token = server.authenticate(credentials.username, credentials.password)
-            if token:
-                credentials.channel = self.get_name()
-                credentials.service = name
-                credentials.token = token
-                return credentials
-        return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """
@@ -134,79 +73,6 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                 result = server.get_webhook_message(form, args)
                 if result:
                     return result
-        return None
-
-    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
-                     server: Optional[str] = None) -> Optional[schemas.ExistMediaInfo]:
-        """
-        判断媒体文件是否存在
-        :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
-        :param server:  媒体服务器名称
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
-        """
-        if server:
-            servers = [(server, self.get_instance(server))]
-        else:
-            servers = self.get_instances().items()
-        for name, s in servers:
-            if not s:
-                continue
-            if mediainfo.type == MediaType.MUSIC:
-                matches = s.get_music(**MusicMediaServerHelper.search_params(mediainfo))
-                match = MusicMediaServerHelper.find_match(mediainfo, matches)
-                if match:
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.MUSIC,
-                        server_type="emby",
-                        server=name,
-                        itemid=match.item_id,
-                    )
-                continue
-            if mediainfo.type == MediaType.MOVIE:
-                if itemid:
-                    movie = s.get_iteminfo(itemid)
-                    if movie:
-                        logger.info(f"媒体库 {name} 中找到了 {movie}")
-                        return schemas.ExistMediaInfo(
-                            type=MediaType.MOVIE,
-                            server_type="emby",
-                            server=name,
-                            itemid=movie.item_id
-                        )
-                movies = s.get_movies(title=mediainfo.title,
-                                      year=mediainfo.year,
-                                      media_source=mediainfo.media_source,
-                                      media_id=mediainfo.media_id)
-                if not movies:
-                    logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
-                    continue
-                else:
-                    logger.info(f"媒体库 {name} 中找到了 {movies}")
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.MOVIE,
-                        server_type="emby",
-                        server=name,
-                        itemid=movies[0].item_id
-                    )
-            else:
-                itemid, tvs = s.get_tv_episodes(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                media_source=mediainfo.media_source,
-                                                media_id=mediainfo.media_id,
-                                                item_id=itemid)
-                if not tvs:
-                    logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
-                    continue
-                else:
-                    logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到了这些季集：{tvs}")
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.TV,
-                        seasons=tvs,
-                        server_type="emby",
-                        server=name,
-                        itemid=itemid
-                    )
         return None
 
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:

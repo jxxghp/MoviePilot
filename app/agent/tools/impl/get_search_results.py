@@ -42,6 +42,10 @@ class GetSearchResultsInput(BaseModel):
         False,
         description="Whether to include torrent descriptions in returned results",
     )
+    include_labels: Optional[bool] = Field(
+        False,
+        description="Whether to include torrent labels in returned results",
+    )
     show_filter_options: Optional[bool] = Field(
         False,
         description="Whether to return only optional filter options for re-checking available conditions",
@@ -79,6 +83,7 @@ class GetSearchResultsTool(MoviePilotTool):
         title_pattern: Optional[str] = None,
         content_pattern: Optional[str] = None,
         include_description: bool = False,
+        include_labels: bool = False,
         show_filter_options: bool = False,
         page: Optional[int] = 1,
         **kwargs,
@@ -96,6 +101,7 @@ class GetSearchResultsTool(MoviePilotTool):
         :param title_pattern: 仅匹配种子标题的正则表达式
         :param content_pattern: 匹配种子标题、简介和标签的正则表达式
         :param include_description: 是否在结果中返回种子简介
+        :param include_labels: 是否在结果中返回种子标签
         :param show_filter_options: 是否只返回可用筛选项
         :param page: 分页页码
         :param kwargs: 工具框架附加参数
@@ -103,7 +109,7 @@ class GetSearchResultsTool(MoviePilotTool):
         """
         page = max(1, page or 1)
         logger.info(
-            f"执行工具: {self.name}, 参数: site={site}, season={season}, free_state={free_state}, video_code={video_code}, edition={edition}, resolution={resolution}, release_group={release_group}, title_pattern={title_pattern}, content_pattern={content_pattern}, include_description={include_description}, show_filter_options={show_filter_options}, page={page}"
+            f"执行工具: {self.name}, 参数: site={site}, season={season}, free_state={free_state}, video_code={video_code}, edition={edition}, resolution={resolution}, release_group={release_group}, title_pattern={title_pattern}, content_pattern={content_pattern}, include_description={include_description}, include_labels={include_labels}, show_filter_options={show_filter_options}, page={page}"
         )
 
         try:
@@ -193,6 +199,7 @@ class GetSearchResultsTool(MoviePilotTool):
                     item,
                     index,
                     include_description=include_description,
+                    include_labels=include_labels,
                 )
                 for item, index in zip(page_items, page_indices)
             ]

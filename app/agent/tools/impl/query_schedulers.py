@@ -39,13 +39,15 @@ class QuerySchedulersTool(MoviePilotTool):
         """查询非 Agent 自主任务的运行时定时服务。"""
         logger.info(f"执行工具: {self.name}")
         try:
-            from app.scheduler import AGENT_TASK_JOB_PREFIX, Scheduler
+            from app.application.scheduling import (
+                AGENT_TASK_JOB_PREFIX,
+                list_scheduler_jobs,
+            )
 
-            scheduler = Scheduler()
             agent_task_prefix = f"{AGENT_TASK_JOB_PREFIX}-"
             schedulers = [
                 scheduler_item
-                for scheduler_item in scheduler.list()
+                for scheduler_item in list_scheduler_jobs()
                 if not str(scheduler_item.id or "").startswith(agent_task_prefix)
             ]
             if schedulers:

@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 from app.schemas.common import JsonData
+from app.schemas.types import ReplyMode
 
 
 class ConversationMemory(BaseModel):

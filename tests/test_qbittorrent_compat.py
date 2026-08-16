@@ -92,6 +92,40 @@ def _load_qbittorrent_modules():
         def __class_getitem__(cls, _item):
             return cls
 
+    # 隔离环境下的下载器业务样板基类，镜像 app.modules._base.downloader 的行为
+    class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
+        def test(self):
+            return True, ""
+
+        def scheduler_job(self):
+            pass
+
+        def _get_torrent_info(self, content):
+            torrent_info, torrent_content = None, None
+            if isinstance(content, Path):
+                torrent_content = content.read_bytes() if content.exists() else None
+            else:
+                torrent_content = content
+            if torrent_content:
+                if torrent_rules_module.is_magnet_link(torrent_content):
+                    return None, torrent_content
+                torrent_info = torrentool_torrent_module.Torrent.from_string(torrent_content)
+            return torrent_info, torrent_content
+
+        @staticmethod
+        def _normalize_query_status(status):
+            status_value = getattr(status, "value", status)
+            status_text = str(status_value or "").strip().lower()
+            if status_text in {"transfer", TorrentStatus.TRANSFER.value}:
+                return TorrentQueryStatus.TRANSFER
+            if status_text in {"downloading", TorrentStatus.DOWNLOADING.value}:
+                return TorrentQueryStatus.DOWNLOADING
+            if status_text in {"completed", "seeding", "complete", "完成", "已完成"}:
+                return TorrentQueryStatus.COMPLETED
+            if status_text in {"paused", "pause", "暂停", "已暂停"}:
+                return TorrentQueryStatus.PAUSED
+            return TorrentQueryStatus.ALL
+
     class _Torrent:
         @staticmethod
         def from_string(content):
@@ -143,6 +177,9 @@ def _load_qbittorrent_modules():
     temporal_tools_module.format_duration = _format_duration
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
+    base_module = types.ModuleType("app.modules._base")
+    base_module._DownloaderModuleBase = _DownloaderModuleBase
+    modules_module._base = base_module
     torrentool_torrent_module.Torrent = _Torrent
     qbittorrentapi_module.TorrentDictionary = dict
     qbittorrentapi_module.TorrentFilesList = list
@@ -186,6 +223,7 @@ def _load_qbittorrent_modules():
         "app.domain.metainfo": metainfo_module,
         "app.runtime.log": log_module,
         "app.modules": modules_module,
+        "app.modules._base": base_module,
         "app.modules.qbittorrent": qbittorrent_package_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,

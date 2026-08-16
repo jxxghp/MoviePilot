@@ -415,21 +415,28 @@ class EventManager(metaclass=Singleton):
         同步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
         :param event: 要调度的事件对象
         """
-        handlers = self.__chain_subscribers.get(event.event_type, {})
+        # 运行期可以动态注册或移除处理器；当前事件始终使用调度开始时的快照。
+        with self.__lock:
+            handlers = tuple(
+                self.__chain_subscribers.get(event.event_type, {}).items()
+            )
         if not handlers:
             logger.debug(f"No handlers found for chain event: {event}")
             return False
 
         # 过滤出启用的处理器
-        enabled_handlers = {handler_id: (priority, handler) for handler_id, (priority, handler) in handlers.items()
-                            if self.__is_handler_enabled(handler)}
+        enabled_handlers = tuple(
+            (handler_id, priority, handler)
+            for handler_id, (priority, handler) in handlers
+            if self.__is_handler_enabled(handler)
+        )
 
         if not enabled_handlers:
             logger.debug(f"No enabled handlers found for chain event: {event}. Skipping execution.")
             return False
 
         self.__log_event_lifecycle(event, "Started")
-        for handler_id, (priority, handler) in enabled_handlers.items():
+        for handler_id, priority, handler in enabled_handlers:
             start_time = time.time()
             self.__safe_invoke_handler(handler, event)
             logger.debug(
@@ -444,21 +451,28 @@ class EventManager(metaclass=Singleton):
         异步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
         :param event: 要调度的事件对象
         """
-        handlers = self.__chain_subscribers.get(event.event_type, {})
+        # 快照在锁内建立、在锁外执行，处理器可以安全地修改后续订阅。
+        with self.__lock:
+            handlers = tuple(
+                self.__chain_subscribers.get(event.event_type, {}).items()
+            )
         if not handlers:
             logger.debug(f"No handlers found for chain event: {event}")
             return False
 
         # 过滤出启用的处理器
-        enabled_handlers = {handler_id: (priority, handler) for handler_id, (priority, handler) in handlers.items()
-                            if self.__is_handler_enabled(handler)}
+        enabled_handlers = tuple(
+            (handler_id, priority, handler)
+            for handler_id, (priority, handler) in handlers
+            if self.__is_handler_enabled(handler)
+        )
 
         if not enabled_handlers:
             logger.debug(f"No enabled handlers found for chain event: {event}. Skipping execution.")
             return False
 
         self.__log_event_lifecycle(event, "Started")
-        for handler_id, (priority, handler) in enabled_handlers.items():
+        for handler_id, priority, handler in enabled_handlers:
             start_time = time.time()
             await self.__safe_invoke_handler_async(handler, event)
             logger.debug(
@@ -473,7 +487,11 @@ class EventManager(metaclass=Singleton):
         异步方式调度广播事件，通过线程池逐个调用事件处理器
         :param event: 要调度的事件对象
         """
-        handlers = self.__broadcast_subscribers.get(event.event_type, {})
+        # 快照隔离当前调度与运行期订阅变更；变更从下一个事件开始生效。
+        with self.__lock:
+            handlers = tuple(
+                self.__broadcast_subscribers.get(event.event_type, {}).items()
+            )
         if not handlers:
             logger.debug(f"No handlers found for broadcast event: {event}")
             return
@@ -481,7 +499,7 @@ class EventManager(metaclass=Singleton):
         if event.event_type == EventType.MessageAction and isinstance(event.event_data, dict):
             target_plugin_id = event.event_data.get("__mp_target_plugin_id")
         # 为每个处理器提供独立的事件实例，防止某个处理器对 event_data 的修改影响其他处理器
-        for handler_id, handler in handlers.items():
+        for handler_id, handler in handlers:
             if target_plugin_id and not self.__should_dispatch_to_target_plugin(
                     handler, handler_id, str(target_plugin_id)
             ):

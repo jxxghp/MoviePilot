@@ -9,6 +9,10 @@ from urllib.parse import urlparse
 
 from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.managed_resources import (
+    acquire_managed_resource,
+    acquire_managed_resource_async,
+)
 from app.adapters.network.http import RequestUtils, cookie_parse
 
 
@@ -115,6 +119,47 @@ class BrowserPage(Protocol):
     def close(self) -> None:
         """关闭浏览器页面。"""
         ...
+
+
+def launch_browser_context(headless: bool = True, **kwargs: Any) -> BrowserContext:
+    """
+    启动同步浏览器上下文；有界面模式先显式获取宿主显示资源。
+
+    :param headless: 是否使用无头模式
+    :param kwargs: 浏览器实现接受的其余启动参数
+    :return: 浏览器上下文
+    """
+    if not headless:
+        acquire_managed_resource(
+            "host.display",
+            reason="headed_browser_launch",
+            retry=True,
+        )
+    from cloakbrowser import launch_context
+
+    return launch_context(headless=headless, **kwargs)
+
+
+async def launch_browser_context_async(
+    headless: bool = True,
+    **kwargs: Any,
+) -> Any:
+    """
+    启动异步浏览器上下文；有界面模式等待宿主显示资源就绪。
+
+    :param headless: 是否使用无头模式
+    :param kwargs: 浏览器实现接受的其余启动参数
+    :return: 浏览器上下文
+    """
+    if not headless:
+        await acquire_managed_resource_async(
+            "host.display",
+            reason="headed_browser_launch",
+            retry=True,
+        )
+    from cloakbrowser import launch_context_async
+
+    return await launch_context_async(headless=headless, **kwargs)
 
 
 @dataclass
@@ -662,10 +707,7 @@ class BrowserSessionHelper:
         viewport: Optional[dict[str, int]] = None,
     ) -> BrowserContext:
         """按宿主反检测配置创建 CloakBrowser 上下文。"""
-        from cloakbrowser import launch_context
-
         context_kwargs = {
-            "headless": headless,
             "humanize": settings.CLOAKBROWSER_HUMANIZE,
             "human_preset": settings.CLOAKBROWSER_HUMAN_PRESET,
         }
@@ -673,7 +715,7 @@ class BrowserSessionHelper:
             context_kwargs["user_agent"] = user_agent
         if viewport:
             context_kwargs["viewport"] = viewport
-        return launch_context(**context_kwargs)
+        return launch_browser_context(headless=headless, **context_kwargs)
 
     def _get_or_create_session(
         self,
@@ -883,13 +925,11 @@ class PlaywrightHelper:
         """
         启动 CloakBrowser 上下文。
         """
-        from cloakbrowser import launch_context
-
-        return launch_context(headless=headless,
-                              proxy=proxies,
-                              user_agent=user_agent,
-                              humanize=settings.CLOAKBROWSER_HUMANIZE,
-                              human_preset=settings.CLOAKBROWSER_HUMAN_PRESET)
+        return launch_browser_context(headless=headless,
+                                      proxy=proxies,
+                                      user_agent=user_agent,
+                                      humanize=settings.CLOAKBROWSER_HUMANIZE,
+                                      human_preset=settings.CLOAKBROWSER_HUMAN_PRESET)
 
     @staticmethod
     def __fs_cookie_str(cookies: list) -> str:

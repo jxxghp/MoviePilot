@@ -41,7 +41,7 @@ from app.adapters.external.market import (
 )
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import ProgressHelper
-from app.application.filter import RuleHelper
+from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
@@ -1405,8 +1405,9 @@ def modulelist(_: schemas.TokenPayload = Depends(verify_token)):
     查询已加载的模块ID列表
     """
     modules = []
-    for module_id, module in ModuleManager().get_modules().items():
-        name = module.get_name()
+    for spec in ModuleManager().list_specs():
+        module_id = spec.id
+        name = str(spec.metadata["name"])
         modules.append(
             {
                 "id": module_id,

@@ -1,5 +1,8 @@
 import ast
+from functools import lru_cache
 from pathlib import Path
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
@@ -97,11 +100,17 @@ FORBIDDEN_IMPORT_PREFIXES = {
 
 
 def _discover_modules() -> dict[str, Path]:
-    """建立实际 Python 模块名到源码路径的映射。"""
+    """建立实际 Python 模块名到源码路径的映射。
+
+    `app/plugins/` 由插件仓自治（包含独立第三方实现与未完成文件），
+    不参与宿主架构图分析。
+    """
     modules: dict[str, Path] = {}
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(PROJECT_ROOT).with_suffix("")
         parts = list(relative.parts)
+        if parts[0] == "app" and parts[1] == "plugins":
+            continue
         if parts[-1] == "__init__":
             parts.pop()
         modules[".".join(parts)] = path
@@ -431,7 +440,10 @@ def test_resource_adapter_does_not_restart_process():
 
 
 def test_modules_do_not_import_other_modules_or_chain():
-    """模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。"""
+    """模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。
+
+    `app.modules._base` 是模块共享样板基类包（模块发现会跳过），不视为业务模块。
+    """
     modules = _discover_modules()
     known_modules = set(modules)
     violations: dict[str, set[str]] = {}
@@ -446,7 +458,7 @@ def test_modules_do_not_import_other_modules_or_chain():
             if dependency.startswith("app.chain")
             or (
                 dependency.startswith("app.modules.")
-                and dependency.split(".")[2] != own_package
+                and dependency.split(".")[2] not in (own_package, "_base")
             )
         }
         if forbidden:
@@ -513,3 +525,113 @@ def test_chain_does_not_import_module_internals():
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
+
+
+@lru_cache(maxsize=1)
+def _build_module_graph() -> dict[str, set[str]]:
+    """构建非插件模块的完整静态依赖图，供既有包治理断言复用。
+
+    纯静态 AST 分析无副作用，结果可安全缓存；多断言共享一次解析。
+    """
+    modules = _discover_modules()
+    known_modules = set(modules)
+    return {
+        name: _resolve_imports(name, path, known_modules)
+        for name, path in modules.items()
+    }
+
+
+def test_chain_does_not_import_agent_implementation():
+    """编排层不得反向依赖 Agent 实现，跨域编排经 application 门面。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, dependencies in _build_module_graph().items():
+        if not module_name.startswith("app.chain"):
+            continue
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.agent")
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_agent_application_facade_does_not_import_agent_implementation():
+    """Agent application 门面只能接收组合根注入，不能反向解析具体实现。"""
+    dependencies = _build_module_graph()["app.application.agent"]
+    assert {
+        dependency
+        for dependency in dependencies
+        if dependency.startswith("app.agent")
+    } == set()
+
+
+def test_agent_tools_do_not_import_entrypoint_internals():
+    """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
+
+    工具对进程级状态的读写必须收敛到 application 门面，
+    否则 agent 层与入口层互相穿透会形成不可测试的循环。
+    """
+    violations: dict[str, set[str]] = {}
+    for module_name, dependencies in _build_module_graph().items():
+        if not module_name.startswith("app.agent.tools"):
+            continue
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith(("app.api", "app.scheduler", "app.command"))
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_api_does_not_import_factory():
+    """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, dependencies in _build_module_graph().items():
+        if not module_name.startswith("app.api"):
+            continue
+        forbidden = {
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.factory")
+        }
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+PROCESS_LEVEL_ROOTS = (
+    "app.api",
+    "app.chain",
+    "app.agent",
+    "app.scheduler",
+    "app.command",
+    "app.monitor",
+    "app.startup",
+    "app.factory",
+)
+
+
+def test_process_level_packages_are_not_mutually_cyclic():
+    """进程级根包之间不得形成跨包强连通分量。
+
+    允许的环只存在于：单一包内部（modules 模块内、db 内、schemas 包内、
+    agent 子域内、doctor 内）。跨根包的环意味着入口层、编排层与 Agent 层
+    互相穿透，破坏可插拔性与可测试性。
+    """
+    graph = _build_module_graph()
+    components = _strongly_connected_components(graph)
+    violations: list[list[str]] = []
+    for component in components:
+        roots = {
+            name.split(".")[1]
+            for name in component
+            if name.startswith("app.") and name.count(".") >= 1
+        }
+        involved = {root for root in roots if f"app.{root}" in PROCESS_LEVEL_ROOTS}
+        if len(involved) > 1:
+            violations.append(sorted(component))
+    assert violations == []

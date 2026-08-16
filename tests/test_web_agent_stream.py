@@ -6,10 +6,11 @@ from threading import Event as ThreadEvent
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app import schemas
 from app.agent import ReplyMode, agent_manager
 from app.api.endpoints.agent import (
-    _WebAgentMoviePilotAgent,
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
     _WEB_AGENT_MESSAGE_QUEUES,
@@ -23,6 +24,7 @@ from app.api.endpoints.agent import (
     _collect_web_agent_traditional_events,
     _dispatch_web_agent_message_event,
     _extract_web_agent_message_from_event_data,
+    _get_web_agent_type,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path,
     _transcribe_web_agent_audio_refs,
@@ -39,6 +41,26 @@ from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, NotificationChannel, MessageType
+
+
+@pytest.fixture(autouse=True)
+def _running_agent_service():
+    """本文件验证运行态 Web Agent 行为，显式提供已启动的 canonical manager。"""
+    was_accepting = agent_manager._accepting_tasks
+    agent_manager._accepting_tasks = True
+    MessageChain._user_sessions.clear()
+    try:
+        with patch(
+            "app.api.endpoints.agent.get_running_agent_manager",
+            return_value=agent_manager,
+        ), patch(
+            "app.chain.message.get_running_agent_manager",
+            return_value=agent_manager,
+        ):
+            yield
+    finally:
+        MessageChain._user_sessions.clear()
+        agent_manager._accepting_tasks = was_accepting
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():
@@ -358,7 +380,7 @@ def test_has_web_agent_traditional_interaction_detects_pending_skills():
 
 def test_web_agent_admin_context_uses_current_user_id():
     """Web Agent 工具权限应按当前登录用户 ID 判断管理员身份。"""
-    agent = _WebAgentMoviePilotAgent(
+    agent = _get_web_agent_type()(
         session_id="web-agent:session",
         user_id="7",
         channel=NotificationChannel.WebAgent.value,
@@ -378,7 +400,7 @@ def test_web_agent_admin_context_uses_current_user_id():
 
 def test_web_agent_reused_for_background_task_disables_streaming():
     """Web Agent 被后台任务复用且渠道已清空时应改用非流式广播。"""
-    agent = _WebAgentMoviePilotAgent(
+    agent = _get_web_agent_type()(
         session_id="web-agent:scheduled-session",
         user_id="7",
         channel=None,
@@ -394,7 +416,7 @@ def test_web_agent_reused_for_background_task_disables_streaming():
 def test_web_agent_output_callback_receives_only_new_text():
     """WebAgent 外部回调应接收增量，同时内部仍保留完整输出。"""
     outputs = []
-    agent = _WebAgentMoviePilotAgent(
+    agent = _get_web_agent_type()(
         session_id="web-agent:incremental-output",
         user_id="7",
         channel=NotificationChannel.WebAgent.value,
@@ -414,7 +436,7 @@ def test_web_agent_output_callback_receives_only_new_text():
 def test_web_agent_tool_summary_is_emitted_before_following_text():
     """Web 工具状态应在调用发生时输出，不能拖到正文结束后。"""
     outputs = []
-    agent = _WebAgentMoviePilotAgent(
+    agent = _get_web_agent_type()(
         session_id="web-agent:tool-order",
         user_id="7",
         channel=NotificationChannel.WebAgent.value,
@@ -716,8 +738,8 @@ def test_web_agent_stream_binds_session_to_agent_manager():
 
     try:
         with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
-            "app.api.endpoints.agent._WebAgentMoviePilotAgent",
-            FakeWebAgent,
+            "app.api.endpoints.agent._get_web_agent_type",
+            return_value=FakeWebAgent,
         ):
             body = asyncio.run(scenario())
 
@@ -812,8 +834,8 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
 
     try:
         with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
-            "app.api.endpoints.agent._WebAgentMoviePilotAgent",
-            FakeProtectedAgent,
+            "app.api.endpoints.agent._get_web_agent_type",
+            return_value=FakeProtectedAgent,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
         ) as save_snapshot:
@@ -1128,8 +1150,8 @@ def test_web_agent_stop_finishes_stream_without_error():
             MessageChain,
             "bind_user_session",
         ), patch(
-            "app.api.endpoints.agent._WebAgentMoviePilotAgent",
-            BlockingWebAgent,
+            "app.api.endpoints.agent._get_web_agent_type",
+            return_value=BlockingWebAgent,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
         ):
@@ -1141,6 +1163,39 @@ def test_web_agent_stop_finishes_stream_without_error():
 
     assert '"type": "done"' in body
     assert '"type": "error"' not in body
+
+
+def test_web_agent_stream_rechecks_running_service_before_enqueue():
+    """响应建立后服务若已关闭，生成器必须稳定返回错误且不向旧 manager 入队。"""
+    payload = schemas.AgentWebChatRequest(
+        text="检查状态",
+        session_id="shutdown-race",
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    stale_manager = SimpleNamespace(process_message=AsyncMock())
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        return "".join(await _collect_streaming_response(response))
+
+    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        "app.api.endpoints.agent._is_web_agent_traditional_message",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent._has_web_agent_traditional_interaction",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent.get_running_agent_manager",
+        side_effect=[stale_manager, None],
+    ), patch(
+        "app.api.endpoints.agent._save_web_agent_display_snapshot",
+    ):
+        body = asyncio.run(scenario())
+
+    assert '"type": "error"' in body
+    assert '"type": "done"' in body
+    stale_manager.process_message.assert_not_awaited()
 
 
 def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():

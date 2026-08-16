@@ -21,9 +21,12 @@ def test_navidrome_module_has_no_system_switch():
     assert NavidromeModule().init_setting() is None
 
 
-def test_navidrome_module_is_loaded_by_module_manager():
-    """模块管理器应能加载 Navidrome，否则媒体服务器列表里不会出现该类型。"""
-    assert "NavidromeModule" in ModuleManager()._running_modules
+def test_navidrome_module_is_discovered_without_unconfigured_activation():
+    """Navidrome 始终可发现，但没有启用配置时不应创建服务资源。"""
+    manager = ModuleManager()
+
+    assert "NavidromeModule" in manager.get_module_ids()
+    assert manager.get_running_module("NavidromeModule") is None
 
 
 def test_navidrome_module_ignores_non_music_media():

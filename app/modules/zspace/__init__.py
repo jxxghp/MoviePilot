@@ -1,17 +1,17 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
-from app.domain.context import MediaInfo
-from app.runtime.events import eventmanager
-from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
-from app.modules import _MediaServerBase, _ModuleBase
+from app.modules._base import _MediaServerModuleBase
 from app.modules.zspace.zspace import ZSpace
 from app.schemas import AuthCredentials, AuthInterceptCredentials
-from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
+from app.schemas.types import ChainEventType, MediaServerType, ModuleType
 
 
-class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
+class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
+
+    # 媒体库标识（ExistMediaInfo.server_type）
+    _server_type_value = "zspace"
 
     def init_module(self) -> None:
         """
@@ -48,62 +48,16 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
     def stop(self):
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """
-        测试模块连接性
-        """
-        if not self.get_instances():
-            return None
-        for name, server in self.get_instances().items():
-            if server.is_inactive() and not server.reconnect():
-                return False, f"无法连接极影视服务器：{name}"
-            if not server.user:
-                return False, f"无法连接极影视服务器：{name}"
-        return True, ""
+    def _test_server(self, server, name: str) -> Optional[str]:
+        """极影视用重连结果与用户信息探测连接状态。"""
+        if server.is_inactive() and not server.reconnect():
+            return f"无法连接{self.get_name()}服务器：{name}"
+        if not server.user:
+            return f"无法连接{self.get_name()}服务器：{name}"
+        return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    def scheduler_job(self) -> None:
-        """
-        定时任务，每10分钟调用一次
-        """
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                logger.info(f"极影视服务器 {name} 连接断开，尝试重连 ...")
-                server.reconnect()
-
-    def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
-            -> Optional[AuthCredentials]:
-        """
-        使用极影视用户辅助完成用户认证
-        :param credentials: 认证数据
-        :param service_name: 指定要认证的媒体服务器名称，若为 None 则认证所有服务
-        :return: 认证数据
-        """
-        if not credentials or credentials.grant_type != "password":
-            return None
-        if service_name:
-            servers = [(service_name, server)] if (server := self.get_instance(service_name)) else []
-        else:
-            servers = self.get_instances().items()
-        for name, server in servers:
-            intercept_event = eventmanager.send_event(
-                etype=ChainEventType.AuthIntercept,
-                data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
-                                              service=name, status="triggered")
-            )
-            if intercept_event and intercept_event.event_data:
-                intercept_data: AuthInterceptCredentials = intercept_event.event_data
-                if intercept_data.cancel:
-                    continue
-            token = server.authenticate(credentials.username, credentials.password)
-            if token:
-                credentials.channel = self.get_name()
-                credentials.service = name
-                credentials.token = token
-                return credentials
-        return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """
@@ -128,81 +82,6 @@ class ZSpaceModule(_ModuleBase, _MediaServerBase[ZSpace]):
                 result = server.get_webhook_message(form, args)
                 if result:
                     return result
-        return None
-
-    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
-                     server: Optional[str] = None) -> Optional[schemas.ExistMediaInfo]:
-        """
-        判断媒体文件是否存在
-        :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
-        :param server:  媒体服务器名称
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
-        """
-        if server:
-            servers = [(server, self.get_instance(server))]
-        else:
-            servers = self.get_instances().items()
-        for name, s in servers:
-            if not s:
-                continue
-            if mediainfo.type == MediaType.MUSIC:
-                matches = getattr(s, "get_music", lambda **_: [])(
-                    **MusicMediaServerHelper.search_params(mediainfo)
-                )
-                match = MusicMediaServerHelper.find_match(mediainfo, matches)
-                if match:
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.MUSIC,
-                        server_type="zspace",
-                        server=name,
-                        itemid=match.item_id,
-                    )
-                continue
-            if mediainfo.type == MediaType.MOVIE:
-                if itemid:
-                    movie = s.get_iteminfo(itemid)
-                    if movie:
-                        logger.info(f"媒体库 {name} 中找到了 {movie}")
-                        return schemas.ExistMediaInfo(
-                            type=MediaType.MOVIE,
-                            server_type="zspace",
-                            server=name,
-                            itemid=movie.item_id
-                        )
-                movies = s.get_movies(title=mediainfo.title,
-                                      year=mediainfo.year,
-                                      media_source=mediainfo.media_source,
-                                      media_id=mediainfo.media_id)
-                if not movies:
-                    logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
-                    continue
-                else:
-                    logger.info(f"媒体库 {name} 中找到了 {movies}")
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.MOVIE,
-                        server_type="zspace",
-                        server=name,
-                        itemid=movies[0].item_id
-                    )
-            else:
-                itemid, tvs = s.get_tv_episodes(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                media_source=mediainfo.media_source,
-                                                media_id=mediainfo.media_id,
-                                                item_id=itemid)
-                if not tvs:
-                    logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
-                    continue
-                else:
-                    logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到了这些季集：{tvs}")
-                    return schemas.ExistMediaInfo(
-                        type=MediaType.TV,
-                        seasons=tvs,
-                        server_type="zspace",
-                        server=name,
-                        itemid=itemid
-                    )
         return None
 
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:

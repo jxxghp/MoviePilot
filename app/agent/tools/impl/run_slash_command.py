@@ -57,16 +57,15 @@ class RunSlashCommandTool(MoviePilotTool):
             if not command.startswith("/"):
                 command = f"/{command}"
 
-            # 从全局 Command 单例中验证命令是否存在（包含系统预设命令 + 插件命令 + 其他命令）
-            from app.command import Command
+            # 从命令注册表中验证命令是否存在（包含系统预设命令 + 插件命令 + 其他命令）
+            from app.application.commands import get_command, get_commands
 
             cmd_name = command.split()[0]
-            command_obj = Command()
-            matched_command = command_obj.get(cmd_name)
+            matched_command = get_command(cmd_name)
 
             if not matched_command:
                 # 列出所有可用命令帮助用户
-                all_commands = command_obj.get_commands()
+                all_commands = get_commands()
                 available_cmds = [
                     f"{cmd} - {info.get('description', '无描述')}"
                     for cmd, info in all_commands.items()

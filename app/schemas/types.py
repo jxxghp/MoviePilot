@@ -22,6 +22,13 @@ MUSIC_SUBSCRIBABLE_TYPES = frozenset({
     MUSIC_ENTITY_ALBUM,
 })
 
+
+class ReplyMode(str, Enum):
+    """Agent 最终回复的投递策略，供编排层与调用层共享。"""
+
+    DISPATCH = "dispatch"
+    CAPTURE_ONLY = "capture_only"
+
 # ListenBrainz 音乐探索能力的参数取值域契约，供入口层校验、链层与模块实现共用
 # ListenBrainz 全站统计支持的周期，取值与官方统计页面完全一致
 LISTENBRAINZ_CHART_RANGES = (

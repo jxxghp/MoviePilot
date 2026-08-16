@@ -1,0 +1,15 @@
+schema_version = 1
+id = "SubtitleModule"
+kind = "host_module"
+entrypoint = "app.modules.subtitle:SubtitleModule"
+depends_on = []
+
+[metadata]
+name = "站点字幕"
+type = "other"
+subtype = "Subtitle"
+priority = 0
+
+[activation]
+policy = "bootstrap"
+watch = []

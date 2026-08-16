@@ -1,0 +1,19 @@
+schema_version = 1
+id = "FanartModule"
+kind = "host_module"
+entrypoint = "app.modules.fanart:FanartModule"
+depends_on = []
+
+[metadata]
+name = "Fanart"
+type = "other"
+subtype = "Fanart"
+priority = 0
+
+[activation]
+policy = "when_configured"
+watch = ["FANART_API_KEY"]
+
+[activation.selector]
+kind = "setting_truthy"
+key = "FANART_API_KEY"

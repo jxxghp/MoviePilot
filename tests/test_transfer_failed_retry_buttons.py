@@ -132,9 +132,12 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
 
         with patch.object(settings, "AI_AGENT_ENABLE", True):
             with patch(
-                "app.chain.transfer.TransferHistoryOper"
+                "app.chain._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain.transfer.asyncio.run_coroutine_threadsafe",
+                "app.chain._transfer.build_manual_redo_prompt",
+                return_value="retry transfer prompt",
+            ), patch(
+                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_close_pending_coro,
             ) as run_task:
                 history_oper_cls.return_value.get.return_value = history
@@ -200,14 +203,20 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         async def fake_async_post_message(*args, **kwargs):
             return None
 
+        from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+
+        manager = SimpleNamespace(run_background_prompt=fake_run_background_prompt)
         with patch.object(settings, "AI_AGENT_ENABLE", True):
             with patch(
-                "app.chain.transfer.TransferHistoryOper"
+                "app.chain._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain.transfer.agent_manager.run_background_prompt",
-                side_effect=fake_run_background_prompt,
+                "app.chain._transfer.build_manual_redo_prompt",
+                side_effect=build_manual_redo_prompt,
             ), patch(
-                "app.chain.transfer.asyncio.run_coroutine_threadsafe",
+                "app.chain._transfer.get_running_agent_manager",
+                return_value=manager,
+            ), patch(
+                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_run_pending_coro,
             ):
                 history_oper_cls.return_value.get.return_value = history

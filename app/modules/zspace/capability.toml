@@ -1,0 +1,22 @@
+schema_version = 1
+id = "ZSpaceModule"
+kind = "host_module"
+entrypoint = "app.modules.zspace:ZSpaceModule"
+depends_on = []
+
+[metadata]
+name = "极影视"
+type = "mediaserver"
+subtype = "ZSpace"
+priority = 6
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "zspace"
+enabled_field = "enabled"

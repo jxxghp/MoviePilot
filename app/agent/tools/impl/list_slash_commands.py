@@ -14,7 +14,6 @@ class ListSlashCommandsInput(BaseModel):
     """查询所有可用斜杠命令工具的输入参数模型"""
 
 
-
 class ListSlashCommandsTool(MoviePilotTool):
     name: str = "list_slash_commands"
     tags: list[str] = [
@@ -41,10 +40,9 @@ class ListSlashCommandsTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}")
 
         try:
-            from app.command import Command
+            from app.application.commands import get_commands
 
-            command_obj = Command()
-            all_commands = command_obj.get_commands()
+            all_commands = get_commands()
 
             if not all_commands:
                 return "当前没有可用的命令"

@@ -70,14 +70,14 @@ def reload_plugin_runtime(plugin_id: str) -> None:
     重载插件并重新注册其命令、定时任务和 API。
     """
     # 这些依赖只在真正执行重载时才导入，避免普通查询工具引入不必要的初始化开销。
-    from app.api.endpoints.plugin import register_plugin_api
-    from app.command import Command
-    from app.scheduler import Scheduler
+    from app.application.plugins import register_plugin_api
+    from app.application.commands import init_commands
+    from app.application.scheduling import update_plugin_job
 
     plugin_manager = PluginManager()
     plugin_manager.reload_plugin(plugin_id)
-    Scheduler().update_plugin_job(plugin_id)
-    Command().init_commands(plugin_id)
+    update_plugin_job(plugin_id)
+    init_commands(plugin_id)
     register_plugin_api(plugin_id)
 
 
@@ -333,8 +333,11 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     """
     按现有卸载逻辑移除插件，并清理运行态注册与分组信息。
     """
-    from app.api.endpoints.plugin import _remove_plugin_from_folders, remove_plugin_api
-    from app.scheduler import Scheduler
+    from app.application.plugins import (
+        remove_plugin_api,
+        remove_plugin_from_folders,
+    )
+    from app.application.scheduling import remove_plugin_job
 
     config_oper = SystemConfigOper()
     install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
@@ -343,7 +346,7 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         await config_oper.async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
 
     remove_plugin_api(plugin_id)
-    Scheduler().remove_plugin_job(plugin_id)
+    remove_plugin_job(plugin_id)
 
     plugin_manager = PluginManager()
     plugin_class = plugin_manager.plugins.get(plugin_id)
@@ -362,7 +365,7 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
             except Exception:
                 clone_files_removed = False
 
-    _remove_plugin_from_folders(plugin_id)
+    remove_plugin_from_folders(plugin_id)
     plugin_manager.remove_plugin(plugin_id)
 
     return {

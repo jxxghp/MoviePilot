@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
+from app.application.plugins import register_api_app
 from app.runtime.config import settings
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
@@ -326,3 +327,7 @@ def create_app() -> FastAPI:
 
 # 创建 FastAPI 应用实例
 app = create_app()
+
+# 向 application 层插件路由服务注入应用实例，插件 API 的动态注册/移除
+# 统一经服务完成，避免 api.endpoints 反向依赖本模块。
+register_api_app(app)

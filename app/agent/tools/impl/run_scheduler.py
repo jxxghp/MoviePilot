@@ -46,12 +46,14 @@ class RunSchedulerTool(MoviePilotTool):
     @staticmethod
     def _run_scheduler_sync(job_id: str) -> tuple[bool, str]:
         """同步触发定时服务，避免调度器扫描阻塞事件循环。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import (
+            list_scheduler_jobs,
+            start_scheduler_job,
+        )
 
-        scheduler = Scheduler()
-        for scheduler_item in scheduler.list():
+        for scheduler_item in list_scheduler_jobs():
             if scheduler_item.id == job_id:
-                scheduler.start(job_id)
+                start_scheduler_job(job_id)
                 return True, scheduler_item.name
         return False, ""
 
@@ -60,7 +62,7 @@ class RunSchedulerTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: job_id={job_id}")
 
         try:
-            from app.scheduler import AGENT_TASK_JOB_PREFIX
+            from app.application.scheduling import AGENT_TASK_JOB_PREFIX
 
             if job_id.startswith(f"{AGENT_TASK_JOB_PREFIX}-"):
                 return (

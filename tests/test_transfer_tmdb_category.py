@@ -79,12 +79,16 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
         "app.chain.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(),
     )
+    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace())
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
+    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
+            supplement_tmdb_info=lambda media, _meta: media,
+        ))
     task = TransferTask(
         fileitem=FileItem(
             storage="local",

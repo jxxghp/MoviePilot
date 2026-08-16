@@ -1,0 +1,16 @@
+schema_version = 1
+id = "agent.service"
+kind = "agent_service"
+entrypoint = "app.agent.orchestrator:agent_manager"
+depends_on = []
+
+[metadata]
+name = "Agent Service"
+
+[activation]
+policy = "when_configured"
+watch = ["AI_AGENT_ENABLE"]
+
+[activation.selector]
+kind = "setting_truthy"
+key = "AI_AGENT_ENABLE"

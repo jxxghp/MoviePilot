@@ -9,7 +9,7 @@ from app.application.messaging.agent import (
     resolve_config_principal_ids,
 )
 from app.runtime.log import logger
-from app.modules import _MessageBase, _ModuleBase
+from app.modules._base import _MessageChannelModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
 from app.schemas import IncomingMessage, Message
 from app.schemas.types import NotificationChannel, ModuleType, NotificationAction
@@ -23,7 +23,7 @@ register_channel_admin_resolver(
 )
 
 
-class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
+class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
     def __init__(self):
         """初始化模块级去重缓存，拦截 iLink 偶发的重复回放消息。"""
         super().__init__()
@@ -61,6 +61,13 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         """获取模块优先级。"""
         return 2
 
+    def _commands_enabled(self, config: Optional[dict]) -> bool:
+        """
+        微信爪爪机器人客户端未提供命令注册/删除 API，跳过命令注册，
+        避免基类默认钩子调用不存在的 client.register_commands。
+        """
+        return False
+
     def stop(self) -> None:
         """停止模块"""
         for client in self.get_instances().values():
@@ -69,15 +76,9 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             except Exception as err:
                 logger.error(f"停止微信 ClawBot 模块实例失败：{err}")
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """测试模块连接性。"""
-        if not self.get_instances():
-            return None
-        for name, client in self.get_instances().items():
-            state, message = client.test_connection()
-            if not state:
-                return False, f"微信 ClawBot {name} 未就绪：{message}"
-        return True, ""
+    def _test_connection(self, client) -> Tuple[bool, str]:
+        """微信 ClawBot 的连接探测返回 (状态, 信息)。"""
+        return client.test_connection()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """初始化模块设置。"""

@@ -63,13 +63,13 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
 def test_explicit_ai_message_is_not_recorded_to_message_history():
     """显式 /ai 消息不登记到数据库或实时消息队列。"""
     chain = MessageChain()
+    manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
     ) as record_user_message, patch(
-        "app.chain.message.agent_manager.process_message",
-        new_callable=AsyncMock,
-    ) as process_message, patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
@@ -82,17 +82,17 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
         )
 
     record_user_message.assert_not_called()
-    process_message.assert_called_once()
+    manager.process_message.assert_called_once()
 
 
 def test_message_chain_passes_stable_channel_admin_principal_to_agent():
     """消息链应将渠道适配器生成的管理员事实传给 Agent。"""
     chain = MessageChain()
+    manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
-        new_callable=AsyncMock,
-    ) as process_message, patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
@@ -105,17 +105,17 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
             text="/ai 检查系统状态",
         )
 
-    assert process_message.call_args.kwargs["is_channel_admin"] is True
+    assert manager.process_message.call_args.kwargs["is_channel_admin"] is True
 
 
 def test_message_chain_does_not_trust_channel_display_username():
     """消息链应保留适配器给出的明确非管理员结论。"""
     chain = MessageChain()
+    manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
-        new_callable=AsyncMock,
-    ) as process_message, patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
@@ -128,17 +128,17 @@ def test_message_chain_does_not_trust_channel_display_username():
             text="/ai 检查系统状态",
         )
 
-    assert process_message.call_args.kwargs["is_channel_admin"] is False
+    assert manager.process_message.call_args.kwargs["is_channel_admin"] is False
 
 
 def test_message_chain_uses_same_admin_contract_for_slack():
     """管理员事实透传应复用于其他消息渠道，而不是 Telegram 特判。"""
     chain = MessageChain()
+    manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
-        new_callable=AsyncMock,
-    ) as process_message, patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
@@ -151,7 +151,7 @@ def test_message_chain_uses_same_admin_contract_for_slack():
             text="/ai 检查系统状态",
         )
 
-    assert process_message.call_args.kwargs["is_channel_admin"] is True
+    assert manager.process_message.call_args.kwargs["is_channel_admin"] is True
 
 
 def test_ask_user_choice_message_is_not_recorded_to_message_history():
@@ -252,6 +252,7 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
             AgentInteractionOption(label="电视剧", value="我选择电视剧"),
         ],
     )
+    manager = Mock(process_message=AsyncMock())
 
     try:
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
@@ -259,9 +260,8 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         ) as record_user_message, patch.object(
             chain, "edit_message", return_value=True
         ), patch(
-            "app.chain.message.agent_manager.process_message",
-            new_callable=AsyncMock,
-        ) as process_message, patch(
+            "app.chain.message.get_running_agent_manager", return_value=manager
+        ), patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
@@ -281,5 +281,5 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         agent_interaction_manager.clear()
 
     record_user_message.assert_not_called()
-    process_message.assert_called_once()
-    assert process_message.call_args.kwargs["is_channel_admin"] is False
+    manager.process_message.assert_called_once()
+    assert manager.process_message.call_args.kwargs["is_channel_admin"] is False

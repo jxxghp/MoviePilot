@@ -7,7 +7,7 @@
 """
 from types import SimpleNamespace
 
-import app.chain.transfer as transfer_module
+import app.chain._transfer as mixins_module
 from app.chain.transfer import TransferChain
 
 
@@ -26,7 +26,7 @@ def test_transfer_prefers_snapshot_over_live_lookup(monkeypatch):
             called["lookup"] = True
             return SimpleNamespace(custom_words="不应使用\n实时反查")
 
-    monkeypatch.setattr(transfer_module, "SubscribeChain", _GuardSubscribeChain)
+    monkeypatch.setattr(mixins_module, "SubscribeChain", _GuardSubscribeChain)
 
     history = _fake_history(
         custom_words="S04 => S01\n第 <> 集 >> EP+66",
@@ -46,7 +46,7 @@ def test_transfer_falls_back_to_live_lookup_without_snapshot(monkeypatch):
             assert source == "Subscribe|{...}"
             return SimpleNamespace(custom_words="A => B")
 
-    monkeypatch.setattr(transfer_module, "SubscribeChain", _FakeSubscribeChain)
+    monkeypatch.setattr(mixins_module, "SubscribeChain", _FakeSubscribeChain)
 
     history = _fake_history(custom_words=None, note={"source": "Subscribe|{...}"})
     result = TransferChain._get_subscribe_custom_words(history)
@@ -61,7 +61,7 @@ def test_transfer_returns_none_when_unavailable(monkeypatch):
         def get_subscribe_by_source(self, source):
             return None
 
-    monkeypatch.setattr(transfer_module, "SubscribeChain", _NoneSubscribeChain)
+    monkeypatch.setattr(mixins_module, "SubscribeChain", _NoneSubscribeChain)
 
     # 无下载记录
     assert TransferChain._get_subscribe_custom_words(None) is None

@@ -133,6 +133,7 @@ def simplify_search_result(
     context: Context,
     index: int,
     include_description: bool = False,
+    include_labels: bool = False,
 ) -> dict:
     """
     精简单条搜索结果
@@ -140,6 +141,7 @@ def simplify_search_result(
     :param context: 搜索结果上下文
     :param index: 搜索结果在原始缓存中的序号
     :param include_description: 是否返回种子简介
+    :param include_labels: 是否返回种子标签
     :return: 精简后的搜索结果
     """
     simplified = {}
@@ -162,6 +164,8 @@ def simplify_search_result(
         }
         if include_description:
             simplified["torrent_info"]["description"] = torrent_info.description
+        if include_labels:
+            simplified["torrent_info"]["labels"] = torrent_info.labels or []
 
     if media_info:
         if getattr(media_info, "type", None) == MediaType.MUSIC:

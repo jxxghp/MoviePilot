@@ -195,12 +195,13 @@ class TestAgentInteraction(unittest.TestCase):
         ) as message_add, patch.object(
             chain, "edit_message", return_value=True
         ) as edit_message, patch(
-            "app.chain.message.agent_manager.process_message",
-            new_callable=AsyncMock,
-        ) as process_message, patch(
+            "app.chain.message.get_running_agent_manager"
+        ) as get_running_manager, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
+            process_message = AsyncMock()
+            get_running_manager.return_value.process_message = process_message
             handled = chain._handle_callback(
                 callback_data=f"agent_interaction:choice:{request.request_id}:1",
                 context=InteractionContext(
@@ -267,9 +268,11 @@ class TestAgentInteraction(unittest.TestCase):
 
         try:
             for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu):
+                manager = Mock()
+                manager.matches_secret_confirmation.return_value = True
                 with patch(
-                    "app.chain.message.agent_manager.matches_secret_confirmation",
-                    return_value=True,
+                    "app.chain.message.get_running_agent_manager",
+                    return_value=manager,
                 ), patch.object(
                     chain,
                     "_handle_ai_message",

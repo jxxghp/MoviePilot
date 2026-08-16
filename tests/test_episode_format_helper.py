@@ -708,21 +708,21 @@ def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch)
 
     monkeypatch.setattr(
         chain,
-        "_TransferChain__resolve_episode_format_directory",
+        "_resolve_episode_format_directory",
         lambda item: directory,
     )
     monkeypatch.setattr(
         chain,
-        "_TransferChain__get_episode_format_rules",
+        "_get_episode_format_rules",
         lambda: [],
     )
     monkeypatch.setattr(
         chain,
-        "_TransferChain__get_episode_format_sample_files",
+        "_get_episode_format_sample_files",
         lambda item: [sample],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.EpisodeFormatRuleHelper.recommend",
+        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", helper_data),
     )
 
@@ -773,11 +773,11 @@ def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeyp
 
     monkeypatch.setattr(
         chain,
-        "_TransferChain__get_episode_format_rules",
+        "_get_episode_format_rules",
         lambda: [],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.EpisodeFormatRuleHelper.recommend",
+        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", {
             **helper_data,
             "received_samples": [item.name for item in sample_files],
@@ -854,7 +854,7 @@ def test_transfer_chain_episode_format_samples_include_extra_files(monkeypatch):
     monkeypatch.setattr(chain, "_subtitle_exts", [".ass", ".ssa"], raising=False)
     monkeypatch.setattr(chain, "_audio_exts", [".mka", ".aac"], raising=False)
 
-    sample_files = TransferChain._TransferChain__get_episode_format_sample_files(
+    sample_files = TransferChain._get_episode_format_sample_files(
         chain,
         directory,
     )

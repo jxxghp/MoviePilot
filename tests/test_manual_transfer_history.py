@@ -36,12 +36,12 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
     monkeypatch.setattr(chain, "_TransferChain__put_to_jobview", lambda task: True)
     monkeypatch.setattr(
         chain,
-        "_TransferChain__register_scrape_batch_task",
+        "_register_scrape_batch_task",
         lambda task: None,
     )
     monkeypatch.setattr(
         chain,
-        "_TransferChain__close_scrape_batch",
+        "_close_scrape_batch",
         lambda batch_id: None,
     )
 
@@ -62,6 +62,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         "app.chain.transfer.TransferHistoryOper",
         lambda: history_oper,
     )
+    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: history_oper)
     monkeypatch.setattr(
         "app.chain.transfer.DownloadHistoryOper",
         lambda: SimpleNamespace(
@@ -71,10 +72,17 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             get_by_path=lambda path: None,
         ),
     )
+    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+            get_by_hash=lambda download_hash: None,
+            get_file_by_fullpath=lambda fullpath: None,
+            get_files_by_savepath=lambda savepath: [],
+            get_by_path=lambda path: None,
+        ))
     monkeypatch.setattr(
         "app.chain.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
+    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr(
         "app.chain.transfer.StorageChain",
         lambda: SimpleNamespace(
@@ -85,6 +93,13 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             or True,
         ),
     )
+    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace(
+            exists=lambda current_fileitem: True,
+            delete_media_file=lambda current_fileitem: deleted.append(
+                ("target", current_fileitem.path)
+            )
+            or True,
+        ))
     monkeypatch.setattr(
         "app.chain.transfer.MetaInfoPath",
         lambda path, custom_words=None, **kwargs: FakeMeta(1),

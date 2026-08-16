@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import ModuleType
 from typing import Optional
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
 from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
-from app.adapters.network.browser import BrowserSessionHelper, PlaywrightHelper
+from app.adapters.network.browser import (
+    BrowserSessionHelper,
+    PlaywrightHelper,
+    launch_browser_context,
+    launch_browser_context_async,
+)
 
 
 class _FakeResponse:
@@ -222,6 +230,59 @@ def test_legacy_browser_type_constructor_is_accepted():
         )
 
     assert source == "<html>ok</html>"
+
+
+def test_sync_browser_facade_activates_display_only_for_headed_mode(monkeypatch):
+    """同步启动仅在明确有界面模式获取 host.display，参数原样交给浏览器。"""
+    provider = ModuleType("cloakbrowser")
+    launch_context = MagicMock(return_value=object())
+    provider.launch_context = launch_context
+    monkeypatch.setitem(sys.modules, "cloakbrowser", provider)
+    activate = MagicMock()
+    monkeypatch.setattr(
+        "app.adapters.network.browser.acquire_managed_resource",
+        activate,
+    )
+
+    headless_context = launch_browser_context(headless=True, locale="zh-CN")
+    headed_context = launch_browser_context(headless=False, locale="zh-CN")
+
+    assert headless_context is launch_context.return_value
+    assert headed_context is launch_context.return_value
+    activate.assert_called_once_with(
+        "host.display",
+        reason="headed_browser_launch",
+        retry=True,
+    )
+    assert launch_context.call_args_list == [
+        call(headless=True, locale="zh-CN"),
+        call(headless=False, locale="zh-CN"),
+    ]
+
+
+def test_async_browser_facade_waits_for_display_before_provider(monkeypatch):
+    """异步有界面启动必须等待显示资源完成激活后再创建浏览器上下文。"""
+    events: list[str] = []
+    provider = ModuleType("cloakbrowser")
+
+    async def provider_launch(**_kwargs):
+        events.append("provider")
+        return object()
+
+    provider.launch_context_async = provider_launch
+    monkeypatch.setitem(sys.modules, "cloakbrowser", provider)
+
+    async def activate(*_args, **_kwargs):
+        events.append("display")
+
+    monkeypatch.setattr(
+        "app.adapters.network.browser.acquire_managed_resource_async",
+        AsyncMock(side_effect=activate),
+    )
+
+    asyncio.run(launch_browser_context_async(headless=False, timezone="Asia/Shanghai"))
+
+    assert events == ["display", "provider"]
 
 
 def test_browser_session_helper_blocks_private_network_by_default():

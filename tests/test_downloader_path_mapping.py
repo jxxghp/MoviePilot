@@ -109,6 +109,7 @@ def _load_transmission_module():
     size_tools_module = types.ModuleType("app.foundation.size")
     temporal_tools_module = types.ModuleType("app.foundation.temporal")
     cache_module = types.ModuleType("app.runtime.cache")
+    base_module = types.ModuleType("app.modules._base")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
     transmission_package_module = types.ModuleType("app.modules.transmission")
@@ -130,6 +131,38 @@ def _load_transmission_module():
     class _DownloaderBase:
         def __class_getitem__(cls, _item):
             return cls
+
+    class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
+        """隔离测试用的下载器模块基类桩，与 app.modules._base 行为对齐。"""
+
+        def _get_torrent_info(self, content):
+            """与真实基类一致的种子信息读取，磁力链接不解析。"""
+            torrent_content = content
+            if isinstance(content, Path):
+                torrent_content = content.read_bytes() if content.exists() else None
+            torrent_info = None
+            if torrent_content and not torrent_rules_module.is_magnet_link(torrent_content):
+                torrent_info = torrentool_torrent_module.Torrent.from_string(
+                    torrent_content
+                )
+            return torrent_info, torrent_content
+
+        @staticmethod
+        def _normalize_query_status(status):
+            """与真实基类一致的查询状态归一，返回隔离测试枚举。"""
+            status_value = getattr(status, "value", status)
+            status_text = str(status_value or "").strip().lower()
+            if not status_text or status_text in {"all", "全部"}:
+                return TorrentQueryStatus.ALL
+            if status_text in {"transfer", "transferring"}:
+                return TorrentQueryStatus.TRANSFER
+            if status_text in {"downloading"}:
+                return TorrentQueryStatus.DOWNLOADING
+            if status_text in {"complete", "completed", "seeding", "完成", "已完成"}:
+                return TorrentQueryStatus.COMPLETED
+            if status_text in {"pause", "paused", "暂停", "已暂停"}:
+                return TorrentQueryStatus.PAUSED
+            return TorrentQueryStatus.ALL
 
     class _TransferTorrent:
         def __init__(self, **kwargs):
@@ -210,6 +243,8 @@ def _load_transmission_module():
     log_module.logger = _Logger()
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
+    modules_module._base = base_module
+    base_module._DownloaderModuleBase = _DownloaderModuleBase
     torrent_rules_module.is_magnet_link = _is_magnet_link
     size_tools_module.format_compact_size = _format_size
     temporal_tools_module.format_duration = _format_duration
@@ -247,6 +282,7 @@ def _load_transmission_module():
         "app.domain.metainfo": metainfo_module,
         "app.runtime.log": log_module,
         "app.modules": modules_module,
+        "app.modules._base": base_module,
         "app.modules.transmission": transmission_package_module,
         "app.modules.transmission.transmission": transmission_client_module,
         "app.schemas": schemas_module,

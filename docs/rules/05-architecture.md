@@ -78,9 +78,10 @@ create additional top-level directory categories.
 | `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
+| `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
 | `app/runtime/state.py` | Process restart and update state |
-| `app/runtime/extensions/` | Module, plugin and configured-service discovery/registration/lifecycle |
-| `app/runtime/compat/` | Standard-library-only exact legacy import routing and DEBUG diagnostics |
+| `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
+| `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
 
 `app/startup/` remains the established composition root and is not nested under
 runtime. It injects providers and callbacks, orders initialization/shutdown and
@@ -108,6 +109,16 @@ site-specific URL discovery and browser fallback, so it belongs to
 site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
 mechanism remains in `app/adapters/system/resource.py`.
+
+可选的进程级技术资源使用 Managed Resource 合同：实现及其 data-only
+`capability.toml` 与适配器同目录，`runtime/extensions` 只解释通用的同步/异步
+`start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用
+`on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/managed_resources.py`
+显式获取资源。关闭路径先释放消费者，再关闭已初始化 Runtime，未使用的资源不得因关闭而物化。
+Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
+插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
+旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
+无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。
 
 `app/foundation/crypto.py` stays in foundation because it contains only generic
 RSA, digest and CryptoJS-compatible AES primitives and has no settings, policy,
@@ -201,6 +212,18 @@ do not belong here. Chains interact with modules exclusively through
 internals (classes, exceptions, constants) are forbidden, so every module stays
 pluggable and a chain never names a concrete module implementation.
 
+Underscore-prefixed files in `app/chain/` are feature-domain mixins for
+`ChainBase` and concrete chains, not chains themselves: `_recognition.py`
+(`RecognitionMixin`), `_messaging.py` (`MessageProcessingMixin` /
+`NotificationMixin`), `_interaction.py` (`InteractionChainMixin`, the shared
+slash-command delegation for `remote_list` / `parse_callback` /
+`handle_callback_interaction` / `handle_text_interaction`), `_music.py`
+(`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
+`SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). A concrete chain that exposes slash-command
+interaction inherits `InteractionChainMixin`, injects its handler class via
+`_interaction_handler_type` and implements only `_interaction_handler`; it must
+not re-export application-layer interaction managers.
+
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
@@ -211,6 +234,20 @@ exceptions and value domains used by both modules and upper layers live in
 `schemas`, and module capabilities are exposed to chains only as dispatched
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
+
+`app/modules/_base/` hosts the shared template base classes for module families
+(`downloader.py`, `mediaserver.py`, `notification.py`), each combining the
+family mixin with `_ModuleBase` and typed by `TService` (usage:
+`class QbittorrentModule(_DownloaderModuleBase[Qbittorrent])`). The base classes
+carry only verbatim-duplicated boilerplate — connection test, scheduled
+reconnect, torrent-info reading, query-status normalization for downloaders;
+authentication, media-exists check, inactive-server handling for media servers;
+admin resolution and command registration for message channels — while
+subclasses keep the differentiated API calls and override small hooks such as
+`_test_connection`, `_test_server` and `_is_inactive`. Discovery already skips
+the package (module discovery only enumerates first-level submodules and skips
+underscore-prefixed names), so no new exclusion rules are needed; do not grow
+this package with per-module business logic.
 
 Channels and storages that need login management or temporary-parameter
 initialization follow one generic contract instead of per-target APIs: modules
@@ -303,6 +340,9 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 |---|---|
 | `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
 | `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
+| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/agent_initializer.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
+| `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugins.py`, `scheduling.py` and `commands.py` facades |
+| `api -> factory` | Forbidden; the FastAPI instance is injected into `app/application/plugins.py` by the composition root after creation |
 | `application -> domain / runtime / adapter / Oper` | Allowed |
 | `module -> canonical capability / Oper` | Allowed |
 | `module -> module / chain` | Forbidden for new code |
@@ -317,12 +357,22 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 | Path | Purpose |
 |---|---|
+| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/agent_initializer.py`, with no static `application -> agent` edge |
+| `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
+| `app/application/plugins.py` | Plugin API dynamic route registration/removal; the FastAPI instance is injected by `app/factory.py` after creation |
+| `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
+| `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
+| `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
 | `app/runtime/events.py` | `EventManager`, `Event` and event resolver registration |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
+| `app/runtime/managed_resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
 | `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |
+| `app/adapters/network/browser.py` | Browser launch facade and browser session implementation |
+| `app/adapters/system/display/` | On-first-use virtual display resource and legacy `DisplayHelper` facade |
 | `app/application/rss.py` | Configured RSS retrieval and parsing |
 | `app/application/site/sites.*` | Generated site catalog, authentication and index capability plus its colocated data bundle |
 | `app/runtime/cache.py` | Cache contracts, memory backend, decorators and proxies |
@@ -330,12 +380,12 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
 | `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
 | `app/adapters/external/wechat_crypt.py` | WeChat enterprise-message XML encryption/decryption protocol |
-| `app/application/filter_rules.py` | Built-in torrent filter rule set and rule parser |
+| `app/application/rules.py` | Rule domain: user rule-group config access (`RuleHelper`), built-in torrent filter rule set and rule parser |
 | `app/adapters/external/market.py` | Plugin repository discovery and installation |
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
-| `app/sdk/` | Stable plugin imports |
+| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import
 change. It rejects physical legacy or retired canonical sources, forbidden

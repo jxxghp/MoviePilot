@@ -14,9 +14,15 @@ class ConfigReloadMixin:
     可选地重写 get_reload_name 方法提供模块名称（用于日志显示）
     """
 
+    # 统一生命周期管理器可以继承此 Mixin 的重载方法，但由外部唯一负责事件绑定。
+    CONFIG_RELOAD_MANAGED_EXTERNALLY: bool = False
+
     def __init_subclass__(cls, **kwargs):
         """为声明了 CONFIG_WATCH 的子类生成配置变更处理器。"""
         super().__init_subclass__(**kwargs)
+
+        if getattr(cls, "CONFIG_RELOAD_MANAGED_EXTERNALLY", False):
+            return
 
         config_watch = getattr(cls, "CONFIG_WATCH", None)
         if not config_watch:
