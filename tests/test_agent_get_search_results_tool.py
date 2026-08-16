@@ -54,6 +54,17 @@ def test_simplify_search_result_only_includes_description_when_requested():
     assert detailed_result["torrent_info"]["description"] == "简繁特效字幕"
 
 
+def test_simplify_search_result_only_includes_labels_when_requested():
+    """精简结果应按参数控制标签输出，避免默认增加上下文长度。"""
+    context = _build_context("Movie.2026.1080p", labels=["官译", "特效"])
+
+    default_result = simplify_search_result(context, 1)
+    detailed_result = simplify_search_result(context, 1, include_labels=True)
+
+    assert "labels" not in default_result["torrent_info"]
+    assert detailed_result["torrent_info"]["labels"] == ["官译", "特效"]
+
+
 def test_content_pattern_matches_title_description_and_labels():
     """内容正则应联合匹配标题、简介和标签，并可返回命中的简介。"""
     items = [
