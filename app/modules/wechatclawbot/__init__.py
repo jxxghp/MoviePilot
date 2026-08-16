@@ -61,6 +61,13 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         """获取模块优先级。"""
         return 2
 
+    def _commands_enabled(self, config: Optional[dict]) -> bool:
+        """
+        微信爪爪机器人客户端未提供命令注册/删除 API，跳过命令注册，
+        避免基类默认钩子调用不存在的 client.register_commands。
+        """
+        return False
+
     def stop(self) -> None:
         """停止模块"""
         for client in self.get_instances().values():
