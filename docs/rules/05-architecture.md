@@ -78,9 +78,10 @@ create additional top-level directory categories.
 | `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
+| `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
 | `app/runtime/state.py` | Process restart and update state |
-| `app/runtime/extensions/` | Module, plugin and configured-service discovery/registration/lifecycle |
-| `app/runtime/compat/` | Standard-library-only exact legacy import routing and DEBUG diagnostics |
+| `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
+| `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
 
 `app/startup/` remains the established composition root and is not nested under
 runtime. It injects providers and callbacks, orders initialization/shutdown and
@@ -108,6 +109,16 @@ site-specific URL discovery and browser fallback, so it belongs to
 site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
 mechanism remains in `app/adapters/system/resource.py`.
+
+可选的进程级技术资源使用 Managed Resource 合同：实现及其 data-only
+`capability.toml` 与适配器同目录，`runtime/extensions` 只解释通用的同步/异步
+`start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用
+`on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/managed_resources.py`
+显式获取资源。关闭路径先释放消费者，再关闭已初始化 Runtime，未使用的资源不得因关闭而物化。
+Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
+插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
+旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
+无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。
 
 `app/foundation/crypto.py` stays in foundation because it contains only generic
 RSA, digest and CryptoJS-compatible AES primitives and has no settings, policy,
@@ -321,8 +332,12 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/runtime/events.py` | `EventManager`, `Event` and event resolver registration |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
+| `app/runtime/managed_resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
 | `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |
+| `app/adapters/network/browser.py` | Browser launch facade and browser session implementation |
+| `app/adapters/system/display/` | On-first-use virtual display resource and legacy `DisplayHelper` facade |
 | `app/application/rss.py` | Configured RSS retrieval and parsing |
 | `app/application/site/sites.*` | Generated site catalog, authentication and index capability plus its colocated data bundle |
 | `app/runtime/cache.py` | Cache contracts, memory backend, decorators and proxies |
@@ -335,7 +350,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
-| `app/sdk/` | Stable plugin imports |
+| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import
 change. It rejects physical legacy or retired canonical sources, forbidden

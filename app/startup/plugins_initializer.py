@@ -1,17 +1,31 @@
+from pathlib import Path
+
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.resource_imports import scan_plugin_resource_imports
 from app.runtime.config import global_vars
 from app.runtime.extensions.plugin_manager import (
     PluginManager,
     configure_plugin_install_reporter,
     configure_plugin_legacy_import_services,
+    configure_plugin_resource_import_preparer,
     configure_site_auth_level_provider,
 )
+from app.runtime.managed_resources import acquire_managed_resource
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.log import logger
+
+
+def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
+    """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
+    for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
+        acquire_managed_resource(
+            capability_id,
+            reason="legacy_plugin_import",
+        )
 
 
 def _configure_plugin_services() -> None:
@@ -20,6 +34,7 @@ def _configure_plugin_services() -> None:
         diagnostics_configurator=configure_legacy_import_diagnostics,
         import_scanner=scan_plugin_legacy_imports,
     )
+    configure_plugin_resource_import_preparer(_prepare_legacy_plugin_import)
     configure_plugin_install_reporter(MoviePilotServerHelper.install_plugin_reg)
     configure_site_auth_level_provider(lambda: SitesHelper().auth_level)
 

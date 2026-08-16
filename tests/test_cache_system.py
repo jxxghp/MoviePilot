@@ -142,7 +142,7 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
         raise AssertionError("init_modules must not clear package tool cache directly")
 
     monkeypatch.setattr(modules_initializer, "clear_package_tool_cache", fail_if_called)
-    monkeypatch.setattr(modules_initializer, "DisplayHelper", lambda: None)
+    monkeypatch.setattr(modules_initializer, "init_managed_resources", lambda: None)
     monkeypatch.setattr(modules_initializer, "DohHelper", lambda: None)
     monkeypatch.setattr(modules_initializer, "SitesHelper", lambda: None)
     monkeypatch.setattr(

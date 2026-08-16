@@ -108,13 +108,13 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch.setattr(modules_initializer, "init_agent", agent_initializer.init_agent)
 
     for name in (
-        "DisplayHelper",
         "DohHelper",
         "SitesHelper",
         "ResourceHelper",
         "ModuleManager",
     ):
         monkeypatch.setattr(modules_initializer, name, MagicMock())
+    monkeypatch.setattr(modules_initializer, "init_managed_resources", MagicMock())
     monkeypatch.setattr(modules_initializer, "user_auth", MagicMock())
     monkeypatch.setattr(modules_initializer.EventManager, "start", MagicMock())
     for name in (

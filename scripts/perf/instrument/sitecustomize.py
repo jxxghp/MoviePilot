@@ -1,12 +1,41 @@
-"""MoviePilot Docker A/B 测量时使用的最小 ``sys.modules`` 快照探针。"""
+"""MoviePilot Docker 测量进程内使用的最小诊断探针。"""
+
+from __future__ import annotations
 
 import os
 import signal
 import sys
 
+# 场景激活依赖只在收到信号后加载，避免改变 idle-default 的 import 基线。
+# pylint: disable=import-outside-toplevel
 
 _OUTPUT_DIR = os.environ.get("MP_PERF_OUTPUT_DIR")
+_SCENARIO = os.environ.get("MP_PERF_SCENARIO", "idle-default")
+_ACTIVATION_TIMEOUT = float(os.environ.get("MP_PERF_ACTIVATION_TIMEOUT", "120"))
 _snapshot_index = 0
+_activation_started = False
+_browser_resources: list[object] = []
+
+
+def _utc_now() -> str:
+    """返回稳定、可机器解析的 UTC 时间。"""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_write_json(path, payload: dict[str, object]) -> None:
+    """原子发布结果，避免采集端读取到半写 marker。"""
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+    with temporary_path.open("w", encoding="utf-8") as output:
+        json.dump(payload, output, ensure_ascii=False, indent=2, sort_keys=True)
+        output.write("\n")
+        output.flush()
+        os.fsync(output.fileno())
+    os.replace(temporary_path, path)
 
 
 def _dump_modules(_signum, _frame) -> None:
@@ -31,5 +60,318 @@ def _dump_modules(_signum, _frame) -> None:
     os.replace(temporary_path, final_path)
 
 
+def _launch_one_browser(
+    *,
+    index: int,
+    headless: bool,
+    launcher,
+    start_gate,
+) -> tuple[dict[str, object], list[object]]:
+    """启动一个本地 data URL 浏览器上下文并返回可序列化结果。"""
+    import time
+
+    if start_gate is not None:
+        start_gate.wait(timeout=min(_ACTIVATION_TIMEOUT, 10))
+    started_at = time.perf_counter()
+    retained: list[object] = []
+    result: dict[str, object] = {
+        "index": index,
+        "headless": headless,
+        "started_at_monotonic": started_at,
+    }
+    try:
+        context = launcher(headless=headless)
+        retained.append(context)
+        page = context.new_page()
+        retained.append(page)
+        page.goto("data:text/html,<title>MoviePilot Browser Probe</title>")
+        title = page.title()
+        result.update(
+            {
+                "success": title == "MoviePilot Browser Probe",
+                "page_title": title,
+                "context_type": type(context).__name__,
+            }
+        )
+        if not result["success"]:
+            result["error"] = "本地 data URL 标题校验失败"
+    except Exception as error:  # pragma: no cover - 真实浏览器错误由 marker 保存
+        result.update(
+            {
+                "success": False,
+                "error_type": type(error).__name__,
+                "error": str(error),
+            }
+        )
+    result["elapsed_seconds"] = time.perf_counter() - started_at
+    return result, retained
+
+
+def _enum_value(value):
+    """把 runtime 枚举降为 JSON 标量。"""
+    return getattr(value, "value", value)
+
+
+def _read_display_runtime() -> dict[str, object]:
+    """读取 host.display 的只读状态和观测，不触发资源激活。"""
+    try:
+        from app.runtime.managed_resources import (
+            managed_resource_observations,
+            managed_resource_snapshot,
+        )
+
+        snapshot = managed_resource_snapshot("host.display")
+        observations = managed_resource_observations("host.display")
+        return {
+            "available": True,
+            "snapshot": {
+                "capability_id": snapshot.capability_id,
+                "materialization": _enum_value(snapshot.materialization),
+                "lifecycle": _enum_value(snapshot.lifecycle),
+                "generation": snapshot.generation,
+                "visible": snapshot.visible,
+                "error": snapshot.error,
+            },
+            "observations": [
+                {
+                    "capability_id": item.capability_id,
+                    "generation": item.generation,
+                    "operation": item.operation,
+                    "outcome": item.outcome,
+                    "reason": item.reason,
+                    "materialization": _enum_value(item.materialization),
+                    "lifecycle": _enum_value(item.lifecycle),
+                    "duration_ms": item.duration_ms,
+                    "error": item.error,
+                }
+                for item in observations
+            ],
+        }
+    except Exception as error:  # pragma: no cover - 核心未就绪或真实 runtime 错误
+        return {
+            "available": False,
+            "error_type": type(error).__name__,
+            "error": str(error),
+        }
+
+
+def _close_browser_resources(resources: list[object]) -> list[dict[str, str]]:
+    """逆序关闭一次探针创建的页面与上下文，并返回可序列化错误。"""
+    errors: list[dict[str, str]] = []
+    for resource in reversed(resources):
+        close = getattr(resource, "close", None)
+        if not callable(close):
+            continue
+        try:
+            close()
+        except Exception as error:  # pragma: no cover - 真实浏览器错误由 marker 保存
+            errors.append(
+                {
+                    "resource_type": type(resource).__name__,
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                }
+            )
+    return errors
+
+
+def _activate_browser_scenario(
+    scenario: str,
+    launcher=None,
+) -> dict[str, object]:
+    """通过公开 SDK 执行真实浏览器激活，headed 使用并发冷启动探针。"""
+    import threading
+    import time
+
+    if scenario not in {"browser-headless", "browser-headed"}:
+        raise ValueError(f"场景不支持浏览器激活：{scenario}")
+    if launcher is None:
+        from app.sdk.browser import launch_browser_context
+
+        launcher = launch_browser_context
+
+    display_before = _read_display_runtime()
+    headless = scenario == "browser-headless"
+    concurrency = 1 if headless else 2
+    launch_results: list[dict[str, object] | None] = [None] * concurrency
+    cleanup_error_slots: list[list[dict[str, str]]] = [
+        [] for _index in range(concurrency)
+    ]
+    retained_slots = [False] * concurrency
+    start_gate = None if headless else threading.Barrier(concurrency)
+    completion_gate = None if headless else threading.Barrier(concurrency)
+
+    def launch(index: int) -> None:
+        result, resources = _launch_one_browser(
+            index=index,
+            headless=headless,
+            launcher=launcher,
+            start_gate=start_gate,
+        )
+        launch_results[index] = result
+        if headless:
+            if result.get("success"):
+                _browser_resources.extend(resources)
+                result["retained"] = True
+                retained_slots[index] = True
+            else:
+                cleanup_error_slots[index] = _close_browser_resources(resources)
+            return
+
+        try:
+            completion_gate.wait(timeout=min(_ACTIVATION_TIMEOUT, 30))
+        except threading.BrokenBarrierError:
+            cleanup_error_slots[index] = _close_browser_resources(resources)
+            result.update(
+                {
+                    "success": False,
+                    "error_type": "BrokenBarrierError",
+                    "error": "并发浏览器启动未能完成同线程清理协调",
+                }
+            )
+            return
+
+        successful_indices = [
+            candidate_index
+            for candidate_index, item in enumerate(launch_results)
+            if item is not None and bool(item.get("success"))
+        ]
+        retained_index = min(successful_indices) if successful_indices else None
+        if index == retained_index:
+            # 保留对象不再跨线程使用；容器退出会回收浏览器及其 worker 进程。
+            _browser_resources.extend(resources)
+            result["retained"] = True
+            retained_slots[index] = True
+        else:
+            # Playwright sync/greenlet 对象必须在创建它的线程内关闭。
+            cleanup_error_slots[index] = _close_browser_resources(resources)
+
+    if headless:
+        launch(0)
+    else:
+        threads = [
+            threading.Thread(
+                target=launch,
+                args=(index,),
+                name=f"mp-perf-browser-launch-{index}",
+                daemon=True,
+            )
+            for index in range(concurrency)
+        ]
+        for thread in threads:
+            thread.start()
+        deadline = time.monotonic() + _ACTIVATION_TIMEOUT
+        for thread in threads:
+            thread.join(timeout=max(deadline - time.monotonic(), 0))
+
+    serialized_launches = [
+        item
+        if item is not None
+        else {
+            "index": index,
+            "success": False,
+            "error_type": "TimeoutError",
+            "error": "浏览器启动未在进程内超时前完成",
+        }
+        for index, item in enumerate(launch_results)
+    ]
+    launch_starts = [
+        float(item["started_at_monotonic"])
+        for item in serialized_launches
+        if "started_at_monotonic" in item
+    ]
+    successful_indices = [
+        index
+        for index, item in enumerate(serialized_launches)
+        if bool(item.get("success"))
+    ]
+    cleanup_errors = [
+        error for slot_errors in cleanup_error_slots for error in slot_errors
+    ]
+    retained_count = sum(retained_slots)
+
+    expected_successes = concurrency
+    browser_success = (
+        len(successful_indices) == expected_successes and not cleanup_errors
+    )
+    return {
+        "requested": True,
+        "headless": headless,
+        "concurrency": concurrency,
+        "successes": len(successful_indices),
+        "retained_contexts": retained_count,
+        "launches": serialized_launches,
+        "cleanup_errors": cleanup_errors,
+        "success": browser_success,
+        "managed_resource": {
+            "before": display_before,
+            "after": _read_display_runtime(),
+        },
+        "single_flight_probe": {
+            "requested": not headless,
+            "concurrent_callers": concurrency if not headless else 0,
+            "successful_callers": len(successful_indices) if not headless else 0,
+            "barrier_used": not headless,
+            "launch_start_spread_ms": (
+                (max(launch_starts) - min(launch_starts)) * 1000
+                if launch_starts
+                else None
+            ),
+            "all_callers_succeeded": len(successful_indices) == expected_successes,
+            "calls": serialized_launches if not headless else [],
+        },
+    }
+
+
+def _run_activation() -> None:
+    """在目标解释器的工作线程中运行激活并发布完成 marker。"""
+    if not _OUTPUT_DIR:
+        return
+    import time
+    from pathlib import Path
+
+    started_at = time.perf_counter()
+    result: dict[str, object] = {
+        "schema_version": 1,
+        "scenario": _SCENARIO,
+        "pid": os.getpid(),
+        "started_at": _utc_now(),
+    }
+    try:
+        result["browser"] = _activate_browser_scenario(_SCENARIO)
+        result["success"] = bool(result["browser"]["success"])
+    except Exception as error:  # pragma: no cover - 真实集成错误由 marker 保存
+        result.update(
+            {
+                "success": False,
+                "error_type": type(error).__name__,
+                "error": str(error),
+            }
+        )
+    result["elapsed_seconds"] = time.perf_counter() - started_at
+    result["completed_at"] = _utc_now()
+    _atomic_write_json(
+        Path(_OUTPUT_DIR) / f"activation-{os.getpid()}.json",
+        result,
+    )
+
+
+def _request_activation(_signum, _frame) -> None:
+    """SIGUSR2 只调度一次工作线程，真实 import 与启动仍在目标进程内完成。"""
+    global _activation_started
+    if not _OUTPUT_DIR or _activation_started:
+        return
+    import threading
+
+    _activation_started = True
+    threading.Thread(
+        target=_run_activation,
+        name="mp-perf-scenario-activation",
+        daemon=True,
+    ).start()
+
+
 if _OUTPUT_DIR and hasattr(signal, "SIGUSR1"):
     signal.signal(signal.SIGUSR1, _dump_modules)
+if _OUTPUT_DIR and hasattr(signal, "SIGUSR2"):
+    signal.signal(signal.SIGUSR2, _request_activation)
