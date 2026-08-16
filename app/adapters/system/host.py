@@ -902,7 +902,7 @@ class SystemUtils:
         elif SystemUtils.is_frozen():
             return Path(sys.executable).parent / "config"
         else:
-            return Path(__file__).parents[2] / "config"
+            return Path(__file__).resolve().parents[3] / "config"
 
     @staticmethod
     def get_env_path() -> Path:
