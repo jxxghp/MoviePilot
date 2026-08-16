@@ -17,6 +17,42 @@ from app.adapters.system.host import SystemUtils
 
 class SystemUtilsTest(TestCase):
 
+    def test_get_config_path_uses_repository_config_for_source_runtime(self):
+        """源码运行时应从项目根目录读取配置，不能随适配器目录层级偏移。"""
+        expected = Path(__file__).resolve().parents[1] / "config"
+
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(SystemUtils, "is_docker", return_value=False), \
+                patch.object(SystemUtils, "is_frozen", return_value=False):
+            self.assertEqual(SystemUtils.get_config_path(), expected)
+            self.assertEqual(SystemUtils.get_env_path(), expected / "app.env")
+
+    def test_get_config_path_preserves_explicit_config_dir(self):
+        """显式配置目录始终优先于运行环境推导。"""
+        explicit_path = Path("/custom/moviepilot-config")
+
+        with patch.dict(os.environ, {"CONFIG_DIR": "/ignored"}, clear=True), \
+                patch.object(SystemUtils, "is_docker", return_value=True):
+            self.assertEqual(
+                SystemUtils.get_config_path(str(explicit_path)),
+                explicit_path,
+            )
+
+    def test_get_config_path_preserves_runtime_specific_defaults(self):
+        """容器和冻结程序继续使用各自稳定的配置目录。"""
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(SystemUtils, "is_docker", return_value=True):
+            self.assertEqual(SystemUtils.get_config_path(), Path("/config"))
+
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(SystemUtils, "is_docker", return_value=False), \
+                patch.object(SystemUtils, "is_frozen", return_value=True), \
+                patch("app.adapters.system.host.sys.executable", "/opt/moviepilot/moviepilot"):
+            self.assertEqual(
+                SystemUtils.get_config_path(),
+                Path("/opt/moviepilot/config"),
+            )
+
     def test_execute_with_subprocess_keeps_stdout_when_command_fails(self):
         """
         命令失败时如果原因只写入 stdout，也需要回传给调用方用于错误提示。
