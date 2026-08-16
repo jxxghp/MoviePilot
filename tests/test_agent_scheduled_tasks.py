@@ -431,6 +431,10 @@ async def test_interrupted_date_task_enable_toggle_stays_manual_only(
     scheduler = _build_agent_task_scheduler()
     scheduler.init_agent_task_jobs()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: scheduler,
+    )
     tool = _build_tool(UpdateAgentTaskTool, task.user_id)
 
     paused = json.loads(await tool.run(task_id=task.id, enabled=False))
@@ -458,6 +462,10 @@ async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) ->
     scheduler = _build_agent_task_scheduler()
     scheduler.init_agent_task_jobs()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: scheduler,
+    )
     updated = json.loads(
         await _build_tool(UpdateAgentTaskTool, task.user_id).run(
             task_id=task.id,
@@ -487,6 +495,10 @@ async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
     scheduler = _build_agent_task_scheduler()
     scheduler.init_agent_task_jobs()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: scheduler,
+    )
     tool = _build_tool(UpdateAgentTaskTool, task.user_id)
 
     with pytest.raises(ValueError, match="必须晚于当前时间"):
@@ -521,6 +533,10 @@ async def test_expired_date_task_rejects_enable_without_reschedule(
     scheduler = _build_agent_task_scheduler()
     scheduler.init_agent_task_jobs()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: scheduler,
+    )
 
     with pytest.raises(ValueError, match="必须晚于当前时间"):
         await _build_tool(UpdateAgentTaskTool, task.user_id).run(
@@ -734,6 +750,10 @@ async def test_scheduler_tools_exclude_agent_tasks(monkeypatch) -> None:
         ]
     )
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: scheduler,
+    )
     tool = _build_tool(QuerySchedulersTool, "admin-user")
 
     result = json.loads(await tool.run())
@@ -763,6 +783,10 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
     user_id = f"user-{uuid4().hex}"
     fake_scheduler = _FakeAgentTaskScheduler()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: fake_scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: fake_scheduler,
+    )
 
     create_tool = _build_tool(CreateAgentTaskTool, user_id)
     created = json.loads(await create_tool.ainvoke({
@@ -843,6 +867,10 @@ async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> N
     )
     fake_scheduler = _FakeAgentTaskScheduler()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: fake_scheduler)
+    monkeypatch.setattr(
+        "app.application.scheduling._scheduler_class",
+        lambda: fake_scheduler,
+    )
 
     other_user_result = await _build_tool(
         RunAgentTaskTool,

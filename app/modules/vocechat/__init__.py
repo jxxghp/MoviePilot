@@ -9,7 +9,7 @@ from app.application.messaging.agent import (
     resolve_config_principal_ids,
 )
 from app.runtime.log import logger
-from app.modules import _ModuleBase, _MessageBase
+from app.modules._base import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 from app.schemas.types import ModuleType
@@ -21,7 +21,9 @@ register_channel_admin_resolver(
 )
 
 
-class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
+class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
+    # 管理员配置键，与渠道 resolver 保持一致
+    _admin_config_key = "VOCECHAT_ADMINS"
     _IMAGE_SUFFIXES = (
         ".png",
         ".jpg",
@@ -83,50 +85,8 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
     def stop(self):
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """
-        测试模块连接性
-        """
-        if not self.get_instances():
-            return None
-        for name, client in self.get_instances().items():
-            state = client.get_state()
-            if not state:
-                return False, f"VoceChat {name} 未就绪"
-        return True, ""
-
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    @staticmethod
-    def _get_admins(config: Optional[dict]) -> List[str]:
-        """
-        解析 VoceChat 管理员配置，兼容逗号分隔和首尾空白。
-        """
-        return [
-            admin.strip()
-            for admin in str((config or {}).get("VOCECHAT_ADMINS") or "").split(",")
-            if admin.strip()
-        ]
-
-    @classmethod
-    def _should_reject_admin_command(
-            cls,
-            config: Optional[dict],
-            *user_ids: Optional[Union[str, int]],
-    ) -> bool:
-        """
-        判断 VoceChat 斜杠命令是否应因非管理员身份被拒绝。
-        """
-        admins = cls._get_admins(config)
-        if not admins:
-            return False
-        candidates = [
-            str(user_id).strip()
-            for user_id in user_ids
-            if user_id is not None and str(user_id).strip()
-        ]
-        return not any(candidate in admins for candidate in candidates)
 
     @staticmethod
     def _send_admin_denied(

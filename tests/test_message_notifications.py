@@ -170,7 +170,7 @@ def test_user_helper_message_does_not_enter_sse_queue() -> None:
     assert helper.get() is None
 
 
-def test_notification_post_message_is_persisted_without_sse_queue() -> None:
+def test_notification_post_message_is_persisted_without_sse_queue(monkeypatch) -> None:
     """
     业务通知通过消息链发送时只登记数据库，不进入前端 SSE 队列。
     """
@@ -179,8 +179,10 @@ def test_notification_post_message_is_persisted_without_sse_queue() -> None:
     _reset_message_helper(helper)
     chain = ChainBase()
 
-    chain.messagequeue.send_message = Mock()
-    chain.eventmanager.send_event = Mock()
+    # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    send_message = Mock()
+    monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
+    monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
 
     chain.post_message(
         Notification(
@@ -195,10 +197,10 @@ def test_notification_post_message_is_persisted_without_sse_queue() -> None:
     assert messages[0].title == "下载完成"
     assert messages[0].mtype == NotificationType.Download.value
     assert helper.get() is None
-    chain.messagequeue.send_message.assert_called_once()
+    send_message.assert_called_once()
 
 
-def test_agent_notification_post_message_is_persisted_without_sse_queue() -> None:
+def test_agent_notification_post_message_is_persisted_without_sse_queue(monkeypatch) -> None:
     """
     智能体消息通过消息链发送时登记数据库，但不进入前端 SSE 队列。
     """
@@ -207,8 +209,10 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue() -> Non
     _reset_message_helper(helper)
     chain = ChainBase()
 
-    chain.messagequeue.send_message = Mock()
-    chain.eventmanager.send_event = Mock()
+    # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    send_message = Mock()
+    monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
+    monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
 
     chain.post_message(
         Notification(
@@ -223,18 +227,21 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue() -> Non
     assert messages[0].title == "MoviePilot助手"
     assert messages[0].mtype == NotificationType.Agent.value
     assert helper.get() is None
-    chain.messagequeue.send_message.assert_called_once()
+    send_message.assert_called_once()
 
 
-def test_transient_notification_post_message_skips_history_but_dispatches() -> None:
+def test_transient_notification_post_message_skips_history_but_dispatches(monkeypatch) -> None:
     """
     标记为不保存历史的过程消息应跳过数据库登记，但仍正常派发。
     """
     _clear_messages()
     chain = ChainBase()
 
-    chain.messagequeue.send_message = Mock()
-    chain.eventmanager.send_event = Mock()
+    # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    send_message = Mock()
+    monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
+    send_event = Mock()
+    monkeypatch.setattr(chain.eventmanager, "send_event", send_event)
 
     chain.post_message(
         Notification(
@@ -245,12 +252,12 @@ def test_transient_notification_post_message_skips_history_but_dispatches() -> N
     )
 
     assert MessageOper().list_by_page(page=1, count=10) == []
-    assert "save_history" not in chain.eventmanager.send_event.call_args.kwargs["data"]
-    chain.eventmanager.send_event.assert_called_once()
-    chain.messagequeue.send_message.assert_called_once()
+    assert "save_history" not in send_event.call_args.kwargs["data"]
+    send_event.assert_called_once()
+    send_message.assert_called_once()
 
 
-def test_transient_media_and_torrent_lists_skip_history_but_dispatch() -> None:
+def test_transient_media_and_torrent_lists_skip_history_but_dispatch(monkeypatch) -> None:
     """
     传统交互候选列表标记为不保存历史时，只发送到渠道，不写入消息表。
     """
@@ -267,7 +274,9 @@ def test_transient_media_and_torrent_lists_skip_history_but_dispatch() -> None:
         ),
     )
 
-    chain.messagequeue.send_message = Mock()
+    # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    send_message = Mock()
+    monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
 
     chain.post_medias_message(
         Notification(title="请选择媒体", save_history=False),
@@ -279,4 +288,4 @@ def test_transient_media_and_torrent_lists_skip_history_but_dispatch() -> None:
     )
 
     assert MessageOper().list_by_page(page=1, count=10) == []
-    assert chain.messagequeue.send_message.call_count == 2
+    assert send_message.call_count == 2

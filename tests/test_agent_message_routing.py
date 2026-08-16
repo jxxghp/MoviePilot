@@ -1,3 +1,18 @@
+# 把真实 Agent 服务注册进 application 门面（幂等），供测试 patch 门面背后的单例方法。
+from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.orchestrator import agent_manager
+from app.agent.prompt import prompt_manager
+from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+from app.application.agent import register_agent_services
+
+register_agent_services(
+    agent_manager=agent_manager,
+    prompt_manager=prompt_manager,
+    capability_manager=AgentCapabilityManager,
+    llm_helper=LLMHelper,
+    manual_redo_prompt_builder=build_manual_redo_prompt,
+)
+
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -67,7 +82,7 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
     ) as record_user_message, patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.application.agent._agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -90,7 +105,7 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.application.agent._agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -113,7 +128,7 @@ def test_message_chain_does_not_trust_channel_display_username():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.application.agent._agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -136,7 +151,7 @@ def test_message_chain_uses_same_admin_contract_for_slack():
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.agent_manager.process_message",
+        "app.application.agent._agent_manager.process_message",
         new_callable=AsyncMock,
     ) as process_message, patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -259,7 +274,7 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         ) as record_user_message, patch.object(
             chain, "edit_message", return_value=True
         ), patch(
-            "app.chain.message.agent_manager.process_message",
+            "app.application.agent._agent_manager.process_message",
             new_callable=AsyncMock,
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",

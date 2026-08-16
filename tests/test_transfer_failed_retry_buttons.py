@@ -1,3 +1,18 @@
+# 把真实 Agent 服务注册进 application 门面（幂等），供测试 patch 门面背后的单例方法。
+from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.orchestrator import agent_manager
+from app.agent.prompt import prompt_manager
+from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+from app.application.agent import register_agent_services
+
+register_agent_services(
+    agent_manager=agent_manager,
+    prompt_manager=prompt_manager,
+    capability_manager=AgentCapabilityManager,
+    llm_helper=LLMHelper,
+    manual_redo_prompt_builder=build_manual_redo_prompt,
+)
+
 import unittest
 import asyncio
 import sys
@@ -134,10 +149,14 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             with patch(
                 "app.chain.transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
+                # mixin 中按自身模块命名空间解析 TransferHistoryOper，需同步镜像
+                "app.chain._mixins.TransferHistoryOper"
+            ) as mixins_history_oper_cls, patch(
                 "app.chain.transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_close_pending_coro,
             ) as run_task:
                 history_oper_cls.return_value.get.return_value = history
+                mixins_history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message") as post_message:
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_34",
@@ -204,13 +223,17 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             with patch(
                 "app.chain.transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain.transfer.agent_manager.run_background_prompt",
+                # mixin 中按自身模块命名空间解析 TransferHistoryOper，需同步镜像
+                "app.chain._mixins.TransferHistoryOper"
+            ) as mixins_history_oper_cls, patch(
+                "app.application.agent._agent_manager.run_background_prompt",
                 side_effect=fake_run_background_prompt,
             ), patch(
                 "app.chain.transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_run_pending_coro,
             ):
                 history_oper_cls.return_value.get.return_value = history
+                mixins_history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message"), patch.object(
                     chain, "async_post_message", side_effect=fake_async_post_message
                 ):

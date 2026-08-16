@@ -684,7 +684,7 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
 
 def test_plugin_routes_only_register_v1(monkeypatch):
     """插件动态路由只应注册 v1 地址并由应用统一路由类处理。"""
-    from app.api.endpoints import plugin as plugin_endpoint
+    from app.application import plugins
 
     class FakeApp:
         """记录动态注册路径的应用桩。"""
@@ -715,15 +715,15 @@ def test_plugin_routes_only_register_v1(monkeypatch):
             ]
 
     fake_app = FakeApp()
-    monkeypatch.setattr(plugin_endpoint, "app", fake_app)
-    monkeypatch.setattr(plugin_endpoint, "PluginManager", FakePluginManager)
+    monkeypatch.setattr(plugins, "_api_app", fake_app)
+    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
 
-    plugin_endpoint._update_plugin_api_routes("DemoPlugin", action="add")
+    plugins._update_plugin_api_routes("DemoPlugin", action="add")
     assert [route.path for route in fake_app.routes] == [
         "/api/v1/plugin/DemoPlugin/health"
     ]
 
-    plugin_endpoint._update_plugin_api_routes("DemoPlugin", action="remove")
+    plugins._update_plugin_api_routes("DemoPlugin", action="remove")
     assert fake_app.routes == []
 
 

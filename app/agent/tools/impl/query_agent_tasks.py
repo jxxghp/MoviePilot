@@ -48,7 +48,7 @@ class QueryAgentTasksTool(MoviePilotTool):
             enabled: Optional[bool],
     ) -> list[dict]:
         """读取当前用户的任务及运行时下一次触发时间。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import get_agent_task_next_run
 
         oper = AgentTaskOper()
         if task_id:
@@ -56,12 +56,11 @@ class QueryAgentTasksTool(MoviePilotTool):
             tasks = [task] if task else []
         else:
             tasks = oper.list(user_id=str(self._user_id), enabled=enabled)
-        scheduler = Scheduler()
         result = []
         for task in tasks:
             data = oper.to_dict(
                 task,
-                next_run_at=scheduler.get_agent_task_next_run(task.id),
+                next_run_at=get_agent_task_next_run(task.id),
                 timezone=settings.TZ,
             )
             if task_id:

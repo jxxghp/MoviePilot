@@ -29,8 +29,9 @@ def _shared_params(tmdb_id: int) -> dict:
 def _mock_counter(monkeypatch) -> Mock:
     """替换系统配置持久化入口并返回递增调用桩。"""
     increment = Mock()
+    # 计数逻辑在识别 mixin 中，按 _recognition 模块命名空间解析 SystemConfigOper
     monkeypatch.setattr(
-        "app.chain.SystemConfigOper",
+        "app.chain._recognition.SystemConfigOper",
         lambda: SimpleNamespace(increment=increment),
     )
     return increment
@@ -56,7 +57,7 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
         type=MediaType.MOVIE,
     )
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain.settings.MEDIA_RECOGNIZE_SHARE", True)
+    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(chain, "run_module", Mock(side_effect=[None, media]))
     monkeypatch.setattr(chain, "_update_local_recognize_cache", Mock())
     monkeypatch.setattr(
@@ -85,7 +86,7 @@ def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
     chain = _bare_chain()
     meta = _build_meta("共享识别失败电影")
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain.settings.MEDIA_RECOGNIZE_SHARE", True)
+    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(chain, "run_module", Mock(side_effect=[None, None]))
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -121,7 +122,7 @@ def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
         type=MediaType.MOVIE,
     )
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain.settings.MEDIA_RECOGNIZE_SHARE", True)
+    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(
         chain,
         "async_run_module",

@@ -6,7 +6,6 @@ import traceback
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 from fastapi.concurrency import run_in_threadpool
@@ -68,7 +67,7 @@ from app.agent.tools.impl.mcp import (
     select_legacy_mcp_tools,
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-from app.chain import ChainBase
+from app.chain.agent import AgentChain
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
@@ -77,15 +76,10 @@ from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.user import UserOper
 from app.runtime.log import logger
 from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Notification, NotificationType
+from app.schemas.agent import ReplyMode
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.types import ChainEventType, EventType, MessageChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
-
-
-class AgentChain(ChainBase):
-    """Agent 业务处理链。"""
-
-    pass
 
 
 def _finish_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -319,15 +313,6 @@ class _ThinkTagStripper:
         if self.buffer and not self.in_think_tag:
             on_output(self.buffer)
             self.buffer = ""
-
-
-class ReplyMode(str, Enum):
-    """
-    Agent 最终回复处理模式。
-    """
-
-    DISPATCH = "dispatch"
-    CAPTURE_ONLY = "capture_only"
 
 
 HEARTBEAT_SESSION_PREFIX = "__agent_heartbeat_"

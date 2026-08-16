@@ -12,9 +12,11 @@ ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
 from app.application.messaging.interaction import InteractionContext
-from app.chain.site import SiteChain, site_interaction_manager
+from app.chain.site import SiteChain
+from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
-from app.chain.subscribe import SubscribeChain, subscribe_interaction_manager
+from app.chain.subscribe import SubscribeChain
+from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.schemas.types import MessageChannel
 
 

@@ -51,7 +51,8 @@ from app.runtime.scheduling import TimerUtils
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
-AGENT_TASK_JOB_PREFIX = "agent-task"
+# Agent 自主定时任务前缀下沉到 application 门面，此处保留兼容导出。
+from app.application.scheduling import AGENT_TASK_JOB_PREFIX  # noqa: E402
 
 
 class SchedulerChain(ChainBase):

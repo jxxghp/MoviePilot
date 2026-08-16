@@ -5,13 +5,16 @@ from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
 from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
-from app.modules import _ModuleBase, _MediaServerBase
+from app.modules._base import _MediaServerModuleBase
 from app.modules.plex.plex import Plex
 from app.schemas import AuthCredentials, AuthInterceptCredentials
 from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 
-class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
+class PlexModule(_MediaServerModuleBase[Plex]):
+
+    # 媒体库标识（ExistMediaInfo.server_type）
+    _server_type_value = "plex"
 
     def init_module(self) -> None:
         """
@@ -54,31 +57,16 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             except Exception as err:
                 logger.error(f"停止Plex模块实例失败：{err}")
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        """
-        测试模块连接性
-        """
-        if not self.get_instances():
-            return None
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                server.reconnect()
-            if not server.get_librarys():
-                return False, f"无法连接Plex服务器：{name}"
-        return True, ""
+    def _test_server(self, server, name: str) -> Optional[str]:
+        """Plex 用媒体库列表探测连接状态。"""
+        if server.is_inactive():
+            server.reconnect()
+        if not server.get_librarys():
+            return f"无法连接Plex服务器：{name}"
+        return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    def scheduler_job(self) -> None:
-        """
-        定时任务，每10分钟调用一次
-        """
-        # 定时重连
-        for name, server in self.get_instances().items():
-            if server.is_inactive():
-                logger.info(f"Plex {name} 服务器连接断开，尝试重连 ...")
-                server.reconnect()
 
     def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
             -> Optional[AuthCredentials]:

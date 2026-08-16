@@ -1490,6 +1490,11 @@ class MediaInfo:
             meta = MetaInfo(self.title)
             season = meta.begin_season if meta.begin_season is not None else 1
             episodes_count = info.get("total_episodes") or info.get("eps")
+            # bangumi 返回的集数可能为字符串，统一转整型避免拼接/范围构造异常
+            try:
+                episodes_count = int(episodes_count) if episodes_count else 0
+            except (TypeError, ValueError):
+                episodes_count = 0
             if episodes_count:
                 self.seasons[season] = list(range(1, episodes_count + 1))
                 self.number_of_episodes = episodes_count

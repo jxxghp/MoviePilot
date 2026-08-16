@@ -53,9 +53,13 @@ def test_chain_base_does_not_import_concrete_chains() -> None:
     """基础链不得反向导入任何具体处理链。"""
     imports = _imported_modules(CHAIN_ROOT / "__init__.py")
 
+    # 下划线前缀的内部模块（_messaging/_recognition 等）是 ChainBase 的
+    # 功能域 mixin，不是具体处理链，允许导入
     assert not {
-        module for module in imports
+        module
+        for module in imports
         if module.startswith("app.chain.")
+        and not module.removeprefix("app.chain.").startswith("_")
     }
 
 
@@ -68,6 +72,7 @@ def test_legacy_music_chain_is_removed() -> None:
         )
         for root in LEGACY_MUSIC_SCAN_ROOTS
         for path in root.rglob("*.py")
+        if "plugins" not in path.parts  # 插件目录由插件仓自治，跳过
         if "app.chain.music" in _imported_modules(path)
     }
     assert not violations

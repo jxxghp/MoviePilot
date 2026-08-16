@@ -1,3 +1,18 @@
+# 把真实 Agent 服务注册进 application 门面（幂等），供测试 patch 门面背后的单例方法。
+from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.orchestrator import agent_manager
+from app.agent.prompt import prompt_manager
+from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+from app.application.agent import register_agent_services
+
+register_agent_services(
+    agent_manager=agent_manager,
+    prompt_manager=prompt_manager,
+    capability_manager=AgentCapabilityManager,
+    llm_helper=LLMHelper,
+    manual_redo_prompt_builder=build_manual_redo_prompt,
+)
+
 import asyncio
 import base64
 import json
@@ -451,7 +466,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 }
             ],
         ) as prepare_files, patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
+            "app.application.agent._agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
@@ -484,7 +499,7 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             chain, "_get_or_create_session_id", return_value="session-1"
         ), patch(
-            "app.chain.message.agent_manager.process_message", new_callable=AsyncMock
+            "app.application.agent._agent_manager.process_message", new_callable=AsyncMock
         ) as process_message, patch(
             "app.chain.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),

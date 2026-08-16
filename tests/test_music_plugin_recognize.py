@@ -369,7 +369,7 @@ def test_chain_recognize_media_music_plugin_supplement():
     with patch.object(chain, "recognize_music_from_source", return_value=fallback), \
             patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event), \
-            patch("app.chain.MoviePilotServerHelper.report_recognize_share") as report_mock:
+            patch("app.chain._recognition.MoviePilotServerHelper.report_recognize_share") as report_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is not fallback

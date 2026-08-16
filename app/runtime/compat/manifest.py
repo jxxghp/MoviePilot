@@ -680,6 +680,18 @@ PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
 # 物理模块仍存在、仅部分公开符号迁走时，由导入器在标准 Loader 执行后叠加惰性符号路由。
 # canonical 源码不反向依赖兼容层，目标符号也只在旧调用方真正取用时加载。
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.agent.orchestrator": {
+        "AgentChain": SymbolAlias(
+            target_module="app.chain.agent",
+            target_name="AgentChain",
+            replacement="app.chain.agent.AgentChain",
+        ),
+        "ReplyMode": SymbolAlias(
+            target_module="app.schemas.agent",
+            target_name="ReplyMode",
+            replacement="app.schemas.agent.ReplyMode",
+        ),
+    },
     "app.chain.message": {
         "MediaInteractionChain": SymbolAlias(
             target_module="app.chain.interaction",

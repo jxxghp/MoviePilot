@@ -99,7 +99,7 @@ class CreateAgentTaskTool(MoviePilotTool):
 
     def _create_task(self, payload: CreateAgentTaskInput) -> dict:
         """持久化任务并立即注册到运行时调度器。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import update_agent_task_job
 
         trigger_value = payload.trigger
         if payload.trigger_type == "date" and payload.delay_minutes is not None:
@@ -130,8 +130,7 @@ class CreateAgentTaskTool(MoviePilotTool):
             source=self._source or (chat.source if chat else None),
             original_chat_id=chat.original_chat_id if chat else None,
         )
-        scheduler = Scheduler()
-        next_run_at = scheduler.update_agent_task_job(task.id)
+        next_run_at = update_agent_task_job(task.id)
         return AgentTaskOper.to_dict(
             task,
             next_run_at=next_run_at,

@@ -187,6 +187,8 @@ def test_current_host_module_manifests_follow_the_strict_nested_schema() -> None
         path
         for path in modules_root.iterdir()
         if path.is_dir() and (path / "__init__.py").is_file()
+        # 下划线前缀目录是内部基础包（如 _base），不是 host module，不参与清单校验
+        and not path.name.startswith("_")
     }
     entrypoint_modules = {spec.entrypoint.split(":", maxsplit=1)[0] for spec in specs}
 

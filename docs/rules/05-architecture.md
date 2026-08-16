@@ -201,6 +201,18 @@ do not belong here. Chains interact with modules exclusively through
 internals (classes, exceptions, constants) are forbidden, so every module stays
 pluggable and a chain never names a concrete module implementation.
 
+Underscore-prefixed files in `app/chain/` are feature-domain mixins for
+`ChainBase` and concrete chains, not chains themselves: `_recognition.py`
+(`RecognitionMixin`), `_messaging.py` (`MessageProcessingMixin` /
+`NotificationMixin`), `_interaction.py` (`InteractionChainMixin`, the shared
+slash-command delegation for `remote_list` / `parse_callback` /
+`handle_callback_interaction` / `handle_text_interaction`), `_music.py`
+(`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
+`SubscribeChain`) and `_mixins.py` (TransferChain feature mixins). A concrete chain that exposes slash-command
+interaction inherits `InteractionChainMixin`, injects its handler class via
+`_interaction_handler_type` and implements only `_interaction_handler`; it must
+not re-export application-layer interaction managers.
+
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
@@ -211,6 +223,20 @@ exceptions and value domains used by both modules and upper layers live in
 `schemas`, and module capabilities are exposed to chains only as dispatched
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
+
+`app/modules/_base/` hosts the shared template base classes for module families
+(`downloader.py`, `mediaserver.py`, `notification.py`), each combining the
+family mixin with `_ModuleBase` and typed by `TService` (usage:
+`class QbittorrentModule(_DownloaderModuleBase[Qbittorrent])`). The base classes
+carry only verbatim-duplicated boilerplate — connection test, scheduled
+reconnect, torrent-info reading, query-status normalization for downloaders;
+authentication, media-exists check, inactive-server handling for media servers;
+admin resolution and command registration for message channels — while
+subclasses keep the differentiated API calls and override small hooks such as
+`_test_connection`, `_test_server` and `_is_inactive`. Discovery already skips
+the package (module discovery only enumerates first-level submodules and skips
+underscore-prefixed names), so no new exclusion rules are needed; do not grow
+this package with per-module business logic.
 
 Channels and storages that need login management or temporary-parameter
 initialization follow one generic contract instead of per-target APIs: modules
@@ -303,6 +329,9 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 |---|---|
 | `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
 | `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
+| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`, whose implementations are registered by `app/startup/agent_initializer.py` at import time |
+| `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugins.py`, `scheduling.py` and `commands.py` facades |
+| `api -> factory` | Forbidden; the FastAPI instance is injected into `app/application/plugins.py` by the composition root after creation |
 | `application -> domain / runtime / adapter / Oper` | Allowed |
 | `module -> canonical capability / Oper` | Allowed |
 | `module -> module / chain` | Forbidden for new code |
@@ -317,6 +346,11 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 | Path | Purpose |
 |---|---|
+| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); Agent implementations register through `app/startup/agent_initializer.py`, no static `application -> agent` edge |
+| `app/application/plugins.py` | Plugin API dynamic route registration/removal; the FastAPI instance is injected by `app/factory.py` after creation |
+| `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
+| `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
+| `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
 | `app/runtime/events.py` | `EventManager`, `Event` and event resolver registration |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |

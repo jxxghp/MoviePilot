@@ -29,7 +29,7 @@ def test_slack_module_register_commands_filters_event_subset():
             return_value={"slack-main": SimpleNamespace(name="slack-main", config={})},
         ),
         patch.object(module, "get_instance", return_value=client),
-        patch("app.modules.slack.eventmanager.send_event", return_value=event),
+        patch("app.modules._base.notification.eventmanager.send_event", return_value=event),
     ):
         module.register_commands(original_commands)
 

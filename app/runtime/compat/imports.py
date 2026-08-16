@@ -188,11 +188,14 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
 
         module.__getattr__ = resolve_export
         module.__dir__ = list_exports
+        # 兼容符号不并入 __all__：避免 `from <module> import *` 在包初始化期
+        # 急切解析旧符号、反向拉起应用层模块形成循环导入；显式导入与属性
+        # 访问仍由上方 __getattr__ 惰性解析兜底
         public_names = {
             name for name in module.__dict__ if not name.startswith("_")
         }
         declared_exports = set(previous_all or ()) if had_all else public_names
-        module.__all__ = sorted(declared_exports | set(exports))
+        module.__all__ = sorted(declared_exports)
         module.__dict__[self._STATE_KEY] = {
             "__getattr__": previous_getattr,
             "__dir__": previous_dir,

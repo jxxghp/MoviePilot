@@ -1,13 +1,14 @@
 import base64
 import re
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple, Union, Dict
+from typing import Callable, Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from lxml import etree
 
 from app.chain import ChainBase
+from app.chain._interaction import InteractionChainMixin
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, eventmanager
 from app.db.models.site import Site
@@ -17,10 +18,7 @@ from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
 from app.application.security.cookie import CookieHelper
 from app.adapters.external.cookiecloud import CookieCloudHelper
-from app.application.messaging.site import (
-    SiteInteractionHandler,
-    site_interaction_manager,
-)
+from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
 from app.runtime.log import logger
 from app.schemas import MessageChannel, Notification, SiteUserData
@@ -33,12 +31,13 @@ from app.foundation import url as url_tools
 from app.foundation.dom import DomUtils
 
 
-
-class SiteChain(ChainBase):
+class SiteChain(InteractionChainMixin, ChainBase):
     """
     站点管理处理链
     """
 
+    # 交互处理器类注入，供 InteractionChainMixin 的 parse_callback 委托
+    _interaction_handler_type = SiteInteractionHandler
 
     def __init__(self):
         """初始化站点管理处理链及特殊站点测试器"""
@@ -751,66 +750,6 @@ class SiteChain(ChainBase):
     def _interaction_handler(self) -> "SiteInteractionHandler":
         """构造 /sites 交互处理器，Cookie 更新动作由本链提供。"""
         return SiteInteractionHandler(messenger=self, cookie_updater=self.update_cookie)
-
-    def remote_list(
-            self,
-            arg_str: str = "",
-            channel: MessageChannel = None,
-            userid: Union[str, int] = None,
-            source: Optional[str] = None,
-    ):
-        """
-        /sites 统一入口，委托交互处理器。
-        """
-        return self._interaction_handler().remote_list(
-            arg_str=arg_str, channel=channel, userid=userid, source=source
-        )
-
-    @staticmethod
-    def parse_callback(callback_data: str) -> Optional[Tuple[str, str]]:
-        """
-        解析 /sites 按钮回调。
-        """
-        return SiteInteractionHandler.parse_callback(callback_data)
-
-    def handle_callback_interaction(
-            self,
-            callback_data: str,
-            channel: MessageChannel,
-            source: str,
-            userid: Union[str, int],
-            username: str,
-            original_message_id: Optional[Union[str, int]] = None,
-            original_chat_id: Optional[str] = None,
-    ) -> bool:
-        """委托交互处理器处理按钮回调。"""
-        return self._interaction_handler().handle_callback_interaction(
-            callback_data=callback_data,
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=username,
-            original_message_id=original_message_id,
-            original_chat_id=original_chat_id,
-        )
-
-    def handle_text_interaction(
-            self,
-            channel: MessageChannel,
-            source: str,
-            userid: Union[str, int],
-            username: str,
-            text: str,
-    ) -> bool:
-        """委托交互处理器处理文本输入。"""
-        return self._interaction_handler().handle_text_interaction(
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=username,
-            text=text,
-        )
-
 
     def remote_disable(self, arg_str: str, channel: MessageChannel,
                        userid: Union[str, int] = None, source: Optional[str] = None):

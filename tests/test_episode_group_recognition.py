@@ -34,9 +34,9 @@ def test_recognize_media_uses_meta_episode_group():
     )
 
     with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
-        "app.chain.MoviePilotServerHelper.report_recognize_share",
+        "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
-    ), patch("app.chain.MoviePilotServerHelper.query_recognize_share") as query_mock:
+    ), patch("app.chain._recognition.MoviePilotServerHelper.query_recognize_share") as query_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is mediainfo

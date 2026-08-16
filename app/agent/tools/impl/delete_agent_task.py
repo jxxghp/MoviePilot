@@ -31,14 +31,14 @@ class DeleteAgentTaskTool(MoviePilotTool):
 
     def _delete_task(self, task_id: int) -> bool:
         """删除当前用户的任务并移除运行时调度。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import remove_agent_task_job
 
         deleted = AgentTaskOper().delete(
             task_id=task_id,
             user_id=str(self._user_id),
         )
         if deleted:
-            Scheduler().remove_agent_task_job(task_id)
+            remove_agent_task_job(task_id)
         return deleted
 
     async def run(self, task_id: int, **kwargs: object) -> str:

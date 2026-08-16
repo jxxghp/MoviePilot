@@ -15,7 +15,7 @@ from app.application.messaging.agent import (
     resolve_config_principal_ids,
 )
 from app.runtime.log import logger
-from app.modules import _ModuleBase, _MessageBase
+from app.modules._base import _MessageChannelModuleBase
 from app.modules.qqbot.qqbot import QQBot
 from app.schemas import CommingMessage, MessageChannel, Notification
 from app.schemas.types import ModuleType
@@ -30,8 +30,11 @@ register_channel_admin_resolver(
 )
 
 
-class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
+class QQBotModule(_MessageChannelModuleBase[QQBot]):
     """QQ Bot 通知模块"""
+
+    # 管理员配置键，与渠道 resolver 保持一致
+    _admin_config_key = "QQBOT_ADMINS"
 
     _IMAGE_SUFFIXES = (
         ".png",
@@ -86,45 +89,8 @@ class QQBotModule(_ModuleBase, _MessageBase[QQBot]):
             except Exception as err:
                 logger.error(f"停止QQ Bot模块实例失败：{err}")
 
-    def test(self) -> Optional[Tuple[bool, str]]:
-        if not self.get_instances():
-            return None
-        for name, client in self.get_instances().items():
-            if not client.get_state():
-                return False, f"QQ Bot {name} 未就绪"
-        return True, ""
-
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
-
-    @staticmethod
-    def _get_admins(config: Optional[dict]) -> List[str]:
-        """
-        解析 QQ 管理员配置，兼容逗号分隔和首尾空白。
-        """
-        return [
-            admin.strip()
-            for admin in str((config or {}).get("QQBOT_ADMINS") or "").split(",")
-            if admin.strip()
-        ]
-
-    @classmethod
-    def _should_reject_admin_command(
-            cls,
-            config: Optional[dict],
-            *user_ids: Optional[Union[str, int]],
-    ) -> bool:
-        """
-        判断 QQ 斜杠命令是否应因非管理员身份被拒绝。
-        """
-        admins = cls._get_admins(config)
-        if not admins:
-            return False
-        return not matches_channel_admin(
-            MessageChannel.QQ,
-            config,
-            *user_ids,
-        )
 
     @staticmethod
     def _send_admin_denied(

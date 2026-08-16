@@ -100,7 +100,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
 
     def _update_task(self, payload: UpdateAgentTaskInput) -> Optional[dict]:
         """更新当前用户的任务并刷新运行时调度。"""
-        from app.scheduler import Scheduler
+        from app.application.scheduling import update_agent_task_job
 
         oper = AgentTaskOper()
         task = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
@@ -174,8 +174,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
             if current and current.last_status == "running":
                 return {"error": f"Agent 定时任务 {payload.task_id} 正在执行，请稍后再修改"}
             return None
-        scheduler = Scheduler()
-        next_run_at = scheduler.update_agent_task_job(payload.task_id)
+        next_run_at = update_agent_task_job(payload.task_id)
         updated_task = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
         return oper.to_dict(
             updated_task,
