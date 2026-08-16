@@ -543,7 +543,7 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.rule": ModuleAlias(
-        target="app.application.filter", replacement="app.sdk.services",
+        target="app.application.rules", replacement="app.sdk.services",
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.scraper": ModuleAlias(

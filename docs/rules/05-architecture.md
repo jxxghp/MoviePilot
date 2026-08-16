@@ -379,7 +379,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
 | `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
 | `app/adapters/external/wechat_crypt.py` | WeChat enterprise-message XML encryption/decryption protocol |
-| `app/application/filter_rules.py` | Built-in torrent filter rule set and rule parser |
+| `app/application/rules.py` | Rule domain: user rule-group config access (`RuleHelper`), built-in torrent filter rule set and rule parser |
 | `app/adapters/external/market.py` | Plugin repository discovery and installation |
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |

@@ -41,7 +41,7 @@ from app.adapters.external.market import (
 )
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import ProgressHelper
-from app.application.filter import RuleHelper
+from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger

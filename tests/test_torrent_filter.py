@@ -5,7 +5,7 @@ from unittest.mock import patch
 from app.domain.context import MediaInfo, TorrentInfo
 from app.application.torrent import TorrentHelper
 from app.modules.filter import FilterModule
-from app.application.filter_rules import BUILTIN_RULE_SET
+from app.application.rules import BUILTIN_RULE_SET
 from app.adapters.system import rust as rust_accel
 
 
