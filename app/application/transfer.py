@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app import schemas
 from app.adapters.system.host import SystemUtils
-from app.application.agent import get_agent_manager, get_prompt_manager
+from app.application.agent import get_prompt_manager, get_running_agent_manager
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -959,7 +959,11 @@ class FailedRetryScheduler:
         )
 
         try:
-            await get_agent_manager().run_background_prompt(
+            manager = get_running_agent_manager()
+            if manager is None:
+                logger.warning("智能助手服务未运行，跳过整理失败自动重试")
+                return
+            await manager.run_background_prompt(
                 message=self._build_retry_transfer_prompt(history_ids),
                 session_prefix="__agent_retry_transfer_batch",
                 reply_mode=ReplyMode.DISPATCH,
@@ -971,5 +975,4 @@ class FailedRetryScheduler:
             logger.error(
                 f"智能体重试整理失败 (IDs=[{ids_str}], group={group_key}): {err}"
             )
-
 

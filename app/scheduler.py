@@ -1221,10 +1221,14 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
-        from app.agent.orchestrator import agent_manager
+        from app.agent.runtime_loader import get_running_agent_manager
 
         try:
-            return await agent_manager.execute_scheduled_task(
+            manager = get_running_agent_manager()
+            if manager is None:
+                logger.warning("智能助手服务未运行，跳过 Agent 定时任务")
+                return False, "智能助手服务未运行"
+            return await manager.execute_scheduled_task(
                 task_id,
                 trigger_source=trigger_source,
             )
@@ -1537,9 +1541,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         智能体心跳唤醒：检查并执行待处理的定时任务
         """
-        from app.agent.orchestrator import agent_manager
+        from app.agent.runtime_loader import get_running_agent_manager
 
-        await agent_manager.heartbeat_check_jobs()
+        manager = get_running_agent_manager()
+        if manager is None:
+            logger.debug("智能助手服务未运行，跳过心跳任务")
+            return
+        await manager.heartbeat_check_jobs()
 
     def user_auth(self):
         """

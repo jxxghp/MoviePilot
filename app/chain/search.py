@@ -509,7 +509,7 @@ class SearchChain(ChainBase):
         """
         通过统一后台提示词机制执行资源推荐。
         """
-        from app.application.agent import get_agent_manager, get_prompt_manager
+        from app.application.agent import get_prompt_manager, get_running_agent_manager
         from app.schemas.agent import ReplyMode
 
         prompt = get_prompt_manager().render_system_task_message(
@@ -521,7 +521,11 @@ class SearchChain(ChainBase):
         def on_output(text: str):
             full_output[0] = text
 
-        await get_agent_manager().run_background_prompt(
+        manager = get_running_agent_manager()
+        if manager is None:
+            logger.warning("智能助手服务未运行，跳过搜索结果 AI 推荐")
+            raise RuntimeError("智能助手服务未运行")
+        await manager.run_background_prompt(
             message=prompt,
             session_prefix="__agent_search_recommend",
             output_callback=on_output,

@@ -81,6 +81,62 @@ Xvfb，因此不能用同一个 `0 → 0` / `0 → 1` 不变量衡量。三轮 B
 - 非默认场景结果保存在 `samples/<scenario>/<variant>-<index>/`，可与同 campaign 的 idle 样本并存，
   Markdown 中位数会按场景分组，不会混算。
 
+## Agent 惰性物化场景
+
+PERF-003 在既有 `AI_AGENT_ENABLE=false` 固定配置下增加两个 After-only 场景。探针只向主 MoviePilot
+Python 进程发送信号；OpenAPI 生成和工具目录构造均发生在该解释器内，不通过 `docker exec` 启动
+第二个 Python，也不调用真实 Agent、LLM provider 或外部 MCP。
+
+先以 `f2e548e1` 冻结 Before，候选提交完成后把 `AFTER_COMMIT` 替换为其精确 commit：
+
+```bash
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-003 \
+  build --before-ref f2e548e1 --after-ref AFTER_COMMIT
+
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-003 \
+  seed --browser-source-volume mp-perf-v3-browser-seed --replace
+```
+
+正式 idle-default 三组 A/B 仍使用原 `run` 合同；下面两个动作场景在同一 build/seed 后单独采 After，
+不会覆盖 idle 结果：
+
+```bash
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-003 \
+  run --before-ref f2e548e1 --after-ref AFTER_COMMIT \
+  --browser-source-volume mp-perf-v3-browser-seed \
+  --points 1,5,10,30 --replace --keep-resources
+
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-003 \
+  sample --variant after --index 1 --scenario agent-disabled-router --points 1,5,10,30
+
+../.venv/bin/python scripts/perf/moviepilot_docker_ab.py \
+  --campaign v3-perf-003 \
+  sample --variant after --index 2 --scenario agent-tool-catalog --points 1,5,10,30
+```
+
+- `agent-disabled-router`：直接从主进程 FastAPI app 生成完整 OpenAPI，确认 Agent、LLM、MCP、OpenAI、
+  Anthropic 路由在禁用态仍存在，同时 callback、LLM helper、工具域、orchestrator、LangGraph 和 provider SDK
+  前后保持 0，工具工厂不物化；
+- `agent-tool-catalog`：通过主进程已有的 `moviepilot_tool_manager.list_tools()` 首次构建现有工具目录和 JSON Schema，
+  要求动作前工具域未物化，动作后仅工具 base/catalog/factory/impl 物化；目录还必须无身份碰撞、Schema
+  digest 完整，重复读取复用同一 snapshot/revision。结果记录工具数、Schema 摘要、plugin revision 与
+  factory revision；
+- 固定哨兵覆盖 `app.agent.orchestrator`、`app.agent.callback`、`app.agent.llm.helper`、工具
+  `base/catalog/factory/impl`、`langgraph`、`langchain`、`langchain_core`、`openai`、`anthropic`、
+  `google.genai`、`boto3`、`botocore`。其中 `langchain/langchain_core` 可能由完整 Schema 聚合形成既有
+  基线，只记录数量与变化，不作为禁用态归零门禁；
+- JSON 保留动作前后 Engine、PSS/USS、线程、完整 `sys.modules`、materialization observation、revision、
+  网络累计值和浏览器卷指纹；动作前后容器网络收发必须为 0，Markdown 另汇总 Agent 场景与各定时点的
+  模块哨兵峰值；
+- 启用态 Agent 生命周期不会在该无凭据场景中伪造。现有 `get_running_agent_manager()` 是严格只读、
+  non-materializing 的运行态 getter，`begin_agent_shutdown()` 也只是关闭轴；二者都不是安全启用入口。
+  启用态必须由正式 startup/service lifecycle 驱动，只有宿主形成明确不创建 provider/client、不会外联的
+  公共初始化合同后，才适合加入同一测量门禁。
+
 ## 完整三组 A/B
 
 ```bash

@@ -1,23 +1,15 @@
+from __future__ import annotations
+
 import json
 import threading
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from app.agent.policy import (
-    DEFAULT_TOOL_POLICY_ORCHESTRATOR,
-    AgentToolPolicyOrchestrator,
-    AuthSource,
-    PrincipalType,
-    ToolOrigin,
-    ToolPolicyContext,
-    call_policy_hook,
-    summarize_error,
-)
-from app.agent.tools.base import ToolExecutionTimeoutError, format_tool_result_for_agent
-from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
+
+if TYPE_CHECKING:
+    from app.agent.policy import AgentToolPolicyOrchestrator, ToolPolicyContext
+    from app.agent.tools.catalog import ToolCatalogSnapshot
 
 
 class ToolDefinition:
@@ -53,31 +45,33 @@ class MoviePilotToolsManager:
         self.user_id = user_id
         self.session_id = session_id
         self.is_admin = is_admin
-        self.policy_orchestrator = (
-            policy_orchestrator or DEFAULT_TOOL_POLICY_ORCHESTRATOR
-        )
-        self._policy_context = ToolPolicyContext(
-            session_id=session_id,
-            user_id=user_id,
-            origin=ToolOrigin.OPERATOR_DIRECT,
-            principal_type=PrincipalType.SYSTEM_ADMIN_INTEGRATION,
-            auth_source=AuthSource.API_TOKEN,
-            channel=None,
-            source="api",
-            agent_context={"is_admin": is_admin},
-        )
+        self.policy_orchestrator = policy_orchestrator
+        self._policy_context: Optional[ToolPolicyContext] = None
         self.tools: List[Any] = []
         self.catalog: Optional[ToolCatalogSnapshot] = None
         self._tools_lock = threading.Lock()
         self._plugin_agent_tools_revision = -1
-        self._load_tools()
+        self._catalog_materialized = False
+        self._catalog_managed_by_factory = False
 
-    def _load_tools(self) -> None:
+    @staticmethod
+    def _summarize_error(error: Exception) -> str:
+        """仅在错误路径加载策略脱敏器，保持默认导入轻量。"""
+        from app.agent.policy import summarize_error
+
+        return summarize_error(error)
+
+    def _load_tools_locked(self) -> None:
         """
-        加载所有MoviePilot工具
+        在 manager 锁内加载所有 MoviePilot 工具。
+
+        工厂负责插件 revision 前后稳定窗口；manager 只发布完整快照，避免
+        并发调用观察到一半刷新后的工具列表。
         """
+        from app.agent.runtime_loader import get_tool_factory
+
         try:
-            catalog = MoviePilotToolFactory.create_catalog(
+            catalog = get_tool_factory().create_catalog(
                 session_id=self.session_id,
                 user_id=self.user_id,
                 channel=None,
@@ -89,17 +83,43 @@ class MoviePilotToolsManager:
             self.catalog = catalog
             self.tools = catalog.tools
             self._plugin_agent_tools_revision = catalog.plugin_revision
+            self._catalog_materialized = True
+            self._catalog_managed_by_factory = True
             logger.info(f"成功加载 {len(self.tools)} 个工具")
         except Exception as e:
-            logger.error(f"加载工具失败: {summarize_error(e)}")
+            logger.error(f"加载工具失败: {self._summarize_error(e)}")
             self.tools = []
             self.catalog = None
             self._plugin_agent_tools_revision = -1
+            self._catalog_materialized = False
+            self._catalog_managed_by_factory = False
+
+    def _load_tools(self) -> None:
+        """兼容显式刷新入口，并保证外部调用仍原子发布完整目录。"""
+        with self._tools_lock:
+            self._load_tools_locked()
 
     def _ensure_tools_current(self) -> None:
         """
-        在插件工具注册表变化后惰性刷新工具实例。
+        首次使用时加载目录，并在插件注册表变化后惰性刷新工具实例。
         """
+        # 调用方可能显式注入工具实例；这些实例仍由调用方拥有，manager 不应
+        # 在第一次查询时用全量目录覆盖它们。
+        if not self._catalog_materialized and self.tools:
+            self._catalog_materialized = True
+            return
+
+        if self._catalog_materialized and not self._catalog_managed_by_factory:
+            return
+
+        if not self._catalog_materialized:
+            with self._tools_lock:
+                if not self._catalog_materialized:
+                    self._load_tools_locked()
+            return
+
+        from app.runtime.extensions.plugin_manager import PluginManager
+
         plugin_manager = PluginManager()
         if (
             self._plugin_agent_tools_revision
@@ -112,7 +132,41 @@ class MoviePilotToolsManager:
                 == plugin_manager.get_plugin_agent_tools_revision()
             ):
                 return
-            self._load_tools()
+            self._load_tools_locked()
+
+    def _ensure_policy_runtime(
+        self,
+    ) -> tuple[AgentToolPolicyOrchestrator, ToolPolicyContext]:
+        """返回 direct 入口的策略对象，仅在真实工具调用前完成构造。"""
+        policy_orchestrator = self.policy_orchestrator
+        policy_context = self._policy_context
+        if policy_orchestrator is not None and policy_context is not None:
+            return policy_orchestrator, policy_context
+
+        from app.agent.policy import (
+            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+            AuthSource,
+            PrincipalType,
+            ToolOrigin,
+            ToolPolicyContext,
+        )
+
+        if policy_orchestrator is None:
+            policy_orchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR
+        if policy_context is None:
+            policy_context = ToolPolicyContext(
+                session_id=self.session_id,
+                user_id=self.user_id,
+                origin=ToolOrigin.OPERATOR_DIRECT,
+                principal_type=PrincipalType.SYSTEM_ADMIN_INTEGRATION,
+                auth_source=AuthSource.API_TOKEN,
+                channel=None,
+                source="api",
+                agent_context={"is_admin": self.is_admin},
+            )
+        self.policy_orchestrator = policy_orchestrator
+        self._policy_context = policy_context
+        return policy_orchestrator, policy_context
 
     def list_tools(self) -> List[ToolDefinition]:
         """
@@ -122,8 +176,10 @@ class MoviePilotToolsManager:
             工具定义列表
         """
         self._ensure_tools_current()
+        with self._tools_lock:
+            tools = list(self.tools)
         tools_list = []
-        for tool in self.tools:
+        for tool in tools:
             if getattr(tool, "_require_admin", False) and not self.is_admin:
                 continue
             # 获取工具的输入参数模型
@@ -156,26 +212,31 @@ class MoviePilotToolsManager:
             工具实例，如果未找到返回None
         """
         self._ensure_tools_current()
-        return next(
-            (tool for tool in self.tools if tool.name == tool_name),
-            None,
-        )
+        with self._tools_lock:
+            return next(
+                (tool for tool in self.tools if tool.name == tool_name),
+                None,
+            )
 
     def get_strict_tool(self, tool_name: str) -> Optional[Any]:
         """按当前目录唯一身份解析严格调用，重名时稳定失败。"""
         self._ensure_tools_current()
-        if self.catalog is None or [
-            id(tool) for tool in self.catalog.tools
-        ] != [id(tool) for tool in self.tools]:
-            self.catalog = ToolCatalogSnapshot.from_tools(
-                self.tools,
-                plugin_revision=self._plugin_agent_tools_revision,
-                factory_revision=MoviePilotToolFactory.catalog_factory_revision(),
-            )
-        if self.catalog is None:
-            return None
-        entry = self.catalog.resolve_unique(tool_name)
-        return entry.tool if entry else None
+        with self._tools_lock:
+            if self.catalog is None or [
+                id(tool) for tool in self.catalog.tools
+            ] != [id(tool) for tool in self.tools]:
+                from app.agent.runtime_loader import get_tool_factory
+                from app.agent.tools.catalog import ToolCatalogSnapshot
+
+                self.catalog = ToolCatalogSnapshot.from_tools(
+                    self.tools,
+                    plugin_revision=self._plugin_agent_tools_revision,
+                    factory_revision=get_tool_factory().catalog_factory_revision(),
+                )
+            if self.catalog is None:
+                return None
+            entry = self.catalog.resolve_unique(tool_name)
+            return entry.tool if entry else None
 
     @staticmethod
     def _resolve_field_schema(field_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -265,7 +326,7 @@ class MoviePilotToolsManager:
             schema = args_schema.model_json_schema()
             properties = schema.get("properties", {})
         except Exception as e:
-            logger.warning(f"获取工具schema失败: {summarize_error(e)}")
+            logger.warning(f"获取工具schema失败: {MoviePilotToolsManager._summarize_error(e)}")
             return arguments
 
         # 规范化参数
@@ -320,7 +381,14 @@ class MoviePilotToolsManager:
             )
             return error_msg
 
+        from app.agent.policy import call_policy_hook
+        from app.agent.tools.base import (
+            ToolExecutionTimeoutError,
+            format_tool_result_for_agent,
+        )
+
         observation = None
+        policy_orchestrator = None
         try:
             permission_error = self._check_tool_permission(tool_instance)
             if permission_error:
@@ -328,11 +396,12 @@ class MoviePilotToolsManager:
 
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
-            self._policy_context.agent_context["is_admin"] = self.is_admin
+            policy_orchestrator, policy_context = self._ensure_policy_runtime()
+            policy_context.agent_context["is_admin"] = self.is_admin
             observation = call_policy_hook(
                 "start",
-                self.policy_orchestrator.start,
-                context=self._policy_context,
+                policy_orchestrator.start,
+                context=policy_context,
                 tool=tool_instance,
                 arguments=normalized_arguments,
             )
@@ -346,28 +415,29 @@ class MoviePilotToolsManager:
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
         except ToolExecutionTimeoutError as e:
-            if observation:
-                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
-            logger.warning(summarize_error(e))
+            if observation is not None and policy_orchestrator is not None:
+                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
+            error_summary = self._summarize_error(e)
+            logger.warning(error_summary)
             return format_tool_result_for_agent(
-                summarize_error(e),
+                error_summary,
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
         except Exception as e:
-            if observation:
-                call_policy_hook("fail", self.policy_orchestrator.fail, observation, e)
-            error_summary = summarize_error(e)
+            if observation is not None and policy_orchestrator is not None:
+                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
+            error_summary = self._summarize_error(e)
             logger.error(f"调用工具 {tool_name} 时发生错误: {error_summary}")
             error_msg = json.dumps(
                 {"error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}"},
                 ensure_ascii=False,
             )
             return error_msg
-        if observation:
+        if observation is not None and policy_orchestrator is not None:
             call_policy_hook(
                 "finish",
-                self.policy_orchestrator.finish,
+                policy_orchestrator.finish,
                 observation,
                 str_result,
             )

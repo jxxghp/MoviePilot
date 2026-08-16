@@ -557,6 +557,16 @@ def test_chain_does_not_import_agent_implementation():
     assert violations == {}
 
 
+def test_agent_application_facade_does_not_import_agent_implementation():
+    """Agent application 门面只能接收组合根注入，不能反向解析具体实现。"""
+    dependencies = _build_module_graph()["app.application.agent"]
+    assert {
+        dependency
+        for dependency in dependencies
+        if dependency.startswith("app.agent")
+    } == set()
+
+
 def test_agent_tools_do_not_import_entrypoint_internals():
     """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 

@@ -1,0 +1,12 @@
+schema_version = 1
+id = "agent.moviepilot_type"
+kind = "agent_entrypoint"
+entrypoint = "app.agent.orchestrator:MoviePilotAgent"
+depends_on = []
+
+[metadata]
+name = "MoviePilot Agent Type"
+
+[activation]
+policy = "on_first_use"
+watch = []

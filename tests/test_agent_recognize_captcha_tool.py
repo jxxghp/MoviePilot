@@ -3,6 +3,7 @@ import base64
 import json
 from unittest.mock import patch
 
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -45,14 +46,20 @@ def test_factory_registers_recognize_captcha_tool():
 def test_mcp_tool_manager_exposes_recognize_captcha_schema():
     """MCP 工具管理器应暴露验证码识别工具参数。"""
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    catalog = ToolCatalogSnapshot.from_tools(
+        [tool], plugin_revision=0, factory_revision="test"
+    )
 
-    with patch(
-        "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
-        return_value=[tool],
-    ):
+    with patch.object(
+        MoviePilotToolFactory,
+        "create_catalog",
+        return_value=catalog,
+    ) as create_catalog:
         manager = MoviePilotToolsManager(is_admin=True)
+        create_catalog.assert_not_called()
+        tool_definitions = manager.list_tools()
+        create_catalog.assert_called_once()
 
-    tool_definitions = manager.list_tools()
     schema = tool_definitions[0].input_schema
 
     assert [item.name for item in tool_definitions] == ["recognize_captcha"]

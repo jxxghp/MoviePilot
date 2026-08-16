@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.agent.orchestrator import ReplyMode, agent_manager
+from app.agent.contracts import ReplyMode
+from app.agent.runtime_loader import get_running_agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
@@ -31,6 +32,7 @@ from app.runtime.progress import ProgressHelper
 from app.application.history import clear_transfer_failures
 from app.schemas.types import EventType
 from app.foundation.text import cut as jieba_cut
+from app.runtime.log import logger
 
 router = ResponseAPIRouter()
 
@@ -58,7 +60,11 @@ def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
 
     async def runner():
         try:
-            await agent_manager.run_background_prompt(
+            manager = get_running_agent_manager()
+            if manager is None:
+                logger.warning("智能助手服务未运行，跳过单条整理历史 AI 重做")
+                raise RuntimeError("智能助手服务未运行")
+            await manager.run_background_prompt(
                 message=prompt,
                 session_prefix=f"__agent_manual_redo_{history_id}",
                 output_callback=update_output,
@@ -103,7 +109,11 @@ def _start_batch_ai_redo_task(
 
     async def runner():
         try:
-            await agent_manager.run_background_prompt(
+            manager = get_running_agent_manager()
+            if manager is None:
+                logger.warning("智能助手服务未运行，跳过批量整理历史 AI 重做")
+                raise RuntimeError("智能助手服务未运行")
+            await manager.run_background_prompt(
                 message=prompt,
                 session_prefix="__agent_manual_redo_batch",
                 output_callback=update_output,

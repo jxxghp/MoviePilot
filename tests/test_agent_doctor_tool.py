@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from unittest.mock import patch
 
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -97,14 +98,20 @@ def test_query_doctor_report_compact_mode_omits_details():
 def test_mcp_tool_manager_exposes_doctor_report_tool():
     """MCP 工具管理器应暴露 doctor 诊断报告工具。"""
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
+    catalog = ToolCatalogSnapshot.from_tools(
+        [tool], plugin_revision=0, factory_revision="test"
+    )
 
-    with patch(
-        "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
-        return_value=[tool],
-    ):
+    with patch.object(
+        MoviePilotToolFactory,
+        "create_catalog",
+        return_value=catalog,
+    ) as create_catalog:
         manager = MoviePilotToolsManager(is_admin=True)
+        create_catalog.assert_not_called()
+        tool_definitions = manager.list_tools()
+        create_catalog.assert_called_once()
 
-    tool_definitions = manager.list_tools()
     assert [item.name for item in tool_definitions] == ["query_doctor_report"]
     schema = tool_definitions[0].input_schema
     assert "deep" in schema["properties"]

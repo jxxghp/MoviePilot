@@ -12,7 +12,7 @@ from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.api.endpoints.openai import _OpenAIStreamingHandler
+from app.api.endpoints.openai import _get_openai_streaming_handler_type
 from app.runtime.config import settings
 from app.schemas.message import MessageResponse
 from app.schemas.types import MessageChannel, NotificationType
@@ -321,7 +321,7 @@ class TestAgentToolStreaming:
     def test_openai_streaming_handler_flushes_pending_summary_to_queue(self):
         """校验 OpenAI 流式处理器将待发送摘要推入队列。"""
         async def _run():
-            handler = _OpenAIStreamingHandler()
+            handler = _get_openai_streaming_handler_type()()
             queue: asyncio.Queue = asyncio.Queue()
             handler.bind_queue(queue)
             await handler.start_streaming()

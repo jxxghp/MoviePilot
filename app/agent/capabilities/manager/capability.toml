@@ -1,0 +1,12 @@
+schema_version = 1
+id = "agent.manager"
+kind = "agent_entrypoint"
+entrypoint = "app.agent.orchestrator:agent_manager"
+depends_on = []
+
+[metadata]
+name = "Agent Manager"
+
+[activation]
+policy = "on_first_use"
+watch = []
