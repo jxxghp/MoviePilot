@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.application.security.access import get_password_hash
+from app.application.security.access import PasswordTooLongError, get_password_hash
 from app.db import get_async_db
 from app.db.models.user import User
 from app.api.deps import get_current_active_superuser_async, get_current_active_user_async, get_current_active_user
@@ -42,7 +42,10 @@ async def create_user(
         return schemas.Response(success=False, message="用户已存在")
     user_info = user_in.model_dump()
     if user_info.get("password"):
-        user_info["hashed_password"] = get_password_hash(user_info["password"])
+        try:
+            user_info["hashed_password"] = get_password_hash(user_info["password"])
+        except PasswordTooLongError as error:
+            return schemas.Response(success=False, message=str(error))
         user_info.pop("password")
     user = await User(**user_info).async_create(db)
     return schemas.Response(success=True if user else False)
@@ -67,7 +70,10 @@ async def update_user(
                 success=False,
                 message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位",
             )
-        user_info["hashed_password"] = get_password_hash(user_info["password"])
+        try:
+            user_info["hashed_password"] = get_password_hash(user_info["password"])
+        except PasswordTooLongError as error:
+            return schemas.Response(success=False, message=str(error))
         user_info.pop("password")
     user = await current_user.async_get_by_id(db, user_id=user_info["id"])
     user_name = user_info.get("name")
