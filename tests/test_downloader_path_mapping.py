@@ -44,7 +44,7 @@ def _load_downloader_base():
     schema_types_module.ModuleType = Enum("ModuleType", {"Downloader": "downloader"})
     schema_types_module.DownloaderType = Enum("DownloaderType", {"Qbittorrent": "Qbittorrent"})
     schema_types_module.MediaServerType = Enum("MediaServerType", {"Emby": "Emby"})
-    schema_types_module.MessageChannel = Enum("MessageChannel", {"Telegram": "telegram"})
+    schema_types_module.NotificationChannel = Enum("NotificationChannel", {"Telegram": "telegram"})
     schema_types_module.OtherModulesType = Enum("OtherModulesType", {"Subtitle": "subtitle"})
     schema_types_module.MediaRecognizeType = Enum(
         "MediaRecognizeType", {"TheMovieDb": "themoviedb"}
@@ -60,7 +60,7 @@ def _load_downloader_base():
 
     service_module.ServiceConfigHelper = _ServiceConfigHelper
     mixins_module.ConfigReloadMixin = _ConfigReloadMixin
-    schemas_module.Notification = object
+    schemas_module.Message = object
     schemas_module.NotificationConf = object
     schemas_module.MediaServerConf = object
     schemas_module.DownloaderConf = object

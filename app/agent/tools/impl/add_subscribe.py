@@ -9,7 +9,7 @@ from app.agent.tools.tags import ToolTag
 from app.chain.subscribe import SubscribeChain
 from app.db.oper.user import UserOper
 from app.runtime.log import logger
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, MessageChannel
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, NotificationChannel
 from ._music_utils import normalize_music_type
 
 
@@ -134,20 +134,20 @@ class AddSubscribeTool(MoviePilotTool):
             return resolved_username
 
         try:
-            channel = MessageChannel(self._channel)
+            channel = NotificationChannel(self._channel)
         except ValueError:
             return resolved_username
 
         binding_keys = {
-            MessageChannel.Telegram: ("telegram_userid",),
-            MessageChannel.Discord: ("discord_userid",),
-            MessageChannel.Wechat: ("wechat_userid",),
-            MessageChannel.Feishu: ("feishu_userid", "feishu_openid"),
-            MessageChannel.WechatClawBot: ("wechatclawbot_userid",),
-            MessageChannel.Slack: ("slack_userid",),
-            MessageChannel.VoceChat: ("vocechat_userid",),
-            MessageChannel.SynologyChat: ("synologychat_userid",),
-            MessageChannel.QQ: ("qq_userid", "qq_openid"),
+            NotificationChannel.Telegram: ("telegram_userid",),
+            NotificationChannel.Discord: ("discord_userid",),
+            NotificationChannel.Wechat: ("wechat_userid",),
+            NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
+            NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
+            NotificationChannel.Slack: ("slack_userid",),
+            NotificationChannel.VoceChat: ("vocechat_userid",),
+            NotificationChannel.SynologyChat: ("synologychat_userid",),
+            NotificationChannel.QQ: ("qq_userid", "qq_openid"),
         }.get(channel)
         if not binding_keys:
             return resolved_username

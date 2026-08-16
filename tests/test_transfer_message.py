@@ -5,7 +5,7 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.types import ContentType, MediaType, NotificationType
+from app.schemas.types import ContentType, MediaType, MessageType
 
 
 def test_send_transfer_message_passes_episode_info_to_template_context() -> None:
@@ -41,7 +41,7 @@ def test_send_transfer_message_passes_episode_info_to_template_context() -> None
         )
 
     message = post_message.call_args.args[0]
-    assert message.mtype == NotificationType.Organize
+    assert message.mtype == MessageType.Organize
     assert message.ctype == ContentType.OrganizeSuccess
     assert post_message.call_args.kwargs["episodes_info"] is episodes_info
     assert post_message.call_args.kwargs["season_episode"] == "S01 E01"

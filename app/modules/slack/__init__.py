@@ -16,17 +16,17 @@ from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
 from app.schemas import (
     CommandRegisterEventData,
-    CommingMessage,
-    MessageChannel,
+    IncomingMessage,
+    NotificationChannel,
     MessageResponse,
-    Notification,
+    Message,
 )
 from app.schemas.types import ChainEventType, ModuleType
 from app.foundation.collections import DictUtils
 
 
 register_channel_admin_resolver(
-    MessageChannel.Slack,
+    NotificationChannel.Slack,
     lambda config: resolve_config_principal_ids(config, "SLACK_ADMINS"),
 )
 
@@ -53,7 +53,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         初始化模块
         """
         super().init_service(service_name=Slack.__name__.lower(), service_type=Slack)
-        self._channel = MessageChannel.Slack
+        self._channel = NotificationChannel.Slack
 
     @staticmethod
     def get_name() -> str:
@@ -67,11 +67,11 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         return ModuleType.Notification
 
     @staticmethod
-    def get_subtype() -> MessageChannel:
+    def get_subtype() -> NotificationChannel:
         """
         获取模块子类型
         """
-        return MessageChannel.Slack
+        return NotificationChannel.Slack
 
     @staticmethod
     def get_priority() -> int:
@@ -143,7 +143,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def message_parser(
         self, source: str, body: Any, form: Any, args: Any
-    ) -> Optional[CommingMessage]:
+    ) -> Optional[IncomingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -325,13 +325,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 )
 
                 # 创建包含回调信息的CommingMessage
-                return CommingMessage(
-                    channel=MessageChannel.Slack,
+                return IncomingMessage(
+                    channel=NotificationChannel.Slack,
                     source=client_config.name,
                     userid=userid,
                     username=username,
                     is_channel_admin=matches_channel_admin(
-                        MessageChannel.Slack, client_config.config, userid
+                        NotificationChannel.Slack, client_config.config, userid
                     ),
                     text=text,
                     is_callback=True,
@@ -382,13 +382,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 f"text={text}, images={len(images) if images else 0}, audios={len(audio_refs) if audio_refs else 0}, "
                 f"files={len(files) if files else 0}"
             )
-            return CommingMessage(
-                channel=MessageChannel.Slack,
+            return IncomingMessage(
+                channel=NotificationChannel.Slack,
                 source=client_config.name,
                 userid=userid,
                 username=username,
                 is_channel_admin=matches_channel_admin(
-                    MessageChannel.Slack, client_config.config, userid
+                    NotificationChannel.Slack, client_config.config, userid
                 ),
                 text=text,
                 message_id=message_id,
@@ -402,7 +402,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
     @staticmethod
     def _extract_images(
         msg_json: dict,
-    ) -> Optional[List[CommingMessage.MessageImage]]:
+    ) -> Optional[List[IncomingMessage.MessageImage]]:
         """
         从Slack消息中提取图片URL
         """
@@ -422,7 +422,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 url = file.get("url_private") or file.get("url_private_download")
                 if url:
                     images.append(
-                        CommingMessage.MessageImage(
+                        IncomingMessage.MessageImage(
                             ref=url,
                             name=file.get("name") or file.get("title"),
                             mime_type=file.get("mimetype"),
@@ -457,7 +457,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
     @classmethod
     def _extract_files(
         cls, msg_json: dict
-    ) -> Optional[List[CommingMessage.MessageAttachment]]:
+    ) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """
         从 Slack 消息中提取非图片/非音频文件。
         """
@@ -487,7 +487,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             if not url:
                 continue
             attachments.append(
-                CommingMessage.MessageAttachment(
+                IncomingMessage.MessageAttachment(
                     ref=f"slack://file/{quote(url, safe='')}",
                     name=file.get("name") or file.get("title"),
                     mime_type=file.get("mimetype"),
@@ -536,7 +536,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             return content
         return None
 
-    def post_message(self, message: Notification, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs) -> None:
         """
         发送消息
         :param message: 消息
@@ -575,7 +575,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                     )
 
     def post_medias_message(
-        self, message: Notification, medias: List[MediaInfo]
+        self, message: Message, medias: List[MediaInfo]
     ) -> None:
         """
         发送媒体信息选择列表
@@ -598,7 +598,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 )
 
     def post_torrents_message(
-        self, message: Notification, torrents: List[Context]
+        self, message: Message, torrents: List[Context]
     ) -> None:
         """
         发送种子信息选择列表
@@ -622,7 +622,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def delete_message(
         self,
-        channel: MessageChannel,
+        channel: NotificationChannel,
         source: str,
         message_id: str,
         chat_id: Optional[str] = None,
@@ -650,7 +650,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def edit_message(
         self,
-        channel: MessageChannel,
+        channel: NotificationChannel,
         source: str,
         message_id: Union[str, int],
         chat_id: Union[str, int],
@@ -738,7 +738,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def mark_message_processing_started(
         self,
-        channel: MessageChannel,
+        channel: NotificationChannel,
         source: str,
         userid: Optional[Union[str, int]] = None,
         message_id: Optional[Union[str, int]] = None,
@@ -778,7 +778,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def mark_message_processing_finished(
         self,
-        channel: MessageChannel,
+        channel: NotificationChannel,
         source: str,
         userid: Optional[Union[str, int]] = None,
         message_id: Optional[Union[str, int]] = None,
@@ -808,7 +808,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
             emoji=str(emoji),
         )
 
-    def send_direct_message(self, message: Notification) -> Optional[MessageResponse]:
+    def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
         直接发送消息并返回消息ID等信息
         :param message: 消息体
@@ -863,7 +863,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                     return MessageResponse(
                         message_id=message_id,
                         chat_id=channel_id,
-                        channel=MessageChannel.Slack,
+                        channel=NotificationChannel.Slack,
                         source=conf.name,
                         success=True,
                     )

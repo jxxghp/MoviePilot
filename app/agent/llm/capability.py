@@ -774,20 +774,20 @@ class AgentCapabilityManager:
         if not channel:
             return None
 
-        from app.schemas.types import MessageChannel
+        from app.schemas.types import NotificationChannel
 
-        if isinstance(channel, MessageChannel):
+        if isinstance(channel, NotificationChannel):
             return channel
 
         channel_text = str(channel).strip()
         if not channel_text:
             return None
         lowered_channel = channel_text.lower()
-        for channel_item in MessageChannel:
+        for channel_item in NotificationChannel:
             aliases = {
                 channel_item.value.lower(),
                 channel_item.name.lower(),
-                f"{MessageChannel.__name__}.{channel_item.name}".lower(),
+                f"{NotificationChannel.__name__}.{channel_item.name}".lower(),
             }
             if lowered_channel in aliases:
                 return channel_item
@@ -812,8 +812,8 @@ class AgentCapabilityManager:
             cls, channel: Optional[str], source: Optional[str]
     ) -> bool:
         """判断当前渠道是否支持原生语音消息发送。"""
-        from app.schemas.message import ChannelCapability, ChannelCapabilityManager
-        from app.schemas.types import MessageChannel
+        from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+        from app.schemas.types import NotificationChannel
 
         channel_enum = cls._parse_message_channel(channel)
         if not channel_enum:
@@ -824,6 +824,6 @@ class AgentCapabilityManager:
         ):
             return False
 
-        if channel_enum == MessageChannel.Wechat:
+        if channel_enum == NotificationChannel.Wechat:
             return cls._is_wechat_app_mode(source)
         return True

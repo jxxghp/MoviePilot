@@ -43,7 +43,7 @@ from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
 from app.schemas import (SubscribeEpisodesRefreshEventData,
                          SubscribeCompletionCheckEventData)
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType, \
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, SystemConfigKey, NotificationChannel, MessageType, EventType, ChainEventType, \
     ContentType
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.schemas.media import build_media_key, normalize_media_source, resolve_media_identity
@@ -840,7 +840,7 @@ class SubscribeChain(ChainBase):
             mtype: MediaType = None,
             episode_group: Optional[str] = None,
             season: Optional[int] = None,
-            channel: MessageChannel = None,
+            channel: NotificationChannel = None,
             source: Optional[str] = None,
             userid: Optional[str] = None,
             username: Optional[str] = None,
@@ -983,9 +983,9 @@ class SubscribeChain(ChainBase):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 失败发回原用户
-                self.post_message(schemas.Notification(channel=channel,
+                self.post_message(schemas.Message(channel=channel,
                                                        source=source,
-                                                       mtype=NotificationType.Subscribe,
+                                                       mtype=MessageType.Subscribe,
                                                        title=f"{mediainfo.title_year} {metainfo.season} "
                                                              f"添加订阅失败！",
                                                        text=f"{err_msg}",
@@ -1001,10 +1001,10 @@ class SubscribeChain(ChainBase):
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
             self.post_message(
-                schemas.Notification(
+                schemas.Message(
                     channel=channel,
                     source=source,
-                    mtype=NotificationType.Subscribe,
+                    mtype=MessageType.Subscribe,
                     ctype=ContentType.SubscribeAdded,
                     image=mediainfo.get_message_image(),
                     link=link,
@@ -1044,7 +1044,7 @@ class SubscribeChain(ChainBase):
                         mtype: MediaType = None,
                         episode_group: Optional[str] = None,
                         season: Optional[int] = None,
-                        channel: MessageChannel = None,
+                        channel: NotificationChannel = None,
                         source: Optional[str] = None,
                         userid: Optional[str] = None,
                         username: Optional[str] = None,
@@ -1187,9 +1187,9 @@ class SubscribeChain(ChainBase):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 失败发回原用户
-                await self.async_post_message(schemas.Notification(channel=channel,
+                await self.async_post_message(schemas.Message(channel=channel,
                                                                    source=source,
-                                                                   mtype=NotificationType.Subscribe,
+                                                                   mtype=MessageType.Subscribe,
                                                                    title=f"{mediainfo.title_year} {metainfo.season} "
                                                                          f"添加订阅失败！",
                                                                    text=f"{err_msg}",
@@ -1205,10 +1205,10 @@ class SubscribeChain(ChainBase):
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
             await self.async_post_message(
-                schemas.Notification(
+                schemas.Message(
                     channel=channel,
                     source=source,
-                    mtype=NotificationType.Subscribe,
+                    mtype=MessageType.Subscribe,
                     ctype=ContentType.SubscribeAdded,
                     image=mediainfo.get_message_image(),
                     link=link,
@@ -3218,8 +3218,8 @@ class SubscribeChain(ChainBase):
             link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
         # 完成订阅按规则发送消息
         self.post_message(
-            schemas.Notification(
-                mtype=NotificationType.Subscribe,
+            schemas.Message(
+                mtype=MessageType.Subscribe,
                 ctype=ContentType.SubscribeComplete,
                 image=mediainfo.get_message_image(),
                 link=link,
@@ -3250,7 +3250,7 @@ class SubscribeChain(ChainBase):
     def remote_list(
             self,
             arg_str: str = "",
-            channel: MessageChannel = None,
+            channel: NotificationChannel = None,
             userid: Union[str, int] = None,
             source: Optional[str] = None,
     ):
@@ -3271,7 +3271,7 @@ class SubscribeChain(ChainBase):
     def handle_callback_interaction(
             self,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -3291,7 +3291,7 @@ class SubscribeChain(ChainBase):
 
     def handle_text_interaction(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -3307,13 +3307,13 @@ class SubscribeChain(ChainBase):
         )
 
 
-    def remote_delete(self, arg_str: str, channel: MessageChannel,
+    def remote_delete(self, arg_str: str, channel: NotificationChannel,
                       userid: Union[str, int] = None, source: Optional[str] = None):
         """
         删除订阅
         """
         if not arg_str:
-            self.post_message(schemas.Notification(
+            self.post_message(schemas.Message(
                 channel=channel,
                 source=source,
                 title="请输入正确的命令格式：/subscribe_delete [id]，"
@@ -3330,7 +3330,7 @@ class SubscribeChain(ChainBase):
             subscribe_id = int(arg_str)
             subscribe = subscribeoper.get(subscribe_id)
             if not subscribe:
-                self.post_message(schemas.Notification(
+                self.post_message(schemas.Message(
                     channel=channel, source=source,
                     title=f"订阅编号 {subscribe_id} 不存在！",
                     userid=userid,

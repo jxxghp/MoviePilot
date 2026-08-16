@@ -89,8 +89,8 @@ from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.llm.capability import AgentCapabilityManager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
-from app.schemas.message import ChannelCapabilityManager
-from app.schemas.types import MessageChannel
+from app.schemas.notification import ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
@@ -214,7 +214,7 @@ class MoviePilotToolFactory:
         if not channel:
             return False
         try:
-            message_channel = MessageChannel(channel)
+            message_channel = NotificationChannel(channel)
         except ValueError:
             return False
         return ChannelCapabilityManager.supports_buttons(

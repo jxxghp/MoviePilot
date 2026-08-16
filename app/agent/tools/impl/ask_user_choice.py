@@ -12,9 +12,9 @@ from app.application.messaging.agent import (
     build_agent_choice_callback,
 )
 from app.runtime.log import logger
-from app.schemas import Notification, NotificationType
-from app.schemas.message import ChannelCapabilityManager
-from app.schemas.types import MessageChannel
+from app.schemas import Message, MessageType
+from app.schemas.notification import ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 
 
 class UserChoiceOptionInput(BaseModel):
@@ -140,7 +140,7 @@ class AskUserChoiceTool(MoviePilotTool):
             return "当前不在可回传消息的会话中，无法发起按钮选择"
 
         try:
-            channel = MessageChannel(self._channel)
+            channel = NotificationChannel(self._channel)
         except ValueError:
             return f"不支持的消息渠道: {self._channel}"
 
@@ -200,11 +200,11 @@ class AskUserChoiceTool(MoviePilotTool):
             len(choice_options),
         )
 
-        await self.send_notification_message(
-            Notification(
+        await self.send_message(
+            Message(
                 channel=channel,
                 source=self._source,
-                mtype=NotificationType.Agent,
+                mtype=MessageType.Agent,
                 userid=self._user_id,
                 username=self._username,
                 title=title,

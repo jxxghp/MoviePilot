@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import DbOper
 from app.db.models.message import Message
-from app.schemas import MessageChannel, NotificationType
+from app.schemas import NotificationChannel, MessageType
 
 
 class MessageOper(DbOper):
@@ -18,9 +18,9 @@ class MessageOper(DbOper):
         super().__init__(db)
 
     def add(self,
-            channel: Optional[MessageChannel] = None,
+            channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
-            mtype: Optional[NotificationType] = None,
+            mtype: Optional[MessageType] = None,
             title: Optional[str] = None,
             text: Optional[str] = None,
             image: Optional[str] = None,
@@ -64,9 +64,9 @@ class MessageOper(DbOper):
         return Message(**kwargs).create_and_to_dict(self._db)
 
     async def async_add(self,
-                        channel: Optional[MessageChannel] = None,
+                        channel: Optional[NotificationChannel] = None,
                         source: Optional[str] = None,
-                        mtype: Optional[NotificationType] = None,
+                        mtype: Optional[MessageType] = None,
                         title: Optional[str] = None,
                         text: Optional[str] = None,
                         image: Optional[str] = None,

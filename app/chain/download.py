@@ -33,9 +33,9 @@ from app.application.directory import DirectoryHelper, validate_download_save_pa
 from app.runtime.thread import ThreadHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Notification, ResourceSelectionEventData, \
+from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Message, ResourceSelectionEventData, \
     ResourceDownloadEventData
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ContentType, \
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, NotificationChannel, MessageType, ContentType, \
     ChainEventType
 from app.adapters.network.http import RequestUtils
 from app.schemas.media import build_media_key, resolve_media_identity
@@ -860,7 +860,7 @@ class DownloadChain(ChainBase):
             return set()
 
     def download_torrent(self, torrent: TorrentInfo,
-                         channel: MessageChannel = None,
+                         channel: NotificationChannel = None,
                          source: Optional[str] = None,
                          userid: Union[str, int] = None
                          ) -> Tuple[Optional[Union[str, bytes]], str, list]:
@@ -974,10 +974,10 @@ class DownloadChain(ChainBase):
 
         if not content:
             logger.error(f"下载种子文件失败：{torrent.title}")
-            self.post_message(Notification(
+            self.post_message(Message(
                 channel=channel,
                 source=source if channel else None,
-                mtype=NotificationType.Manual,
+                mtype=MessageType.Manual,
                 title=f"{torrent.title} 种子下载失败！",
                 text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
                 userid=userid))
@@ -990,7 +990,7 @@ class DownloadChain(ChainBase):
                         torrent_file: Path = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
                         episodes: Set[int] = None,
-                        channel: MessageChannel = None,
+                        channel: NotificationChannel = None,
                         source: Optional[str] = None,
                         downloader: Optional[str] = None,
                         save_path: Optional[str] = None,
@@ -1205,10 +1205,10 @@ class DownloadChain(ChainBase):
 
             # 下载成功发送消息
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source if channel else None,
-                    mtype=NotificationType.Download,
+                    mtype=MessageType.Download,
                     ctype=ContentType.DownloadAdded,
                     image=_media.get_message_image(),
                     link=settings.MP_DOMAIN('/#/downloading'),
@@ -1248,10 +1248,10 @@ class DownloadChain(ChainBase):
                 episodes=episodes,
             )
             # 只发送给对应渠道和用户
-            self.post_message(Notification(
+            self.post_message(Message(
                 channel=channel,
                 source=source if channel else None,
-                mtype=NotificationType.Manual,
+                mtype=MessageType.Manual,
                 title="添加下载任务失败：%s %s"
                       % (_media.title_year, _meta.season_episode),
                 text=f"站点：{_torrent.site_name}\n"
@@ -1267,7 +1267,7 @@ class DownloadChain(ChainBase):
                        contexts: List[Context],
                        no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
                        save_path: Optional[str] = None,
-                       channel: MessageChannel = None,
+                       channel: NotificationChannel = None,
                        source: Optional[str] = None,
                        userid: Optional[str] = None,
                        username: Optional[str] = None,
@@ -1981,16 +1981,16 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None, source: Optional[str] = None):
+    def remote_downloading(self, channel: NotificationChannel, userid: Union[str, int] = None, source: Optional[str] = None):
         """
         查询正在下载的任务，并发送消息
         """
         torrents = self.list_torrents(status=TorrentStatus.DOWNLOADING)
         if not torrents:
-            self.post_message(Notification(
+            self.post_message(Message(
                 channel=channel,
                 source=source,
-                mtype=NotificationType.Download,
+                mtype=MessageType.Download,
                 title="没有正在下载的任务！",
                 userid=userid,
                 link=settings.MP_DOMAIN('#/downloading'),
@@ -2006,10 +2006,10 @@ class DownloadChain(ChainBase):
                             f"{size_tools.format_compact_size(torrent.size)} "
                             f"{round(torrent.progress, 1)}%")
             index += 1
-        self.post_message(Notification(
+        self.post_message(Message(
             channel=channel,
             source=source,
-            mtype=NotificationType.Download,
+            mtype=MessageType.Download,
             title=title,
             text="\n".join(messages),
             userid=userid,

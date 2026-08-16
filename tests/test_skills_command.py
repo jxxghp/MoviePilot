@@ -23,7 +23,7 @@ from app.agent.skills.registry import (
     SkillMarketSource,
     settings as skill_settings,
 )
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def _build_skill_zip(skill_dir: str, skill_name: str) -> bytes:
@@ -62,7 +62,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = MessageChain()
         skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             username="tester",
         )
@@ -72,7 +72,7 @@ class TestSkillsCommand(unittest.TestCase):
             return_value=True,
         ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
             chain.handle_message(
-                channel=MessageChannel.Wechat,
+                channel=NotificationChannel.Wechat,
                 source="wechat-test",
                 userid="10001",
                 username="tester",
@@ -86,14 +86,14 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
 
         with patch.object(chain._messenger, "post_message") as post_message:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -110,7 +110,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = MessageChain()
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -122,7 +122,7 @@ class TestSkillsCommand(unittest.TestCase):
             chain._handle_callback(
                 callback_data=f"skills:{request.request_id}:market",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -390,7 +390,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -423,7 +423,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -467,7 +467,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -510,7 +510,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.WebAgent,
+            channel=NotificationChannel.WebAgent,
             source="web-agent",
             username="tester",
         )
@@ -552,7 +552,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -560,7 +560,7 @@ class TestSkillsCommand(unittest.TestCase):
         with patch.object(chain, "_render_interaction") as render:
             handled = chain.handle_callback_interaction(
                 callback_data=f"skills:{request.request_id}:search",
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -575,7 +575,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -583,7 +583,7 @@ class TestSkillsCommand(unittest.TestCase):
 
         with patch.object(chain, "_render_interaction") as render:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -600,7 +600,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -609,7 +609,7 @@ class TestSkillsCommand(unittest.TestCase):
 
         with patch.object(chain, "_render_interaction") as render:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -625,7 +625,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -633,7 +633,7 @@ class TestSkillsCommand(unittest.TestCase):
         with patch.object(chain, "_render_interaction") as render:
             handled = chain.handle_callback_interaction(
                 callback_data=f"skills:{request.request_id}:source-add",
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -648,7 +648,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -663,7 +663,7 @@ class TestSkillsCommand(unittest.TestCase):
             chain._messenger, "post_message"
         ) as post_message:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -680,7 +680,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -693,7 +693,7 @@ class TestSkillsCommand(unittest.TestCase):
             chain._messenger, "post_message"
         ) as post_message:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -710,7 +710,7 @@ class TestSkillsCommand(unittest.TestCase):
         chain = SkillInteractionHandler(messenger=MessageChain())
         request = skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -754,7 +754,7 @@ class TestSkillsCommand(unittest.TestCase):
             chain._messenger, "post_message"
         ) as post_message:
             chain._update_or_post_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -766,7 +766,7 @@ class TestSkillsCommand(unittest.TestCase):
             )
 
         edit_message.assert_called_once_with(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             message_id=123,
             chat_id="456",

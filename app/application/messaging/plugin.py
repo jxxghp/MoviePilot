@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.application.messaging.interaction import InteractionContext, MessageGateway
 from app.runtime.events import EventManager
-from app.schemas import Notification
-from app.schemas.types import EventType, MessageChannel
+from app.schemas import Message
+from app.schemas.types import EventType, NotificationChannel
 
 
 @dataclass
@@ -19,7 +19,7 @@ class PendingPluginInputInteraction:
     request_id: str
     user_id: str
     plugin_id: str
-    channel: Optional[MessageChannel]
+    channel: Optional[NotificationChannel]
     source: Optional[str]
     username: Optional[str]
     chat_id: Optional[str] = None
@@ -48,9 +48,9 @@ class PluginInputInteractionManager:
     def __init__(self):
         """初始化活动输入会话、用户渠道索引和过期墓碑。"""
         self._by_id: Dict[str, PendingPluginInputInteraction] = {}
-        self._by_user_channel: Dict[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]], str] = {}
+        self._by_user_channel: Dict[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]], str] = {}
         self._expired_by_user_channel: Dict[
-            Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
+            Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]],
             PendingPluginInputInteraction,
         ] = {}
         self._lock = Lock()
@@ -58,18 +58,18 @@ class PluginInputInteractionManager:
     @staticmethod
     def _user_channel_source_key(
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
-    ) -> Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]:
+    ) -> Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]:
         """归一化用户、渠道、来源和会话 ID 的联合索引键。"""
         return str(user_id), channel, source, str(chat_id) if chat_id not in (None, "") else None
 
     @classmethod
     def _keys_overlap(
             cls,
-            left: Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
-            right: Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]],
+            left: Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]],
+            right: Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]],
     ) -> bool:
         """判断两个输入会话键是否会争用同一条用户回复。"""
         left_user, left_channel, left_source, left_chat_id = left
@@ -116,7 +116,7 @@ class PluginInputInteractionManager:
             self,
             user_id: Union[str, int],
             plugin_id: str,
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
@@ -151,7 +151,7 @@ class PluginInputInteractionManager:
             normalized_chat_id = str(chat_id) if chat_id not in (None, "") else None
             normalized_prompt_message_id = (
                 str(prompt_message_id)
-                if channel == MessageChannel.Telegram and normalized_chat_id and prompt_message_id not in (None, "")
+                if channel == NotificationChannel.Telegram and normalized_chat_id and prompt_message_id not in (None, "")
                 else None
             )
 
@@ -175,7 +175,7 @@ class PluginInputInteractionManager:
     def get_by_user(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel] = None,
+            channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[PendingPluginInputInteraction]:
@@ -190,7 +190,7 @@ class PluginInputInteractionManager:
     def pop_by_user(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel] = None,
+            channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[PendingPluginInputInteraction]:
@@ -209,7 +209,7 @@ class PluginInputInteractionManager:
     def consume_by_user(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel] = None,
+            channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
             *,
@@ -275,7 +275,7 @@ class PluginInputInteractionManager:
     def _find_request_id_locked(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[str]:
@@ -286,10 +286,10 @@ class PluginInputInteractionManager:
     def _find_key_and_request_id_locked(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
-    ) -> Tuple[Optional[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]], Optional[str]]:
+    ) -> Tuple[Optional[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]], Optional[str]]:
         """返回首个候选键及其活动请求 ID。"""
         for key in self._candidate_keys(user_id, channel, source, chat_id):
             request_id = self._by_user_channel.get(key)
@@ -300,10 +300,10 @@ class PluginInputInteractionManager:
     def _find_expired_key_and_request_locked(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
-    ) -> Tuple[Optional[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]],
+    ) -> Tuple[Optional[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]],
                Optional[PendingPluginInputInteraction]]:
         """返回仍在宽限期内的过期会话及其索引键。"""
         now = datetime.now()
@@ -320,10 +320,10 @@ class PluginInputInteractionManager:
     def _candidate_keys(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
-    ) -> List[Tuple[str, Optional[MessageChannel], Optional[str], Optional[str]]]:
+    ) -> List[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]]:
         """按精确到宽松顺序生成输入会话候选键。"""
         chat_key = str(chat_id) if chat_id not in (None, "") else None
         candidates = [
@@ -430,7 +430,7 @@ class PluginInputInteractionHandler:
                 },
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -461,7 +461,7 @@ class PluginInputInteractionHandler:
                 },
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,

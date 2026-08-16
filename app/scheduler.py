@@ -31,7 +31,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.db import SessionFactory
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
-from app.db.models.message import Message
+from app.db.models.message import Message as MessageModel
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.db.oper.systemconfig import SystemConfigOper
@@ -42,7 +42,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
-from app.schemas import Notification, NotificationType, Workflow
+from app.schemas import Message, MessageType, Workflow
 from app.schemas.types import EventType, SystemConfigKey
 from app.runtime.gc import get_memory_usage
 from app.runtime.reload import ConfigReloadMixin
@@ -198,7 +198,7 @@ class SchedulerChain(ChainBase):
                 "name": "message",
                 "retention_days": message_days,
                 "cutoff": message_cutoff,
-                "handler": lambda db: Message.delete_before(
+                "handler": lambda db: MessageModel.delete_before(
                     db=db,
                     before_time=message_cutoff,
                     limit=batch_size,
@@ -1567,8 +1567,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self._auth_count = 0
             logger.info(f"{msg} 用户认证成功")
             SchedulerChain().post_message(
-                Notification(
-                    mtype=NotificationType.Manual,
+                Message(
+                    mtype=MessageType.Manual,
                     title="MoviePilot用户认证成功",
                     text=f"使用站点：{msg}，如有插件使用异常，请重启MoviePilot。",
                     link=settings.MP_DOMAIN("#/site"),

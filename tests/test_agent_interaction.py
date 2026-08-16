@@ -17,7 +17,7 @@ from app.application.messaging.agent import (
 from app.application.messaging.interaction import InteractionContext
 from app.chain.message import MessageChain
 from app.runtime.config import settings
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class TestAgentInteraction(unittest.TestCase):
@@ -26,13 +26,13 @@ class TestAgentInteraction(unittest.TestCase):
 
     def test_prompt_injects_choice_tool_hint_only_for_button_channels(self):
         telegram_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.Telegram.value
+            channel=NotificationChannel.Telegram.value
         )
         web_agent_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.WebAgent.value
+            channel=NotificationChannel.WebAgent.value
         )
         wechat_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.Wechat.value
+            channel=NotificationChannel.Wechat.value
         )
 
         self.assertIn("ask_user_choice", telegram_prompt)
@@ -43,10 +43,10 @@ class TestAgentInteraction(unittest.TestCase):
 
     def test_prompt_does_not_inject_send_message_html_hint(self):
         telegram_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.Telegram.value
+            channel=NotificationChannel.Telegram.value
         )
         wechat_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.Wechat.value
+            channel=NotificationChannel.Wechat.value
         )
 
         self.assertNotIn("parse_mode=\"HTML\"", telegram_prompt)
@@ -61,21 +61,21 @@ class TestAgentInteraction(unittest.TestCase):
             telegram_tools = MoviePilotToolFactory.create_tools(
                 session_id="session-1",
                 user_id="10001",
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 username="tester",
             )
             web_agent_tools = MoviePilotToolFactory.create_tools(
                 session_id="session-web",
                 user_id="10001",
-                channel=MessageChannel.WebAgent.value,
+                channel=NotificationChannel.WebAgent.value,
                 source="web-agent",
                 username="tester",
             )
             wechat_tools = MoviePilotToolFactory.create_tools(
                 session_id="session-2",
                 user_id="10001",
-                channel=MessageChannel.Wechat.value,
+                channel=NotificationChannel.Wechat.value,
                 source="wechat-test",
                 username="tester",
             )
@@ -101,7 +101,7 @@ class TestAgentInteraction(unittest.TestCase):
     def test_choice_tool_sends_buttons_and_registers_pending_request(self):
         tool = AskUserChoiceTool(session_id="session-1", user_id="10001")
         tool.set_message_attr(
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
         )
@@ -141,7 +141,7 @@ class TestAgentInteraction(unittest.TestCase):
     def test_choice_tool_blocks_after_feedback_quality_rejection(self):
         tool = AskUserChoiceTool(session_id="session-feedback", user_id="10001")
         tool.set_message_attr(
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
         )
@@ -177,7 +177,7 @@ class TestAgentInteraction(unittest.TestCase):
         request = agent_interaction_manager.create_request(
             session_id="session-choice",
             user_id="10001",
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
             title="需要你的选择",
@@ -204,7 +204,7 @@ class TestAgentInteraction(unittest.TestCase):
             handled = chain._handle_callback(
                 callback_data=f"agent_interaction:choice:{request.request_id}:1",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -215,7 +215,7 @@ class TestAgentInteraction(unittest.TestCase):
 
         self.assertTrue(handled)
         edit_message.assert_called_once_with(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             message_id=123,
             chat_id="456",
@@ -226,7 +226,7 @@ class TestAgentInteraction(unittest.TestCase):
         kwargs = process_message.call_args.kwargs
         self.assertEqual(kwargs["message"], "我选择电影")
         self.assertEqual(kwargs["session_id"], "session-choice")
-        self.assertEqual(kwargs["channel"], MessageChannel.Telegram.value)
+        self.assertEqual(kwargs["channel"], NotificationChannel.Telegram.value)
         self.assertEqual(kwargs["source"], "telegram-test")
         self.assertNotIn("processing_status", kwargs)
         message_put.assert_not_called()
@@ -237,7 +237,7 @@ class TestAgentInteraction(unittest.TestCase):
         request = agent_interaction_manager.create_request(
             session_id="session-choice",
             user_id="10001",
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
             title=None,
@@ -251,7 +251,7 @@ class TestAgentInteraction(unittest.TestCase):
             chain._handle_callback(
                 callback_data=f"agent_choice:{request.request_id}:1",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -266,7 +266,7 @@ class TestAgentInteraction(unittest.TestCase):
         MessageChain._user_sessions["10001"] = ("session-secret", datetime.now())
 
         try:
-            for channel in (MessageChannel.Telegram, MessageChannel.Feishu):
+            for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu):
                 with patch(
                     "app.chain.message.agent_manager.matches_secret_confirmation",
                     return_value=True,

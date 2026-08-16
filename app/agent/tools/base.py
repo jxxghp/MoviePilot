@@ -22,8 +22,8 @@ from app.runtime.config import settings
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas import Notification
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas import Message
+from app.schemas.types import NotificationChannel, MessageType
 
 
 class ToolChain(ChainBase):
@@ -563,7 +563,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         user_id_str = str(self._user_id) if self._user_id else None
 
         try:
-            channel = MessageChannel(self._channel)
+            channel = NotificationChannel(self._channel)
         except ValueError:
             return False
 
@@ -581,47 +581,47 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         return False
 
-    async def send_notification_message(self, notification: Notification) -> None:
+    async def send_message(self, message: Message) -> None:
         """
-        发送工具通知消息。
+        发送工具消息。
 
         WebAgent 渠道没有后端模块实例，前端流式面板通过 Agent 上下文中的
-        回调直接接收通知；无渠道的后台任务清空渠道侧定位信息后交由消息链广播，
+        回调直接接收消息；无渠道的后台任务清空渠道侧定位信息后交由消息链广播，
         其它渠道继续走统一消息链。
         """
-        callback = self._agent_context.get("notification_callback")
+        callback = self._agent_context.get("message_callback")
         if (
-            self._channel == MessageChannel.WebAgent.value
+            self._channel == NotificationChannel.WebAgent.value
             and callable(callback)
         ):
-            callback(notification)
+            callback(message)
             return
 
         if not self._channel or not self._source:
-            notification = notification.model_copy(
+            message = message.model_copy(
                 update={
                     "channel": None,
                     "source": None,
                     "userid": None,
-                    "username": notification.username
+                    "username": message.username
                     or self._username
                     or settings.SUPERUSER,
                     "original_message_id": None,
                     "original_chat_id": None,
                 }
             )
-        elif not notification.original_chat_id:
+        elif not message.original_chat_id:
             # 工具回调消息默认回填当前会话的原会话 ID，
             # 保证群聊 @ 机器人时按钮选择、消息发送等交互消息回复到原群，而不是私聊窗口。
             original_chat_id = str(
                 self._agent_context.get("original_chat_id") or ""
             ).strip() or None
             if original_chat_id:
-                notification = notification.model_copy(
+                message = message.model_copy(
                     update={"original_chat_id": original_chat_id}
                 )
 
-        await ToolChain().async_post_message(notification)
+        await ToolChain().async_post_message(message)
 
     async def send_tool_message(
         self, message: str, title: str = "", image: Optional[str] = None
@@ -629,11 +629,11 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         发送工具消息
         """
-        await self.send_notification_message(
-            Notification(
+        await self.send_message(
+            Message(
                 channel=self._channel,
                 source=self._source,
-                mtype=NotificationType.Agent,
+                mtype=MessageType.Agent,
                 userid=self._user_id,
                 username=self._username,
                 title=title,

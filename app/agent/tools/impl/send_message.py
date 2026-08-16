@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-from app.schemas import Notification
-from app.schemas.types import NotificationType
+from app.schemas import Message
+from app.schemas.types import MessageType
 
 
 class SendMessageInput(BaseModel):
@@ -90,11 +90,11 @@ class SendMessageTool(MoviePilotTool):
             f"image_url={image_url}"
         )
         try:
-            await self.send_notification_message(
-                Notification(
+            await self.send_message(
+                Message(
                     channel=self._channel,
                     source=self._source,
-                    mtype=NotificationType.Other,
+                    mtype=MessageType.Other,
                     userid=self._user_id,
                     username=self._username,
                     title=title,

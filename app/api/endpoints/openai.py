@@ -19,7 +19,7 @@ from app.agent.callback import StreamingHandler
 from app.agent.orchestrator import MoviePilotAgent
 from app.runtime.config import settings
 from app.application.security.access import openai_bearer_scheme
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 OPENAI_ERROR_RESPONSES = {
     400: {"model": schemas.OpenAIErrorResponse, "description": "请求格式错误"},
@@ -341,7 +341,7 @@ async def chat_completions(
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_key,
-        channel=MessageChannel.Web.value,
+        channel=NotificationChannel.Web.value,
         source="openai",
         username=username,
         stream_mode=payload.stream,
@@ -434,7 +434,7 @@ async def responses(
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_key,
-        channel=MessageChannel.Web.value,
+        channel=NotificationChannel.Web.value,
         source="openai.responses",
         username=str(payload.user or "openai-client"),
         stream_mode=False,

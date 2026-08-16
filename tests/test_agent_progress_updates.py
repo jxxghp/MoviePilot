@@ -2,18 +2,18 @@ from unittest.mock import patch
 
 from app.agent.prompt import prompt_manager
 from app.runtime.config import settings
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def test_progress_prompt_is_independent_from_tool_display_mode() -> None:
     """进度沟通规则不应随工具逐条或汇总展示模式变化。"""
     with patch.object(settings, "AI_AGENT_VERBOSE", False):
         summary_mode_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.WebAgent.value
+            channel=NotificationChannel.WebAgent.value
         )
     with patch.object(settings, "AI_AGENT_VERBOSE", True):
         verbose_mode_prompt = prompt_manager.get_agent_prompt(
-            channel=MessageChannel.WebAgent.value
+            channel=NotificationChannel.WebAgent.value
         )
 
     assert summary_mode_prompt == verbose_mode_prompt

@@ -15,7 +15,7 @@ from app.runtime.log import logger
 from app.schemas import (
     ChannelCapability,
     ChannelCapabilities,
-    MessageChannel,
+    NotificationChannel,
     ChannelCapabilityManager,
 )
 from app.adapters.system.host import SystemUtils
@@ -128,7 +128,7 @@ class PromptManager:
         markdown_spec = ""
         msg_channel = (
             next(
-                (c for c in MessageChannel if c.value.lower() == channel.lower()), None
+                (c for c in NotificationChannel if c.value.lower() == channel.lower()), None
             )
             if channel
             else None
@@ -356,7 +356,7 @@ class PromptManager:
 
     @staticmethod
     def _generate_button_choice_instructions(
-        channel: MessageChannel = None,
+        channel: NotificationChannel = None,
     ) -> str:
         if (
             channel

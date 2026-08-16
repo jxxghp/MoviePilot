@@ -9,20 +9,20 @@ from app.agent import _finish_processing_status
 from app.modules.discord import DiscordModule
 from app.modules.discord.discord import Discord
 from app.modules.slack import SlackModule
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import MessageChannel
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 
 
 class TestMessageProcessingStatus(unittest.TestCase):
     def test_processing_status_capability_only_enabled_for_supported_channels(self):
         supported = {
-            MessageChannel.Telegram,
-            MessageChannel.Feishu,
-            MessageChannel.Slack,
-            MessageChannel.Discord,
+            NotificationChannel.Telegram,
+            NotificationChannel.Feishu,
+            NotificationChannel.Slack,
+            NotificationChannel.Discord,
         }
 
-        for channel in MessageChannel:
+        for channel in NotificationChannel:
             self.assertEqual(
                 ChannelCapabilityManager.supports_capability(
                     channel, ChannelCapability.PROCESSING_STATUS
@@ -32,7 +32,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
 
     def test_slack_processing_status_uses_reaction(self):
         module = SlackModule()
-        module._channel = MessageChannel.Slack
+        module._channel = NotificationChannel.Slack
         client = MagicMock()
         client.add_reaction.return_value = True
         client.remove_reaction.return_value = True
@@ -44,7 +44,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             status = module.mark_message_processing_started(
-                channel=MessageChannel.Slack,
+                channel=NotificationChannel.Slack,
                 source="slack-main",
                 userid="U01",
                 message_id="1710000000.000100",
@@ -52,7 +52,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
                 text="hello",
             )
             removed = module.mark_message_processing_finished(
-                channel=MessageChannel.Slack,
+                channel=NotificationChannel.Slack,
                 source="slack-main",
                 userid="U01",
                 status=status,
@@ -99,7 +99,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
 
     def test_discord_processing_status_starts_and_stops_typing(self):
         module = DiscordModule()
-        module._channel = MessageChannel.Discord
+        module._channel = NotificationChannel.Discord
         client = MagicMock()
         client.start_typing.return_value = True
         client.stop_typing.return_value = True
@@ -111,7 +111,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             status = module.mark_message_processing_started(
-                channel=MessageChannel.Discord,
+                channel=NotificationChannel.Discord,
                 source="discord-main",
                 userid="10001",
                 message_id="20002",
@@ -119,7 +119,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
                 text="hello",
             )
             finished = module.mark_message_processing_finished(
-                channel=MessageChannel.Discord,
+                channel=NotificationChannel.Discord,
                 source="discord-main",
                 userid="10001",
                 status=status,
@@ -132,7 +132,7 @@ class TestMessageProcessingStatus(unittest.TestCase):
 
     def test_agent_finish_processing_status_uses_module_interface(self):
         status = {
-            "channel": MessageChannel.Telegram.value,
+            "channel": NotificationChannel.Telegram.value,
             "source": "telegram-main",
             "userid": "10001",
             "message_id": None,

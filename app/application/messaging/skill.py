@@ -13,8 +13,8 @@ from app.application.messaging.interaction import (
     supports_interaction_buttons,
     update_or_post_message,
 )
-from app.schemas import Notification
-from app.schemas.types import MessageChannel
+from app.schemas import Message
+from app.schemas.types import NotificationChannel
 
 
 @dataclass
@@ -25,7 +25,7 @@ class PendingSkillInteraction:
 
     request_id: str
     user_id: str
-    channel: Optional[MessageChannel]
+    channel: Optional[NotificationChannel]
     source: Optional[str]
     username: Optional[str]
     view: str = "root"
@@ -69,7 +69,7 @@ class SkillInteractionManager:
     def create_or_replace(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
     ) -> PendingSkillInteraction:
@@ -161,7 +161,7 @@ class SkillInteractionHandler:
     def remote_manage(
             self,
             arg_str: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
     ):
@@ -213,7 +213,7 @@ class SkillInteractionHandler:
     def handle_callback_interaction(
             self,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -231,7 +231,7 @@ class SkillInteractionHandler:
         request = skill_interaction_manager.get_by_id(request_id, userid)
         if not request:
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -311,7 +311,7 @@ class SkillInteractionHandler:
             success, message = self._install_market_skill(request, index)
             if success:
                 self._messenger.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -321,7 +321,7 @@ class SkillInteractionHandler:
                 )
             else:
                 self._messenger.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -333,7 +333,7 @@ class SkillInteractionHandler:
             request.awaiting_input = None
             success, message = self._remove_local_skill(request, index)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -349,7 +349,7 @@ class SkillInteractionHandler:
             request.awaiting_input = None
             success, message = self._remove_market_source(index)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -371,7 +371,7 @@ class SkillInteractionHandler:
 
     def handle_text_interaction(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -393,7 +393,7 @@ class SkillInteractionHandler:
         if lowered in {"退出", "关闭", "q", "quit", "exit"}:
             skill_interaction_manager.remove(request.request_id)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -428,7 +428,7 @@ class SkillInteractionHandler:
             request.awaiting_input = None
             _, message = self.skillhelper.add_custom_market_source(add_source)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -452,7 +452,7 @@ class SkillInteractionHandler:
                 page_index=int(remove_source_match.group(1))
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -525,7 +525,7 @@ class SkillInteractionHandler:
                 )
             else:
                 self._messenger.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -550,7 +550,7 @@ class SkillInteractionHandler:
                 _, message = self.skillhelper.add_custom_market_source(normalized)
                 request.awaiting_input = None
                 self._messenger.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -615,7 +615,7 @@ class SkillInteractionHandler:
                 page_index=int(install_match.group(1)),
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -638,7 +638,7 @@ class SkillInteractionHandler:
                 page_index=int(remove_match.group(1)),
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -656,7 +656,7 @@ class SkillInteractionHandler:
             return True
 
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -722,7 +722,7 @@ class SkillInteractionHandler:
     def _render_interaction(
             self,
             request: PendingSkillInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: Optional[str],
             userid: Union[str, int],
             username: Optional[str],
@@ -1068,7 +1068,7 @@ class SkillInteractionHandler:
         """
         return page_items(items=items, page=page, page_size=page_size)
 
-    def _page_size(self, channel: Optional[MessageChannel]) -> int:
+    def _page_size(self, channel: Optional[NotificationChannel]) -> int:
         """
         按渠道能力选择分页大小，按钮渠道单页更短，便于直接操作。
         """
@@ -1079,7 +1079,7 @@ class SkillInteractionHandler:
         )
 
     @staticmethod
-    def _supports_interactive_buttons(channel: Optional[MessageChannel]) -> bool:
+    def _supports_interactive_buttons(channel: Optional[NotificationChannel]) -> bool:
         """
         判断当前渠道是否同时支持按钮展示和回调。
         """
@@ -1103,7 +1103,7 @@ class SkillInteractionHandler:
 
     def _update_or_post_message(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: Optional[str],
             userid: Union[str, int],
             username: Optional[str],

@@ -21,7 +21,7 @@ from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
-from app.schemas.message import Notification
+from app.schemas.message import Message
 from app.schemas.types import ContentType, SystemConfigKey
 
 MUSIC_ORGANIZE_TEMPLATE = """
@@ -184,7 +184,7 @@ def test_message_renders_from_db_config(notification_templates: SystemConfigOper
         SystemConfigKey.NotificationTemplates,
         {"organizeSuccess": MUSIC_ORGANIZE_TEMPLATE},
     )
-    message = Notification(ctype=ContentType.OrganizeSuccess)
+    message = Message(ctype=ContentType.OrganizeSuccess)
 
     MessageTemplateHelper.render(message, **MUSIC_CONTEXT)
 
@@ -199,7 +199,7 @@ def test_message_without_template_config_stays_unchanged(
     数据库中没有模板配置时消息应保持原样，不应渲染也不应报错。
     """
     notification_templates.set(SystemConfigKey.NotificationTemplates, None)
-    message = Notification(ctype=ContentType.OrganizeSuccess)
+    message = Message(ctype=ContentType.OrganizeSuccess)
 
     MessageTemplateHelper.render(message, **MUSIC_CONTEXT)
 

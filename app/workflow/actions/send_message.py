@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 from pydantic import Field
 
 from app.workflow.actions import BaseAction, ActionChain
-from app.schemas import ActionParams, ActionContext, Notification
+from app.schemas import ActionParams, ActionContext, Message
 from app.runtime.config import settings
 
 
@@ -62,7 +62,7 @@ class SendMessageAction(BaseAction):
                 params.client = [""]
             for client in params.client:
                 ActionChain().post_message(
-                    Notification(
+                    Message(
                         source=client,
                         userid=params.userid,
                         title="【工作流执行结果】",

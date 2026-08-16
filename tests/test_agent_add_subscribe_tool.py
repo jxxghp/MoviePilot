@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.agent.tools.impl.add_subscribe import AddSubscribeTool
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class TestAgentAddSubscribeTool(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
     def test_tv_subscription_without_season_reports_default_first_season(self):
         tool = AddSubscribeTool(session_id="session-1", user_id="10001")
         tool.set_message_attr(
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-main",
             username="tg_display_name",
         )
@@ -46,7 +46,7 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
     def test_subscription_falls_back_to_channel_username_when_no_binding_exists(self):
         tool = AddSubscribeTool(session_id="session-1", user_id="10001")
         tool.set_message_attr(
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-main",
             username="tg_display_name",
         )
@@ -72,7 +72,7 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
     def test_feishu_subscription_uses_pre_resolved_username_when_openid_lookup_misses(self):
         tool = AddSubscribeTool(session_id="session-1", user_id="ou_feishu_user")
         tool.set_message_attr(
-            channel=MessageChannel.Feishu.value,
+            channel=NotificationChannel.Feishu.value,
             source="feishu-main",
             username="moviepilot-user",
         )

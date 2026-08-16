@@ -15,7 +15,7 @@ from app.chain.message import MessageChain
 from app.chain.transfer import TransferChain
 from app.application.messaging.interaction import InteractionContext
 from app.runtime.config import settings
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class TestTransferFailedRetryButtons(unittest.TestCase):
@@ -42,7 +42,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             with patch.object(chain, "post_message") as post_message:
                 chain.remote_transfer(
                     "12",
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     userid="10001",
                     source="telegram-test",
                 )
@@ -59,7 +59,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             chain._handle_callback(
                 callback_data="transfer_retry_12",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -68,7 +68,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
 
         transfer_cls.return_value.handle_failed_transfer_callback.assert_called_once_with(
             callback_data="transfer_retry_12",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -81,7 +81,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             with patch.object(chain, "post_message") as post_message:
                 handled = chain.handle_failed_transfer_callback(
                     callback_data="transfer_retry_12",
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     userid="10001",
                     username="tester",
@@ -141,7 +141,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 with patch.object(chain, "post_message") as post_message:
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_34",
-                        channel=MessageChannel.Telegram,
+                        channel=NotificationChannel.Telegram,
                         source="telegram-test",
                         userid="10001",
                         username="tester",
@@ -216,7 +216,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 ):
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_35",
-                        channel=MessageChannel.Telegram,
+                        channel=NotificationChannel.Telegram,
                         source="telegram-test",
                         userid="10001",
                         username="tester",

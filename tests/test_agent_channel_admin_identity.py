@@ -15,7 +15,7 @@ from app.modules.vocechat import VoceChatModule
 from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot
 from app.modules.wechatclawbot import WechatClawBotModule
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def _parse_module_message(module, *, config: dict, body, client=None, form=None):
@@ -52,19 +52,19 @@ def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expect
     ("channel", "config", "principal_ids", "expected"),
     [
         (
-            MessageChannel.Telegram,
+            NotificationChannel.Telegram,
             {"TELEGRAM_ADMINS": "other", "TELEGRAM_CHAT_ID": "10001"},
             (10001,),
             True,
         ),
         (
-            MessageChannel.Feishu,
+            NotificationChannel.Feishu,
             {"FEISHU_ADMINS": "other", "FEISHU_OPEN_ID": "ou_owner"},
             ("ou_owner",),
             True,
         ),
         (
-            MessageChannel.Wechat,
+            NotificationChannel.Wechat,
             {
                 "WECHAT_MODE": "bot",
                 "WECHAT_ADMINS": "other",
@@ -74,7 +74,7 @@ def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expect
             True,
         ),
         (
-            MessageChannel.Wechat,
+            NotificationChannel.Wechat,
             {
                 "WECHAT_MODE": "app",
                 "WECHAT_ADMINS": "other",
@@ -84,7 +84,7 @@ def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expect
             False,
         ),
         (
-            MessageChannel.WechatClawBot,
+            NotificationChannel.WechatClawBot,
             {
                 "WECHATCLAWBOT_ADMINS": "other",
                 "WECHATCLAWBOT_DEFAULT_TARGET": "wxid_owner",
@@ -93,25 +93,25 @@ def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expect
             True,
         ),
         (
-            MessageChannel.QQ,
+            NotificationChannel.QQ,
             {"QQBOT_ADMINS": "other", "QQ_OPENID": "qq_owner"},
             ("qq_owner",),
             True,
         ),
         (
-            MessageChannel.Telegram,
+            NotificationChannel.Telegram,
             {"TELEGRAM_ADMINS": "other", "TELEGRAM_CHAT_ID": "-10001"},
             (10001,),
             False,
         ),
         (
-            MessageChannel.Feishu,
+            NotificationChannel.Feishu,
             {"FEISHU_ADMINS": "other", "FEISHU_CHAT_ID": "oc_group"},
             ("ou_user",),
             False,
         ),
         (
-            MessageChannel.QQ,
+            NotificationChannel.QQ,
             {"QQBOT_ADMINS": "other", "QQ_GROUP_OPENID": "qq_group"},
             ("qq_member",),
             False,

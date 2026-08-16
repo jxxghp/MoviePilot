@@ -14,8 +14,8 @@ from app.application.messaging.plugin import (
     PluginInputInteractionHandler,
     plugin_input_interaction_manager,
 )
-from app.schemas import CommingMessage, TransferDirectoryConf
-from app.schemas.types import EventType, MediaSource, MediaType, MessageChannel
+from app.schemas import IncomingMessage, TransferDirectoryConf
+from app.schemas.types import EventType, MediaSource, MediaType, NotificationChannel
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +169,7 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     chain = MessageChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         action="Search",
@@ -185,7 +185,7 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="10001",
             username="tester",
@@ -199,8 +199,8 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
 def test_message_process_preserves_parser_message_id_context():
     """消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。"""
     chain = MessageChain()
-    incoming = CommingMessage(
-        channel=MessageChannel.Telegram,
+    incoming = IncomingMessage(
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         userid="10001",
         username="tester",
@@ -225,8 +225,8 @@ def test_message_process_preserves_parser_message_id_context():
 def test_message_process_keeps_callback_message_id_as_edit_context():
     """按钮回调的 message_id 仍应作为机器人原消息 ID 传递，供编辑原消息使用。"""
     chain = MessageChain()
-    incoming = CommingMessage(
-        channel=MessageChannel.Telegram,
+    incoming = IncomingMessage(
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         userid="10001",
         username="tester",
@@ -250,8 +250,8 @@ def test_message_process_keeps_callback_message_id_as_edit_context():
 def test_message_process_preserves_non_telegram_plain_message_id():
     """非 Telegram 渠道保持旧行为，普通消息 ID 仍向下传递给渠道实现自行解释。"""
     chain = MessageChain()
-    incoming = CommingMessage(
-        channel=MessageChannel.Slack,
+    incoming = IncomingMessage(
+        channel=NotificationChannel.Slack,
         source="slack-test",
         userid="10001",
         username="tester",
@@ -274,7 +274,7 @@ def test_message_process_preserves_non_telegram_plain_message_id():
 def test_handle_message_keeps_legacy_positional_images_argument():
     """新增 reply_to_message_id 不应改变旧位置参数 images/audio/files 的含义。"""
     chain = MessageChain()
-    images = [CommingMessage.MessageImage(ref="tg://file_id/photo-1")]
+    images = [IncomingMessage.MessageImage(ref="tg://file_id/photo-1")]
 
     with patch(
         "app.chain.message.PluginInputInteractionHandler.handle_text",
@@ -285,7 +285,7 @@ def test_handle_message_keeps_legacy_positional_images_argument():
         chain, "_mark_message_processing_finished"
     ), patch.object(chain, "_handle_message_core", return_value=False) as handle_core:
         chain.handle_message(
-            MessageChannel.Telegram,
+            NotificationChannel.Telegram,
             "telegram-test",
             "10001",
             "tester",
@@ -307,7 +307,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         prompt_id="prompt-1",
@@ -315,7 +315,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
     )
     media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         action="Search",
@@ -330,7 +330,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
         return_value=True,
     ) as handle_media, patch.object(chain.eventmanager, "send_event") as send_event:
         chain.handle_message(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="10001",
             username="tester",
@@ -346,7 +346,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
             "text": f"plugin_input|{request.request_id}",
             "input_text": "用户输入内容",
             "userid": "10001",
-            "channel": MessageChannel.Wechat,
+            "channel": NotificationChannel.Wechat,
             "source": "wechat-test",
             "username": "tester",
             "chat_id": None,
@@ -356,7 +356,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
             "payload": {"step": "name"},
         },
     )
-    assert plugin_input_interaction_manager.get_by_user("10001", MessageChannel.Wechat) is None
+    assert plugin_input_interaction_manager.get_by_user("10001", NotificationChannel.Wechat) is None
 
 
 def test_plugin_input_session_does_not_record_sensitive_text_history():
@@ -365,7 +365,7 @@ def test_plugin_input_session_does_not_record_sensitive_text_history():
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
@@ -374,7 +374,7 @@ def test_plugin_input_session_does_not_record_sensitive_text_history():
         chain.eventmanager, "send_event"
     ):
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -390,7 +390,7 @@ def test_plugin_input_session_captures_slash_like_text_before_commands():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         prompt_id="path",
@@ -400,7 +400,7 @@ def test_plugin_input_session_captures_slash_like_text_before_commands():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -421,7 +421,7 @@ def test_plugin_input_session_cancel_notifies_plugin_and_clears():
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
@@ -430,7 +430,7 @@ def test_plugin_input_session_cancel_notifies_plugin_and_clears():
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -443,7 +443,7 @@ def test_plugin_input_session_cancel_notifies_plugin_and_clears():
     assert payload["cancelled"] is True
     assert payload["__mp_target_plugin_id"] == "demo_plugin"
     post_message.assert_called_once()
-    assert plugin_input_interaction_manager.get_by_user("10001", MessageChannel.Telegram) is None
+    assert plugin_input_interaction_manager.get_by_user("10001", NotificationChannel.Telegram) is None
 
 
 def test_plugin_input_cancel_does_not_block_next_command():
@@ -452,7 +452,7 @@ def test_plugin_input_cancel_does_not_block_next_command():
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
@@ -461,14 +461,14 @@ def test_plugin_input_cancel_does_not_block_next_command():
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message"):
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
             text="取消",
         )
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -486,17 +486,17 @@ def test_plugin_input_session_ignores_non_text_messages():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
-    image = CommingMessage.MessageImage(ref="https://example.invalid/image.jpg")
+    image = IncomingMessage.MessageImage(ref="https://example.invalid/image.jpg")
 
     with patch.object(chain, "_record_user_message"), patch.object(
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -505,7 +505,7 @@ def test_plugin_input_session_ignores_non_text_messages():
         )
 
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -519,15 +519,15 @@ def test_plugin_input_session_ignores_none_text_messages():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
-    image = CommingMessage.MessageImage(ref="https://example.invalid/image.jpg")
+    image = IncomingMessage.MessageImage(ref="https://example.invalid/image.jpg")
 
     handled = PluginInputInteractionHandler(messenger=chain).handle_text(
         context=InteractionContext(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             user_id="10001",
             username="tester",
@@ -538,7 +538,7 @@ def test_plugin_input_session_ignores_none_text_messages():
 
     assert handled is False
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
 
 
@@ -547,16 +547,16 @@ def test_plugin_input_session_is_bound_to_user_and_channel():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
 
-    assert plugin_input_interaction_manager.get_by_user("10001", MessageChannel.Wechat) is None
+    assert plugin_input_interaction_manager.get_by_user("10001", NotificationChannel.Wechat) is None
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
-    assert plugin_input_interaction_manager.get_by_user("10002", MessageChannel.Telegram) is None
+    assert plugin_input_interaction_manager.get_by_user("10002", NotificationChannel.Telegram) is None
 
 
 def test_plugin_input_session_does_not_capture_other_channel_text():
@@ -565,7 +565,7 @@ def test_plugin_input_session_does_not_capture_other_channel_text():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
@@ -574,7 +574,7 @@ def test_plugin_input_session_does_not_capture_other_channel_text():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="10001",
             username="tester",
@@ -582,7 +582,7 @@ def test_plugin_input_session_does_not_capture_other_channel_text():
         )
 
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -596,7 +596,7 @@ def test_plugin_input_session_does_not_capture_other_source_text():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-bot-a",
         username="tester",
     )
@@ -605,7 +605,7 @@ def test_plugin_input_session_does_not_capture_other_source_text():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-bot-b",
             userid="10001",
             username="tester",
@@ -613,7 +613,7 @@ def test_plugin_input_session_does_not_capture_other_source_text():
         )
 
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-bot-a"
+        "10001", NotificationChannel.Telegram, "telegram-bot-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -627,7 +627,7 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -637,7 +637,7 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -646,7 +646,7 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
         )
 
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -657,7 +657,7 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -678,7 +678,7 @@ def test_plugin_input_prompt_message_requires_matching_reply():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -690,7 +690,7 @@ def test_plugin_input_prompt_message_requires_matching_reply():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -701,7 +701,7 @@ def test_plugin_input_prompt_message_requires_matching_reply():
 
     record_message.assert_called_once()
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -712,7 +712,7 @@ def test_plugin_input_prompt_message_requires_matching_reply():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -729,7 +729,7 @@ def test_plugin_input_prompt_message_requires_matching_reply():
     assert payload["input_text"] == "当前回复框文本"
     assert payload["reply_to_message_id"] == "prompt-current"
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) is None
 
 
@@ -739,7 +739,7 @@ def test_plugin_input_prompt_message_matches_integer_reply_ids():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id=10001,
@@ -749,7 +749,7 @@ def test_plugin_input_prompt_message_matches_integer_reply_ids():
 
     with patch.object(chain.eventmanager, "send_event") as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -771,7 +771,7 @@ def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -783,7 +783,7 @@ def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -793,7 +793,7 @@ def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
 
     record_message.assert_called_once()
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -807,7 +807,7 @@ def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -819,7 +819,7 @@ def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -835,7 +835,7 @@ def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
     assert payload["cancelled"] is True
     post_message.assert_called_once()
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) is None
 
 
@@ -845,7 +845,7 @@ def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -859,7 +859,7 @@ def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_
         chain, "_handle_message_core", return_value=False
     ) as handle_core:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -875,7 +875,7 @@ def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_
         for call in send_event.call_args_list
     )
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) is None
 
 
@@ -885,7 +885,7 @@ def test_plugin_input_prompt_message_requires_matching_chat_id():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -897,7 +897,7 @@ def test_plugin_input_prompt_message_requires_matching_chat_id():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -908,7 +908,7 @@ def test_plugin_input_prompt_message_requires_matching_chat_id():
 
     record_message.assert_called_once()
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -922,7 +922,7 @@ def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -935,7 +935,7 @@ def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -951,7 +951,7 @@ def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice
         for call in send_event.call_args_list
     )
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) is None
 
 
@@ -961,7 +961,7 @@ def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -974,7 +974,7 @@ def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -988,7 +988,7 @@ def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
         for call in send_event.call_args_list
     )
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) is None
 
 
@@ -998,7 +998,7 @@ def test_plugin_input_chatless_session_keeps_legacy_chat_fallback():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
@@ -1007,7 +1007,7 @@ def test_plugin_input_chatless_session_keeps_legacy_chat_fallback():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1033,7 +1033,7 @@ def test_plugin_input_wildcard_session_does_not_match_missing_source_with_chat()
     )
 
     assert plugin_input_interaction_manager.consume_by_user(
-        "10001", MessageChannel.Telegram, None, "chat-a"
+        "10001", NotificationChannel.Telegram, None, "chat-a"
     ) == (None, None)
     assert plugin_input_interaction_manager.get_by_user("10001", None, None) == request
 
@@ -1043,17 +1043,17 @@ def test_plugin_input_chat_bound_session_does_not_match_missing_chat():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
     )
 
     assert plugin_input_interaction_manager.consume_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == (None, None)
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
 
 
@@ -1063,7 +1063,7 @@ def test_plugin_input_core_path_preserves_original_chat_id():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -1071,7 +1071,7 @@ def test_plugin_input_core_path_preserves_original_chat_id():
 
     with patch.object(chain.eventmanager, "send_event") as send_event:
         chain._handle_message_core(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1093,7 +1093,7 @@ def test_plugin_input_session_does_not_capture_missing_source_text():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-bot-a",
         username="tester",
     )
@@ -1102,7 +1102,7 @@ def test_plugin_input_session_does_not_capture_missing_source_text():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source=None,
             userid="10001",
             username="tester",
@@ -1110,7 +1110,7 @@ def test_plugin_input_session_does_not_capture_missing_source_text():
         )
 
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-bot-a"
+        "10001", NotificationChannel.Telegram, "telegram-bot-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -1124,7 +1124,7 @@ def test_plugin_input_session_does_not_capture_callback_payload():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -1134,7 +1134,7 @@ def test_plugin_input_session_does_not_capture_callback_payload():
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "_handle_callback", return_value=True) as handle_callback:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1146,7 +1146,7 @@ def test_plugin_input_session_does_not_capture_callback_payload():
     record_message.assert_not_called()
     handle_callback.assert_called_once()
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
     assert not any(
         call.args and call.args[0] == EventType.MessageAction
@@ -1159,14 +1159,14 @@ def test_plugin_input_session_expires_after_timeout():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         timeout_seconds=120,
     )
     request.created_at = datetime.now() - timedelta(seconds=121)
 
-    assert plugin_input_interaction_manager.get_by_user("10001", MessageChannel.Wechat) is None
+    assert plugin_input_interaction_manager.get_by_user("10001", NotificationChannel.Wechat) is None
 
 
 def test_plugin_input_session_expired_text_notifies_plugin_and_continues_routing():
@@ -1175,7 +1175,7 @@ def test_plugin_input_session_expired_text_notifies_plugin_and_continues_routing
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         timeout_seconds=120,
@@ -1186,7 +1186,7 @@ def test_plugin_input_session_expired_text_notifies_plugin_and_continues_routing
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1211,7 +1211,7 @@ def test_plugin_input_session_expired_sensitive_text_is_not_recorded_or_routed()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         timeout_seconds=120,
@@ -1222,7 +1222,7 @@ def test_plugin_input_session_expired_sensitive_text_is_not_recorded_or_routed()
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1244,7 +1244,7 @@ def test_plugin_input_expired_text_after_cleanup_is_not_recorded_or_routed():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         timeout_seconds=120,
@@ -1254,7 +1254,7 @@ def test_plugin_input_expired_text_after_cleanup_is_not_recorded_or_routed():
     plugin_input_interaction_manager.create_or_replace(
         user_id="10002",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="other",
         timeout_seconds=120,
@@ -1265,7 +1265,7 @@ def test_plugin_input_expired_text_after_cleanup_is_not_recorded_or_routed():
         chain.eventmanager, "send_event"
     ) as send_event, patch.object(chain, "post_message") as post_message:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1296,7 +1296,7 @@ def test_plugin_input_session_with_no_channel_matches_specific_channel():
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1325,7 +1325,7 @@ def test_plugin_input_session_with_no_channel_and_no_source_does_not_match_speci
         chain.eventmanager, "send_event"
     ) as send_event:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1344,7 +1344,7 @@ def test_plugin_input_create_or_replace_keeps_legacy_positional_timeout_and_payl
     request = plugin_input_interaction_manager.create_or_replace(
         "10001",
         "demo_plugin",
-        MessageChannel.Telegram,
+        NotificationChannel.Telegram,
         "telegram-test",
         "tester",
         "chat-a",
@@ -1363,7 +1363,7 @@ def test_plugin_input_create_or_replace_ignores_prompt_message_without_chat_id()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         prompt_message_id="prompt-current",
@@ -1378,7 +1378,7 @@ def test_plugin_input_create_or_replace_ignores_prompt_message_for_non_telegram_
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Slack,
+        channel=NotificationChannel.Slack,
         source="slack-test",
         username="tester",
         chat_id="slack-channel",
@@ -1390,7 +1390,7 @@ def test_plugin_input_create_or_replace_ignores_prompt_message_for_non_telegram_
 
     consumed, status = plugin_input_interaction_manager.consume_by_user(
         "10001",
-        MessageChannel.Slack,
+        NotificationChannel.Slack,
         "slack-test",
         "slack-channel",
     )
@@ -1403,7 +1403,7 @@ def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         chat_id="chat-a",
@@ -1412,7 +1412,7 @@ def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
 
     consumed, status = plugin_input_interaction_manager.consume_by_user(
         "10001",
-        MessageChannel.Telegram,
+        NotificationChannel.Telegram,
         "telegram-test",
         "chat-b",
         bypass_reply_check=True,
@@ -1421,7 +1421,7 @@ def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
     assert consumed is None
     assert status is None
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test", "chat-a"
+        "10001", NotificationChannel.Telegram, "telegram-test", "chat-a"
     ) == request
 
 
@@ -1437,16 +1437,16 @@ def test_plugin_input_specific_session_replaces_overlapping_no_channel_session()
     new_request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
 
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == new_request
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) is None
 
 
@@ -1455,16 +1455,16 @@ def test_plugin_input_session_pop_by_user_consumes_once():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
     )
 
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) is None
 
 
@@ -1473,17 +1473,17 @@ def test_plugin_input_session_pop_by_user_ignores_prompt_message_binding():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         prompt_message_id="prompt-current",
     )
 
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
     assert plugin_input_interaction_manager.get_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) is None
 
 
@@ -1492,7 +1492,7 @@ def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         prompt_message_id="prompt-current",
@@ -1501,10 +1501,10 @@ def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
     request.created_at = datetime.now() - timedelta(seconds=61)
 
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) == request
     assert plugin_input_interaction_manager.pop_by_user(
-        "10001", MessageChannel.Telegram, "telegram-test"
+        "10001", NotificationChannel.Telegram, "telegram-test"
     ) is None
 
 
@@ -1561,7 +1561,7 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
         chain, "_handle_ai_message"
     ) as handle_ai:
         chain.handle_message(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1584,7 +1584,7 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     chain = MessageChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         action="Search",
@@ -1604,7 +1604,7 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="10001",
             username="tester",
@@ -1620,7 +1620,7 @@ def test_callback_routes_to_media_interaction_chain():
     chain = MessageChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1637,7 +1637,7 @@ def test_callback_routes_to_media_interaction_chain():
         chain._handle_callback(
             callback_data=f"media:{request.request_id}:page-next",
             context=InteractionContext(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 user_id="10001",
                 username="tester",
@@ -1661,7 +1661,7 @@ def test_media_interaction_starts_search_and_posts_media_list():
         return_value=(meta, medias),
     ), patch.object(chain, "post_medias_message") as post_medias_message:
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1686,7 +1686,7 @@ def test_media_interaction_legacy_page_callback_updates_existing_request():
     chain = MediaInteractionChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1702,7 +1702,7 @@ def test_media_interaction_legacy_page_callback_updates_existing_request():
     with patch.object(chain, "post_medias_message") as post_medias_message:
         handled = chain.handle_callback_interaction(
             callback_data="page_n",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1724,7 +1724,7 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1742,7 +1742,7 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
         "app.chain.message.DownloadChain.download_single"
     ) as download_single:
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1769,7 +1769,7 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1788,7 +1788,7 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1809,7 +1809,7 @@ def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1828,7 +1828,7 @@ def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1849,7 +1849,7 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="wechat-user",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         action="Search",
@@ -1865,7 +1865,7 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
         return_value=_build_multiple_movie_download_dirs(),
     ), patch.object(chain, "post_message") as post_message:
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="wechat-user",
             username="tester",
@@ -1889,7 +1889,7 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1912,7 +1912,7 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
         request.download_dirs = chain._get_download_dirs(context.media_info)
         handled = chain.handle_callback_interaction(
             callback_data=f"media:{request.request_id}:download-dir:1",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1931,7 +1931,7 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         username="tester",
         action="Search",
@@ -1954,7 +1954,7 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
         request.download_dirs = chain._get_download_dirs(context.media_info)
         handled = chain.handle_callback_interaction(
             callback_data=f"media:{request.request_id}:download-dir:2",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -1973,7 +1973,7 @@ def test_download_dir_text_reply_runs_pending_single_download_without_save_path(
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
         user_id="wechat-user",
-        channel=MessageChannel.Wechat,
+        channel=NotificationChannel.Wechat,
         source="wechat-test",
         username="tester",
         action="Search",
@@ -1995,7 +1995,7 @@ def test_download_dir_text_reply_runs_pending_single_download_without_save_path(
     ) as download_single:
         request.download_dirs = chain._get_download_dirs()
         handled = chain.handle_text_interaction(
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             userid="wechat-user",
             username="tester",

@@ -30,8 +30,8 @@ from app.schemas import (
     TransferInfo,
     ExistMediaInfo,
     DownloaderTorrent,
-    CommingMessage,
-    Notification,
+    IncomingMessage,
+    Message,
     WebhookEventInfo,
     TmdbEpisode,
     MediaPerson,
@@ -41,7 +41,7 @@ from app.schemas import (
 )
 from app.foundation.identity import normalize_internal_user_id
 from app.schemas.media import normalize_media_source, resolve_media_identity
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
     TorrentStatus,
@@ -50,7 +50,7 @@ from app.schemas.types import (
     MediaImageType,
     EventType,
     ChainEventType,
-    MessageChannel,
+    NotificationChannel,
     MediaSource,
     SystemConfigKey,
 )
@@ -129,7 +129,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def start_message_processing_status(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: Optional[str],
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
@@ -162,7 +162,7 @@ class ChainBase(metaclass=ABCMeta):
     def finish_message_processing_status(
             self,
             status: Optional[dict] = None,
-            channel: Optional[MessageChannel] = None,
+            channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
@@ -175,7 +175,7 @@ class ChainBase(metaclass=ABCMeta):
         target_channel = channel
         if status:
             try:
-                target_channel = MessageChannel(status.get("channel"))
+                target_channel = NotificationChannel(status.get("channel"))
             except Exception:
                 target_channel = channel
         if not target_channel or not ChannelCapabilityManager.supports_capability(
@@ -197,8 +197,8 @@ class ChainBase(metaclass=ABCMeta):
 
     @staticmethod
     def _normalize_notification_for_dispatch(
-            message: Notification
-    ) -> Notification:
+            message: Message
+    ) -> Message:
         """
         规范化待发送的通知消息。
         后台任务会复用内部占位用户ID作为会话身份，这里在真正发送前清空，
@@ -211,7 +211,7 @@ class ChainBase(metaclass=ABCMeta):
         return dispatch_message
 
     @staticmethod
-    def _build_notice_message_data(message: Notification) -> dict:
+    def _build_notice_message_data(message: Message) -> dict:
         """
         构造消息通知事件数据。
         """
@@ -1250,7 +1250,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def message_parser(
             self, source: str, body: Any, form: Any, args: Any
-    ) -> Optional[CommingMessage]:
+    ) -> Optional[IncomingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -1785,7 +1785,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def post_message(
             self,
-            message: Optional[Notification] = None,
+            message: Optional[Message] = None,
             meta: Optional[MetaBase] = None,
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
@@ -1901,7 +1901,7 @@ class ChainBase(metaclass=ABCMeta):
 
     async def async_post_message(
             self,
-            message: Optional[Notification] = None,
+            message: Optional[Message] = None,
             meta: Optional[MetaBase] = None,
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
@@ -2016,7 +2016,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     def post_medias_message(
-            self, message: Notification, medias: List[MediaInfo]
+            self, message: Message, medias: List[MediaInfo]
     ) -> None:
         """
         发送媒体信息选择列表
@@ -2036,7 +2036,7 @@ class ChainBase(metaclass=ABCMeta):
         )
 
     def post_torrents_message(
-            self, message: Notification, torrents: List[Context]
+            self, message: Message, torrents: List[Context]
     ) -> None:
         """
         发送种子信息选择列表
@@ -2057,7 +2057,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def delete_message(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             message_id: Union[str, int],
             chat_id: Optional[Union[str, int]] = None,
@@ -2080,7 +2080,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def edit_message(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             message_id: Union[str, int],
             chat_id: Union[str, int],
@@ -2101,7 +2101,7 @@ class ChainBase(metaclass=ABCMeta):
         :param metadata: 其他消息元数据
         :return: 编辑是否成功
         """
-        if channel == MessageChannel.WebAgent:
+        if channel == NotificationChannel.WebAgent:
             try:
                 from app.application.messaging.agent import edit_web_agent_message
 
@@ -2128,7 +2128,7 @@ class ChainBase(metaclass=ABCMeta):
             metadata=metadata,
         )
 
-    def send_direct_message(self, message: Notification) -> Optional[MessageResponse]:
+    def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
         直接发送消息并返回消息ID等信息（用于后续编辑消息的场景）
         不经过消息队列、不保存消息历史

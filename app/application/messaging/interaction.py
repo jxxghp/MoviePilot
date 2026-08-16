@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple, Union
 
-from app.schemas import Notification
-from app.schemas.message import ChannelCapabilityManager
-from app.schemas.types import MessageChannel
+from app.schemas import Message
+from app.schemas.notification import ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 
 
 @dataclass
@@ -18,7 +18,7 @@ class PendingSlashInteraction:
 
     request_id: str
     user_id: str
-    channel: Optional[MessageChannel]
+    channel: Optional[NotificationChannel]
     source: Optional[str]
     username: Optional[str]
     command: str
@@ -57,7 +57,7 @@ class SlashInteractionManager:
             self,
             user_id: Union[str, int],
             command: str,
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
     ) -> PendingSlashInteraction:
@@ -120,7 +120,7 @@ class SlashInteractionManager:
 class InteractionContext:
     """描述一次与渠道无关的用户交互上下文。"""
 
-    channel: MessageChannel
+    channel: NotificationChannel
     source: Optional[str]
     user_id: Union[str, int]
     username: Optional[str]
@@ -140,12 +140,12 @@ class InteractionDispatch:
 class MessageGateway(Protocol):
     """声明交互控制器使用的消息发送和编辑能力。"""
 
-    def post_message(self, message: Notification): ...
+    def post_message(self, message: Message): ...
 
     def edit_message(self, **kwargs) -> bool: ...
 
 
-def supports_interaction_buttons(channel: Optional[MessageChannel]) -> bool:
+def supports_interaction_buttons(channel: Optional[NotificationChannel]) -> bool:
     """
     渠道同时支持按钮和回调时，优先使用按钮交互。
     """
@@ -156,7 +156,7 @@ def supports_interaction_buttons(channel: Optional[MessageChannel]) -> bool:
     )
 
 
-def supports_markdown(channel: Optional[MessageChannel]) -> bool:
+def supports_markdown(channel: Optional[NotificationChannel]) -> bool:
     """
     仅在支持 Markdown 的渠道上输出 Markdown 内容。
     """
@@ -213,7 +213,7 @@ def build_navigation_buttons(
 
 def update_or_post_message(
         chain,
-        channel: MessageChannel,
+        channel: NotificationChannel,
         source: Optional[str],
         userid: Union[str, int],
         username: Optional[str],
@@ -232,7 +232,7 @@ def update_or_post_message(
             and ChannelCapabilityManager.supports_editing(channel)
     ):
         edit_kwargs = {}
-        if channel == MessageChannel.WebAgent:
+        if channel == NotificationChannel.WebAgent:
             edit_kwargs["metadata"] = {"userid": userid}
         edited = chain.edit_message(
             channel=channel,
@@ -248,7 +248,7 @@ def update_or_post_message(
             return
 
     chain.post_message(
-        Notification(
+        Message(
             channel=channel,
             source=source,
             userid=userid,

@@ -88,6 +88,25 @@ All new code must follow these conventions. Consistent naming is how the codebas
 
 ---
 
+## Message / Notification Domain Boundary
+
+`message` 与 `notification` 是两个不同的语义域，新增或修改相关代码时必须按职责选名，不得混用：
+
+| 语义域 | 职责 | 规范命名示例 |
+|---|---|---|
+| `notification` | 通知渠道能力：渠道枚举、渠道配置、渠道发现、渠道管理、渠道能力描述 | `NotificationChannel`, `NotificationConf`, `NotificationHelper`, `NotificationChain`, `NotificationAction`, `ChannelCapabilityManager`, `ModuleType.Notification`, `channel_manage` |
+| `message` | 各渠道发送或接收的消息：消息体、消息类型、消息链、消息历史、消息队列 | `Message`, `MessageType`, `IncomingMessage`, `MessageChain`, `MessageHistoryItem`, `MessageOper`, `post_message`, `message_parser` |
+
+| 规则 | 说明 |
+|---|---|
+| 渠道本身用 notification | 渠道是能力提供方，如 `NotificationChannel` 枚举、`NotificationConf` 渠道配置 |
+| 消息内容与收发用 message | 消息是被传输的内容，如发送体 `Message`、接收体 `IncomingMessage`、分类 `MessageType` |
+| 渠道 × 消息的交叉概念按主导方判断 | 按渠道控制消息开关的 `NotificationSwitch` 属渠道能力；消息历史清理 `MessageClearScope` 属消息 |
+| 历史旧名不在源码保留 | `Notification`、`MessageChannel`、`NotificationType`、`CommingMessage` 等旧名仅登记在 `app/runtime/compat/manifest.py` 的 `SYMBOL_ALIASES`，新代码一律使用规范名 |
+| 持久化值与外部协议冻结 | 枚举值、`SystemConfigKey` 配置值、DB 表名、API 路径、外部平台字段（如 Jellyfin 的 `NotificationType`）不随命名统一变更 |
+
+---
+
 ## Anti-Patterns
 
 | Wrong | Correct |
@@ -99,5 +118,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 | `def handleConfigChanged():` | `def on_config_changed():` or `def handle_config_changed():` |
 | `SystemConfigOper().get("RssUrls")` | `SystemConfigOper().get(SystemConfigKey.RssUrls)` |
 | `class subscribe_oper:` | `class SubscribeOper:` |
+| `MessageChannel.Telegram`（新代码） | `NotificationChannel.Telegram` |
+| `Notification(title=...)`（新代码） | `Message(title=...)` |
 
-*Last Updated: 2026-06-23*
+*Last Updated: 2026-08-16*

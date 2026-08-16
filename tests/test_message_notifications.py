@@ -8,11 +8,11 @@ from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.db import AsyncSessionFactory, SessionFactory
 from app.db.oper.message import MessageOper
-from app.db.models.message import Message
+from app.db.models.message import Message as MessageModel
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.message import MessageHelper
-from app.schemas import Notification, NotificationClearScope
-from app.schemas.types import MediaType, NotificationType, SystemConfigKey
+from app.schemas import Message, MessageClearScope
+from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
 
 def _clear_messages() -> None:
@@ -20,7 +20,7 @@ def _clear_messages() -> None:
     清空消息表，隔离通知测试数据。
     """
     with SessionFactory() as db:
-        db.query(Message).delete()
+        db.query(MessageModel).delete()
         db.commit()
     SystemConfigOper().delete(SystemConfigKey.NotificationClearBefore)
 
@@ -39,7 +39,7 @@ def _set_message_time(title: str, reg_time: str) -> None:
     调整测试消息时间，避免消息写入时的当前秒影响清理边界断言。
     """
     with SessionFactory() as db:
-        db.query(Message).filter(Message.title == title).update({"reg_time": reg_time})
+        db.query(MessageModel).filter(MessageModel.title == title).update({"reg_time": reg_time})
         db.commit()
 
 
@@ -49,9 +49,9 @@ def test_notification_history_only_lists_sent_messages() -> None:
     """
     _clear_messages()
     oper = MessageOper()
-    oper.add(title="系统通知", text="下载完成", action=1, mtype=NotificationType.Download)
+    oper.add(title="系统通知", text="下载完成", action=1, mtype=MessageType.Download)
     oper.add(title="用户消息", text="帮我搜索", action=0)
-    oper.add(title="智能体回复", text="已处理", action=1, mtype=NotificationType.Agent)
+    oper.add(title="智能体回复", text="已处理", action=1, mtype=MessageType.Agent)
 
     messages = MessageOper().list_by_page(page=1, count=10)
     assert [message.title for message in messages if message.action == 1] == ["智能体回复", "系统通知"]
@@ -63,9 +63,9 @@ def test_web_message_history_returns_all_messages() -> None:
     """
     _clear_messages()
     oper = MessageOper()
-    oper.add(title="智能体回复", text="已处理", action=1, mtype=NotificationType.Agent)
+    oper.add(title="智能体回复", text="已处理", action=1, mtype=MessageType.Agent)
     oper.add(title="用户消息", text="/ai 帮我处理", action=0)
-    oper.add(title="普通通知", text="下载完成", action=1, mtype=NotificationType.Download)
+    oper.add(title="普通通知", text="下载完成", action=1, mtype=MessageType.Download)
 
     messages = MessageOper().list_by_page(page=1, count=10)
     assert [message.title for message in messages] == ["普通通知", "用户消息", "智能体回复"]
@@ -81,7 +81,7 @@ def test_notification_clear_marker_filters_history_across_requests() -> None:
         title="旧系统通知",
         text="任务失败",
         action=1,
-        mtype=NotificationType.Other,
+        mtype=MessageType.Other,
     )
     oper.add(
         title="旧媒体通知",
@@ -92,7 +92,7 @@ def test_notification_clear_marker_filters_history_across_requests() -> None:
     _set_message_time("旧系统通知", "2026-01-01 00:00:00")
     _set_message_time("旧媒体通知", "2026-01-01 00:00:00")
 
-    asyncio.run(clear_notification_message(scope=NotificationClearScope.Media))
+    asyncio.run(clear_notification_message(scope=MessageClearScope.Media))
 
     oper.add(
         title="新媒体通知",
@@ -183,8 +183,8 @@ def test_notification_post_message_is_persisted_without_sse_queue() -> None:
     chain.eventmanager.send_event = Mock()
 
     chain.post_message(
-        Notification(
-            mtype=NotificationType.Download,
+        Message(
+            mtype=MessageType.Download,
             title="下载完成",
             text="影片已加入下载器",
         )
@@ -193,7 +193,7 @@ def test_notification_post_message_is_persisted_without_sse_queue() -> None:
     messages = MessageOper().list_by_page(page=1, count=10)
     assert len(messages) == 1
     assert messages[0].title == "下载完成"
-    assert messages[0].mtype == NotificationType.Download.value
+    assert messages[0].mtype == MessageType.Download.value
     assert helper.get() is None
     chain.messagequeue.send_message.assert_called_once()
 
@@ -211,8 +211,8 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue() -> Non
     chain.eventmanager.send_event = Mock()
 
     chain.post_message(
-        Notification(
-            mtype=NotificationType.Agent,
+        Message(
+            mtype=MessageType.Agent,
             title="MoviePilot助手",
             text="已完成处理",
         )
@@ -221,7 +221,7 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue() -> Non
     messages = MessageOper().list_by_page(page=1, count=10)
     assert len(messages) == 1
     assert messages[0].title == "MoviePilot助手"
-    assert messages[0].mtype == NotificationType.Agent.value
+    assert messages[0].mtype == MessageType.Agent.value
     assert helper.get() is None
     chain.messagequeue.send_message.assert_called_once()
 
@@ -237,7 +237,7 @@ def test_transient_notification_post_message_skips_history_but_dispatches() -> N
     chain.eventmanager.send_event = Mock()
 
     chain.post_message(
-        Notification(
+        Message(
             title="请选择下载目录",
             text="1. 默认目录",
             save_history=False,
@@ -270,11 +270,11 @@ def test_transient_media_and_torrent_lists_skip_history_but_dispatch() -> None:
     chain.messagequeue.send_message = Mock()
 
     chain.post_medias_message(
-        Notification(title="请选择媒体", save_history=False),
+        Message(title="请选择媒体", save_history=False),
         medias=[media],
     )
     chain.post_torrents_message(
-        Notification(title="请选择资源", save_history=False),
+        Message(title="请选择资源", save_history=False),
         torrents=[torrent],
     )
 

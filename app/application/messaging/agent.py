@@ -5,7 +5,7 @@ from queue import Queue
 from threading import Lock
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 # Agent 选择按钮回调前缀（新旧两种格式都必须继续兼容）
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
@@ -180,7 +180,7 @@ _CHANNEL_ADMIN_RESOLVERS: dict[str, _ChannelAdminResolver] = {}
 
 
 def register_channel_admin_resolver(
-        channel: Union[MessageChannel, str],
+        channel: Union[NotificationChannel, str],
         resolver: _ChannelAdminResolver,
 ) -> None:
     """
@@ -189,7 +189,7 @@ def register_channel_admin_resolver(
     :param channel: 消息渠道
     :param resolver: 由渠道配置解析全部管理员主体 ID 的函数
     """
-    channel_value = channel.value if isinstance(channel, MessageChannel) else str(channel)
+    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
     _CHANNEL_ADMIN_RESOLVERS[channel_value] = resolver
 
 
@@ -215,7 +215,7 @@ def resolve_config_principal_ids(
 
 
 def matches_channel_admin(
-        channel: Union[MessageChannel, str],
+        channel: Union[NotificationChannel, str],
         config: Optional[dict],
         *principal_ids: Optional[Union[str, int]],
 ) -> bool:
@@ -227,7 +227,7 @@ def matches_channel_admin(
     :param principal_ids: 消息渠道提供的稳定用户主体 ID
     :return: 任一用户主体 ID 命中渠道注册的管理员集合时返回 True
     """
-    channel_value = channel.value if isinstance(channel, MessageChannel) else str(channel)
+    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
     resolver = _CHANNEL_ADMIN_RESOLVERS.get(channel_value)
     if not resolver:
         return False

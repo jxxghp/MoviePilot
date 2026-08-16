@@ -11,12 +11,12 @@ from app.application.messaging.agent import (
 from app.runtime.log import logger
 from app.modules import _MessageBase, _ModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
-from app.schemas import CommingMessage, Notification
-from app.schemas.types import MessageChannel, ModuleType, NotificationAction
+from app.schemas import IncomingMessage, Message
+from app.schemas.types import NotificationChannel, ModuleType, NotificationAction
 
 
 register_channel_admin_resolver(
-    MessageChannel.WechatClawBot,
+    NotificationChannel.WechatClawBot,
     lambda config: resolve_config_principal_ids(
         config, "WECHATCLAWBOT_ADMINS", "WECHATCLAWBOT_DEFAULT_TARGET"
     ),
@@ -39,7 +39,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         super().init_service(
             service_name=WechatClawBot.__name__.lower(), service_type=WechatClawBot
         )
-        self._channel = MessageChannel.WechatClawBot
+        self._channel = NotificationChannel.WechatClawBot
 
     @staticmethod
     def get_name() -> str:
@@ -52,9 +52,9 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         return ModuleType.Notification
 
     @staticmethod
-    def get_subtype() -> MessageChannel:
+    def get_subtype() -> NotificationChannel:
         """获取模块子类型。"""
-        return MessageChannel.WechatClawBot
+        return NotificationChannel.WechatClawBot
 
     @staticmethod
     def get_priority() -> int:
@@ -85,7 +85,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
 
     def channel_manage(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             action: NotificationAction,
             **params: Any,
     ) -> Optional[Dict[str, Any]]:
@@ -207,7 +207,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         return normalized or None
 
     @staticmethod
-    def _normalize_files(files: Any) -> Optional[List[CommingMessage.MessageAttachment]]:
+    def _normalize_files(files: Any) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """标准化文件附件列表。"""
         if not files:
             return None
@@ -226,7 +226,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             except (TypeError, ValueError):
                 size = None
             normalized.append(
-                CommingMessage.MessageAttachment(
+                IncomingMessage.MessageAttachment(
                     ref=ref,
                     name=item.get("name") or item.get("filename"),
                     mime_type=item.get("mime_type") or item.get("content_type"),
@@ -249,7 +249,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
 
     def message_parser(
         self, source: str, body: Any, form: Any, args: Any
-    ) -> Optional[CommingMessage]:
+    ) -> Optional[IncomingMessage]:
         """解析微信 ClawBot 转发到消息入口的 JSON 报文。"""
         client_config = self.get_config(source)
         if not client_config:
@@ -273,7 +273,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         message_id = message.get("message_id")
         text = str(message.get("text") or "").strip()
         username = str(message.get("username") or user_id).strip() or user_id
-        images = CommingMessage.MessageImage.normalize_list(message.get("images"))
+        images = IncomingMessage.MessageImage.normalize_list(message.get("images"))
         audio_refs = self._normalize_audio_refs(message.get("audio_refs"))
         files = self._normalize_files(message.get("files"))
         if not text and not images and not audio_refs and not files:
@@ -295,7 +295,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
         callback_data = text[9:].strip() if text.startswith("CALLBACK:") else ""
         is_admin_command = text.startswith("/") or callback_data.startswith("/")
         is_channel_admin = matches_channel_admin(
-            MessageChannel.WechatClawBot,
+            NotificationChannel.WechatClawBot,
             client_config.config,
             user_id,
         )
@@ -311,8 +311,8 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             f"images={len(images) if images else 0}, "
             f"audios={len(audio_refs) if audio_refs else 0}, files={len(files) if files else 0}"
         )
-        return CommingMessage(
-            channel=MessageChannel.WechatClawBot,
+        return IncomingMessage(
+            channel=NotificationChannel.WechatClawBot,
             source=client_config.name,
             userid=user_id,
             username=username,
@@ -325,7 +325,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             files=files,
         )
 
-    def post_message(self, message: Notification, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs) -> None:
         """发送消息。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -392,7 +392,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             return None
         return client.download_media_bytes(media_ref)
 
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
+    def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """发送媒体选择列表。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -401,7 +401,7 @@ class WechatClawBotModule(_ModuleBase, _MessageBase[WechatClawBot]):
             if client:
                 client.send_medias_msg(medias=medias, userid=message.userid)
 
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
+    def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """发送种子选择列表。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):

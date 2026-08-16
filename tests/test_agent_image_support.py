@@ -27,8 +27,8 @@ from app.modules.synologychat import SynologyChatModule
 from app.modules.vocechat import VoceChatModule
 from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot
-from app.schemas import CommingMessage, Notification
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas import IncomingMessage, Message
+from app.schemas.types import NotificationChannel, MessageType
 
 
 class AgentImageSupportTest(unittest.TestCase):
@@ -135,8 +135,8 @@ class AgentImageSupportTest(unittest.TestCase):
 
     def test_process_allows_image_only_message(self):
         chain = MessageChain()
-        message = CommingMessage(
-            channel=MessageChannel.Telegram,
+        message = IncomingMessage(
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -154,8 +154,8 @@ class AgentImageSupportTest(unittest.TestCase):
 
     def test_process_allows_audio_only_message(self):
         chain = MessageChain()
-        message = CommingMessage(
-            channel=MessageChannel.Telegram,
+        message = IncomingMessage(
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
@@ -173,13 +173,13 @@ class AgentImageSupportTest(unittest.TestCase):
 
     def test_process_allows_file_only_message(self):
         chain = MessageChain()
-        message = CommingMessage(
-            channel=MessageChannel.Telegram,
+        message = IncomingMessage(
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",
             files=[
-                CommingMessage.MessageAttachment(
+                IncomingMessage.MessageAttachment(
                     ref="tg://document_file_id/doc-1",
                     name="note.txt",
                     mime_type="text/plain",
@@ -210,7 +210,7 @@ class AgentImageSupportTest(unittest.TestCase):
             settings, "AI_AGENT_GLOBAL", False
         ):
             chain.handle_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -232,7 +232,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 settings, "AI_AGENT_GLOBAL", False
             ):
                 chain.handle_message(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     userid="10001",
                     username="tester",
@@ -258,13 +258,13 @@ class AgentImageSupportTest(unittest.TestCase):
             settings, "AI_AGENT_GLOBAL", False
         ):
             chain.handle_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
                 text="",
                 files=[
-                    CommingMessage.MessageAttachment(
+                    IncomingMessage.MessageAttachment(
                         ref="tg://document_file_id/doc-1",
                         name="report.txt",
                         mime_type="text/plain",
@@ -306,7 +306,7 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as transcribe_bytes:
             result = chain._transcribe_audio_refs(
                 audio_refs=audio_refs,
-                channel=MessageChannel.Slack,
+                channel=NotificationChannel.Slack,
                 source="mixed-source",
             )
 
@@ -341,7 +341,7 @@ class AgentImageSupportTest(unittest.TestCase):
         agent = MoviePilotAgent(
             session_id="session-1",
             user_id="user-1",
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
         )
@@ -362,7 +362,7 @@ class AgentImageSupportTest(unittest.TestCase):
         agent = MoviePilotAgent(
             session_id="session-1",
             user_id="user-1",
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
         )
@@ -400,7 +400,7 @@ class AgentImageSupportTest(unittest.TestCase):
         agent = MoviePilotAgent(
             session_id="session-1",
             user_id="user-1",
-            channel=MessageChannel.Telegram.value,
+            channel=NotificationChannel.Telegram.value,
             source="telegram-test",
             username="tester",
         )
@@ -458,7 +458,7 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as run_coroutine_threadsafe:
             chain._handle_ai_message(
                 text="/ai 帮我看看这张图",
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -491,7 +491,7 @@ class AgentImageSupportTest(unittest.TestCase):
         ):
             chain._handle_ai_message(
                 text="帮我推荐一部电影",
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -510,7 +510,7 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as run_module:
             images = chain._download_attachments_to_data_urls(
                 attachments=["https://files.slack.com/files-pri/T1-F1/test.png"],
-                channel=MessageChannel.Slack,
+                channel=NotificationChannel.Slack,
                 source="slack-test",
             )
 
@@ -574,7 +574,7 @@ class AgentImageSupportTest(unittest.TestCase):
         async def _run():
             tool = SendMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 username="tester",
             )
@@ -594,8 +594,8 @@ class AgentImageSupportTest(unittest.TestCase):
         notification = async_post_message.await_args.args[0]
 
         self.assertEqual(result, "消息已发送")
-        self.assertEqual(notification.mtype, NotificationType.Other)
-        self.assertEqual(notification.channel, MessageChannel.Telegram)
+        self.assertEqual(notification.mtype, MessageType.Other)
+        self.assertEqual(notification.channel, NotificationChannel.Telegram)
         self.assertEqual(notification.source, "telegram-test")
         self.assertEqual(notification.title, "智能体通知")
         self.assertEqual(notification.text, "处理完成")
@@ -608,7 +608,7 @@ class AgentImageSupportTest(unittest.TestCase):
         async def _run():
             tool = SendMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 username="tester",
             )
@@ -638,7 +638,7 @@ class AgentImageSupportTest(unittest.TestCase):
             agent_context = {}
             tool.set_agent_context(agent_context)
             tool.set_message_attr(
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 username="tester",
             )
@@ -738,7 +738,7 @@ class AgentImageSupportTest(unittest.TestCase):
             module, "get_instance", return_value=client
         ):
             response = module.send_direct_message(
-                Notification(title="hi", userid="user-1")
+                Message(title="hi", userid="user-1")
             )
 
         self.assertIsNotNone(response)
@@ -755,7 +755,7 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as run_module:
             images = chain._download_attachments_to_data_urls(
                 attachments=["wxwork://media_id/media-1"],
-                channel=MessageChannel.Wechat,
+                channel=NotificationChannel.Wechat,
                 source="wechat-test",
             )
 
@@ -776,12 +776,12 @@ class AgentImageSupportTest(unittest.TestCase):
         ) as run_module:
             data_urls = chain._download_attachments_to_data_urls(
                 attachments=[
-                    CommingMessage.MessageImage(
+                    IncomingMessage.MessageImage(
                         ref="feishu://image/img_v2_xxx",
                         mime_type="image/png",
                     )
                 ],
-                channel=MessageChannel.Feishu,
+                channel=NotificationChannel.Feishu,
                 source="feishu-test",
             )
 
@@ -798,7 +798,7 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(chain, "run_module", return_value=b"feishu-file") as run_module:
             content = chain._download_message_file_bytes(
                 file_ref="feishu://file/file_xxx/report.pdf",
-                channel=MessageChannel.Feishu,
+                channel=NotificationChannel.Feishu,
                 source="feishu-test",
             )
 
@@ -1064,7 +1064,7 @@ class AgentImageSupportTest(unittest.TestCase):
             module, "get_instance", return_value=client
         ):
             module.post_message(
-                Notification(
+                Message(
                     title="poster",
                     image="https://example.com/poster.png",
                     targets={"vocechat_userid": "UID#100"},
@@ -1097,7 +1097,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 module, "get_instance", return_value=client
             ):
                 module.post_message(
-                    Notification(
+                    Message(
                         title="手册",
                         text="请下载",
                         file_path=str(file_path),
@@ -1132,7 +1132,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 module, "get_instance", return_value=client
             ):
                 module.post_message(
-                    Notification(
+                    Message(
                         title="手册",
                         text="请下载",
                         file_path=str(file_path),
@@ -1336,13 +1336,13 @@ class AgentImageSupportTest(unittest.TestCase):
             prepared = chain._prepare_agent_files(
                 session_id="session-1",
                 files=[
-                    CommingMessage.MessageAttachment(
+                    IncomingMessage.MessageAttachment(
                         ref="tg://document_file_id/doc-1",
                         name="note.txt",
                         mime_type="text/plain",
                     )
                 ],
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
             )
 
@@ -1367,7 +1367,7 @@ class AgentImageSupportTest(unittest.TestCase):
                 module, "get_instance", return_value=client
             ):
                 module.post_message(
-                    Notification(
+                    Message(
                         title="报告",
                         text="请下载",
                         file_path=str(file_path),

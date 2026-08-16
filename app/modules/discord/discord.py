@@ -13,16 +13,16 @@ from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.schemas.types import NotificationType
+from app.schemas.types import MessageType
 from app.foundation import size as size_tools
 
 # Discord embed 字段解析白名单
 # 只有这些消息类型会使用复杂的字段解析逻辑
 PARSE_FIELD_TYPES = {
-    NotificationType.Download,  # 资源下载
-    NotificationType.Organize,  # 整理入库
-    NotificationType.Subscribe,  # 订阅
-    NotificationType.Manual,  # 手动处理
+    MessageType.Download,  # 资源下载
+    MessageType.Organize,  # 整理入库
+    MessageType.Subscribe,  # 订阅
+    MessageType.Manual,  # 手动处理
 }
 
 
@@ -413,7 +413,7 @@ class Discord:
         buttons: Optional[List[List[dict]]] = None,
         original_message_id: Optional[Union[int, str]] = None,
         original_chat_id: Optional[str] = None,
-        mtype: Optional["NotificationType"] = None,
+        mtype: Optional["MessageType"] = None,
     ) -> Optional[bool]:
         logger.debug(
             f"[Discord] send_msg 被调用: userid={userid}, title={title[:50] if title else None}..."
@@ -708,7 +708,7 @@ class Discord:
         buttons: Optional[List[List[dict]]],
         original_message_id: Optional[Union[int, str]],
         original_chat_id: Optional[str],
-        mtype: Optional["NotificationType"] = None,
+        mtype: Optional["MessageType"] = None,
     ) -> Tuple[bool, Optional[Dict[str, str]]]:
         logger.debug(
             f"[Discord] _send_message: userid={userid}, original_chat_id={original_chat_id}"
@@ -887,7 +887,7 @@ class Discord:
         text: Optional[str],
         image: Optional[str],
         link: Optional[str],
-        mtype: Optional["NotificationType"] = None,
+        mtype: Optional["MessageType"] = None,
     ) -> discord.Embed:
         fields: List[Dict[str, str]] = []
         desc_lines: List[str] = []

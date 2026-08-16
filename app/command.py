@@ -17,8 +17,8 @@ from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
-from app.schemas import Notification, CommandRegisterEventData
-from app.schemas.types import EventType, MessageChannel, ChainEventType
+from app.schemas import Message, CommandRegisterEventData
+from app.schemas.types import EventType, NotificationChannel, ChainEventType
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.foundation.collections import DictUtils
@@ -292,7 +292,7 @@ class Command(metaclass=Singleton):
         self,
         command: Dict[str, any],
         data_str: Optional[str] = "",
-        channel: MessageChannel = None,
+        channel: NotificationChannel = None,
         source: Optional[str] = None,
         userid: Union[str, int] = None,
     ):
@@ -303,7 +303,7 @@ class Command(metaclass=Singleton):
             # 定时服务
             if userid:
                 CommandChain().post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         title=f"开始执行 {command.get('description')} ...",
@@ -316,7 +316,7 @@ class Command(metaclass=Singleton):
 
             if userid:
                 CommandChain().post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         title=f"{command.get('description')} 执行完成",
@@ -393,7 +393,7 @@ class Command(metaclass=Singleton):
         self,
         cmd: str,
         data_str: Optional[str] = "",
-        channel: MessageChannel = None,
+        channel: NotificationChannel = None,
         source: Optional[str] = None,
         userid: Union[str, int] = None,
     ) -> None:

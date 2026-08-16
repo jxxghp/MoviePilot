@@ -22,13 +22,13 @@ from app.application.messaging.router import (
 )
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def _context(user_id="10001") -> InteractionContext:
     """构造最小交互上下文。"""
     return InteractionContext(
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         source="telegram-test",
         user_id=user_id,
         username="tester",
@@ -181,7 +181,7 @@ class TestHasPendingInteraction(unittest.TestCase):
         site_interaction_manager.create_or_replace(
             user_id="10001",
             command="/sites",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )

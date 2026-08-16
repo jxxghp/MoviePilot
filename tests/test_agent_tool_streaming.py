@@ -15,7 +15,7 @@ from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.api.endpoints.openai import _OpenAIStreamingHandler
 from app.runtime.config import settings
 from app.schemas.message import MessageResponse
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas.types import NotificationChannel, MessageType
 
 
 def test_think_tag_stripper_waits_for_partial_open_tag():
@@ -344,7 +344,7 @@ class TestAgentToolStreaming:
     def test_flush_sends_direct_message_via_threadpool(self):
         """校验刷新时通过线程池发送首条直连消息。"""
         handler = StreamingHandler()
-        handler._channel = MessageChannel.Telegram.value
+        handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
         handler._user_id = "10001"
         handler._username = "tester"
@@ -365,13 +365,13 @@ class TestAgentToolStreaming:
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "send_direct_message"
-        assert run_in_threadpool_mock.await_args.args[1].mtype == NotificationType.Agent
+        assert run_in_threadpool_mock.await_args.args[1].mtype == MessageType.Agent
         assert handler.has_sent_message
 
     def test_flush_edits_message_via_threadpool(self):
         """校验刷新时通过线程池编辑已有消息。"""
         handler = StreamingHandler()
-        handler._channel = MessageChannel.Telegram.value
+        handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
         handler._streaming_enabled = True
         handler._message_response = MessageResponse(
@@ -398,7 +398,7 @@ class TestAgentToolStreaming:
         """校验停止流式输出会等待首条消息发送完成再编辑。"""
         async def _run():
             handler = StreamingHandler()
-            handler._channel = MessageChannel.Feishu.value
+            handler._channel = NotificationChannel.Feishu.value
             handler._source = "feishu-main"
             handler._user_id = "ou_user"
             handler._streaming_enabled = True
@@ -416,7 +416,7 @@ class TestAgentToolStreaming:
                     return MessageResponse(
                         message_id="om_stream",
                         chat_id="oc_stream",
-                        channel=MessageChannel.Feishu,
+                        channel=NotificationChannel.Feishu,
                         source="feishu-main",
                         success=True,
                     )
@@ -459,7 +459,7 @@ class TestAgentToolStreaming:
         handler._message_response = MessageResponse(
             message_id="om_stream",
             chat_id="oc_stream",
-            channel=MessageChannel.Feishu,
+            channel=NotificationChannel.Feishu,
             source="feishu-main",
             metadata={"feishu_streaming": {"card_id": "card_stream", "sequence": 2}},
             success=True,
@@ -523,7 +523,7 @@ class TestAgentToolStreaming:
     def test_flush_passes_original_message_context_to_send_direct_message(self):
         """校验刷新发送时保留原始消息上下文。"""
         handler = StreamingHandler()
-        handler._channel = MessageChannel.Feishu.value
+        handler._channel = NotificationChannel.Feishu.value
         handler._source = "feishu-main"
         handler._user_id = "ou_user"
         handler._username = "tester"
@@ -603,7 +603,7 @@ class TestAgentToolStreaming:
     def test_send_voice_message_uses_native_voice_for_supported_channels(self):
         """校验支持语音输出的渠道会发送原生语音消息。"""
 
-        async def _run(channel: MessageChannel):
+        async def _run(channel: NotificationChannel):
             """运行指定渠道的语音发送工具。"""
             tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(
@@ -625,22 +625,22 @@ class TestAgentToolStreaming:
                 ) as synthesize_speech,
                 patch.object(
                     SendVoiceMessageTool,
-                    "send_notification_message",
+                    "send_message",
                     new_callable=AsyncMock,
-                ) as send_notification_message,
+                ) as send_message,
             ):
                 result = await tool.run("你好")
-            return result, synthesize_speech, send_notification_message
+            return result, synthesize_speech, send_message
 
-        for channel in (MessageChannel.Telegram, MessageChannel.Feishu, MessageChannel.WebAgent):
-            result, synthesize_speech, send_notification_message = asyncio.run(
+        for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu, NotificationChannel.WebAgent):
+            result, synthesize_speech, send_message = asyncio.run(
                 _run(channel)
             )
-            notification = send_notification_message.await_args.args[-1]
+            notification = send_message.await_args.args[-1]
 
             assert result == "语音回复已发送"
             synthesize_speech.assert_called_once_with("你好")
-            send_notification_message.assert_awaited_once()
+            send_message.assert_awaited_once()
             assert notification.channel == channel
             assert notification.voice_path == "/tmp/reply.opus"
             assert notification.voice_caption == "你好"
@@ -655,7 +655,7 @@ class TestAgentToolStreaming:
             """运行不支持语音输出渠道的语音发送工具。"""
             tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(
-                channel=MessageChannel.Slack.value, source="slack-main", username="tester"
+                channel=NotificationChannel.Slack.value, source="slack-main", username="tester"
             )
 
             with (
@@ -669,18 +669,18 @@ class TestAgentToolStreaming:
                 ) as synthesize_speech,
                 patch.object(
                     SendVoiceMessageTool,
-                    "send_notification_message",
+                    "send_message",
                     new_callable=AsyncMock,
-                ) as send_notification_message,
+                ) as send_message,
             ):
                 result = await tool.run("你好")
-            return result, synthesize_speech, send_notification_message
+            return result, synthesize_speech, send_message
 
-        result, synthesize_speech, send_notification_message = asyncio.run(_run())
-        notification = send_notification_message.await_args.args[-1]
+        result, synthesize_speech, send_message = asyncio.run(_run())
+        notification = send_message.await_args.args[-1]
 
         assert result == "当前渠道不支持语音回复，已自动回退为文字回复"
         synthesize_speech.assert_not_called()
-        send_notification_message.assert_awaited_once()
+        send_message.assert_awaited_once()
         assert notification.text == "你好"
         assert notification.voice_path is None

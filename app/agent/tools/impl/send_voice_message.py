@@ -8,7 +8,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import Notification, NotificationType
+from app.schemas import Message, MessageType
 
 
 class SendVoiceMessageInput(BaseModel):
@@ -82,11 +82,11 @@ class SendVoiceMessageTool(MoviePilotTool):
             f"use_voice={used_voice}, text_len={len(message)}"
         )
 
-        await self.send_notification_message(
-            Notification(
+        await self.send_message(
+            Message(
                 channel=self._channel,
                 source=self._source,
-                mtype=NotificationType.Agent,
+                mtype=MessageType.Agent,
                 userid=self._user_id,
                 username=self._username,
                 text=message,

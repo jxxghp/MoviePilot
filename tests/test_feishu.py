@@ -14,13 +14,13 @@ ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu
-from app.schemas import Notification
+from app.schemas import Message
 from app.schemas.message import (
     ChannelCapability,
     ChannelCapabilityManager,
     MessageResponse,
 )
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas.types import NotificationChannel, MessageType
 
 
 class TestFeishu(unittest.TestCase):
@@ -156,7 +156,7 @@ class TestFeishu(unittest.TestCase):
             )
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.channel, MessageChannel.Feishu)
+        self.assertEqual(result.channel, NotificationChannel.Feishu)
         self.assertEqual(result.userid, "ou_user_1")
         self.assertEqual(result.text, "CALLBACK:approve")
         self.assertTrue(result.is_callback)
@@ -281,7 +281,7 @@ class TestFeishu(unittest.TestCase):
         )
 
         result = client.send_notification(
-            Notification(
+            Message(
                 title="测试标题",
                 text="测试正文",
                 buttons=[[{"text": "确认", "callback_data": "confirm"}]],
@@ -316,7 +316,7 @@ class TestFeishu(unittest.TestCase):
         )
 
         result = client.send_notification(
-            Notification(
+            Message(
                 title="普通通知",
                 text="海报：![poster](https://example.com/poster.jpg)",
             ),
@@ -348,7 +348,7 @@ class TestFeishu(unittest.TestCase):
         with patch("app.modules.feishu.feishu.RequestUtils") as request_utils:
             request_utils.return_value.get_res.return_value = response
             result = client.send_notification(
-                Notification(
+                Message(
                     title="测试标题",
                     text="测试正文",
                     image="https://example.com/poster.png",
@@ -381,7 +381,7 @@ class TestFeishu(unittest.TestCase):
         )
 
         client.send_notification(
-            Notification(title="测试标题", text="测试正文"),
+            Message(title="测试标题", text="测试正文"),
             userid="u_user_4",
             receive_id_type="user_id",
         )
@@ -426,7 +426,7 @@ class TestFeishu(unittest.TestCase):
         )
 
         result = client.send_notification(
-            Notification(title="回复标题", text="回复正文"),
+            Message(title="回复标题", text="回复正文"),
             userid="ou_user_9",
             original_message_id="om_origin",
         )
@@ -475,8 +475,8 @@ class TestFeishu(unittest.TestCase):
         )
 
         result = client.send_notification(
-            Notification(
-                mtype=NotificationType.Agent,
+            Message(
+                mtype=MessageType.Agent,
                 title="MoviePilot助手",
                 text="第一帧内容",
             ),
@@ -523,8 +523,8 @@ class TestFeishu(unittest.TestCase):
         with patch("app.modules.feishu.feishu.RequestUtils") as request_utils:
             request_utils.return_value.get_res.return_value = response
             result = client.send_notification(
-                Notification(
-                    mtype=NotificationType.Agent,
+                Message(
+                    mtype=MessageType.Agent,
                     title="MoviePilot助手",
                     text="找到海报 ![poster](https://example.com/poster.jpg)\n[详情](https://example.com/detail)",
                 ),
@@ -568,8 +568,8 @@ class TestFeishu(unittest.TestCase):
         with patch("app.modules.feishu.feishu.RequestUtils") as request_utils:
             request_utils.return_value.get_res.return_value = response
             result = client.send_notification(
-                Notification(
-                    mtype=NotificationType.Agent,
+                Message(
+                    mtype=MessageType.Agent,
                     title="MoviePilot助手",
                     text="第一帧内容",
                     image="https://example.com/agent.png",
@@ -606,8 +606,8 @@ class TestFeishu(unittest.TestCase):
         )
 
         result = client.send_notification(
-            Notification(
-                mtype=NotificationType.Agent,
+            Message(
+                mtype=MessageType.Agent,
                 title="MoviePilot助手",
                 text="第一帧内容",
             ),
@@ -988,13 +988,13 @@ class TestFeishu(unittest.TestCase):
     def test_feishu_channel_capabilities_enable_images_and_files(self):
         self.assertTrue(
             ChannelCapabilityManager.supports_capability(
-                MessageChannel.Feishu,
+                NotificationChannel.Feishu,
                 ChannelCapability.IMAGES,
             )
         )
         self.assertTrue(
             ChannelCapabilityManager.supports_capability(
-                MessageChannel.Feishu,
+                NotificationChannel.Feishu,
                 ChannelCapability.FILE_SENDING,
             )
         )
@@ -1121,7 +1121,7 @@ class TestFeishu(unittest.TestCase):
 
     def test_module_send_direct_message_prefers_open_id_target(self):
         module = FeishuModule()
-        module._channel = MessageChannel.Feishu
+        module._channel = NotificationChannel.Feishu
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
         client.send_notification.return_value = {
@@ -1136,7 +1136,7 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             response = module.send_direct_message(
-                Notification(
+                Message(
                     targets={
                         "feishu_userid": "u_target",
                         "feishu_openid": "ou_target",
@@ -1158,7 +1158,7 @@ class TestFeishu(unittest.TestCase):
     def test_module_plain_direct_message_uses_literal_text_transport(self):
         """纯文本直发不得进入会解释密钥字符的 Markdown 卡片路径。"""
         module = FeishuModule()
-        module._channel = MessageChannel.Feishu
+        module._channel = NotificationChannel.Feishu
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
         client.send_text.return_value = {
@@ -1174,8 +1174,8 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             response = module.send_direct_message(
-                Notification(
-                    channel=MessageChannel.Feishu,
+                Message(
+                    channel=NotificationChannel.Feishu,
                     source="feishu-main",
                     userid="ou_target",
                     text=literal_text,
@@ -1336,7 +1336,7 @@ class TestFeishu(unittest.TestCase):
 
     def test_module_processing_status_uses_reaction_helpers(self):
         module = FeishuModule()
-        module._channel = MessageChannel.Feishu
+        module._channel = NotificationChannel.Feishu
 
         with (
             patch.object(
@@ -1351,7 +1351,7 @@ class TestFeishu(unittest.TestCase):
             ) as delete_reaction,
         ):
             status = module.mark_message_processing_started(
-                channel=MessageChannel.Feishu,
+                channel=NotificationChannel.Feishu,
                 source="feishu-main",
                 userid="ou_x",
                 message_id="om_x",
@@ -1359,7 +1359,7 @@ class TestFeishu(unittest.TestCase):
                 text="hello",
             )
             deleted = module.mark_message_processing_finished(
-                channel=MessageChannel.Feishu,
+                channel=NotificationChannel.Feishu,
                 source="feishu-main",
                 userid="ou_x",
                 status=status,
@@ -1380,7 +1380,7 @@ class TestFeishu(unittest.TestCase):
 
     def test_module_finalize_message_closes_streaming_card(self):
         module = FeishuModule()
-        module._channel = MessageChannel.Feishu
+        module._channel = NotificationChannel.Feishu
         client = MagicMock()
         client.close_streaming_card.return_value = True
 
@@ -1394,7 +1394,7 @@ class TestFeishu(unittest.TestCase):
                 MessageResponse(
                     message_id="om_stream",
                     chat_id="oc_stream",
-                    channel=MessageChannel.Feishu,
+                    channel=NotificationChannel.Feishu,
                     source="feishu-main",
                     metadata={
                         "feishu_streaming": {
@@ -1422,7 +1422,7 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             module.post_message(
-                Notification(
+                Message(
                     file_path="/tmp/demo.txt",
                     text="说明",
                     title="标题",
@@ -1430,7 +1430,7 @@ class TestFeishu(unittest.TestCase):
                 )
             )
             module.post_message(
-                Notification(
+                Message(
                     voice_path="/tmp/demo.opus",
                     voice_caption="语音说明",
                     userid="ou_user",
@@ -1451,7 +1451,7 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             module.post_message(
-                Notification(
+                Message(
                     file_path="/tmp/demo.txt",
                     file_name="demo.txt",
                     image="https://example.com/poster.png",
@@ -1471,7 +1471,7 @@ class TestFeishu(unittest.TestCase):
 
     def test_module_send_direct_message_sends_image_card_before_file_attachment(self):
         module = FeishuModule()
-        module._channel = MessageChannel.Feishu
+        module._channel = NotificationChannel.Feishu
         conf = SimpleNamespace(name="feishu-main")
         client = MagicMock()
         client.send_notification.return_value = {
@@ -1487,8 +1487,8 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             response = module.send_direct_message(
-                Notification(
-                    channel=MessageChannel.Feishu,
+                Message(
+                    channel=NotificationChannel.Feishu,
                     source="feishu-main",
                     file_path="/tmp/demo.txt",
                     file_name="demo.txt",
@@ -1515,7 +1515,7 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             module.post_message(
-                Notification(
+                Message(
                     title="标题",
                     text="正文",
                     userid="ou_user",
@@ -1533,7 +1533,7 @@ class TestFeishu(unittest.TestCase):
     def test_module_resolve_message_target_prefers_original_chat_id(self):
         """群聊@回复必须优先发回原会话，而不是按 open_id 发到私聊。"""
         userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
-            Notification(userid="ou_user", original_chat_id="oc_group")
+            Message(userid="ou_user", original_chat_id="oc_group")
         )
         self.assertIsNone(userid)
         self.assertEqual(chat_id, "oc_group")
@@ -1541,7 +1541,7 @@ class TestFeishu(unittest.TestCase):
 
         # 非回复类消息仍按原有逻辑优先 open_id。
         userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
-            Notification(userid="ou_user")
+            Message(userid="ou_user")
         )
         self.assertEqual(userid, "ou_user")
         self.assertIsNone(chat_id)
@@ -1549,7 +1549,7 @@ class TestFeishu(unittest.TestCase):
 
         # 无用户ID时回退 targets 中的飞书字段。
         userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
-            Notification(targets={"feishu_chat_id": "oc_config"})
+            Message(targets={"feishu_chat_id": "oc_config"})
         )
         self.assertIsNone(userid)
         self.assertEqual(chat_id, "oc_config")
@@ -1557,7 +1557,7 @@ class TestFeishu(unittest.TestCase):
     def test_module_private_delivery_ignores_original_group_chat(self):
         """私聊投递只保留用户身份，并让客户端按已记录 ID 类型发送。"""
         userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
-            Notification(
+            Message(
                 userid="user_target",
                 original_chat_id="oc_group",
                 private_delivery=True,
@@ -1580,7 +1580,7 @@ class TestFeishu(unittest.TestCase):
             patch.object(module, "get_instance", return_value=client),
         ):
             module.post_message(
-                Notification(
+                Message(
                     title="标题",
                     text="正文",
                     userid="ou_user",
@@ -1609,7 +1609,7 @@ class TestFeishu(unittest.TestCase):
         }
 
         result = client.send_notification(
-            Notification(title="插件通知", text="无目标通知")
+            Message(title="插件通知", text="无目标通知")
         )
 
         self.assertTrue(result["success"])

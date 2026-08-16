@@ -7,13 +7,13 @@ from fastapi.concurrency import run_in_threadpool
 from app.agent.policy import sanitize_for_host
 from app.chain import ChainBase
 from app.runtime.log import logger
-from app.schemas import Notification
+from app.schemas import Message
 from app.schemas.message import (
     MessageResponse,
     ChannelCapabilityManager,
     ChannelCapability,
 )
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas.types import NotificationChannel, MessageType
 
 
 class _StreamChain(ChainBase):
@@ -187,7 +187,7 @@ class StreamingHandler:
 
         # 从渠道能力中获取单条消息最大长度
         try:
-            channel_enum = MessageChannel(self._channel)
+            channel_enum = NotificationChannel(self._channel)
             self._max_message_length = ChannelCapabilityManager.get_max_message_length(
                 channel_enum
             )
@@ -463,7 +463,7 @@ class StreamingHandler:
         if not self._channel:
             return False
         try:
-            channel_enum = MessageChannel(self._channel)
+            channel_enum = NotificationChannel(self._channel)
             return ChannelCapabilityManager.supports_capability(
                 channel_enum, ChannelCapability.MESSAGE_EDITING
             )
@@ -531,10 +531,10 @@ class StreamingHandler:
                 # 第一次发送：发送新消息并获取 message_id
                 response = await run_in_threadpool(
                     chain.send_direct_message,
-                    Notification(
+                    Message(
                         channel=self._channel,
                         source=self._source,
-                        mtype=NotificationType.Agent,
+                        mtype=MessageType.Agent,
                         userid=self._user_id,
                         username=self._username,
                         original_message_id=self._original_message_id,
@@ -577,10 +577,10 @@ class StreamingHandler:
                     if current_text:
                         response = await run_in_threadpool(
                             chain.send_direct_message,
-                            Notification(
+                            Message(
                                 channel=self._channel,
                                 source=self._source,
-                                mtype=NotificationType.Agent,
+                                mtype=MessageType.Agent,
                                 userid=self._user_id,
                                 username=self._username,
                                 original_message_id=self._original_message_id,
@@ -603,7 +603,7 @@ class StreamingHandler:
                 else:
                     # 后续更新：编辑已有消息
                     try:
-                        channel_enum = MessageChannel(self._channel)
+                        channel_enum = NotificationChannel(self._channel)
                     except (ValueError, KeyError):
                         return
 

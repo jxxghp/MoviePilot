@@ -4,7 +4,7 @@ from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
 from app.chain.message import MessageChain
 from app.runtime.config import settings
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def test_llm_supports_image_input_uses_model_catalog_text_only(monkeypatch):
@@ -76,7 +76,7 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(monkeypatch):
     ):
         chain._handle_ai_message(
             text="/ai 帮我看看这张图",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             username="tester",

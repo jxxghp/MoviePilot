@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import DbOper
 from app.db.models.agentchat import AgentChat
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 DEFAULT_AGENT_CHAT_TITLE = "未命名会话"
 
@@ -25,9 +25,9 @@ class AgentChatOper(DbOper):
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     @staticmethod
-    def _channel_value(channel: Optional[Union[MessageChannel, str]]) -> Optional[str]:
+    def _channel_value(channel: Optional[Union[NotificationChannel, str]]) -> Optional[str]:
         """获取渠道枚举的字符串值。"""
-        if isinstance(channel, MessageChannel):
+        if isinstance(channel, NotificationChannel):
             return channel.value
         return channel
 
@@ -92,7 +92,7 @@ class AgentChatOper(DbOper):
         session_id: str,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
-        channel: Optional[Union[MessageChannel, str]] = None,
+        channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
@@ -167,7 +167,7 @@ class AgentChatOper(DbOper):
         user_id: Optional[str],
         title: Optional[str],
         username: Optional[str] = None,
-        channel: Optional[Union[MessageChannel, str]] = None,
+        channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
@@ -206,7 +206,7 @@ class AgentChatOper(DbOper):
         user_id: Optional[str] = None,
         messages: Optional[list[dict]] = None,
         username: Optional[str] = None,
-        channel: Optional[Union[MessageChannel, str]] = None,
+        channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
@@ -250,7 +250,7 @@ class AgentChatOper(DbOper):
         user_id: Optional[str] = None,
         messages: Optional[list[dict]] = None,
         username: Optional[str] = None,
-        channel: Optional[Union[MessageChannel, str]] = None,
+        channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,

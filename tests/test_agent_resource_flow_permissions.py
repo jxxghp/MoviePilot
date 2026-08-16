@@ -17,7 +17,7 @@ from app.agent import MoviePilotAgent
 from app.runtime.config import settings
 from app.modules.feishu import FeishuModule
 from app.modules.telegram import TelegramModule
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 # 渠道模块在导入时注册管理员解析器，权限回查测试需显式加载对应模块。
@@ -350,7 +350,7 @@ def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="admin",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="normal-user",
     )
@@ -371,7 +371,7 @@ def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="10002",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
     )
@@ -394,7 +394,7 @@ def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="10001",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="renamed-user",
     )
@@ -413,7 +413,7 @@ def test_tool_explicit_non_admin_context_does_not_fallback_to_channel_lookup():
     """Agent 已判定为非管理员时，工具不得通过旧权限查询重新授权。"""
     tool = QuerySitesTool(session_id="session-1", user_id="10002")
     tool.set_message_attr(
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
     )
@@ -434,7 +434,7 @@ def test_channel_primary_id_defaults_to_admin_without_admin_list():
     """渠道主ID未配置到管理员名单时仍默认为管理员。"""
     tool = QuerySitesTool(session_id="session-1", user_id="10001")
     tool.set_message_attr(
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="owner",
     )
@@ -457,7 +457,7 @@ def test_channel_primary_id_mismatch_remains_non_admin():
     """非主ID用户且不在管理员名单时不能获得管理员权限。"""
     tool = QuerySitesTool(session_id="session-1", user_id="10002")
     tool.set_message_attr(
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="other",
     )
@@ -480,7 +480,7 @@ def test_feishu_primary_open_id_defaults_to_admin():
     """飞书渠道主ID使用默认接收人 OPEN_ID 判断管理员身份。"""
     tool = QuerySitesTool(session_id="session-1", user_id="ou_owner")
     tool.set_message_attr(
-        channel=MessageChannel.Feishu.value,
+        channel=NotificationChannel.Feishu.value,
         source="feishu-main",
         username="owner",
     )
@@ -503,7 +503,7 @@ def test_channel_primary_id_still_prefers_admin_list():
     """管理员名单命中优先于主ID兜底。"""
     tool = QuerySitesTool(session_id="session-1", user_id="10001")
     tool.set_message_attr(
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="owner",
     )

@@ -436,7 +436,7 @@ class MediaImageType(Enum):
 
 
 # 消息类型
-class NotificationType(Enum):
+class MessageType(Enum):
     # 资源下载
     Download = "资源下载"
     # 整理入库
@@ -472,10 +472,10 @@ class ContentType(str, Enum):
     DownloadAdded = "downloadAdded"
 
 
-# 消息渠道
-class MessageChannel(Enum):
+# 通知渠道
+class NotificationChannel(Enum):
     """
-    消息渠道
+    通知渠道
     """
     Wechat = "微信"
     Feishu = "飞书"

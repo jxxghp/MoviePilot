@@ -679,6 +679,62 @@ PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
 
 # 物理模块仍存在、仅部分公开符号迁走时，由导入器在标准 Loader 执行后叠加惰性符号路由。
 # canonical 源码不反向依赖兼容层，目标符号也只在旧调用方真正取用时加载。
+
+# message/notification 命名统一后的旧符号映射：
+# 通知渠道能力归 notification（NotificationChannel），消息收发归 message（Message/MessageType）。
+# 旧名在 app.schemas、app.schemas.message 两个入口都曾公开，共用同一份映射。
+_MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
+    "MessageChannel": SymbolAlias(
+        target_module="app.schemas.types",
+        target_name="NotificationChannel",
+        replacement="app.schemas.types.NotificationChannel",
+    ),
+    "NotificationType": SymbolAlias(
+        target_module="app.schemas.types",
+        target_name="MessageType",
+        replacement="app.schemas.types.MessageType",
+    ),
+    "Notification": SymbolAlias(
+        target_module="app.schemas.message",
+        target_name="Message",
+        replacement="app.schemas.message.Message",
+    ),
+    "CommingMessage": SymbolAlias(
+        target_module="app.schemas.message",
+        target_name="IncomingMessage",
+        replacement="app.schemas.message.IncomingMessage",
+    ),
+    "NotificationHistoryItem": SymbolAlias(
+        target_module="app.schemas.message",
+        target_name="MessageHistoryItem",
+        replacement="app.schemas.message.MessageHistoryItem",
+    ),
+    **{
+        old: SymbolAlias(
+            target_module="app.schemas.message",
+            target_name=new,
+            replacement=f"app.schemas.message.{new}",
+        )
+        for old, new in (
+            ("NotificationClearScope", "MessageClearScope"),
+            ("NotificationClearBefore", "MessageClearBefore"),
+            ("NotificationClearData", "MessageClearData"),
+        )
+    },
+    **{
+        name: SymbolAlias(
+            target_module="app.schemas.notification",
+            target_name=name,
+            replacement=f"app.schemas.notification.{name}",
+        )
+        for name in (
+            "ChannelCapability",
+            "ChannelCapabilities",
+            "ChannelCapabilityManager",
+        )
+    },
+}
+
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
     "app.chain.message": {
         "MediaInteractionChain": SymbolAlias(
@@ -704,12 +760,15 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         )
     },
     "app.schemas": {
-        name: SymbolAlias(
-            target_module="app.sdk._legacy.transfer",
-            target_name=name,
-            replacement=f"app.application.transfer.{name}",
-        )
-        for name in ("TransferTask", "TransferQueue")
+        **{
+            name: SymbolAlias(
+                target_module="app.sdk._legacy.transfer",
+                target_name=name,
+                replacement=f"app.application.transfer.{name}",
+            )
+            for name in ("TransferTask", "TransferQueue")
+        },
+        **_MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
     },
     "app.schemas.transfer": {
         name: SymbolAlias(
@@ -719,4 +778,18 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         )
         for name in ("TransferTask", "TransferQueue")
     },
+    # message/notification 命名统一：通知渠道能力归 notification，消息收发归 message
+    "app.schemas.types": {
+        "MessageChannel": SymbolAlias(
+            target_module="app.schemas.types",
+            target_name="NotificationChannel",
+            replacement="app.schemas.types.NotificationChannel",
+        ),
+        "NotificationType": SymbolAlias(
+            target_module="app.schemas.types",
+            target_name="MessageType",
+            replacement="app.schemas.types.MessageType",
+        ),
+    },
+    "app.schemas.message": _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
 }

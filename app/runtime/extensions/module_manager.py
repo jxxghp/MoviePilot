@@ -5,7 +5,7 @@ from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
-from app.schemas.types import EventType, ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
+from app.schemas.types import EventType, ModuleType, DownloaderType, MediaServerType, NotificationChannel, StorageSchema, \
     OtherModulesType, MediaRecognizeType
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
@@ -20,7 +20,7 @@ class ModuleManager(metaclass=Singleton):
     SubType = Union[
         DownloaderType,
         MediaServerType,
-        MessageChannel,
+        NotificationChannel,
         StorageSchema,
         OtherModulesType,
         MediaRecognizeType,

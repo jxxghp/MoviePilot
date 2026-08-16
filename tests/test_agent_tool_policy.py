@@ -33,7 +33,7 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class _EchoInput(BaseModel):
@@ -270,43 +270,43 @@ def test_policy_context_maps_trusted_host_origins() -> None:
     """各入口必须由宿主稳定映射 origin、主体类型和认证来源。"""
     cases = [
         (
-            {"channel": MessageChannel.Web.value, "source": "openai"},
+            {"channel": NotificationChannel.Web.value, "source": "openai"},
             ToolOrigin.AGENT_API,
             PrincipalType.SYSTEM_ADMIN_INTEGRATION,
             AuthSource.API_TOKEN,
         ),
         (
-            {"channel": MessageChannel.Web.value, "source": "openai.responses"},
+            {"channel": NotificationChannel.Web.value, "source": "openai.responses"},
             ToolOrigin.AGENT_API,
             PrincipalType.SYSTEM_ADMIN_INTEGRATION,
             AuthSource.API_TOKEN,
         ),
         (
-            {"channel": MessageChannel.Web.value, "source": "anthropic"},
+            {"channel": NotificationChannel.Web.value, "source": "anthropic"},
             ToolOrigin.AGENT_API,
             PrincipalType.SYSTEM_ADMIN_INTEGRATION,
             AuthSource.API_TOKEN,
         ),
         (
-            {"channel": MessageChannel.Web.value, "source": "browser"},
+            {"channel": NotificationChannel.Web.value, "source": "browser"},
             ToolOrigin.AGENT_INTERACTIVE,
             PrincipalType.HUMAN,
             AuthSource.WEB_SESSION,
         ),
         (
-            {"channel": MessageChannel.WebAgent.value, "source": "web-agent"},
+            {"channel": NotificationChannel.WebAgent.value, "source": "web-agent"},
             ToolOrigin.AGENT_INTERACTIVE,
             PrincipalType.HUMAN,
             AuthSource.WEB_SESSION,
         ),
         (
-            {"channel": MessageChannel.Telegram.value, "source": "telegram"},
+            {"channel": NotificationChannel.Telegram.value, "source": "telegram"},
             ToolOrigin.AGENT_INTERACTIVE,
             PrincipalType.HUMAN,
             AuthSource.CHANNEL,
         ),
         (
-            {"channel": MessageChannel.Feishu.value, "source": "feishu"},
+            {"channel": NotificationChannel.Feishu.value, "source": "feishu"},
             ToolOrigin.AGENT_INTERACTIVE,
             PrincipalType.HUMAN,
             AuthSource.CHANNEL,
@@ -333,7 +333,7 @@ def test_policy_context_maps_trusted_host_origins() -> None:
     subagent_context = agent_module.MoviePilotAgent(
         session_id="subagent-session",
         user_id="user-1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram",
     )._build_policy_context().for_subagent()
     assert subagent_context.origin is ToolOrigin.SUBAGENT
@@ -571,7 +571,7 @@ def test_agent_admin_safe_read_keeps_legacy_authorization_authority(
         user_id="user-1",
     )
     tool.set_message_attr(
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="user",
         username="member",
     )
@@ -806,7 +806,7 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
     agent = agent_module.MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
     )
     fake_llm = _AgentFactoryLLM()

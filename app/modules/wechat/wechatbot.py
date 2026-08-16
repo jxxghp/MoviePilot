@@ -17,8 +17,8 @@ from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
-from app.schemas import CommingMessage
-from app.schemas.types import MessageChannel
+from app.schemas import IncomingMessage
+from app.schemas.types import NotificationChannel
 from app.adapters.network.http import RequestUtils
 from app.foundation import size as size_tools
 
@@ -364,8 +364,8 @@ class WeChatBot:
     @classmethod
     def _extract_images_from_body(
         cls, body: dict
-    ) -> Optional[List["CommingMessage.MessageImage"]]:
-        images: List["CommingMessage.MessageImage"] = []
+    ) -> Optional[List["IncomingMessage.MessageImage"]]:
+        images: List["IncomingMessage.MessageImage"] = []
         msgtype = body.get("msgtype")
 
         if msgtype == "image":
@@ -373,7 +373,7 @@ class WeChatBot:
             image_ref = cls._build_image_ref(image_payload)
             if image_ref:
                 images.append(
-                    CommingMessage.MessageImage(
+                    IncomingMessage.MessageImage(
                         ref=image_ref,
                         mime_type=image_payload.get("mime_type")
                         or image_payload.get("content_type"),
@@ -387,7 +387,7 @@ class WeChatBot:
                 image_ref = cls._build_image_ref(image_payload)
                 if image_ref:
                     images.append(
-                        CommingMessage.MessageImage(
+                        IncomingMessage.MessageImage(
                             ref=image_ref,
                             mime_type=image_payload.get("mime_type")
                             or image_payload.get("content_type"),
@@ -400,7 +400,7 @@ class WeChatBot:
             image_ref = cls._build_image_ref(image_payload)
             if image_ref:
                 images.append(
-                    CommingMessage.MessageImage(
+                    IncomingMessage.MessageImage(
                         ref=image_ref,
                         mime_type=image_payload.get("mime_type")
                         or image_payload.get("content_type"),
@@ -492,7 +492,7 @@ class WeChatBot:
         self._remember_target(sender)
 
         is_channel_admin = matches_channel_admin(
-            MessageChannel.Wechat,
+            NotificationChannel.Wechat,
             {
                 "WECHAT_ADMINS": ",".join(self._admins),
                 "WECHAT_BOT_CHAT_ID": getattr(self, "_default_chat_id", None),

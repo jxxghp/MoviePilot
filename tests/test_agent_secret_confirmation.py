@@ -13,7 +13,7 @@ from app.agent import MoviePilotAgent, ReplyMode, agent_manager
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class _ToolCallingFakeModel(FakeMessagesListChatModel):
@@ -33,7 +33,7 @@ def _policy_context(agent_context: dict) -> ToolPolicyContext:
         principal_type=PrincipalType.HUMAN,
         auth_source=AuthSource.CHANNEL,
         agent_context=agent_context,
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-test",
     )
 
@@ -175,7 +175,7 @@ def test_confirm_executes_once_without_model_or_history() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -184,7 +184,7 @@ def test_confirm_executes_once_without_model_or_history() -> None:
     )
     tool = QuerySystemSettingsTool(session_id="session-secret", user_id="1")
     tool.set_message_attr(
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
     )
@@ -229,7 +229,7 @@ def test_cancel_clears_pending_without_executing_tool() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -266,7 +266,7 @@ def test_expired_confirmation_reaches_agent_expiry_receipt() -> None:
     agent = MoviePilotAgent(
         session_id="session-expired-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -287,7 +287,7 @@ def test_expired_confirmation_reaches_agent_expiry_receipt() -> None:
             assert agent_manager.matches_secret_confirmation(
                 agent.session_id,
                 "1",
-                channel=MessageChannel.WebAgent.value,
+                channel=NotificationChannel.WebAgent.value,
                 source="web-agent",
             )
             return await agent.process("确认")
@@ -328,7 +328,7 @@ def test_message_channel_receives_confirmation_prompt_once() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="chat-1",
@@ -362,7 +362,7 @@ def test_message_channel_does_not_register_pending_when_private_delivery_fails()
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Feishu.value,
+        channel=NotificationChannel.Feishu.value,
         source="feishu-main",
         username="admin",
         original_chat_id="group-1",
@@ -394,7 +394,7 @@ def test_private_delivery_requests_literal_plain_text() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="group-1",
@@ -423,7 +423,7 @@ def test_pending_secret_read_keeps_actor_and_action_across_chat_targets() -> Non
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="chat-1",
@@ -475,7 +475,7 @@ def test_confirm_reports_result_delivery_failure_without_secret() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="group-1",
@@ -524,7 +524,7 @@ def test_web_protected_callback_failure_returns_ordinary_safe_notice() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -562,7 +562,7 @@ def test_confirm_reuses_policy_lifecycle() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -613,7 +613,7 @@ def test_confirm_respects_policy_denial_without_running_tool() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -647,7 +647,7 @@ def test_policy_denial_delivery_failure_reports_not_executed() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="group-1",
@@ -690,7 +690,7 @@ def test_confirm_records_policy_failure_and_returns_protected_error() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -748,7 +748,7 @@ def test_execution_failure_delivery_failure_reports_safe_notice() -> None:
     agent = MoviePilotAgent(
         session_id="session-secret",
         user_id="1",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
         original_chat_id="group-1",

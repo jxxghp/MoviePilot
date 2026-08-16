@@ -242,7 +242,7 @@ def _load_subscribe_chain_class():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
-    schemas_module.Notification = _Notification
+    schemas_module.Message = _Notification
     schemas_module.Subscribe = _SubscribeSchema
     schemas_module.NotExistMediaInfo = _NotExistMediaInfo
     schemas_module.SubscribeEpisodeInfo = _SubscribeEpisodeInfo

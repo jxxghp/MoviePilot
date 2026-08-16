@@ -13,8 +13,8 @@ from app.domain.context import MediaInfo, Context, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
-from app.schemas import Notification
-from app.schemas.types import MessageChannel
+from app.schemas import Message
+from app.schemas.types import NotificationChannel
 from app.schemas.types import MediaType
 
 
@@ -346,8 +346,8 @@ def test_telegram_module_passes_parse_mode_to_client():
         module, "get_instance", return_value=client
     ):
         module.post_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="HTML",
                 text="<b>正文</b>",
@@ -374,8 +374,8 @@ def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_me
         module, "get_instance", return_value=client
     ):
         module.post_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="Agent 回复",
                 text="处理完成",
@@ -406,8 +406,8 @@ def test_telegram_module_passes_force_reply_to_client():
         module, "get_instance", return_value=client
     ):
         module.post_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="请输入目录",
                 text="回复目录路径",
@@ -441,8 +441,8 @@ def test_telegram_module_force_reply_sends_new_prompt_message():
         module, "get_instance", return_value=client
     ):
         module.post_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="请输入目录",
                 text="回复目录路径",
@@ -480,8 +480,8 @@ def test_telegram_module_direct_force_reply_sends_new_prompt_message():
         module, "get_instance", return_value=client
     ):
         response = module.send_direct_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="请输入目录",
                 text="回复目录路径",
@@ -521,8 +521,8 @@ def test_telegram_module_direct_buttons_keep_new_message_behavior():
         module, "get_instance", return_value=client
     ):
         response = module.send_direct_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 title="请选择",
                 text="请选择一个操作",
@@ -560,8 +560,8 @@ def test_telegram_module_plain_direct_message_keeps_userid_target():
         module, "get_instance", return_value=client
     ):
         response = module.send_direct_message(
-            Notification(
-                channel=MessageChannel.Telegram,
+            Message(
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 title="普通通知",

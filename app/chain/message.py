@@ -36,10 +36,10 @@ from app.application.messaging.skill import SkillInteractionHandler, skill_inter
 from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import CommingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Notification
-from app.schemas.message import ChannelCapabilityManager, ChannelCapability
+from app.schemas import IncomingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Message
+from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.types import EventType, MessageChannel, MediaType
+from app.schemas.types import EventType, NotificationChannel, MediaType
 from app.adapters.network.http import RequestUtils
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.domain import episode as episode_rules
@@ -91,7 +91,7 @@ class MessageChain(ChainBase):
 
     @dataclass
     class _ProcessingStatus:
-        channel: MessageChannel
+        channel: NotificationChannel
         source: str
         userid: Optional[Union[str, int]] = None
         message_id: Optional[Union[str, int]] = None
@@ -172,16 +172,16 @@ class MessageChain(ChainBase):
 
     def handle_message(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
             text: Optional[str],
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
-            images: Optional[List[CommingMessage.MessageImage]] = None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
             audio_refs: Optional[List[str]] = None,
-            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
             is_channel_admin: Optional[bool] = None,
             callback_data: Optional[str] = None,
@@ -189,7 +189,7 @@ class MessageChain(ChainBase):
         """
         识别消息内容，执行操作
         """
-        images = CommingMessage.MessageImage.normalize_list(images)
+        images = IncomingMessage.MessageImage.normalize_list(images)
 
         # 兼容归一化：结构化回调优先，CALLBACK: 文本前缀作为旧渠道和插件直接调用的兼容入口
         normalized_callback = str(callback_data or "").strip() or None
@@ -214,7 +214,7 @@ class MessageChain(ChainBase):
                 text = "\n".join(merged_parts).strip()
                 if not text:
                     self.post_message(
-                        Notification(
+                        Message(
                             channel=channel,
                             source=source,
                             userid=userid,
@@ -321,21 +321,21 @@ class MessageChain(ChainBase):
 
     def _handle_secret_confirmation_control(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
             text: Optional[str],
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
-            images: Optional[List[CommingMessage.MessageImage]] = None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
             audio_refs: Optional[List[str]] = None,
-            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
             is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """将 TG/飞书中的确认控制文本交回所属 Agent 会话。"""
-        if channel not in {MessageChannel.Telegram, MessageChannel.Feishu}:
+        if channel not in {NotificationChannel.Telegram, NotificationChannel.Feishu}:
             return False
         if str(text or "").strip() not in {"确认", "取消"}:
             return False
@@ -370,16 +370,16 @@ class MessageChain(ChainBase):
 
     def _handle_message_core(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
             text: Optional[str],
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
-            images: Optional[List[CommingMessage.MessageImage]] = None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
             audio_refs: Optional[List[str]] = None,
-            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
             processing_status: Optional[_ProcessingStatus] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
@@ -428,7 +428,7 @@ class MessageChain(ChainBase):
             text = no_ai_text
             if not text:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -539,8 +539,8 @@ class MessageChain(ChainBase):
             userid: Union[str, int],
             text: str,
             callback_data: Optional[str] = None,
-            images: Optional[List[CommingMessage.MessageImage]] = None,
-            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
     ) -> bool:
         """
@@ -563,7 +563,7 @@ class MessageChain(ChainBase):
 
     def _mark_message_processing_started(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             original_message_id: Optional[Union[str, int]],
@@ -594,7 +594,7 @@ class MessageChain(ChainBase):
 
     def _mark_message_processing_finished(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             status: Optional[_ProcessingStatus] = None,
@@ -764,7 +764,7 @@ class MessageChain(ChainBase):
 
         logger.error(f"回调数据格式错误：{callback_data}")
         self.post_message(
-            Notification(
+            Message(
                 channel=context.channel,
                 source=context.source,
                 userid=context.user_id,
@@ -797,7 +797,7 @@ class MessageChain(ChainBase):
         )
         if not resolved:
             self.post_message(
-                Notification(
+                Message(
                     channel=context.channel,
                     source=context.source,
                     userid=context.user_id,
@@ -832,7 +832,7 @@ class MessageChain(ChainBase):
 
     def _update_interaction_message_feedback(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             original_message_id: Optional[Union[str, int]],
             original_chat_id: Optional[str],
@@ -909,7 +909,7 @@ class MessageChain(ChainBase):
 
     def _record_user_message(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -919,7 +919,7 @@ class MessageChain(ChainBase):
         保存一条用户消息到消息历史与数据库。
         """
         self.messagehelper.put(
-            CommingMessage(
+            IncomingMessage(
                 userid=userid,
                 username=username,
                 channel=channel,
@@ -949,7 +949,7 @@ class MessageChain(ChainBase):
 
     def remote_clear_session(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
     ):
@@ -979,7 +979,7 @@ class MessageChain(ChainBase):
                 logger.warning(f"清除智能体会话记忆失败: {e}")
 
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     title="智能体会话已清除，下次将创建新的会话",
@@ -989,7 +989,7 @@ class MessageChain(ChainBase):
             )
         else:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     title="您当前没有活跃的智能体会话",
@@ -1000,7 +1000,7 @@ class MessageChain(ChainBase):
 
     def remote_stop_agent(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
     ):
@@ -1025,7 +1025,7 @@ class MessageChain(ChainBase):
 
             if stopped:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         title="智能体推理已应急停止，会话记忆已保留，您可以继续对话",
@@ -1035,7 +1035,7 @@ class MessageChain(ChainBase):
                 )
             else:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         title="当前没有正在执行的智能体任务",
@@ -1045,7 +1045,7 @@ class MessageChain(ChainBase):
                 )
         else:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     title="您当前没有活跃的智能体会话",
@@ -1161,7 +1161,7 @@ class MessageChain(ChainBase):
 
     def remote_session_status(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
     ):
@@ -1169,7 +1169,7 @@ class MessageChain(ChainBase):
         session_info = self._user_sessions.get(userid)
         if not session_info:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     title="您当前没有活跃的智能体会话",
@@ -1182,7 +1182,7 @@ class MessageChain(ChainBase):
         session_id, _ = session_info
         status = agent_manager.get_session_status(session_id=session_id)
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 title="当前智能体会话状态",
@@ -1195,14 +1195,14 @@ class MessageChain(ChainBase):
     def _handle_ai_message(
             self,
             text: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
-            images: Optional[List[CommingMessage.MessageImage]] = None,
-            files: Optional[List[CommingMessage.MessageAttachment]] = None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             session_id: Optional[str] = None,
             has_audio_input: bool = False,
             is_channel_admin: Optional[bool] = None,
@@ -1214,7 +1214,7 @@ class MessageChain(ChainBase):
             # 检查AI智能体是否启用
             if not settings.AI_AGENT_ENABLE:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -1225,7 +1225,7 @@ class MessageChain(ChainBase):
                 )
                 return False
 
-            images = CommingMessage.MessageImage.normalize_list(images)
+            images = IncomingMessage.MessageImage.normalize_list(images)
 
             # 提取用户消息
             if self._has_ai_prefix(text):
@@ -1236,7 +1236,7 @@ class MessageChain(ChainBase):
 
             if not user_message and not images and not files:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -1263,7 +1263,7 @@ class MessageChain(ChainBase):
                 )
                 if original_images and not images and not user_message and not files:
                     self.post_message(
-                        Notification(
+                        Message(
                             channel=channel,
                             source=source,
                             userid=userid,
@@ -1282,7 +1282,7 @@ class MessageChain(ChainBase):
                         and not files
                 ):
                     self.post_message(
-                        Notification(
+                        Message(
                             channel=channel,
                             source=source,
                             userid=userid,
@@ -1303,7 +1303,7 @@ class MessageChain(ChainBase):
             )
             if all_files and not prepared_files and not user_message and not images:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -1346,7 +1346,7 @@ class MessageChain(ChainBase):
             return False
 
     def _transcribe_audio_refs(
-            self, audio_refs: List[str], channel: MessageChannel, source: str
+            self, audio_refs: List[str], channel: NotificationChannel, source: str
     ) -> Optional[str]:
         """
         下载并识别语音消息，仅处理当前已接入的渠道。
@@ -1496,14 +1496,14 @@ class MessageChain(ChainBase):
 
     def _download_attachments_to_data_urls(
             self,
-            attachments: List[CommingMessage.MessageImage],
-            channel: MessageChannel,
+            attachments: List[IncomingMessage.MessageImage],
+            channel: NotificationChannel,
             source: str,
     ) -> Optional[List[str]]:
         """
         下载可直接提供给 LLM 的附件内容，并统一转换为 data URL。
         """
-        normalized_attachments = CommingMessage.MessageImage.normalize_list(attachments) or []
+        normalized_attachments = IncomingMessage.MessageImage.normalize_list(attachments) or []
         if not normalized_attachments:
             return None
         data_urls = []
@@ -1544,7 +1544,7 @@ class MessageChain(ChainBase):
                     )
                     if data_url:
                         data_urls.append(data_url)
-                elif channel == MessageChannel.Slack:
+                elif channel == NotificationChannel.Slack:
                     data_url = self.run_module(
                         "download_slack_file_to_data_url",
                         file_url=attachment_ref,
@@ -1594,12 +1594,12 @@ class MessageChain(ChainBase):
         return data_urls if data_urls else None
 
     def _build_image_attachments(
-            self, images: List[CommingMessage.MessageImage]
-    ) -> List[CommingMessage.MessageAttachment]:
+            self, images: List[IncomingMessage.MessageImage]
+    ) -> List[IncomingMessage.MessageAttachment]:
         """
         将图片引用转换为附件描述，以便按文件方式交给 Agent 处理。
         """
-        images = CommingMessage.MessageImage.normalize_list(images)
+        images = IncomingMessage.MessageImage.normalize_list(images)
         if not images:
             return []
 
@@ -1611,7 +1611,7 @@ class MessageChain(ChainBase):
             name = image.name or self._guess_image_attachment_name(image_ref, index)
             mime_type = image.mime_type or self._guess_image_mime_type(image_ref, name)
             attachments.append(
-                CommingMessage.MessageAttachment(
+                IncomingMessage.MessageAttachment(
                     ref=image_ref,
                     name=name,
                     mime_type=mime_type,
@@ -1623,8 +1623,8 @@ class MessageChain(ChainBase):
     def _prepare_agent_files(
             self,
             session_id: str,
-            files: Optional[List[CommingMessage.MessageAttachment]],
-            channel: MessageChannel,
+            files: Optional[List[IncomingMessage.MessageAttachment]],
+            channel: NotificationChannel,
             source: str,
     ) -> Optional[List[dict]]:
         """
@@ -1672,7 +1672,7 @@ class MessageChain(ChainBase):
         return prepared_files or None
 
     def _download_message_file_bytes(
-            self, file_ref: str, channel: MessageChannel, source: str
+            self, file_ref: str, channel: NotificationChannel, source: str
     ) -> Optional[bytes]:
         """
         下载消息附件的原始字节内容。
@@ -1742,7 +1742,7 @@ class MessageChain(ChainBase):
                 "download_synologychat_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("http"):
-            if channel == MessageChannel.Slack:
+            if channel == NotificationChannel.Slack:
                 data_url = self.run_module(
                     "download_slack_file_to_data_url", file_url=file_ref, source=source
                 )

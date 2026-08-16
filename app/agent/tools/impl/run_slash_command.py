@@ -9,7 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
-from app.schemas.types import EventType, MessageChannel
+from app.schemas.types import EventType, NotificationChannel
 
 
 class RunSlashCommandInput(BaseModel):
@@ -83,7 +83,7 @@ class RunSlashCommandTool(MoviePilotTool):
             channel = None
             if self._channel:
                 try:
-                    channel = MessageChannel(self._channel)
+                    channel = NotificationChannel(self._channel)
                 except (ValueError, KeyError):
                     channel = None
 

@@ -12,17 +12,17 @@ from app.api.endpoints.agent import (
     _WebAgentMoviePilotAgent,
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
-    _WEB_AGENT_NOTICE_QUEUES,
+    _WEB_AGENT_MESSAGE_QUEUES,
     _apply_web_agent_display_event,
     _build_web_agent_input_attachments,
-    _build_web_agent_notification_events,
+    _build_web_agent_message_events,
     _build_web_agent_command_items,
     _build_web_agent_session_id,
     _build_web_agent_traditional_callback_payload,
     _build_web_agent_display_message_from_events,
     _collect_web_agent_traditional_events,
-    _dispatch_web_agent_notice_event,
-    _extract_web_agent_notification_from_event_data,
+    _dispatch_web_agent_message_event,
+    _extract_web_agent_message_from_event_data,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path,
     _transcribe_web_agent_audio_refs,
@@ -37,8 +37,8 @@ from app.application.messaging.agent import build_web_agent_message_update_event
 from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import EventType, MessageChannel, NotificationType
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import EventType, NotificationChannel, MessageType
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():
@@ -140,7 +140,7 @@ def test_build_web_agent_session_id_reuses_accessible_history():
         session_id="telegram-session",
         user_id="telegram-user",
         username="tester",
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         messages=[],
         title="Telegram 会话",
@@ -345,7 +345,7 @@ def test_has_web_agent_traditional_interaction_detects_pending_skills():
     try:
         skill_interaction_manager.create_or_replace(
             user_id="1",
-            channel=MessageChannel.WebAgent,
+            channel=NotificationChannel.WebAgent,
             source="web-agent",
             username="admin",
         )
@@ -361,7 +361,7 @@ def test_web_agent_admin_context_uses_current_user_id():
     agent = _WebAgentMoviePilotAgent(
         session_id="web-agent:session",
         user_id="7",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="normal-user",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -397,7 +397,7 @@ def test_web_agent_output_callback_receives_only_new_text():
     agent = _WebAgentMoviePilotAgent(
         session_id="web-agent:incremental-output",
         user_id="7",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -417,7 +417,7 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
     agent = _WebAgentMoviePilotAgent(
         session_id="web-agent:tool-order",
         user_id="7",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         replay_mode=ReplyMode.CAPTURE_ONLY,
@@ -433,31 +433,31 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
 def test_web_agent_channel_supports_streaming_and_attachments():
     """WebAgent 渠道应声明流式、多媒体和文件发送能力。"""
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.INLINE_BUTTONS
+        NotificationChannel.WebAgent, ChannelCapability.INLINE_BUTTONS
     )
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.CALLBACK_QUERIES
+        NotificationChannel.WebAgent, ChannelCapability.CALLBACK_QUERIES
     )
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.MESSAGE_EDITING
+        NotificationChannel.WebAgent, ChannelCapability.MESSAGE_EDITING
     )
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.IMAGES
+        NotificationChannel.WebAgent, ChannelCapability.IMAGES
     )
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.AUDIO_OUTPUT
+        NotificationChannel.WebAgent, ChannelCapability.AUDIO_OUTPUT
     )
     assert ChannelCapabilityManager.supports_capability(
-        MessageChannel.WebAgent, ChannelCapability.FILE_SENDING
+        NotificationChannel.WebAgent, ChannelCapability.FILE_SENDING
     )
 
 
-def test_build_web_agent_notification_events_extracts_image():
+def test_build_web_agent_message_events_extracts_image():
     """Agent 工具发送图片消息时应转换为图片附件事件。"""
-    events = _build_web_agent_notification_events(
-        schemas.Notification(
-            channel=MessageChannel.WebAgent,
-            mtype=NotificationType.Agent,
+    events = _build_web_agent_message_events(
+        schemas.Message(
+            channel=NotificationChannel.WebAgent,
+            mtype=MessageType.Agent,
             title="海报",
             text="已找到图片",
             image="https://example.com/poster.jpg",
@@ -479,44 +479,44 @@ def test_build_web_agent_notification_events_extracts_image():
     ]
 
 
-def test_extract_web_agent_notification_supports_wrapped_message_event():
-    """NoticeMessage 包装 Notification 时应仍能解析为 WebAgent 通知。"""
-    notification = schemas.Notification(
-        channel=MessageChannel.WebAgent,
+def test_extract_web_agent_message_supports_wrapped_message_event():
+    """NoticeMessage 包装 Message 时应仍能解析为 WebAgent 通知。"""
+    message = schemas.Message(
+        channel=NotificationChannel.WebAgent,
         source="web-agent",
         title="会话状态",
         userid="1",
     )
 
-    extracted = _extract_web_agent_notification_from_event_data(
-        {"message": notification, "current_time": "2026-06-26 09:18:38"}
+    extracted = _extract_web_agent_message_from_event_data(
+        {"message": message, "current_time": "2026-06-26 09:18:38"}
     )
 
-    assert extracted == notification
+    assert extracted == message
 
 
-def test_dispatch_web_agent_notice_event_accepts_wrapped_message_event():
+def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
     """WebAgent 等待队列应接收 message 包装格式的 NoticeMessage 事件。"""
     notice_queue = Queue()
-    _WEB_AGENT_NOTICE_QUEUES["1"] = [notice_queue]
-    notification = schemas.Notification(
-        channel=MessageChannel.WebAgent,
+    _WEB_AGENT_MESSAGE_QUEUES["1"] = [notice_queue]
+    message = schemas.Message(
+        channel=NotificationChannel.WebAgent,
         source="web-agent",
         title="会话状态",
         userid="1",
     )
 
     try:
-        _dispatch_web_agent_notice_event(
+        _dispatch_web_agent_message_event(
             Event(
                 EventType.NoticeMessage,
-                {"message": notification, "current_time": "2026-06-26 09:18:38"},
+                {"message": message, "current_time": "2026-06-26 09:18:38"},
             )
         )
     finally:
-        _WEB_AGENT_NOTICE_QUEUES.pop("1", None)
+        _WEB_AGENT_MESSAGE_QUEUES.pop("1", None)
 
-    assert notice_queue.get_nowait() == notification
+    assert notice_queue.get_nowait() == message
 
 
 def test_collect_web_agent_traditional_events_does_not_emit_submit_hint():
@@ -542,15 +542,15 @@ def test_collect_web_agent_traditional_events_does_not_emit_submit_hint():
     assert events == []
 
 
-def test_build_web_agent_notification_events_registers_local_file(tmp_path):
+def test_build_web_agent_message_events_registers_local_file(tmp_path):
     """Agent 工具发送本地文件时应生成可下载附件事件。"""
     file_path = tmp_path / "report.txt"
     file_path.write_text("hello", encoding="utf-8")
 
-    events = _build_web_agent_notification_events(
-        schemas.Notification(
-            channel=MessageChannel.WebAgent,
-            mtype=NotificationType.Agent,
+    events = _build_web_agent_message_events(
+        schemas.Message(
+            channel=NotificationChannel.WebAgent,
+            mtype=MessageType.Agent,
             file_path=str(file_path),
             file_name="report.txt",
         )
@@ -566,15 +566,15 @@ def test_build_web_agent_notification_events_registers_local_file(tmp_path):
     assert attachment["url"].startswith("message/agent/file/")
 
 
-def test_build_web_agent_notification_events_registers_voice_attachment(tmp_path):
+def test_build_web_agent_message_events_registers_voice_attachment(tmp_path):
     """Agent 工具发送语音时应转换为可播放的音频附件事件。"""
     voice_path = tmp_path / "reply.wav"
     voice_path.write_bytes(b"wav-bytes")
 
-    events = _build_web_agent_notification_events(
-        schemas.Notification(
-            channel=MessageChannel.WebAgent,
-            mtype=NotificationType.Agent,
+    events = _build_web_agent_message_events(
+        schemas.Message(
+            channel=NotificationChannel.WebAgent,
+            mtype=MessageType.Agent,
             text="你好",
             voice_path=str(voice_path),
         )
@@ -688,9 +688,9 @@ def test_web_agent_stream_binds_session_to_agent_manager():
             """更新当前 SSE 受保护输出回调。"""
             self.protected_output_callback = protected_output_callback
 
-        def set_notification_callback(self, notification_callback):
+        def set_message_callback(self, message_callback):
             """更新当前 SSE 通知回调。"""
-            self.notification_callback = notification_callback
+            self.message_callback = message_callback
 
         async def process(self, message, **kwargs):
             """模拟一次 WebAgent 推理输出。"""
@@ -755,7 +755,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
             self._pending_secret_confirmation = SimpleNamespace(
-                channel=MessageChannel.WebAgent.value,
+                channel=NotificationChannel.WebAgent.value,
                 source="web-agent",
                 original_chat_id="",
             )
@@ -767,8 +767,8 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         def set_output_callback(self, output_callback):
             self.output_callback = output_callback
 
-        def set_notification_callback(self, notification_callback):
-            self.notification_callback = notification_callback
+        def set_message_callback(self, message_callback):
+            self.message_callback = message_callback
 
         def set_protected_output_callback(self, protected_output_callback):
             self.protected_output_callback = protected_output_callback
@@ -789,7 +789,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         session_id=session_id,
         user_id="1",
         username="admin",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         messages=existing_messages,
         client_session_id=payload.session_id,
@@ -797,7 +797,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
     agent_manager.active_agents[session_id] = FakeProtectedAgent(
         session_id=session_id,
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
     )
@@ -858,7 +858,7 @@ def test_web_agent_cancel_keeps_existing_display_history():
         session_id=session_id,
         user_id="1",
         username="admin",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         messages=existing_messages,
         client_session_id=payload.session_id,
@@ -977,7 +977,7 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         session_id=session_id,
         user_id="1",
         username="admin",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         messages=existing_messages,
         client_session_id=payload.session_id,
@@ -1298,12 +1298,12 @@ async def _collect_streaming_response(response):
     return chunks
 
 
-def test_build_web_agent_notification_events_extracts_choice_card():
+def test_build_web_agent_message_events_extracts_choice_card():
     """Agent 按钮通知应转换为 Web 选择卡片事件而非普通文本。"""
-    events = _build_web_agent_notification_events(
-        schemas.Notification(
-            channel=MessageChannel.WebAgent,
-            mtype=NotificationType.Agent,
+    events = _build_web_agent_message_events(
+        schemas.Message(
+            channel=NotificationChannel.WebAgent,
+            mtype=MessageType.Agent,
             title="需要你的选择",
             text="请选择要执行的操作",
             buttons=[
@@ -1368,7 +1368,7 @@ def test_resolve_web_agent_choice_payload_returns_next_message():
     request = agent_interaction_manager.create_request(
         session_id="web-agent:session",
         user_id="1",
-        channel=MessageChannel.WebAgent.value,
+        channel=NotificationChannel.WebAgent.value,
         source="web-agent",
         username="admin",
         title="需要你的选择",

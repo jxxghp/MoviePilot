@@ -6,7 +6,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas import DownloaderConf, MediaServerConf, NotificationConf, NotificationSwitchConf, ServiceInfo
-from app.schemas.types import NotificationType, SystemConfigKey, ModuleType
+from app.schemas.types import MessageType, SystemConfigKey, ModuleType
 
 TConf = TypeVar("TConf")
 
@@ -70,7 +70,7 @@ class ServiceConfigHelper:
         return ServiceConfigHelper.get_configs(SystemConfigKey.NotificationSwitchs, NotificationSwitchConf)
 
     @staticmethod
-    def get_notification_switch(mtype: NotificationType) -> Optional[str]:
+    def get_notification_switch(mtype: MessageType) -> Optional[str]:
         """
         获取指定类型的消息通知场景的开关
         """

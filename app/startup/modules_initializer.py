@@ -33,7 +33,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.db import close_database
 from app.db.oper.systemconfig import SystemConfigOper
 from app.command import CommandChain
-from app.schemas import Notification, NotificationType
+from app.schemas import Message, MessageType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
 from app.application.security.access import set_superuser_token_payload_provider
@@ -148,8 +148,8 @@ def check_auth():
         err_msg = "用户认证失败，站点相关功能将无法使用！"
         MessageHelper().put(f"注意：{err_msg}", title="用户认证", role="system")
         CommandChain().post_message(
-            Notification(
-                mtype=NotificationType.Manual,
+            Message(
+                mtype=MessageType.Manual,
                 title="MoviePilot用户认证",
                 text=err_msg,
                 link=settings.MP_DOMAIN('#/site')

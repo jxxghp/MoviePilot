@@ -55,8 +55,8 @@ from app.domain.context import Context, MediaInfo
 from app.db.oper.user import UserOper
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
-from app.schemas import CommingMessage, Notification
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas import IncomingMessage, Message
+from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
 
 
@@ -116,7 +116,7 @@ class Feishu:
         if not self._admins:
             return False
         return not matches_channel_admin(
-            MessageChannel.Feishu,
+            NotificationChannel.Feishu,
             {
                 "FEISHU_ADMINS": ",".join(self._admins),
                 "FEISHU_OPEN_ID": self._default_open_id,
@@ -299,8 +299,8 @@ class Feishu:
 
     @staticmethod
     def _parse_message_content(message) -> Tuple[
-        str, Optional[List[CommingMessage.MessageImage]], Optional[List[str]], Optional[
-            List[CommingMessage.MessageAttachment]]]:
+        str, Optional[List[IncomingMessage.MessageImage]], Optional[List[str]], Optional[
+            List[IncomingMessage.MessageAttachment]]]:
         """从飞书事件消息体中提取文本、图片、音频和文件引用。"""
         raw_content = getattr(message, "content", None)
         if not raw_content:
@@ -323,9 +323,9 @@ class Feishu:
             image_key = str(content.get("image_key") or "").strip()
             if image_key:
                 if message_id:
-                    images = [CommingMessage.MessageImage(ref=f"feishu://image/{message_id}/{image_key}")]
+                    images = [IncomingMessage.MessageImage(ref=f"feishu://image/{message_id}/{image_key}")]
                 else:
-                    images = [CommingMessage.MessageImage(ref=f"feishu://image/{image_key}")]
+                    images = [IncomingMessage.MessageImage(ref=f"feishu://image/{image_key}")]
         elif message_type in {"audio", "media", "file"}:
             file_key = str(content.get("file_key") or "").strip()
             file_name = str(content.get("file_name") or "").strip() or None
@@ -336,7 +336,7 @@ class Feishu:
                 else:
                     resource_path = f"{message_id}/{file_key}" if message_id else file_key
                     files = [
-                        CommingMessage.MessageAttachment(
+                        IncomingMessage.MessageAttachment(
                             ref=f"feishu://file/{resource_path}/{file_name or 'attachment'}",
                             name=file_name,
                         )
@@ -397,7 +397,7 @@ class Feishu:
     def _parse_post_message_content(
             content: dict,
             message_id: Optional[str] = None,
-    ) -> Tuple[str, Optional[List[CommingMessage.MessageImage]]]:
+    ) -> Tuple[str, Optional[List[IncomingMessage.MessageImage]]]:
         """从飞书富文本消息中提取可转发的文本和图片引用。"""
         post_body = Feishu._resolve_post_message_body(content)
         if not post_body:
@@ -421,9 +421,9 @@ class Feishu:
                     image_key = str(element.get("image_key") or "").strip()
                     if element.get("tag") == "img" and image_key:
                         if message_id:
-                            images.append(CommingMessage.MessageImage(ref=f"feishu://image/{message_id}/{image_key}"))
+                            images.append(IncomingMessage.MessageImage(ref=f"feishu://image/{message_id}/{image_key}"))
                         else:
-                            images.append(CommingMessage.MessageImage(ref=f"feishu://image/{image_key}"))
+                            images.append(IncomingMessage.MessageImage(ref=f"feishu://image/{image_key}"))
                     element_text = Feishu._parse_post_element_text(element)
                     if element_text:
                         row_parts.append(element_text)
@@ -648,7 +648,7 @@ class Feishu:
         if self._ws_thread and self._ws_thread.is_alive():
             self._ws_thread.join(timeout=5)
 
-    def parse_message(self, body: Any) -> Optional[CommingMessage]:
+    def parse_message(self, body: Any) -> Optional[IncomingMessage]:
         """解析飞书转发到消息入口的 JSON 报文。"""
         try:
             message = json.loads(body) if isinstance(body, (str, bytes, bytearray)) else body
@@ -685,13 +685,13 @@ class Feishu:
                     receive_id_type="open_id" if open_id else "user_id",
                 )
                 return None
-            return CommingMessage(
-                channel=MessageChannel.Feishu,
+            return IncomingMessage(
+                channel=NotificationChannel.Feishu,
                 source=self._name,
                 userid=userid,
                 username=username,
                 is_channel_admin=matches_channel_admin(
-                    MessageChannel.Feishu,
+                    NotificationChannel.Feishu,
                     {
                         "FEISHU_ADMINS": ",".join(self._admins),
                         "FEISHU_OPEN_ID": self._default_open_id,
@@ -707,7 +707,7 @@ class Feishu:
             )
 
         text = (message.get("text") or "").strip()
-        images = CommingMessage.MessageImage.normalize_list(message.get("images"))
+        images = IncomingMessage.MessageImage.normalize_list(message.get("images"))
         audio_refs = None
         if isinstance(message.get("audio_refs"), list):
             audio_refs = [str(item).strip() for item in message.get("audio_refs") if str(item).strip()] or None
@@ -716,7 +716,7 @@ class Feishu:
             normalized_files = []
             for item in message.get("files"):
                 if isinstance(item, dict) and item.get("ref"):
-                    normalized_files.append(CommingMessage.MessageAttachment(**item))
+                    normalized_files.append(IncomingMessage.MessageAttachment(**item))
             files = normalized_files or None
 
         if not text and not images and not audio_refs and not files:
@@ -731,13 +731,13 @@ class Feishu:
             )
             return None
 
-        return CommingMessage(
-            channel=MessageChannel.Feishu,
+        return IncomingMessage(
+            channel=NotificationChannel.Feishu,
             source=self._name,
             userid=userid,
             username=username,
             is_channel_admin=matches_channel_admin(
-                MessageChannel.Feishu,
+                NotificationChannel.Feishu,
                 {
                     "FEISHU_ADMINS": ",".join(self._admins),
                     "FEISHU_OPEN_ID": self._default_open_id,
@@ -1739,7 +1739,7 @@ class Feishu:
 
     def send_notification(
             self,
-            message: Notification,
+            message: Message,
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
@@ -1747,7 +1747,7 @@ class Feishu:
     ) -> Optional[dict]:
         """发送通知消息，优先使用交互卡片承载按钮。"""
         is_streaming_agent_text = (
-                message.mtype == NotificationType.Agent
+                message.mtype == MessageType.Agent
                 and not message.buttons
                 and not message.link
         )
@@ -1942,7 +1942,7 @@ class Feishu:
 
     def send_medias_message(
             self,
-            message: Notification,
+            message: Message,
             medias: List[MediaInfo],
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
@@ -1956,7 +1956,7 @@ class Feishu:
                 image = media.get_message_image()
             title = getattr(media, "title_year", None) or getattr(media, "title", None) or "未知媒体"
             lines.append(f"{index}. {title}")
-        proxy_message = Notification(
+        proxy_message = Message(
             title=message.title,
             text="\n".join(lines),
             image=image,
@@ -1974,7 +1974,7 @@ class Feishu:
 
     def send_torrents_message(
             self,
-            message: Notification,
+            message: Message,
             torrents: List[Context],
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
@@ -1986,7 +1986,7 @@ class Feishu:
             torrent_info = getattr(torrent, "torrent_info", None)
             title = getattr(torrent_info, "title", None) or getattr(torrent_info, "site_name", None) or "未知种子"
             lines.append(f"{index}. {title}")
-        proxy_message = Notification(
+        proxy_message = Message(
             title=message.title,
             text="\n".join(lines),
             link=message.link,

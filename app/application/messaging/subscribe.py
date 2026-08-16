@@ -14,8 +14,8 @@ from app.application.messaging.interaction import (
 )
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper
-from app.schemas import Notification
-from app.schemas.types import MessageChannel, MediaType
+from app.schemas import Message
+from app.schemas.types import NotificationChannel, MediaType
 
 
 subscribe_interaction_manager = SlashInteractionManager()
@@ -61,7 +61,7 @@ class SubscribeInteractionHandler:
     def remote_list(
             self,
             arg_str: str = "",
-            channel: MessageChannel = None,
+            channel: NotificationChannel = None,
             userid: Union[str, int] = None,
             source: Optional[str] = None,
     ):
@@ -107,7 +107,7 @@ class SubscribeInteractionHandler:
     def handle_callback_interaction(
             self,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -125,7 +125,7 @@ class SubscribeInteractionHandler:
         request = subscribe_interaction_manager.get_by_id(request_id, userid)
         if not request:
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -184,7 +184,7 @@ class SubscribeInteractionHandler:
 
     def handle_text_interaction(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -207,7 +207,7 @@ class SubscribeInteractionHandler:
         if lowered in {"退出", "关闭", "q", "quit", "exit"}:
             subscribe_interaction_manager.remove(request.request_id)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -297,7 +297,7 @@ class SubscribeInteractionHandler:
             )
             request.awaiting_input = None
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -318,7 +318,7 @@ class SubscribeInteractionHandler:
             success, message = self._delete_subscribes(normalized)
             request.awaiting_input = None
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -340,7 +340,7 @@ class SubscribeInteractionHandler:
                 search_match.group(1), channel, source, userid, username
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -360,7 +360,7 @@ class SubscribeInteractionHandler:
         if delete_match:
             success, message = self._delete_subscribes(delete_match.group(1))
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -378,7 +378,7 @@ class SubscribeInteractionHandler:
             return True
 
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -391,7 +391,7 @@ class SubscribeInteractionHandler:
     def _render_subscribe_interaction(
             self,
             request,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: Optional[str],
             userid: Union[str, int],
             username: Optional[str],
@@ -475,7 +475,7 @@ class SubscribeInteractionHandler:
         )
 
     def _format_subscribe_list(
-            self, subscribes: List[Subscribe], channel: Optional[MessageChannel]
+            self, subscribes: List[Subscribe], channel: Optional[NotificationChannel]
     ) -> str:
         """
         根据渠道能力格式化订阅列表。
@@ -564,7 +564,7 @@ class SubscribeInteractionHandler:
 
     def _run_refresh_action(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -573,7 +573,7 @@ class SubscribeInteractionHandler:
         执行订阅刷新。
         """
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -583,7 +583,7 @@ class SubscribeInteractionHandler:
         )
         self._actions.refresh()
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -594,7 +594,7 @@ class SubscribeInteractionHandler:
 
     def _run_metadata_refresh_action(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -603,7 +603,7 @@ class SubscribeInteractionHandler:
         执行订阅元数据刷新。
         """
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -613,7 +613,7 @@ class SubscribeInteractionHandler:
         )
         self._actions.check()
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -632,7 +632,7 @@ class SubscribeInteractionHandler:
     def _run_search_action(
             self,
             arg_str: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -643,7 +643,7 @@ class SubscribeInteractionHandler:
         normalized = (arg_str or "").strip()
         if not normalized or normalized.lower() in {"all", "全部", "所有"}:
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -667,7 +667,7 @@ class SubscribeInteractionHandler:
                 missing.append(str(subscribe_id))
                 continue
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,

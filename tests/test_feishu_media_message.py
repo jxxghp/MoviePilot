@@ -8,7 +8,7 @@ ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 from app.domain.context import MediaInfo
 from app.modules.feishu.feishu import Feishu
-from app.schemas import Notification
+from app.schemas import Message
 
 
 def _build_feishu_client() -> Feishu:
@@ -39,7 +39,7 @@ def test_send_medias_message_passes_first_available_image() -> None:
         return_value={"success": True},
     ) as send_notification:
         result = client.send_medias_message(
-            message=Notification(title="搜索结果", userid="ou_test"),
+            message=Message(title="搜索结果", userid="ou_test"),
             medias=[first_media, second_media],
         )
 

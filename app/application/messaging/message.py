@@ -20,7 +20,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
-from app.schemas.message import Notification
+from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
@@ -657,7 +657,7 @@ class MessageTemplateHelper:
     """
 
     @staticmethod
-    def render(message: Notification, *args, **kwargs) -> Optional[Notification]:
+    def render(message: Message, *args, **kwargs) -> Optional[Message]:
         """
         渲染消息模板
         """
@@ -668,16 +668,16 @@ class MessageTemplateHelper:
         return message
 
     @staticmethod
-    def is_instance_valid(message: Notification) -> bool:
+    def is_instance_valid(message: Message) -> bool:
         """
         检查消息是否有效
         """
-        if isinstance(message, Notification):
+        if isinstance(message, Message):
             return bool(message.title or message.text)
         return False
 
     @staticmethod
-    def meets_update_conditions(message: Notification, *args, **kwargs) -> bool:
+    def meets_update_conditions(message: Message, *args, **kwargs) -> bool:
         """
         判断是否满足消息实例更新条件
 
@@ -686,12 +686,12 @@ class MessageTemplateHelper:
         2. 消息指定了模板类型(ctype)
         3. 存在待渲染的模板变量数据
         """
-        if isinstance(message, Notification):
+        if isinstance(message, Message):
             return True if message.ctype and (args or kwargs) else False
         return False
 
     @staticmethod
-    def _apply_template_data(message: Notification, *args, **kwargs) -> Optional[Notification]:
+    def _apply_template_data(message: Message, *args, **kwargs) -> Optional[Message]:
         """
         更新消息实例
         """
@@ -717,7 +717,7 @@ class MessageTemplateHelper:
             return message
 
     @staticmethod
-    def _get_template(message: Notification) -> Optional[str]:
+    def _get_template(message: Message) -> Optional[str]:
         """
         获取消息模板
         """

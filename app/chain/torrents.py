@@ -17,8 +17,8 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.rss import RssHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import Notification
-from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
+from app.schemas import Message
+from app.schemas.types import SystemConfigKey, NotificationChannel, MessageType, MediaType
 from app.schemas.media import resolve_media_identity
 from app.domain import site as site_rules
 from app.foundation import text as text_tools
@@ -44,17 +44,17 @@ class TorrentsChain(ChainBase):
             return self._spider_file
         return self._rss_file
 
-    def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_refresh(self, channel: NotificationChannel, userid: Union[str, int] = None):
         """
         远程刷新订阅，发送消息
         """
-        self.post_message(Notification(
+        self.post_message(Message(
             channel=channel,
             title=f"开始刷新种子 ...",
             userid=userid,
             save_history=False))
         self.refresh()
-        self.post_message(Notification(
+        self.post_message(Message(
             channel=channel,
             title=f"种子刷新完成！",
             userid=userid,
@@ -830,14 +830,14 @@ class TorrentsChain(ChainBase):
                 else:
                     # 发送消息
                     self.post_message(
-                        Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
+                        Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
                                      link=settings.MP_DOMAIN('#/site'))
                     )
             else:
                 self.post_message(
-                    Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
+                    Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
                                  link=settings.MP_DOMAIN('#/site')))
         except Exception as e:
             logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
-            self.post_message(Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
+            self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
                                            link=settings.MP_DOMAIN('#/site')))

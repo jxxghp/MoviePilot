@@ -41,7 +41,7 @@ from app.runtime.log import logger
 from app.schemas import StorageOperSelectionEventData
 from app.schemas import (
     TransferInfo,
-    Notification,
+    Message,
     EpisodeFormat,
     FileItem,
     TransferDirectoryConf,
@@ -55,8 +55,8 @@ from app.schemas.types import (
     EventType,
     MediaType,
     ProgressKey,
-    NotificationType,
-    MessageChannel,
+    MessageType,
+    NotificationChannel,
     SystemConfigKey,
     ChainEventType,
     ContentType,
@@ -1537,8 +1537,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
                 # 发送失败消息
                 self.post_message(
-                    Notification(
-                        mtype=NotificationType.Manual,
+                    Message(
+                        mtype=MessageType.Manual,
                         title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
                         text="\n".join(
                             [
@@ -2396,8 +2396,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         transfer_history_oper=transferhis,
                     )
                     self.post_message(
-                        Notification(
-                            mtype=NotificationType.Manual,
+                        Message(
+                            mtype=MessageType.Manual,
                             title=f"{task.fileitem.name} 未识别到媒体信息，无法入库！",
                             # 历史落库失败时 his 为 None（add_transfer_fail 末尾的
                             # get_by_src 查不到即返回 None），此时 /redo 无 ID 可用，
@@ -4395,7 +4395,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def remote_transfer(
             self,
             arg_str: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             userid: Union[str, int] = None,
             source: Optional[str] = None,
     ):
@@ -4405,7 +4405,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         def args_error():
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     title="请输入正确的命令格式：/redo [id] 或 "
@@ -4432,7 +4432,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             state, errmsg = self.redo_transfer_history(int(logid))
             if not state:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         title="手动整理失败",
                         source=source,
@@ -4469,7 +4469,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
         if not state:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     title="手动整理失败",
                     source=source,
@@ -4527,7 +4527,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             *,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -4561,7 +4561,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _retry_transfer_history(
             self,
             history_id: int,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -4570,7 +4570,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         立即重新整理一条失败的整理记录。
         """
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -4583,7 +4583,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         state, errmsg = self.redo_transfer_history(history_id)
         if state:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -4596,7 +4596,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
 
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -4611,7 +4611,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _take_over_transfer_history_by_ai(
             self,
             history_id: int,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -4622,7 +4622,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         if not settings.AI_AGENT_ENABLE:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -4636,7 +4636,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         history = TransferHistoryOper().get(history_id)
         if not history:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -4652,7 +4652,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         redo_prompt = build_manual_redo_prompt(history)
 
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -4680,7 +4680,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     allow_message_tools=False,
                 )
                 await self.async_post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -4694,7 +4694,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 )
             except Exception as e:
                 await self.async_post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -4966,8 +4966,8 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param username: 用户名
         """
         self.post_message(
-            Notification(
-                mtype=NotificationType.Organize,
+            Message(
+                mtype=MessageType.Organize,
                 ctype=ContentType.OrganizeSuccess,
                 image=mediainfo.get_message_image(),
                 username=username,

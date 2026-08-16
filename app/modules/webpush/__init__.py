@@ -6,8 +6,8 @@ from pywebpush import webpush, WebPushException
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
-from app.schemas import Notification
-from app.schemas.types import ModuleType, MessageChannel
+from app.schemas import Message
+from app.schemas.types import ModuleType, NotificationChannel
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
@@ -18,7 +18,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         初始化模块
         """
         super().init_service(service_name=self.get_name().lower())
-        self._channel = MessageChannel.WebPush
+        self._channel = NotificationChannel.WebPush
 
     @staticmethod
     def get_name() -> str:
@@ -32,11 +32,11 @@ class WebPushModule(_ModuleBase, _MessageBase):
         return ModuleType.Notification
 
     @staticmethod
-    def get_subtype() -> MessageChannel:
+    def get_subtype() -> NotificationChannel:
         """
         获取模块子类型
         """
-        return MessageChannel.WebPush
+        return NotificationChannel.WebPush
 
     @staticmethod
     def get_priority() -> int:
@@ -59,7 +59,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         """Web Push 使用全局 VAPID 配置，不提供模块级设置。"""
         pass
 
-    def post_message(self, message: Notification, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs) -> None:
         """
         发送消息
         :param message: 消息内容

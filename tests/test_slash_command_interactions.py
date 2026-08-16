@@ -15,7 +15,7 @@ from app.application.messaging.interaction import InteractionContext
 from app.chain.site import SiteChain, site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.subscribe import SubscribeChain, subscribe_interaction_manager
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 class TestSlashCommandInteractions(unittest.TestCase):
@@ -28,14 +28,14 @@ class TestSlashCommandInteractions(unittest.TestCase):
         chain = MessageChain()
         skill_interaction_manager.create_or_replace(
             user_id="10001",
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             username="tester",
         )
         site_interaction_manager.create_or_replace(
             user_id="10001",
             command="/sites",
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             username="tester",
         )
@@ -47,7 +47,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             "app.chain.message.SkillInteractionHandler.handle_text_interaction"
         ) as handle_skills:
             chain.handle_message(
-                channel=MessageChannel.Wechat,
+                channel=NotificationChannel.Wechat,
                 source="wechat-test",
                 userid="10001",
                 username="tester",
@@ -62,14 +62,14 @@ class TestSlashCommandInteractions(unittest.TestCase):
         site_interaction_manager.create_or_replace(
             user_id="10001",
             command="/sites",
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             username="tester",
         )
         subscribe_interaction_manager.create_or_replace(
             user_id="10001",
             command="/subscribes",
-            channel=MessageChannel.Wechat,
+            channel=NotificationChannel.Wechat,
             source="wechat-test",
             username="tester",
         )
@@ -81,7 +81,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             "app.chain.message.SiteChain.handle_text_interaction"
         ) as handle_sites:
             chain.handle_message(
-                channel=MessageChannel.Wechat,
+                channel=NotificationChannel.Wechat,
                 source="wechat-test",
                 userid="10001",
                 username="tester",
@@ -96,7 +96,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         request = site_interaction_manager.create_or_replace(
             user_id="10001",
             command="/sites",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -108,7 +108,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             chain._handle_callback(
                 callback_data=f"sites:{request.request_id}:refresh",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -122,7 +122,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         request = subscribe_interaction_manager.create_or_replace(
             user_id="10001",
             command="/subscribes",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
@@ -134,7 +134,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             chain._handle_callback(
                 callback_data=f"subscribes:{request.request_id}:refresh",
                 context=InteractionContext(
-                    channel=MessageChannel.Telegram,
+                    channel=NotificationChannel.Telegram,
                     source="telegram-test",
                     user_id="10001",
                     username="tester",
@@ -148,14 +148,14 @@ class TestSlashCommandInteractions(unittest.TestCase):
         site_interaction_manager.create_or_replace(
             user_id="10001",
             command="/sites",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
 
         with patch.object(chain, "post_message") as post_message:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -173,14 +173,14 @@ class TestSlashCommandInteractions(unittest.TestCase):
         subscribe_interaction_manager.create_or_replace(
             user_id="10001",
             command="/subscribes",
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             username="tester",
         )
 
         with patch.object(chain, "post_message") as post_message:
             handled = chain.handle_text_interaction(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -210,7 +210,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         with patch("app.chain.site.SiteOper.list", return_value=fake_sites), patch.object(
             chain, "post_message"
         ) as post_message:
-            chain.remote_list(channel=MessageChannel.Web, userid="u1", source="web")
+            chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 
         notification = post_message.call_args[0][0]
         self.assertIn("| ID | 站点 | 状态 | Cookie | 渲染 | 域名 |", notification.text)
@@ -234,7 +234,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         with patch(
             "app.chain.subscribe.SubscribeOper.list", return_value=fake_subscribes
         ), patch.object(chain, "post_message") as post_message:
-            chain.remote_list(channel=MessageChannel.Web, userid="u1", source="web")
+            chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 
         notification = post_message.call_args[0][0]
         self.assertIn("| ID | 名称 | 类型 | 年份 | 季/进度 | 状态 |", notification.text)
@@ -256,7 +256,7 @@ class TestUpdateOrPostMessage(unittest.TestCase):
 
         update_or_post_message(
             chain=chain,
-            channel=MessageChannel.Feishu,
+            channel=NotificationChannel.Feishu,
             source="feishu-main",
             userid="ou_user",
             username="tester",

@@ -18,7 +18,7 @@ from app.api.openai_utils import (
 )
 from app.runtime.config import settings
 from app.application.security.access import anthropic_api_key_header
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 ANTHROPIC_ERROR_RESPONSES = {
     400: {"model": schemas.AnthropicErrorResponse, "description": "请求格式错误"},
@@ -145,7 +145,7 @@ async def messages(
     agent = _CollectingMoviePilotAgent(
         session_id=session_id,
         user_id=session_id,
-        channel=MessageChannel.Web.value,
+        channel=NotificationChannel.Web.value,
         source="anthropic",
         username="anthropic-client",
         stream_mode=payload.stream,

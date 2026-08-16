@@ -8,11 +8,11 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.schemas import Notification
-from app.schemas.types import MessageChannel
+from app.schemas import Message
+from app.schemas.types import NotificationChannel
 
 
-def _run_choice_tool(agent_context: dict, channel: str, source: str) -> Notification:
+def _run_choice_tool(agent_context: dict, channel: str, source: str) -> Message:
     """运行按钮选择工具并返回其发送的通知。"""
     tool = AskUserChoiceTool(session_id="session-1", user_id="ou_xxx")
     tool.set_message_attr(
@@ -41,7 +41,7 @@ def test_choice_tool_backfills_original_chat_id_from_session_context():
     """群聊场景下按钮选择通知应回填会话上下文中的 original_chat_id。"""
     notification = _run_choice_tool(
         agent_context={"original_chat_id": "oc_group_123"},
-        channel=MessageChannel.Feishu.value,
+        channel=NotificationChannel.Feishu.value,
         source="feishu-test",
     )
 
@@ -53,7 +53,7 @@ def test_choice_tool_keeps_explicit_original_chat_id():
     """按钮选择通知已显式携带原会话 ID 时不应被上下文覆盖。"""
     notification = _run_choice_tool(
         agent_context={"original_chat_id": "oc_group_zzz"},
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-test",
     )
 
@@ -64,7 +64,7 @@ def test_choice_tool_no_context_does_not_backfill():
     """会话上下文未携带原会话 ID 时，通知保持原有发送目标。"""
     notification = _run_choice_tool(
         agent_context={},
-        channel=MessageChannel.Telegram.value,
+        channel=NotificationChannel.Telegram.value,
         source="telegram-test",
     )
 
@@ -92,7 +92,7 @@ def test_send_tool_message_backfills_original_chat_id():
     """send_tool_message 工具消息同样应回填原会话 ID。"""
     tool = SendMessageTool(session_id="session-1", user_id="ou_xxx")
     tool.set_message_attr(
-        channel=MessageChannel.Feishu.value,
+        channel=NotificationChannel.Feishu.value,
         source="feishu-test",
         username="tester",
     )
@@ -115,7 +115,7 @@ def test_tool_context_includes_original_chat_id():
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="ou_xxx",
-        channel=MessageChannel.Feishu.value,
+        channel=NotificationChannel.Feishu.value,
         source="feishu-test",
         username="tester",
         original_chat_id="oc_group_123",

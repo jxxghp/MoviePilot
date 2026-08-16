@@ -12,7 +12,7 @@ import pytest
 
 from app.chain.notification import NotificationChain
 from app.modules.wechatclawbot import WechatClawBotModule
-from app.schemas.types import MessageChannel, NotificationAction
+from app.schemas.types import NotificationChannel, NotificationAction
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def module():
 def test_channel_manage_routes_only_matching_channel(module):
     """非本渠道的管理请求返回 None，run_module 分发将继续执行其它模块。"""
     result = module.channel_manage(
-        channel=MessageChannel.Telegram,
+        channel=NotificationChannel.Telegram,
         action=NotificationAction.STATUS,
     )
     assert result is None
@@ -32,7 +32,7 @@ def test_channel_manage_routes_only_matching_channel(module):
 def test_channel_manage_rejects_unknown_action(module):
     """动作词汇表之外的请求返回统一错误结构。"""
     result = module.channel_manage(
-        channel=MessageChannel.WechatClawBot,
+        channel=NotificationChannel.WechatClawBot,
         action="not_an_action",
     )
     assert result["success"] is False
@@ -43,7 +43,7 @@ def test_channel_manage_requires_saved_config_without_form_params(module, monkey
     """无任何配置且未提供表单参数时，返回提示保存配置的错误。"""
     monkeypatch.setattr(module, "get_instance", lambda name=None: None)
     result = module.channel_manage(
-        channel=MessageChannel.WechatClawBot,
+        channel=NotificationChannel.WechatClawBot,
         action=NotificationAction.TEST_CONNECTION,
     )
     assert result["success"] is False
@@ -67,7 +67,7 @@ def test_channel_manage_builds_temporary_client_from_form_params(module, monkeyp
     )
 
     result = module.channel_manage(
-        channel=MessageChannel.WechatClawBot,
+        channel=NotificationChannel.WechatClawBot,
         action=NotificationAction.TEST_CONNECTION,
         source="预览渠道",
         WECHATCLAWBOT_BASE_URL="http://127.0.0.1:1",
@@ -91,7 +91,7 @@ def test_channel_manage_prefers_saved_instance(module, monkeypatch):
     monkeypatch.setattr(module, "get_instance", lambda name=None: saved)
 
     result = module.channel_manage(
-        channel=MessageChannel.WechatClawBot,
+        channel=NotificationChannel.WechatClawBot,
         action=NotificationAction.STATUS,
         source="已保存",
     )
@@ -113,7 +113,7 @@ def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypa
     )
 
     result = module.channel_manage(
-        channel=MessageChannel.WechatClawBot,
+        channel=NotificationChannel.WechatClawBot,
         action=NotificationAction.MIGRATE_CACHE,
         old_name="旧名",
         new_name="新名",

@@ -17,7 +17,7 @@ from app.modules import _ModuleBase, _MessageBase
 from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
-from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData
+from app.schemas import NotificationChannel, IncomingMessage, Message, CommandRegisterEventData
 from app.schemas.types import ModuleType, ChainEventType
 from app.foundation.dom import DomUtils
 from app.foundation.collections import DictUtils
@@ -31,7 +31,7 @@ def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:
     return resolve_config_principal_ids(config, *config_keys)
 
 
-register_channel_admin_resolver(MessageChannel.Wechat, _resolve_wechat_admin_ids)
+register_channel_admin_resolver(NotificationChannel.Wechat, _resolve_wechat_admin_ids)
 
 
 class WechatModule(_ModuleBase, _MessageBase[WeChat]):
@@ -42,7 +42,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         super().init_service(service_name=WeChat.__name__.lower(),
                              service_type=self._create_client)
-        self._channel = MessageChannel.Wechat
+        self._channel = NotificationChannel.Wechat
 
     @staticmethod
     def get_name() -> str:
@@ -56,11 +56,11 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         return ModuleType.Notification
 
     @staticmethod
-    def get_subtype() -> MessageChannel:
+    def get_subtype() -> NotificationChannel:
         """
         获取模块的子类型
         """
-        return MessageChannel.Wechat
+        return NotificationChannel.Wechat
 
     @staticmethod
     def get_priority() -> int:
@@ -104,7 +104,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         if not admins:
             return False
         return not matches_channel_admin(
-            MessageChannel.Wechat,
+            NotificationChannel.Wechat,
             config,
             user_id,
         )
@@ -131,7 +131,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         pass
 
     def message_parser(self, source: str, body: Any, form: Any,
-                       args: Any) -> Optional[CommingMessage]:
+                       args: Any) -> Optional[IncomingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -229,9 +229,9 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                 media_id = DomUtils.tag_value(root_node, "MediaId")
                 pic_url = DomUtils.tag_value(root_node, "PicUrl")
                 if media_id:
-                    images = [CommingMessage.MessageImage(ref=f"wxwork://media_id/{media_id}")]
+                    images = [IncomingMessage.MessageImage(ref=f"wxwork://media_id/{media_id}")]
                 elif pic_url:
-                    images = [CommingMessage.MessageImage(ref=pic_url)]
+                    images = [IncomingMessage.MessageImage(ref=pic_url)]
                 logger.info(
                     f"收到来自 {client_config.name} 的微信图片消息：userid={user_id}, images={len(images) if images else 0}"
                 )
@@ -250,7 +250,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                 file_name = DomUtils.tag_value(root_node, "FileName")
                 if media_id:
                     files = [
-                        CommingMessage.MessageAttachment(
+                        IncomingMessage.MessageAttachment(
                             ref=f"wxwork://file_media_id/{media_id}",
                             name=file_name,
                         )
@@ -269,10 +269,10 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
 
             if content or images or audio_refs or files:
                 # 处理消息内容
-                return CommingMessage(channel=MessageChannel.Wechat, source=client_config.name,
+                return IncomingMessage(channel=NotificationChannel.Wechat, source=client_config.name,
                                       userid=user_id, username=user_id,
                                       is_channel_admin=matches_channel_admin(
-                                          MessageChannel.Wechat,
+                                          NotificationChannel.Wechat,
                                           client_config.config,
                                           user_id,
                                       ), text=content or "",
@@ -281,7 +281,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             logger.error(f"微信消息处理发生错误：{str(err)}")
         return None
 
-    def _parse_bot_message(self, source: str, body: Any, client_config) -> Optional[CommingMessage]:
+    def _parse_bot_message(self, source: str, body: Any, client_config) -> Optional[IncomingMessage]:
         try:
             if isinstance(body, bytes):
                 msg_json = json.loads(body)
@@ -314,7 +314,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             download_url = file_payload.get("download_url")
             if download_url:
                 files = [
-                    CommingMessage.MessageAttachment(
+                    IncomingMessage.MessageAttachment(
                         ref=f"wxbot://file/{quote(download_url, safe='')}",
                         name=file_payload.get("name") or file_payload.get("filename"),
                         mime_type=file_payload.get("content_type")
@@ -340,13 +340,13 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             f"收到来自 {client_config.name} 的企业微信智能机器人消息："
             f"userid={sender}, text={text}, images={len(images) if images else 0}"
         )
-        return CommingMessage(
-            channel=MessageChannel.Wechat,
+        return IncomingMessage(
+            channel=NotificationChannel.Wechat,
             source=client_config.name,
             userid=sender,
             username=sender,
             is_channel_admin=matches_channel_admin(
-                MessageChannel.Wechat,
+                NotificationChannel.Wechat,
                 client_config.config,
                 sender,
             ),
@@ -356,7 +356,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             files=files,
         )
 
-    def post_message(self, message: Notification, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs) -> None:
         """
         发送消息
         :param message: 消息内容
@@ -425,7 +425,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             return client.download_media_bytes(media_id)
         return None
 
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
+    def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
         发送媒体信息选择列表
         :param message: 消息内容
@@ -442,7 +442,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                 # 再发送内容
                 client.send_medias_msg(medias=medias, userid=message.userid)
 
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
+    def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
         发送种子信息选择列表
         :param message: 消息内容

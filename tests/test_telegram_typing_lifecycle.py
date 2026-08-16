@@ -11,7 +11,7 @@ from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 def _wait_until(predicate, timeout: float = 1.0) -> bool:
@@ -156,7 +156,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         Telegram 通过模块处理状态接口启动 typing 保活。
         """
         module = TelegramModule()
-        module._channel = MessageChannel.Telegram
+        module._channel = NotificationChannel.Telegram
         client = Mock()
         client.start_typing.return_value = True
 
@@ -164,7 +164,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 module, "get_config", return_value=SimpleNamespace(name="telegram-test")
         ), patch.object(module, "get_instance", return_value=client):
             status = module.mark_message_processing_started(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 chat_id="-100",
@@ -178,7 +178,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         chain = MessageChain.__new__(MessageChain)
         chain.eventmanager = Mock()
         status = MessageChain._ProcessingStatus(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             chat_id="-100",
@@ -191,7 +191,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 chain, "_mark_message_processing_finished"
         ) as finish_status:
             chain.handle_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -217,10 +217,10 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             event_data={
                 "cmd": "/sites",
                 "user": "10001",
-                "channel": MessageChannel.Telegram,
+                "channel": NotificationChannel.Telegram,
                 "source": "telegram-test",
                 "processing_status": {
-                    "channel": MessageChannel.Telegram.value,
+                    "channel": NotificationChannel.Telegram.value,
                     "source": "telegram-test",
                     "userid": "10001",
                     "chat_id": "-100",
@@ -240,7 +240,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
 
     def test_finish_command_processing_status_uses_module_interface(self):
         status = {
-            "channel": MessageChannel.Telegram.value,
+            "channel": NotificationChannel.Telegram.value,
             "source": "telegram-test",
             "userid": "10001",
             "chat_id": "-100",
@@ -272,7 +272,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 chain, "_mark_message_processing_finished"
         ) as finish_status:
             chain.handle_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -286,7 +286,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         self.assertNotIn("processing_status", process_message.call_args.kwargs)
         self.assertEqual(
             process_message.call_args.kwargs["channel"],
-            MessageChannel.Telegram.value,
+            NotificationChannel.Telegram.value,
         )
         self.assertEqual(process_message.call_args.kwargs["source"], "telegram-test")
         self.assertEqual(process_message.call_args.kwargs["original_chat_id"], "-100")
@@ -298,12 +298,12 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 session_id="session-1",
                 user_id="10001",
                 message="第一条",
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 original_chat_id="-100",
             )
             status = {
-                "channel": MessageChannel.Telegram.value,
+                "channel": NotificationChannel.Telegram.value,
                 "source": "telegram-test",
                 "userid": "10001",
                 "chat_id": "-100",
@@ -328,13 +328,13 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 session_id="session-1",
                 user_id="10001",
                 message="第一条",
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 original_message_id="10",
                 original_chat_id="-100",
             )
             status = {
-                "channel": MessageChannel.Telegram.value,
+                "channel": NotificationChannel.Telegram.value,
                 "source": "telegram-test",
                 "userid": "10001",
                 "message_id": "10",
@@ -352,7 +352,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 result = await _async_start_processing_status(task)
 
             self.assertEqual(calls, [{
-                "channel": MessageChannel.Telegram,
+                "channel": NotificationChannel.Telegram,
                 "source": "telegram-test",
                 "userid": "10001",
                 "message_id": "10",
@@ -366,7 +366,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
     def test_callback_stops_typing_when_message_handler_returns(self):
         chain = MessageChain.__new__(MessageChain)
         status = MessageChain._ProcessingStatus(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             chat_id="-100",
@@ -379,7 +379,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 chain, "_mark_message_processing_finished"
         ) as finish_status:
             chain.handle_message(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 username="tester",
@@ -388,7 +388,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             )
 
         finish_status.assert_called_once_with(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             status=status,
@@ -399,7 +399,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
     def test_chain_finishes_processing_through_module_interface(self):
         chain = MessageChain.__new__(MessageChain)
         status = MessageChain._ProcessingStatus(
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             chat_id="-100",
@@ -408,7 +408,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
 
         with patch.object(chain, "finish_message_processing_status") as finish_status:
             chain._mark_message_processing_finished(
-                channel=MessageChannel.Telegram,
+                channel=NotificationChannel.Telegram,
                 source="telegram-test",
                 userid="10001",
                 status=status,
@@ -417,7 +417,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
 
         finish_status.assert_called_once_with(
             status=status.to_dict(),
-            channel=MessageChannel.Telegram,
+            channel=NotificationChannel.Telegram,
             source="telegram-test",
             userid="10001",
             message_id=None,
@@ -428,7 +428,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         async def _run():
             manager = AgentManager()
             status = {
-                "channel": MessageChannel.Telegram.value,
+                "channel": NotificationChannel.Telegram.value,
                 "source": "telegram-test",
                 "userid": "10001",
                 "chat_id": "-100",
@@ -457,14 +457,14 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             manager = AgentManager()
             manager._session_queues["session-1"] = asyncio.Queue()
             first_status = {
-                "channel": MessageChannel.Telegram.value,
+                "channel": NotificationChannel.Telegram.value,
                 "source": "telegram-test",
                 "userid": "10001",
                 "chat_id": "-100",
                 "metadata": {"kind": "typing", "seq": 1},
             }
             second_status = {
-                "channel": MessageChannel.Telegram.value,
+                "channel": NotificationChannel.Telegram.value,
                 "source": "telegram-test",
                 "userid": "10001",
                 "chat_id": "-100",
@@ -474,7 +474,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 session_id="session-1",
                 user_id="10001",
                 message="第一条",
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 original_chat_id="-100",
             ))
@@ -482,7 +482,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
                 session_id="session-1",
                 user_id="10001",
                 message="第二条",
-                channel=MessageChannel.Telegram.value,
+                channel=NotificationChannel.Telegram.value,
                 source="telegram-test",
                 original_chat_id="-100",
             ))

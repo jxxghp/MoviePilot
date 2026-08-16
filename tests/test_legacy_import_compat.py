@@ -20,6 +20,7 @@ from app.runtime.compat.manifest import (
     SYMBOL_ALIASES,
     VIRTUAL_PACKAGES,
     ModuleAlias,
+    _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
 )
 
 
@@ -316,7 +317,7 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
-    """符号级映射清单应覆盖媒体身份与整理工作项的旧入口。"""
+    """符号级映射清单应覆盖媒体身份、整理工作项与消息/通知命名统一的旧入口。"""
     assert set(SYMBOL_ALIASES["app.domain.media"]) == {
         "MEDIA_SOURCE_ALIASES",
         "MEDIA_SOURCE_PREFIXES",
@@ -329,8 +330,15 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     assert set(SYMBOL_ALIASES["app.schemas"]) == {
         "TransferTask",
         "TransferQueue",
-    }
+    } | set(_MESSAGE_NOTIFICATION_SYMBOL_ALIASES)
     assert set(SYMBOL_ALIASES["app.schemas.transfer"]) == {
         "TransferTask",
         "TransferQueue",
     }
+    assert set(SYMBOL_ALIASES["app.schemas.types"]) == {
+        "MessageChannel",
+        "NotificationType",
+    }
+    assert set(SYMBOL_ALIASES["app.schemas.message"]) == set(
+        _MESSAGE_NOTIFICATION_SYMBOL_ALIASES
+    )

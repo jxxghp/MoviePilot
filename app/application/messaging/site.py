@@ -15,8 +15,8 @@ from app.application.messaging.interaction import (
     update_or_post_message,
 )
 from app.runtime.log import logger
-from app.schemas import Notification
-from app.schemas.types import MessageChannel
+from app.schemas import Message
+from app.schemas.types import NotificationChannel
 
 
 site_interaction_manager = SlashInteractionManager()
@@ -44,7 +44,7 @@ class SiteInteractionHandler:
     def remote_list(
             self,
             arg_str: str = "",
-            channel: MessageChannel = None,
+            channel: NotificationChannel = None,
             userid: Union[str, int] = None,
             source: Optional[str] = None,
     ):
@@ -90,7 +90,7 @@ class SiteInteractionHandler:
     def handle_callback_interaction(
             self,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -108,7 +108,7 @@ class SiteInteractionHandler:
         request = site_interaction_manager.get_by_id(request_id, userid)
         if not request:
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -161,7 +161,7 @@ class SiteInteractionHandler:
 
     def handle_text_interaction(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -184,7 +184,7 @@ class SiteInteractionHandler:
         if lowered in {"退出", "关闭", "q", "quit", "exit"}:
             site_interaction_manager.remove(request.request_id)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -255,7 +255,7 @@ class SiteInteractionHandler:
             success, message = self._update_site_cookie_from_input(normalized)
             request.awaiting_input = None
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -276,7 +276,7 @@ class SiteInteractionHandler:
             success, message = self._set_sites_enabled(normalized, enabled=True)
             request.awaiting_input = None
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -297,7 +297,7 @@ class SiteInteractionHandler:
             success, message = self._set_sites_enabled(normalized, enabled=False)
             request.awaiting_input = None
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -317,7 +317,7 @@ class SiteInteractionHandler:
         if cookie_match:
             success, message = self._update_site_cookie_from_input(cookie_match.group(1))
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -337,7 +337,7 @@ class SiteInteractionHandler:
         if enable_match:
             success, message = self._set_sites_enabled(enable_match.group(1), enabled=True)
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -359,7 +359,7 @@ class SiteInteractionHandler:
                 disable_match.group(1), enabled=False
             )
             self._messenger.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -377,7 +377,7 @@ class SiteInteractionHandler:
             return True
 
         self._messenger.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -390,7 +390,7 @@ class SiteInteractionHandler:
     def _render_site_interaction(
             self,
             request,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: Optional[str],
             userid: Union[str, int],
             username: Optional[str],
@@ -463,7 +463,7 @@ class SiteInteractionHandler:
 
     @staticmethod
     def _format_site_list(
-            site_list: List[Site], channel: Optional[MessageChannel]
+            site_list: List[Site], channel: Optional[NotificationChannel]
     ) -> str:
         """
         根据渠道能力格式化站点列表。

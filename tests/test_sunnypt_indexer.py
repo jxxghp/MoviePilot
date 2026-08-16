@@ -13,7 +13,7 @@ from app.db.oper.message import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.schemas import MediaSource, MediaType, NotificationType
+from app.schemas import MediaSource, MediaType, MessageType
 
 
 class _FakeResponse:
@@ -319,7 +319,7 @@ def test_site_messages_are_deduplicated_by_persisted_source(monkeypatch):
     duplicate_source = "sunnypt-message:9001-dedup-test"
     MessageOper().add(
         source=duplicate_source,
-        mtype=NotificationType.SiteMessage,
+        mtype=MessageType.SiteMessage,
         title="existing",
         text="existing",
     )

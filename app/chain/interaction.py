@@ -21,11 +21,11 @@ from app.domain.meta.metabase import MetaBase
 from app.foundation import url as url_tools
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import DownloadDirectory, FileURI, NotExistMediaInfo, Notification
+from app.schemas import DownloadDirectory, FileURI, NotExistMediaInfo, Message
 from app.schemas.media import build_media_key, resolve_media_identity
-from app.schemas.message import ChannelCapabilityManager
+from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.types import MediaType, MessageChannel
+from app.schemas.types import MediaType, NotificationChannel
 
 
 class MediaInteractionChain(ChainBase):
@@ -127,7 +127,7 @@ class MediaInteractionChain(ChainBase):
     def handle_callback_interaction(
             self,
             callback_data: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -149,7 +149,7 @@ class MediaInteractionChain(ChainBase):
 
         if not request:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -245,7 +245,7 @@ class MediaInteractionChain(ChainBase):
 
     def handle_text_interaction(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -263,7 +263,7 @@ class MediaInteractionChain(ChainBase):
         if request and lowered in {"退出", "关闭", "q", "quit", "exit"}:
             media_interaction_manager.remove(request.request_id)
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -411,7 +411,7 @@ class MediaInteractionChain(ChainBase):
             self,
             action: str,
             content: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -431,7 +431,7 @@ class MediaInteractionChain(ChainBase):
             return
         if not medias:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -465,7 +465,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             page_index: Optional[int],
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -520,7 +520,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             mediainfo: MediaInfo,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -536,7 +536,7 @@ class MediaInteractionChain(ChainBase):
         )
         if exist_flag and request.action == "Search":
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -556,7 +556,7 @@ class MediaInteractionChain(ChainBase):
         )
         if messages:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -568,7 +568,7 @@ class MediaInteractionChain(ChainBase):
 
         logger.info("开始搜索 %s ...", mediainfo.title_year)
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,
@@ -581,7 +581,7 @@ class MediaInteractionChain(ChainBase):
         contexts = SearchChain().process(mediainfo=mediainfo, no_exists=no_exists)
         if not contexts:
             self.post_message(
-                Notification(
+                Message(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -639,7 +639,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             mediainfo: MediaInfo,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -655,7 +655,7 @@ class MediaInteractionChain(ChainBase):
             )
             if exist_flag:
                 self.post_message(
-                    Notification(
+                    Message(
                         channel=channel,
                         source=source,
                         userid=userid,
@@ -689,7 +689,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             page_index: Optional[int],
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -764,7 +764,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             download_mode: str,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -804,7 +804,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             page_index: Optional[int],
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -870,7 +870,7 @@ class MediaInteractionChain(ChainBase):
     def _execute_pending_download(
             self,
             request: PendingMediaInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -935,7 +935,7 @@ class MediaInteractionChain(ChainBase):
             self,
             request: PendingMediaInteraction,
             cache_list: List[Context],
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: str,
@@ -1000,7 +1000,7 @@ class MediaInteractionChain(ChainBase):
     def _render_interaction(
             self,
             request: PendingMediaInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             original_message_id: Optional[Union[str, int]] = None,
@@ -1040,7 +1040,7 @@ class MediaInteractionChain(ChainBase):
     def _post_medias_message(
             self,
             request: PendingMediaInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             original_message_id: Optional[Union[str, int]] = None,
@@ -1073,7 +1073,7 @@ class MediaInteractionChain(ChainBase):
             buttons = None
 
         self.post_medias_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 title=title,
@@ -1089,7 +1089,7 @@ class MediaInteractionChain(ChainBase):
     def _post_torrents_message(
             self,
             request: PendingMediaInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             original_message_id: Optional[Union[str, int]] = None,
@@ -1122,7 +1122,7 @@ class MediaInteractionChain(ChainBase):
             buttons = None
 
         self.post_torrents_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 title=title,
@@ -1139,7 +1139,7 @@ class MediaInteractionChain(ChainBase):
     def _post_download_dirs_message(
             self,
             request: PendingMediaInteraction,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             original_message_id: Optional[Union[str, int]] = None,
@@ -1176,7 +1176,7 @@ class MediaInteractionChain(ChainBase):
             for index, download_dir in enumerate(page_items, start=1)
         )
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 title=title,
@@ -1191,7 +1191,7 @@ class MediaInteractionChain(ChainBase):
 
     def _create_media_buttons(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             request: PendingMediaInteraction,
             items: List[MediaInfo],
             total: int,
@@ -1236,7 +1236,7 @@ class MediaInteractionChain(ChainBase):
 
     def _create_torrent_buttons(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             request: PendingMediaInteraction,
             items: List[Context],
             total: int,
@@ -1289,7 +1289,7 @@ class MediaInteractionChain(ChainBase):
 
     def _create_download_dir_buttons(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             request: PendingMediaInteraction,
             items: List[DownloadDirectory],
             total: int,
@@ -1485,7 +1485,7 @@ class MediaInteractionChain(ChainBase):
             return f"{name} ({save_path})"
         return name
 
-    def _page_size(self, channel: Optional[MessageChannel]) -> int:
+    def _page_size(self, channel: Optional[NotificationChannel]) -> int:
         """
         按渠道交互能力选择分页大小。
         """
@@ -1496,7 +1496,7 @@ class MediaInteractionChain(ChainBase):
         )
 
     @staticmethod
-    def _supports_interactive_buttons(channel: Optional[MessageChannel]) -> bool:
+    def _supports_interactive_buttons(channel: Optional[NotificationChannel]) -> bool:
         """
         判断渠道是否同时支持按钮展示与按钮回调。
         """
@@ -1546,7 +1546,7 @@ class MediaInteractionChain(ChainBase):
 
     def _post_invalid_input(
             self,
-            channel: MessageChannel,
+            channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
             username: Optional[str],
@@ -1556,7 +1556,7 @@ class MediaInteractionChain(ChainBase):
         发送统一的非法输入提示。
         """
         self.post_message(
-            Notification(
+            Message(
                 channel=channel,
                 source=source,
                 userid=userid,

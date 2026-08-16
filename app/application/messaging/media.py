@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.schemas.types import MessageChannel
+from app.schemas.types import NotificationChannel
 
 
 @dataclass
@@ -17,7 +17,7 @@ class PendingMediaInteraction:
 
     request_id: str
     user_id: str
-    channel: Optional[MessageChannel]
+    channel: Optional[NotificationChannel]
     source: Optional[str]
     username: Optional[str]
     action: str
@@ -69,7 +69,7 @@ class MediaInteractionManager:
     def create_or_replace(
             self,
             user_id: Union[str, int],
-            channel: Optional[MessageChannel],
+            channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
             action: str,

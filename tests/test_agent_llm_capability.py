@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.runtime.config import settings
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import MessageChannel
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 
 from app.agent.llm import capability as capability_module
 from app.agent.llm.capability import (
@@ -171,12 +171,12 @@ class AgentCapabilityManagerTest(unittest.TestCase):
         )
         self.assertTrue(
             AgentCapabilityManager.supports_native_voice_reply(
-                MessageChannel.Telegram.value, None
+                NotificationChannel.Telegram.value, None
             )
         )
         self.assertTrue(
             AgentCapabilityManager.supports_native_voice_reply(
-                MessageChannel.Feishu.value, None
+                NotificationChannel.Feishu.value, None
             )
         )
         self.assertTrue(
@@ -184,7 +184,7 @@ class AgentCapabilityManagerTest(unittest.TestCase):
         )
         self.assertTrue(
             AgentCapabilityManager.supports_native_voice_reply(
-                MessageChannel.WebAgent.value, None
+                NotificationChannel.WebAgent.value, None
             )
         )
         self.assertFalse(
@@ -204,27 +204,27 @@ class AgentCapabilityManagerTest(unittest.TestCase):
         ):
             self.assertTrue(
                 AgentCapabilityManager.supports_native_voice_reply(
-                    MessageChannel.Wechat.value, "wechat-app"
+                    NotificationChannel.Wechat.value, "wechat-app"
                 )
             )
             self.assertFalse(
                 AgentCapabilityManager.supports_native_voice_reply(
-                    MessageChannel.Wechat.value, "wechat-bot"
+                    NotificationChannel.Wechat.value, "wechat-bot"
                 )
             )
             self.assertFalse(
                 AgentCapabilityManager.supports_native_voice_reply(
-                    MessageChannel.Wechat.value, "missing"
+                    NotificationChannel.Wechat.value, "missing"
                 )
             )
 
     def test_channel_capability_marks_voice_output_channels(self):
         """校验消息渠道能力显式声明原生语音输出支持。"""
         for channel in (
-            MessageChannel.Telegram,
-            MessageChannel.Feishu,
-            MessageChannel.Wechat,
-            MessageChannel.WebAgent,
+            NotificationChannel.Telegram,
+            NotificationChannel.Feishu,
+            NotificationChannel.Wechat,
+            NotificationChannel.WebAgent,
         ):
             self.assertTrue(
                 ChannelCapabilityManager.supports_capability(
@@ -233,7 +233,7 @@ class AgentCapabilityManagerTest(unittest.TestCase):
             )
         self.assertFalse(
             ChannelCapabilityManager.supports_capability(
-                MessageChannel.Slack, ChannelCapability.AUDIO_OUTPUT
+                NotificationChannel.Slack, ChannelCapability.AUDIO_OUTPUT
             )
         )
 
