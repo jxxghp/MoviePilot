@@ -757,7 +757,8 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
 
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
            skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None,
-           skip_if: Optional[Callable[[Any], bool]] = None):
+           skip_if: Optional[Callable[[Any], bool]] = None,
+           empty_ttl: Optional[int] = None, empty_if: Optional[Callable[[Any], bool]] = None):
     """
     自定义缓存装饰器，支持配置缓存区域的 maxsize 和每个 key 的 ttl
 
@@ -770,6 +771,12 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
     :param skip_if: 按返回值判断是否跳过缓存的谓词，返回真值时不缓存；用于
         「结构合法但业务失败」的返回值（如 TMDB 的 success=false 响应），
         这类值无法用 skip_none/skip_empty 表达
+    :param empty_ttl: 空结果的独立存活时间，单位秒；判定为空的结果改用该 TTL 写入，
+        使其比默认 ttl 更快过期（如故障期间产生的空响应），未传入时空结果沿用默认 ttl；
+        仅在 ttl 模式下生效，LRU 模式无过期概念
+    :param empty_if: 判断返回值是否为空结果的谓词，返回真值时按 empty_ttl 写入；
+        未传入时按假值判断（None, [], {}, "", set() 等视为空）；用于「结构合法但
+        内容为空」的返回值（如 TMDB 搜索结果快照中 results 为空列表）
     :return: 装饰器函数
     """
 
@@ -798,6 +805,21 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             if skip_if and skip_if(value):
                 return False
             return True
+
+        def get_cache_ttl(value: Any) -> Optional[int]:
+            """
+            返回写入该返回值时应使用的 TTL，空结果改用独立的短 TTL（empty_ttl）
+
+            :param value: 待写入缓存的返回值
+            :return: 实际使用的 TTL，单位秒
+            """
+            if empty_ttl is None:
+                return ttl
+            if value is None:
+                return empty_ttl
+            if empty_if is not None:
+                return empty_ttl if empty_if(value) else ttl
+            return empty_ttl if not value else ttl
 
         def is_valid_cache_value(_cache_key: str, _cached_value: Any, _cache_region: str) -> bool:
             """
@@ -893,8 +915,9 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 # 判断是否需要缓存
                 if not should_cache(result):
                     return result
-                # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值）
-                await cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=cache_region)
+                # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值；空结果使用独立的短 TTL）
+                await cache_backend.set(cache_key, result, ttl=get_cache_ttl(result), maxsize=maxsize,
+                                        region=cache_region)
                 return result
 
             async def cache_clear():
@@ -944,8 +967,8 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 # 判断是否需要缓存
                 if not should_cache(result):
                     return result
-                # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值）
-                cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=cache_region)
+                # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值；空结果使用独立的短 TTL）
+                cache_backend.set(cache_key, result, ttl=get_cache_ttl(result), maxsize=maxsize, region=cache_region)
                 return result
 
             def cache_clear():

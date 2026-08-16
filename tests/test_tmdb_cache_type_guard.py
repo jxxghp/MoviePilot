@@ -1,7 +1,9 @@
+from time import time
 from types import SimpleNamespace
 
 from app.runtime.config import settings
 from app.modules.themoviedb.tmdb_cache import TmdbCache
+from app.modules.themoviedb.tmdbv3api.tmdb import EMPTY_RESULT_CACHE_TTL
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -120,3 +122,29 @@ def test_update_caches_tv_result_for_movie_meta():
     stored = cache._cache.get(_key("电影", begin_season=None))
     assert stored["type"] == MediaType.TV
     assert stored["title"] == "某剧"
+
+
+def test_update_negative_cache_uses_short_ttl():
+    """未识别负缓存应用独立短 TTL，故障自愈后同名可较快重新识别。"""
+    meta = _build_meta(MediaType.TV)
+    cache = _build_cache()
+
+    cache.update(meta, {})
+
+    key = _key("电视剧")
+    assert cache._cache.data[key] == {"id": 0}
+    assert cache._cache.ttls[key] == EMPTY_RESULT_CACHE_TTL
+    # 持久化用的过期时间也应随短 TTL 计算，不能沿用默认有效期
+    assert cache._expires_at[key] <= time() + EMPTY_RESULT_CACHE_TTL + 5
+
+
+def test_update_positive_cache_keeps_default_ttl():
+    """识别成功的正缓存不受负缓存短 TTL 影响，仍用默认有效期。"""
+    meta = _build_meta(MediaType.TV)
+    cache = _build_cache()
+
+    cache.update(meta, {"id": 329809, "media_type": MediaType.TV,
+                        "name": "某剧", "first_air_date": "2022-01-01"})
+
+    key = _key("电视剧")
+    assert cache._cache.ttls[key] == cache.ttl

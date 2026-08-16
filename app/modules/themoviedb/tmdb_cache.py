@@ -3,7 +3,7 @@ import traceback
 from math import ceil
 from threading import RLock
 from time import time
-from typing import Any
+from typing import Any, Optional
 
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.config import settings
@@ -11,6 +11,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.foundation.singleton import WeakSingleton
+from app.modules.themoviedb.tmdbv3api.tmdb import EMPTY_RESULT_CACHE_TTL
 
 lock = RLock()
 PERSISTENCE_VERSION = 1
@@ -94,11 +95,12 @@ class TmdbCache(metaclass=WeakSingleton):
         except Exception as err:
             logger.error(f"加载TMDB识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def _set(self, key: str, value: dict) -> None:
-        """写入单条 TMDB 识别缓存并记录其独立过期时间。"""
-        self._cache.set(key, value)
+    def _set(self, key: str, value: dict, ttl: Optional[int] = None) -> None:
+        """写入单条 TMDB 识别缓存并记录其独立过期时间，未指定 ttl 时用默认有效期。"""
+        ttl = self.ttl if ttl is None else ttl
+        self._cache.set(key, value, ttl=ttl)
         if not self._cache.is_redis():
-            self._expires_at[key] = time() + self.ttl
+            self._expires_at[key] = time() + ttl
             self._dirty = True
 
     def clear(self):
@@ -257,7 +259,10 @@ class TmdbCache(metaclass=WeakSingleton):
         elif info is not None:
             # None时不缓存，此时代表网络错误，允许重复请求
             with lock:
-                self._set(key, {"id": 0})
+                # 负识别缓存使用独立的短 TTL：故障期间「合法 JSON 但结果为空」会被
+                # 记为未识别，若按完整有效期固化，故障自愈后同名仍会被判无法识别；
+                # 短过期让恢复后可重新识别，真不存在的条目过期后重新确认一次即可
+                self._set(key, {"id": 0}, ttl=EMPTY_RESULT_CACHE_TTL)
 
     def save(self, force: bool = False) -> None:
         """

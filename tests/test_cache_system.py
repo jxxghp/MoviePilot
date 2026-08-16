@@ -305,6 +305,106 @@ def test_cached_zero_ttl_does_not_cache_async_result():
     assert asyncio.run(run_test()) == (1, 2)
 
 
+def test_cached_empty_ttl_expires_empty_result_sooner_sync():
+    """
+    同步 cached 的空结果应按 empty_ttl 独立过期，不受默认 ttl 影响。
+    """
+    calls = 0
+
+    @cached(region="sync_empty_ttl", ttl=600, empty_ttl=10,
+            empty_if=lambda value: not value.get("results"))
+    def load_value():
+        nonlocal calls
+        calls += 1
+        return {"results": []}
+
+    assert load_value() == {"results": []}
+    assert load_value() == {"results": []}
+    assert calls == 1
+
+    region_cache = MemoryBackend._region_caches[MemoryBackend.get_region("sync_empty_ttl")]
+    started_at = region_cache.timer()
+    region_cache.expire(time=started_at + 11)
+
+    assert load_value() == {"results": []}
+    assert calls == 2
+
+
+def test_cached_empty_ttl_keeps_default_ttl_for_non_empty_result():
+    """
+    非空结果应继续使用默认 ttl，不被 empty_ttl 缩短。
+    """
+    calls = 0
+
+    @cached(region="sync_empty_ttl_nonempty", ttl=600, empty_ttl=10,
+            empty_if=lambda value: not value.get("results"))
+    def load_value():
+        nonlocal calls
+        calls += 1
+        return {"results": [1]}
+
+    assert load_value() == {"results": [1]}
+
+    region_cache = MemoryBackend._region_caches[MemoryBackend.get_region("sync_empty_ttl_nonempty")]
+    started_at = region_cache.timer()
+    region_cache.expire(time=started_at + 11)
+
+    assert load_value() == {"results": [1]}
+    assert calls == 1
+
+
+def test_cached_empty_ttl_without_empty_if_uses_falsy_check():
+    """
+    未提供 empty_if 时按假值判断空结果，空列表按 empty_ttl 独立过期。
+    """
+    calls = 0
+
+    @cached(region="sync_empty_ttl_falsy", ttl=600, empty_ttl=10)
+    def load_value():
+        nonlocal calls
+        calls += 1
+        return []
+
+    assert load_value() == []
+    assert load_value() == []
+    assert calls == 1
+
+    region_cache = MemoryBackend._region_caches[MemoryBackend.get_region("sync_empty_ttl_falsy")]
+    started_at = region_cache.timer()
+    region_cache.expire(time=started_at + 11)
+
+    assert load_value() == []
+    assert calls == 2
+
+
+def test_cached_empty_ttl_expires_empty_result_sooner_async():
+    """
+    异步 cached 的空结果应与同步路径一致，按 empty_ttl 独立过期。
+    """
+    calls = 0
+
+    @cached(region="async_empty_ttl", ttl=600, empty_ttl=10,
+            empty_if=lambda value: not value.get("results"))
+    async def load_value():
+        nonlocal calls
+        calls += 1
+        return {"results": []}
+
+    async def run_first_round():
+        assert await load_value() == {"results": []}
+        assert await load_value() == {"results": []}
+
+    asyncio.run(run_first_round())
+    assert calls == 1
+
+    region_cache = MemoryBackend._region_caches[MemoryBackend.get_region("async_empty_ttl")]
+    started_at = region_cache.timer()
+    region_cache.expire(time=started_at + 11)
+
+    assert asyncio.run(load_value()) == {"results": []}
+    assert calls == 2
+
+
 def test_memory_backend_global_clear_is_safe_during_region_creation():
     """
     全局清理与新 region 创建应由同一把锁串行化，不能并发修改注册表。

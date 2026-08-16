@@ -1,5 +1,5 @@
 from app.runtime.cache import cached
-from ..tmdb import TMDb
+from ..tmdb import TMDb, EMPTY_RESULT_CACHE_TTL
 
 try:
     from urllib import urlencode
@@ -13,7 +13,7 @@ class Discover(TMDb):
         "tv": "/discover/tv"
     }
 
-    @cached(maxsize=1, ttl=43200)
+    @cached(maxsize=1, ttl=43200, empty_ttl=EMPTY_RESULT_CACHE_TTL)
     def discover_movies(self, params_tuple):
         """
         Discover movies by different types of data like average rating, number of votes, genres and certifications.
@@ -23,7 +23,7 @@ class Discover(TMDb):
         params = dict(params_tuple)
         return self._request_obj(self._urls["movies"], urlencode(params), key="results", call_cached=False)
 
-    @cached(maxsize=1, ttl=43200)
+    @cached(maxsize=1, ttl=43200, empty_ttl=EMPTY_RESULT_CACHE_TTL)
     def discover_tv_shows(self, params_tuple):
         """
         Discover TV shows by different types of data like average rating, number of votes, genres,
@@ -33,7 +33,7 @@ class Discover(TMDb):
         """
         return self._request_obj(self._urls["tv"], urlencode(params_tuple), key="results", call_cached=False)
 
-    @cached(maxsize=1, ttl=43200)
+    @cached(maxsize=1, ttl=43200, empty_ttl=EMPTY_RESULT_CACHE_TTL)
     async def async_discover_movies(self, params_tuple):
         """
         Discover movies by different types of data like average rating, number of votes, genres and certifications.（异步版本）
@@ -43,7 +43,7 @@ class Discover(TMDb):
         params = dict(params_tuple)
         return await self._async_request_obj(self._urls["movies"], urlencode(params), key="results", call_cached=False)
 
-    @cached(maxsize=1, ttl=43200)
+    @cached(maxsize=1, ttl=43200, empty_ttl=EMPTY_RESULT_CACHE_TTL)
     async def async_discover_tv_shows(self, params_tuple):
         """
         Discover TV shows by different types of data like average rating, number of votes, genres,

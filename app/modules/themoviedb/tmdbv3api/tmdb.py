@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 # 故取区间内的经验值。
 RETRY_BACKOFF_SECONDS = 2
 
+# 空结果缓存的独立过期时间（秒）。TMDB 代理故障期间「合法 JSON 但 results 为空」的
+# 响应会随默认 TTL（可达数十小时）固化，故障自愈后同 key 仍持续命中空结果；空结果
+# 改用 30 分钟短 TTL，既能拦住故障窗口内的重复回源，又能在故障恢复后较快自然失效。
+EMPTY_RESULT_CACHE_TTL = 30 * 60
+
 
 def _is_business_failure_snapshot(snapshot) -> bool:
     """
@@ -35,6 +40,23 @@ def _is_business_failure_snapshot(snapshot) -> bool:
         return False
     json_data = snapshot.get("json")
     return isinstance(json_data, dict) and json_data.get("success") is False
+
+
+def _is_empty_result_snapshot(snapshot) -> bool:
+    """
+    判断响应快照是否为空结果（列表/搜索类接口的 results 为空列表）。
+
+    这类快照结构合法但无业务内容，常由代理瞬时故障产生；不能靠 skip_none/skip_empty
+    识别（快照本身是非空字典），需单独谓词判定后按 EMPTY_RESULT_CACHE_TTL 短 TTL
+    缓存。详情类接口无 results 字段，不属于空结果。
+    """
+    if not isinstance(snapshot, dict):
+        return False
+    json_data = snapshot.get("json")
+    if not isinstance(json_data, dict):
+        return False
+    results = json_data.get("results")
+    return isinstance(results, list) and not results
 
 
 class TMDb(object):
@@ -157,7 +179,8 @@ class TMDb(object):
         self._wait_on_rate_limit = bool(wait_on_rate_limit)
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
-            skip_if=_is_business_failure_snapshot)
+            skip_if=_is_business_failure_snapshot,
+            empty_ttl=EMPTY_RESULT_CACHE_TTL, empty_if=_is_empty_result_snapshot)
     def request(self, method, url, data, json, **kwargs):
         req = self._request_once(method, url, data, json)
         if req is None and method == "GET" and self._owns_session:
@@ -182,7 +205,8 @@ class TMDb(object):
         return self._req.post_res(url, data=data, json=json)
 
     @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
-            skip_if=_is_business_failure_snapshot)
+            skip_if=_is_business_failure_snapshot,
+            empty_ttl=EMPTY_RESULT_CACHE_TTL, empty_if=_is_empty_result_snapshot)
     async def async_request(self, method, url, data, json, **kwargs):
         req = await self._async_request_once(method, url, data, json)
         if req is None:
