@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 from app import scheduler as scheduler_module
 from app.scheduler import Scheduler
+from app.startup import scheduler_initializer
 
 
 class _BackgroundSchedulerStub:
@@ -20,6 +21,28 @@ class _BackgroundSchedulerStub:
     def start(self):
         """记录调度器已启动。"""
         self.started = True
+
+
+def test_scheduler_constructor_does_not_start_background_jobs(monkeypatch):
+    """取得调度器单例不应绕过应用生命周期启动后台任务。"""
+    init = Mock()
+    monkeypatch.setattr(Scheduler, "init", init)
+
+    scheduler = object.__new__(Scheduler)
+    scheduler.__init__()
+
+    init.assert_not_called()
+    assert scheduler._scheduler is None
+
+
+def test_scheduler_initializer_starts_background_jobs(monkeypatch):
+    """应用启动入口负责显式启动已经构造的调度器。"""
+    scheduler = Mock()
+    monkeypatch.setattr(scheduler_initializer, "Scheduler", Mock(return_value=scheduler))
+
+    scheduler_initializer.init_scheduler()
+
+    scheduler.init.assert_called_once_with()
 
 
 def test_meta_cache_expire_does_not_schedule_bulk_cache_clear(monkeypatch):
@@ -68,6 +91,7 @@ def test_meta_cache_expire_does_not_schedule_bulk_cache_clear(monkeypatch):
     scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
+    scheduler._agent_task_interruptions_reconciled = True
     scheduler._auth_count = 0
     scheduler._auth_message = False
 

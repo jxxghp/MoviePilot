@@ -470,7 +470,7 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored.music_type == MUSIC_ENTITY_ALBUM
@@ -485,7 +485,7 @@ def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is None
@@ -501,7 +501,7 @@ def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
         total_tracks=11,
     )
 
-    with patch("app.chain.subscribe.MediaChain") as media_chain:
+    with patch("app.chain._music.MediaChain") as media_chain:
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored.music_type == MUSIC_ENTITY_ALBUM
@@ -543,7 +543,7 @@ def test_legacy_music_subscription_rejects_artist_recognition_result():
     media_chain = Mock()
     media_chain.recognize_media.return_value = artist
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is None
@@ -569,7 +569,7 @@ def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it(
     media_chain = Mock()
     media_chain.recognize_media.return_value = remote
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain):
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is not remote
