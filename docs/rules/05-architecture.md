@@ -219,7 +219,7 @@ Underscore-prefixed files in `app/chain/` are feature-domain mixins for
 slash-command delegation for `remote_list` / `parse_callback` /
 `handle_callback_interaction` / `handle_text_interaction`), `_music.py`
 (`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
-`SubscribeChain`) and `_mixins.py` (TransferChain feature mixins). A concrete chain that exposes slash-command
+`SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). A concrete chain that exposes slash-command
 interaction inherits `InteractionChainMixin`, injects its handler class via
 `_interaction_handler_type` and implements only `_interaction_handler`; it must
 not re-export application-layer interaction managers.

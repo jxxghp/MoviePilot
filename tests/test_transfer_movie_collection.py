@@ -107,7 +107,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         "app.chain.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None),
     )
-    monkeypatch.setattr("app.chain._mixins.TransferHistoryOper", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
+    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(
@@ -118,7 +118,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
-    monkeypatch.setattr("app.chain._mixins.MediaChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
             recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
                 recognized_meta.append(meta) or fallback_media
@@ -190,16 +190,16 @@ def test_movie_collection_conflict_only_drops_automatic_media(
         "app.chain.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._mixins.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr("app.chain.transfer.DownloadHistoryOper", lambda: history_oper)
-    monkeypatch.setattr("app.chain._mixins.DownloadHistoryOper", lambda: history_oper)
+    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: history_oper)
     monkeypatch.setattr(
         "app.chain.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._mixins.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr("app.chain.transfer.StorageChain", lambda: SimpleNamespace())
-    monkeypatch.setattr("app.chain._mixins.StorageChain", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace())
     monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)
 
     # 用真 MediaInfo 而非 SimpleNamespace：它会被装进 TransferTask.mediainfo，

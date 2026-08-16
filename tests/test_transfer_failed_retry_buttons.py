@@ -150,7 +150,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 "app.chain.transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
                 # mixin 中按自身模块命名空间解析 TransferHistoryOper，需同步镜像
-                "app.chain._mixins.TransferHistoryOper"
+                "app.chain._transfer.TransferHistoryOper"
             ) as mixins_history_oper_cls, patch(
                 "app.chain.transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_close_pending_coro,
@@ -224,7 +224,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 "app.chain.transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
                 # mixin 中按自身模块命名空间解析 TransferHistoryOper，需同步镜像
-                "app.chain._mixins.TransferHistoryOper"
+                "app.chain._transfer.TransferHistoryOper"
             ) as mixins_history_oper_cls, patch(
                 "app.application.agent._agent_manager.run_background_prompt",
                 side_effect=fake_run_background_prompt,

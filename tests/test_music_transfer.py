@@ -68,7 +68,7 @@ def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
         title="叶惠美",
     )
     monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._mixins.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
 
     result = TransferChain()._recognize_music_retry_media(
         history,
@@ -538,7 +538,7 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
         "app.chain.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(),
     )
-    monkeypatch.setattr("app.chain._mixins.TransferHistoryOper", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace())
     monkeypatch.setattr(
         "app.chain.transfer.add_transfer_success",
         lambda **kwargs: SimpleNamespace(id=1),
@@ -784,7 +784,7 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._mixins.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
 

@@ -57,7 +57,7 @@ from app.schemas.types import (
 from app.runtime.reload import ConfigReloadMixin
 from app.application.transfer import (FailedRetryScheduler, JobManager,
                                       TransferQueue, TransferTask, job_lock)
-from app.chain._mixins import (EpisodeFormatMixin, FailedRetryMixin,
+from app.chain._transfer import (EpisodeFormatMixin, FailedRetryMixin,
                                FileFilterMixin, FileKeyMixin,
                                HistoryMatchMixin, ManualHistoryMixin,
                                ScrapeBatchMixin)

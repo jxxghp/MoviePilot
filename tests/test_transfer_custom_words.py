@@ -7,7 +7,7 @@
 """
 from types import SimpleNamespace
 
-import app.chain._mixins as mixins_module
+import app.chain._transfer as mixins_module
 from app.chain.transfer import TransferChain
 
 

@@ -722,7 +722,7 @@ def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch)
         lambda item: [sample],
     )
     monkeypatch.setattr(
-        "app.chain._mixins.EpisodeFormatRuleHelper.recommend",
+        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", helper_data),
     )
 
@@ -777,7 +777,7 @@ def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeyp
         lambda: [],
     )
     monkeypatch.setattr(
-        "app.chain._mixins.EpisodeFormatRuleHelper.recommend",
+        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", {
             **helper_data,
             "received_samples": [item.name for item in sample_files],
