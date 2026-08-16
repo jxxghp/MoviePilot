@@ -1,0 +1,15 @@
+schema_version = 1
+id = "DoubanModule"
+kind = "host_module"
+entrypoint = "app.modules.douban:DoubanModule"
+depends_on = []
+
+[metadata]
+name = "豆瓣"
+type = "mediarecognize"
+subtype = "Douban"
+priority = 2
+
+[activation]
+policy = "bootstrap"
+watch = []

@@ -1,0 +1,22 @@
+schema_version = 1
+id = "JellyfinModule"
+kind = "host_module"
+entrypoint = "app.modules.jellyfin:JellyfinModule"
+depends_on = []
+
+[metadata]
+name = "Jellyfin"
+type = "mediaserver"
+subtype = "Jellyfin"
+priority = 2
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "jellyfin"
+enabled_field = "enabled"

@@ -1,0 +1,19 @@
+schema_version = 1
+id = "AcoustIdModule"
+kind = "host_module"
+entrypoint = "app.modules.acoustid:AcoustIdModule"
+depends_on = []
+
+[metadata]
+name = "AcoustID"
+type = "other"
+subtype = "AcoustId"
+priority = 0
+
+[activation]
+policy = "when_configured"
+watch = ["ACOUSTID_API_KEY"]
+
+[activation.selector]
+kind = "setting_truthy"
+key = "ACOUSTID_API_KEY"

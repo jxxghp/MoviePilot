@@ -364,7 +364,7 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}
     for name, method_name in (
-        ("ModuleManager", "stop"),
+        ("ModuleManager", "shutdown"),
         ("EventManager", "stop"),
         ("DisplayHelper", "stop"),
         ("DohHelper", "shutdown"),

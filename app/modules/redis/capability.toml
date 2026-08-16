@@ -1,0 +1,15 @@
+schema_version = 1
+id = "RedisModule"
+kind = "host_module"
+entrypoint = "app.modules.redis:RedisModule"
+depends_on = []
+
+[metadata]
+name = "Redis缓存"
+type = "other"
+subtype = "Redis"
+priority = 0
+
+[activation]
+policy = "bootstrap"
+watch = []

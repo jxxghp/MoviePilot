@@ -1,0 +1,15 @@
+schema_version = 1
+id = "BangumiModule"
+kind = "host_module"
+entrypoint = "app.modules.bangumi:BangumiModule"
+depends_on = []
+
+[metadata]
+name = "Bangumi"
+type = "mediarecognize"
+subtype = "Bangumi"
+priority = 3
+
+[activation]
+policy = "bootstrap"
+watch = ["PROXY_HOST"]

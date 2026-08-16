@@ -1,0 +1,15 @@
+schema_version = 1
+id = "TheAudioDbModule"
+kind = "host_module"
+entrypoint = "app.modules.theaudiodb:TheAudioDbModule"
+depends_on = []
+
+[metadata]
+name = "TheAudioDB"
+type = "mediarecognize"
+subtype = "TheAudioDB"
+priority = 1
+
+[activation]
+policy = "bootstrap"
+watch = []

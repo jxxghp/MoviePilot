@@ -1,0 +1,22 @@
+schema_version = 1
+id = "VoceChatModule"
+kind = "host_module"
+entrypoint = "app.modules.vocechat:VoceChatModule"
+depends_on = []
+
+[metadata]
+name = "VoceChat"
+type = "notification"
+subtype = "VoceChat"
+priority = 4
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "vocechat"
+enabled_field = "enabled"

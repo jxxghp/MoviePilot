@@ -1,0 +1,22 @@
+schema_version = 1
+id = "PlexModule"
+kind = "host_module"
+entrypoint = "app.modules.plex:PlexModule"
+depends_on = []
+
+[metadata]
+name = "Plex"
+type = "mediaserver"
+subtype = "Plex"
+priority = 3
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "plex"
+enabled_field = "enabled"

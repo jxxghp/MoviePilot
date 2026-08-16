@@ -1,0 +1,22 @@
+schema_version = 1
+id = "WebPushModule"
+kind = "host_module"
+entrypoint = "app.modules.webpush:WebPushModule"
+depends_on = []
+
+[metadata]
+name = "WebPush"
+type = "notification"
+subtype = "WebPush"
+priority = 6
+
+[activation]
+policy = "when_configured"
+watch = ["Notifications"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "Notifications"
+match_field = "type"
+match_value = "webpush"
+enabled_field = "enabled"

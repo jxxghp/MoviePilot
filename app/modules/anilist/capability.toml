@@ -1,0 +1,15 @@
+schema_version = 1
+id = "AniListModule"
+kind = "host_module"
+entrypoint = "app.modules.anilist:AniListModule"
+depends_on = []
+
+[metadata]
+name = "AniList"
+type = "mediarecognize"
+subtype = "AniList"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = ["PROXY_HOST"]

@@ -1,0 +1,15 @@
+schema_version = 1
+id = "PostgreSQLModule"
+kind = "host_module"
+entrypoint = "app.modules.postgresql:PostgreSQLModule"
+depends_on = []
+
+[metadata]
+name = "PostgreSQL"
+type = "other"
+subtype = "PostgreSQL"
+priority = 0
+
+[activation]
+policy = "bootstrap"
+watch = []

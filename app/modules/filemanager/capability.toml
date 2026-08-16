@@ -1,0 +1,15 @@
+schema_version = 1
+id = "FileManagerModule"
+kind = "host_module"
+entrypoint = "app.modules.filemanager:FileManagerModule"
+depends_on = []
+
+[metadata]
+name = "文件整理"
+type = "other"
+subtype = "FileManager"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = []

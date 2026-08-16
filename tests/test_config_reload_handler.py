@@ -126,3 +126,23 @@ async def test_resolve_falls_back_to_qualname_when_name_mismatched(monkeypatch):
 
     assert wrapper.__name__ == "wrapper"
     assert instance.reload_count == 1
+
+
+def test_externally_managed_reload_class_does_not_register_listener(monkeypatch):
+    """外部统一管理配置生命周期时，Mixin 保留重载能力但不重复绑定事件。"""
+    registrations = []
+    monkeypatch.setattr(
+        eventmanager,
+        "add_event_listener",
+        lambda *args, **kwargs: registrations.append((args, kwargs)),
+    )
+
+    class _ExternallyManagedReloadRecorder(ConfigReloadMixin):
+        CONFIG_RELOAD_MANAGED_EXTERNALLY = True
+        CONFIG_WATCH = {"TEST_RELOAD_KEY"}
+
+        def on_config_changed(self):
+            pass
+
+    assert registrations == []
+    assert "handle_config_changed" not in _ExternallyManagedReloadRecorder.__dict__

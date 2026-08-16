@@ -1,0 +1,15 @@
+schema_version = 1
+id = "IndexerModule"
+kind = "host_module"
+entrypoint = "app.modules.indexer:IndexerModule"
+depends_on = []
+
+[metadata]
+name = "站点索引"
+type = "indexer"
+subtype = "Indexer"
+priority = 0
+
+[activation]
+policy = "bootstrap"
+watch = []

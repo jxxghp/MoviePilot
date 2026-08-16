@@ -3,7 +3,7 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
 from app.schemas.types import ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
@@ -16,6 +16,9 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
     模块基类，实现对应方法，在有需要时会被自动调用，返回None代表不启用该模块，将继续执行下一模块
     输入参数与输出参数一致的，或没有输出的，可以被多个模块重复实现
     """
+
+    # Host Module 的配置事件由统一 Adapter 协调，避免同一 generation 被双重重载。
+    CONFIG_RELOAD_MANAGED_EXTERNALLY = True
 
     def __init__(self) -> None:
         """初始化模块生命周期锁"""
