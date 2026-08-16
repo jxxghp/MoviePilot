@@ -112,6 +112,14 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 "render_system_task_message",
                 return_value="PROMPT",
             ),
+            patch(
+                "app.application.agent.get_prompt_manager",
+                return_value=prompt_manager,
+            ),
+            patch(
+                "app.application.agent.get_running_agent_manager",
+                return_value=agent_manager,
+            ),
             patch.object(
                 agent_manager,
                 "run_background_prompt",

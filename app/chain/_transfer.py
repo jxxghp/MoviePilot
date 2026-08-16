@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from app import schemas
 from app.adapters.system.host import SystemUtils
-from app.application.agent import build_manual_redo_prompt, get_agent_manager
+from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
 from app.application.formatting import EpisodeFormatRuleHelper
 from app.application.history import clear_transfer_failures, resolve_history
 from app.application.transfer import TransferTask, job_lock
@@ -1418,7 +1418,10 @@ class FailedRetryMixin:
                 final_output = text_output or ""
 
             try:
-                await get_agent_manager().run_background_prompt(
+                manager = get_running_agent_manager()
+                if manager is None:
+                    raise RuntimeError("智能助手服务未运行")
+                await manager.run_background_prompt(
                     message=redo_prompt,
                     session_prefix=f"__agent_manual_redo_{history_id}",
                     output_callback=_capture_output,

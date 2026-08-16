@@ -5,12 +5,11 @@ from abc import ABCMeta, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol
 
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
-from app.agent.callback import StreamingHandler
 from app.agent.policy.sanitizer import (
     summarize_error,
     summarize_input,
@@ -24,6 +23,54 @@ from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas import Notification
 from app.schemas.types import MessageChannel, NotificationType
+
+if TYPE_CHECKING:
+    from app.agent.callback import StreamingHandler as _StreamingHandlerProtocol
+else:
+    class _StreamingHandlerProtocol(Protocol):
+        """工具执行仅依赖的流式缓冲合同。"""
+
+        @property
+        def is_streaming(self) -> bool:
+            """是否正在收集流式输出。"""
+            ...
+
+        @property
+        def is_auto_flushing(self) -> bool:
+            """是否由渠道编辑能力自动刷新缓冲。"""
+            ...
+
+        @property
+        def last_buffer_char(self) -> str:
+            """返回缓冲区最后一个字符。"""
+            ...
+
+        def emit(self, token: str) -> str:
+            """追加流式文本并返回实际追加内容。"""
+            ...
+
+        async def take(self) -> str:
+            """取出并清空当前缓冲内容。"""
+            ...
+
+        def record_tool_call(
+            self,
+            tool_name: str,
+            tool_message: Optional[str] = None,
+            tool_kwargs: Optional[dict[str, Any]] = None,
+        ) -> None:
+            """记录一次待汇总的工具调用。"""
+            ...
+
+
+
+def __getattr__(name: str) -> Any:
+    """显式访问历史 StreamingHandler 符号时返回 canonical 实现。"""
+    if name == "StreamingHandler":
+        from app.agent.callback import StreamingHandler
+
+        return StreamingHandler
+    raise AttributeError(f"module 'app.agent.tools.base' has no attribute {name!r}")
 
 
 class ToolChain(ChainBase):
@@ -206,7 +253,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
     _channel: Optional[str] = PrivateAttr(default=None)
     _source: Optional[str] = PrivateAttr(default=None)
     _username: Optional[str] = PrivateAttr(default=None)
-    _stream_handler: Optional[StreamingHandler] = PrivateAttr(default=None)
+    _stream_handler: Optional[_StreamingHandlerProtocol] = PrivateAttr(default=None)
     _require_admin: bool = PrivateAttr(default=False)
     _agent_context: dict = PrivateAttr(default_factory=dict)
 
@@ -387,7 +434,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         self._source = source
         self._username = username
 
-    def set_stream_handler(self, stream_handler: StreamingHandler):
+    def set_stream_handler(
+        self, stream_handler: Optional[_StreamingHandlerProtocol]
+    ) -> None:
         """
         设置回调处理器
         """
@@ -642,3 +691,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 save_history=False,
             )
         )
+
+
+# 普通导入保持 callback 冷态；显式导入或历史星号导入仍解析真实类。
+__all__ = sorted(
+    {name for name in globals() if not name.startswith("_")}
+    | {"StreamingHandler"}
+)

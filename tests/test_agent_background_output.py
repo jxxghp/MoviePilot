@@ -766,23 +766,24 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_run_background_prompt_forces_disable_message_tools_when_capture_only(self):
         captured = {}
+        manager = AgentManager()
 
-        async def fake_process(self, message, images=None, files=None):
-            captured["message"] = message
-            captured["reply_mode"] = self.reply_mode
-            captured["allow_message_tools"] = self.allow_message_tools
-            captured["user_id"] = self.user_id
+        async def fake_process(task):
+            captured["message"] = task.message
+            captured["reply_mode"] = task.reply_mode
+            captured["allow_message_tools"] = task.allow_message_tools
+            captured["user_id"] = task.user_id
 
-        with (
-            patch.object(MoviePilotAgent, "process", new=fake_process),
-            patch.object(MoviePilotAgent, "cleanup", new=AsyncMock()),
-            patch.object(memory_manager, "clear_memory"),
-        ):
-            await AgentManager.run_background_prompt(
+        manager._process_message_internal = fake_process
+        await manager.initialize()
+        try:
+            await manager.run_background_prompt(
                 message="background task",
                 reply_mode=ReplyMode.CAPTURE_ONLY,
                 allow_message_tools=True,
             )
+        finally:
+            await manager.close()
 
         self.assertEqual("background task", captured["message"])
         self.assertEqual(ReplyMode.CAPTURE_ONLY, captured["reply_mode"])

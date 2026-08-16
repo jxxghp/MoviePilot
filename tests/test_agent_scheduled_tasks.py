@@ -385,7 +385,15 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     scheduler.init_agent_task_jobs()
 
     process_message = AsyncMock(return_value="执行完成")
-    monkeypatch.setattr("app.agent.orchestrator.agent_manager.process_message", process_message)
+    manager = SimpleNamespace(
+        execute_scheduled_task=AgentManager.execute_scheduled_task,
+        process_message=process_message,
+    )
+    manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
+    monkeypatch.setattr(
+        "app.agent.runtime_loader.get_running_agent_manager",
+        lambda: manager,
+    )
 
     assert await scheduler.execute_agent_task(
         task.id,
@@ -410,7 +418,10 @@ async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> Non
     task = _add_agent_task("cron", "0 * * * *", "scheduled-source")
     scheduler = _build_agent_task_scheduler()
     execute = AsyncMock(return_value=(True, "执行完成"))
-    monkeypatch.setattr("app.agent.orchestrator.agent_manager.execute_scheduled_task", execute)
+    monkeypatch.setattr(
+        "app.agent.runtime_loader.get_running_agent_manager",
+        lambda: SimpleNamespace(execute_scheduled_task=execute),
+    )
 
     assert await scheduler.execute_agent_task(task.id) == (True, "执行完成")
     execute.assert_awaited_once_with(task.id, trigger_source="scheduled")
@@ -1048,6 +1059,7 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
         for index in range(2)
     ]
     manager = AgentManager()
+    await manager.initialize()
     started = asyncio.Event()
 
     async def block_current_task(_task):
@@ -1069,11 +1081,14 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
     await manager.close()
     results = await asyncio.gather(*executions, return_exceptions=True)
 
-    assert all(isinstance(result, asyncio.CancelledError) for result in results)
+    assert all(
+        result == (False, "Agent 定时任务执行失败：AgentManager 已关闭")
+        for result in results
+    )
     for task in tasks:
         completed = AgentTaskOper().get(task.id)
         assert completed.last_status == "failed"
-        assert completed.last_result == "Agent 定时任务已取消"
+        assert completed.last_result == "Agent 定时任务执行失败：AgentManager 已关闭"
         assert completed.run_count == 1
 
 

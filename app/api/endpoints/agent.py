@@ -20,10 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.agent.callback import StreamingHandler
-from app.agent.orchestrator import MoviePilotAgent, ReplyMode, agent_manager
+from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
+from app.agent.runtime_loader import (
+    get_moviepilot_agent_type,
+    get_running_agent_manager,
+)
 from app.chain.message import MessageChain
 from app.command import Command
 from app.runtime.config import global_vars, settings
@@ -254,7 +257,7 @@ async def test_agent_mcp_server(
         )
 
 
-class _WebAgentStreamingHandler(StreamingHandler):
+class _WebAgentStreamingHandlerMixin:
     """
     Web 前端专用流式处理器，将工具提示和文本统一回调给 SSE。
     """
@@ -342,7 +345,35 @@ class _WebAgentStreamingHandler(StreamingHandler):
         return True
 
 
-class _WebAgentMoviePilotAgent(MoviePilotAgent):
+def _get_web_agent_streaming_handler_type() -> type:
+    """首次构造 Web Agent 时才解析完整流式处理器实现。"""
+    global _WEB_AGENT_STREAMING_HANDLER_TYPE
+    if _WEB_AGENT_STREAMING_HANDLER_TYPE is not None:
+        return _WEB_AGENT_STREAMING_HANDLER_TYPE
+    with _WEB_AGENT_STREAMING_HANDLER_TYPE_LOCK:
+        if _WEB_AGENT_STREAMING_HANDLER_TYPE is None:
+            from app.agent.callback import StreamingHandler
+
+            _WEB_AGENT_STREAMING_HANDLER_TYPE = type(
+                "_RuntimeWebAgentStreamingHandler",
+                (_WebAgentStreamingHandlerMixin, StreamingHandler),
+                {"__module__": __name__},
+            )
+        return _WEB_AGENT_STREAMING_HANDLER_TYPE
+
+
+_WEB_AGENT_STREAMING_HANDLER_TYPE_LOCK = Lock()
+_WEB_AGENT_STREAMING_HANDLER_TYPE: Optional[type] = None
+
+
+class _WebAgentStreamingHandler:
+    """保持原构造入口，同时把完整回调实现延迟到真实 Agent 请求。"""
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        return _get_web_agent_streaming_handler_type()(*args, **kwargs)
+
+
+class _WebAgentMoviePilotAgentMixin:
     """
     Web 前端专用 Agent，强制使用流式推理。
     """
@@ -381,7 +412,9 @@ class _WebAgentMoviePilotAgent(MoviePilotAgent):
         :param output_callback: 当前请求的输出回调
         """
         self.output_callback = output_callback
-        if output_callback and isinstance(self.stream_handler, _WebAgentStreamingHandler):
+        if output_callback and isinstance(
+            self.stream_handler, _WebAgentStreamingHandlerMixin
+        ):
             self.stream_handler.set_emit_callback(self._emit_output)
 
     async def _is_system_admin_context(self) -> bool:
@@ -418,6 +451,47 @@ class _WebAgentMoviePilotAgent(MoviePilotAgent):
             self.output_callback(text)
         except Exception as e:
             logger.debug(f"Web智能体输出回调失败: {e}")
+
+
+def _build_web_agent_type(agent_base_type: type) -> type:
+    """为 Web 通道组合唯一的运行时 Agent 类型。"""
+    return type(
+        "_RuntimeWebAgentMoviePilotAgent",
+        (_WebAgentMoviePilotAgentMixin, agent_base_type),
+        {"__module__": __name__},
+    )
+
+
+_WEB_AGENT_TYPE_LOCK = Lock()
+_WEB_AGENT_TYPE: Optional[type] = None
+
+
+def _get_web_agent_type() -> type:
+    """在真实 Web Agent 调用边界 single-flight 解析运行时类型。"""
+    global _WEB_AGENT_TYPE
+    if _WEB_AGENT_TYPE is not None:
+        return _WEB_AGENT_TYPE
+    with _WEB_AGENT_TYPE_LOCK:
+        if _WEB_AGENT_TYPE is None:
+            _WEB_AGENT_TYPE = _build_web_agent_type(get_moviepilot_agent_type())
+        return _WEB_AGENT_TYPE
+
+
+class _WebAgentMoviePilotAgent:
+    """兼容既有构造入口；实例由按需组合的运行时类型提供。"""
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        return _get_web_agent_type()(*args, **kwargs)
+
+
+_DEFAULT_WEB_AGENT_FACTORY = _WebAgentMoviePilotAgent
+
+
+def _resolve_web_agent_factory() -> Callable[..., Any]:
+    """返回真实运行时类型，并保留测试或集成方替换构造入口的能力。"""
+    if _WebAgentMoviePilotAgent is not _DEFAULT_WEB_AGENT_FACTORY:
+        return _WebAgentMoviePilotAgent
+    return _get_web_agent_type()
 
 
 def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
@@ -1131,7 +1205,7 @@ def _build_web_agent_display_message_from_events(
     :param events: 已转换的 WebAgent SSE 事件列表
     :return: 可持久化的助手展示消息
     """
-    message = MoviePilotAgent.build_display_message(
+    message = build_display_message(
         role="assistant",
         status="streaming",
     )
@@ -1725,7 +1799,8 @@ async def get_agent_chat_session(
         if server_session_id != session_id:
             chat = await _get_accessible_agent_chat(oper, server_session_id, current_user)
     if not chat:
-        if agent_manager.is_session_busy(server_session_id):
+        manager = get_running_agent_manager()
+        if manager and manager.is_session_busy(server_session_id):
             return schemas.Response(
                 success=True,
                 data={
@@ -1737,7 +1812,10 @@ async def get_agent_chat_session(
             )
         return schemas.Response(success=False, message="会话不存在或无权访问")
     data = AgentChatOper.to_detail(chat)
-    data["is_processing"] = agent_manager.is_session_busy(chat.session_id)
+    manager = get_running_agent_manager()
+    data["is_processing"] = bool(
+        manager and manager.is_session_busy(chat.session_id)
+    )
     return schemas.Response(success=True, data=data)
 
 
@@ -1836,7 +1914,8 @@ async def stop_web_agent_session_task(
     if chat and not _can_access_agent_chat(chat, current_user):
         return schemas.Response(success=False, message="会话不存在或无权访问")
 
-    stopped = await agent_manager.stop_current_task(server_session_id)
+    manager = get_running_agent_manager()
+    stopped = await manager.stop_current_task(server_session_id) if manager else False
     return schemas.Response(
         success=True,
         data={"stopped": stopped},
@@ -1881,7 +1960,8 @@ async def web_agent_stream(
     )
     is_secret_confirmation_control = (
         is_secret_confirmation_candidate
-        and agent_manager.matches_secret_confirmation(
+        and (manager := get_running_agent_manager()) is not None
+        and manager.matches_secret_confirmation(
             session_id,
             str(current_user.id),
             channel=MessageChannel.WebAgent.value,
@@ -1943,7 +2023,7 @@ async def web_agent_stream(
         display_messages = []
         if payload.echo_user:
             display_messages.append(
-                MoviePilotAgent.build_display_message(
+                build_display_message(
                     role="user",
                     content=display_prompt or prompt,
                     attachments=user_attachments,
@@ -2038,6 +2118,19 @@ async def web_agent_stream(
             media_type="text/event-stream",
         )
 
+    manager = get_running_agent_manager()
+    if manager is None:
+        return StreamingResponse(
+            iter([
+                _build_web_agent_sse(
+                    "error",
+                    {"message": "智能助手服务尚未就绪，请稍后重试。"},
+                    locale=locale,
+                )
+            ]),
+            media_type="text/event-stream",
+        )
+
     transcript = _transcribe_web_agent_audio_refs(payload.audio_refs or [])
     prompt = _merge_web_agent_prompt_with_transcript(prompt, transcript)
     display_prompt = _merge_web_agent_prompt_with_transcript(display_prompt, transcript)
@@ -2077,7 +2170,7 @@ async def web_agent_stream(
     )
     display_messages = []
     if payload.echo_user and not is_secret_confirmation_control:
-        user_display_message = MoviePilotAgent.build_display_message(
+        user_display_message = build_display_message(
             role="user",
             content=display_prompt or prompt,
             attachments=user_attachments,
@@ -2085,7 +2178,7 @@ async def web_agent_stream(
         if payload.choice_selection:
             user_display_message["choice_selection"] = payload.choice_selection
         display_messages.append(user_display_message)
-    assistant_display_message = MoviePilotAgent.build_display_message(
+    assistant_display_message = build_display_message(
         role="assistant",
         status="streaming",
     )
@@ -2132,7 +2225,10 @@ async def web_agent_stream(
         async def run_agent() -> None:
             """后台执行 Agent，并将结果写入事件队列。"""
             try:
-                await agent_manager.process_message(
+                runtime_manager = get_running_agent_manager()
+                if runtime_manager is None:
+                    raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+                await runtime_manager.process_message(
                     session_id=session_id,
                     user_id=str(current_user.id),
                     message=prompt,
@@ -2151,9 +2247,12 @@ async def web_agent_stream(
                         else None
                     ),
                     notification_callback=notification_callback,
-                    agent_factory=_WebAgentMoviePilotAgent,
+                    agent_factory=_resolve_web_agent_factory(),
                     wait_for_completion=True,
                 )
+            except asyncio.CancelledError:
+                # 显式停止会话沿用正常终止语义；服务关闭会由 manager 的稳定异常分支处理。
+                pass
             except Exception as err:
                 logger.error(f"Web智能助手执行失败: {str(err)}")
                 error_event = {

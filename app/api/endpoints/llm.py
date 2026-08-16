@@ -5,11 +5,17 @@ from fastapi.responses import HTMLResponse
 
 from app import schemas
 from app.api.response import ResponseAPIRouter
-from app.agent.llm import LLMProviderManager, render_auth_result_html
 from app.db.models import User
 from app.api.deps import get_current_active_superuser_async
 
 router = ResponseAPIRouter()
+
+
+def _get_llm_provider_manager_type() -> type:
+    """在真实管理请求边界解析 provider 运行时。"""
+    from app.agent.llm.provider import LLMProviderManager
+
+    return LLMProviderManager
 
 
 @router.post(
@@ -37,7 +43,7 @@ async def manage_provider(
             "callback_url",
             str(request.url_for("llm_provider_auth_callback", provider_id=payload.target)),
         )
-    result = await LLMProviderManager().provider_manage(
+    result = await _get_llm_provider_manager_type()().provider_manage(
         payload.target, payload.action, **params
     )
     return schemas.Response(
@@ -70,11 +76,13 @@ async def llm_provider_auth_callback(
     """
     处理需要浏览器回跳的 OAuth provider。
     """
-    success, message = await LLMProviderManager().handle_chatgpt_callback(
+    success, message = await _get_llm_provider_manager_type()().handle_chatgpt_callback(
         provider_id,
         code,
         state,
         error,
         error_description,
     )
+    from app.agent.llm.provider import render_auth_result_html
+
     return HTMLResponse(content=render_auth_result_html(success, message))

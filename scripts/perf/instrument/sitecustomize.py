@@ -12,6 +12,20 @@ import sys
 _OUTPUT_DIR = os.environ.get("MP_PERF_OUTPUT_DIR")
 _SCENARIO = os.environ.get("MP_PERF_SCENARIO", "idle-default")
 _ACTIVATION_TIMEOUT = float(os.environ.get("MP_PERF_ACTIVATION_TIMEOUT", "120"))
+_AGENT_SCENARIOS = {"agent-disabled-router", "agent-tool-catalog"}
+_AGENT_HEAVY_MODULE_PREFIXES = tuple(
+    prefix
+    for prefix in os.environ.get(
+        "MP_PERF_AGENT_MODULE_PREFIXES",
+        (
+            "app.agent.orchestrator,app.agent.callback,app.agent.llm.helper,"
+            "app.agent.tools.base,app.agent.tools.catalog,"
+            "app.agent.tools.factory,app.agent.tools.impl,langgraph,langchain,"
+            "langchain_core,openai,anthropic,google.genai,boto3,botocore"
+        ),
+    ).split(",")
+    if prefix
+)
 _snapshot_index = 0
 _activation_started = False
 _browser_resources: list[object] = []
@@ -110,6 +124,244 @@ def _launch_one_browser(
 def _enum_value(value):
     """把 runtime 枚举降为 JSON 标量。"""
     return getattr(value, "value", value)
+
+
+def _stable_digest(value: object) -> str:
+    """计算不依赖对象地址的 JSON 摘要。"""
+    import hashlib
+    import json
+
+    content = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _agent_module_observation() -> dict[str, object]:
+    """记录 Agent 重模块在目标解释器中的精确加载状态。"""
+    prefix_counts = {
+        prefix: sum(
+            1
+            for module_name in sys.modules
+            if module_name == prefix or module_name.startswith(f"{prefix}.")
+        )
+        for prefix in _AGENT_HEAVY_MODULE_PREFIXES
+    }
+    matching_modules = sorted(
+        module_name
+        for module_name in sys.modules
+        if any(
+            module_name == prefix or module_name.startswith(f"{prefix}.")
+            for prefix in _AGENT_HEAVY_MODULE_PREFIXES
+        )
+    )
+    return {
+        "total_modules": len(sys.modules),
+        "prefix_counts": prefix_counts,
+        "matching_modules": matching_modules,
+        "matching_sha256": _stable_digest(matching_modules),
+    }
+
+
+def _read_agent_runtime() -> dict[str, object]:
+    """读取轻量 Agent loader 的公开只读状态，不触发 capability 首用。"""
+    try:
+        from app.agent.runtime_loader import is_tool_factory_materialized
+
+        return {
+            "available": True,
+            "tool_factory_materialized": is_tool_factory_materialized(),
+        }
+    except Exception as error:  # pragma: no cover - 候选未就绪或真实 runtime 错误
+        return {
+            "available": False,
+            "error_type": type(error).__name__,
+            "error": str(error),
+        }
+
+
+def _probe_router_openapi(app_instance=None, settings_object=None) -> dict[str, object]:
+    """在主进程中生成 OpenAPI，并验证禁用态 Agent 路由仍完整存在。"""
+    if app_instance is None:
+        from app.factory import app as app_instance
+    if settings_object is None:
+        from app.runtime.config import settings as settings_object
+
+    required_paths = (
+        "/api/v1/message/agent/stream",
+        "/api/v1/message/agent/sessions",
+        "/api/v1/openai/v1/chat/completions",
+        "/api/v1/openai/v1/responses",
+        "/api/v1/anthropic/v1/messages",
+        "/api/v1/llm/manage",
+        "/api/v1/mcp",
+        "/api/v1/mcp/tools",
+    )
+    schema = app_instance.openapi()
+    route_paths = sorted(
+        {
+            str(route.path)
+            for route in app_instance.routes
+            if getattr(route, "path", None)
+        }
+    )
+    openapi_paths = sorted((schema.get("paths") or {}).keys())
+    missing_routes = [path for path in required_paths if path not in route_paths]
+    missing_openapi_paths = [
+        path for path in required_paths if path not in openapi_paths
+    ]
+    agent_enabled = bool(settings_object.AI_AGENT_ENABLE)
+    return {
+        "success": not agent_enabled
+        and not missing_routes
+        and not missing_openapi_paths,
+        "ai_agent_enable": agent_enabled,
+        "required_paths": list(required_paths),
+        "missing_routes": missing_routes,
+        "missing_openapi_paths": missing_openapi_paths,
+        "route_count": len(route_paths),
+        "openapi_path_count": len(openapi_paths),
+        "openapi_sha256": _stable_digest(schema),
+        "openapi_title": (schema.get("info") or {}).get("title"),
+        "openapi_version": (schema.get("info") or {}).get("version"),
+    }
+
+
+def _probe_tool_catalog(manager=None) -> dict[str, object]:
+    """通过稳定工具管理入口首次生成目录与 JSON Schema。"""
+    if manager is None:
+        from app.agent.tools.manager import moviepilot_tool_manager
+
+        manager = moviepilot_tool_manager
+    definitions = manager.list_tools()
+    catalog = manager.catalog
+    serialized_definitions = [
+        {
+            "name": definition.name,
+            "input_schema": definition.input_schema,
+        }
+        for definition in definitions
+    ]
+    schema_count = sum(
+        isinstance(definition.input_schema, dict) for definition in definitions
+    )
+    entries = catalog.entries if catalog is not None else ()
+    collisions = catalog.collisions if catalog is not None else {}
+    source_counts: dict[str, int] = {}
+    serialized_entries = []
+    for entry in entries:
+        source_counts[entry.source] = source_counts.get(entry.source, 0) + 1
+        serialized_entries.append(
+            {
+                "name": entry.name,
+                "source": entry.source,
+                "schema_digest": entry.schema_digest,
+            }
+        )
+    first_catalog_sha256 = _stable_digest(serialized_entries)
+    first_schemas_sha256 = _stable_digest(serialized_definitions)
+    repeated_definitions = manager.list_tools()
+    repeated_catalog = manager.catalog
+    repeated_serialized_definitions = [
+        {
+            "name": definition.name,
+            "input_schema": definition.input_schema,
+        }
+        for definition in repeated_definitions
+    ]
+    repeated_entries = repeated_catalog.entries if repeated_catalog is not None else ()
+    repeated_serialized_entries = [
+        {
+            "name": entry.name,
+            "source": entry.source,
+            "schema_digest": entry.schema_digest,
+        }
+        for entry in repeated_entries
+    ]
+    repeated_catalog_sha256 = _stable_digest(repeated_serialized_entries)
+    repeated_schemas_sha256 = _stable_digest(repeated_serialized_definitions)
+    schema_digests_complete = all(
+        isinstance(entry.schema_digest, str) and len(entry.schema_digest) == 64
+        for entry in entries
+    )
+    repeat_revision_unchanged = bool(
+        catalog is not None
+        and repeated_catalog is not None
+        and repeated_catalog.plugin_revision == catalog.plugin_revision
+        and repeated_catalog.factory_revision == catalog.factory_revision
+    )
+    repeat_stable = bool(
+        repeated_catalog is catalog
+        and len(repeated_definitions) == len(definitions)
+        and repeated_catalog_sha256 == first_catalog_sha256
+        and repeated_schemas_sha256 == first_schemas_sha256
+        and repeat_revision_unchanged
+    )
+    return {
+        "success": bool(definitions)
+        and catalog is not None
+        and len(entries) == len(definitions)
+        and schema_count == len(definitions)
+        and not collisions
+        and schema_digests_complete
+        and repeat_stable,
+        "tool_count": len(definitions),
+        "schema_count": schema_count,
+        "catalog_entry_count": len(entries),
+        "collision_names": sorted(collisions),
+        "plugin_revision": catalog.plugin_revision if catalog is not None else None,
+        "factory_revision": catalog.factory_revision if catalog is not None else None,
+        "schemas_sha256": first_schemas_sha256,
+        "catalog_sha256": first_catalog_sha256,
+        "source_counts": source_counts,
+        "schema_digests_complete": schema_digests_complete,
+        "repeat_tool_count": len(repeated_definitions),
+        "repeat_catalog_same_object": repeated_catalog is catalog,
+        "repeat_catalog_sha256": repeated_catalog_sha256,
+        "repeat_schemas_sha256": repeated_schemas_sha256,
+        "repeat_revision_unchanged": repeat_revision_unchanged,
+        "repeat_stable": repeat_stable,
+    }
+
+
+def _activate_agent_scenario(
+    scenario: str,
+    *,
+    app_instance=None,
+    settings_object=None,
+    tool_manager=None,
+    runtime_reader=None,
+) -> dict[str, object]:
+    """执行 Agent 禁用态路由或首次工具目录的进程内场景。"""
+    if scenario not in _AGENT_SCENARIOS:
+        raise ValueError(f"场景不支持 Agent 激活：{scenario}")
+    runtime_reader = runtime_reader or _read_agent_runtime
+    modules_before = _agent_module_observation()
+    runtime_before = runtime_reader()
+
+    if scenario == "agent-disabled-router":
+        action = _probe_router_openapi(
+            app_instance=app_instance,
+            settings_object=settings_object,
+        )
+    else:
+        action = _probe_tool_catalog(manager=tool_manager)
+
+    modules_after = _agent_module_observation()
+    runtime_after = runtime_reader()
+    return {
+        "requested": True,
+        "action": scenario.removeprefix("agent-"),
+        "success": bool(action.get("success")),
+        "modules": {"before": modules_before, "after": modules_after},
+        "observations": {"before": runtime_before, "after": runtime_after},
+        "router_openapi": action if scenario == "agent-disabled-router" else None,
+        "tool_catalog": action if scenario == "agent-tool-catalog" else None,
+    }
 
 
 def _read_display_runtime() -> dict[str, object]:
@@ -338,8 +590,12 @@ def _run_activation() -> None:
         "started_at": _utc_now(),
     }
     try:
-        result["browser"] = _activate_browser_scenario(_SCENARIO)
-        result["success"] = bool(result["browser"]["success"])
+        if _SCENARIO in _AGENT_SCENARIOS:
+            result["agent"] = _activate_agent_scenario(_SCENARIO)
+            result["success"] = bool(result["agent"]["success"])
+        else:
+            result["browser"] = _activate_browser_scenario(_SCENARIO)
+            result["success"] = bool(result["browser"]["success"])
     except Exception as error:  # pragma: no cover - 真实集成错误由 marker 保存
         result.update(
             {

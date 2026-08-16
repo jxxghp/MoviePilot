@@ -32,7 +32,9 @@ DEFAULT_SUBSTRATE = (
 )
 DEFAULT_BROWSER_SOURCE_VOLUME = "mp-perf-v3-browser-seed"
 DEFAULT_SCENARIO = "idle-default"
-SCENARIOS = (DEFAULT_SCENARIO, "browser-headless", "browser-headed")
+BROWSER_SCENARIOS = ("browser-headless", "browser-headed")
+AGENT_SCENARIOS = ("agent-disabled-router", "agent-tool-catalog")
+SCENARIOS = (DEFAULT_SCENARIO, *BROWSER_SCENARIOS, *AGENT_SCENARIOS)
 CAMPAIGN_LABEL = "org.moviepilot.perf.campaign"
 ROLE_LABEL = "org.moviepilot.perf.role"
 SOURCE_LABEL = "org.moviepilot.perf.source-commit"
@@ -43,6 +45,35 @@ CRITICAL_SUBSTRATE_PATHS = (
     "scripts/uv-pip-compat.sh",
 )
 SEED_COMPATIBILITY_PATHS = ("database/versions",)
+AGENT_HEAVY_MODULE_PREFIXES = (
+    "app.agent.orchestrator",
+    "app.agent.callback",
+    "app.agent.llm.helper",
+    "app.agent.tools.base",
+    "app.agent.tools.catalog",
+    "app.agent.tools.factory",
+    "app.agent.tools.impl",
+    "langgraph",
+    "langchain",
+    "langchain_core",
+    "openai",
+    "anthropic",
+    "google.genai",
+    "boto3",
+    "botocore",
+)
+AGENT_SCHEMA_BASELINE_PREFIXES = ("langchain", "langchain_core")
+AGENT_NONMATERIALIZATION_PREFIXES = tuple(
+    prefix
+    for prefix in AGENT_HEAVY_MODULE_PREFIXES
+    if prefix not in AGENT_SCHEMA_BASELINE_PREFIXES
+)
+AGENT_TOOL_CATALOG_PREFIXES = (
+    "app.agent.tools.base",
+    "app.agent.tools.catalog",
+    "app.agent.tools.factory",
+    "app.agent.tools.impl",
+)
 MODULE_PREFIXES = (
     "lark_oapi",
     "slack_bolt",
@@ -50,12 +81,10 @@ MODULE_PREFIXES = (
     "discord",
     "plexapi",
     "telebot",
-    "langgraph",
-    "langchain",
     "app.agent",
-    "app.agent.orchestrator",
     "app.agent.tools",
     "app.modules",
+    *AGENT_HEAVY_MODULE_PREFIXES,
 )
 BALANCED_RUN_ORDER = (
     ("before", 1),
@@ -593,6 +622,7 @@ def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, s
                 "MP_PERF_ACTIVATION_TIMEOUT": str(
                     getattr(args, "activation_timeout", 180)
                 ),
+                "MP_PERF_AGENT_MODULE_PREFIXES": ",".join(AGENT_HEAVY_MODULE_PREFIXES),
             }
         )
     return environment
@@ -1133,7 +1163,7 @@ def capture_activation_snapshot(
     output_dir: Path,
     phase: str,
 ) -> dict[str, Any]:
-    """采集浏览器激活边界的 Engine、进程和进程内 import 状态。"""
+    """采集场景动作边界的 Engine、进程和进程内 import 状态。"""
     engine = capture_engine_stats(container)
     processes = capture_processes(container)
     modules = capture_modules(container, output_dir, processes["main_python"])
@@ -1248,17 +1278,195 @@ def evaluate_browser_activation(
     }
 
 
-def activate_browser_scenario(
+def _agent_prefix_counts(snapshot: dict[str, Any]) -> dict[str, int]:
+    """从模块快照提取 PERF-003 Agent 重模块哨兵。"""
+    counts = snapshot["modules"].get("prefix_counts") or {}
+    return {
+        prefix: int(counts.get(prefix) or 0) for prefix in AGENT_HEAVY_MODULE_PREFIXES
+    }
+
+
+def evaluate_agent_activation(
+    scenario: str,
+    pre: dict[str, Any],
+    post: dict[str, Any],
+    marker: dict[str, Any],
+    expected_pid: Optional[int] = None,
+) -> dict[str, Any]:
+    """验证禁用态路由与首次工具目录的惰性物化不变量。"""
+    agent = marker.get("agent") or {}
+    observations = agent.get("observations") or {}
+    runtime_before = observations.get("before") or {}
+    runtime_after = observations.get("after") or {}
+    prefix_before = _agent_prefix_counts(pre)
+    prefix_after = _agent_prefix_counts(post)
+    forbidden_before = {
+        prefix: prefix_before[prefix]
+        for prefix in AGENT_NONMATERIALIZATION_PREFIXES
+        if prefix_before[prefix]
+    }
+    pre_xvfb = pre["processes"]["xvfb"]
+    post_xvfb = post["processes"]["xvfb"]
+    network_delta = {
+        "rx_bytes": int(post["engine"]["network_rx_bytes"])
+        - int(pre["engine"]["network_rx_bytes"]),
+        "tx_bytes": int(post["engine"]["network_tx_bytes"])
+        - int(pre["engine"]["network_tx_bytes"]),
+    }
+    errors: list[str] = []
+
+    if marker.get("scenario") != scenario:
+        errors.append("进程内 marker 的场景与采集请求不一致")
+    if expected_pid is not None and marker.get("pid") != expected_pid:
+        errors.append("进程内 marker 不是目标 MoviePilot Python 进程写出")
+    if not marker.get("success") or not agent.get("success"):
+        errors.append("主 MoviePilot Python 进程未完成 Agent 场景动作")
+    if forbidden_before:
+        errors.append("Agent 场景动作前已经加载必须延迟物化的模块")
+    if pre_xvfb["count"] != 0 or post_xvfb["count"] != 0:
+        errors.append("Agent 场景不得物化 Xvfb")
+    if not runtime_before.get("available") or not runtime_after.get("available"):
+        errors.append("主进程未提供轻量 Agent runtime 只读观测")
+    if runtime_before.get("tool_factory_materialized") is not False:
+        errors.append("Agent 场景动作前工具工厂必须未物化")
+    if any(network_delta.values()):
+        errors.append("Agent 场景动作产生了容器网络收发")
+
+    revision = {"plugin": None, "factory": None}
+    action_summary: dict[str, Any]
+    if scenario == "agent-disabled-router":
+        router = agent.get("router_openapi") or {}
+        if router.get("ai_agent_enable") is not False:
+            errors.append("router/OpenAPI 场景必须运行在 AI_AGENT_ENABLE=false")
+        if router.get("missing_routes") or router.get("missing_openapi_paths"):
+            errors.append("禁用态缺少 Agent 相关 router 或 OpenAPI path")
+        forbidden_after = {
+            prefix: prefix_after[prefix]
+            for prefix in AGENT_NONMATERIALIZATION_PREFIXES
+            if prefix_after[prefix]
+        }
+        if forbidden_after:
+            errors.append("生成完整 OpenAPI 后加载了必须延迟物化的模块")
+        if runtime_after.get("tool_factory_materialized") is not False:
+            errors.append("生成完整 OpenAPI 不得物化工具工厂")
+        action_summary = {
+            "route_count": router.get("route_count"),
+            "openapi_path_count": router.get("openapi_path_count"),
+            "openapi_sha256": router.get("openapi_sha256"),
+        }
+    elif scenario == "agent-tool-catalog":
+        catalog = agent.get("tool_catalog") or {}
+        if prefix_after["app.agent.tools.factory"] < 1:
+            errors.append("首次工具目录动作后未加载工具工厂")
+        if prefix_after["app.agent.tools.impl"] < 1:
+            errors.append("首次工具目录动作后未加载工具实现")
+        allowed_prefixes = {
+            *AGENT_TOOL_CATALOG_PREFIXES,
+            *AGENT_SCHEMA_BASELINE_PREFIXES,
+        }
+        unexpected_prefixes = {
+            prefix: count
+            for prefix, count in prefix_after.items()
+            if prefix not in allowed_prefixes and count
+        }
+        if unexpected_prefixes:
+            errors.append("首次工具目录动作加载了非目录所需的 Agent/provider 重模块")
+        if runtime_after.get("tool_factory_materialized") is not True:
+            errors.append("首次工具目录动作后工具工厂未标记为已物化")
+        if (
+            not catalog.get("success")
+            or not catalog.get("tool_count")
+            or catalog.get("schema_count") != catalog.get("tool_count")
+            or catalog.get("catalog_entry_count") != catalog.get("tool_count")
+            or catalog.get("collision_names")
+            or not catalog.get("schema_digests_complete")
+            or not catalog.get("repeat_stable")
+            or catalog.get("repeat_tool_count") != catalog.get("tool_count")
+        ):
+            errors.append("工具目录、JSON Schema 或重复读取稳定性不满足合同")
+        if catalog.get("plugin_revision") is None or not catalog.get(
+            "factory_revision"
+        ):
+            errors.append("工具目录缺少 plugin/factory revision")
+        revision = {
+            "plugin": catalog.get("plugin_revision"),
+            "factory": catalog.get("factory_revision"),
+        }
+        action_summary = {
+            "tool_count": catalog.get("tool_count"),
+            "schema_count": catalog.get("schema_count"),
+            "schemas_sha256": catalog.get("schemas_sha256"),
+            "collision_names": catalog.get("collision_names") or [],
+            "repeat_stable": catalog.get("repeat_stable"),
+        }
+    else:
+        errors.append(f"未知 Agent 场景：{scenario}")
+        action_summary = {}
+
+    return {
+        "passed": not errors,
+        "errors": errors,
+        "expected": (
+            "router/OpenAPI 完整且必须延迟物化的模块保持 0"
+            if scenario == "agent-disabled-router"
+            else "首次工具目录后仅物化工具域及 Schema 基线"
+        ),
+        "observed": {
+            "pre_xvfb_count": pre_xvfb["count"],
+            "post_xvfb_count": post_xvfb["count"],
+            "prefix_before": prefix_before,
+            "prefix_after": prefix_after,
+            "network_delta": network_delta,
+            "tool_factory_materialized_before": runtime_before.get(
+                "tool_factory_materialized"
+            ),
+            "tool_factory_materialized_after": runtime_after.get(
+                "tool_factory_materialized"
+            ),
+        },
+        "action": action_summary,
+        "revision": revision,
+    }
+
+
+def evaluate_scenario_activation(
+    scenario: str,
+    pre: dict[str, Any],
+    post: dict[str, Any],
+    marker: dict[str, Any],
+    expected_pid: Optional[int] = None,
+) -> dict[str, Any]:
+    """按场景族分派外部采样验收。"""
+    if scenario in BROWSER_SCENARIOS:
+        return evaluate_browser_activation(
+            scenario,
+            pre,
+            post,
+            marker,
+            expected_pid=expected_pid,
+        )
+    if scenario in AGENT_SCENARIOS:
+        return evaluate_agent_activation(
+            scenario,
+            pre,
+            post,
+            marker,
+            expected_pid=expected_pid,
+        )
+    raise HarnessError(f"未知激活场景：{scenario}")
+
+
+def activate_sample_scenario(
     container,
     output_dir: Path,
     scenario: str,
     timeout: float,
 ) -> dict[str, Any]:
-    """通过 SIGUSR2 让目标 MoviePilot 解释器执行场景激活并回收 marker。"""
+    """通过 SIGUSR2 让目标 MoviePilot 解释器执行动作并回收 marker。"""
     pre = capture_activation_snapshot(container, output_dir, "pre-activation")
     main_python = pre["processes"]["main_python"]
     if not main_python:
-        raise HarnessError("未找到主 Python 进程，无法触发浏览器场景")
+        raise HarnessError("未找到主 Python 进程，无法触发测量场景")
     marker_path = output_dir / "modules" / f"activation-{main_python['pid']}.json"
     marker_path.unlink(missing_ok=True)
 
@@ -1274,12 +1482,12 @@ def activate_browser_scenario(
             raise HarnessError("等待场景激活 marker 时容器提前退出")
         time.sleep(0.05)
     if not marker_path.exists():
-        raise HarnessError(f"浏览器场景激活在 {timeout:.0f}s 内未完成")
+        raise HarnessError(f"测量场景动作在 {timeout:.0f}s 内未完成")
 
     marker_received_at = time.monotonic()
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
     post = capture_activation_snapshot(container, output_dir, "post-activation")
-    validation = evaluate_browser_activation(
+    validation = evaluate_scenario_activation(
         scenario,
         pre,
         post,
@@ -1304,7 +1512,7 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
     """执行一个隔离样本并在约定时间点采集完整指标。"""
     scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
     if scenario != DEFAULT_SCENARIO and args.variant != "after":
-        raise HarnessError("浏览器激活场景只用于验证包含 app.sdk.browser 的 After 候选")
+        raise HarnessError("非默认场景只用于验证包含候选公共 API 的 After 版本")
     client = require_docker_client()
     build = load_build_manifest(args)
     config_seed, browser_seed = require_seed_volumes(client, args)
@@ -1391,7 +1599,7 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
         measurement_origin_at = settled_at
 
         if scenario != DEFAULT_SCENARIO:
-            activation = activate_browser_scenario(
+            activation = activate_sample_scenario(
                 container,
                 output_dir,
                 scenario,
@@ -1614,8 +1822,13 @@ def build_markdown_report(
         )
         lines.append("| " + " | ".join(row) + " |")
 
-    activated_samples = [sample for sample in samples if sample.get("activation")]
-    if activated_samples:
+    browser_activated_samples = [
+        sample
+        for sample in samples
+        if sample.get("activation")
+        and sample.get("scenario", DEFAULT_SCENARIO) in BROWSER_SCENARIOS
+    ]
+    if browser_activated_samples:
         activation_headers = [
             "场景",
             "版本",
@@ -1644,7 +1857,7 @@ def build_markdown_report(
             ]
         )
         for sample in sorted(
-            activated_samples,
+            browser_activated_samples,
             key=lambda item: (
                 item.get("scenario", DEFAULT_SCENARIO),
                 variant_order.get(item["variant"], 99),
@@ -1691,6 +1904,144 @@ def build_markdown_report(
                 "通过" if validation["passed"] else "失败",
             ]
             lines.append("| " + " | ".join(activation_row) + " |")
+
+    agent_activated_samples = [
+        sample
+        for sample in samples
+        if sample.get("activation")
+        and sample.get("scenario", DEFAULT_SCENARIO) in AGENT_SCENARIOS
+    ]
+    if agent_activated_samples:
+        agent_headers = [
+            "场景",
+            "样本",
+            "动作(s)",
+            "Pre/Post WS(MiB)",
+            "Pre/Post Python PSS(MiB)",
+            "Pre/Post sys.modules",
+            "Factory observation",
+            "模块哨兵 Pre",
+            "模块哨兵 Post",
+            "Router/OpenAPI 或 Tools/Schemas",
+            "Plugin/Factory revision",
+            "Action RX/TX Δ(KiB)",
+            "验收",
+        ]
+        lines.extend(
+            [
+                "",
+                "## Agent 场景动作",
+                "",
+                "| " + " | ".join(agent_headers) + " |",
+                "| " + " | ".join(["---"] * len(agent_headers)) + " |",
+            ]
+        )
+
+        def format_prefix_counts(counts: dict[str, int]) -> str:
+            """仅展开已加载前缀，全部未加载时输出明确零状态。"""
+            loaded = [f"{prefix}={count}" for prefix, count in counts.items() if count]
+            return ", ".join(loaded) if loaded else "全部 0"
+
+        for sample in sorted(
+            agent_activated_samples,
+            key=lambda item: (
+                item.get("scenario", DEFAULT_SCENARIO),
+                item["sample_index"],
+            ),
+        ):
+            activation = sample["activation"]
+            pre = activation["pre"]
+            post = activation["post"]
+            validation = activation["validation"]
+            observed = validation["observed"]
+            action = validation["action"]
+            revision = validation["revision"]
+            pre_python = pre["processes"].get("main_python") or {}
+            post_python = post["processes"].get("main_python") or {}
+            if sample.get("scenario") == "agent-disabled-router":
+                action_result = (
+                    f"{action.get('route_count')}/{action.get('openapi_path_count')}"
+                )
+            else:
+                action_result = (
+                    f"{action.get('tool_count')}/{action.get('schema_count')}; "
+                    f"repeat={'Y' if action.get('repeat_stable') else 'N'}; "
+                    f"collision={len(action.get('collision_names') or [])}"
+                )
+            factory_revision = str(revision.get("factory") or "")
+            revision_result = (
+                f"{revision.get('plugin')}/{factory_revision[:12]}"
+                if factory_revision
+                else "不适用"
+            )
+            agent_row = [
+                sample.get("scenario", DEFAULT_SCENARIO),
+                str(sample["sample_index"]),
+                f"{float(activation.get('worker_elapsed_seconds') or 0):.2f}",
+                f"{format_mib(pre['engine']['working_set_bytes'])}/"
+                f"{format_mib(post['engine']['working_set_bytes'])}",
+                f"{format_kib_as_mib(pre_python.get('pss_kib'))}/"
+                f"{format_kib_as_mib(post_python.get('pss_kib'))}",
+                f"{pre['modules'].get('count')}/{post['modules'].get('count')}",
+                (
+                    f"{observed.get('tool_factory_materialized_before')}→"
+                    f"{observed.get('tool_factory_materialized_after')}"
+                ),
+                format_prefix_counts(observed.get("prefix_before") or {}),
+                format_prefix_counts(observed.get("prefix_after") or {}),
+                action_result,
+                revision_result,
+                (
+                    f"{format_bytes_as_kib(post['engine']['network_rx_bytes'] - pre['engine']['network_rx_bytes'])}/"
+                    f"{format_bytes_as_kib(post['engine']['network_tx_bytes'] - pre['engine']['network_tx_bytes'])}"
+                ),
+                "通过" if validation["passed"] else "失败",
+            ]
+            lines.append("| " + " | ".join(agent_row) + " |")
+
+    sentinel_samples = [sample for sample in samples if sample.get("measurements")]
+    if sentinel_samples:
+        lines.extend(
+            [
+                "",
+                "## Agent 模块哨兵",
+                "",
+                "每行记录该样本所有定时采样点的最大模块数；精确时间点数据保留在 JSON。",
+                "`langchain` 与 `langchain_core` 只记录 Schema 基线，不参与归零门禁。",
+                "",
+                "| 场景 | 版本 | 样本 | 重模块峰值 |",
+                "| --- | --- | --- | --- |",
+            ]
+        )
+        for sample in sorted(
+            sentinel_samples,
+            key=lambda item: (
+                item.get("scenario", DEFAULT_SCENARIO),
+                variant_order.get(item["variant"], 99),
+                item["sample_index"],
+            ),
+        ):
+            peaks = {
+                prefix: max(
+                    int(
+                        measurement.get("modules", {})
+                        .get("prefix_counts", {})
+                        .get(prefix, 0)
+                    )
+                    for measurement in sample["measurements"]
+                )
+                for prefix in AGENT_HEAVY_MODULE_PREFIXES
+            }
+            peak_text = (
+                ", ".join(
+                    f"{prefix}={count}" for prefix, count in peaks.items() if count
+                )
+                or "全部 0"
+            )
+            lines.append(
+                f"| {sample.get('scenario', DEFAULT_SCENARIO)} | "
+                f"{sample['variant']} | {sample['sample_index']} | {peak_text} |"
+            )
 
     lines.extend(["", "## 中位数对照", ""])
     for scenario in scenarios:

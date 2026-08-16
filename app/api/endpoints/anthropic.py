@@ -9,16 +9,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app import schemas
 from app.api.endpoints.openai import (
     MODEL_ID,
-    _CollectingMoviePilotAgent,
+    _is_manager_unavailable,
+    _run_managed_agent,
 )
 from app.api.openai_utils import (
     build_anthropic_messages,
     build_prompt,
     build_session_id,
 )
+from app.agent.runtime_loader import get_running_agent_manager
 from app.runtime.config import settings
 from app.application.security.access import anthropic_api_key_header
-from app.schemas.types import MessageChannel
 
 ANTHROPIC_ERROR_RESPONSES = {
     400: {"model": schemas.AnthropicErrorResponse, "description": "请求格式错误"},
@@ -60,19 +61,31 @@ def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
 
 
 async def _stream_anthropic_response(
-    agent: _CollectingMoviePilotAgent,
+    manager,
+    session_id: str,
+    user_id: str,
     prompt: str,
     images: List[str],
 ) -> AsyncIterator[str]:
     event_queue: asyncio.Queue = asyncio.Queue()
-    if hasattr(agent.stream_handler, "bind_queue"):
-        agent.stream_handler.bind_queue(event_queue)
 
     message_id = f"msg_{uuid.uuid4().hex}"
 
     async def _run_agent():
         try:
-            await agent.process(prompt, images=images, files=None)
+            await _run_managed_agent(
+                manager=manager,
+                session_id=session_id,
+                user_id=user_id,
+                username="anthropic-client",
+                source="anthropic",
+                prompt=prompt,
+                images=images,
+                stream_mode=True,
+                event_queue=event_queue,
+            )
+        except asyncio.CancelledError:
+            await event_queue.put({"error": "MoviePilot AI agent is unavailable."})
         except Exception as exc:
             await event_queue.put({"error": str(exc)})
         finally:
@@ -87,7 +100,12 @@ async def _stream_anthropic_response(
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):
-                raise RuntimeError(str(item["error"]))
+                yield (
+                    "event: error\n"
+                    f"data: {json.dumps({'type': 'error', 'error': {'type': 'api_error', 'message': str(item['error'])}}, ensure_ascii=False)}\n\n"
+                )
+                yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'}, ensure_ascii=False)}\n\n"
+                return
             text = str(item or "")
             if not text:
                 continue
@@ -96,6 +114,7 @@ async def _stream_anthropic_response(
         yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}}, ensure_ascii=False)}\n\n"
         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'}, ensure_ascii=False)}\n\n"
     finally:
+        await manager.clear_session(session_id=session_id, user_id=user_id)
         if not task.done():
             task.cancel()
             try:
@@ -132,6 +151,13 @@ async def messages(
             503,
             error_type="api_error",
         )
+    manager = get_running_agent_manager()
+    if manager is None:
+        return _anthropic_error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="api_error",
+        )
 
     normalized_messages = build_anthropic_messages(payload.system, payload.messages)
     try:
@@ -141,19 +167,15 @@ async def messages(
 
     session_seed = anthropic_version or "anthropic"
     session_id = build_session_id(f"{session_seed}:{uuid.uuid4().hex}", SESSION_PREFIX)
-    # 兼容接口的 API_TOKEN 客户端按管理员级 MoviePilot Agent 集成处理。
-    agent = _CollectingMoviePilotAgent(
-        session_id=session_id,
-        user_id=session_id,
-        channel=MessageChannel.Web.value,
-        source="anthropic",
-        username="anthropic-client",
-        stream_mode=payload.stream,
-    )
-
     if payload.stream:
         return StreamingResponse(
-            _stream_anthropic_response(agent=agent, prompt=prompt, images=images),
+            _stream_anthropic_response(
+                manager=manager,
+                session_id=session_id,
+                user_id=session_id,
+                prompt=prompt,
+                images=images,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -162,14 +184,32 @@ async def messages(
             },
         )
 
+    collected_messages = []
     try:
-        result = await agent.process(prompt, images=images, files=None)
+        result, collected_messages = await _run_managed_agent(
+            manager=manager,
+            session_id=session_id,
+            user_id=session_id,
+            username="anthropic-client",
+            source="anthropic",
+            prompt=prompt,
+            images=images,
+            stream_mode=False,
+        )
     except Exception as exc:
+        if _is_manager_unavailable(exc):
+            return _anthropic_error_response(
+                "MoviePilot AI agent is unavailable.",
+                503,
+                error_type="api_error",
+            )
         return _anthropic_error_response(str(exc), 500, error_type="api_error")
+    finally:
+        await manager.clear_session(session_id=session_id, user_id=session_id)
 
     content = "\n\n".join(
         message.strip()
-        for message in agent.collected_messages
+        for message in collected_messages
         if message and message.strip()
     ).strip()
     if not content and result:

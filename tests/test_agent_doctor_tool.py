@@ -101,10 +101,12 @@ def test_mcp_tool_manager_exposes_doctor_report_tool():
     with patch(
         "app.agent.tools.manager.MoviePilotToolFactory.create_tools",
         return_value=[tool],
-    ):
+    ) as create_tools:
         manager = MoviePilotToolsManager(is_admin=True)
+        create_tools.assert_not_called()
+        tool_definitions = manager.list_tools()
+        create_tools.assert_called_once()
 
-    tool_definitions = manager.list_tools()
     assert [item.name for item in tool_definitions] == ["query_doctor_report"]
     schema = tool_definitions[0].input_schema
     assert "deep" in schema["properties"]

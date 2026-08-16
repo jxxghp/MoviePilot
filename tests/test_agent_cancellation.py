@@ -40,6 +40,7 @@ def test_stop_current_task_cancels_waiters_and_allows_next_message():
 
     async def _run_scenario():
         manager = AgentManager()
+        await manager.initialize()
         started = asyncio.Event()
 
         async def _block_current_task(_task):
@@ -96,6 +97,7 @@ def test_stop_current_task_cancels_waiters_and_allows_next_message():
                 second_waiter,
                 return_exceptions=True,
             )
+            await manager.close()
 
     asyncio.run(_run_scenario())
 
@@ -105,6 +107,7 @@ def test_stop_queues_new_message_until_cancellation_cleanup_finishes():
 
     async def _run_scenario():
         manager = AgentManager()
+        await manager.initialize()
         current_started = asyncio.Event()
         cancellation_cleanup_started = asyncio.Event()
         release_cleanup = asyncio.Event()
@@ -149,5 +152,6 @@ def test_stop_queues_new_message_until_cancellation_cleanup_finishes():
         assert await asyncio.wait_for(next_waiter, timeout=1) == "next-completed"
         with pytest.raises(asyncio.CancelledError):
             await current_waiter
+        await manager.close()
 
     asyncio.run(_run_scenario())

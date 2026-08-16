@@ -6,6 +6,8 @@ from threading import Event as ThreadEvent
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app import schemas
 from app.agent import ReplyMode, agent_manager
 from app.api.endpoints.agent import (
@@ -39,6 +41,21 @@ from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, MessageChannel, NotificationType
+
+
+@pytest.fixture(autouse=True)
+def _running_agent_service():
+    """本文件验证运行态 Web Agent 行为，显式提供已启动的 canonical manager。"""
+    was_accepting = agent_manager._accepting_tasks
+    agent_manager._accepting_tasks = True
+    try:
+        with patch(
+            "app.api.endpoints.agent.get_running_agent_manager",
+            return_value=agent_manager,
+        ):
+            yield
+    finally:
+        agent_manager._accepting_tasks = was_accepting
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():
@@ -1141,6 +1158,39 @@ def test_web_agent_stop_finishes_stream_without_error():
 
     assert '"type": "done"' in body
     assert '"type": "error"' not in body
+
+
+def test_web_agent_stream_rechecks_running_service_before_enqueue():
+    """响应建立后服务若已关闭，生成器必须稳定返回错误且不向旧 manager 入队。"""
+    payload = schemas.AgentWebChatRequest(
+        text="检查状态",
+        session_id="shutdown-race",
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    stale_manager = SimpleNamespace(process_message=AsyncMock())
+
+    async def scenario():
+        response = await web_agent_stream(payload, request, user)
+        return "".join(await _collect_streaming_response(response))
+
+    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        "app.api.endpoints.agent._is_web_agent_traditional_message",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent._has_web_agent_traditional_interaction",
+        return_value=False,
+    ), patch(
+        "app.api.endpoints.agent.get_running_agent_manager",
+        side_effect=[stale_manager, None],
+    ), patch(
+        "app.api.endpoints.agent._save_web_agent_display_snapshot",
+    ):
+        body = asyncio.run(scenario())
+
+    assert '"type": "error"' in body
+    assert '"type": "done"' in body
+    stale_manager.process_message.assert_not_awaited()
 
 
 def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():

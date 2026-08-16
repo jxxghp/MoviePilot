@@ -1,20 +1,13 @@
 """AI智能体相关数据模型"""
 
 from datetime import datetime
-from enum import Enum
 from typing import Any, List, Literal, Optional, Union
 
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 from app.schemas.common import JsonData
-
-
-class ReplyMode(str, Enum):
-    """Agent 最终回复处理模式（chain 与 agent 层共享的值域）。"""
-
-    DISPATCH = "dispatch"
-    CAPTURE_ONLY = "capture_only"
+from app.schemas.types import ReplyMode
 
 
 class ConversationMemory(BaseModel):

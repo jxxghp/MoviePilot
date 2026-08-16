@@ -4,6 +4,7 @@ import json
 import re
 import traceback
 import uuid
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -16,12 +17,10 @@ from langchain_core.messages import (  # noqa: F401
     SystemMessage,
 )
 
-import warnings
-warnings.filterwarnings("ignore", message=".*allowed_objects.*")
-
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
+from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm import LLMHelper
 from app.agent.llm.server_tools import ServerToolRegistry
 from app.agent.memory import memory_manager
@@ -60,7 +59,6 @@ from app.agent.policy import (
 )
 from app.agent.runtime import agent_runtime_manager
 from app.agent.mcp import agent_mcp_manager
-from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.mcp import (
     create_external_mcp_tools,
@@ -76,10 +74,20 @@ from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.user import UserOper
 from app.runtime.log import logger
 from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Notification, NotificationType
-from app.schemas.agent import ReplyMode
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
 from app.schemas.types import ChainEventType, EventType, MessageChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
+
+warnings.filterwarnings("ignore", message=".*allowed_objects.*")
+
+
+def __getattr__(name: str) -> Any:
+    """按需解析旧测试与扩展仍可能访问的工具工厂符号。"""
+    if name == "MoviePilotToolFactory":
+        from app.agent.runtime_loader import get_tool_factory
+
+        return get_tool_factory()
+    raise AttributeError(f"module 'app.agent.orchestrator' has no attribute {name!r}")
 
 
 def _finish_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -393,11 +401,6 @@ class MoviePilotAgent:
         # 流式token管理
         self.stream_handler = StreamingHandler()
 
-    @staticmethod
-    def _current_timestamp_ms() -> int:
-        """返回当前毫秒时间戳。"""
-        return int(datetime.now().timestamp() * 1000)
-
     @classmethod
     def build_display_message(
             cls,
@@ -409,22 +412,12 @@ class MoviePilotAgent:
         """
         构造可展示的 Agent 会话消息。
         """
-        normalized_content = content or ""
-        return {
-            "id": f"{role}-{uuid.uuid4().hex}",
-            "role": role,
-            "content": normalized_content,
-            "createdAt": cls._current_timestamp_ms(),
-            "status": status,
-            "tools": [],
-            "segments": (
-                [{"type": "text", "content": normalized_content}]
-                if normalized_content
-                else []
-            ),
-            "attachments": attachments or [],
-            "choices": [],
-        }
+        return build_display_message(
+            role=role,
+            content=content,
+            attachments=attachments,
+            status=status,
+        )
 
     def _should_save_display_history(self) -> bool:
         """
@@ -1560,7 +1553,9 @@ class MoviePilotAgent:
         """
         初始化主 Agent 本地工具实例。
         """
-        return MoviePilotToolFactory.create_tools(
+        from app.agent.runtime_loader import get_tool_factory
+
+        return get_tool_factory().create_tools(
             session_id=self.session_id,
             user_id=self.user_id,
             channel=self.channel,
@@ -1575,14 +1570,17 @@ class MoviePilotAgent:
         self,
     ) -> tuple[ToolCatalogSnapshot, ToolCatalogSnapshot]:
         """在同一插件 revision 窗口内建立主图和子图工具目录。"""
+        from app.agent.runtime_loader import get_tool_factory
+
+        tool_factory = get_tool_factory()
         plugin_manager = PluginManager()
-        for _attempt in range(MoviePilotToolFactory.CATALOG_BUILD_MAX_ATTEMPTS):
+        for _attempt in range(tool_factory.CATALOG_BUILD_MAX_ATTEMPTS):
             before_revision = plugin_manager.get_plugin_agent_tools_revision()
             tools = self._initialize_tools()
             subagent_tools = self._initialize_subagent_tools()
             after_revision = plugin_manager.get_plugin_agent_tools_revision()
             if before_revision == after_revision:
-                factory_revision = MoviePilotToolFactory.catalog_factory_revision()
+                factory_revision = tool_factory.catalog_factory_revision()
                 return (
                     ToolCatalogSnapshot.from_tools(
                         tools,
@@ -1670,11 +1668,18 @@ class MoviePilotAgent:
                 (tool_catalog.signature, subagent_catalog.signature)
                 if tool_catalog is not None and subagent_catalog is not None
                 else (
-                    MoviePilotToolFactory.catalog_factory_revision(),
+                    self._tool_factory_revision(),
                     PluginManager().get_plugin_agent_tools_revision(),
                 )
             ),
         )
+
+    @staticmethod
+    def _tool_factory_revision() -> str:
+        """在目录签名确实需要时解析工具工厂版本。"""
+        from app.agent.runtime_loader import get_tool_factory
+
+        return get_tool_factory().catalog_factory_revision()
 
     def _get_cached_agent(
             self, signature: tuple[Any, ...], streaming: bool
@@ -1722,7 +1727,9 @@ class MoviePilotAgent:
         """
         初始化子代理专用静默工具列表。
         """
-        return MoviePilotToolFactory.create_tools(
+        from app.agent.runtime_loader import get_tool_factory
+
+        return get_tool_factory().create_tools(
             session_id=self.session_id,
             user_id=self.user_id,
             channel=self.channel,
@@ -1907,8 +1914,10 @@ class MoviePilotAgent:
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                 return cached_agent
             max_tools = settings.LLM_MAX_TOOLS
+            from app.agent.runtime_loader import get_tool_factory
+
             always_include_tools = (
-                MoviePilotToolFactory.get_tool_selector_always_include_names(tools)
+                get_tool_factory().get_tool_selector_always_include_names(tools)
             )
             if subagent_task_tools:
                 always_include_tools.extend(
@@ -2438,7 +2447,14 @@ class _MessageTask:
     protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
     notification_callback: Optional[Callable[[Any], None]] = None
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
+    agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None
     completion_future: Optional[asyncio.Future] = None
+
+
+class AgentManagerUnavailableError(RuntimeError):
+    """AgentManager 未运行或已开始关闭，不能再接收新任务。"""
+
+    code = "agent_manager_unavailable"
 
 
 class AgentManager:
@@ -2458,6 +2474,9 @@ class AgentManager:
         self._idle_cleanup_task: Optional[asyncio.Task] = None
         self._idle_session_ttl = timedelta(hours=24)
         self._idle_cleanup_interval = 60 * 60
+        # 接收门禁与队列写入共用一把锁，确保关闭开始后不会再创建 worker。
+        self._lifecycle_lock = asyncio.Lock()
+        self._accepting_tasks = False
 
     def get_session_status(self, session_id: str) -> dict[str, Any]:
         """获取会话当前模型与 token 使用状态。"""
@@ -2504,40 +2523,51 @@ class AgentManager:
         """
         初始化管理器
         """
-        memory_manager.initialize()
-        if self._idle_cleanup_task and not self._idle_cleanup_task.done():
-            return
-        self._idle_cleanup_task = asyncio.create_task(self._cleanup_idle_sessions())
+        async with self._lifecycle_lock:
+            if self._accepting_tasks:
+                return
+            memory_manager.initialize()
+            if not self._idle_cleanup_task or self._idle_cleanup_task.done():
+                self._idle_cleanup_task = asyncio.create_task(
+                    self._cleanup_idle_sessions()
+                )
+            self._accepting_tasks = True
 
     async def close(self):
         """
         关闭管理器
         """
-        if self._idle_cleanup_task:
-            self._idle_cleanup_task.cancel()
-            try:
-                await self._idle_cleanup_task
-            except asyncio.CancelledError:
-                pass
-            self._idle_cleanup_task = None
-        await memory_manager.close()
-        # 取消所有会话worker
-        for task in list(self._session_workers.values()):
-            task.cancel()
-        # 等待所有worker结束
-        for session_id, task in list(self._session_workers.items()):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        self._session_workers.clear()
-        for queue in list(self._session_queues.values()):
-            self._discard_queued_messages(queue)
-        self._session_queues.clear()
-        self._session_last_used.clear()
-        for agent in list(self.active_agents.values()):
-            await agent.cleanup()
-        self.active_agents.clear()
+        async with self._lifecycle_lock:
+            # 门禁必须先关闭；锁内完成清理可阻止等待中的请求在收口期间重新入队。
+            self._accepting_tasks = False
+            if self._idle_cleanup_task:
+                self._idle_cleanup_task.cancel()
+                try:
+                    await self._idle_cleanup_task
+                except asyncio.CancelledError:
+                    pass
+                self._idle_cleanup_task = None
+            # 取消所有会话worker
+            for task in list(self._session_workers.values()):
+                task.cancel()
+            # 等待所有worker结束
+            for session_id, task in list(self._session_workers.items()):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            self._session_workers.clear()
+            for queue in list(self._session_queues.values()):
+                self._discard_queued_messages(
+                    queue,
+                    error=AgentManagerUnavailableError("AgentManager 已关闭"),
+                )
+            self._session_queues.clear()
+            self._session_last_used.clear()
+            for agent in list(self.active_agents.values()):
+                await agent.cleanup()
+            self.active_agents.clear()
+            await memory_manager.close()
 
     def _record_session_activity(self, session_id: str, user_id: str) -> None:
         """
@@ -2607,6 +2637,7 @@ class AgentManager:
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
             notification_callback: Optional[Callable[[Any], None]] = None,
             agent_factory: Optional[Callable[..., MoviePilotAgent]] = None,
+            agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None,
             wait_for_completion: bool = False,
     ) -> str:
         """
@@ -2635,38 +2666,40 @@ class AgentManager:
             protected_output_callback=protected_output_callback,
             notification_callback=notification_callback,
             agent_factory=agent_factory,
+            agent_setup=agent_setup,
             completion_future=completion_future,
         )
-        self._record_session_activity(session_id, user_id)
+        async with self._lifecycle_lock:
+            if not self._accepting_tasks:
+                raise AgentManagerUnavailableError("AgentManager 未运行或已关闭")
+            self._record_session_activity(session_id, user_id)
 
-        # 获取或创建会话队列
-        if session_id not in self._session_queues:
-            self._session_queues[session_id] = asyncio.Queue()
+            # 获取或创建会话队列
+            if session_id not in self._session_queues:
+                self._session_queues[session_id] = asyncio.Queue()
 
-        queue = self._session_queues[session_id]
-        queue_size = queue.qsize()
+            queue = self._session_queues[session_id]
+            queue_size = queue.qsize()
 
-        # 如果队列中已有等待的消息，通知用户消息已排队
-        if queue_size > 0 or (
-                session_id in self._session_workers
-                and not self._session_workers[session_id].done()
-        ):
-            logger.info(
-                f"会话 {session_id} 有任务正在处理，消息已排队等待 "
-                f"(队列中待处理: {queue_size} 条)"
-            )
+            # 如果队列中已有等待的消息，通知用户消息已排队
+            if queue_size > 0 or (
+                    session_id in self._session_workers
+                    and not self._session_workers[session_id].done()
+            ):
+                logger.info(
+                    f"会话 {session_id} 有任务正在处理，消息已排队等待 "
+                    f"(队列中待处理: {queue_size} 条)"
+                )
 
-        # 放入队列
-        await queue.put(task)
-
-        # 确保该会话有一个worker在运行
-        if (
-                session_id not in self._session_workers
-                or self._session_workers[session_id].done()
-        ):
-            self._session_workers[session_id] = asyncio.create_task(
-                self._session_worker(session_id)
-            )
+            # 放入队列并创建 worker 与关闭门禁保持原子关系。
+            await queue.put(task)
+            if (
+                    session_id not in self._session_workers
+                    or self._session_workers[session_id].done()
+            ):
+                self._session_workers[session_id] = asyncio.create_task(
+                    self._session_worker(session_id)
+                )
 
         if completion_future:
             return await completion_future
@@ -2698,7 +2731,12 @@ class AgentManager:
                         task.completion_future.set_result(result)
                 except asyncio.CancelledError:
                     if task.completion_future and not task.completion_future.done():
-                        task.completion_future.cancel()
+                        if self._accepting_tasks:
+                            task.completion_future.cancel()
+                        else:
+                            task.completion_future.set_exception(
+                                AgentManagerUnavailableError("AgentManager 已关闭")
+                            )
                     raise
                 except Exception as e:
                     logger.error(f"处理会话 {session_id} 的消息失败: {e}")
@@ -2723,7 +2761,10 @@ class AgentManager:
                 self._session_queues.pop(session_id, None)
 
     @staticmethod
-    def _discard_queued_messages(queue: asyncio.Queue) -> None:
+    def _discard_queued_messages(
+            queue: asyncio.Queue,
+            error: Optional[Exception] = None,
+    ) -> None:
         """丢弃会话队列时同步结束等待任务完成的调用方。"""
         while not queue.empty():
             try:
@@ -2731,7 +2772,10 @@ class AgentManager:
             except asyncio.QueueEmpty:
                 break
             if task.completion_future and not task.completion_future.done():
-                task.completion_future.cancel()
+                if error is None:
+                    task.completion_future.cancel()
+                else:
+                    task.completion_future.set_exception(error)
             queue.task_done()
 
     @staticmethod
@@ -2810,6 +2854,9 @@ class AgentManager:
             if task.notification_callback is not None and hasattr(agent, "set_notification_callback"):
                 agent.set_notification_callback(task.notification_callback)
 
+        if task.agent_setup is not None:
+            task.agent_setup(agent)
+
         process_kwargs = {
             "images": task.images,
             "files": task.files,
@@ -2824,6 +2871,11 @@ class AgentManager:
         与 clear_session 不同，此方法不会销毁Agent实例或清除记忆，
         用户可以在停止后继续对话。
         """
+        async with self._lifecycle_lock:
+            return await self._stop_current_task_locked(session_id)
+
+    async def _stop_current_task_locked(self, session_id: str):
+        """在 lifecycle 互斥域内停止会话 worker。"""
         stopped = False
 
         worker = self._session_workers.get(session_id)
@@ -2831,7 +2883,7 @@ class AgentManager:
         if queue and self._session_queues.get(session_id) is queue:
             self._session_queues.pop(session_id, None)
 
-        # 先摘下旧队列；清理期间的新消息进入新队列，但等待旧 worker 完全退出后再执行。
+        # 先摘下旧队列再等待 worker 退出；lifecycle 锁保证清理期间不会并发建立新队列。
         if worker:
             worker.cancel()
         if queue:
@@ -2869,6 +2921,11 @@ class AgentManager:
         """
         清空会话
         """
+        async with self._lifecycle_lock:
+            await self._clear_session_locked(session_id=session_id, user_id=user_id)
+
+    async def _clear_session_locked(self, session_id: str, user_id: str) -> None:
+        """在 lifecycle 互斥域内释放会话、Agent 与记忆。"""
         self._session_last_used.pop(session_id, None)
         # 取消该会话的worker
         if session_id in self._session_workers:
@@ -2879,8 +2936,10 @@ class AgentManager:
                 pass
             self._session_workers.pop(session_id, None)  # noqa
 
-        # 清理队列
-        self._session_queues.pop(session_id, None)
+        # 清理队列时同步结束未执行请求，避免 wait_for_completion 调用方永久等待。
+        queue = self._session_queues.pop(session_id, None)
+        if queue:
+            self._discard_queued_messages(queue)
 
         # 清理agent
         if session_id in self.active_agents:
@@ -2890,8 +2949,8 @@ class AgentManager:
             memory_manager.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
 
-    @staticmethod
     async def run_background_prompt(
+            self,
             message: str,
             session_prefix: str = "__agent_background",
             output_callback: Optional[Callable[[str], None]] = None,
@@ -2909,22 +2968,21 @@ class AgentManager:
         elif allow_message_tools is None:
             allow_message_tools = True
 
-        agent = MoviePilotAgent(
-            session_id=session_id,
-            user_id=user_id,
-            channel=None,
-            source=None,
-            username=settings.SUPERUSER,
-            replay_mode=reply_mode,
-            output_callback=output_callback,
-            allow_message_tools=allow_message_tools,
-        )
-
         try:
-            await agent.process(message)
+            await self.process_message(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                channel=None,
+                source=None,
+                username=settings.SUPERUSER,
+                reply_mode=reply_mode,
+                output_callback=output_callback,
+                allow_message_tools=allow_message_tools,
+                wait_for_completion=True,
+            )
         finally:
-            await agent.cleanup()
-            memory_manager.clear_memory(session_id, user_id)
+            await self.clear_session(session_id=session_id, user_id=user_id)
 
     async def execute_scheduled_task(
             self,
@@ -3065,3 +3123,14 @@ class AgentManager:
 
 # 全局智能体管理器实例
 agent_manager = AgentManager()
+
+# 星号导入过去会暴露模块中全部非私有名称；这里按同一规则锁定既有集合，
+# 仅追加由 __getattr__ 按需解析的兼容工厂符号。
+__all__ = sorted(
+    {
+        name
+        for name in globals()
+        if not name.startswith("_") and name != "MoviePilotToolFactory"
+    }
+    | {"MoviePilotToolFactory"}
+)
