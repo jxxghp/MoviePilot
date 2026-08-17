@@ -2,13 +2,14 @@ from abc import ABCMeta, abstractmethod
 from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional, Type
 
+from app.application.messaging.message import MessageHelper
 from app.chain import ChainBase
-from app.core.config import settings
-from app.core.event import EventManager
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.helper.message import MessageHelper
-from app.schemas import Notification, NotificationType, MessageChannel
+from app.runtime.config import settings
+from app.runtime.events import EventManager
+from app.schemas.message import Message
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class PluginChian(ChainBase):
@@ -325,7 +326,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         return self.plugindata.del_data(plugin_id, key)
 
-    def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: Optional[str] = None,
+    def post_message(self, channel: NotificationChannel = None, mtype: MessageType = None, title: Optional[str] = None,
                      text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None,
                      userid: Optional[str] = None, username: Optional[str] = None,
                      **kwargs):
@@ -334,7 +335,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not link:
             link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
-        self.chain.post_message(Notification(
+        self.chain.post_message(Message(
             channel=channel, mtype=mtype, title=title, text=text,
             image=image, link=link, userid=userid, username=username, **kwargs
         ))

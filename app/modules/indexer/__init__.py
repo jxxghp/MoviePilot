@@ -9,31 +9,14 @@ from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider import SiteSpider
-from app.modules.indexer.spider.haidan import HaiDanSpider
-from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
-from app.modules.indexer.spider.rousi import RousiSpider
-from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.modules.indexer.spider.tnode import TNodeSpider
-from app.modules.indexer.spider.torrentleech import TorrentLeech
+from app.modules.indexer.spider.registry import build_search_kwargs, resolve_spider_class
 from app.schemas.types import MediaSource
 from app.schemas.media import resolve_media_identity
-from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.domain import site as site_rules
 from app.foundation import text as text_tools
-
-SPIDER_PARSER_CLASSES = {
-    "TNodeSpider": TNodeSpider,
-    "TorrentLeech": TorrentLeech,
-    "mTorrent": MTorrentSpider,
-    "Yema": YemaSpider,
-    "Haidan": HaiDanSpider,
-    "HDDolby": HddolbySpider,
-    "RousiPro": RousiSpider,
-    "SunnyPT": SunnyPTSpider,
-}
 
 
 class IndexerModule(_ModuleBase):
@@ -227,9 +210,9 @@ class IndexerModule(_ModuleBase):
         获取站点搜索单页容量；None 表示当前搜索入口不支持可靠翻页。
         """
         site = site or {}
-        site_parser = site.get("parser")
-        if site_parser in SPIDER_PARSER_CLASSES:
-            return SPIDER_PARSER_CLASSES[site_parser].get_search_page_size(keyword=keyword)
+        spider_cls = resolve_spider_class(site.get("parser"))
+        if spider_cls is not SiteSpider:
+            return spider_cls.get_search_page_size(keyword=keyword)
         try:
             page_size = int(site.get("result_num") or SiteSpider.default_result_num())
         except (TypeError, ValueError):
@@ -267,54 +250,12 @@ class IndexerModule(_ModuleBase):
 
         # 开始搜索
         try:
-            if site.get('parser') == "TNodeSpider":
-                error_flag, result = TNodeSpider(site).search(
-                    keyword=search_word,
-                    page=page
+            spider_cls = resolve_spider_class(site.get('parser'))
+            if spider_cls is not SiteSpider:
+                call_kwargs = build_search_kwargs(
+                    spider_cls, keyword=search_word, mtype=mtype, cat=cat, page=page
                 )
-            elif site.get('parser') == "TorrentLeech":
-                error_flag, result = TorrentLeech(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "mTorrent":
-                error_flag, result = MTorrentSpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "SunnyPT":
-                error_flag, result = SunnyPTSpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    cat=cat,
-                    page=page
-                )
-            elif site.get('parser') == "Yema":
-                error_flag, result = YemaSpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "Haidan":
-                error_flag, result = HaiDanSpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype
-                )
-            elif site.get('parser') == "HDDolby":
-                error_flag, result = HddolbySpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "RousiPro":
-                error_flag, result = RousiSpider(site).search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    cat=cat,
-                    page=page
-                )
+                error_flag, result = spider_cls(site).search(**call_kwargs)
             else:
                 error_flag, result = self.__spider_search(
                     search_word=search_word,
@@ -411,54 +352,12 @@ class IndexerModule(_ModuleBase):
 
         # 开始搜索
         try:
-            if site.get('parser') == "TNodeSpider":
-                error_flag, result = await TNodeSpider(site).async_search(
-                    keyword=search_word,
-                    page=page
+            spider_cls = resolve_spider_class(site.get('parser'))
+            if spider_cls is not SiteSpider:
+                call_kwargs = build_search_kwargs(
+                    spider_cls, keyword=search_word, mtype=mtype, cat=cat, page=page
                 )
-            elif site.get('parser') == "TorrentLeech":
-                error_flag, result = await TorrentLeech(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "mTorrent":
-                error_flag, result = await MTorrentSpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "SunnyPT":
-                error_flag, result = await SunnyPTSpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    cat=cat,
-                    page=page
-                )
-            elif site.get('parser') == "Yema":
-                error_flag, result = await YemaSpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "Haidan":
-                error_flag, result = await HaiDanSpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype
-                )
-            elif site.get('parser') == "HDDolby":
-                error_flag, result = await HddolbySpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    page=page
-                )
-            elif site.get('parser') == "RousiPro":
-                error_flag, result = await RousiSpider(site).async_search(
-                    keyword=search_word,
-                    mtype=mtype,
-                    cat=cat,
-                    page=page
-                )
+                error_flag, result = await spider_cls(site).async_search(**call_kwargs)
             else:
                 error_flag, result = await self.__async_spider_search(
                     search_word=search_word,
