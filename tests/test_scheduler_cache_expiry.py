@@ -45,8 +45,8 @@ def test_scheduler_initializer_starts_background_jobs(monkeypatch):
     scheduler.init.assert_called_once_with()
 
 
-def test_meta_cache_expire_does_not_control_cache_clear_interval(monkeypatch):
-    """缓存清理任务应使用固定间隔，不受 META_CACHE_EXPIRE 控制。"""
+def test_clear_cache_is_manual_only(monkeypatch):
+    """缓存清理任务应仅手动执行，不注册到调度器自动运行。"""
     background_scheduler = _BackgroundSchedulerStub()
     generic_chain = Mock()
     for name in [
@@ -98,11 +98,8 @@ def test_meta_cache_expire_does_not_control_cache_clear_interval(monkeypatch):
     scheduler.init()
 
     scheduled_job_ids = {job["id"] for job in background_scheduler.jobs}
-    assert "clear_cache" in scheduled_job_ids
+    assert "clear_cache" not in scheduled_job_ids
     assert "clear_cache" in scheduler._jobs
-    # 缓存清理使用固定 24 小时间隔，不受 META_CACHE_EXPIRE 控制
-    clear_cache_job = next(
-        job for job in background_scheduler.jobs if job["id"] == "clear_cache"
-    )
-    assert clear_cache_job["hours"] == 24
+    assert scheduler._jobs["clear_cache"]["manual"] is True
+    assert scheduler._jobs["clear_cache"]["provider_name"] == "[系统]"
     assert background_scheduler.started is True

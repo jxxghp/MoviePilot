@@ -475,7 +475,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 "clear_cache": {
                     "name": "缓存清理",
                     "func": self.clear_cache,
+                    "provider_name": "[系统]",
                     "running": False,
+                    "manual": True,
                 },
                 "data_cleanup": {
                     "name": "数据表清理",
@@ -680,16 +682,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 name="公共定时服务",
                 minutes=10,
                 kwargs={"job_id": "scheduler_job"},
-            )
-
-            # 缓存清理服务
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="clear_cache",
-                name="缓存清理",
-                hours=24,
-                kwargs={"job_id": "clear_cache"},
             )
 
             # 数据表清理服务，每天凌晨执行一次
@@ -1518,6 +1510,26 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                         provider=service.get("provider_name", "[系统]"),
                         status=status,
                         next_run=next_run,
+                        progress=progress.value if progress else 0,
+                        progress_text=progress.text if progress else None,
+                        progress_enable=progress.enable if progress else False,
+                        progress_detail=progress,
+                    )
+                )
+            # 仅手动执行的任务（未注册到调度器）
+            for job_id, service in self._jobs.items():
+                if not service.get("manual"):
+                    continue
+                if job_id in added:
+                    continue
+                added.append(job_id)
+                progress = self.get_progress(job_id)
+                schedulers.append(
+                    schemas.ScheduleInfo(
+                        id=job_id,
+                        name=service.get("name"),
+                        provider=service.get("provider_name", "[系统]"),
+                        status="等待",
                         progress=progress.value if progress else 0,
                         progress_text=progress.text if progress else None,
                         progress_enable=progress.enable if progress else False,
