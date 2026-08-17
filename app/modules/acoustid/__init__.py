@@ -34,9 +34,17 @@ class AcoustIdModule(_ModuleBase):
         self._cache: OrderedDict[tuple[str, int, int], Optional[str]] = OrderedDict()
         self._cache_lock = threading.Lock()
 
+    @staticmethod
+    def _resolve_fpcalc() -> Optional[str]:
+        """在 PATH 中定位可执行的 fpcalc，返回其绝对路径，缺失则返回 None。
+
+        shutil.which 在 POSIX 上已校验文件可执行，足以判定本地依赖是否就绪。
+        """
+        return shutil.which("fpcalc") or None
+
     def init_module(self) -> None:
         """定位 fpcalc 工具并清空可能过期的文件识别缓存。"""
-        self._fpcalc_path = shutil.which("fpcalc")
+        self._fpcalc_path = self._resolve_fpcalc()
         with self._cache_lock:
             self._cache.clear()
         if not self._fpcalc_path:
@@ -52,11 +60,18 @@ class AcoustIdModule(_ModuleBase):
             self._cache.clear()
 
     def test(self) -> Tuple[bool, str]:
-        """检查 API Key、fpcalc 和 AcoustID API 的基础连通性。"""
+        """检查 API Key、本地 fpcalc 依赖与 AcoustID API 的基础连通性。
+
+        本地依赖检测独立于 init_module 的缓存快照，重新定位 fpcalc，确保即便
+        模块初始化早于 fpcalc 安装，或运行期依赖被移除，测试也能如实反映本地
+        依赖状态，而不是只校验网络连通性。
+        """
         if not str(settings.ACOUSTID_API_KEY or "").strip():
             return False, "AcoustID API Key 未配置"
-        if not self._fpcalc_path:
+        fpcalc_path = self._resolve_fpcalc()
+        if not fpcalc_path:
             return False, "未找到 fpcalc，请先安装 Chromaprint"
+        self._fpcalc_path = fpcalc_path
         response = RequestUtils(
             ua=settings.USER_AGENT,
             proxies=settings.PROXY,

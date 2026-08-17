@@ -129,6 +129,56 @@ def test_identify_music_by_fingerprint_skips_missing_fpcalc(tmp_path, monkeypatc
     post_res.assert_not_called()
 
 
+def test_test_fails_without_local_fpcalc_and_skips_network(monkeypatch):
+    """缺少本地 fpcalc 时，测试应直接失败且不发起任何网络请求。"""
+    monkeypatch.setattr("app.modules.acoustid.shutil.which", lambda _: None)
+    monkeypatch.setattr("app.modules.acoustid.settings.ACOUSTID_API_KEY", "client-key")
+    get_res = Mock()
+    monkeypatch.setattr(RequestUtils, "get_res", get_res)
+
+    module = AcoustIdModule()
+    ok, message = module.test()
+
+    assert ok is False
+    assert "fpcalc" in message
+    get_res.assert_not_called()
+
+
+def test_test_passes_with_local_fpcalc_and_network(monkeypatch):
+    """fpcalc 存在且网络可达时，测试应成功并刷新本地依赖快照。"""
+    monkeypatch.setattr(
+        "app.modules.acoustid.shutil.which",
+        lambda _: "/usr/bin/fpcalc",
+    )
+    monkeypatch.setattr("app.modules.acoustid.settings.ACOUSTID_API_KEY", "client-key")
+    monkeypatch.setattr(RequestUtils, "get_res", Mock(return_value=FakeResponse({})))
+
+    module = AcoustIdModule()
+    ok, message = module.test()
+
+    assert ok is True
+    assert message == ""
+    assert module._fpcalc_path == "/usr/bin/fpcalc"
+
+
+def test_test_resolves_fpcalc_independently_of_init(monkeypatch):
+    """即便 init_module 早期未定位到 fpcalc，测试也应重新检测本地依赖。"""
+    monkeypatch.setattr(
+        "app.modules.acoustid.shutil.which",
+        lambda _: "/usr/bin/fpcalc",
+    )
+    monkeypatch.setattr("app.modules.acoustid.settings.ACOUSTID_API_KEY", "client-key")
+    monkeypatch.setattr(RequestUtils, "get_res", Mock(return_value=FakeResponse({})))
+
+    module = AcoustIdModule()
+    module._fpcalc_path = None
+
+    ok, _ = module.test()
+
+    assert ok is True
+    assert module._fpcalc_path == "/usr/bin/fpcalc"
+
+
 def test_async_identify_music_by_fingerprint_uses_async_process_and_http(
         tmp_path,
         monkeypatch,
