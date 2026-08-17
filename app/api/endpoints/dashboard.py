@@ -64,7 +64,13 @@ def _build_storage() -> schemas.Storage:
     dirs = DirectoryHelper().get_dirs()
     if not dirs:
         return schemas.Storage(total_storage=total, used_storage=total - available)
-    storages = set([d.library_storage for d in dirs if d.library_storage])
+    # 下载目录按 storage、媒体库目录按 library_storage 汇总存储集合，
+    # 用 set 去重存储名，避免同一存储被重复统计；
+    # 各存储的 usage 内部已按磁盘（st_dev / Btrfs FSID）去重，相同磁盘的不同目录不会重复累加。
+    storages = set(
+        [d.storage for d in dirs if d.download_path and d.storage]
+        + [d.library_storage for d in dirs if d.library_path and d.library_storage]
+    )
     for _storage in storages:
         _result = StorageChain().manage_storage(storage=_storage, action=StorageAction.USAGE.value)
         _usage = _result.get("data") if _result.get("success") else None
