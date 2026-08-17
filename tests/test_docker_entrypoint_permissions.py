@@ -9,10 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _write_entrypoint_functions(tmp_path: Path) -> Path:
     content = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    browser = (ROOT / "docker" / "browser.sh").read_text(encoding="utf-8")
     marker = "# 使用env配置"
     assert marker in content
     functions = tmp_path / "entrypoint-functions.sh"
-    functions.write_text(content.split(marker, 1)[0], encoding="utf-8")
+    entrypoint_functions = content.split(marker, 1)[0]
+    functions.write_text(f"{entrypoint_functions}\n{browser}", encoding="utf-8")
     return functions
 
 
@@ -41,17 +43,24 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     resource_dir = app_dir / "app" / "application" / "site"
     public_dir = tmp_path / "public"
     home_dir = tmp_path / "home"
+    config_dir = tmp_path / "config"
     (app_dir / "app" / "plugins").mkdir(parents=True)
     resource_dir.mkdir(parents=True)
     public_dir.mkdir()
     (home_dir / ".cloakbrowser").mkdir(parents=True)
     (home_dir / "runtime").mkdir()
+    (config_dir / ".browser" / "cloakbrowser").mkdir(parents=True)
+    (config_dir / "runtime").mkdir(exist_ok=True)
     (app_dir / "app" / "plugins" / "plugin.py").write_text("# plugin\n", encoding="utf-8")
     (resource_dir / "user.sites.v3.bin").write_text("resources\n", encoding="utf-8")
     (resource_dir / "sites.cpython-312-x86_64-linux-gnu.so").write_text("plugin\n", encoding="utf-8")
     (public_dir / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
     (home_dir / ".cloakbrowser" / "chrome").write_text("browser cache\n", encoding="utf-8")
     (home_dir / "runtime" / "state").write_text("state\n", encoding="utf-8")
+    (config_dir / ".browser" / "cloakbrowser" / "chrome").write_text(
+        "browser cache\n", encoding="utf-8"
+    )
+    (config_dir / "runtime" / "state").write_text("state\n", encoding="utf-8")
     external_target = tmp_path / "external-target"
     external_target.write_text("external\n", encoding="utf-8")
     (app_dir / "external-link").symlink_to(external_target)
@@ -65,7 +74,7 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
         "PUBLIC_DIR": str(public_dir),
         "HOME_DIR": str(home_dir),
         "IMAGE_RESOURCE_DIR": str(resource_dir),
-        "CONFIG_DIR": str(tmp_path / "config"),
+        "CONFIG_DIR": str(config_dir),
         "PUID": str(os.getuid()),
         "PGID": str(os.getgid()),
     }
@@ -101,6 +110,205 @@ def _run_entrypoint_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     )
     result = subprocess.run(["bash", "-c", script], check=True, env=case_env, text=True, capture_output=True)
     return result.stdout
+
+
+def _resolve_browser_cache_case(
+    tmp_path: Path,
+    *,
+    explicit: Path | None = None,
+    canonical_ready: bool = False,
+    legacy_ready: bool = False,
+    legacy_mounted: bool = False,
+) -> str:
+    """在隔离目录中执行浏览器缓存路径选择合同。"""
+    config_dir = tmp_path / "config"
+    home_dir = tmp_path / "moviepilot"
+    canonical = config_dir / ".browser" / "cloakbrowser"
+    legacy = home_dir / ".cloakbrowser"
+    canonical.mkdir(parents=True)
+    legacy.mkdir(parents=True)
+    if canonical_ready:
+        (canonical / ".ready").touch()
+    if legacy_ready:
+        (legacy / ".ready").touch()
+
+    return _run_entrypoint_case(
+        tmp_path,
+        """
+        INFO() { :; }
+        is_cloakbrowser_cache_ready() { [ -f "$1/.ready" ]; }
+        is_path_mountpoint() { [ "${LEGACY_MOUNTED}" = "true" ] && [ "$1" = "${HOME}/.cloakbrowser" ]; }
+        resolve_browser_cache_dir
+        printf '%s\n' "${CLOAKBROWSER_CACHE_DIR}"
+        """,
+        env={
+            "CONFIG_DIR": str(config_dir),
+            "HOME": str(home_dir),
+            "CLOAKBROWSER_CACHE_DIR": str(explicit) if explicit else "",
+            "LEGACY_MOUNTED": "true" if legacy_mounted else "false",
+        },
+    ).strip()
+
+
+def test_browser_cache_explicit_directory_has_highest_priority(tmp_path: Path) -> None:
+    explicit = tmp_path / "custom-cache"
+
+    selected = _resolve_browser_cache_case(
+        tmp_path,
+        explicit=explicit,
+        canonical_ready=True,
+        legacy_ready=True,
+    )
+
+    assert selected == str(explicit)
+
+
+def test_browser_cache_rejects_relative_explicit_directory(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        ERROR() { printf '%s\\n' "$1"; }
+        CONFIG_DIR=/config HOME=/moviepilot CLOAKBROWSER_CACHE_DIR=relative-cache \
+          resolve_browser_cache_dir || printf 'rejected\\n'
+        """,
+    )
+
+    assert "CLOAKBROWSER_CACHE_DIR 必须是独立的绝对目录" in output
+    assert output.endswith("rejected\n")
+
+
+def test_browser_cache_normalizes_explicit_directory(tmp_path: Path) -> None:
+    explicit = tmp_path / "cache" / ".." / "browser-cache"
+
+    selected = _resolve_browser_cache_case(tmp_path, explicit=explicit)
+
+    assert selected == str(tmp_path / "browser-cache")
+
+
+def test_browser_cache_rejects_managed_root_directory(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        ERROR() { printf '%s\\n' "$1"; }
+        CONFIG_DIR="${CASE_CONFIG_DIR}" HOME=/moviepilot \
+          CLOAKBROWSER_CACHE_DIR="${CASE_CONFIG_DIR}" \
+          resolve_browser_cache_dir || printf 'rejected\\n'
+        """,
+        env={"CASE_CONFIG_DIR": str(config_dir)},
+    )
+
+    assert "CLOAKBROWSER_CACHE_DIR 不能占用受管根目录" in output
+    assert output.endswith("rejected\n")
+
+
+def test_browser_cache_prefers_valid_config_cache(tmp_path: Path) -> None:
+    selected = _resolve_browser_cache_case(
+        tmp_path,
+        canonical_ready=True,
+        legacy_ready=True,
+    )
+
+    assert selected == str(tmp_path / "config" / ".browser" / "cloakbrowser")
+
+
+def test_browser_cache_reuses_valid_prerelease_v3_cache(tmp_path: Path) -> None:
+    selected = _resolve_browser_cache_case(tmp_path, legacy_ready=True)
+
+    assert selected == str(tmp_path / "moviepilot" / ".cloakbrowser")
+
+
+def test_browser_cache_reuses_empty_prerelease_v3_mount(tmp_path: Path) -> None:
+    selected = _resolve_browser_cache_case(tmp_path, legacy_mounted=True)
+
+    assert selected == str(tmp_path / "moviepilot" / ".cloakbrowser")
+
+
+def test_browser_cache_new_install_uses_config_cache(tmp_path: Path) -> None:
+    selected = _resolve_browser_cache_case(tmp_path)
+
+    assert selected == str(tmp_path / "config" / ".browser" / "cloakbrowser")
+
+
+def test_browser_install_preserves_upstream_auto_update_default(tmp_path: Path) -> None:
+    selected = tmp_path / "cache"
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        INFO() { :; }
+        gosu() {
+          printf '%s|%s|%s\n' "${CLOAKBROWSER_AUTO_UPDATE-unset}" "${CLOAKBROWSER_CACHE_DIR}" "$*"
+        }
+        unset CLOAKBROWSER_AUTO_UPDATE
+        CLOAKBROWSER_CACHE_DIR="${SELECTED_CACHE}"
+        VENV_PATH=/runtime install_browser_kernel
+        """,
+        env={"SELECTED_CACHE": str(selected)},
+    ).strip()
+
+    assert output == (
+        f"unset|{selected}|moviepilot:moviepilot "
+        "/runtime/bin/python3 -m cloakbrowser install"
+    )
+
+
+def test_browser_install_failure_does_not_block_startup(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        WARN() { printf '%s\n' "$1"; }
+        is_cloakbrowser_cache_ready() { return 1; }
+        install_browser_kernel() { return 1; }
+        ensure_browser_kernel
+        printf 'continued\n'
+        """,
+    )
+
+    assert "浏览器内核安装失败，首次使用时将重试" in output
+    assert output.endswith("continued\n")
+
+
+def test_ready_browser_cache_skips_startup_install(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        INFO() { printf '%s\n' "$1"; }
+        is_cloakbrowser_cache_ready() { return 0; }
+        install_browser_kernel() { printf 'unexpected-install\n'; }
+        CLOAKBROWSER_CACHE_DIR=/config/.browser/cloakbrowser
+        ensure_browser_kernel
+        """,
+    )
+
+    assert output == "CloakBrowser 浏览器内核已就绪\n"
+
+
+def test_missing_browser_cache_runs_startup_install(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        is_cloakbrowser_cache_ready() { return 1; }
+        install_browser_kernel() { printf 'installed\n'; }
+        CLOAKBROWSER_CACHE_DIR=/config/.browser/cloakbrowser
+        ensure_browser_kernel
+        """,
+    )
+
+    assert output == "installed\n"
+
+
+def test_browser_install_is_centralized_in_startup() -> None:
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    browser = (ROOT / "docker" / "browser.sh").read_text(encoding="utf-8")
+    updater = (ROOT / "docker" / "update.sh").read_text(encoding="utf-8")
+    startup = entrypoint.split("# 使用env配置", 1)[1]
+
+    assert "-m cloakbrowser install" not in entrypoint
+    assert browser.count("-m cloakbrowser install") == 2
+    assert "-m cloakbrowser install" not in updater
+    assert startup.index("source /usr/local/bin/mp_update.sh") < startup.index(
+        'source "/app/docker/browser.sh"'
+    ) < startup.index("resolve_browser_cache_dir") < startup.index("ensure_browser_kernel")
 
 
 def test_image_paths_are_not_chowned_by_default_regardless_of_owner(tmp_path: Path) -> None:
@@ -190,12 +398,52 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
     assert f"moviepilot:moviepilot {tmp_path}/home" in lines
     assert f"-h moviepilot:moviepilot {tmp_path}/home/.cloakbrowser" in lines
     assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
-    assert f"-R moviepilot:moviepilot {tmp_path}/config /var/lib/nginx /var/log/nginx" in lines
+    assert f"moviepilot:moviepilot {tmp_path}/config" in lines
+    assert f"-R moviepilot:moviepilot {tmp_path}/config/runtime" in lines
+    assert "-R moviepilot:moviepilot /var/lib/nginx /var/log/nginx" in lines
     assert "moviepilot:moviepilot /etc/hosts /tmp" in lines
     assert f"-R moviepilot:moviepilot {tmp_path}/app/app/application/site" in lines
     assert not any(line.startswith("-R ") and ".cloakbrowser" in line for line in lines)
+    assert not any(line.startswith("-R ") and "/.browser" in line for line in lines)
     assert not any(f"{tmp_path}/app " in line for line in lines)
     assert not any(f"{tmp_path}/public" in line for line in lines)
+
+
+def test_explicit_browser_cache_subtree_is_not_scanned_by_permission_repair(
+    tmp_path: Path,
+) -> None:
+    explicit_cache = tmp_path / "config" / "runtime" / "browser-cache"
+    explicit_cache.mkdir(parents=True)
+    (explicit_cache / "chromium").write_text("payload\n", encoding="utf-8")
+    log = _run_permission_case(
+        tmp_path,
+        'CLOAKBROWSER_CACHE_DIR="${EXPLICIT_CACHE}" HOME="${HOME_DIR}" correct_file_permissions',
+        env={"EXPLICIT_CACHE": str(explicit_cache)},
+    )
+
+    lines = log.splitlines()
+    assert f"-R moviepilot:moviepilot {tmp_path}/config/runtime" not in lines
+    assert any(f"{tmp_path}/config/runtime/state" in line for line in lines)
+    assert not any("browser-cache" in line for line in lines)
+    assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
+
+
+def test_explicit_top_level_browser_cache_is_not_scanned_by_permission_repair(
+    tmp_path: Path,
+) -> None:
+    explicit_cache = tmp_path / "config" / "browser-cache"
+    log = _run_permission_case(
+        tmp_path,
+        """
+        mkdir -p "${EXPLICIT_CACHE}/chromium"
+        CLOAKBROWSER_CACHE_DIR="${EXPLICIT_CACHE}" HOME="${HOME_DIR}" correct_file_permissions
+        """,
+        env={"EXPLICIT_CACHE": str(explicit_cache)},
+    )
+
+    lines = log.splitlines()
+    assert f"-h moviepilot:moviepilot {explicit_cache}" in lines
+    assert not any(line.startswith("-R ") and str(explicit_cache) in line for line in lines)
 
 
 def test_site_resource_permissions_are_repaired_even_when_owner_matches(tmp_path: Path) -> None:

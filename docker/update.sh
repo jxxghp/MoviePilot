@@ -106,10 +106,6 @@ function install_backend_and_download_resources() {
                 cp /tmp/requirements.txt.backup /app/requirements.txt
                 return 1
             fi
-            INFO "正在更新 CloakBrowser 浏览器内核"
-            if ! ${VENV_PATH}/bin/python -m cloakbrowser install; then
-                WARN "CloakBrowser 浏览器内核更新失败，后续首次使用时可能重新下载"
-            fi
             INFO "依赖更新成功"
         else
             INFO "依赖无变化，跳过依赖更新"

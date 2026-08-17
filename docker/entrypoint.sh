@@ -385,6 +385,8 @@ function force_chown_image_paths_if_requested() {
 }
 
 function correct_home_permissions() {
+    local child
+
     [ -e "${HOME}" ] || return 0
 
     chown moviepilot:moviepilot "${HOME}"
@@ -396,7 +398,22 @@ function correct_home_permissions() {
         INFO "→ 默认跳过 ${HOME}/.cloakbrowser 递归权限校正，如遇浏览器缓存权限错误可设置 MOVIEPILOT_FORCE_CHOWN=true 后重启一次。"
     fi
 
-    find "${HOME}" -mindepth 1 -maxdepth 1 ! -name ".cloakbrowser" -exec chown -R moviepilot:moviepilot {} +
+    while IFS= read -r -d '' child; do
+        [ "${child}" = "${HOME}/.cloakbrowser" ] && continue
+        chown_path_excluding_browser_cache "${child}"
+    done < <(find "${HOME}" -mindepth 1 -maxdepth 1 -print0)
+}
+
+function correct_config_permissions() {
+    local child
+
+    [ -e "${CONFIG_DIR}" ] || return 0
+
+    chown moviepilot:moviepilot "${CONFIG_DIR}"
+    while IFS= read -r -d '' child; do
+        [ "${child}" = "${CONFIG_DIR}/.browser" ] && continue
+        chown_path_excluding_browser_cache "${child}"
+    done < <(find "${CONFIG_DIR}" -mindepth 1 -maxdepth 1 -print0)
 }
 
 function chown_plugin_runtime_path() {
@@ -427,8 +444,8 @@ function correct_file_permissions() {
     correct_site_resource_permissions
     chown_plugin_runtime_path /app/app/plugins
     correct_home_permissions
+    correct_config_permissions
     chown -R moviepilot:moviepilot \
-        "${CONFIG_DIR}" \
         /var/lib/nginx \
         /var/log/nginx
     chown moviepilot:moviepilot /etc/hosts /tmp
@@ -477,35 +494,27 @@ if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
 fi
 cd /app || exit
 
+source "/app/docker/browser.sh"
+
 # 更改 moviepilot userid 和 groupid
 groupmod -o -g "${PGID}" moviepilot
 usermod -o -u "${PUID}" moviepilot
 
-# 更改文件权限
-correct_file_permissions
-
 # 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
 ensure_backend_runtime_dependencies
 
-# 下载浏览器内核
-function install_browser_kernel() {
-  local emulation="${BROWSER_EMULATION:-cloakbrowser}"
-  emulation="$(normalize_env_value "${emulation}")"
-  local proxy="${HTTPS_PROXY:-${https_proxy:-$PROXY_HOST}}"
+# 缓存路径解析必须晚于依赖自愈，确保有效性探针使用当前运行版本。
+if ! resolve_browser_cache_dir; then
+    exit 1
+fi
 
-  if [ "${emulation}" != "cloakbrowser" ] && [ "${emulation}" != "flaresolverr" ] && [ -n "${emulation}" ]; then
-    WARN "浏览器仿真类型 ${emulation} 已按 CloakBrowser 处理。"
-  fi
+# 权限校正需要避开选中的浏览器缓存子树，避免启动时递归扫描内核文件。
+correct_file_permissions
 
-  INFO "下载 CloakBrowser 浏览器内核"
-  if [[ "$proxy" =~ ^https?:// ]]; then
-    HTTPS_PROXY="$proxy" gosu moviepilot:moviepilot python -m cloakbrowser install
-  else
-    gosu moviepilot:moviepilot python -m cloakbrowser install
-  fi
-}
-
-install_browser_kernel
+if ! prepare_browser_cache_dir; then
+    exit 1
+fi
+ensure_browser_kernel
 
 # 证书管理
 source /app/docker/cert.sh
