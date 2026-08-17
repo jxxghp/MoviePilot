@@ -280,6 +280,27 @@ def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
     assert schemas_package.TransferQueue is legacy_transfer.TransferQueue
 
 
+def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():
+    """刮削拆分后，旧 app.chain.media 路径应能继续取用刮削公开符号。"""
+    legacy_media = importlib.import_module("app.chain.media")
+    canonical_scraping = importlib.import_module("app.chain.scraping")
+
+    assert legacy_media.ScrapingChain is canonical_scraping.ScrapingChain
+    assert legacy_media.ScrapingOption is canonical_scraping.ScrapingOption
+    assert legacy_media.ScrapingConfig is canonical_scraping.ScrapingConfig
+
+
+def test_rules_domain_legacy_modules_resolve_to_rules():
+    """规则域收敛后，filter/filter_rules 旧路径应复用 rules 模块。"""
+    canonical = importlib.import_module("app.application.rules")
+
+    for legacy_name in ("app.application.filter", "app.application.filter_rules"):
+        legacy = importlib.import_module(legacy_name)
+        assert legacy is canonical, legacy_name
+        assert legacy.RuleHelper is canonical.RuleHelper
+        assert legacy.RuleParser is canonical.RuleParser
+
+
 def test_debug_diagnostics_reports_moved_symbol_path():
     """DEBUG 模式应对物理模块中的旧符号路径给出一次迁移提示。"""
     messages = []
@@ -317,7 +338,7 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
-    """符号级映射清单应覆盖媒体身份、整理工作项与消息/通知命名统一的旧入口。"""
+    """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
     assert set(SYMBOL_ALIASES["app.domain.media"]) == {
         "MEDIA_SOURCE_ALIASES",
         "MEDIA_SOURCE_PREFIXES",
@@ -326,6 +347,11 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
         "resolve_media_identity",
         "normalize_media_identity_payload",
         "build_media_key",
+    }
+    assert set(SYMBOL_ALIASES["app.chain.media"]) == {
+        "ScrapingChain",
+        "ScrapingOption",
+        "ScrapingConfig",
     }
     assert set(SYMBOL_ALIASES["app.schemas"]) == {
         "TransferTask",

@@ -42,6 +42,20 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="sdk",
     ),
+    # 规则域收敛为单一事实来源 app/application/rules.py：
+    # filter_rules.py（内置规则集 + RuleParser）更名而来，filter.py（RuleHelper）并入
+    "app.application.filter": ModuleAlias(
+        target="app.application.rules",
+        replacement="app.application.rules",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.application.filter_rules": ModuleAlias(
+        target="app.application.rules",
+        replacement="app.application.rules",
+        introduced="v3.0.0",
+        owner="application",
+    ),
     "app.db.agentchat_oper": ModuleAlias(
         target="app.db.oper.agentchat",
         replacement="app.db.oper.agentchat",
@@ -747,6 +761,16 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             target_name="ReplyMode",
             replacement="app.schemas.agent.ReplyMode",
         ),
+    },
+    # 刮削能力从 MediaChain 拆出为独立 ScrapingChain 后，
+    # 原 app.chain.media 模块级公开的刮削选项与策略配置随迁到 app.chain.scraping
+    "app.chain.media": {
+        name: SymbolAlias(
+            target_module="app.chain.scraping",
+            target_name=name,
+            replacement=f"app.chain.scraping.{name}",
+        )
+        for name in ("ScrapingChain", "ScrapingOption", "ScrapingConfig")
     },
     "app.chain.message": {
         "MediaInteractionChain": SymbolAlias(
