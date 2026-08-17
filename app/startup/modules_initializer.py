@@ -136,7 +136,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     from app.chain.search import SearchChain
     from app.chain.site import SiteChain
     from app.chain.subscribe import SubscribeChain
-    from app.chain.workflow import WorkflowChain
+    from app.workflow.service import WorkflowChain
     from app.command import Command
     from app.scheduler import Scheduler
 

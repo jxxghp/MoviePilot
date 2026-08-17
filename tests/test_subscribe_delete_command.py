@@ -187,7 +187,7 @@ async def test_report_failure_happens_after_commit_and_event():
 
 @pytest.mark.asyncio
 async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
-    """DB 适配器只向应用层暴露权限字段和完整列快照。"""
+    """DB 仓库只向调用方暴露持久化字段字典，不构造应用层业务对象。"""
     subscribe = Subscribe(
         id=7,
         username="alice",
@@ -204,14 +204,14 @@ async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
 
     monkeypatch.setattr(SubscribeOper, "async_get", async_get)
 
-    candidate = await SubscribeOper(object()).get_candidate(7)
+    row = await SubscribeOper(object()).get_candidate(7)
 
-    assert candidate is not None
-    assert candidate.subscribe_id == 7
-    assert candidate.username == "alice"
-    assert candidate.event_payload["id"] == 7
-    assert candidate.event_payload["media_source"] == "tmdb"
-    assert candidate.event_payload["media_id"] == "123"
+    assert row is not None
+    assert row["subscribe_id"] == 7
+    assert row["username"] == "alice"
+    assert row["event_payload"]["id"] == 7
+    assert row["event_payload"]["media_source"] == "tmdb"
+    assert row["event_payload"]["media_id"] == "123"
 
 
 @pytest.mark.asyncio

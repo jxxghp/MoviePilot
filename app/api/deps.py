@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.application.subscription.delete import DeleteSubscribeCommand
+from app.application.subscription.delete import (
+    DeleteSubscribeCommand,
+    SubscribeDeletionCandidateRepository,
+)
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
@@ -72,7 +75,7 @@ def get_delete_subscribe_command(
 ) -> DeleteSubscribeCommand:
     """组装请求级订阅删除用例及其具体适配器。"""
     return DeleteSubscribeCommand(
-        repository=SubscribeOper(db),
+        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
         unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
         publish_deleted=_publish_subscribe_deleted,
         report_deleted=MoviePilotServerHelper.sub_done_async,
@@ -95,7 +98,7 @@ def get_delete_subscriptions_by_identity_command(
 ) -> DeleteSubscriptionsByIdentityCommand:
     """组装请求级按媒体身份删除订阅用例。"""
     return DeleteSubscriptionsByIdentityCommand(
-        repository=SubscribeOper(db),
+        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
         unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
         publish_deleted=_publish_subscribe_deleted,
         handle_event_error=_log_subscribe_deleted_event_error,
@@ -118,7 +121,7 @@ def get_search_subscriptions_command(
         )
 
     return SearchSubscriptionsCommand(
-        repository=SubscribeOper(db),
+        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
         schedule_search=schedule_search,
     )
 

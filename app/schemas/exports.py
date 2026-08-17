@@ -127,7 +127,6 @@ SCHEMA_EXPORTS = {
     'LimitException': ('app.schemas.exception', 'LimitException'),
     'List': ('app.schemas.workflow', 'List'),
     'Literal': ('app.schemas.mcp', 'Literal'),
-    'LocaleHelper': ('app.schemas.response', 'LocaleHelper'),
     'MCP_JSONRPC_REQUEST_SCHEMA': ('app.schemas.mcp', 'MCP_JSONRPC_REQUEST_SCHEMA'),
     'ManageRequest': ('app.schemas.common', 'ManageRequest'),
     'ManualTransferHistoryInfo': ('app.schemas.transfer', 'ManualTransferHistoryInfo'),
@@ -401,6 +400,7 @@ SCHEMA_EXPORTS = {
     'json': ('app.schemas.subscribe', 'json'),
     'model_validator': ('app.schemas.subscribe', 'model_validator'),
     're': ('app.schemas.file', 're'),
+    'translate': ('app.schemas.response', 'translate'),
 }
 
 SCHEMA_CONFLICTS = {
@@ -417,7 +417,6 @@ SCHEMA_CONFLICTS = {
     'JsonData': ['app.schemas.agent', 'app.schemas.common', 'app.schemas.context', 'app.schemas.dashboard', 'app.schemas.event', 'app.schemas.history', 'app.schemas.mediaserver', 'app.schemas.message', 'app.schemas.mfa', 'app.schemas.music', 'app.schemas.plugin', 'app.schemas.search', 'app.schemas.openai', 'app.schemas.servcookie', 'app.schemas.site', 'app.schemas.user', 'app.schemas.workflow', 'app.schemas.mcp'],
     'List': ['app.schemas.agent', 'app.schemas.context', 'app.schemas.event', 'app.schemas.history', 'app.schemas.mediaserver', 'app.schemas.message', 'app.schemas.monitoring', 'app.schemas.plugin', 'app.schemas.openai', 'app.schemas.subscribe', 'app.schemas.transfer', 'app.schemas.workflow'],
     'Literal': ['app.schemas.agent', 'app.schemas.music', 'app.schemas.search', 'app.schemas.servcookie', 'app.schemas.mcp'],
-    'LocaleHelper': ['app.schemas.dashboard', 'app.schemas.response'],
     'MediaInfo': ['app.schemas.context', 'app.schemas.system', 'app.schemas.transfer', 'app.schemas.workflow'],
     'MediaSource': ['app.schemas.cache', 'app.schemas.context', 'app.schemas.event', 'app.schemas.history', 'app.schemas.mediaserver', 'app.schemas.music', 'app.schemas.subscribe', 'app.schemas.transfer'],
     'MediaType': ['app.schemas.mediaserver', 'app.schemas.subscribe'],
@@ -442,4 +441,5 @@ SCHEMA_CONFLICTS = {
     'datetime': ['app.schemas.agent', 'app.schemas.monitoring'],
     'field_validator': ['app.schemas.event', 'app.schemas.message', 'app.schemas.music', 'app.schemas.response', 'app.schemas.subscribe', 'app.schemas.system'],
     'model_validator': ['app.schemas.dashboard', 'app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.subscribe'],
+    'translate': ['app.schemas.dashboard', 'app.schemas.response'],
 }

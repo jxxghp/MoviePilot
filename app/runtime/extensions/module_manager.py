@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import sys
 import threading
 from typing import Any, Generator, List, Optional, Tuple, Union
@@ -52,6 +53,10 @@ class ModuleManager(metaclass=Singleton):
         self._lifecycle_lock = threading.RLock()
         self._modules: dict[str, type] = {}
         self._running_modules: dict[str, Any] = {}
+        # 发布视图代际；每次运行模块投影刷新都自增，用于作废能力索引缓存。
+        self._running_generation = 0
+        self._capability_index: Optional[dict[str, tuple[Any, ...]]] = None
+        self._capability_index_generation = -1
         registry = build_host_module_registry()
         self._runtime = CapabilityRuntime(
             registry,
@@ -130,6 +135,9 @@ class ModuleManager(metaclass=Singleton):
         }
         with self._lock:
             self._running_modules = running
+            self._running_generation += 1
+            self._capability_index = None
+            self._capability_index_generation = -1
 
     def resolve_event_handler_instance(
         self,
@@ -280,6 +288,83 @@ class ModuleManager(metaclass=Singleton):
             candidate = getattr(module, method, None)
             if callable(candidate) and ObjectUtils.check_method(candidate):
                 yield module
+
+    @staticmethod
+    def _capability_method_names(module: Any) -> tuple[str, ...]:
+        """列出实例可能提供的公开方法名，跳过属性描述符以免触发求值。
+
+        :param module: 运行中的宿主模块实例
+        :return: 去重后的公开方法名元组
+        """
+        names: list[str] = []
+        seen: set[str] = set()
+        for name, value in getattr(module, "__dict__", {}).items():
+            if name.startswith("_") or name in seen:
+                continue
+            seen.add(name)
+            if callable(value):
+                names.append(name)
+        for klass in type(module).__mro__:
+            if klass is object:
+                continue
+            for name, attribute in vars(klass).items():
+                if name.startswith("_") or name in seen:
+                    continue
+                seen.add(name)
+                if inspect.isroutine(attribute) or isinstance(
+                    attribute,
+                    (staticmethod, classmethod),
+                ):
+                    names.append(name)
+        return tuple(names)
+
+    def _build_capability_index(self) -> dict[str, tuple[Any, ...]]:
+        """反射运行实例的已实现方法，构建方法名到提供者的索引。
+
+        :return: 方法名到按优先级升序排列的提供者元组的映射
+        """
+        collected: dict[str, list[Any]] = {}
+        for module in self._running_snapshot():
+            for name in self._capability_method_names(module):
+                candidate = getattr(module, name, None)
+                if not callable(candidate) or not ObjectUtils.check_method(candidate):
+                    continue
+                collected.setdefault(name, []).append(module)
+        return {
+            name: tuple(sorted(providers, key=lambda item: item.get_priority()))
+            for name, providers in collected.items()
+        }
+
+    def _capability_index_snapshot(self) -> dict[str, tuple[Any, ...]]:
+        """返回与当前发布代际一致的能力索引，必要时重建缓存。
+
+        :return: 方法名到按优先级升序排列的提供者元组的映射
+        """
+        with self._lock:
+            index = self._capability_index
+            if (
+                index is not None
+                and self._capability_index_generation == self._running_generation
+            ):
+                return index
+            generation = self._running_generation
+        # 反射开销不进锁，避免长时间阻塞生命周期写入方。
+        rebuilt = self._build_capability_index()
+        with self._lock:
+            if generation == self._running_generation:
+                self._capability_index = rebuilt
+                self._capability_index_generation = generation
+        return rebuilt
+
+    def providers_for(self, method: str) -> tuple[Any, ...]:
+        """返回实现了指定方法的运行模块，按 `get_priority()` 升序排列。
+
+        :param method: 模块方法名称
+        :return: 提供该方法的运行模块元组；无提供者时为空元组
+        """
+        if not method:
+            return ()
+        return self._capability_index_snapshot().get(method, ())
 
     def get_running_type_modules(self, module_type: ModuleType) -> Generator:
         """返回指定类型的运行模块快照。"""

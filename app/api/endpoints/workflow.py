@@ -11,7 +11,7 @@ from app.schemas.workflow import WorkflowActionDefinition as _SchemaWorkflowActi
 from app.schemas.workflow import WorkflowShare as _SchemaWorkflowShare
 from app.api.response import ResponseAPIRouter
 from app.application.workflow import WorkflowDefinitionCommand, WorkflowMutationCommand
-from app.chain.workflow import WorkflowChain
+from app.workflow.service import WorkflowChain
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.workflow import WorkFlowManager
 from app.db import get_async_db

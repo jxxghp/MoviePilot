@@ -6,13 +6,16 @@
 因此不 import 任何领域对象。
 
 留在这一层的只有列类型强转与建库时间戳——它们跟着订阅表的列走，换谁来调都一样。
+
+删除/搜索用例需要的订阅身份快照（get_candidate、list_candidates_by_identity）同理只
+返回持久化字段字典，把该字典翻译成应用层的 SubscribeDeletionCandidate 是调用方
+（app/application/subscription/*.py）的职责，本模块不 import 应用层类型。
 """
 import time
 from typing import Any, Tuple, List, Optional
 
 from sqlalchemy import delete as sqlalchemy_delete
 
-from app.application.subscription.delete import SubscribeDeletionCandidate
 from app.db.base import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
@@ -60,6 +63,26 @@ def _persistable(payload: dict) -> dict:
     persistable["search_imdbid"] = 1 if persistable.get("search_imdbid") else 0
     persistable["date"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     return persistable
+
+
+def _identity_row(subscribe: Subscribe) -> dict:
+    """
+    读出一行订阅的持久化身份快照：主键、归属用户与全部列值。
+
+    :param subscribe: 已从数据库加载的订阅行
+    :return: 含 subscribe_id/username/event_payload 三个键的字典，
+        event_payload 为该行全部列的原始值，供调用方翻译为业务对象
+    """
+    values = subscribe.__dict__
+    event_payload = {
+        column.name: values.get(column.name)
+        for column in subscribe.__table__.columns
+    }
+    return {
+        "subscribe_id": subscribe.id,
+        "username": subscribe.username,
+        "event_payload": event_payload,
+    }
 
 
 class SubscribeOper(DbOper):
@@ -160,21 +183,17 @@ class SubscribeOper(DbOper):
     async def get_candidate(
             self,
             subscribe_id: int,
-    ) -> Optional[SubscribeDeletionCandidate]:
-        """读取订阅删除用例需要的权限字段与完整事件快照。"""
+    ) -> Optional[dict]:
+        """
+        读取一条订阅的持久化身份快照。
+
+        :param subscribe_id: 订阅 ID
+        :return: 见 :func:`_identity_row`；订阅不存在时为 None
+        """
         subscribe = await self.async_get(subscribe_id)
         if not subscribe:
             return None
-        values = subscribe.__dict__
-        event_payload = {
-            column.name: values.get(column.name)
-            for column in subscribe.__table__.columns
-        }
-        return SubscribeDeletionCandidate(
-            subscribe_id=subscribe_id,
-            username=subscribe.username,
-            event_payload=event_payload,
-        )
+        return _identity_row(subscribe)
 
     async def list_candidates_by_identity(
             self,
@@ -182,8 +201,16 @@ class SubscribeOper(DbOper):
             media_id: str,
             season: Optional[int],
             music_type: Optional[str],
-    ) -> List[SubscribeDeletionCandidate]:
-        """按媒体身份读取去重后的订阅删除快照。"""
+    ) -> List[dict]:
+        """
+        按媒体身份读取去重后的订阅持久化身份快照列表。
+
+        :param media_source: 媒体来源
+        :param media_id: 媒体 ID
+        :param season: 季号，为 None 时不按季过滤
+        :param music_type: 音乐子类型，为 None 时不按子类型过滤
+        :return: 见 :func:`_identity_row` 的列表，按订阅 ID 去重
+        """
         subscribes = await Subscribe.async_list_by_media_identity(
             self._db,
             media_source=media_source,
@@ -204,17 +231,7 @@ class SubscribeOper(DbOper):
             if not subscribe.id or subscribe.id in seen_ids:
                 continue
             seen_ids.add(subscribe.id)
-            values = subscribe.__dict__
-            candidates.append(
-                SubscribeDeletionCandidate(
-                    subscribe_id=subscribe.id,
-                    username=subscribe.username,
-                    event_payload={
-                        column.name: values.get(column.name)
-                        for column in subscribe.__table__.columns
-                    },
-                )
-            )
+            candidates.append(_identity_row(subscribe))
         return candidates
 
     async def list_search_ids(self, username: str, state: str) -> List[int]:

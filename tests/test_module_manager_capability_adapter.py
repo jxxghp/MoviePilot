@@ -20,6 +20,7 @@ from app.runtime.capabilities.model import SelectorSchema
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions import module_manager as module_manager_extension
+from app.runtime.extensions import service_config as service_config_extension
 from app.runtime.extensions.module_manager import ModuleManager
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
@@ -249,6 +250,11 @@ def module_manager_harness(
         return config_values.get(key_value)
 
     monkeypatch.setattr(SystemConfigOper, "get", get_config)
+    monkeypatch.setattr(
+        service_config_extension,
+        "_service_config_reader",
+        lambda key: SystemConfigOper().get(key),
+    )
 
     singleton_key = (ModuleManager, (), frozenset())
     previous_manager = Singleton._instances.pop(singleton_key, None)
@@ -307,6 +313,69 @@ def _enable_sample(config_values: dict) -> None:
             "enabled": True,
         }
     ]
+
+
+def _enable_all(config_values: dict) -> None:
+    """写入同时通过 sample 与 other selector 的通知配置。"""
+    config_values["Notifications"] = [
+        {
+            "name": name,
+            "type": name,
+            "config": {},
+            "switchs": [],
+            "enabled": True,
+        }
+        for name in ("other", "sample")
+    ]
+
+
+def test_providers_for_indexes_running_modules_by_priority(
+    module_manager_harness,
+) -> None:
+    """能力索引按方法名命中运行模块，并与线性扫描视图保持一致。"""
+    manager = module_manager_harness.manager
+    _enable_all(module_manager_harness.config_values)
+    manager.load_modules()
+
+    sample = manager.get_running_module("SampleModule")
+    other = manager.get_running_module("OtherModule")
+    providers = manager.providers_for("capability_method")
+
+    assert providers == (sample, other)
+    assert set(providers) == set(manager.get_running_modules("capability_method"))
+    assert manager.providers_for("not_a_capability") == ()
+    assert manager.providers_for("") == ()
+
+
+def test_providers_for_cache_is_invalidated_on_lifecycle_changes(
+    module_manager_harness,
+) -> None:
+    """模块启停与重载必须作废能力索引，查询结果跟随发布视图变化。"""
+    manager = module_manager_harness.manager
+    assert manager.providers_for("capability_method") == ()
+
+    _enable_sample(module_manager_harness.config_values)
+    manager.load_modules()
+    first = manager.get_running_module("SampleModule")
+    assert manager.providers_for("capability_method") == (first,)
+
+    manager.stop()
+    assert manager.providers_for("capability_method") == ()
+
+    manager.load_modules()
+    second = manager.get_running_module("SampleModule")
+    assert second is not first
+    assert manager.providers_for("capability_method") == (second,)
+
+    _enable_all(module_manager_harness.config_values)
+    manager.load_modules()
+    assert manager.providers_for("capability_method") == (
+        second,
+        manager.get_running_module("OtherModule"),
+    )
+
+    manager.stop()
+    assert manager.providers_for("capability_method") == ()
 
 
 def test_harness_restores_module_manager_config_listener(

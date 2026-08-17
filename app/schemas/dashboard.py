@@ -2,8 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.runtime.localization import LocaleHelper
 from app.schemas.common import JsonData
+from app.schemas.i18n import translate
 
 
 class Statistic(BaseModel):
@@ -128,15 +128,14 @@ class ScheduleProgress(BaseModel):
         """
         自动补充后台服务进度的多语言展示字段。
         """
-        locale = LocaleHelper.get_current_locale()
         if self.name and self.name_i18n is None:
-            self.name_i18n = LocaleHelper.translate_text(self.name, locale=locale)
+            self.name_i18n = translate(self.name)
         if self.provider and self.provider_i18n is None:
-            self.provider_i18n = LocaleHelper.translate_text(self.provider, locale=locale)
+            self.provider_i18n = translate(self.provider)
         if self.text and self.text_i18n is None:
-            self.text_i18n = LocaleHelper.translate_text(self.text, locale=locale)
+            self.text_i18n = translate(self.text)
         if self.error and self.error_i18n is None:
-            self.error_i18n = LocaleHelper.translate_text(self.error, locale=locale)
+            self.error_i18n = translate(self.error)
         return self
 
 
@@ -177,17 +176,16 @@ class ScheduleInfo(BaseModel):
         """
         自动补充后台服务列表的多语言展示字段。
         """
-        locale = LocaleHelper.get_current_locale()
         if self.name and self.name_i18n is None:
-            self.name_i18n = LocaleHelper.translate_text(self.name, locale=locale)
+            self.name_i18n = translate(self.name)
         if self.provider and self.provider_i18n is None:
-            self.provider_i18n = LocaleHelper.translate_text(self.provider, locale=locale)
+            self.provider_i18n = translate(self.provider)
         if self.status and self.status_i18n is None:
-            self.status_i18n = LocaleHelper.translate_text(self.status, locale=locale)
+            self.status_i18n = translate(self.status)
         if self.next_run and self.next_run_i18n is None:
-            self.next_run_i18n = LocaleHelper.translate_text(self.next_run, locale=locale)
+            self.next_run_i18n = translate(self.next_run)
         if self.progress_text and self.progress_text_i18n is None:
-            self.progress_text_i18n = LocaleHelper.translate_text(self.progress_text, locale=locale)
+            self.progress_text_i18n = translate(self.progress_text)
         return self
 
 

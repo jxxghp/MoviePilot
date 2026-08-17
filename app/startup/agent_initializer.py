@@ -73,6 +73,13 @@ def _get_manual_redo_prompt_builder() -> Any:
     return build_manual_redo_prompt
 
 
+def _get_skill_helper() -> Any:
+    """首个技能管理请求才导入 SkillHelper 单例。"""
+    from app.agent.skills.registry import SkillHelper
+
+    return SkillHelper()
+
+
 async def _handle_agent_config_changed(event: Event) -> None:
     """把配置事件交给当前全局 initializer，避免监听器持有过期实例。"""
     await agent_initializer.handle_config_changed(event)
@@ -168,6 +175,7 @@ register_agent_service_providers(
     capability_manager_provider=_get_capability_manager,
     llm_helper_provider=_get_llm_helper,
     manual_redo_prompt_builder_provider=_get_manual_redo_prompt_builder,
+    skill_helper_provider=_get_skill_helper,
 )
 
 

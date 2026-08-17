@@ -2,7 +2,7 @@ from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.runtime.localization import LocaleHelper
+from app.schemas.i18n import translate
 
 
 DataT = TypeVar("DataT")
@@ -32,9 +32,7 @@ class Response(BaseModel, Generic[DataT]):
         message = str(value)
         if not message:
             return ""
-        return LocaleHelper.translate_text(
-            message, locale=LocaleHelper.get_current_locale()
-        )
+        return translate(message)
 
 
 class ValidationIssue(BaseModel):

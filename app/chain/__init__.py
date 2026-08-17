@@ -216,6 +216,92 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             **kwargs,
         )
 
+    def broadcast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> None:
+        """
+        把方法通知给全部实现该方法的插件与模块，不收集任何结果
+        每个提供者相互独立，单个出错不会中止其余提供者
+
+        :param method: 模块方法名称
+        """
+        self._module_dispatcher.broadcast(method, *args, **kwargs)
+
+    async def async_broadcast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> None:
+        """
+        异步把方法通知给全部实现该方法的插件与模块，不收集任何结果
+        支持异步和同步方法的混合调用
+
+        :param method: 模块方法名称
+        """
+        await self._module_dispatcher.async_broadcast(method, *args, **kwargs)
+
+    def multicast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> List[Any]:
+        """
+        在实现该方法的能力族内收集全部非空答案，返回 None 的提供者不计入结果
+
+        :param method: 模块方法名称
+        :return: 按插件优先、模块优先级排序的非空结果列表
+        """
+        return self._module_dispatcher.multicast(method, *args, **kwargs)
+
+    async def async_multicast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> List[Any]:
+        """
+        异步在实现该方法的能力族内收集全部非空答案
+        支持异步和同步方法的混合调用
+
+        :param method: 模块方法名称
+        :return: 按插件优先、模块优先级排序的非空结果列表
+        """
+        return await self._module_dispatcher.async_multicast(method, *args, **kwargs)
+
+    def unicast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> Any:
+        """
+        在实现该方法的能力族内仲裁单一答案，首个非空结果即为最终答案
+
+        :param method: 模块方法名称
+        :return: 首个非空结果；无人认领时返回 None
+        """
+        return self._module_dispatcher.unicast(method, *args, **kwargs)
+
+    async def async_unicast(
+            self,
+            method: str,
+            *args,
+            **kwargs,
+    ) -> Any:
+        """
+        异步在实现该方法的能力族内仲裁单一答案
+        支持异步和同步方法的混合调用
+
+        :param method: 模块方法名称
+        :return: 首个非空结果；无人认领时返回 None
+        """
+        return await self._module_dispatcher.async_unicast(method, *args, **kwargs)
+
     def match_doubaninfo(
             self,
             name: str,

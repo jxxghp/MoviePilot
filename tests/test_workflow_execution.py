@@ -4,7 +4,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from app.chain import workflow as workflow_module
+from app.workflow import service as workflow_module
 from app.schemas import Action, ActionContext, ActionResult
 from app.schemas.types import EventType
 from app import workflow as workflow_package

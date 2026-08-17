@@ -21,6 +21,7 @@ except ImportError:
 
 import psutil
 
+from app.foundation import hostenv
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
@@ -142,7 +143,7 @@ class SystemUtils:
         """
         判断是否为Docker环境
         """
-        return Path("/.dockerenv").exists()
+        return hostenv.is_docker()
 
     @staticmethod
     def is_synology() -> bool:
@@ -165,7 +166,7 @@ class SystemUtils:
         """
         判断是否为冻结的二进制文件
         """
-        return getattr(sys, 'frozen', False)
+        return hostenv.is_frozen()
 
     @staticmethod
     def is_macos() -> bool:
@@ -222,16 +223,7 @@ class SystemUtils:
         """
         获取CPU架构
         """
-        if SystemUtils.is_x86_64():
-            return "x86_64"
-        elif SystemUtils.is_x86_32():
-            return "x86_32"
-        elif SystemUtils.is_aarch64():
-            return "Arm64"
-        elif SystemUtils.is_aarch():
-            return "Arm32"
-        else:
-            return platform.machine()
+        return hostenv.cpu_arch()
 
     @staticmethod
     def copy(src: Path, dest: Path) -> Tuple[int, str]:
@@ -911,7 +903,7 @@ class SystemUtils:
         """
         获取配置路径
         """
-        return SystemUtils.get_config_path() / "app.env"
+        return hostenv.get_env_path()
 
     @staticmethod
     def clear(temp_path: Path, days: int):

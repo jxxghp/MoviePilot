@@ -20,6 +20,7 @@ _prompt_manager_provider: Optional[Provider] = None
 _agent_capability_manager_provider: Optional[Provider] = None
 _llm_helper_provider: Optional[Provider] = None
 _manual_redo_prompt_builder_provider: Optional[Provider] = None
+_skill_helper_provider: Optional[Provider] = None
 
 
 def register_agent_service_providers(
@@ -30,17 +31,20 @@ def register_agent_service_providers(
         capability_manager_provider: Provider,
         llm_helper_provider: Provider,
         manual_redo_prompt_builder_provider: Provider,
+        skill_helper_provider: Provider,
 ) -> None:
     """注册 Agent 服务 provider，保持组合根装配阶段零重量实现导入。"""
     global _agent_manager_provider, _running_agent_manager_provider
     global _prompt_manager_provider, _agent_capability_manager_provider
     global _llm_helper_provider, _manual_redo_prompt_builder_provider
+    global _skill_helper_provider
     _agent_manager_provider = agent_manager_provider
     _running_agent_manager_provider = running_agent_manager_provider
     _prompt_manager_provider = prompt_manager_provider
     _agent_capability_manager_provider = capability_manager_provider
     _llm_helper_provider = llm_helper_provider
     _manual_redo_prompt_builder_provider = manual_redo_prompt_builder_provider
+    _skill_helper_provider = skill_helper_provider
 
 
 def register_agent_services(
@@ -49,6 +53,7 @@ def register_agent_services(
         capability_manager: Any,
         llm_helper: Any,
         manual_redo_prompt_builder: Optional[Callable[[Any], str]] = None,
+        skill_helper: Any = None,
 ) -> None:
     """兼容直接对象注入；生产组合根应注册惰性 provider。"""
     register_agent_service_providers(
@@ -58,6 +63,7 @@ def register_agent_services(
         capability_manager_provider=lambda: capability_manager,
         llm_helper_provider=lambda: llm_helper,
         manual_redo_prompt_builder_provider=lambda: manual_redo_prompt_builder,
+        skill_helper_provider=lambda: skill_helper,
     )
 
 
@@ -84,6 +90,11 @@ def get_running_agent_manager() -> Any | None:
 def get_prompt_manager() -> Any:
     """按需返回提示词管理器。"""
     return _resolve(_prompt_manager_provider, "prompt_manager")
+
+
+def get_skill_helper() -> Any:
+    """按需返回 SkillHelper 单例，调用可能触发实现物化。"""
+    return _resolve(_skill_helper_provider, "skill_helper")
 
 
 def supports_image_input(

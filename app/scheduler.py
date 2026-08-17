@@ -22,7 +22,7 @@ from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
-from app.chain.workflow import WorkflowChain
+from app.workflow.service import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager

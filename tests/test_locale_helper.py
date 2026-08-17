@@ -379,7 +379,7 @@ def test_scheduler_progress_texts_have_english_translations():
         Path("app/chain/recommend.py"),
         Path("app/chain/transfer.py"),
         Path("app/chain/subscribe.py"),
-        Path("app/chain/workflow.py"),
+        Path("app/workflow/service.py"),
     ]
     for path in progress_paths:
         tree = ast.parse(path.read_text())

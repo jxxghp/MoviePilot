@@ -11,10 +11,10 @@ from typing import Optional, Tuple
 import docker
 import psutil
 
+from app.foundation import hostenv
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
-from app.adapters.system.host import SystemUtils
 
 
 class SystemHelper(ConfigReloadMixin):
@@ -50,7 +50,7 @@ class SystemHelper(ConfigReloadMixin):
         """
         判断是否可以内部重启
         """
-        return SystemUtils.is_docker() or SystemHelper._is_local_cli_managed()
+        return hostenv.is_docker() or SystemHelper._is_local_cli_managed()
 
     @staticmethod
     def _load_runtime_file(path: Path) -> Optional[dict]:
@@ -292,7 +292,7 @@ class SystemHelper(ConfigReloadMixin):
         """
         执行Docker重启操作
         """
-        if not SystemUtils.is_docker():
+        if not hostenv.is_docker():
             if not SystemHelper._is_local_cli_managed():
                 return False, "当前实例不是由 moviepilot CLI 启动，无法执行内建重启！"
             try:
@@ -396,7 +396,7 @@ class SystemHelper(ConfigReloadMixin):
         设置系统已修改标志
         """
         try:
-            if SystemUtils.is_docker():
+            if hostenv.is_docker():
                 Path(self.__system_flag_file).touch(exist_ok=True)
         except Exception as e:
             print(f"设置系统修改标志失败: {str(e)}")
@@ -406,6 +406,6 @@ class SystemHelper(ConfigReloadMixin):
         检查系统是否已被重置
         :return: 如果系统已重置，返回 True；否则返回 False
         """
-        if SystemUtils.is_docker():
+        if hostenv.is_docker():
             return not Path(self.__system_flag_file).exists()
         return False

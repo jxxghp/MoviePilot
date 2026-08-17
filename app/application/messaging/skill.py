@@ -3,9 +3,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
-from app.agent.skills.registry import SkillHelper, SkillInfo
+from app.application.agent import get_skill_helper
 from app.application.messaging.interaction import (
     MessageGateway,
     build_navigation_buttons,
@@ -15,6 +15,8 @@ from app.application.messaging.interaction import (
 )
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
+
+_SkillItemT = TypeVar("_SkillItemT")
 
 
 @dataclass
@@ -152,11 +154,18 @@ class SkillInteractionHandler:
     def __init__(
             self,
             messenger: MessageGateway,
-            skill_helper: Optional[SkillHelper] = None,
+            skill_helper: Optional[Any] = None,
     ):
-        """注入消息接口和技能管理能力。"""
+        """注入消息接口，技能管理能力延迟到首次访问 skillhelper 时经门面解析。"""
         self._messenger = messenger
-        self.skillhelper = skill_helper or SkillHelper()
+        self._skill_helper = skill_helper
+
+    @property
+    def skillhelper(self) -> Any:
+        """返回 SkillHelper 单例；未显式注入时经 application.agent 门面按需解析。"""
+        if self._skill_helper is None:
+            self._skill_helper = get_skill_helper()
+        return self._skill_helper
 
     def remote_manage(
             self,
@@ -1059,10 +1068,10 @@ class SkillInteractionHandler:
 
     @staticmethod
     def _page_items(
-            items: List[SkillInfo],
+            items: List[_SkillItemT],
             page: int,
             page_size: int,
-    ) -> Tuple[List[SkillInfo], int, int]:
+    ) -> Tuple[List[_SkillItemT], int, int]:
         """
         返回当前页的数据，并把页码钳制到有效范围内。
         """
@@ -1146,9 +1155,9 @@ class SkillInteractionHandler:
             self,
             request: PendingSkillInteraction,
             force_market_refresh: bool = False,
-    ) -> List[SkillInfo]:
+    ) -> List[Any]:
         """
-        获取当前 /skills 会话可见的市场技能，并应用搜索词过滤。
+        获取当前 /skills 会话可见的市场技能（元素类型为 SkillInfo），并应用搜索词过滤。
         """
         skills = [
             skill

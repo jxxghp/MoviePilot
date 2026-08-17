@@ -104,7 +104,7 @@ class SystemHelperRestartTest(TestCase):
                 settings.TEMP_PATH / "moviepilot.intentional_restart"
             )
             try:
-                with patch("app.runtime.state.SystemUtils.is_docker", return_value=True), \
+                with patch("app.runtime.state.hostenv.is_docker", return_value=True), \
                         patch.object(SystemHelper, "_check_restart_policy", return_value=True), \
                         patch.object(SystemHelper, "_start_graceful_shutdown_monitor"), \
                         patch("app.runtime.state.os.kill") as kill_mock:
