@@ -101,14 +101,12 @@ def test_install_and_docker_paths_do_not_reference_v2_resources():
         assert "app/application/site" in content
 
 
-def test_docker_entrypoint_refreshes_stale_update_script_before_use():
-    """新镜像应在自动更新前同步源码内置脚本，避免目录约定再次陈旧。"""
+def test_docker_entrypoint_does_not_sync_updater_as_a_special_case():
+    """容器控制脚本必须由 launcher 统一固化，不能单独替换 updater。"""
     content = (ROOT_DIR / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
-    refresh = "cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh"
-    source = "source /usr/local/bin/mp_update.sh"
 
-    assert refresh in content
-    assert content.index(refresh) < content.index(source)
+    assert "mp_update.sh" not in content
+    assert 'source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"' in content
 
 
 def test_v3_release_workflows_use_main_wiki_and_isolated_images():
