@@ -682,6 +682,16 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs={"job_id": "scheduler_job"},
             )
 
+            # 缓存清理服务
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="clear_cache",
+                name="缓存清理",
+                hours=24,
+                kwargs={"job_id": "clear_cache"},
+            )
+
             # 数据表清理服务，每天凌晨执行一次
             if settings.DATA_CLEANUP_ENABLE:
                 self._scheduler.add_job(
