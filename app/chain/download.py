@@ -6,7 +6,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Set, Dict, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Set, Dict, Union
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from app import schemas
@@ -43,6 +43,9 @@ from app.domain import episode as episode_rules
 from app.foundation import size as size_tools
 from app.foundation import text as text_tools
 from app.adapters.system.host import SystemUtils
+
+if TYPE_CHECKING:
+    from app.db.models.downloadfailure import DownloadFailure
 
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
@@ -832,12 +835,12 @@ class DownloadChain(ChainBase):
             self,
             contexts: List[Context],
             source: Optional[str],
-    ) -> Set[str]:
+    ) -> Dict[str, "DownloadFailure"]:
         """
-        查询当前订阅候选中仍处于冷却期的失败指纹。
+        查询当前订阅候选中仍处于冷却期的失败记录，返回指纹到失败记录的映射。
         """
         if not self._is_subscribe_source(source):
-            return set()
+            return {}
         fingerprints = [
             fingerprint
             for fingerprint in [
@@ -847,17 +850,15 @@ class DownloadChain(ChainBase):
             if fingerprint
         ]
         if not fingerprints:
-            return set()
+            return {}
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
-            return set(
-                DownloadFailureOper()
-                .get_active_by_fingerprints(fingerprints=fingerprints, now_time=now_time)
-                .keys()
+            return DownloadFailureOper().get_active_by_fingerprints(
+                fingerprints=fingerprints, now_time=now_time,
             )
         except Exception as err:
             logger.error(f"查询下载失败冷却失败：{str(err)}")
-            return set()
+            return {}
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: NotificationChannel = None,
@@ -1418,7 +1419,7 @@ class DownloadChain(ChainBase):
 
         # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
         contexts = TorrentHelper().sort_torrents(contexts)
-        active_failure_fingerprints = self._active_download_failure_fingerprints(
+        active_failure_records = self._active_download_failure_fingerprints(
             contexts=contexts,
             source=source,
         )
@@ -1428,8 +1429,16 @@ class DownloadChain(ChainBase):
             判断候选资源是否仍处于失败冷却期。
             """
             fingerprint = self._build_download_failure_fingerprint(_context)
-            if fingerprint and fingerprint in active_failure_fingerprints:
-                logger.info(f"{_context.torrent_info.title} 近期添加下载失败，暂时跳过该资源")
+            if fingerprint and fingerprint in active_failure_records:
+                _failure = active_failure_records[fingerprint]
+                _reason = getattr(_failure, "error_message", None) or "未知原因"
+                _retry_at = getattr(_failure, "next_retry_at", None)
+                if _retry_at:
+                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
+                                f"暂时跳过该资源，将于 {_retry_at} 后重试")
+                else:
+                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
+                                f"暂时跳过该资源")
                 return True
             return False
 
@@ -1439,7 +1448,7 @@ class DownloadChain(ChainBase):
             """
             fingerprint = self._build_download_failure_fingerprint(_context)
             if fingerprint:
-                active_failure_fingerprints.add(fingerprint)
+                active_failure_records[fingerprint] = None
 
         # 如果是电影，直接下载
         downloaded_movies = set()

@@ -921,7 +921,11 @@ def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkey
             """
             assert now_time
             assert failed_fingerprint in fingerprints
-            return {failed_fingerprint: SimpleNamespace(fingerprint=failed_fingerprint)}
+            return {failed_fingerprint: SimpleNamespace(
+                fingerprint=failed_fingerprint,
+                error_message="无法读取种子文件",
+                next_retry_at="2026-01-02 03:04:05",
+            )}
 
     monkeypatch.setattr(download_module, "DownloadFailureOper", _ActiveDownloadFailureOper)
 
