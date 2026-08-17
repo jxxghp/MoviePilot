@@ -194,6 +194,8 @@ class ConfigModel(BaseModel):
     DATA_CLEANUP_SITE_USERDATA_DAYS: int = 180
     # 整理历史表保留天数，0为不清理
     DATA_CLEANUP_TRANSFER_HISTORY_DAYS: int = 365 * 3
+    # 下载失败冷却记录保留天数，0为不清理
+    DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS: int = 7
 
     # ==================== 缓存配置 ====================
     # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools

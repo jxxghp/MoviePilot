@@ -31,6 +31,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.db import SessionFactory
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message as MessageModel
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
@@ -180,6 +181,9 @@ class SchedulerChain(ChainBase):
         transfer_history_days = self._normalize_retention_days(
             settings.DATA_CLEANUP_TRANSFER_HISTORY_DAYS
         )
+        download_failure_days = self._normalize_retention_days(
+            settings.DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS
+        )
 
         message_cutoff = (
                 started_at - timedelta(days=message_days)
@@ -193,6 +197,9 @@ class SchedulerChain(ChainBase):
         transfer_history_cutoff = (
                 started_at - timedelta(days=transfer_history_days)
         ).strftime("%Y-%m-%d")
+        download_failure_cutoff = (
+                started_at - timedelta(days=download_failure_days)
+        ).strftime("%Y-%m-%d %H:%M:%S")
 
         return [
             {
@@ -241,6 +248,16 @@ class SchedulerChain(ChainBase):
                 "handler": lambda db: TransferHistory.delete_before(
                     db=db,
                     before_time=transfer_history_cutoff,
+                    limit=batch_size,
+                ),
+            },
+            {
+                "name": "downloadfailure",
+                "retention_days": download_failure_days,
+                "cutoff": download_failure_cutoff,
+                "handler": lambda db: DownloadFailure.delete_expired(
+                    db=db,
+                    before_time=download_failure_cutoff,
                     limit=batch_size,
                 ),
             },
