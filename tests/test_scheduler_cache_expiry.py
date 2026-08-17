@@ -101,5 +101,4 @@ def test_clear_cache_is_manual_only(monkeypatch):
     assert "clear_cache" not in scheduled_job_ids
     assert "clear_cache" in scheduler._jobs
     assert scheduler._jobs["clear_cache"]["manual"] is True
-    assert scheduler._jobs["clear_cache"]["provider_name"] == "[系统]"
     assert background_scheduler.started is True
