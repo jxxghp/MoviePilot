@@ -1424,3 +1424,34 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
     assert payload["type"] == MediaType.MUSIC.value
     assert payload["music_type"] == "album"
     assert payload["total_tracks"] == 13
+
+
+class _LegacyNoteRow:
+    """携带历史字符串 note 的最小 ORM 替身。"""
+
+    def __init__(self, note):
+        self.note = note
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("[1, 2, 3, 4]", [1, 2, 3, 4]),      # 双重 JSON 编码的整型数组
+        ("[1, 2]", [1, 2]),
+        ("[]", []),                          # 双重编码的空数组
+        ("null", None),                      # 双重编码的 null
+        ("not json", None),                  # 无法解析的历史脏数据
+        ([1, 2, 3], [1, 2, 3]),              # 正常列表原样保留
+        (None, None),                        # 空值
+    ],
+)
+def test_subscribe_note_normalizes_legacy_json_string(raw, expected):
+    """历史字符串型 note 应被解析为整数列表，避免响应校验 500。"""
+    subscribe = Subscribe.model_validate(_LegacyNoteRow(note=raw))
+    assert subscribe.note == expected
+
+
+def test_subscribe_note_strips_non_int_items_from_legacy_string():
+    """历史脏数据中混入非整数元素时只保留整数，不阻塞整个订阅列表接口。"""
+    subscribe = Subscribe.model_validate(_LegacyNoteRow(note='[1, 2, "x", 3]'))
+    assert subscribe.note == [1, 2, 3]

@@ -1,6 +1,7 @@
+import json
 from typing import Optional, List, Dict, Any, ClassVar
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
@@ -153,6 +154,28 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     episode_group: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_legacy_note(cls, value: Any) -> Any:
+        """
+        兼容历史字符串型 note。
+
+        2.0 时代旧代码对 JSON 列显式做了 ``json.dumps``，历史数据可能是一层
+        或两层 JSON 编码的字符串（如 ``'[1, 2, 3]'``），不解析会触发响应
+        校验 500；解析失败按空值处理，避免脏数据阻塞整个订阅列表接口。
+        """
+        if not isinstance(value, str):
+            return value
+        parsed = value
+        while isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except (TypeError, ValueError):
+                return None
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, int)]
+        return None
 
     @model_validator(mode="before")
     @classmethod
