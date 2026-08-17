@@ -58,8 +58,9 @@ class EditFileTool(MoviePilotTool):
         "the match must occur exactly once; use replace_all only for intentional "
         "bulk replacement. old_text cannot be empty, and new files must be "
         "created with write_file. Supports an optional SHA-256 conflict check. "
-        "Non-admin users can only edit files inside the MoviePilot Agent config "
-        "directory."
+        "When one logical change spans multiple files or needs to add or delete "
+        "files, use apply_patch instead. Non-admin users can only edit files "
+        "inside the MoviePilot Agent config directory."
     )
     args_schema: Type[BaseModel] = EditFileInput
 

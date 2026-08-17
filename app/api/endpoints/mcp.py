@@ -25,6 +25,7 @@ MCP_HIDDEN_TOOLS = {
     "execute_command",
     "search_web",
     "edit_file",
+    "apply_patch",
     "write_file",
     "read_file",
 }

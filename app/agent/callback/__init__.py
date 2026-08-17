@@ -1,4 +1,5 @@
 import asyncio
+import re
 import threading
 from typing import Any, Optional, Tuple
 
@@ -18,6 +19,19 @@ from app.schemas.types import NotificationChannel, MessageType
 
 class _StreamChain(ChainBase):
     pass
+
+
+_PATCH_FILE_HEADER_PATTERN = re.compile(
+    r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)"
+)
+
+
+def _extract_first_patch_path(patch: Optional[str]) -> Optional[str]:
+    """从补丁文本中提取首个文件路径，作为流式消息展示目标。"""
+    if not patch:
+        return None
+    match = _PATCH_FILE_HEADER_PATTERN.search(patch)
+    return match.group(1) if match else None
 
 
 class StreamingHandler:
@@ -337,6 +351,8 @@ class StreamingHandler:
             return "file_read", tool_kwargs.get("file_path")
         if tool_name in {"write_file", "edit_file"}:
             return "file_write", tool_kwargs.get("file_path")
+        if tool_name == "apply_patch":
+            return "file_write", _extract_first_patch_path(tool_kwargs.get("patch"))
         if tool_name in {"list_directory", "query_directory_settings"}:
             return "directory", tool_kwargs.get("path")
         if tool_name == "browse_webpage":

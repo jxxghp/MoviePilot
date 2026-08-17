@@ -66,6 +66,7 @@ from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.query_transfer_history import QueryTransferHistoryTool
 from app.agent.tools.impl.transfer_file import TransferFileTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
+from app.agent.tools.impl.apply_patch import ApplyPatchTool
 from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.impl.read_file import ReadFileTool
@@ -163,6 +164,7 @@ class MoviePilotToolFactory:
         UpdatePersonaDefinitionTool,
         ExecuteCommandTool,
         EditFileTool,
+        ApplyPatchTool,
         WriteFileTool,
         ReadFileTool,
         BrowseWebpageTool,
@@ -192,6 +194,7 @@ class MoviePilotToolFactory:
         "write_file",
         "read_file",
         "edit_file",
+        "apply_patch",
         "execute_command",
         "ask_user_choice",
         "create_agent_task",

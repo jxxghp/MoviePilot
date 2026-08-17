@@ -32,6 +32,7 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "add_download_tasks",
         "add_rule_group",
         "add_subscribe",
+        "apply_patch",
         "ask_user_choice",
         "browse_webpage",
         "create_agent_task",

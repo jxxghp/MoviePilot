@@ -1,6 +1,6 @@
 ---
 name: create-moviepilot-plugin
-version: 3
+version: 4
 description: >-
   Use this skill when the user asks to create, modify, debug, validate, or
   scaffold a MoviePilot local plugin. Covers MoviePilot V2 plugin development,
@@ -11,7 +11,7 @@ description: >-
   sidebar pages, commands, services, workflow actions, agent tools, and local
   install/reload flows. Also use for Chinese requests mentioning 编写插件、本地插件源,
   插件开发, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
-allowed-tools: list_directory read_file write_file edit_file execute_command search_web browse_webpage query_system_settings update_system_settings query_market_plugins install_plugin reload_plugin query_installed_plugins
+allowed-tools: list_directory read_file write_file edit_file apply_patch execute_command search_web browse_webpage query_system_settings update_system_settings query_market_plugins install_plugin reload_plugin query_installed_plugins
 ---
 
 # Create MoviePilot Plugin
@@ -51,12 +51,18 @@ a local plugin source and installed into the running MoviePilot instance.
   examples from different major versions. Search the relevant package directory,
   `.venv`, or `node_modules` directly with `rg` instead of scanning the entire
   project without bounds.
-- Use `edit_file` for localized changes. Its `old_text` must identify one exact
-  location by default; add surrounding context instead of enabling
-  `replace_all` unless every match intentionally changes.
-- Use `write_file` for new files. Existing files require `overwrite=true` for a
-  full rewrite; first call `read_file(include_metadata=true)` and pass its
-  `sha256` as `expected_sha256` when replacing previously read content.
+- Pick the editing tool by scope. Use `apply_patch` when one logical change
+  spans multiple files, adds new files, or deletes files: submit a single patch
+  wrapped in `*** Begin Patch` / `*** End Patch` with `*** Add File:`,
+  `*** Update File:`, and `*** Delete File:` sections; every context and
+  removed line must match the current content exactly.
+- Use `edit_file` for a single localized change in one file. Its `old_text`
+  must identify one exact location by default; add surrounding context instead
+  of enabling `replace_all` unless every match intentionally changes.
+- Use `write_file` for one standalone new file. Existing files require
+  `overwrite=true` for a full rewrite; first call
+  `read_file(include_metadata=true)` and pass its `sha256` as
+  `expected_sha256` when replacing previously read content.
 - Use `execute_command(action="run")` for short validation, Git, and diagnostic
   commands. Use `action="start"` only for interactive or long-running commands,
   then continue through the returned session ID.

@@ -29,7 +29,9 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "organize-files": "3",
         "transfer-failed-retry": "4",
         "generate-identifiers": "3",
-        "create-moviepilot-plugin": "3",
+        "create-moviepilot-plugin": "4",
+        "create-moviepilot-skill": "2",
+        "publish-moviepilot-plugin": "2",
     }
 
     for skill_name, expected_version in expected_versions.items():
@@ -79,6 +81,7 @@ def test_agent_core_prompt_does_not_block_plugin_source_edits() -> None:
     assert "file editing tools, or generated patches to change code" not in core_prompt
     assert "write_file" in allowed_tools
     assert "edit_file" in allowed_tools
+    assert "apply_patch" in allowed_tools
     assert "search_web" in allowed_tools
     assert "browse_webpage" in allowed_tools
 
@@ -89,6 +92,8 @@ def test_agent_core_prompt_routes_code_tools_safely() -> None:
 
     assert '`execute_command(action="run")` with `rg`' in core_prompt
     assert "`replace_all=true` only when every match must change" in core_prompt
+    assert "pick the editing tool by scope" in core_prompt
+    assert "Use `apply_patch` when one logical change spans multiple files" in core_prompt
     assert "Use `action=run` for short bounded commands" in core_prompt
     assert "including SSH" in core_prompt
     assert "Never use shell redirection" in core_prompt

@@ -291,7 +291,7 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 内置工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。插件工具的参数结构由插件自身声明。
 
 内置 Agent 的本地文件与命令工具 `read_file`、`write_file`、`edit_file`、
-`execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
+`apply_patch`、`execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
 用户权限与路径边界检查；MCP 隐藏列表只负责收敛接口暴露面，不替代权限控制。
 其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
 `start_line`、`end_line` 指定更小的行号范围继续读取。
