@@ -25,8 +25,41 @@ from app.foundation.singleton import Singleton
 from app.foundation.collections import DictUtils
 
 
-class CommandChain(ChainBase):
-    """命令分发专用 Chain，仅作为命令侧的消息投递网关。"""
+class CommandChain:
+    """
+    命令分发消息网关，持有消息与模块分发设施：
+    - 收口渠道消息处理状态
+    - 广播命令注册表给实现该接口的模块与插件
+    - 转发/编辑命令回复消息
+    """
+
+    def __init__(self):
+        """初始化消息与模块分发设施实例。"""
+        self._chain = ChainBase()
+
+    def finish_message_processing_status(self, *args, **kwargs) -> None:
+        """
+        结束渠道侧消息输入/处理状态，参数透传给消息分发设施
+        """
+        return self._chain.finish_message_processing_status(*args, **kwargs)
+
+    def register_commands(self, commands: Dict[str, dict]) -> None:
+        """
+        广播菜单命令注册，由实现该接口的模块与插件自行处理
+        """
+        self._chain.register_commands(commands=commands)
+
+    def post_message(self, *args, **kwargs) -> None:
+        """
+        发送命令回复消息，参数透传给消息分发设施
+        """
+        return self._chain.post_message(*args, **kwargs)
+
+    def edit_message(self, **kwargs) -> bool:
+        """
+        编辑已发送的命令回复消息，参数透传给消息分发设施
+        """
+        return self._chain.edit_message(**kwargs)
 
 
 def _finish_command_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:

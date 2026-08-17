@@ -61,10 +61,10 @@ class TestSystemNotificationDispatch(unittest.TestCase):
             text="任务完成",
         )
 
-        with patch.object(chain, "run_module") as run_module:
+        with patch.object(chain, "unicast") as unicast:
             chain.send_direct_message(message)
 
-        sent_message = run_module.call_args.kwargs["message"]
+        sent_message = unicast.call_args.kwargs["message"]
         self.assertIsNone(sent_message.userid)
 
     def test_async_send_message_uses_executor_for_immediate_send(self):

@@ -47,7 +47,7 @@ def test_report_shared_result_after_local_recognize_success():
     meta = _build_meta("测试电影", MediaType.MOVIE)
     mediainfo = _tmdb_media("测试电影", 100, MediaType.MOVIE, year="2024")
 
-    with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
+    with patch.object(chain, "unicast", return_value=mediainfo) as unicast, patch(
         "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
     ) as report_mock, patch(
@@ -56,7 +56,7 @@ def test_report_shared_result_after_local_recognize_success():
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is mediainfo
-    run_module.assert_called_once()
+    unicast.assert_called_once()
     report_mock.assert_called_once_with(meta=meta, mediainfo=mediainfo, keyword_meta=meta)
     query_mock.assert_not_called()
 
@@ -69,9 +69,9 @@ def test_query_shared_result_when_local_recognize_failed():
 
     with patch.object(
         chain,
-        "run_module",
+        "unicast",
         side_effect=[None, shared_media],
-    ) as run_module, patch(
+    ) as unicast, patch(
         "app.chain._recognition.MoviePilotServerHelper.query_recognize_share",
         return_value={
             "type": "tv",
@@ -97,9 +97,9 @@ def test_query_shared_result_when_local_recognize_failed():
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is shared_media
-    assert run_module.call_count == 2
+    assert unicast.call_count == 2
     query_mock.assert_called_once_with(meta=meta, mtype=None, keyword_meta=meta)
-    second_call = run_module.call_args_list[1]
+    second_call = unicast.call_args_list[1]
     assert second_call.kwargs["media_source"] == MediaSource.TMDB
     assert second_call.kwargs["media_id"] == "200"
     assert second_call.kwargs["mtype"] == MediaType.TV
@@ -111,13 +111,13 @@ def test_async_query_shared_result_when_local_recognize_failed():
     chain = ChainBase()
     meta = _build_meta("测试异步剧集")
     shared_media = _tmdb_media("测试异步剧集", 300, MediaType.TV, year="2025")
-    async_run_module = AsyncMock(side_effect=[None, shared_media])
+    async_unicast = AsyncMock(side_effect=[None, shared_media])
 
     async def runner():
         with patch.object(
             chain,
-            "async_run_module",
-            async_run_module,
+            "async_unicast",
+            async_unicast,
         ), patch(
             "app.chain._recognition.MoviePilotServerHelper.async_query_recognize_share",
             AsyncMock(return_value={
@@ -148,7 +148,7 @@ def test_async_query_shared_result_when_local_recognize_failed():
     result, query_mock, backfill_mock = asyncio.run(runner())
 
     assert result is shared_media
-    assert async_run_module.await_count == 2
+    assert async_unicast.await_count == 2
     query_mock.assert_awaited_once_with(meta=meta, mtype=None, keyword_meta=meta)
     backfill_mock.assert_awaited_once()
     assert meta.begin_season is None
@@ -170,9 +170,12 @@ def test_backfill_local_cache_after_shared_recognize_success():
 
     with patch.object(
         chain,
-        "run_module",
-        side_effect=[None, shared_media, None],
-    ) as run_module_mock, patch(
+        "unicast",
+        side_effect=[None, shared_media],
+    ) as unicast_mock, patch.object(
+        chain,
+        "broadcast",
+    ) as broadcast_mock, patch(
         "app.chain._recognition.MoviePilotServerHelper.query_recognize_share",
         return_value={
             "type": "movie",
@@ -194,8 +197,9 @@ def test_backfill_local_cache_after_shared_recognize_success():
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is shared_media
-    assert run_module_mock.call_count == 3
-    update_call = run_module_mock.call_args_list[2]
+    assert unicast_mock.call_count == 2
+    broadcast_mock.assert_called_once()
+    update_call = broadcast_mock.call_args
     assert update_call.args[0] == "update_recognize_cache"
     assert update_call.kwargs["meta"] is not meta
     assert update_call.kwargs["meta"].name == meta.name
@@ -287,7 +291,7 @@ def test_report_shared_result_with_distinct_keyword_meta():
     share_meta.original_name = "辅助识别前的名称"
     mediainfo = _tmdb_media("测试剧集", 402, MediaType.TV, year="2024")
 
-    with patch.object(chain, "run_module", return_value=mediainfo), patch(
+    with patch.object(chain, "unicast", return_value=mediainfo), patch(
         "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
     ) as report_mock:
@@ -312,7 +316,7 @@ def test_query_shared_result_with_distinct_keyword_meta():
 
     with patch.object(
         chain,
-        "run_module",
+        "unicast",
         side_effect=[None, shared_media],
     ), patch(
         "app.chain._recognition.MoviePilotServerHelper.query_recognize_share",
@@ -358,7 +362,7 @@ def test_skip_report_when_local_recognize_hits_cache():
     mediainfo = _tmdb_media("缓存电影", 500, MediaType.MOVIE, year="2024")
     mediainfo.recognize_cache_hit = True
 
-    with patch.object(chain, "run_module", return_value=mediainfo) as run_module, patch(
+    with patch.object(chain, "unicast", return_value=mediainfo) as unicast, patch(
         "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
     ) as report_mock, patch(
@@ -367,7 +371,7 @@ def test_skip_report_when_local_recognize_hits_cache():
         result = chain.recognize_media(meta=meta)
 
     assert result is mediainfo
-    run_module.assert_called_once()
+    unicast.assert_called_once()
     report_mock.assert_not_called()
     query_mock.assert_not_called()
 
@@ -382,9 +386,9 @@ def test_async_skip_report_when_local_recognize_hits_cache():
     async def runner():
         with patch.object(
             chain,
-            "async_run_module",
+            "async_unicast",
             AsyncMock(return_value=mediainfo),
-        ) as async_run_module, patch(
+        ) as async_unicast, patch(
             "app.chain._recognition.MoviePilotServerHelper.async_report_recognize_share",
             AsyncMock(return_value=True),
         ) as report_mock, patch(
@@ -392,12 +396,12 @@ def test_async_skip_report_when_local_recognize_hits_cache():
             AsyncMock(),
         ) as query_mock:
             result = await chain.async_recognize_media(meta=meta)
-        return result, async_run_module, report_mock, query_mock
+        return result, async_unicast, report_mock, query_mock
 
-    result, async_run_module, report_mock, query_mock = asyncio.run(runner())
+    result, async_unicast, report_mock, query_mock = asyncio.run(runner())
 
     assert result is mediainfo
-    async_run_module.assert_awaited_once()
+    async_unicast.assert_awaited_once()
     report_mock.assert_not_awaited()
     query_mock.assert_not_awaited()
 

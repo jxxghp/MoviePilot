@@ -1251,7 +1251,7 @@
       },
       {
         "caller": "app.command",
-        "line": 440
+        "line": 473
       },
       {
         "caller": "app.modules._base.mediaserver",
@@ -1294,7 +1294,7 @@
         "producers": [
           {
             "caller": "app.command",
-            "line": 267
+            "line": 300
           },
           {
             "caller": "app.modules._base.notification",
@@ -1513,7 +1513,7 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 442
+            "line": 475
           }
         ],
         "producers": [
@@ -1623,7 +1623,7 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 476
+            "line": 509
           }
         ],
         "producers": []
@@ -1645,7 +1645,7 @@
         "consumers": [
           {
             "caller": "app.scheduler",
-            "line": 1046
+            "line": 1076
           }
         ],
         "producers": [
@@ -1815,7 +1815,7 @@
           },
           {
             "caller": "app.scheduler",
-            "line": 696
+            "line": 726
           }
         ]
       },
@@ -1873,10 +1873,10 @@
     "producer_count": 68
   },
   "run_module": {
-    "call_count": 259,
+    "call_count": 199,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 211,
+    "method_count": 155,
     "methods": {
       "anilist_credits": [
         {
@@ -2025,11 +2025,6 @@
       ],
       "async_bangumi_info": [
         {
-          "caller": "app.chain",
-          "line": 541,
-          "mode": "async"
-        },
-        {
           "caller": "app.chain.bangumi",
           "line": 79,
           "mode": "async"
@@ -2070,13 +2065,6 @@
         {
           "caller": "app.chain.recommend",
           "line": 617,
-          "mode": "async"
-        }
-      ],
-      "async_douban_info": [
-        {
-          "caller": "app.chain",
-          "line": 478,
           "mode": "async"
         }
       ],
@@ -2129,24 +2117,10 @@
           "mode": "async"
         }
       ],
-      "async_match_doubaninfo": [
-        {
-          "caller": "app.chain",
-          "line": 351,
-          "mode": "async"
-        }
-      ],
       "async_match_music_album": [
         {
           "caller": "app.chain.musicbrainz",
           "line": 283,
-          "mode": "async"
-        }
-      ],
-      "async_match_tmdbinfo": [
-        {
-          "caller": "app.chain",
-          "line": 393,
           "mode": "async"
         }
       ],
@@ -2195,11 +2169,6 @@
       ],
       "async_recognize_media": [
         {
-          "caller": "app.chain._recognition",
-          "line": 108,
-          "mode": "async"
-        },
-        {
           "caller": "app.chain.douban",
           "line": 70,
           "mode": "async"
@@ -2207,48 +2176,6 @@
         {
           "caller": "app.chain.musicbrainz",
           "line": 63,
-          "mode": "async"
-        }
-      ],
-      "async_refresh_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 773,
-          "mode": "async"
-        }
-      ],
-      "async_search_collections": [
-        {
-          "caller": "app.chain",
-          "line": 647,
-          "mode": "async"
-        }
-      ],
-      "async_search_medias": [
-        {
-          "caller": "app.chain",
-          "line": 595,
-          "mode": "async"
-        }
-      ],
-      "async_search_persons": [
-        {
-          "caller": "app.chain",
-          "line": 621,
-          "mode": "async"
-        }
-      ],
-      "async_search_subtitles": [
-        {
-          "caller": "app.chain",
-          "line": 731,
-          "mode": "async"
-        }
-      ],
-      "async_search_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 714,
           "mode": "async"
         }
       ],
@@ -2287,13 +2214,6 @@
         {
           "caller": "app.chain.tmdb",
           "line": 232,
-          "mode": "async"
-        }
-      ],
-      "async_tmdb_info": [
-        {
-          "caller": "app.chain",
-          "line": 523,
           "mode": "async"
         }
       ],
@@ -2420,13 +2340,6 @@
           "mode": "async"
         }
       ],
-      "async_update_recognize_cache": [
-        {
-          "caller": "app.chain._recognition",
-          "line": 78,
-          "mode": "async"
-        }
-      ],
       "bangumi_calendar": [
         {
           "caller": "app.chain.bangumi",
@@ -2449,11 +2362,6 @@
         }
       ],
       "bangumi_info": [
-        {
-          "caller": "app.chain",
-          "line": 533,
-          "mode": "sync"
-        },
         {
           "caller": "app.chain.bangumi",
           "line": 31,
@@ -2488,13 +2396,6 @@
           "mode": "sync"
         }
       ],
-      "clear_cache": [
-        {
-          "caller": "app.chain",
-          "line": 1129,
-          "mode": "sync"
-        }
-      ],
       "create_folder": [
         {
           "caller": "app.chain.storage",
@@ -2509,24 +2410,10 @@
           "mode": "sync"
         }
       ],
-      "delete_message": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 410,
-          "mode": "sync"
-        }
-      ],
       "douban_discover": [
         {
           "caller": "app.chain.douban",
           "line": 277,
-          "mode": "sync"
-        }
-      ],
-      "douban_info": [
-        {
-          "caller": "app.chain",
-          "line": 458,
           "mode": "sync"
         }
       ],
@@ -2569,20 +2456,6 @@
         {
           "caller": "app.chain.douban",
           "line": 324,
-          "mode": "sync"
-        }
-      ],
-      "download": [
-        {
-          "caller": "app.chain",
-          "line": 818,
-          "mode": "sync"
-        }
-      ],
-      "download_added": [
-        {
-          "caller": "app.chain",
-          "line": 842,
           "mode": "sync"
         }
       ],
@@ -2771,27 +2644,6 @@
           "mode": "sync"
         }
       ],
-      "edit_message": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 456,
-          "mode": "sync"
-        }
-      ],
-      "filter_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 790,
-          "mode": "sync"
-        }
-      ],
-      "finalize_message": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 488,
-          "mode": "sync"
-        }
-      ],
       "get_file_item": [
         {
           "caller": "app.chain.storage",
@@ -2813,20 +2665,6 @@
           "mode": "sync"
         }
       ],
-      "get_search_page_size": [
-        {
-          "caller": "app.chain",
-          "line": 659,
-          "mode": "sync"
-        }
-      ],
-      "get_torrent_trackers": [
-        {
-          "caller": "app.chain",
-          "line": 1036,
-          "mode": "sync"
-        }
-      ],
       "identify_music_by_fingerprint": [
         {
           "caller": "app.chain.acoustid",
@@ -2841,73 +2679,10 @@
           "mode": "sync"
         }
       ],
-      "list_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 864,
-          "mode": "sync"
-        }
-      ],
-      "load_category_config": [
-        {
-          "caller": "app.chain",
-          "line": 1105,
-          "mode": "sync"
-        }
-      ],
-      "mark_message_processing_finished": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 85,
-          "mode": "sync"
-        }
-      ],
-      "mark_message_processing_started": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 47,
-          "mode": "sync"
-        }
-      ],
-      "match_doubaninfo": [
-        {
-          "caller": "app.chain",
-          "line": 323,
-          "mode": "sync"
-        }
-      ],
       "match_music_album": [
         {
           "caller": "app.chain.musicbrainz",
           "line": 268,
-          "mode": "sync"
-        }
-      ],
-      "match_tmdbinfo": [
-        {
-          "caller": "app.chain",
-          "line": 375,
-          "mode": "sync"
-        }
-      ],
-      "media_category": [
-        {
-          "caller": "app.chain",
-          "line": 1099,
-          "mode": "sync"
-        }
-      ],
-      "media_exists": [
-        {
-          "caller": "app.chain",
-          "line": 1066,
-          "mode": "sync"
-        }
-      ],
-      "media_files": [
-        {
-          "caller": "app.chain",
-          "line": 1076,
           "mode": "sync"
         }
       ],
@@ -2997,20 +2772,6 @@
         {
           "caller": "app.chain.mediaserver",
           "line": 183,
-          "mode": "sync"
-        }
-      ],
-      "message_parser": [
-        {
-          "caller": "app.chain",
-          "line": 557,
-          "mode": "sync"
-        }
-      ],
-      "metadata_img": [
-        {
-          "caller": "app.chain",
-          "line": 1090,
           "mode": "sync"
         }
       ],
@@ -3168,19 +2929,7 @@
           "mode": "sync"
         }
       ],
-      "obtain_specific_image": [
-        {
-          "caller": "app.chain",
-          "line": 435,
-          "mode": "sync"
-        }
-      ],
       "recognize_media": [
-        {
-          "caller": "app.chain._recognition",
-          "line": 99,
-          "mode": "sync"
-        },
         {
           "caller": "app.chain.douban",
           "line": 50,
@@ -3204,13 +2953,6 @@
           "mode": "sync"
         }
       ],
-      "refresh_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 752,
-          "mode": "sync"
-        }
-      ],
       "refresh_userdata": [
         {
           "caller": "app.chain.site",
@@ -3218,52 +2960,10 @@
           "mode": "sync"
         }
       ],
-      "register_commands": [
-        {
-          "caller": "app.chain",
-          "line": 1117,
-          "mode": "sync"
-        }
-      ],
-      "remove_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 946,
-          "mode": "sync"
-        }
-      ],
       "rename_file": [
         {
           "caller": "app.chain.storage",
           "line": 83,
-          "mode": "sync"
-        }
-      ],
-      "save_category_config": [
-        {
-          "caller": "app.chain",
-          "line": 1111,
-          "mode": "sync"
-        }
-      ],
-      "scheduler_job": [
-        {
-          "caller": "app.chain",
-          "line": 1123,
-          "mode": "sync"
-        }
-      ],
-      "search_collections": [
-        {
-          "caller": "app.chain",
-          "line": 634,
-          "mode": "sync"
-        }
-      ],
-      "search_medias": [
-        {
-          "caller": "app.chain",
-          "line": 582,
           "mode": "sync"
         }
       ],
@@ -3289,45 +2989,10 @@
           "mode": "async"
         }
       ],
-      "search_persons": [
-        {
-          "caller": "app.chain",
-          "line": 608,
-          "mode": "sync"
-        }
-      ],
-      "search_subtitles": [
-        {
-          "caller": "app.chain",
-          "line": 695,
-          "mode": "sync"
-        }
-      ],
-      "search_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 678,
-          "mode": "sync"
-        }
-      ],
       "search_tvdb": [
         {
           "caller": "app.chain.tvdb",
           "line": 12,
-          "mode": "sync"
-        }
-      ],
-      "send_direct_message": [
-        {
-          "caller": "app.chain._messaging",
-          "line": 475,
-          "mode": "sync"
-        }
-      ],
-      "set_torrents_tag": [
-        {
-          "caller": "app.chain",
-          "line": 985,
           "mode": "sync"
         }
       ],
@@ -3342,20 +3007,6 @@
         {
           "caller": "app.chain.storage",
           "line": 120,
-          "mode": "sync"
-        }
-      ],
-      "start_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 962,
-          "mode": "sync"
-        }
-      ],
-      "stop_torrents": [
-        {
-          "caller": "app.chain",
-          "line": 973,
           "mode": "sync"
         }
       ],
@@ -3417,13 +3068,6 @@
         {
           "caller": "app.chain.tmdb",
           "line": 78,
-          "mode": "sync"
-        }
-      ],
-      "tmdb_info": [
-        {
-          "caller": "app.chain",
-          "line": 511,
           "mode": "sync"
         }
       ],
@@ -3497,27 +3141,6 @@
           "mode": "sync"
         }
       ],
-      "torrent_files": [
-        {
-          "caller": "app.chain",
-          "line": 1051,
-          "mode": "sync"
-        }
-      ],
-      "transfer": [
-        {
-          "caller": "app.chain",
-          "line": 907,
-          "mode": "sync"
-        }
-      ],
-      "transfer_completed": [
-        {
-          "caller": "app.chain",
-          "line": 931,
-          "mode": "sync"
-        }
-      ],
       "tv_animation": [
         {
           "caller": "app.chain.douban",
@@ -3546,34 +3169,6 @@
           "mode": "sync"
         }
       ],
-      "tvdb_info": [
-        {
-          "caller": "app.chain",
-          "line": 491,
-          "mode": "sync"
-        }
-      ],
-      "tvdb_slug": [
-        {
-          "caller": "app.chain",
-          "line": 499,
-          "mode": "sync"
-        }
-      ],
-      "update_recognize_cache": [
-        {
-          "caller": "app.chain._recognition",
-          "line": 62,
-          "mode": "sync"
-        }
-      ],
-      "update_torrent": [
-        {
-          "caller": "app.chain",
-          "line": 1012,
-          "mode": "sync"
-        }
-      ],
       "upload_file": [
         {
           "caller": "app.chain.storage",
@@ -3585,13 +3180,6 @@
         {
           "caller": "app.chain.user",
           "line": 156,
-          "mode": "sync"
-        }
-      ],
-      "webhook_parser": [
-        {
-          "caller": "app.chain",
-          "line": 571,
           "mode": "sync"
         }
       ]

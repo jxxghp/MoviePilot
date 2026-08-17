@@ -1,7 +1,7 @@
 """消息处理与通知发送 mixin。
 
 从 ChainBase 拆出的消息域：渠道输入状态机、通知派发规范化、消息渲染、
-隔离路由与队列发送。方法经 MRO 解析，依赖 ChainBase 实例的 run_module、
+隔离路由与队列发送。方法经 MRO 解析，依赖 ChainBase 实例的 unicast、broadcast、
 eventmanager、messageoper、messagequeue 等协作对象。
 """
 import copy
@@ -44,7 +44,7 @@ class MessageProcessingMixin:
         ):
             return None
         try:
-            status = self.run_module(
+            status = self.unicast(
                 "mark_message_processing_started",
                 channel=channel,
                 source=source,
@@ -82,7 +82,7 @@ class MessageProcessingMixin:
         ):
             return
         try:
-            self.run_module(
+            self.broadcast(
                 "mark_message_processing_finished",
                 channel=target_channel,
                 source=(status or {}).get("source") or source,
@@ -407,7 +407,7 @@ class NotificationMixin:
         :param chat_id: 聊天ID（如群组ID）
         :return: 删除是否成功
         """
-        return self.run_module(
+        return self.unicast(
             "delete_message",
             channel=channel,
             source=source,
@@ -453,7 +453,7 @@ class NotificationMixin:
                 logger.debug(f"编辑 WebAgent 消息失败: {err}")
                 return False
 
-        return self.run_module(
+        return self.unicast(
             "edit_message",
             channel=channel,
             source=source,
@@ -472,7 +472,7 @@ class NotificationMixin:
         :param message: 消息体
         :return: 消息响应（包含message_id, chat_id等）
         """
-        return self.run_module(
+        return self.unicast(
             "send_direct_message",
             message=self._normalize_notification_for_dispatch(message),
         )
@@ -485,4 +485,4 @@ class NotificationMixin:
         对已发送消息执行渠道收尾动作。
         例如关闭流式卡片状态；无特殊收尾的渠道直接返回 False。
         """
-        return self.run_module("finalize_message", response=response)
+        return self.unicast("finalize_message", response=response)

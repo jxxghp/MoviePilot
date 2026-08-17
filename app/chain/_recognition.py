@@ -1,7 +1,7 @@
 """媒体识别管线 mixin。
 
 从 ChainBase 拆出的识别域：原生模块识别路由、识别缓存回填、共享识别、
-插件补充识别。方法经 MRO 解析，依赖 ChainBase 实例的 run_module/eventmanager
+插件补充识别。方法经 MRO 解析，依赖 ChainBase 实例的 unicast/broadcast/eventmanager
 等协作对象。
 """
 import copy
@@ -59,7 +59,7 @@ class RecognitionMixin:
         """
         if not meta or not mediainfo:
             return
-        self.run_module(
+        self.broadcast(
             "update_recognize_cache",
             meta=meta,
             mediainfo=mediainfo,
@@ -75,7 +75,7 @@ class RecognitionMixin:
         """
         if not meta or not mediainfo:
             return
-        await self.async_run_module(
+        await self.async_broadcast(
             "async_update_recognize_cache",
             meta=meta,
             mediainfo=mediainfo,
@@ -96,7 +96,7 @@ class RecognitionMixin:
     ) -> Optional[MediaInfo]:
         """执行同步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
         with fresh(not cache):
-            return self.run_module("recognize_media", **module_kwargs)
+            return self.unicast("recognize_media", **module_kwargs)
 
     async def _async_run_native_media_recognize(
             self,
@@ -105,7 +105,7 @@ class RecognitionMixin:
     ) -> Optional[MediaInfo]:
         """执行异步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
         async with async_fresh(not cache):
-            return await self.async_run_module(
+            return await self.async_unicast(
                 "async_recognize_media", **module_kwargs
             )
 
