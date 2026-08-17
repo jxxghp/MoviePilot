@@ -475,7 +475,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 "clear_cache": {
                     "name": "缓存清理",
                     "func": self.clear_cache,
-                    "provider_name": "[系统]",
                     "running": False,
                     "manual": True,
                 },
