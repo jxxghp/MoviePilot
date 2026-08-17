@@ -11,7 +11,8 @@ from app.application.messaging.agent import (
 from app.runtime.log import logger
 from app.modules._base import _MessageChannelModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
-from app.schemas import IncomingMessage, Message
+from app.schemas.message import IncomingMessage
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, ModuleType, NotificationAction
 
 

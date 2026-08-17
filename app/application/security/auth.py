@@ -6,7 +6,8 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, status
 
-from app import schemas
+from app.schemas.token import Token as _SchemaToken
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.application.security import access as security
 from app.runtime.config import settings
 from app.db.models.user import User
@@ -118,7 +119,7 @@ def consume_plugin_auth_ticket(ticket: str) -> Optional[dict[str, Any]]:
     return AuthTicketStore().consume(ticket)
 
 
-def build_superuser_token_payload() -> schemas.TokenPayload:
+def build_superuser_token_payload() -> _SchemaTokenPayload:
     """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
     user = UserOper().get_by_name(settings.SUPERUSER)
     if not user or not user.is_superuser:
@@ -126,7 +127,7 @@ def build_superuser_token_payload() -> schemas.TokenPayload:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户权限不足",
         )
-    return schemas.TokenPayload(
+    return _SchemaTokenPayload(
         sub=user.id,
         username=user.name,
         super_user=user.is_superuser,
@@ -135,7 +136,7 @@ def build_superuser_token_payload() -> schemas.TokenPayload:
     )
 
 
-def build_token_response(user: User) -> schemas.Token:
+def build_token_response(user: User) -> _SchemaToken:
     """
     使用系统统一逻辑构造登录 Token 响应。
 
@@ -147,7 +148,7 @@ def build_token_response(user: User) -> schemas.Token:
         not SystemConfigOper().get(SystemConfigKey.SetupWizardState)
         and not settings.ADVANCED_MODE
     )
-    return schemas.Token(
+    return _SchemaToken(
         access_token=security.create_access_token(
             userid=user.id,
             username=user.name,

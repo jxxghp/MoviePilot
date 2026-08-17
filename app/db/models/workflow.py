@@ -6,7 +6,8 @@ from sqlalchemy import Integer, JSON, String, Index, and_, or_, select, update
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import Base, db_query, get_id_column, db_update, async_db_query, async_db_update
+from app.db.base import Base, get_id_column
+from app.db.decorators import db_query, db_update, async_db_query, async_db_update
 
 
 class Workflow(Base):

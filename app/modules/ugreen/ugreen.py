@@ -5,13 +5,18 @@ from pathlib import Path
 from typing import Any, Dict, Generator, List, Mapping, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules.ugreen.api import Api
-from app.schemas import MediaType
-from app.schemas.types import MediaSource, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from app.foundation.url import UrlUtils
 
 
@@ -325,7 +330,7 @@ class Ugreen:
 
     @staticmethod
     def __build_media_server_item(video_info: dict, play_status: Optional[dict] = None):
-        user_state = schemas.MediaServerItemUserState()
+        user_state = _SchemaMediaServerItemUserState()
         if isinstance(play_status, dict):
             progress = play_status.get("progress")
             watch_status = play_status.get("watch_status")
@@ -346,7 +351,7 @@ class Ugreen:
         if item_id is None:
             return None
 
-        return schemas.MediaServerItem(
+        return _SchemaMediaServerItem(
             server="ugreen",
             library=video_info.get("media_lib_set_id"),
             item_id=str(item_id),
@@ -372,7 +377,7 @@ class Ugreen:
         # 绿联深链在部分版本会失效，统一回落到 NAS 根地址。
         return self.__build_root_url()
 
-    def __build_play_item_from_wrapper(self, wrapper: dict) -> Optional[schemas.MediaServerPlayItem]:
+    def __build_play_item_from_wrapper(self, wrapper: dict) -> Optional[_SchemaMediaServerPlayItem]:
         video_info = wrapper.get("video_info") if isinstance(wrapper.get("video_info"), dict) else wrapper
         if not isinstance(video_info, dict):
             return None
@@ -395,7 +400,7 @@ class Ugreen:
             video_info.get("backdrop_path")
         )
 
-        return schemas.MediaServerPlayItem(
+        return _SchemaMediaServerPlayItem(
             id=str(item_id),
             title=video_info.get("name"),
             subtitle=subtitle,
@@ -524,7 +529,7 @@ class Ugreen:
 
         return paths
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取绿联影视媒体库列表
 
@@ -568,7 +573,7 @@ class Ugreen:
             }
 
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     server="ugreen",
                     id=lib_id,
                     name=lib_name,
@@ -591,16 +596,16 @@ class Ugreen:
         users = self._api.media_lib_users()
         return len(users)
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """获取绿联影视的电影和电视剧数量统计"""
         if not self.is_authenticated() or not self._api:
-            return schemas.Statistic()
+            return _SchemaStatistic()
 
         movie_data = self._api.video_all(classification=-102, page=1, page_size=1) or {}
         tv_data = self._api.video_all(classification=-103, page=1, page_size=1) or {}
         music_data = self._api.video_all(classification=-104, page=1, page_size=1) or {}
 
-        return schemas.Statistic(
+        return _SchemaStatistic(
             movie_count=int(movie_data.get("total_num") or 0),
             tv_count=int(tv_data.get("total_num") or 0),
             # 绿联当前不统计剧集总数，返回 None 由前端展示“未获取”。
@@ -639,7 +644,7 @@ class Ugreen:
         self, title: str, year: Optional[str] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-    ) -> Optional[List[schemas.MediaServerItem]]:
+    ) -> Optional[List[_SchemaMediaServerItem]]:
         if not self.is_authenticated() or not self._api or not title:
             return None
 
@@ -672,7 +677,7 @@ class Ugreen:
         title: Optional[str] = None,
         artist: Optional[str] = None,
         album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询绿联影视音乐条目。"""
         if not self.is_authenticated() or not self._api:
             return []
@@ -686,7 +691,7 @@ class Ugreen:
 
         # 绿联搜索按媒体类型分桶返回，音乐相关桶名在不同固件版本上并不统一
         music_buckets = ("music_list", "audio_list", "album_list", "songs_list")
-        results: List[schemas.MediaServerItem] = []
+        results: List[_SchemaMediaServerItem] = []
         for bucket in music_buckets:
             for info in self.__extract_video_info_list(data.get(bucket)):
                 media_item = self.__build_media_server_item(info)
@@ -845,7 +850,7 @@ class Ugreen:
 
     def refresh_library_by_items(
         self,
-        items: List[schemas.RefreshMediaItem],
+        items: List[_SchemaRefreshMediaItem],
         scan_mode: Optional[Union[str, int]] = None,
     ) -> Optional[bool]:
         if not self.is_authenticated() or not self._api:
@@ -872,10 +877,10 @@ class Ugreen:
         return True
 
     @staticmethod
-    def get_webhook_message(body: Any) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(body: Any) -> Optional[_SchemaWebhookEventInfo]:
         return None
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         if not self.is_authenticated() or not self._api or not itemid:
             return None
 
@@ -951,7 +956,7 @@ class Ugreen:
         parent: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Generator[schemas.MediaServerItem | None | Any, Any, None]:
+    ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
         """
         获取指定绿联影视媒体库的可同步条目
 
@@ -1011,7 +1016,7 @@ class Ugreen:
             media_lib_set_id=video_info.get("media_lib_set_id"),
         )
 
-    def get_resume(self, num: Optional[int] = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1036,7 +1041,7 @@ class Ugreen:
 
         return ret_resume
 
-    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: int = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         if not self.is_authenticated() or not self._api:
             return None
 

@@ -17,7 +17,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.rss import RssHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import SystemConfigKey, NotificationChannel, MessageType, MediaType
 from app.schemas.media import resolve_media_identity
 from app.domain import site as site_rules

@@ -7,10 +7,16 @@ from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 
 from requests import Response
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
-from app.schemas import MediaServerItem
+from app.schemas.mediaserver import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
@@ -228,7 +234,7 @@ class ZSpace:
         self,
         username: Optional[str] = None,
         hidden: Optional[bool] = False,
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -252,7 +258,7 @@ class ZSpace:
                 library_type = MediaType.UNKNOWN.value
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     server="zspace",
                     id=library.get("Id"),
                     name=library.get("Name"),
@@ -357,7 +363,7 @@ class ZSpace:
             logger.debug(f"连接Users/Query出错：{e}，回退到登录用户兜底")
         return 1 if self.user else 0
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """
         获得电影、电视剧、动漫媒体数量。
 
@@ -382,13 +388,13 @@ class ZSpace:
         :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
-            return schemas.Statistic()
+            return _SchemaStatistic()
         url = f"{self._host}emby/Items/Counts"
         try:
             res = self.__request_utils().get_res(url)
             if res:
                 result = res.json()
-                return schemas.Statistic(
+                return _SchemaStatistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
                     episode_count=result.get("EpisodeCount") or 0,
@@ -400,7 +406,7 @@ class ZSpace:
             logger.debug(f"连接Items/Counts出错：{e}，回退到按媒体库累计 TotalRecordCount")
         return self.__count_medias_by_views()
 
-    def __count_medias_by_views(self) -> schemas.Statistic:
+    def __count_medias_by_views(self) -> _SchemaStatistic:
         """
         通过遍历媒体库视图累计条目数，兜底实现 `get_medias_count`。
 
@@ -417,11 +423,11 @@ class ZSpace:
           统一计为 0。
         """
         if not self._host or not self._apikey or not self.user:
-            return schemas.Statistic()
+            return _SchemaStatistic()
         # 与 get_librarys / get_user_library_folders 保持一致的选中库过滤：
         # _sync_libraries 为空或包含 "all" 视为全部库。
         sync_all = (not self._sync_libraries) or ("all" in self._sync_libraries)
-        stat = schemas.Statistic()
+        stat = _SchemaStatistic()
         for view in self.__get_library_views() or []:
             view_id = view.get("Id")
             if not view_id:
@@ -515,7 +521,7 @@ class ZSpace:
                    title: str,
                    year: Optional[str] = None,
                    media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
         根据标题和年份，检查电影是否在极影视中存在，存在则返回列表
         :param title: 标题
@@ -564,7 +570,7 @@ class ZSpace:
             title: Optional[str] = None,
             artist: Optional[str] = None,
             album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询极影视音乐条目。"""
         if not self._host or not self._apikey:
             return []
@@ -750,7 +756,7 @@ class ZSpace:
             logger.debug(f"连接Library/Refresh出错：{e}（极影视当前 Emby 兼容层未实现该端点）")
         return False
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
+    def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
@@ -773,7 +779,7 @@ class ZSpace:
         logger.info("极影视媒体库刷新完成")
         return success
 
-    def __get_library_id_by_item(self, item: schemas.RefreshMediaItem) -> Optional[str]:
+    def __get_library_id_by_item(self, item: _SchemaRefreshMediaItem) -> Optional[str]:
         """
         根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
         :param item: {title, year, type, category, target_path}
@@ -806,7 +812,7 @@ class ZSpace:
         return "/"
 
     @staticmethod
-    def __format_item_info(item) -> Optional[schemas.MediaServerItem]:
+    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
         """
         格式化item
         """
@@ -820,7 +826,7 @@ class ZSpace:
                 last_played_date = item.get("UserData", {}).get("LastPlayedDate")
                 if last_played_date is not None and "." in last_played_date:
                     last_played_date = last_played_date.split(".")[0]
-                user_state = schemas.MediaServerItemUserState(
+                user_state = _SchemaMediaServerItemUserState(
                     played=item.get("UserData", {}).get("Played"),
                     resume=resume,
                     last_played_date=datetime.strptime(last_played_date, "%Y-%m-%dT%H:%M:%S").strftime(
@@ -831,7 +837,7 @@ class ZSpace:
             media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
                 item.get("ProviderIds")
             )
-            return schemas.MediaServerItem(
+            return _SchemaMediaServerItem(
                 server="zspace",
                 library=item.get("ParentId"),
                 item_id=item.get("Id"),
@@ -851,7 +857,7 @@ class ZSpace:
             logger.error(e)
         return None
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         获取单个项目详情
         """
@@ -969,7 +975,7 @@ class ZSpace:
                 break
         return None
 
-    def get_webhook_message(self, form: Any, args: dict) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析极影视 Webhook 报文
         """
@@ -988,7 +994,7 @@ class ZSpace:
         if not event_type:
             return None
         logger.debug(f"接收到极影视 webhook：{message}")
-        event_item = schemas.WebhookEventInfo(event=event_type, channel="zspace")
+        event_item = _SchemaWebhookEventInfo(event=event_type, channel="zspace")
         if message.get('Item'):
             event_item.media_type = message.get('Item', {}).get('Type')
             if message.get('Item', {}).get('Type') == 'Episode' \
@@ -1135,7 +1141,7 @@ class ZSpace:
         return f"{self._host}emby/Items/{item_id}/Images/Primary?api_key={self._apikey}"
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
-        List[schemas.MediaServerPlayItem]]:
+        List[_SchemaMediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -1187,7 +1193,7 @@ class ZSpace:
                                                       image_tag=item.get("SeriesPrimaryImageTag"))
                         if not image:
                             image = self.__get_local_image_by_id(item.get("SeriesId"))
-                    ret_resume.append(schemas.MediaServerPlayItem(
+                    ret_resume.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         title=title,
                         subtitle=subtitle,
@@ -1205,7 +1211,7 @@ class ZSpace:
         return None
 
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
-        List[schemas.MediaServerPlayItem]]:
+        List[_SchemaMediaServerPlayItem]]:
         """
         获得最近更新。
 
@@ -1254,7 +1260,7 @@ class ZSpace:
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
                     image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(schemas.MediaServerPlayItem(
+                    ret_latest.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         title=item.get("Name"),
                         subtitle=str(item.get("ProductionYear")) if item.get("ProductionYear") else None,

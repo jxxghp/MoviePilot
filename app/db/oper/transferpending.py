@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.transferpending import TransferPending
 
 

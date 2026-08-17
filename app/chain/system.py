@@ -9,7 +9,8 @@ from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
-from app.schemas import Message, NotificationChannel
+from app.schemas.message import Message
+from app.schemas.notification import NotificationChannel
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
 from version import FRONTEND_VERSION, APP_VERSION

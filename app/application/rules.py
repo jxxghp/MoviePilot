@@ -11,7 +11,8 @@ from pyparsing import Forward, Literal, Word, alphas, infix_notation, opAssoc, a
 from app.adapters.system import rust as rust_accel
 from app.db.oper.systemconfig import SystemConfigOper
 from app.domain.context import MediaInfo
-from app.schemas import CustomRule, FilterRuleGroup
+from app.schemas.rule import CustomRule
+from app.schemas.system import FilterRuleGroup
 from app.schemas.types import SystemConfigKey
 
 

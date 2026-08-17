@@ -21,7 +21,9 @@ from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
 from app.runtime.log import logger
-from app.schemas import NotificationChannel, Message, SiteUserData
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import Message
+from app.schemas.site import SiteUserData
 from app.schemas.types import EventType, MessageType
 from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils

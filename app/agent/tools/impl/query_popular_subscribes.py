@@ -12,7 +12,7 @@ from app.domain.context import MediaInfo
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 
 MAX_PAGE_SIZE = 50
 

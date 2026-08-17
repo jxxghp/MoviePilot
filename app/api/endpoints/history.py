@@ -1,13 +1,19 @@
 import asyncio
 import time
-from pathlib import Path
 from typing import List, Any, Optional
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app import schemas
+from app.schemas.common import BatchProgressKeyData as _SchemaBatchProgressKeyData
+from app.schemas.common import ProgressKeyData as _SchemaProgressKeyData
+from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchTransferHistoryRedoRequest
+from app.schemas.history import TransferHistory as _SchemaTransferHistory
+from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.api.response import ResponseAPIRouter
 from app.agent.contracts import ReplyMode
 from app.agent.runtime_loader import get_running_agent_manager
@@ -15,22 +21,23 @@ from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
 )
-from app.chain.storage import StorageChain
 from app.runtime.config import settings, global_vars
-from app.runtime.events import eventmanager
 from app.application.security.access import verify_token
 from app.db import get_async_db, get_db
 from app.db.models import User
-from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_superuser,
-    get_current_active_superuser_async,
+    get_download_history_mutation_command,
+    get_transfer_history_mutation_command,
 )
 from app.runtime.progress import ProgressHelper
-from app.application.history import clear_transfer_failures
-from app.schemas.types import EventType
+from app.application.history import (
+    DownloadHistoryMutationCommand,
+    TransferHistoryMutationCommand,
+)
 from app.foundation.text import cut as jieba_cut
 from app.runtime.log import logger
 
@@ -143,13 +150,13 @@ def _start_batch_ai_redo_task(
 @router.get(
     "/download",
     summary="查询下载历史记录",
-    response_model=List[schemas.DownloadHistory],
+    response_model=List[_SchemaDownloadHistory],
 )
 async def download_history(
     page: Optional[int] = 1,
     count: Optional[int] = 30,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     按下载时间倒序查询下载历史记录
@@ -160,18 +167,20 @@ async def download_history(
 @router.delete(
     "/download",
     summary="删除下载历史记录",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
-async def delete_download_history(
-    history_in: schemas.DownloadHistory,
-    db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+def delete_download_history(
+    history_in: _SchemaDownloadHistory,
+    command: DownloadHistoryMutationCommand = Depends(
+        get_download_history_mutation_command
+    ),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     删除下载历史记录
     """
-    await DownloadHistory.async_delete(db, history_in.id)
-    return schemas.Response(success=True)
+    result = command.delete(history_in.id)
+    return _SchemaResponse(success=result.success, message=result.message)
 
 
 def _glob_to_like(pattern: str) -> str:
@@ -185,7 +194,7 @@ def _glob_to_like(pattern: str) -> str:
 @router.get(
     "/transfer",
     summary="查询整理记录",
-    response_model=schemas.Response[schemas.TransferHistoryPage],
+    response_model=_SchemaResponse[_SchemaTransferHistoryPage],
 )
 async def transfer_history(
     title: Optional[str] = None,
@@ -193,7 +202,7 @@ async def transfer_history(
     count: Optional[int] = 30,
     status: Optional[bool] = None,
     db: AsyncSession = Depends(get_async_db),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）
@@ -229,7 +238,7 @@ async def transfer_history(
         )
         total = await TransferHistory.async_count(db, status=status)
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={
             "list": [item.to_dict() for item in result],
@@ -238,51 +247,31 @@ async def transfer_history(
     )
 
 
-@router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response[None])
+@router.delete("/transfer", summary="删除整理记录", response_model=_SchemaResponse[None])
 def delete_transfer_history(
-    history_in: schemas.TransferHistory,
+    history_in: _SchemaTransferHistory,
     deletesrc: Optional[bool] = False,
     deletedest: Optional[bool] = False,
-    db: Session = Depends(get_db),
+    command: TransferHistoryMutationCommand = Depends(
+        get_transfer_history_mutation_command
+    ),
     _: User = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    删除整理记录
+    删除整理记录。
     """
-    history: TransferHistory = TransferHistory.get(db, history_in.id)
-    if not history:
-        return schemas.Response(success=False, message="记录不存在")
-    # 册除媒体库文件
-    if deletedest and history.dest_fileitem:
-        dest_fileitem = schemas.FileItem(**history.dest_fileitem)
-        StorageChain().delete_media_file(dest_fileitem)
-
-    # 删除源文件
-    if deletesrc and history.src_fileitem:
-        src_fileitem = schemas.FileItem(**history.src_fileitem)
-        state = StorageChain().delete_media_file(src_fileitem)
-        if not state:
-            return schemas.Response(
-                success=False, message=f"{src_fileitem.path} 删除失败"
-            )
-        # 删除下载记录中关联的文件
-        DownloadFiles.delete_by_fullpath(db, Path(src_fileitem.path).as_posix())
-        # 发送事件
-        eventmanager.send_event(
-            EventType.DownloadFileDeleted,
-            {"src": history.src, "hash": history.download_hash},
-        )
-    # 删除记录
-    TransferHistory.delete(db, history_in.id)
-    # 删除记录是用户显式要求重来，失败重试计数一并清零，否则重整仍会受上一轮次数限制
-    clear_transfer_failures(history.src, history.src_storage)
-    return schemas.Response(success=True)
+    result = command.delete(
+        history_in.id,
+        delete_source=bool(deletesrc),
+        delete_destination=bool(deletedest),
+    )
+    return _SchemaResponse(success=result.success, message=result.message)
 
 
 @router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
-    response_model=schemas.Response[schemas.ProgressKeyData],
+    response_model=_SchemaResponse[_SchemaProgressKeyData],
 )
 def ai_redo_transfer_history(
     history_id: int,
@@ -293,11 +282,11 @@ def ai_redo_transfer_history(
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
     if not settings.AI_AGENT_ENABLE:
-        return schemas.Response(success=False, message="MoviePilot智能助手未启用")
+        return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
 
     history = TransferHistory.get(db, history_id)
     if not history:
-        return schemas.Response(success=False, message="整理记录不存在")
+        return _SchemaResponse(success=False, message="整理记录不存在")
 
     prompt = build_manual_redo_prompt(history)
     progress_key = f"ai_redo_transfer_{history_id}_{int(time.time() * 1000)}"
@@ -307,16 +296,16 @@ def ai_redo_transfer_history(
         progress_key=progress_key,
     )
 
-    return schemas.Response(success=True, data={"progress_key": progress_key})
+    return _SchemaResponse(success=True, data={"progress_key": progress_key})
 
 
 @router.post(
     "/transfer/ai-redo",
     summary="智能助手批量重新整理",
-    response_model=schemas.Response[schemas.BatchProgressKeyData],
+    response_model=_SchemaResponse[_SchemaBatchProgressKeyData],
 )
 def batch_ai_redo_transfer_history(
-    payload: schemas.BatchTransferHistoryRedoRequest,
+    payload: _SchemaBatchTransferHistoryRedoRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_active_manage_user),
 ) -> Any:
@@ -324,11 +313,11 @@ def batch_ai_redo_transfer_history(
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
     """
     if not settings.AI_AGENT_ENABLE:
-        return schemas.Response(success=False, message="MoviePilot智能助手未启用")
+        return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
 
     history_ids = normalize_history_ids(payload.history_ids)
     if not history_ids:
-        return schemas.Response(success=False, message="未提供有效的整理记录")
+        return _SchemaResponse(success=False, message="未提供有效的整理记录")
 
     histories = []
     missing_ids = []
@@ -340,7 +329,7 @@ def batch_ai_redo_transfer_history(
         histories.append(history)
 
     if missing_ids:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="整理记录不存在: "
             + ", ".join(str(history_id) for history_id in missing_ids),
@@ -354,7 +343,7 @@ def batch_ai_redo_transfer_history(
         progress_key=progress_key,
     )
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={"progress_key": progress_key, "history_ids": history_ids},
     )
@@ -363,14 +352,16 @@ def batch_ai_redo_transfer_history(
 @router.get(
     "/empty/transfer",
     summary="清空整理记录",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
-async def empty_transfer_history(
-    db: AsyncSession = Depends(get_async_db),
-    _: User = Depends(get_current_active_superuser_async),
+def empty_transfer_history(
+    command: TransferHistoryMutationCommand = Depends(
+        get_transfer_history_mutation_command
+    ),
+    _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     清空整理记录
     """
-    await TransferHistory.async_truncate(db)
-    return schemas.Response(success=True)
+    result = command.truncate()
+    return _SchemaResponse(success=result.success, message=result.message)

@@ -4,9 +4,10 @@ from typing import Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.message import Message
-from app.schemas import NotificationChannel, MessageType
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import MessageType
 
 
 class MessageOper(DbOper):

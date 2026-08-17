@@ -7,11 +7,17 @@ from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 
 from requests import Response
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.config import settings
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
-from app.schemas import MediaServerItem
+from app.schemas.mediaserver import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
@@ -149,7 +155,7 @@ class Emby:
         self,
         username: Optional[str] = None,
         hidden: Optional[bool] = False,
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -175,7 +181,7 @@ class Emby:
             server_id = library.get("ServerId") or self.serverid
             server_query = f"serverId={server_id}&" if server_id else ""
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     server="emby",
                     id=library.get("Id"),
                     item_id=library.get("Id"),
@@ -314,13 +320,13 @@ class Emby:
             logger.error(f"连接Users/Query出错：" + str(e))
             return 0
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """
         获得电影、电视剧、动漫媒体数量
         :return: MovieCount SeriesCount SongCount
         """
         if not self._host or not self._apikey:
-            return schemas.Statistic()
+            return _SchemaStatistic()
         url = f"{self._host}emby/Items/Counts"
         params = {
             'api_key': self._apikey
@@ -329,7 +335,7 @@ class Emby:
             res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json()
-                return schemas.Statistic(
+                return _SchemaStatistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
                     episode_count=result.get("EpisodeCount") or 0,
@@ -338,10 +344,10 @@ class Emby:
                 )
             else:
                 logger.error(f"Items/Counts 未获取到返回数据")
-                return schemas.Statistic()
+                return _SchemaStatistic()
         except Exception as e:
             logger.error(f"连接Items/Counts出错：" + str(e))
-            return schemas.Statistic()
+            return _SchemaStatistic()
 
     def __get_emby_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
@@ -381,7 +387,7 @@ class Emby:
                    title: str,
                    year: Optional[str] = None,
                    media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Emby中存在，存在则返回列表
         :param title: 标题
@@ -429,7 +435,7 @@ class Emby:
     def get_music(
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询 Emby 音乐条目。"""
         if not self._host or not self._apikey or not self.user:
             return []
@@ -657,7 +663,7 @@ class Emby:
             return False
         return False
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
+    def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
@@ -682,7 +688,7 @@ class Emby:
         logger.info(f"Emby媒体库刷新完成")
         return success
 
-    def __get_emby_library_id_by_item(self, item: schemas.RefreshMediaItem) -> Optional[str]:
+    def __get_emby_library_id_by_item(self, item: _SchemaRefreshMediaItem) -> Optional[str]:
         """
         根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
         :param item: {title, year, type, category, target_path}
@@ -722,7 +728,7 @@ class Emby:
         return "/"
 
     @staticmethod
-    def __format_item_info(item) -> Optional[schemas.MediaServerItem]:
+    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
         """
         格式化item
         """
@@ -736,7 +742,7 @@ class Emby:
                 last_played_date = item.get("UserData", {}).get("LastPlayedDate")
                 if last_played_date is not None and "." in last_played_date:
                     last_played_date = last_played_date.split(".")[0]
-                user_state = schemas.MediaServerItemUserState(
+                user_state = _SchemaMediaServerItemUserState(
                     played=item.get("UserData", {}).get("Played"),
                     resume=resume,
                     last_played_date=datetime.strptime(last_played_date, "%Y-%m-%dT%H:%M:%S").strftime(
@@ -747,7 +753,7 @@ class Emby:
             media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
                 item.get("ProviderIds")
             )
-            return schemas.MediaServerItem(
+            return _SchemaMediaServerItem(
                 server="emby",
                 library=item.get("ParentId"),
                 server_id=item.get("ServerId"),
@@ -768,7 +774,7 @@ class Emby:
             logger.error(e)
         return None
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         获取单个项目详情
         """
@@ -859,7 +865,7 @@ class Emby:
             logger.error(f"连接Users/Items出错：" + str(e))
         return None
 
-    def get_webhook_message(self, form: Any, args: dict) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Emby Webhook报文
         电影：
@@ -1112,7 +1118,7 @@ class Emby:
         if not eventType:
             return None
         logger.debug(f"接收到emby webhook：{message}")
-        eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
+        eventItem = _SchemaWebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
             eventItem.media_type = message.get('Item', {}).get('Type')
             if message.get('Item', {}).get('Type') == 'Episode' \
@@ -1266,7 +1272,7 @@ class Emby:
         return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
-        List[schemas.MediaServerPlayItem]]:
+        List[_SchemaMediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -1321,7 +1327,7 @@ class Emby:
                                                       image_tag=item.get("SeriesPrimaryImageTag"))
                         if not image:
                             image = self.__get_local_image_by_id(item.get("SeriesId"))
-                    ret_resume.append(schemas.MediaServerPlayItem(
+                    ret_resume.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         item_id=item.get("Id"),
                         server_id=server_id,
@@ -1341,7 +1347,7 @@ class Emby:
         return None
 
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
-        List[schemas.MediaServerPlayItem]]:
+        List[_SchemaMediaServerPlayItem]]:
         """
         获得最近更新
         """
@@ -1380,7 +1386,7 @@ class Emby:
                     server_id = item.get("ServerId") or self.serverid
                     link = self.get_play_url(item.get("Id"), server_id=server_id)
                     image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(schemas.MediaServerPlayItem(
+                    ret_latest.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         item_id=item.get("Id"),
                         server_id=server_id,

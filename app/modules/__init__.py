@@ -5,7 +5,10 @@ from pathlib import Path
 
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas import Message, NotificationConf, MediaServerConf, DownloaderConf
+from app.schemas.message import Message
+from app.schemas.system import NotificationConf
+from app.schemas.system import MediaServerConf
+from app.schemas.system import DownloaderConf
 from app.schemas.types import ModuleType, DownloaderType, MediaServerType, NotificationChannel, StorageSchema, \
     OtherModulesType, SystemConfigKey, MediaRecognizeType
 from app.runtime.reload import ConfigReloadMixin

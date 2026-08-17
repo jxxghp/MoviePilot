@@ -6,7 +6,9 @@
 """
 from typing import Optional, Tuple
 
-from app import schemas
+from app.schemas.event import AuthCredentials as _SchemaAuthCredentials
+from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCredentials
+from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo
 from app.modules import _MediaServerBase, _ModuleBase, TService
@@ -25,9 +27,9 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
 
     def user_authenticate(
             self,
-            credentials: schemas.AuthCredentials,
+            credentials: _SchemaAuthCredentials,
             service_name: Optional[str] = None,
-    ) -> Optional[schemas.AuthCredentials]:
+    ) -> Optional[_SchemaAuthCredentials]:
         """
         使用媒体服务器用户辅助完成用户认证
 
@@ -53,7 +55,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
             # 触发认证拦截事件
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
-                data=schemas.AuthInterceptCredentials(
+                data=_SchemaAuthInterceptCredentials(
                     username=credentials.username,
                     channel=self.get_name(),
                     service=name,
@@ -61,7 +63,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 ),
             )
             if intercept_event and intercept_event.event_data:
-                intercept_data: schemas.AuthInterceptCredentials = intercept_event.event_data
+                intercept_data: _SchemaAuthInterceptCredentials = intercept_event.event_data
                 if intercept_data.cancel:
                     continue
             token = server.authenticate(credentials.username, credentials.password)
@@ -77,7 +79,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
             mediainfo: MediaInfo,
             itemid: Optional[str] = None,
             server: Optional[str] = None,
-    ) -> Optional[schemas.ExistMediaInfo]:
+    ) -> Optional[_SchemaExistMediaInfo]:
         """
         判断媒体文件是否存在
 
@@ -100,7 +102,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 )
                 match = MusicMediaServerHelper.find_match(mediainfo, matches)
                 if match:
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.MUSIC,
                         server_type=self._server_type_value,
                         server=name,
@@ -112,7 +114,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                     movie = s.get_iteminfo(itemid)
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
-                        return schemas.ExistMediaInfo(
+                        return _SchemaExistMediaInfo(
                             type=MediaType.MOVIE,
                             server_type=self._server_type_value,
                             server=name,
@@ -127,7 +129,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                     continue
                 else:
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.MOVIE,
                         server_type=self._server_type_value,
                         server=name,
@@ -144,7 +146,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                     continue
                 else:
                     logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到 了这些季集：{tvs}")
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.TV,
                         seasons=tvs,
                         server_type=self._server_type_value,

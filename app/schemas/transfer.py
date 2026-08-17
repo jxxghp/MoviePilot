@@ -9,10 +9,6 @@ from app.schemas.types import MediaSource, MusicTargetEntityType
 from app.schemas.context import MetaInfo, MediaInfo
 from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.file import FileItem
-from app.schemas.history import DownloadHistory
-from app.schemas.system import TransferDirectoryConf
-from app.schemas.tmdb import TmdbEpisode
-from app.schemas.types import MediaType
 
 
 class DownloaderTorrent(BaseModel):

@@ -31,16 +31,14 @@ from app.application.history import (add_transfer_fail, add_transfer_success,
                                      evaluate_history_gate, is_skip_action,
                                      record_transfer_failure)
 from app.runtime.log import logger
-from app.schemas import StorageOperSelectionEventData
-from app.schemas import (
-    TransferInfo,
-    Message,
-    EpisodeFormat,
-    FileItem,
-    TransferDirectoryConf,
-    TransferJob,
-    TmdbEpisode,
-)
+from app.schemas.event import StorageOperSelectionEventData
+from app.schemas.transfer import TransferInfo
+from app.schemas.message import Message
+from app.schemas.transfer import EpisodeFormat
+from app.schemas.workflow import FileItem
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.transfer import TransferJob
+from app.schemas.tmdb import TmdbEpisode
 from app.schemas.exception import OperationInterrupted
 from app.schemas.types import (
     TorrentStatus,
@@ -56,7 +54,7 @@ from app.schemas.types import (
 )
 from app.runtime.reload import ConfigReloadMixin
 from app.application.transfer import (FailedRetryScheduler, JobManager,
-                                      TransferQueue, TransferTask, job_lock)
+                                      TransferQueueService, TransferTask, job_lock)
 from app.chain._transfer import (EpisodeFormatMixin, FailedRetryMixin,
                                FileFilterMixin, FileKeyMixin,
                                HistoryMatchMixin, ManualHistoryMixin,
@@ -501,20 +499,19 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param task: 任务信息
         :return: True表示任务已添加到队列，False表示任务无效或已存在（重复）
         """
-        if not task:
-            return False
-        # 维护整理任务视图，如果任务已存在则不添加到队列
-        if not self.__put_to_jobview(task):
-            return False
-        self._register_scrape_batch_task(task)
-        # 添加到队列
-        self._queue.put(TransferQueue(task=task, callback=self.__default_callback))
-        # 落盘登记：队列是纯内存的，进程重启（挂载挂死后的人工重启、升级、OOM）
-        # 会让队列连同「这些文件还没整理」这个事实一起蒸发，而已稳定落地的文件
-        # 不会再产生任何监控事件，等于永久漏件。登记放在入队之后，宁可多留一条
-        # 由回放时的整理历史查重挡掉，也不制造「已入队但未登记」的窗口
-        self.__register_pending(task)
-        return True
+        return self._transfer_queue_service().put(task, self.__default_callback)
+
+    def _transfer_queue_service(self) -> TransferQueueService:
+        """构建保持旧队列对象和私有兼容接缝的应用服务。"""
+        return TransferQueueService(
+            register_task=self.__put_to_jobview,
+            enqueue=self._queue.put,
+            before_enqueue=self._register_scrape_batch_task,
+            after_enqueue=self.__register_pending,
+            remove_task=self.jobview.remove_task,
+            list_tasks=self.jobview.list_jobs,
+            expire_tasks=self.__expire_stale_transfer_tasks,
+        )
 
     def replay_pending(self):
         """
@@ -686,9 +683,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """
         从待整理队列移除
         """
-        if not fileitem:
-            return
-        self.jobview.remove_task(fileitem)
+        self._transfer_queue_service().remove(fileitem)
 
     def __start_job_execution(self, task: TransferTask):
         """在作业视图支持执行租约时标记主程序任务开始执行。"""
@@ -1159,8 +1154,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """
         获取整理任务列表
         """
-        self.__expire_stale_transfer_tasks()
-        return self.jobview.list_jobs()
+        return self._transfer_queue_service().list()
 
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """

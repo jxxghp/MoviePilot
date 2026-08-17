@@ -8,15 +8,20 @@ from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
 from requests import Response, Session
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.cache import cached
 from app.application.mediaserver import MediaServerIdentityHelper
 from app.runtime.log import logger
-from app.schemas import MediaType
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
-from app.schemas import MediaServerItem
+from app.schemas.mediaserver import MediaServerItem
 
 
 class Plex:
@@ -124,7 +129,7 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -152,7 +157,7 @@ class Plex:
             else:
                 continue
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     id=library.key,
                     name=library.title,
                     path=library.locations,
@@ -166,13 +171,13 @@ class Plex:
             )
         return libraries
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """
         获得电影、电视剧、动漫媒体数量
         :return: movie_count tv_count episode_count
         """
         if not self._plex:
-            return schemas.Statistic()
+            return _SchemaStatistic()
         sections = self._plex.library.sections()
         movie_count = tv_count = episode_count = music_count = 0
         # 媒体库白名单
@@ -187,7 +192,7 @@ class Plex:
                 episode_count += sec.totalViewSize(libtype="episode")
             if sec.type in ("artist", "music"):
                 music_count += sec.totalSize
-        return schemas.Statistic(
+        return _SchemaStatistic(
             movie_count=movie_count,
             tv_count=tv_count,
             episode_count=episode_count,
@@ -199,7 +204,7 @@ class Plex:
                    original_title: Optional[str] = None,
                    year: Optional[str] = None,
                    media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
@@ -238,7 +243,7 @@ class Plex:
             if item.locations:
                 path = item.locations[0]
             ret_movies.append(
-                schemas.MediaServerItem(
+                _SchemaMediaServerItem(
                     server="plex",
                     library=item.librarySectionID,
                     item_id=item.key,
@@ -256,14 +261,14 @@ class Plex:
     def get_music(
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询 Plex 音乐条目。"""
         if not self._plex:
             return []
         query = album or title or artist
         if not query:
             return []
-        results: List[schemas.MediaServerItem] = []
+        results: List[_SchemaMediaServerItem] = []
         try:
             for library in self._plex.library.sections():
                 if library.type not in ("artist", "music"):
@@ -276,7 +281,7 @@ class Plex:
                     else:
                         item_artist = getattr(item, "parentTitle", None)
                         item_album = getattr(item, "title", None) if item_type == "album" else None
-                    results.append(schemas.MediaServerItem(
+                    results.append(_SchemaMediaServerItem(
                         server="plex",
                         library=library.key,
                         item_id=getattr(item, "ratingKey", None) or getattr(item, "key", None),
@@ -510,7 +515,7 @@ class Plex:
             return False
         return self._plex.library.update()
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> Optional[bool]:
+    def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
         按路径刷新媒体库 item: target_path
         """
@@ -564,7 +569,7 @@ class Plex:
             logger.error(f"查找媒体库出错：{str(err)}")
         return "", None
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         获取单个项目详情
         """
@@ -618,7 +623,7 @@ class Plex:
             item_id = int(item_id)
         return self._plex.fetchItem(item_id)
 
-    def __build_media_server_item(self, item) -> Optional[schemas.MediaServerItem]:
+    def __build_media_server_item(self, item) -> Optional[_SchemaMediaServerItem]:
         """
         构造MediaServerItem
         :param item: Plex媒体项目
@@ -635,7 +640,7 @@ class Plex:
         play_count = getattr(item, "viewCount", None) or 0
         last_played_date = getattr(item, "lastViewedAt", None)
 
-        user_state = schemas.MediaServerItemUserState(
+        user_state = _SchemaMediaServerItemUserState(
             played=played,
             resume=playback_position > 0,
             last_played_date=last_played_date.isoformat() if last_played_date and hasattr(last_played_date,
@@ -644,7 +649,7 @@ class Plex:
             percentage=percentage,
         )
 
-        return schemas.MediaServerItem(
+        return _SchemaMediaServerItem(
             server="plex",
             library=item.librarySectionID,
             item_id=item.key,
@@ -706,7 +711,7 @@ class Plex:
             logger.error(f"获取媒体库列表出错：{str(err)}")
         return None
 
-    def get_webhook_message(self, form: Any) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, form: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Plex报文
         eventItem  字段的含义
@@ -824,7 +829,7 @@ class Plex:
         if not eventType:
             return None
         logger.debug(f"接收到plex webhook：{message}")
-        eventItem = schemas.WebhookEventInfo(event=eventType, channel="plex")
+        eventItem = _SchemaWebhookEventInfo(event=eventType, channel="plex")
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
                 eventItem.item_type = "TV"
@@ -884,7 +889,7 @@ class Plex:
         """
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
-    def get_resume(self, num: Optional[int] = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取继续观看的媒体
         """
@@ -912,7 +917,7 @@ class Plex:
                 subtitle = f"S{item.parentIndex}:E{item.index} - {item.title}"
             link = self.get_play_url(item.key)
             image = item.artUrl
-            ret_resume.append(schemas.MediaServerPlayItem(
+            ret_resume.append(_SchemaMediaServerPlayItem(
                 id=item.key,
                 title=title,
                 subtitle=subtitle,
@@ -924,7 +929,7 @@ class Plex:
             ))
         return ret_resume[:num]
 
-    def get_latest(self, num: Optional[int] = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: Optional[int] = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取最近添加媒体
         """
@@ -985,7 +990,7 @@ class Plex:
                     title = "%s 共%s季" % (item.title, item.seasonCount)
                     image = item.posterUrl
                 link = self.get_play_url(item.key)
-                ret_resume.append(schemas.MediaServerPlayItem(
+                ret_resume.append(_SchemaMediaServerPlayItem(
                     id=item.key,
                     title=title,
                     subtitle=str(item.year) if item.year else None,

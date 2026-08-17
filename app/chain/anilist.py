@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.chain import ChainBase
 from app.domain.context import MediaInfo
 
@@ -86,7 +86,7 @@ class AniListChain(ChainBase):
 
     def credits(
         self, anilist_id: int, page: int = 1, count: int = 20
-    ) -> list[schemas.MediaPerson]:
+    ) -> list[_SchemaMediaPerson]:
         """
         获取 AniList 动画配音演员。
 
@@ -98,7 +98,7 @@ class AniListChain(ChainBase):
 
     async def async_credits(
         self, anilist_id: int, page: int = 1, count: int = 20
-    ) -> list[schemas.MediaPerson]:
+    ) -> list[_SchemaMediaPerson]:
         """
         异步获取 AniList 动画配音演员。
 
@@ -135,7 +135,7 @@ class AniListChain(ChainBase):
             count=count,
         ) or []
 
-    def person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    def person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         获取 AniList 人物详情。
 
@@ -143,7 +143,7 @@ class AniListChain(ChainBase):
         """
         return self.run_module("anilist_person_detail", person_id=person_id)
 
-    async def async_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         异步获取 AniList 人物详情。
 

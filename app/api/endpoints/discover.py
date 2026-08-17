@@ -2,14 +2,16 @@ from typing import Any, List, Optional
 
 from fastapi import Depends
 
-from app import schemas
+from app.schemas.event import DiscoverMediaSource as _SchemaDiscoverMediaSource
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.runtime.events import eventmanager
 from app.application.security.access import verify_token
-from app.schemas import DiscoverSourceEventData
+from app.schemas.event import DiscoverSourceEventData
 from app.schemas.types import ChainEventType, MediaType
 
 router = ResponseAPIRouter()
@@ -18,9 +20,9 @@ router = ResponseAPIRouter()
 @router.get(
     "/source",
     summary="获取探索数据源",
-    response_model=List[schemas.DiscoverMediaSource],
+    response_model=List[_SchemaDiscoverMediaSource],
 )
-def source(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def source(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     获取探索数据源
     """
@@ -35,7 +37,7 @@ def source(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return []
 
 
-@router.get("/bangumi", summary="探索Bangumi", response_model=List[schemas.MediaInfo])
+@router.get("/bangumi", summary="探索Bangumi", response_model=List[_SchemaMediaInfo])
 async def bangumi(
     type: Optional[int] = 2,
     cat: Optional[int] = None,
@@ -43,7 +45,7 @@ async def bangumi(
     year: Optional[str] = None,
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     探索Bangumi
@@ -57,14 +59,14 @@ async def bangumi(
 
 
 @router.get(
-    "/douban_movies", summary="探索豆瓣电影", response_model=List[schemas.MediaInfo]
+    "/douban_movies", summary="探索豆瓣电影", response_model=List[_SchemaMediaInfo]
 )
 async def douban_movies(
     sort: Optional[str] = "R",
     tags: Optional[str] = "",
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     浏览豆瓣电影信息
@@ -76,14 +78,14 @@ async def douban_movies(
 
 
 @router.get(
-    "/douban_tvs", summary="探索豆瓣剧集", response_model=List[schemas.MediaInfo]
+    "/douban_tvs", summary="探索豆瓣剧集", response_model=List[_SchemaMediaInfo]
 )
 async def douban_tvs(
     sort: Optional[str] = "R",
     tags: Optional[str] = "",
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     浏览豆瓣剧集信息
@@ -95,7 +97,7 @@ async def douban_tvs(
 
 
 @router.get(
-    "/tmdb_movies", summary="探索TMDB电影", response_model=List[schemas.MediaInfo]
+    "/tmdb_movies", summary="探索TMDB电影", response_model=List[_SchemaMediaInfo]
 )
 async def tmdb_movies(
     sort_by: Optional[str] = "popularity.desc",
@@ -107,7 +109,7 @@ async def tmdb_movies(
     vote_count: Optional[int] = 0,
     release_date: Optional[str] = "",
     page: Optional[int] = 1,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     浏览TMDB电影信息
@@ -127,7 +129,7 @@ async def tmdb_movies(
     return [movie.to_dict() for movie in movies] if movies else []
 
 
-@router.get("/tmdb_tvs", summary="探索TMDB剧集", response_model=List[schemas.MediaInfo])
+@router.get("/tmdb_tvs", summary="探索TMDB剧集", response_model=List[_SchemaMediaInfo])
 async def tmdb_tvs(
     sort_by: Optional[str] = "popularity.desc",
     with_genres: Optional[str] = "",
@@ -138,7 +140,7 @@ async def tmdb_tvs(
     vote_count: Optional[int] = 0,
     release_date: Optional[str] = "",
     page: Optional[int] = 1,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     浏览TMDB剧集信息

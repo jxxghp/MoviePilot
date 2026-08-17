@@ -16,7 +16,9 @@ from app.application.messaging.message import MessageTemplateHelper
 from app.runtime.config import settings
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas import MessageResponse, Message, TransferInfo
+from app.schemas.message import MessageResponse
+from app.schemas.message import Message
+from app.schemas.transfer import TransferInfo
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, NotificationChannel
 

@@ -4,7 +4,17 @@ from typing import Any, List, Annotated, Optional
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app import schemas
+from app.schemas.common import NameData as _SchemaNameData
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.transfer import EpisodeFormat as _SchemaEpisodeFormat
+from app.schemas.transfer import EpisodeFormatRecommendData as _SchemaEpisodeFormatRecommendData
+from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTransferHistoryInfo
+from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
+from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
+from app.schemas.transfer import TransferJob as _SchemaTransferJob
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
@@ -13,15 +23,13 @@ from app.application.security.access import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models import User
 from app.db.models.transferhistory import TransferHistory
-from app.api.deps import get_current_active_manage_user, get_current_active_superuser
+from app.api.deps import get_current_active_manage_user
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
-from app.schemas import (
-    MediaType,
-    FileItem,
-    ManualTransferItem,
-    EpisodeFormatRecommendItem,
-)
+from app.schemas.types import MediaType
+from app.schemas.workflow import FileItem
+from app.schemas.transfer import ManualTransferItem
+from app.schemas.transfer import EpisodeFormatRecommendItem
 
 router = ResponseAPIRouter()
 
@@ -29,10 +37,10 @@ router = ResponseAPIRouter()
 @router.get(
     "/name",
     summary="查询整理后的名称",
-    response_model=schemas.Response[schemas.NameData],
+    response_model=_SchemaResponse[_SchemaNameData],
 )
 def query_name(
-    path: str, filetype: str, _: schemas.TokenPayload = Depends(verify_token)
+    path: str, filetype: str, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     查询整理后的名称
@@ -45,12 +53,12 @@ def query_name(
         obtain_images=False,
     )
     if not context or not context.media_info:
-        return schemas.Response(success=False, message="未识别到媒体信息")
+        return _SchemaResponse(success=False, message="未识别到媒体信息")
     new_path = TransferChain().recommend_name(
         meta=context.meta_info, mediainfo=context.media_info
     )
     if not new_path:
-        return schemas.Response(success=False, message="未识别到新名称")
+        return _SchemaResponse(success=False, message="未识别到新名称")
     if filetype == "dir":
         media_path = DirectoryHelper.get_media_root_path(
             rename_format=settings.RENAME_FORMAT(context.media_info.type),
@@ -68,11 +76,11 @@ def query_name(
                 new_name = parents[0].name
     else:
         new_name = Path(new_path).name
-    return schemas.Response(success=True, data={"name": new_name})
+    return _SchemaResponse(success=True, data={"name": new_name})
 
 
-@router.get("/queue", summary="查询整理队列", response_model=List[schemas.TransferJob])
-async def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/queue", summary="查询整理队列", response_model=List[_SchemaTransferJob])
+async def query_queue(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询整理队列
     :param _: Token校验
@@ -81,10 +89,10 @@ async def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.delete(
-    "/queue", summary="从整理队列中删除任务", response_model=schemas.Response[None]
+    "/queue", summary="从整理队列中删除任务", response_model=_SchemaResponse[None]
 )
 async def remove_queue(
-    fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)
+    fileitem: _SchemaFileItem, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     查询整理队列
@@ -94,7 +102,7 @@ async def remove_queue(
     TransferChain().remove_from_queue(fileitem)
     # 取消整理
     global_vars.stop_transfer(fileitem.path)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 def _resolve_manual_transfer_source_fileitems(
@@ -150,15 +158,15 @@ def _deduplicate_fileitems(fileitems: List[FileItem]) -> List[FileItem]:
 
 
 def _build_manual_transfer_target_path(
-    directory: Optional[schemas.TransferDirectoryConf] = None,
-) -> schemas.ManualTransferTargetPath:
+    directory: Optional[_SchemaTransferDirectoryConf] = None,
+) -> _SchemaManualTransferTargetPath:
     """
     根据目录配置生成手动整理目的路径响应。
     """
     if not directory or not directory.library_path:
-        return schemas.ManualTransferTargetPath()
+        return _SchemaManualTransferTargetPath()
 
-    return schemas.ManualTransferTargetPath(
+    return _SchemaManualTransferTargetPath(
         target_storage=directory.library_storage or "local",
         target_path=directory.library_path,
         transfer_type=directory.transfer_type,
@@ -169,7 +177,7 @@ def _build_manual_transfer_target_path(
 
 
 def _get_manual_transfer_target_key(
-    directory: schemas.TransferDirectoryConf,
+    directory: _SchemaTransferDirectoryConf,
 ) -> tuple[Optional[str], Optional[str]]:
     """
     生成目的目录唯一键。
@@ -183,7 +191,7 @@ def _get_manual_transfer_target_key(
 @router.post(
     "/manual/target-path",
     summary="匹配手动转移目的路径",
-    response_model=schemas.Response[schemas.ManualTransferTargetPath],
+    response_model=_SchemaResponse[_SchemaManualTransferTargetPath],
 )
 def match_manual_transfer_target_path(
     transer_item: ManualTransferItem,
@@ -202,9 +210,9 @@ def match_manual_transfer_target_path(
         db=db,
     )
     if error_message:
-        return schemas.Response(success=False, message=error_message)
+        return _SchemaResponse(success=False, message=error_message)
 
-    matched_directories: List[schemas.TransferDirectoryConf] = []
+    matched_directories: List[_SchemaTransferDirectoryConf] = []
     target_storage = transer_item.target_storage or None
     for src_fileitem in _deduplicate_fileitems(src_fileitems):
         directory = DirectoryHelper().get_dir(
@@ -214,16 +222,16 @@ def match_manual_transfer_target_path(
             target_storage=target_storage,
         )
         if not directory or not directory.library_path:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=True,
-                data=schemas.ManualTransferTargetPath().model_dump(),
+                data=_SchemaManualTransferTargetPath().model_dump(),
             )
         matched_directories.append(directory)
 
     if not matched_directories:
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
-            data=schemas.ManualTransferTargetPath().model_dump(),
+            data=_SchemaManualTransferTargetPath().model_dump(),
         )
 
     first_directory = matched_directories[0]
@@ -232,12 +240,12 @@ def match_manual_transfer_target_path(
         _get_manual_transfer_target_key(directory) != first_key
         for directory in matched_directories[1:]
     ):
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
-            data=schemas.ManualTransferTargetPath().model_dump(),
+            data=_SchemaManualTransferTargetPath().model_dump(),
         )
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data=_build_manual_transfer_target_path(first_directory).model_dump(),
     )
@@ -246,7 +254,7 @@ def match_manual_transfer_target_path(
 @router.post(
     "/manual/history",
     summary="查询手动转移成功历史",
-    response_model=schemas.Response[schemas.ManualTransferHistoryInfo],
+    response_model=_SchemaResponse[_SchemaManualTransferHistoryInfo],
 )
 def query_manual_transfer_history(
     transer_item: ManualTransferItem,
@@ -265,22 +273,22 @@ def query_manual_transfer_history(
         db=db,
     )
     if error_message:
-        return schemas.Response(success=False, message=error_message)
+        return _SchemaResponse(success=False, message=error_message)
 
     histories = TransferChain().get_manual_transfer_histories(
         _deduplicate_fileitems(src_fileitems)
     )
-    history_info = schemas.ManualTransferHistoryInfo(
+    history_info = _SchemaManualTransferHistoryInfo(
         reorganize=bool(histories),
         history_count=len(histories),
     )
-    return schemas.Response(success=True, data=history_info.model_dump())
+    return _SchemaResponse(success=True, data=history_info.model_dump())
 
 
 @router.post(
     "/manual",
     summary="手动转移",
-    response_model=schemas.Response[schemas.ManualTransferResultData],
+    response_model=_SchemaResponse[_SchemaManualTransferResultData],
 )
 def manual_transfer(
     transer_item: ManualTransferItem,
@@ -305,7 +313,7 @@ def manual_transfer(
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, transer_item.logid)
         if not history:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False, message=f"整理记录不存在，ID：{transer_item.logid}"
             )
         # 强制转移
@@ -368,7 +376,7 @@ def manual_transfer(
     elif transer_item.fileitem:
         src_fileitems = [transer_item.fileitem]
     else:
-        return schemas.Response(success=False, message=f"缺少参数")
+        return _SchemaResponse(success=False, message=f"缺少参数")
 
     dedup_fileitems: List[FileItem] = []
     seen_paths = set()
@@ -384,7 +392,7 @@ def manual_transfer(
         dedup_fileitems.append(current_fileitem)
     src_fileitems = dedup_fileitems
     if not src_fileitems:
-        return schemas.Response(success=False, message="缺少参数")
+        return _SchemaResponse(success=False, message="缺少参数")
 
     # 类型（“自动/auto/none”按未指定处理）
     mtype = None
@@ -393,7 +401,7 @@ def manual_transfer(
         try:
             mtype = MediaType(type_name)
         except ValueError:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False, message=f"不支持的媒体类型：{type_name}"
             )
     # 自定义格式
@@ -404,7 +412,7 @@ def manual_transfer(
         or transer_item.episode_detail
         or transer_item.episode_format
     ):
-        epformat = schemas.EpisodeFormat(
+        epformat = _SchemaEpisodeFormat(
             format=transer_item.episode_format,
             detail=transer_item.episode_detail,
             part=transer_item.episode_part,
@@ -520,18 +528,18 @@ def manual_transfer(
                 "items": merged_preview_items,
                 "message": merged_message,
             }
-            return schemas.Response(
+            return _SchemaResponse(
                 success=True,
                 message=merged_message or None,
                 data=preview_data,
             )
 
         if not all_success:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message=_merge_messages(error_messages),
             )
-        return schemas.Response(success=True)
+        return _SchemaResponse(success=True)
 
     src_fileitem = src_fileitems[0]
     # 开始转移
@@ -565,22 +573,22 @@ def manual_transfer(
         if isinstance(errormsg, list):
             errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
         if isinstance(errormsg, dict):
-            return schemas.Response(
+            return _SchemaResponse(
                 success=True,
                 message=errormsg.get("message"),
                 data=errormsg,
             )
-        return schemas.Response(success=False, message=errormsg)
+        return _SchemaResponse(success=False, message=errormsg)
     # 成功
     if transer_item.preview:
-        return schemas.Response(success=True, data=errormsg or {})
-    return schemas.Response(success=True)
+        return _SchemaResponse(success=True, data=errormsg or {})
+    return _SchemaResponse(success=True)
 
 
 @router.post(
     "/episode-format/recommend",
     summary="推荐集数定位模板",
-    response_model=schemas.Response[schemas.EpisodeFormatRecommendData],
+    response_model=_SchemaResponse[_SchemaEpisodeFormatRecommendData],
 )
 def recommend_episode_format(
     recommend_item: EpisodeFormatRecommendItem,
@@ -599,17 +607,17 @@ def recommend_episode_format(
     )
     if not state:
         logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
-        return schemas.Response(success=False, message=errmsg)
+        return _SchemaResponse(success=False, message=errmsg)
     logger.info(
         f"推荐集数定位模板成功：{target_path} - 规则 {data.get('rule_name') if data else None}"
     )
-    return schemas.Response(success=True, data=data)
+    return _SchemaResponse(success=True, data=data)
 
 
-@router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response[None])
+@router.get("/now", summary="立即执行下载器文件整理", response_model=_SchemaResponse[None])
 def now(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     立即执行下载器文件整理 API_TOKEN认证（?token=xxx）
     """
     TransferChain().process()
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)

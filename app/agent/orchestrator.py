@@ -73,7 +73,10 @@ from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.user import UserOper
 from app.runtime.log import logger
-from app.schemas import AgentLLMProviderEventData, AgentTokensUsageEventData, Message, MessageType
+from app.schemas.event import AgentLLMProviderEventData
+from app.schemas.event import AgentTokensUsageEventData
+from app.schemas.message import Message
+from app.schemas.message import MessageType
 from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
 from app.schemas.types import ChainEventType, EventType, NotificationChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID

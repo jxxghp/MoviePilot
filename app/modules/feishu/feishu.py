@@ -55,7 +55,8 @@ from app.domain.context import Context, MediaInfo
 from app.db.oper.user import UserOper
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
-from app.schemas import IncomingMessage, Message
+from app.schemas.message import IncomingMessage
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
 

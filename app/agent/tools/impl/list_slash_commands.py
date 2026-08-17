@@ -3,7 +3,7 @@
 import json
 from typing import Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag

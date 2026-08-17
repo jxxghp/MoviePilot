@@ -2,7 +2,8 @@ from typing import Any, Dict
 
 from fastapi import Depends
 
-from app import schemas
+from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.chain.notification import NotificationChain
 from app.db.models import User
@@ -14,10 +15,10 @@ router = ResponseAPIRouter()
 @router.post(
     "/manage",
     summary="通知渠道统一管理",
-    response_model=schemas.Response[Dict[str, Any]],
+    response_model=_SchemaResponse[Dict[str, Any]],
 )
 def manage_channel(
-    request: schemas.ManageRequest,
+    request: _SchemaManageRequest,
     _: User = Depends(get_current_active_superuser),
 ):
     """
@@ -31,7 +32,7 @@ def manage_channel(
         action=request.action,
         **request.params,
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=bool(result.get("success")),
         message=result.get("message"),
         data=result.get("data"),

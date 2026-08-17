@@ -4,7 +4,8 @@ from app.runtime.config import settings, global_vars
 from app.domain.context import MediaInfo
 from app.db.oper.subscribe import SubscribeOper
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 
 
 class AddSubscribeParams(ActionParams):

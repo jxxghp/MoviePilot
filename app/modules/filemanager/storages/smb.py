@@ -12,7 +12,8 @@ from smbprotocol.exceptions import (
     SMBAuthenticationError,
 )
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
 from app.modules.filemanager import StorageBase
@@ -172,7 +173,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
     def _create_fileitem(
         self, stat_result, file_path: str, name: str
-    ) -> schemas.FileItem:
+    ) -> _SchemaFileItem:
         """
         创建文件项
         """
@@ -195,7 +196,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 modify_time = int(time.time())
 
             if is_directory:
-                return schemas.FileItem(
+                return _SchemaFileItem(
                     storage=self.schema.value,
                     type="dir",
                     path=relative_path,
@@ -204,7 +205,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                     modify_time=modify_time,
                 )
             else:
-                return schemas.FileItem(
+                return _SchemaFileItem(
                     storage=self.schema.value,
                     type="file",
                     path=relative_path,
@@ -217,7 +218,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             logger.error(f"【SMB】创建文件项失败：{e}")
             # 返回基本的文件项信息
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 type="file",
                 path=file_path.replace(self._server_path, "").replace("\\", "/"),
@@ -249,7 +250,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             self._connected = False
             return False
 
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         浏览文件
         """
@@ -295,8 +296,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             return []
 
     def create_folder(
-        self, fileitem: schemas.FileItem, name: str
-    ) -> Optional[schemas.FileItem]:
+        self, fileitem: _SchemaFileItem, name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         创建目录
         """
@@ -310,7 +311,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             smbclient.mkdir(new_path)
 
             # 返回创建的目录信息
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 type="dir",
                 path=f"{fileitem.path.rstrip('/')}/{name}/",
@@ -322,7 +323,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】创建目录失败: {e}")
             return None
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取目录，如目录不存在则创建
         """
@@ -349,7 +350,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
         return folder
 
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，不存在返回None
         """
@@ -358,7 +359,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             # 处理根目录
             if str(path) == "/":
-                return schemas.FileItem(
+                return _SchemaFileItem(
                     storage=self.schema.value,
                     type="dir",
                     path="/",
@@ -382,7 +383,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.debug(f"【SMB】获取文件项失败: {e}")
             return None
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
         只有 ENOENT/ENOTDIR 才是「确认不存在」，连接中断、认证失败等都无法确认
@@ -393,7 +394,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             # 处理根目录
             if str(path) == "/":
-                return schemas.FileItem(
+                return _SchemaFileItem(
                     storage=self.schema.value,
                     type="dir",
                     path="/",
@@ -415,13 +416,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             raise StorageQueryError(f"【SMB】查询文件项失败: {path} - {e}") from e
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件详情
         """
         return self.get_item(Path(fileitem.path))
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件或目录
         """
@@ -523,7 +524,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】递归删除失败: {smb_path} - {e}")
             raise SMBConnectionError(f"递归删除失败 {smb_path}: {e}")
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件
         """
@@ -543,7 +544,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】重命名失败: {e}")
             return False
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
@@ -595,8 +596,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             return None
 
     def upload(
-        self, fileitem: schemas.FileItem, path: Path, new_name: Optional[str] = None
-    ) -> Optional[schemas.FileItem]:
+        self, fileitem: _SchemaFileItem, path: Path, new_name: Optional[str] = None
+    ) -> Optional[_SchemaFileItem]:
         """
         带实时进度显示的上传
         """
@@ -643,7 +644,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】上传失败: {target_name} - {e}")
             return None
 
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
         """
@@ -670,7 +671,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】复制失败: {e}")
             return False
 
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
         """
@@ -689,7 +690,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】移动失败: {e}")
             return False
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         硬链接文件
         Samba服务器需要开启 unix extensions 支持
@@ -722,17 +723,17 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】创建硬链接失败: {e}")
             return False
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """
         try:
             self._check_connection()
             volume_stat = smbclient.stat_volume(self._server_path)
-            return schemas.StorageUsage(
+            return _SchemaStorageUsage(
                 total=volume_stat.total_size,
                 available=volume_stat.caller_available_size,
             )

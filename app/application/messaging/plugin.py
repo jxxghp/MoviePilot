@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.application.messaging.interaction import InteractionContext, MessageGateway
 from app.runtime.events import EventManager
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import EventType, NotificationChannel
 
 

@@ -6,7 +6,11 @@ from typing import AsyncIterator, List, Optional
 from fastapi import APIRouter, Header, Security
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app import schemas
+from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
+from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
+from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessagesRequest
+from app.schemas.openai import AnthropicMessagesResponse as _SchemaAnthropicMessagesResponse
+from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
 from app.api.endpoints.openai import (
     MODEL_ID,
     _is_manager_unavailable,
@@ -22,11 +26,11 @@ from app.runtime.config import settings
 from app.application.security.access import anthropic_api_key_header
 
 ANTHROPIC_ERROR_RESPONSES = {
-    400: {"model": schemas.AnthropicErrorResponse, "description": "请求格式错误"},
-    401: {"model": schemas.AnthropicErrorResponse, "description": "认证失败"},
-    422: {"model": schemas.AnthropicErrorResponse, "description": "请求参数校验失败"},
-    500: {"model": schemas.AnthropicErrorResponse, "description": "服务内部错误"},
-    503: {"model": schemas.AnthropicErrorResponse, "description": "AI Agent 不可用"},
+    400: {"model": _SchemaAnthropicErrorResponse, "description": "请求格式错误"},
+    401: {"model": _SchemaAnthropicErrorResponse, "description": "认证失败"},
+    422: {"model": _SchemaAnthropicErrorResponse, "description": "请求参数校验失败"},
+    500: {"model": _SchemaAnthropicErrorResponse, "description": "服务内部错误"},
+    503: {"model": _SchemaAnthropicErrorResponse, "description": "AI Agent 不可用"},
 }
 
 router = APIRouter(responses=ANTHROPIC_ERROR_RESPONSES)
@@ -41,8 +45,8 @@ def _anthropic_error_response(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content=schemas.AnthropicErrorResponse(
-            error=schemas.AnthropicErrorDetail(type=error_type, message=message)
+        content=_SchemaAnthropicErrorResponse(
+            error=_SchemaAnthropicErrorDetail(type=error_type, message=message)
         ).model_dump(),
     )
 
@@ -126,7 +130,7 @@ async def _stream_anthropic_response(
 @router.post(
     "/messages",
     summary="Anthropic compatible messages",
-    response_model=schemas.AnthropicMessagesResponse,
+    response_model=_SchemaAnthropicMessagesResponse,
     responses={
         200: {
             "description": "Anthropic message 或 SSE 数据流",
@@ -137,7 +141,7 @@ async def _stream_anthropic_response(
     },
 )
 async def messages(
-    payload: schemas.AnthropicMessagesRequest,
+    payload: _SchemaAnthropicMessagesRequest,
     x_api_key: Optional[str] = Security(anthropic_api_key_header),
     anthropic_version: Optional[str] = Header(default=None, alias="anthropic-version"),
 ):
@@ -217,8 +221,8 @@ async def messages(
     if not content:
         content = "未获得有效回复。"
 
-    return schemas.AnthropicMessagesResponse(
+    return _SchemaAnthropicMessagesResponse(
         id=f"msg_{uuid.uuid4().hex}",
-        content=[schemas.AnthropicTextBlock(text=content)],
+        content=[_SchemaAnthropicTextBlock(text=content)],
         model=MODEL_ID,
     )

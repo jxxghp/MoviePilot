@@ -16,8 +16,11 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import DeclarativeBase
 
-import app.db.models  # noqa: F401  确保全部模型完成注册
 from app.db import Base
+from app.db.models import load_all_models
+
+
+load_all_models()
 from app.db.base import get_id_column
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

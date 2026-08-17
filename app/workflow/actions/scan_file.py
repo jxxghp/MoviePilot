@@ -7,7 +7,8 @@ from app.workflow.actions import BaseAction
 from app.chain.storage import StorageChain
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 
 
 class ScanFileParams(ActionParams):

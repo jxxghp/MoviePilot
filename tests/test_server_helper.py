@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.external.server import (
+    MoviePilotServerHelper,
+    configure_server_application_services,
+)
+from app.application.server.report import ServerReportService
+from app.application.server.share import ServerSharingService
 from app.schemas.types import MediaSource
 
 
@@ -17,6 +22,32 @@ class MoviePilotServerHelperTests(unittest.TestCase):
         清理安装用户 ID 缓存，避免不同用例之间互相影响。
         """
         MoviePilotServerHelper._user_uid = None
+        configure_server_application_services(
+            report_service=ServerReportService(
+                config_reader=Mock(return_value=None),
+                config_writer=Mock(),
+                installed_plugins_provider=Mock(return_value=[]),
+                subscribes_provider=Mock(return_value=[]),
+                plugin_report_sender=Mock(),
+                async_plugin_report_sender=AsyncMock(),
+                subscribe_report_sender=Mock(),
+                repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
+            ),
+            sharing_service=ServerSharingService(
+                subscribe_provider=Mock(return_value=None),
+                async_subscribe_provider=AsyncMock(return_value=None),
+                workflow_provider=Mock(return_value=None),
+                async_workflow_provider=AsyncMock(return_value=None),
+                user_uuid_provider=Mock(return_value="user-1"),
+                subscribe_sender=Mock(),
+                async_subscribe_sender=AsyncMock(),
+                workflow_sender=Mock(),
+                async_workflow_sender=AsyncMock(),
+                response_handler=Mock(return_value=(True, "")),
+                subscribe_cache_clearer=Mock(),
+                workflow_cache_clearer=Mock(),
+            ),
+        )
 
     def test_server_request_adds_user_uid_header(self):
         """

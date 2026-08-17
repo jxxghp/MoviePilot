@@ -10,7 +10,9 @@ from app.db.models import Workflow
 from app.db.oper.workflow import WorkflowOper
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
-from app.schemas import ActionContext, Action, ActionResult
+from app.schemas.workflow import ActionContext
+from app.schemas.workflow import Action
+from app.schemas.workflow import ActionResult
 from app.schemas.types import EventType
 from app.foundation.singleton import Singleton
 

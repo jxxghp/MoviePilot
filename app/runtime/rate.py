@@ -6,7 +6,8 @@ from collections import deque
 from typing import Any, Tuple, List, Callable, Optional
 
 from app.runtime.log import logger
-from app.schemas import RateLimitExceededException, LimitException
+from app.schemas.exception import RateLimitExceededException
+from app.schemas.exception import LimitException
 
 
 # 抽象基类

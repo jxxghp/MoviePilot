@@ -15,7 +15,7 @@ from app.application.messaging.interaction import (
     update_or_post_message,
 )
 from app.runtime.log import logger
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
 
 

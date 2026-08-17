@@ -12,7 +12,8 @@ from app.application.messaging.agent import (
     build_agent_choice_callback,
 )
 from app.runtime.log import logger
-from app.schemas import Message, MessageType
+from app.schemas.message import Message
+from app.schemas.message import MessageType
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
 

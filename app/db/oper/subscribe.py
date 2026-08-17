@@ -10,7 +10,10 @@
 import time
 from typing import Any, Tuple, List, Optional
 
-from app.db import DbOper
+from sqlalchemy import delete as sqlalchemy_delete
+
+from app.application.subscription.delete import SubscribeDeletionCandidate
+from app.db.base import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.schemas.types import MediaSource
@@ -154,6 +157,75 @@ class SubscribeOper(DbOper):
         """
         return await Subscribe.async_get(self._db, rid=sid)
 
+    async def get_candidate(
+            self,
+            subscribe_id: int,
+    ) -> Optional[SubscribeDeletionCandidate]:
+        """读取订阅删除用例需要的权限字段与完整事件快照。"""
+        subscribe = await self.async_get(subscribe_id)
+        if not subscribe:
+            return None
+        values = subscribe.__dict__
+        event_payload = {
+            column.name: values.get(column.name)
+            for column in subscribe.__table__.columns
+        }
+        return SubscribeDeletionCandidate(
+            subscribe_id=subscribe_id,
+            username=subscribe.username,
+            event_payload=event_payload,
+        )
+
+    async def list_candidates_by_identity(
+            self,
+            media_source: MediaSource,
+            media_id: str,
+            season: Optional[int],
+            music_type: Optional[str],
+    ) -> List[SubscribeDeletionCandidate]:
+        """按媒体身份读取去重后的订阅删除快照。"""
+        subscribes = await Subscribe.async_list_by_media_identity(
+            self._db,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
+        )
+        candidates = []
+        seen_ids = set()
+        for subscribe in subscribes or []:
+            subscribe_music_type = getattr(subscribe, "music_type", None)
+            if music_type and not (
+                    subscribe_music_type == music_type
+                    or (music_type == "recording" and subscribe_music_type is None)
+            ):
+                continue
+            if season is not None and subscribe.season != season:
+                continue
+            if not subscribe.id or subscribe.id in seen_ids:
+                continue
+            seen_ids.add(subscribe.id)
+            values = subscribe.__dict__
+            candidates.append(
+                SubscribeDeletionCandidate(
+                    subscribe_id=subscribe.id,
+                    username=subscribe.username,
+                    event_payload={
+                        column.name: values.get(column.name)
+                        for column in subscribe.__table__.columns
+                    },
+                )
+            )
+        return candidates
+
+    async def list_search_ids(self, username: str, state: str) -> List[int]:
+        """返回用户指定状态的订阅编号，不向应用用例暴露 ORM 列表。"""
+        subscribes = await Subscribe.async_list_by_username(
+            self._db,
+            username,
+            state=state,
+        )
+        return [subscribe.id for subscribe in subscribes if subscribe.id]
+
     def get_by(
             self, type: str, media_source: MediaSource, media_id: str,
             season: Optional[str] = None,
@@ -205,6 +277,12 @@ class SubscribeOper(DbOper):
         异步删除订阅。
         """
         await Subscribe.async_delete(self._db, rid=sid)
+
+    async def stage_delete(self, sid: int) -> None:
+        """登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。"""
+        await self._db.execute(
+            sqlalchemy_delete(Subscribe).where(Subscribe.id == sid)
+        )
 
     async def async_update(self, sid: int, payload: dict) -> Optional[Subscribe]:
         """

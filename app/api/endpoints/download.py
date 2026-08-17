@@ -2,7 +2,18 @@ from typing import Any, List, Annotated, Optional, Union
 
 from fastapi import Depends, Body
 
-from app import schemas
+from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
+from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
+from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
+from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
+from app.schemas.file import FileURI as _SchemaFileURI
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
+from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
+from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -53,9 +64,9 @@ def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
     return True, ""
 
 
-@router.get("/", summary="正在下载", response_model=List[schemas.DownloaderTorrent])
+@router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
 def current(
-    name: Optional[str] = None, _: schemas.TokenPayload = Depends(verify_token)
+    name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     查询正在下载的任务
@@ -66,11 +77,11 @@ def current(
 @router.post(
     "/",
     summary="添加下载（含媒体信息）",
-    response_model=schemas.Response[schemas.DownloadAddedData],
+    response_model=_SchemaResponse[_SchemaDownloadAddedData],
 )
 def download(
-    media_in: Union[schemas.MusicInfo, schemas.MediaInfo],
-    torrent_in: schemas.TorrentInfo,
+    media_in: Union[_SchemaMusicInfo, _SchemaMediaInfo],
+    torrent_in: _SchemaTorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
     current_user: User = Depends(get_current_active_user),
@@ -78,7 +89,7 @@ def download(
     """
     添加下载任务（含媒体信息）
     """
-    if isinstance(media_in, schemas.MusicInfo):
+    if isinstance(media_in, _SchemaMusicInfo):
         mediainfo = MusicInfo.from_dict(media_in.model_dump())
         metainfo = MetaMusic.from_music_info(mediainfo)
         metainfo.org_string = torrent_in.title
@@ -102,17 +113,17 @@ def download(
         source="Manual",
     )
     if not did:
-        return schemas.Response(success=False, message="任务添加失败")
-    return schemas.Response(success=True, data={"download_id": did})
+        return _SchemaResponse(success=False, message="任务添加失败")
+    return _SchemaResponse(success=True, data={"download_id": did})
 
 
 @router.post(
     "/add",
     summary="添加下载（不含媒体信息）",
-    response_model=schemas.Response[schemas.DownloadAddedData],
+    response_model=_SchemaResponse[_SchemaDownloadAddedData],
 )
 def add(
-    torrent_in: schemas.TorrentInfo,
+    torrent_in: _SchemaTorrentInfo,
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
@@ -126,12 +137,12 @@ def add(
     """
     normalized_music_type = normalize_music_type(music_type, allow_artist=False)
     if music_type is not None and not normalized_music_type:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="音乐实体类型无效，仅支持 recording 或 album",
         )
     if (media_source is None) != (media_id is None):
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="媒体来源和媒体 ID 必须同时提供",
         )
@@ -141,7 +152,7 @@ def add(
         or normalized_music_type is not None
     )
     if is_music and media_source and not is_music_media_source(media_source):
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="音乐下载只能使用音乐元数据源",
         )
@@ -171,7 +182,7 @@ def add(
             music_type=normalized_music_type,
         )
     if not mediainfo:
-        return schemas.Response(success=False, message="无法识别媒体信息")
+        return _SchemaResponse(success=False, message="无法识别媒体信息")
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
@@ -188,17 +199,17 @@ def add(
         source="Manual",
     )
     if not did:
-        return schemas.Response(success=False, message="任务添加失败")
-    return schemas.Response(success=True, data={"download_id": did})
+        return _SchemaResponse(success=False, message="任务添加失败")
+    return _SchemaResponse(success=True, data={"download_id": did})
 
 
 @router.post(
     "/subtitle",
     summary="下载字幕",
-    response_model=schemas.Response[schemas.SubtitleDownloadData],
+    response_model=_SchemaResponse[_SchemaSubtitleDownloadData],
 )
 def download_subtitle(
-    subtitle_in: schemas.SubtitleInfo,
+    subtitle_in: _SchemaSubtitleInfo,
     media_source: Annotated[MediaSource, Body()],
     media_id: Annotated[str, Body()],
     save_path: Annotated[str | None, Body()] = None,
@@ -211,7 +222,7 @@ def download_subtitle(
     subtitle_info.from_dict(subtitle_in.model_dump())
     valid, message = _prepare_subtitle_download(subtitle_info)
     if not valid:
-        return schemas.Response(success=False, message=message)
+        return _SchemaResponse(success=False, message=message)
 
     success, message, saved_files = DownloadChain().download_subtitle(
         subtitle=subtitle_info,
@@ -220,45 +231,45 @@ def download_subtitle(
         save_path=save_path,
         username=current_user.name,
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=success,
         message=message,
         data={"files": saved_files} if saved_files else None,
     )
 
 
-@router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response[None])
+@router.get("/start/{hashString}", summary="开始任务", response_model=_SchemaResponse[None])
 def start(
     hashString: str,
     name: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     开如下载任务
     """
     ret = DownloadChain().set_downloading(hashString, "start", name=name)
-    return schemas.Response(success=True if ret else False)
+    return _SchemaResponse(success=True if ret else False)
 
 
-@router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response[None])
+@router.get("/stop/{hashString}", summary="暂停任务", response_model=_SchemaResponse[None])
 def stop(
     hashString: str,
     name: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     暂停下载任务
     """
     ret = DownloadChain().set_downloading(hashString, "stop", name=name)
-    return schemas.Response(success=True if ret else False)
+    return _SchemaResponse(success=True if ret else False)
 
 
 @router.get(
     "/clients",
     summary="查询可用下载器",
-    response_model=List[schemas.ServiceClientInfo],
+    response_model=List[_SchemaServiceClientInfo],
 )
-async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
     """
@@ -273,18 +284,18 @@ async def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get(
-    "/paths", summary="查询可用下载路径", response_model=List[schemas.DownloadDirectory]
+    "/paths", summary="查询可用下载路径", response_model=List[_SchemaDownloadDirectory]
 )
-def paths(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def paths(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可直接用于下载接口 save_path 参数的下载路径
     """
     return [
-        schemas.DownloadDirectory(
+        _SchemaDownloadDirectory(
             name=dir_info.name,
             storage=dir_info.storage or "local",
             download_path=dir_info.download_path,
-            save_path=schemas.FileURI(
+            save_path=_SchemaFileURI(
                 storage=dir_info.storage or "local",
                 path=dir_info.download_path,
             ).uri,
@@ -297,14 +308,14 @@ def paths(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     ]
 
 
-@router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response[None])
+@router.delete("/{hashString}", summary="删除下载任务", response_model=_SchemaResponse[None])
 def delete(
     hashString: str,
     name: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     删除下载任务
     """
     ret = DownloadChain().remove_downloading(hashString, name=name)
-    return schemas.Response(success=True if ret else False)
+    return _SchemaResponse(success=True if ret else False)

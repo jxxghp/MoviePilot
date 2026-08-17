@@ -1,12 +1,10 @@
 import asyncio
 import base64
-import math
 import mimetypes
 import re
-import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Dict, Union, List, Tuple
 from urllib.parse import unquote, urlparse
@@ -18,37 +16,26 @@ from app.application.agent import (
     transcribe_audio,
 )
 from app.chain import ChainBase
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
-from app.chain.search import SearchChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.runtime.config import settings, global_vars
-from app.domain.context import MediaInfo, Context
-from app.domain.meta.metabase import MetaBase
-from app.db.oper.user import UserOper
-from app.application.directory import DirectoryHelper
 from app.application.messaging.agent import agent_interaction_manager, parse_agent_choice_callback
 from app.application.messaging.interaction import InteractionContext, InteractionDispatch
 from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.plugin import PluginInputInteractionHandler
 from app.application.messaging.router import CallbackRoute, InteractionRouter, SessionRoute
+from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
-from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import IncomingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Message
+from app.schemas.message import IncomingMessage
+from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
-from app.schemas.system import TransferDirectoryConf
-from app.schemas.types import EventType, NotificationChannel, MediaType
+from app.schemas.types import EventType, NotificationChannel
 from app.adapters.network.http import RequestUtils
-from app.schemas.media import build_media_key, resolve_media_identity
-from app.domain import episode as episode_rules
-from app.domain import title as title_rules
-from app.foundation import url as url_tools
 
 
 class MessageChain(ChainBase):
@@ -91,12 +78,15 @@ class MessageChain(ChainBase):
         """
         清理超过复用窗口的用户会话映射，并同步释放旧 Agent 实例。
         """
-        timeout = timedelta(minutes=self._session_timeout_minutes)
-        for userid, (session_id, last_time) in list(self._user_sessions.items()):
-            if current_time - last_time <= timeout:
-                continue
-            self._user_sessions.pop(userid, None)
-            self._schedule_agent_session_clear(session_id, userid)
+        self._message_session_service().cleanup(current_time)
+
+    def _message_session_service(self) -> MessageSessionService:
+        """用类级兼容映射构建可测试的用户会话服务。"""
+        return MessageSessionService(
+            sessions=self._user_sessions,
+            timeout_minutes=self._session_timeout_minutes,
+            expired_handler=self._schedule_agent_session_clear,
+        )
 
     @dataclass
     class _ProcessingStatus:
@@ -874,39 +864,21 @@ class MessageChain(ChainBase):
         获取或创建会话ID
         如果用户上次会话在15分钟内，则复用相同的会话ID；否则创建新的会话ID
         """
-        current_time = datetime.now()
-        self._cleanup_expired_user_sessions(current_time)
-
-        # 检查用户是否有已存在的会话
-        if userid in self._user_sessions:
-            session_id, last_time = self._user_sessions[userid]
-
-            # 计算时间差
-            time_diff = current_time - last_time
-
-            # 如果时间差小于等于xx分钟，复用会话ID
-            if time_diff <= timedelta(minutes=self._session_timeout_minutes):
-                # 更新最后使用时间
-                self._user_sessions[userid] = (session_id, current_time)
-                logger.info(
-                    f"复用会话ID: {session_id}, 用户: {userid}, 距离上次会话: {time_diff.total_seconds() / 60:.1f}分钟"
-                )
-                return session_id
-
-        # 创建新的会话ID
-        new_session_id = f"user_{userid}_{int(time.time())}"
-        self._user_sessions[userid] = (new_session_id, current_time)
-        logger.info(f"创建新会话ID: {new_session_id}, 用户: {userid}")
-        return new_session_id
+        resolution = self._message_session_service().resolve(userid)
+        if resolution.reused:
+            logger.info(
+                f"复用会话ID: {resolution.session_id}, 用户: {userid}, "
+                f"距离上次会话: {resolution.inactive_minutes:.1f}分钟"
+            )
+        else:
+            logger.info(f"创建新会话ID: {resolution.session_id}, 用户: {userid}")
+        return resolution.session_id
 
     def _bind_session_id(self, userid: Union[str, int], session_id: str) -> None:
         """
         将用户会话绑定到指定的 session_id，并刷新最后活动时间。
         """
-        old_session = self._user_sessions.get(userid)
-        if old_session and old_session[0] != session_id:
-            self._schedule_agent_session_clear(old_session[0], userid)
-        self._user_sessions[userid] = (session_id, datetime.now())
+        self._message_session_service().bind(userid, session_id)
 
     def bind_user_session(self, userid: Union[str, int], session_id: str) -> None:
         """
@@ -951,8 +923,8 @@ class MessageChain(ChainBase):
         清除指定用户的会话信息
         返回是否成功清除
         """
-        if userid in self._user_sessions:
-            session_id, _ = self._user_sessions.pop(userid)
+        session_id = self._message_session_service().clear(userid)
+        if session_id:
             logger.info(f"已清除用户 {userid} 的会话: {session_id}")
             return True
         return False
@@ -967,9 +939,8 @@ class MessageChain(ChainBase):
         清除用户会话（远程命令接口）
         """
         # 获取并清除会话信息
-        session_id = None
-        if userid in self._user_sessions:
-            session_id, _ = self._user_sessions.pop(userid)
+        session_id = self._message_session_service().clear(userid)
+        if session_id:
             logger.info(f"已清除用户 {userid} 的会话: {session_id}")
 
         # 如果有会话ID，同时清除智能体的会话记忆
@@ -1022,7 +993,7 @@ class MessageChain(ChainBase):
         停止后用户仍可继续对话。
         """
         # 查找用户的会话ID（不弹出，保留会话）
-        session_info = self._user_sessions.get(userid)
+        session_info = self._message_session_service().get(userid)
         if session_info:
             session_id, _ = session_info
             manager = get_running_agent_manager()
@@ -1182,7 +1153,7 @@ class MessageChain(ChainBase):
             source: Optional[str] = None,
     ):
         """查询当前用户的智能体会话状态。"""
-        session_info = self._user_sessions.get(userid)
+        session_info = self._message_session_service().get(userid)
         if not session_info:
             self.post_message(
                 Message(

@@ -10,7 +10,8 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.rules import RuleHelper
 from app.application.rules import RuleParser
 from app.application.rules import BUILTIN_RULE_SET
-from app.schemas import CustomRule, FilterRuleGroup
+from app.schemas.rule import CustomRule
+from app.schemas.system import FilterRuleGroup
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
 

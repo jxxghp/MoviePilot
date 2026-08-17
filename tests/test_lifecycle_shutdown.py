@@ -113,6 +113,147 @@ def test_lifespan_continues_after_each_shutdown_owner_failure(
         _assert_completed_once(step)
 
 
+def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
+    """正常模式必须初始化插件及后台服务，并在退出时逐项停止。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    lifecycle.init_modules.assert_awaited_once_with()
+    for name in (
+        "init_plugins",
+        "init_scheduler",
+        "init_monitor",
+        "replay_pending_transfers",
+        "init_command",
+        "init_workflow",
+    ):
+        getattr(lifecycle, name).assert_called_once_with()
+    for step in shutdown_steps.values():
+        _assert_completed_once(step)
+
+
+def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
+    """安全模式只启动基础模块，并跳过插件及可选后台服务。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", True)
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    lifecycle.init_modules.assert_awaited_once_with()
+    for name in (
+        "init_plugins",
+        "init_scheduler",
+        "init_monitor",
+        "replay_pending_transfers",
+        "init_command",
+        "init_workflow",
+    ):
+        getattr(lifecycle, name).assert_not_called()
+    for name in (
+        "backup_plugins",
+        "stop_workflow",
+        "stop_command",
+        "stop_monitor",
+        "stop_scheduler",
+        "stop_plugins",
+    ):
+        shutdown_steps[name].assert_not_called()
+    _assert_completed_once(shutdown_steps["stop_modules"])
+    _assert_completed_once(shutdown_steps["close_http"])
+    _assert_completed_once(shutdown_steps["logger"])
+
+
+def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
+    """组件清单应显式冻结依赖、模式、启动/关闭顺序和超时预算。"""
+    app = FastAPI()
+    normal = lifecycle.get_lifecycle_manifest(app, safe_mode=False)
+    safe = lifecycle.get_lifecycle_manifest(app, safe_mode=True)
+
+    normal_start = [
+        item["name"]
+        for item in sorted(
+            (entry for entry in normal if entry["start_order"] is not None),
+            key=lambda entry: entry["start_order"],
+        )
+    ]
+    normal_stop = [
+        item["name"]
+        for item in sorted(
+            (entry for entry in normal if entry["stop_order"] is not None),
+            key=lambda entry: entry["stop_order"],
+        )
+    ]
+    safe_names = {item["name"] for item in safe}
+
+    assert normal_start == [
+        "HTTP 基础能力",
+        "领域依赖装配",
+        "数据库引擎预热",
+        "数据库连接预算",
+        "路由",
+        "模块服务",
+        "插件备份恢复",
+        "插件",
+        "定时器",
+        "监控器",
+        "待处理整理回放",
+        "命令服务",
+        "工作流",
+    ]
+    assert normal_stop == [
+        "插件备份",
+        "工作流",
+        "命令服务",
+        "监控器",
+        "定时器",
+        "插件",
+        "模块服务",
+        "HTTP 基础能力",
+    ]
+    assert safe_names == {
+        "HTTP 基础能力",
+        "领域依赖装配",
+        "数据库引擎预热",
+        "数据库连接预算",
+        "路由",
+        "模块服务",
+    }
+    assert all(item["start_failure"] == "fail_fast" for item in normal)
+    assert all(item["stop_failure"] == "continue" for item in normal)
+    assert all(
+        item["start_timeout_seconds"] or item["stop_timeout_seconds"]
+        for item in normal
+    )
+
+
+def test_startup_step_records_duration_without_changing_result(monkeypatch):
+    """启动阶段计时必须保留返回值，并输出稳定的阶段名称和毫秒耗时。"""
+    perf_counter = MagicMock(side_effect=[10.0, 10.125])
+    logger_info = MagicMock()
+    monkeypatch.setattr(lifecycle.time, "perf_counter", perf_counter)
+    monkeypatch.setattr(lifecycle.logger, "info", logger_info)
+
+    result = asyncio.run(
+        lifecycle.run_startup_step("契约测试", lambda: "ready")
+    )
+
+    assert result == "ready"
+    logger_info.assert_called_once_with(
+        "启动%s完成，耗时=%.2fms",
+        "契约测试",
+        125.0,
+    )
+
+
 def test_lifespan_creates_global_async_engine_at_startup(monkeypatch):
     """启动期必须把全局异步引擎建出来一次，让异步侧恢复 fail-fast
 
@@ -258,6 +399,13 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         "update_db",
         "server",
     ]
+
+
+def test_asgi_and_main_entrypoints_share_the_same_app_instance():
+    """ASGI 工厂入口与主程序入口必须暴露同一个 FastAPI 实例。"""
+    from app import factory, main
+
+    assert main.app is factory.app
 
 
 def test_application_does_not_start_server_after_migration_failure(monkeypatch):

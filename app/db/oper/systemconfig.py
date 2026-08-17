@@ -3,7 +3,7 @@ import copy
 import threading
 from typing import Any, Optional, Union
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton

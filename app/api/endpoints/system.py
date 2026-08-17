@@ -11,13 +11,25 @@ from urllib.parse import urljoin, urlparse
 
 import aiofiles
 import anyio
-import pillow_avif  # noqa 用于自动注册AVIF支持
+import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 from anyio import Path as AsyncPath
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from fastapi import Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
-from app import schemas
+from app.schemas.common import JsonObject as _SchemaJsonObject
+from app.schemas.common import JsonObjectList as _SchemaJsonObjectList
+from app.schemas.common import TimeData as _SchemaTimeData
+from app.schemas.common import ValueData as _SchemaValueData
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
+from app.schemas.system import PluginMarketSyncData as _SchemaPluginMarketSyncData
+from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyncRequest
+from app.schemas.system import RuleTestData as _SchemaRuleTestData
+from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
+from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListData
+from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
@@ -46,7 +58,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
-from app.schemas import ConfigChangeEventData
+from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -394,8 +406,8 @@ def _collect_named_log_files(name: str) -> list[Path]:
 
 
 def _verify_log_resource_superuser(
-    token_payload: schemas.TokenPayload = Depends(verify_resource_token),
-) -> schemas.TokenPayload:
+    token_payload: _SchemaTokenPayload = Depends(verify_resource_token),
+) -> _SchemaTokenPayload:
     """
     校验日志资源访问权限。
 
@@ -601,7 +613,7 @@ async def proxy_img(
     cache: bool = False,
     use_cookies: bool = False,
     if_none_match: Annotated[str | None, Header()] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Response:
     """
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
@@ -642,7 +654,7 @@ async def proxy_img(
 async def cache_img(
     url: str,
     if_none_match: Annotated[str | None, Header()] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Response:
     """
     本地缓存图片文件，支持 HTTP 缓存，如果启用全局图片缓存，则使用磁盘缓存
@@ -656,7 +668,7 @@ async def cache_img(
 @router.get(
     "/global",
     summary="查询非敏感系统设置",
-    response_model=schemas.Response[schemas.JsonObject],
+    response_model=_SchemaResponse[_SchemaJsonObject],
 )
 def get_global_setting(token: str):
     """
@@ -684,13 +696,13 @@ def get_global_setting(token: str):
     # 仅在后端开发模式下返回该标记，避免生产环境暴露无意义运行态信息
     if settings.DEV:
         info.update({"BACKEND_DEV": True})
-    return schemas.Response(success=True, data=info)
+    return _SchemaResponse(success=True, data=info)
 
 
 @router.get(
     "/global/user",
     summary="查询用户相关系统设置",
-    response_model=schemas.Response[schemas.JsonObject],
+    response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def get_user_global_setting(_: User = Depends(get_current_active_user_async)):
     """
@@ -724,17 +736,17 @@ async def get_user_global_setting(_: User = Depends(get_current_active_user_asyn
             "WORKFLOW_SHARE_MANAGE": share_admin,
         }
     )
-    return schemas.Response(success=True, data=info)
+    return _SchemaResponse(success=True, data=info)
 
 
 @router.get(
     "/env",
     summary="查询系统配置",
-    response_model=schemas.Response[schemas.JsonObject],
+    response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def get_env_setting(
     _: User = Depends(get_current_active_superuser_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
@@ -749,33 +761,33 @@ async def get_env_setting(
             "RUST_ACCEL_ENABLED": rust_accel.is_enabled(),
         }
     )
-    return schemas.Response(success=True, data=info)
+    return _SchemaResponse(success=True, data=info)
 
 
 @router.get(
     "/usage/statistic",
     summary="查询安装版本统计报表",
-    response_model=schemas.Response[schemas.JsonObject],
+    response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def usage_statistic(_: User = Depends(get_current_active_user_async)):
     """
     查询安装版本统计报表
     """
-    return schemas.Response(success=True, data=await MoviePilotServerHelper.async_get_usage_statistic())
+    return _SchemaResponse(success=True, data=await MoviePilotServerHelper.async_get_usage_statistic())
 
 
-@router.get("/ping", summary="服务存活检测", response_model=schemas.Response[None])
-async def ping(_: User = Depends(get_current_active_user_async)) -> schemas.Response:
+@router.get("/ping", summary="服务存活检测", response_model=_SchemaResponse[None])
+async def ping(_: User = Depends(get_current_active_user_async)) -> _SchemaResponse:
     """
     检测服务是否可用
     """
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 @router.post(
     "/env",
     summary="更新系统配置",
-    response_model=schemas.Response[schemas.SystemEnvironmentUpdateData],
+    response_model=_SchemaResponse[_SchemaSystemEnvironmentUpdateData],
 )
 async def set_env_setting(
     env: dict, _: User = Depends(get_current_active_superuser_async)
@@ -785,7 +797,7 @@ async def set_env_setting(
     """
     validation_error = _validate_llm_server_tool_config(env)
     if validation_error:
-        return schemas.Response(success=False, message=validation_error)
+        return _SchemaResponse(success=False, message=validation_error)
 
     result = settings.update_settings(env=env)
     # 统计成功和失败的结果
@@ -793,7 +805,7 @@ async def set_env_setting(
     failed_updates = {k: v for k, v in result.items() if v[0] is False}
 
     if failed_updates:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message=f"{', '.join([v[1] for v in failed_updates.values()])}",
             data={"success_updates": success_updates, "failed_updates": failed_updates},
@@ -808,7 +820,7 @@ async def set_env_setting(
             ),
         )
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         message="所有配置项更新成功",
         data={"success_updates": success_updates},
@@ -830,7 +842,7 @@ async def set_env_setting(
 async def get_progress(
     request: Request,
     process_type: str,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ):
     """
     实时获取处理进度，返回格式为SSE
@@ -855,38 +867,38 @@ async def get_progress(
 @router.get(
     "/setting/public/{key}",
     summary="查询公开系统设置",
-    response_model=schemas.Response[schemas.ValueData],
+    response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_public_setting(
     key: str, _: User = Depends(get_current_active_user_async)
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     查询普通用户可读取的非敏感系统设置
     """
     if key in _PUBLIC_SETTINGS_KEYS:
-        return schemas.Response(success=True, data={"value": getattr(settings, key)})
+        return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
     value = SystemConfigOper().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
-    return schemas.Response(success=True, data={"value": value})
+    return _SchemaResponse(success=True, data={"value": value})
 
 
 @router.post(
     "/setting/PLUGIN_MARKET/sync-wiki",
     summary="从Wiki同步插件市场仓库",
-    response_model=schemas.Response[schemas.PluginMarketSyncData],
+    response_model=_SchemaResponse[_SchemaPluginMarketSyncData],
 )
 async def sync_plugin_market_from_wiki(
-    request: Optional[schemas.PluginMarketSyncRequest] = Body(default=None),
+    request: Optional[_SchemaPluginMarketSyncRequest] = Body(default=None),
     _: User = Depends(get_current_active_superuser_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     从 Wiki 插件文档同步插件市场仓库地址。
     """
     wiki_url = (request.wiki_url if request else None) or PLUGIN_MARKET_WIKI_URL
     wiki_url = wiki_url.strip()
     if not _is_allowed_plugin_market_wiki_url(wiki_url):
-        return schemas.Response(success=False, message="不支持的 Wiki 同步地址")
+        return _SchemaResponse(success=False, message="不支持的 Wiki 同步地址")
 
     res = await AsyncRequestUtils(
         ua=settings.USER_AGENT,
@@ -896,16 +908,16 @@ async def sync_plugin_market_from_wiki(
         accept_type="text/plain,*/*",
     ).get_res(wiki_url)
     if res is None:
-        return schemas.Response(success=False, message="无法访问 Wiki 插件仓库清单")
+        return _SchemaResponse(success=False, message="无法访问 Wiki 插件仓库清单")
     if res.status_code != 200:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message=f"访问 Wiki 插件仓库清单失败，状态码：{res.status_code}",
         )
 
     wiki_repos = extract_plugin_market_repos_from_wiki(res.text)
     if not wiki_repos:
-        return schemas.Response(success=False, message="未在 Wiki 中识别到插件仓库地址")
+        return _SchemaResponse(success=False, message="未在 Wiki 中识别到插件仓库地址")
 
     local_repos = split_plugin_market_repo_urls(settings.PLUGIN_MARKET)
     local_repo_keys = {repo.lower() for repo in local_repos}
@@ -924,7 +936,7 @@ async def sync_plugin_market_from_wiki(
     elif success is None:
         success = True
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=success,
         message=message,
         data={
@@ -941,11 +953,11 @@ async def sync_plugin_market_from_wiki(
 @router.get(
     "/setting/{key}",
     summary="查询系统设置",
-    response_model=schemas.Response[schemas.ValueData],
+    response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_setting(
     key: str, _: User = Depends(get_current_active_superuser_async)
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     查询系统设置（仅管理员）
     """
@@ -953,10 +965,10 @@ async def get_setting(
         value = getattr(settings, key)
     else:
         value = SystemConfigOper().get(key)
-    return schemas.Response(success=True, data={"value": value})
+    return _SchemaResponse(success=True, data={"value": value})
 
 
-@router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response[None])
+@router.post("/setting/{key}", summary="更新系统设置", response_model=_SchemaResponse[None])
 async def set_setting(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
@@ -975,7 +987,7 @@ async def set_setting(
             )
         elif success is None:
             success = True
-        return schemas.Response(success=success, message=message)
+        return _SchemaResponse(success=success, message=message)
     elif key in {item.value for item in SystemConfigKey}:
         if isinstance(value, list):
             value = list(filter(None, value))
@@ -987,9 +999,9 @@ async def set_setting(
                 etype=EventType.ConfigChanged,
                 data=ConfigChangeEventData(key=key, value=value, change_type="update"),
             )
-        return schemas.Response(success=True)
+        return _SchemaResponse(success=True)
     else:
-        return schemas.Response(success=False, message=f"配置项 '{key}' 不存在")
+        return _SchemaResponse(success=False, message=f"配置项 '{key}' 不存在")
 
 
 @router.get(
@@ -1007,7 +1019,7 @@ async def set_setting(
 async def get_message(
     request: Request,
     role: Optional[str] = "system",
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ):
     """
     实时获取系统消息，返回格式为SSE
@@ -1047,7 +1059,7 @@ async def get_logging(
     request: Request,
     length: Optional[int] = 50,
     logfile: Optional[str] = "moviepilot.log",
-    _: schemas.TokenPayload = Depends(_verify_log_resource_superuser),
+    _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
 ):
     """
     实时获取系统日志
@@ -1174,7 +1186,7 @@ async def get_logging(
 )
 async def download_logging(
     name: str,
-    _: schemas.TokenPayload = Depends(_verify_log_resource_superuser),
+    _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
 ):
     """
     按日志标识下载主程序或插件滚动日志，返回 zip 文件。
@@ -1185,9 +1197,9 @@ async def download_logging(
 @router.get(
     "/versions",
     summary="查询Github所有Release版本",
-    response_model=schemas.Response[schemas.JsonObjectList],
+    response_model=_SchemaResponse[_SchemaJsonObjectList],
 )
-async def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
+async def latest_version(_: _SchemaTokenPayload = Depends(verify_token)):
     """
     查询Github所有Release版本
     """
@@ -1197,26 +1209,26 @@ async def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     if version_res is not None and version_res.status_code == 200:
         ver_json = version_res.json()
         if ver_json:
-            return schemas.Response(success=True, data=ver_json)
-    return schemas.Response(success=False)
+            return _SchemaResponse(success=True, data=ver_json)
+    return _SchemaResponse(success=False)
 
 
 @router.get(
     "/ruletest",
     summary="过滤规则测试",
-    response_model=schemas.Response[schemas.RuleTestData],
+    response_model=_SchemaResponse[_SchemaRuleTestData],
 )
 def ruletest(
     title: str,
     rulegroup_name: str,
     subtitle: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ):
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
     """
     metainfo = MetaInfo(title=title, subtitle=subtitle)
-    torrent = schemas.TorrentInfo(
+    torrent = _SchemaTorrentInfo(
         title=title,
         description=subtitle,
     )
@@ -1234,7 +1246,7 @@ def ruletest(
         "matched": False,
     }
     if not rulegroup:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message=f"过滤规则组 {rulegroup_name} 不存在！",
             data=result_data,
@@ -1247,7 +1259,7 @@ def ruletest(
     )
     result_data["media_info"] = media_info.to_dict() if media_info else None
     if not media_info:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="未识别到媒体信息！",
             data=result_data,
@@ -1258,7 +1270,7 @@ def ruletest(
         rule_groups=[rulegroup.name], torrent_list=[torrent], mediainfo=media_info
     )
     if not result:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="不符合过滤规则！",
             data=result_data,
@@ -1270,7 +1282,7 @@ def ruletest(
             "torrent_info": result[0].model_dump(),
         }
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data=result_data,
     )
@@ -1279,16 +1291,16 @@ def ruletest(
 @router.get(
     "/nettest/targets",
     summary="获取网络测试目标",
-    response_model=schemas.Response[list[schemas.NetTestTarget]],
+    response_model=_SchemaResponse[list[_SchemaNetTestTarget]],
 )
-async def nettest_targets(_: schemas.TokenPayload = Depends(verify_token)):
+async def nettest_targets(_: _SchemaTokenPayload = Depends(verify_token)):
     """
     获取网络测试目标。
 
     这里只返回前端渲染所需的最小信息，避免把可请求 URL、内容校验规则和
     跳转白名单暴露给客户端。
     """
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data=[
             {
@@ -1304,13 +1316,13 @@ async def nettest_targets(_: schemas.TokenPayload = Depends(verify_token)):
 @router.get(
     "/nettest",
     summary="测试网络连通性",
-    response_model=schemas.Response[schemas.TimeData],
+    response_model=_SchemaResponse[_SchemaTimeData],
 )
 async def nettest(
     target_id: Optional[str] = None,
     url: Optional[str] = None,
     include: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ):
     """
     测试内置目标的网络连通性。
@@ -1320,14 +1332,14 @@ async def nettest(
     """
     target = _get_nettest_rule(url=url, target_id=target_id)
     if not target:
-        return schemas.Response(success=False, message="测试目标不存在")
+        return _SchemaResponse(success=False, message="测试目标不存在")
     # 记录开始的毫秒数
     start_time = datetime.now()
     url = target["url"]
     invalid_message = _validate_nettest_url(url)
     if invalid_message:
         logger.warning(f"拦截不安全的网络测试地址: {url}")
-        return schemas.Response(success=False, message=invalid_message)
+        return _SchemaResponse(success=False, message=invalid_message)
     if include:
         logger.debug("nettest include 参数已忽略，改为服务端固定校验")
 
@@ -1355,18 +1367,18 @@ async def nettest(
         if not _is_allowed_nettest_redirect(next_url, target):
             await _close_nettest_response(result)
             logger.warning(f"拦截网络测试重定向: {current_url} -> {next_url}")
-            return schemas.Response(success=False, message="测试目标发生了未授权跳转")
+            return _SchemaResponse(success=False, message="测试目标发生了未授权跳转")
         await _close_nettest_response(result)
         current_url = next_url
         redirect_count += 1
     if redirect_count > 3:
-        return schemas.Response(success=False, message="测试目标重定向次数过多")
+        return _SchemaResponse(success=False, message="测试目标重定向次数过多")
     # 计时结束的毫秒数
     end_time = datetime.now()
     time = round((end_time - start_time).total_seconds() * 1000)
     # 计算相关秒数
     if result is None:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message=f"{target.get('proxy_name') or target.get('name')}无法连接",
             data={"time": time},
@@ -1374,12 +1386,12 @@ async def nettest(
     elif result.status_code == 200:
         expected_text = target.get("expected_text")
         if expected_text and expected_text.lower() not in (result.text or "").lower():
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message=target.get("invalid_message") or "无效响应",
                 data={"time": time},
             )
-        return schemas.Response(success=True, data={"time": time})
+        return _SchemaResponse(success=True, data={"time": time})
     else:
         if target.get("proxy_name"):
             # 加速代理失败
@@ -1392,15 +1404,15 @@ async def nettest(
                     message = "Github Token已失效，请检查配置"
                 elif result.status_code in {403, 429}:
                     message = "触发限流，请配置Github Token"
-        return schemas.Response(success=False, message=message, data={"time": time})
+        return _SchemaResponse(success=False, message=message, data={"time": time})
 
 
 @router.get(
     "/modulelist",
     summary="查询已加载的模块ID列表",
-    response_model=schemas.Response[schemas.SystemModuleListData],
+    response_model=_SchemaResponse[_SchemaSystemModuleListData],
 )
-def modulelist(_: schemas.TokenPayload = Depends(verify_token)):
+def modulelist(_: _SchemaTokenPayload = Depends(verify_token)):
     """
     查询已加载的模块ID列表
     """
@@ -1419,32 +1431,32 @@ def modulelist(_: schemas.TokenPayload = Depends(verify_token)):
                 "name_key": f"system.modules.{module_id}.name",
             }
         )
-    return schemas.Response(success=True, data={"modules": modules})
+    return _SchemaResponse(success=True, data={"modules": modules})
 
 
 @router.get(
-    "/moduletest/{moduleid}", summary="模块可用性测试", response_model=schemas.Response[None]
+    "/moduletest/{moduleid}", summary="模块可用性测试", response_model=_SchemaResponse[None]
 )
-def moduletest(moduleid: str, _: schemas.TokenPayload = Depends(verify_token)):
+def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
     """
     模块可用性测试接口
     """
     state, errmsg = ModuleManager().test(moduleid)
-    return schemas.Response(success=state, message=errmsg)
+    return _SchemaResponse(success=state, message=errmsg)
 
 
-@router.get("/restart", summary="重启系统", response_model=schemas.Response[None])
+@router.get("/restart", summary="重启系统", response_model=_SchemaResponse[None])
 def restart_system(_: User = Depends(get_current_active_superuser)):
     """
     重启系统（仅管理员）
     """
     if not SystemHelper.can_restart():
-        return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
+        return _SchemaResponse(success=False, message="当前运行环境不支持重启操作！")
     ret, msg = SystemHelper.restart()
-    return schemas.Response(success=ret, message=msg)
+    return _SchemaResponse(success=ret, message=msg)
 
 
-@router.post("/upgrade", summary="升级并重启系统", response_model=schemas.Response[None])
+@router.post("/upgrade", summary="升级并重启系统", response_model=_SchemaResponse[None])
 def upgrade_system(
     mode: Annotated[str | None, Body()] = None,
     _: User = Depends(get_current_active_superuser),
@@ -1456,38 +1468,38 @@ def upgrade_system(
     - 当前未开启自动升级时：写入一次性升级标记，本次重启后仅执行一次升级。
     """
     if not SystemHelper.can_restart():
-        return schemas.Response(success=False, message="当前运行环境不支持升级操作！")
+        return _SchemaResponse(success=False, message="当前运行环境不支持升级操作！")
 
     ret, msg = SystemHelper.upgrade(mode=mode or "release")
-    return schemas.Response(success=ret, message=msg)
+    return _SchemaResponse(success=ret, message=msg)
 
 
-@router.get("/runscheduler", summary="运行服务", response_model=schemas.Response[None])
+@router.get("/runscheduler", summary="运行服务", response_model=_SchemaResponse[None])
 def run_scheduler(jobid: str, _: User = Depends(get_current_active_superuser)):
     """
     执行命令（仅管理员）
     """
     if not jobid:
-        return schemas.Response(success=False, message="命令不能为空！")
+        return _SchemaResponse(success=False, message="命令不能为空！")
     if jobid in {"recommend_refresh", "cookiecloud"}:
         Scheduler().start(jobid, manual=True)
     else:
         Scheduler().start(jobid)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 @router.get(
-    "/runscheduler2", summary="运行服务（API_TOKEN）", response_model=schemas.Response[None]
+    "/runscheduler2", summary="运行服务（API_TOKEN）", response_model=_SchemaResponse[None]
 )
 def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
     """
     执行命令（API_TOKEN认证）
     """
     if not jobid:
-        return schemas.Response(success=False, message="命令不能为空！")
+        return _SchemaResponse(success=False, message="命令不能为空！")
 
     if jobid in {"recommend_refresh", "cookiecloud"}:
         Scheduler().start(jobid, manual=True)
     else:
         Scheduler().start(jobid)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)

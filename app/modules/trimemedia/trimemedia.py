@@ -2,10 +2,16 @@ from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import app.modules.trimemedia.api as fnapi
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.application.mediaserver import MediaServerIdentityHelper
 from app.runtime.log import logger
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 from app.schemas.types import MediaSource
 from app.application.security.url import SecurityUtils
 from app.foundation.url import UrlUtils
@@ -174,7 +180,7 @@ class TrimeMedia:
 
     def get_librarys(
         self, hidden: Optional[bool] = False
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -203,7 +209,7 @@ class TrimeMedia:
             else:
                 library_type = MediaType.UNKNOWN.value
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     server="trimemedia",
                     id=library.guid,
                     name=library.name,
@@ -231,17 +237,17 @@ class TrimeMedia:
             return 0
         return len(self._api.user_list() or [])
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """
         获取媒体数量
 
         :return: MovieCount SeriesCount
         """
         if not self.is_authenticated():
-            return schemas.Statistic()
+            return _SchemaStatistic()
         if (info := self._api.mediadb_sum()) is None:
-            return schemas.Statistic()
-        return schemas.Statistic(
+            return _SchemaStatistic()
+        return _SchemaStatistic(
             movie_count=info.movie,
             tv_count=info.tv,
             music_count=getattr(info, "music", 0) or getattr(info, "audio", 0) or 0,
@@ -270,7 +276,7 @@ class TrimeMedia:
         self, title: str, year: Optional[str] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-    ) -> Optional[List[schemas.MediaServerItem]]:
+    ) -> Optional[List[_SchemaMediaServerItem]]:
         """
         根据标题和年份，检查电影是否在飞牛中存在，存在则返回列表
 
@@ -393,7 +399,7 @@ class TrimeMedia:
         return self._api.mdb_scanall()
 
     def refresh_library_by_items(
-        self, items: List[schemas.RefreshMediaItem]
+        self, items: List[_SchemaRefreshMediaItem]
     ) -> Optional[bool]:
         """
         按路径刷新所在的媒体库(非管理员不能调用)
@@ -443,10 +449,10 @@ class TrimeMedia:
                     return lib
         return None
 
-    def get_webhook_message(self, body: Any) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, body: Any) -> Optional[_SchemaWebhookEventInfo]:
         pass
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         获取单个项目详情
         """
@@ -465,7 +471,7 @@ class TrimeMedia:
         else:
             year = None
 
-        user_state = schemas.MediaServerItemUserState()
+        user_state = _SchemaMediaServerItemUserState()
         if item.watched:
             user_state.played = True
         if item.duration and item.ts is not None:
@@ -481,7 +487,7 @@ class TrimeMedia:
             "imdb_id": item.imdb_id,
             "douban_id": item.douban_id,
         })
-        return schemas.MediaServerItem(
+        return _SchemaMediaServerItem(
             server="trimemedia",
             library=item.ancestor_guid,
             item_id=item.guid,
@@ -513,7 +519,7 @@ class TrimeMedia:
 
     def __build_media_server_play_item(
         self, item: fnapi.Item
-    ) -> schemas.MediaServerPlayItem:
+    ) -> _SchemaMediaServerPlayItem:
         if item.type == fnapi.Type.EPISODE:
             title = item.tv_title
             subtitle = f"S{item.season_number}:{item.episode_number} - {item.title}"
@@ -525,7 +531,7 @@ class TrimeMedia:
             if item.type in [fnapi.Type.MOVIE, fnapi.Type.VIDEO]
             else MediaType.TV.value
         )
-        return schemas.MediaServerPlayItem(
+        return _SchemaMediaServerPlayItem(
             id=item.guid,
             title=title,
             subtitle=subtitle,
@@ -560,7 +566,7 @@ class TrimeMedia:
         parent: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Generator[schemas.MediaServerItem | None | Any, Any, None]:
+    ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
 
@@ -606,7 +612,7 @@ class TrimeMedia:
 
     def get_resume(
         self, num: Optional[int] = 12
-    ) -> Optional[List[schemas.MediaServerPlayItem]]:
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取继续观看列表
 
@@ -626,7 +632,7 @@ class TrimeMedia:
             ret_resume.append(self.__build_media_server_play_item(item))
         return ret_resume
 
-    def get_latest(self, num=20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num=20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取最近更新列表
         """

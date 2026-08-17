@@ -4,7 +4,8 @@ from sqlalchemy import Integer, String, JSON, Index, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, async_db_query, db_query, get_id_column
+from app.db.base import Base, get_id_column
+from app.db.decorators import async_db_query, db_query
 
 
 class AgentChat(Base):

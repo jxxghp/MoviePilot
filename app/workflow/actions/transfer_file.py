@@ -7,7 +7,8 @@ from pydantic import Field
 from app.workflow.actions import BaseAction
 from app.runtime.config import global_vars
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.log import logger

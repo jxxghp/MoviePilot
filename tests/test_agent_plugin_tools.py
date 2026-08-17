@@ -283,8 +283,8 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
             return_value=plugin_helper,
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.reload_plugin_runtime",
-        ) as reload_runtime,
+            "app.agent.tools.impl._plugin_tool_utils.refresh_plugin_registrations",
+        ) as refresh_registrations,
         patch(
             "app.agent.tools.impl._plugin_tool_utils.MoviePilotServerHelper.async_install_plugin_reg",
             AsyncMock(return_value=True),
@@ -309,11 +309,15 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
         plugin_id="DemoPlugin",
         repo_url="https://example.com/market",
     )
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert calls[0][0] == "plugin"
-    assert calls[0][1] == reload_runtime
+    assert calls[0][1] == plugin_manager.reload_plugin
     assert calls[0][2] == ("DemoPlugin",)
     assert calls[0][3] == {}
+    assert calls[1][0] == "plugin"
+    assert calls[1][1] == refresh_registrations
+    assert calls[1][2] == ("DemoPlugin",)
+    assert calls[1][3] == {}
 
 
 def test_uninstall_plugin_uninstalls_installed_candidate() -> None:

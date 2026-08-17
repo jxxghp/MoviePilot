@@ -3,7 +3,8 @@ from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.runtime.config import global_vars
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 from app.workflow.actions import BaseAction
 
 

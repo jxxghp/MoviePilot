@@ -64,10 +64,12 @@ def _configure_local_watcher(
         PLUGIN_AUTO_RELOAD=True,
         PLUGIN_LOCAL_REPO_PATHS=str(repo_path),
         ROOT_PATH=tmp_path,
+        TEMP_PATH=tmp_path / "temp",
         VERSION_FLAG="v2",
     )
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings", settings_stub)
+    monkeypatch.setattr("app.adapters.system.plugin.package.settings", settings_stub)
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.watch", lambda *_args, **_kwargs: iter([changes]))
 
 
@@ -79,6 +81,19 @@ def _set_running_render_mode(
     """注册测试所需的运行态插件联邦渲染声明。"""
     plugin_manager.running_plugins["DemoPlugin"] = SimpleNamespace(
         get_render_mode=lambda: (render_mode, dist_path),
+    )
+
+
+def _set_installed_plugins(monkeypatch, plugin_ids: list[str]) -> None:
+    """注入本地同步测试所需的已安装插件读取端口。"""
+    storage = SimpleNamespace(
+        read=lambda key: plugin_ids
+        if key == SystemConfigKey.UserInstalledPlugins
+        else None,
+    )
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.get_plugin_storage",
+        lambda: storage,
     )
 
 
@@ -119,13 +134,16 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
 
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", SimpleNamespace(DEV=True, ROOT_PATH=tmp_path))
+    settings_stub = SimpleNamespace(
+        DEV=True,
+        ROOT_PATH=tmp_path,
+        TEMP_PATH=tmp_path / "temp",
+    )
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
+    monkeypatch.setattr("app.adapters.system.plugin.package.settings", settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings.PLUGIN_LOCAL_REPO_PATHS", str(repo_path))
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.10"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
 
     candidate = plugin_manager._get_local_plugin_candidate_from_path(source_file)
 
@@ -174,10 +192,7 @@ def test_local_plugin_sync_without_candidate_respects_system_version_gate(
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings", settings_stub)
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.10"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
 
     assert not plugin_manager._sync_local_plugin_if_installed("DemoPlugin")
     assert not runtime_dir.exists()
@@ -204,10 +219,7 @@ def test_local_federated_asset_batch_syncs_once_without_python_reload(
     )
     _set_running_render_mode(plugin_manager, "vue", "dist/assets")
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
     sync_spy = Mock(wraps=plugin_manager._sync_local_plugin_if_installed)
     reload_spy = Mock()
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
@@ -461,10 +473,7 @@ def test_local_python_change_still_syncs_and_reloads_plugin(
         {(Change.modified, str(source_file))},
     )
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
     sync_spy = Mock(wraps=plugin_manager._sync_local_plugin_if_installed)
     reload_spy = Mock()
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
@@ -493,10 +502,7 @@ def test_local_python_change_rejects_root_federated_path_and_still_reloads(
     )
     _set_running_render_mode(plugin_manager, "vue", dist_path)
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
     sync_spy = Mock(wraps=plugin_manager._sync_local_plugin_if_installed)
     reload_spy = Mock()
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
@@ -529,10 +535,7 @@ def test_local_python_and_federated_changes_share_one_batch_sync(
     )
     _set_running_render_mode(plugin_manager, "vue", "dist/assets")
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.SystemConfigOper.get",
-        lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
-    )
+    _set_installed_plugins(monkeypatch, ["DemoPlugin"])
     sync_spy = Mock(wraps=plugin_manager._sync_local_plugin_if_installed)
     reload_spy = Mock()
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)

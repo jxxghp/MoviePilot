@@ -1,7 +1,7 @@
 """切换当前激活人格工具。"""
 
 import json
-from typing import Type, Optional
+from typing import Type
 
 from pydantic import BaseModel, Field
 

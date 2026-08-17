@@ -1736,10 +1736,10 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
     request.phase = "torrent"
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch.object(chain, "post_message") as post_message, patch(
-        "app.chain.message.DownloadChain.download_single"
+            "app.chain.interaction.DownloadChain.download_single"
     ) as download_single:
         handled = chain.handle_text_interaction(
             channel=NotificationChannel.Telegram,
@@ -1781,10 +1781,10 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     request.phase = "torrent"
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_download_dirs(),
     ), patch.object(chain, "post_message") as post_message, patch(
-        "app.chain.message.DownloadChain.download_single",
+            "app.chain.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
@@ -1821,10 +1821,10 @@ def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
     request.phase = "torrent"
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_single_download_dir(),
     ), patch.object(chain, "post_message") as post_message, patch(
-        "app.chain.message.DownloadChain.download_single",
+            "app.chain.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
@@ -1861,7 +1861,7 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
     request.phase = "torrent"
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch.object(chain, "post_message") as post_message:
         handled = chain.handle_text_interaction(
@@ -1903,10 +1903,10 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
     request.pending_download_context = context
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-        "app.chain.message.DownloadChain.download_single",
+            "app.chain.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs(context.media_info)
@@ -1945,10 +1945,10 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
     request.pending_download_context = context
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-        "app.chain.message.DownloadChain.download_single",
+            "app.chain.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs(context.media_info)
@@ -1987,10 +1987,10 @@ def test_download_dir_text_reply_runs_pending_single_download_without_save_path(
     request.pending_download_context = context
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-        "app.chain.message.DownloadChain.download_single",
+            "app.chain.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs()
@@ -2015,7 +2015,7 @@ def test_get_download_dirs_keeps_matching_tv_category_dir():
     context = _build_tv_context()
 
     with patch(
-        "app.chain.message.DirectoryHelper.get_download_dirs",
+            "app.chain.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_download_dirs(),
     ):
         download_dirs = chain._get_download_dirs(context.media_info)

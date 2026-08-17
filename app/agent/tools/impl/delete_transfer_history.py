@@ -9,7 +9,7 @@ from app.agent.tools.tags import ToolTag
 from app.chain.storage import StorageChain
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.runtime.log import logger
-from app.schemas import FileItem
+from app.schemas.workflow import FileItem
 
 
 class DeleteTransferHistoryInput(BaseModel):

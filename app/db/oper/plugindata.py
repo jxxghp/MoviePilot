@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.plugindata import PluginData
 
 

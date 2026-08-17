@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.mediaserver import MediaServerItem
 
 

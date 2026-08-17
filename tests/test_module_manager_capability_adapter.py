@@ -525,6 +525,7 @@ from app.runtime.extensions.host_module_adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
+from app.runtime.extensions.service_config import configure_service_config_reader
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -578,6 +579,7 @@ def get_config(_self, key=None):
     return config_values.get(key_value)
 
 SystemConfigOper.get = get_config
+configure_service_config_reader(lambda key: SystemConfigOper().get(key))
 
 from app.runtime.extensions.module_manager import ModuleManager
 

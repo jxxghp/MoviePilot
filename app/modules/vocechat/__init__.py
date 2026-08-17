@@ -11,7 +11,9 @@ from app.application.messaging.agent import (
 from app.runtime.log import logger
 from app.modules._base import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
-from app.schemas import NotificationChannel, IncomingMessage, Message
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import IncomingMessage
+from app.schemas.message import Message
 from app.schemas.types import ModuleType
 
 

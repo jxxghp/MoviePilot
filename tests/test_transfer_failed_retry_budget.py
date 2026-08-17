@@ -7,11 +7,13 @@ tests/test_transfer_history_gate.py 逐项覆盖，本文件换一个角度：�
 以及删除整理记录会让预算重新满额，贴近真实使用场景。
 """
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from app import schemas
 from app.runtime.config import settings
 from app.application.history import (
     HistoryGateAction,
+    TransferHistoryMutationCommand,
     clear_transfer_failures,
     evaluate_history_gate,
     failed_retry_count,
@@ -92,10 +94,8 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
     app/api/endpoints/history.py::delete_transfer_history 是用户删除整理记录的入口，
     删除时应连带清空失败重试计数，否则重整仍会受上一轮次数限制。
 
-    该端点依赖 SQLAlchemy Session 与鉴权依赖，这里按仓库内既有做法（参见
-    tests/test_manual_transfer_history.py 对 app.api.endpoints.transfer 端点的用法）
-    直接以关键字参数调用端点函数本身，绕开 FastAPI 的依赖注入，只替换端点内部
-    实际用到的 TransferHistory.get / TransferHistory.delete 两个类方法。
+    该端点依赖应用命令与鉴权依赖，这里直接注入可观察命令，验证 HTTP 映射与
+    应用层清理失败计数的协作，同时避免重新耦合已迁出的数据库会话参数。
     """
     from app.api.endpoints.history import delete_transfer_history
 
@@ -109,10 +109,17 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
         src_fileitem=None,
         download_hash=None,
     )
-    monkeypatch.setattr("app.api.endpoints.history.TransferHistory.get",
-                        lambda db, history_id: history)
-    monkeypatch.setattr("app.api.endpoints.history.TransferHistory.delete",
-                        lambda db, history_id: None)
+    repository = Mock()
+    repository.get.return_value = history
+    command = TransferHistoryMutationCommand(
+        repository=repository,
+        download_repository=Mock(),
+        unit_of_work=Mock(),
+        file_item_factory=lambda payload: SimpleNamespace(**payload),
+        delete_media_file=Mock(return_value=True),
+        publish_download_file_deleted=Mock(),
+        clear_failures=clear_transfer_failures,
+    )
 
     _reset_failed_retries(src_path, storage)
     try:
@@ -124,7 +131,7 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
             history_in=schemas.TransferHistory(id=101),
             deletesrc=False,
             deletedest=False,
-            db=object(),
+            command=command,
             _="token",
         )
 

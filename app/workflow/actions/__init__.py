@@ -3,7 +3,9 @@ from typing import Any, Union
 
 from app.chain import ChainBase
 from app.db.oper.systemconfig import SystemConfigOper
-from app.schemas import ActionContext, ActionParams, ActionResult
+from app.schemas.workflow import ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionResult
 
 
 class ActionChain(ChainBase):

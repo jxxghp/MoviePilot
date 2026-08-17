@@ -7,16 +7,13 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from fastapi.concurrency import run_in_threadpool
-
-from app import schemas
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.chain import ChainBase
 from app.chain.lrclib import LrclibChain
 from app.chain.storage import StorageChain
-from app.runtime.cache import async_fresh, cached, fresh
+from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.domain.context import (
-    Context,
     MediaInfo,
     MusicAlbumInfo,
     MusicInfo,
@@ -29,11 +26,10 @@ from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.audio import AudioMetadataHelper
 from app.runtime.log import logger
-from app.schemas import FileItem
+from app.schemas.workflow import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
-    ChainEventType,
     EventType,
     MediaSource,
     MediaType,
@@ -43,8 +39,7 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.adapters.network.http import RequestUtils
-from app.domain.media import is_music_media_source
-from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import resolve_media_identity
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import Singleton
 
@@ -267,7 +262,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
 
     def _save_file(
-            self, fileitem: schemas.FileItem, path: Path, content: Union[bytes, str]
+            self, fileitem: _SchemaFileItem, path: Path, content: Union[bytes, str]
     ):
         """
         保存或上传文件
@@ -305,7 +300,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self._cleanup_temp_file(tmp_file_path)
 
     def _download_and_save_image(
-            self, fileitem: schemas.FileItem, path: Path, url: str
+            self, fileitem: _SchemaFileItem, path: Path, url: str
     ):
         """
         流式下载图片并保存到文件
@@ -354,12 +349,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _get_target_fileitem_and_path(
             self,
-            current_fileitem: schemas.FileItem,
+            current_fileitem: _SchemaFileItem,
             item_type: ScrapingTarget,
             metadata_type: ScrapingMetadata,
             filename_hint: Optional[str] = None,
-            parent_fileitem: Optional[schemas.FileItem] = None,
-    ) -> Tuple[schemas.FileItem, Optional[Path]]:
+            parent_fileitem: Optional[_SchemaFileItem] = None,
+    ) -> Tuple[_SchemaFileItem, Optional[Path]]:
         """
         根据当前上下文、刮削项类型和元数据类型生成目标 FileItem 和 Path
         处理 NFO 和图片文件的命名约定及存储位置
@@ -460,12 +455,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _get_target_fileitems_and_paths(
             self,
-            current_fileitem: schemas.FileItem,
+            current_fileitem: _SchemaFileItem,
             item_type: ScrapingTarget,
             metadata_type: ScrapingMetadata,
             filename_hint: Optional[str] = None,
-            parent_fileitem: Optional[schemas.FileItem] = None,
-    ) -> List[Tuple[schemas.FileItem, Path]]:
+            parent_fileitem: Optional[_SchemaFileItem] = None,
+    ) -> List[Tuple[_SchemaFileItem, Path]]:
         """
         根据刮削上下文生成一个或多个保存目标。
         季图片需要同时兼容根目录 seasonxx-poster 和季目录 poster 两种命名。
@@ -508,9 +503,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _expand_with_aliases(
             self,
-            targets: List[Tuple[schemas.FileItem, Path]],
+            targets: List[Tuple[_SchemaFileItem, Path]],
             item_type: ScrapingTarget,
-    ) -> List[Tuple[schemas.FileItem, Path]]:
+    ) -> List[Tuple[_SchemaFileItem, Path]]:
         """
         为兼容多媒体服务器，扩展图片保存目标列表，添加别名文件。
         例如 backdrop.jpg 同时保存为 fanart.jpg，thumb.jpg 同时保存为 landscape.jpg。
@@ -738,11 +733,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _scrape_nfo_generic(
             self,
-            current_fileitem: schemas.FileItem,
+            current_fileitem: _SchemaFileItem,
             meta: MetaBase,
             mediainfo: MediaInfo,
             item_type: ScrapingTarget,
-            parent_fileitem: Optional[schemas.FileItem] = None,
+            parent_fileitem: Optional[_SchemaFileItem] = None,
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
@@ -792,10 +787,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _scrape_images_generic(
             self,
-            current_fileitem: schemas.FileItem,
+            current_fileitem: _SchemaFileItem,
             mediainfo: MediaInfo,
             item_type: ScrapingTarget,
-            parent_fileitem: Optional[schemas.FileItem] = None,
+            parent_fileitem: Optional[_SchemaFileItem] = None,
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
@@ -893,14 +888,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def scrape_metadata(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             meta: MetaBase = None,
             mediainfo: Union[MediaInfo, MusicInfo] = None,
             init_folder: bool = True,
-            parent: schemas.FileItem = None,
+            parent: _SchemaFileItem = None,
             overwrite: bool = False,
             recursive: bool = True,
-            audio_files: Optional[list[schemas.FileItem]] = None,
+            audio_files: Optional[list[_SchemaFileItem]] = None,
             media_by_path: Optional[dict[str, MusicInfo]] = None,
     ) -> tuple[bool, str]:
         """
@@ -992,11 +987,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def scrape_music_metadata(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             mediainfo: Optional[MusicInfo] = None,
             overwrite: bool = True,
             media_source: Optional[MediaSource] = None,
-            audio_files: Optional[list[schemas.FileItem]] = None,
+            audio_files: Optional[list[_SchemaFileItem]] = None,
             media_by_path: Optional[dict[str, MusicInfo]] = None,
     ) -> tuple[bool, str]:
         """为音频文件或目录写入音乐标签和封面，应用系统刮削策略，复用现有存储下载上传能力。
@@ -1157,7 +1152,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """判断路径是否指向系统支持的音频文件。"""
         return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
 
-    def _music_audio_fileitems(self, fileitem: schemas.FileItem) -> list[schemas.FileItem]:
+    def _music_audio_fileitems(self, fileitem: _SchemaFileItem) -> list[_SchemaFileItem]:
         """展开待刮削目录并过滤系统支持的音频文件。"""
         if fileitem.type != "dir":
             return [fileitem] if self._is_music_audio_file(fileitem.path or "") else []
@@ -1170,10 +1165,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     @classmethod
     def _normalize_music_audio_fileitems(
             cls,
-            fileitems: Iterable[schemas.FileItem],
-    ) -> list[schemas.FileItem]:
+            fileitems: Iterable[_SchemaFileItem],
+    ) -> list[_SchemaFileItem]:
         """过滤并按存储路径去重已选音频文件，保持调用方给出的顺序。"""
-        normalized: list[schemas.FileItem] = []
+        normalized: list[_SchemaFileItem] = []
         seen: set[tuple[str, str]] = set()
         for item in fileitems or []:
             if (
@@ -1191,12 +1186,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _music_event_audio_fileitems(
             self,
-            root: schemas.FileItem,
+            root: _SchemaFileItem,
             file_list: Iterable[str],
-    ) -> list[schemas.FileItem]:
+    ) -> list[_SchemaFileItem]:
         """把刮削事件中的成功路径恢复为文件项，并限制在事件媒体根目录内。"""
         root_path = Path(root.path)
-        selected: list[schemas.FileItem] = []
+        selected: list[_SchemaFileItem] = []
         for raw_path in file_list or []:
             audio_path = Path(raw_path)
             if not self._is_music_audio_file(audio_path.as_posix()):
@@ -1208,7 +1203,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 storage=root.storage,
                 path=audio_path,
             )
-            selected.append(item or schemas.FileItem(
+            selected.append(item or _SchemaFileItem(
                 storage=root.storage,
                 path=audio_path.as_posix(),
                 type="file",
@@ -1220,7 +1215,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _scrape_music_file(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             mediainfo: Optional[MusicInfo],
             write_tags: bool,
             tag_overwrite: bool,
@@ -1285,7 +1280,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _apply_music_file_scrape(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             local_path: Path,
             mediainfo: Optional[MusicInfo],
             write_tags: bool,
@@ -1479,7 +1474,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _scrape_music_lyrics(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             local_path: Path,
             scrape_info: Optional[MetaMusic | MusicInfo],
             lyrics_option: Optional[ScrapingOption],
@@ -1516,8 +1511,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _find_music_lyrics_sidecar(
             self,
-            fileitem: schemas.FileItem,
-    ) -> Optional[schemas.FileItem]:
+            fileitem: _SchemaFileItem,
+    ) -> Optional[_SchemaFileItem]:
         """查找音轨旁已存在的同步或纯文本歌词文件。"""
         audio_path = Path(fileitem.path)
         for extension in self.MUSIC_LYRICS_EXTENSIONS:
@@ -1531,7 +1526,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _write_music_lyrics_sidecar(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             local_path: Path,
             lyrics: MusicLyrics,
             overwrite: bool,
@@ -1582,7 +1577,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _remove_alternate_music_lyrics(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             keep_extension: str,
     ) -> None:
         """覆盖歌词格式后删除同音轨的旧扩展名文件，避免播放器优先读取过期内容。"""
@@ -1599,11 +1594,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _handle_movie_scraping(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: schemas.FileItem,
+            parent: _SchemaFileItem,
             overwrite: bool,
             recursive: bool,
     ):
@@ -1641,7 +1636,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _handle_movie_directory(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
@@ -1688,11 +1683,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _handle_tv_scraping(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: schemas.FileItem,
+            parent: _SchemaFileItem,
             overwrite: bool,
             recursive: bool,
     ):
@@ -1725,10 +1720,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _handle_tv_episode_file(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             filepath: Path,
             mediainfo: MediaInfo,
-            parent: schemas.FileItem,
+            parent: _SchemaFileItem,
             overwrite: bool,
     ):
         """
@@ -1779,12 +1774,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _handle_tv_directory(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             filepath: Path,
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: schemas.FileItem,
+            parent: _SchemaFileItem,
             overwrite: bool,
             recursive: bool,
     ):
@@ -1823,11 +1818,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _initialize_tv_directory_metadata(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             filepath: Path,
             meta: MetaBase,
             mediainfo: MediaInfo,
-            parent: schemas.FileItem,
+            parent: _SchemaFileItem,
             overwrite: bool,
     ):
         """

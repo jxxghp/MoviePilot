@@ -12,7 +12,7 @@ from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import FileItem
+from app.schemas.workflow import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ARTIST,
     MediaSource,
@@ -20,7 +20,8 @@ from app.schemas.types import (
     media_type_to_agent,
 )
 from app.schemas.media import normalize_media_source
-from ._music_utils import normalize_music_type, simplify_music_info
+from app.domain.media import normalize_music_type
+from ._music_utils import simplify_music_info
 
 
 class ScrapeMetadataInput(BaseModel):

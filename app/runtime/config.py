@@ -24,7 +24,7 @@ from app.runtime.log import (
     log_settings,
     NonBlockingFileHandler,
 )
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
 from version import APP_VERSION

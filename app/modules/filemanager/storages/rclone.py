@@ -6,7 +6,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional, List, Union
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -114,14 +115,14 @@ class Rclone(StorageBase):
             
         return None
 
-    def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> schemas.FileItem:
+    def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> _SchemaFileItem:
         """
         获取rclone文件项
         """
         if not item:
-            return schemas.FileItem()
+            return _SchemaFileItem()
         if item.get("IsDir"):
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 type="dir",
                 path=f"{parent}{item.get('Name')}" + "/",
@@ -130,7 +131,7 @@ class Rclone(StorageBase):
                 modify_time=time_tools.parse_timestamp(item.get("ModTime"))
             )
         else:
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 type="file",
                 path=f"{parent}{item.get('Name')}",
@@ -171,7 +172,7 @@ class Rclone(StorageBase):
 
     def __wait_for_item(
         self, path: Path, retries: int = 3, delay: float = 0.2
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         等待目录或文件在远端可见，兼容云盘最终一致性延迟。
         """
@@ -198,7 +199,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】存储检查失败：{err}")
         return False
 
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         浏览文件
         """
@@ -220,7 +221,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】浏览文件失败：{err}")
         return []
 
-    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
         创建目录
         :param fileitem: 父目录
@@ -253,7 +254,7 @@ class Rclone(StorageBase):
                 return folder
         return None
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         根据文件路程获取目录，不存在则创建
         """
@@ -264,7 +265,7 @@ class Rclone(StorageBase):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(storage=self.schema.value, type="dir", path="/")
+        fileitem = _SchemaFileItem(storage=self.schema.value, type="dir", path="/")
         for part in normalized.parts[1:]:
             current_path = Path(self.__normalize_remote_path(Path(fileitem.path) / part))
             with self.__get_path_lock(current_path):
@@ -277,7 +278,7 @@ class Rclone(StorageBase):
                 fileitem = dir_file
         return fileitem
 
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，不存在返回None
         """
@@ -300,7 +301,7 @@ class Rclone(StorageBase):
             logger.debug(f"【rclone】获取文件项失败：{err}")
         return None
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
         rclone 用退出码 3/4 表示目录/文件不存在，其余非零退出无法区分
@@ -332,7 +333,7 @@ class Rclone(StorageBase):
                 return self.__get_rcloneitem(item, parent=str(path.parent) + "/")
         return None
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件
         """
@@ -350,7 +351,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】删除文件失败：{err}")
         return False
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件
         """
@@ -369,7 +370,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】重命名文件失败：{err}")
         return False
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
@@ -426,8 +427,8 @@ class Rclone(StorageBase):
                 local_path.unlink()
             return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path,
-               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: _SchemaFileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
         带实时进度显示的上传
         :param fileitem: 上传目录项
@@ -483,7 +484,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】上传失败: {target_name} - {err}")
             return None
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件详情
         """
@@ -503,7 +504,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】获取文件详情失败：{err}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
         :param fileitem: 文件项
@@ -558,7 +559,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】移动失败: {fileitem.name} - {err}")
             return False
 
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
         :param fileitem: 文件项
@@ -613,13 +614,13 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】复制失败: {fileitem.name} - {err}")
             return False
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """
@@ -647,7 +648,7 @@ class Rclone(StorageBase):
             )
             if ret.returncode == 0:
                 items = json.loads(ret.stdout)
-                return schemas.StorageUsage(
+                return _SchemaStorageUsage(
                     total=items.get("total"),
                     available=items.get("free")
                 )

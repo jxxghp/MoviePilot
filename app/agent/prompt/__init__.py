@@ -12,12 +12,10 @@ import yaml
 from app.agent.llm.capability import AgentCapabilityManager
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import (
-    ChannelCapability,
-    ChannelCapabilities,
-    NotificationChannel,
-    ChannelCapabilityManager,
-)
+from app.schemas.notification import ChannelCapability
+from app.schemas.notification import ChannelCapabilities
+from app.schemas.notification import NotificationChannel
+from app.schemas.notification import ChannelCapabilityManager
 from app.adapters.system.host import SystemUtils
 
 SYSTEM_TASKS_FILE = "System Tasks.yaml"

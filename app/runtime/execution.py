@@ -4,7 +4,7 @@ import time
 from functools import wraps
 from typing import Any, Callable
 
-from app.schemas import ImmediateException
+from app.schemas.exception import ImmediateException
 
 
 def retry(ExceptionToCheck: Any,

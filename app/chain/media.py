@@ -1,4 +1,3 @@
-import asyncio
 from copy import deepcopy
 from pathlib import Path
 from threading import Lock
@@ -6,7 +5,7 @@ from typing import Any, Iterable, List, Optional, Tuple, Union
 
 from fastapi.concurrency import run_in_threadpool
 
-from app import schemas
+from app.schemas.event import MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData
 from app.chain import ChainBase
 from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
@@ -26,13 +25,11 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.application.audio import AudioMetadataHelper
+from app.application.music.catalog import MusicCatalogService
 from app.runtime.log import logger
-from app.schemas import FileItem
 from app.schemas.types import (
-    MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     ChainEventType,
-    EventType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -92,19 +89,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
             media_source: Optional[MediaSourceSelection],
     ) -> list[MediaSource]:
         """解析有序音乐搜索来源集合，保留合法插件扩展来源并去重。"""
-        if not media_source:
-            return [cls._music_primary_source]
-        raw_sources = (
-            (media_source,)
-            if isinstance(media_source, MediaSource)
-            else media_source
-        )
-        sources: list[MediaSource] = []
-        for raw_source in raw_sources:
-            source = normalize_media_source(raw_source)
-            if source and source not in sources:
-                sources.append(source)
-        return sources
+        return MusicCatalogService(
+            source_resolver=cls._music_source_chain,
+            warning=logger.warning,
+            primary_source=cls._music_primary_source,
+        ).search_sources(media_source)
 
     @staticmethod
     async def _async_search_music_source(
@@ -127,29 +116,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
             limit: Optional[int] = None,
     ) -> list[MusicInfo]:
         """标准化并按来源身份或元数据去重音乐候选。"""
-        results: list[MusicInfo] = []
-        identities: set[tuple[str, ...]] = set()
-        for candidate in candidates or []:
-            info = candidate if isinstance(candidate, MusicInfo) else MusicInfo.from_dict(candidate)
-            if info.media_source and info.media_id:
-                identity = (
-                    "id", str(info.media_source).casefold(),
-                    str(info.music_type).casefold(), str(info.media_id).casefold(),
-                )
-            else:
-                identity = (
-                    "metadata", str(info.music_type).casefold(),
-                    MetaMusic.compact_text(info.title),
-                    MetaMusic.compact_text(info.artist),
-                    MetaMusic.compact_text(info.album),
-                )
-            if identity in identities:
-                continue
-            identities.add(identity)
-            results.append(info)
-            if limit and len(results) >= limit:
-                break
-        return results
+        return MusicCatalogService.normalize_candidates(candidates, limit)
+
+    def _music_catalog(self) -> MusicCatalogService:
+        """构造绑定当前来源解析规则的音乐目录服务。"""
+        return MusicCatalogService(
+            source_resolver=self._music_source_chain,
+            warning=logger.warning,
+            primary_source=self._music_primary_source,
+        )
 
     def search_music(
             self,
@@ -158,20 +133,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             media_source: Optional[MediaSourceSelection] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
-        meta = MetaMusic.parse_query(query)
-        candidates: list[MusicInfo] = []
-        for source in self._music_search_sources(media_source):
-            chain = self._music_source_chain(source)
-            if not chain:
-                continue
-            try:
-                candidates.extend(chain.search_music(meta, limit=limit))
-            except Exception as err:
-                logger.warning(f"音乐来源 {source} 搜索失败：{str(err)}")
-        return self.normalize_music_candidates(
-            candidates,
-            limit=limit,
-        )
+        return self._music_catalog().search(query, limit, media_source)
 
     async def async_search_music(
             self,
@@ -180,18 +142,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
             media_source: Optional[MediaSourceSelection] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
-        meta = MetaMusic.parse_query(query)
-        searches = []
-        for source in self._music_search_sources(media_source):
-            chain = self._music_source_chain(source)
-            if chain:
-                searches.append(
-                    self._async_search_music_source(chain, source, meta, limit)
-                )
-        source_results = await asyncio.gather(*searches) if searches else []
-        return self.normalize_music_candidates(
-            [candidate for results in source_results for candidate in results],
-            limit=limit,
+        return await self._music_catalog().async_search(
+            query,
+            limit,
+            media_source,
         )
 
     @staticmethod
@@ -1540,7 +1494,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 mtype=mtype or MediaInfo.get_bangumi_media_type(source_info),
                 season=season if season is not None else meta.begin_season,
             )
-        event_data = schemas.MediaRecognizeConvertEventData(
+        event_data = _SchemaMediaRecognizeConvertEventData(
             media_source=media_source,
             media_id=media_id,
             target_media_source=target_source,
@@ -2086,7 +2040,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 mtype=mtype or MediaInfo.get_bangumi_media_type(source_info),
                 season=season if season is not None else meta.begin_season,
             )
-        event_data = schemas.MediaRecognizeConvertEventData(
+        event_data = _SchemaMediaRecognizeConvertEventData(
             media_source=media_source,
             media_id=media_id,
             target_media_source=target_source,

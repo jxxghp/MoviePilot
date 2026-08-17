@@ -2,11 +2,12 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Optional
 
-from app import schemas
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.domain.context import MusicInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.runtime.extensions.service_registry import ServiceBaseHelper
-from app.schemas import MediaServerConf, ServiceInfo
+from app.schemas.system import MediaServerConf
+from app.schemas.system import ServiceInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MediaSource,
@@ -68,7 +69,7 @@ class MediaServerIdentityHelper:
     @classmethod
     def is_compatible(
         cls,
-        item: schemas.MediaServerItem,
+        item: _SchemaMediaServerItem,
         media_source: Optional[MediaSource | str],
         media_id: Optional[str],
     ) -> bool:
@@ -196,7 +197,7 @@ class MusicMediaServerHelper:
     def item_matches(
         cls,
         mediainfo: MusicInfo,
-        item: schemas.MediaServerItem,
+        item: _SchemaMediaServerItem,
     ) -> bool:
         """校验媒体库条目是否精确对应单曲，或完整覆盖目标专辑。"""
         note = item.note if isinstance(item.note, Mapping) else {}
@@ -237,8 +238,8 @@ class MusicMediaServerHelper:
     def find_match(
         cls,
         mediainfo: MusicInfo,
-        items: Optional[Iterable[schemas.MediaServerItem]],
-    ) -> Optional[schemas.MediaServerItem]:
+        items: Optional[Iterable[_SchemaMediaServerItem]],
+    ) -> Optional[_SchemaMediaServerItem]:
         """返回首个满足单曲精确匹配或整专完整性要求的媒体库条目。"""
         return next(
             (item for item in items or [] if item and cls.item_matches(mediainfo, item)),

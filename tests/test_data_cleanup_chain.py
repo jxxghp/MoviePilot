@@ -147,7 +147,9 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(), patch("app.scheduler.SessionFactory", self.SessionFactory):
+        with self._cleanup_settings(), patch(
+            "app.application.maintenance.SessionFactory", self.SessionFactory
+        ):
             report = SchedulerChain().cleanup(batch_size=1)
 
         self.assertEqual(report["tables"]["message"]["deleted"], 3)
@@ -184,7 +186,9 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(), patch("app.scheduler.SessionFactory", self.SessionFactory):
+        with self._cleanup_settings(), patch(
+            "app.application.maintenance.SessionFactory", self.SessionFactory
+        ):
             report = SchedulerChain().cleanup(batch_size=10)
 
         self.assertEqual(report["tables"]["transferhistory"]["deleted"], 0)
@@ -204,7 +208,7 @@ class DataCleanupChainTest(unittest.TestCase):
             db.commit()
 
         with self._cleanup_settings(DATA_CLEANUP_ENABLE=False), patch(
-            "app.scheduler.SessionFactory", self.SessionFactory
+            "app.application.maintenance.SessionFactory", self.SessionFactory
         ):
             report = SchedulerChain().cleanup(batch_size=10)
 
@@ -233,7 +237,7 @@ class DataCleanupChainTest(unittest.TestCase):
             db.commit()
 
         with self._cleanup_settings(DATA_CLEANUP_MESSAGE_DAYS=7), patch(
-            "app.scheduler.SessionFactory", self.SessionFactory
+            "app.application.maintenance.SessionFactory", self.SessionFactory
         ):
             report = SchedulerChain().cleanup(batch_size=10)
 
@@ -271,7 +275,7 @@ class DataCleanupChainTest(unittest.TestCase):
             db.commit()
 
         with self._cleanup_settings(DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS=0), patch(
-            "app.scheduler.SessionFactory", self.SessionFactory
+            "app.application.maintenance.SessionFactory", self.SessionFactory
         ):
             report = SchedulerChain().cleanup(batch_size=10)
 

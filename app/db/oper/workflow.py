@@ -1,6 +1,8 @@
-from typing import List, Tuple, Optional, Any, Coroutine, Sequence
+from typing import List, Mapping, Tuple, Optional, Any
 
-from app.db import DbOper
+from sqlalchemy import delete as sqlalchemy_delete
+
+from app.db.base import DbOper
 from app.db.models.workflow import Workflow
 
 
@@ -24,6 +26,34 @@ class WorkflowOper(DbOper):
         查询单个工作流
         """
         return Workflow.get(self._db, wid)
+
+    def stage_state(self, workflow_id: int, state: str) -> bool:
+        """暂存工作流状态变更，不由模型方法自行提交。"""
+        workflow = self.get(workflow_id)
+        if not workflow:
+            return False
+        workflow.state = state
+        return True
+
+    def stage_update(
+            self,
+            workflow_id: int,
+            payload: Mapping[str, Any],
+    ) -> Optional[Workflow]:
+        """暂存工作流字段更新并返回同一会话中的对象。"""
+        workflow = self.get(workflow_id)
+        if not workflow:
+            return None
+        for key, value in payload.items():
+            if key != "id":
+                setattr(workflow, key, value)
+        return workflow
+
+    def stage_delete(self, workflow_id: int) -> None:
+        """暂存工作流删除，由请求级 UnitOfWork 统一提交。"""
+        self._db.execute(
+            sqlalchemy_delete(Workflow).where(Workflow.id == workflow_id)
+        )
 
     async def async_get(self, wid: int) -> Optional[Workflow]:
         """
@@ -72,6 +102,31 @@ class WorkflowOper(DbOper):
         异步按名称获取工作流
         """
         return await Workflow.async_get_by_name(self._db, name)
+
+    async def stage_create(self, payload: Mapping[str, Any]) -> Workflow:
+        """暂存新工作流，不在操作器内提交事务。"""
+        workflow = Workflow(**dict(payload))
+        self._db.add(workflow)
+        await self._db.flush()
+        return workflow
+
+    async def stage_reset(
+            self,
+            workflow_id: int,
+            reset_count: bool = False,
+    ) -> Optional[Workflow]:
+        """暂存工作流重置字段，不触发模型装饰器的隐式提交。"""
+        workflow = await self.async_get(workflow_id)
+        if not workflow:
+            return None
+        workflow.state = "W"
+        workflow.result = None
+        workflow.current_action = None
+        workflow.context = {}
+        workflow.execution_state = {}
+        if reset_count:
+            workflow.run_count = 0
+        return workflow
 
     def start(self, wid: int) -> bool:
         """

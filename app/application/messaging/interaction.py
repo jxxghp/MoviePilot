@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple, Union
 
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
 

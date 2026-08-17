@@ -3,7 +3,9 @@ from typing import List, Optional, Union
 from pydantic import Field
 
 from app.workflow.actions import BaseAction, ActionChain
-from app.schemas import ActionParams, ActionContext, Message
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
+from app.schemas.message import Message
 from app.runtime.config import settings
 
 

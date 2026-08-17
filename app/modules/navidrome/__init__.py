@@ -2,14 +2,20 @@
 
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
 from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
 from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome
-from app.schemas import AuthCredentials, AuthInterceptCredentials
+from app.schemas.event import AuthCredentials
+from app.schemas.event import AuthInterceptCredentials
 from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
 
 
@@ -103,7 +109,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
 
     def media_exists(
         self, mediainfo: MediaInfo, itemid: Optional[str] = None, server: Optional[str] = None
-    ) -> Optional[schemas.ExistMediaInfo]:
+    ) -> Optional[_SchemaExistMediaInfo]:
         """判断音乐是否已存在于 Navidrome 音乐库。"""
         if mediainfo.type != MediaType.MUSIC:
             return None
@@ -117,7 +123,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
                 continue
             item = service.get_iteminfo(str(itemid)) if itemid else None
             if item and MusicMediaServerHelper.item_matches(mediainfo, item):
-                return schemas.ExistMediaInfo(
+                return _SchemaExistMediaInfo(
                     type=MediaType.MUSIC,
                     server_type="navidrome",
                     server=name,
@@ -126,7 +132,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
             matches = service.search_music(**MusicMediaServerHelper.search_params(mediainfo))
             match = MusicMediaServerHelper.find_match(mediainfo, matches)
             if match:
-                return schemas.ExistMediaInfo(
+                return _SchemaExistMediaInfo(
                     type=MediaType.MUSIC,
                     server_type="navidrome",
                     server=name,
@@ -134,10 +140,10 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
                 )
         return None
 
-    def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:
+    def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """返回 Navidrome 音乐数量统计。"""
         servers = [self.get_instance(server)] if server else list(self.get_instances().values())
-        result: List[schemas.Statistic] = []
+        result: List[_SchemaStatistic] = []
         for service in servers:
             if not service:
                 continue
@@ -148,7 +154,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
 
     def mediaserver_librarys(
         self, server: str, username: Optional[str] = None, hidden: Optional[bool] = False
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """返回 Navidrome 的虚拟音乐库。"""
         service = self.get_instance(server)
         return service.get_librarys(hidden=hidden) if service else None
@@ -166,18 +172,18 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         service = self.get_instance(server)
         return service.get_items_count(str(library_id)) if service else None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """获取 Navidrome 专辑详情。"""
         service = self.get_instance(server)
         return service.get_iteminfo(item_id) if service else None
 
-    def mediaserver_tv_episodes(self, server: str, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
+    def mediaserver_tv_episodes(self, server: str, item_id: Union[str, int]) -> List[_SchemaMediaServerSeasonInfo]:
         """音乐服务器没有剧集信息，返回空列表。"""
         return []
 
     def mediaserver_playing(
         self, server: str, count: Optional[int] = 20, username: Optional[str] = None
-    ) -> Optional[List[schemas.MediaServerPlayItem]]:
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """获取 Navidrome 当前播放条目。"""
         service = self.get_instance(server)
         return service.get_resume(count) if service else None
@@ -190,7 +196,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def mediaserver_latest(
         self, server: Optional[str] = None, count: Optional[int] = 20,
         username: Optional[str] = None,
-    ) -> Optional[List[schemas.MediaServerPlayItem]]:
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """获取 Navidrome 最近新增专辑。"""
         service = self.get_instance(server)
         return service.get_latest(count) if service else None

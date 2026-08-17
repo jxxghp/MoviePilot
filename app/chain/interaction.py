@@ -21,7 +21,10 @@ from app.domain.meta.metabase import MetaBase
 from app.foundation import url as url_tools
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import DownloadDirectory, FileURI, NotExistMediaInfo, Message
+from app.schemas.download import DownloadDirectory
+from app.schemas.file import FileURI
+from app.schemas.mediaserver import NotExistMediaInfo
+from app.schemas.message import Message
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.system import TransferDirectoryConf

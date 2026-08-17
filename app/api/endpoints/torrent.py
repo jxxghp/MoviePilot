@@ -2,7 +2,9 @@ from typing import Optional
 
 from fastapi import Depends
 
-from app import schemas
+from app.schemas.cache import TorrentCacheData as _SchemaTorrentCacheData
+from app.schemas.cache import TorrentReidentifyData as _SchemaTorrentReidentifyData
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.torrents import TorrentsChain
@@ -28,7 +30,7 @@ router = ResponseAPIRouter()
 @router.get(
     "/cache",
     summary="获取种子缓存",
-    response_model=schemas.Response[schemas.TorrentCacheData],
+    response_model=_SchemaResponse[_SchemaTorrentCacheData],
 )
 async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
     """
@@ -87,7 +89,7 @@ async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
                 }
             )
 
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={"count": torrent_count, "sites": len(cache_info), "data": torrent_data},
     )
@@ -96,7 +98,7 @@ async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
 @router.delete(
     "/cache/{domain}/{torrent_hash}",
     summary="删除指定种子缓存",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def delete_cache(
     domain: str,
@@ -117,7 +119,7 @@ async def delete_cache(
         cache_data = await torrents_chain.async_get_torrents()
 
         if domain not in cache_data:
-            return schemas.Response(success=False, message=f"站点 {domain} 缓存不存在")
+            return _SchemaResponse(success=False, message=f"站点 {domain} 缓存不存在")
 
         # 查找并删除指定种子
         original_count = len(cache_data[domain])
@@ -131,7 +133,7 @@ async def delete_cache(
         ]
 
         if len(cache_data[domain]) == original_count:
-            return schemas.Response(success=False, message="未找到指定的种子")
+            return _SchemaResponse(success=False, message="未找到指定的种子")
 
         # 保存更新后的缓存：影视与音乐分别回写各自存储文件
         video_cache, music_cache = torrents_chain.split_cache_contexts(cache_data)
@@ -139,12 +141,12 @@ async def delete_cache(
         await torrents_chain.async_save_cache(video_cache, video_file)
         await torrents_chain.async_save_cache(music_cache, music_file)
 
-        return schemas.Response(success=True, message="种子删除成功")
+        return _SchemaResponse(success=True, message="种子删除成功")
     except Exception as e:
-        return schemas.Response(success=False, message=f"删除失败：{str(e)}")
+        return _SchemaResponse(success=False, message=f"删除失败：{str(e)}")
 
 
-@router.delete("/cache", summary="清理种子缓存", response_model=schemas.Response[None])
+@router.delete("/cache", summary="清理种子缓存", response_model=_SchemaResponse[None])
 async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
     """
     清理所有种子缓存
@@ -153,12 +155,12 @@ async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
 
     try:
         await torrents_chain.async_clear_torrents()
-        return schemas.Response(success=True, message="种子缓存清理完成")
+        return _SchemaResponse(success=True, message="种子缓存清理完成")
     except Exception as e:
-        return schemas.Response(success=False, message=f"清理失败：{str(e)}")
+        return _SchemaResponse(success=False, message=f"清理失败：{str(e)}")
 
 
-@router.post("/cache/refresh", summary="刷新种子缓存", response_model=schemas.Response[None])
+@router.post("/cache/refresh", summary="刷新种子缓存", response_model=_SchemaResponse[None])
 def refresh_cache(_: User = Depends(get_current_active_superuser)):
     """
     刷新种子缓存
@@ -174,18 +176,18 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
         total_count = sum(len(torrents) for torrents in result.values())
         sites_count = len(result)
 
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
             message=f"缓存刷新完成，共刷新 {sites_count} 个站点，{total_count} 个种子",
         )
     except Exception as e:
-        return schemas.Response(success=False, message=f"刷新失败：{str(e)}")
+        return _SchemaResponse(success=False, message=f"刷新失败：{str(e)}")
 
 
 @router.post(
     "/cache/reidentify/{domain}/{torrent_hash}",
     summary="重新识别种子",
-    response_model=schemas.Response[schemas.TorrentReidentifyData],
+    response_model=_SchemaResponse[_SchemaTorrentReidentifyData],
 )
 async def reidentify_cache(
     domain: str,
@@ -213,7 +215,7 @@ async def reidentify_cache(
         cache_data = await torrents_chain.async_get_torrents()
 
         if domain not in cache_data:
-            return schemas.Response(success=False, message=f"站点 {domain} 缓存不存在")
+            return _SchemaResponse(success=False, message=f"站点 {domain} 缓存不存在")
 
         # 查找指定种子
         target_context = None
@@ -228,7 +230,7 @@ async def reidentify_cache(
                 break
 
         if not target_context:
-            return schemas.Response(success=False, message="未找到指定的种子")
+            return _SchemaResponse(success=False, message="未找到指定的种子")
 
         existing_music_type = normalize_music_type(
             getattr(target_context.media_info, "music_type", None),
@@ -239,7 +241,7 @@ async def reidentify_cache(
             allow_artist=False,
         )
         if music_type is not None and not normalized_music_type:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message="音乐实体类型无效，仅支持 recording 或 album",
             )
@@ -252,7 +254,7 @@ async def reidentify_cache(
             or normalized_music_type is not None
         )
         if is_music and media_source and not is_music_media_source(media_source):
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message="音乐重新识别只能使用音乐元数据源",
             )
@@ -274,7 +276,7 @@ async def reidentify_cache(
 
         has_explicit_id = media_source is not None or media_id is not None
         if has_explicit_id and (not media_source or not media_id):
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message="媒体来源和媒体 ID 必须同时提供",
             )
@@ -318,7 +320,7 @@ async def reidentify_cache(
         await torrents_chain.async_save_cache(video_cache, video_file)
         await torrents_chain.async_save_cache(music_cache, music_file)
 
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
             message="重新识别完成",
             data={
@@ -333,4 +335,4 @@ async def reidentify_cache(
             },
         )
     except Exception as e:
-        return schemas.Response(success=False, message=f"重新识别失败：{str(e)}")
+        return _SchemaResponse(success=False, message=f"重新识别失败：{str(e)}")

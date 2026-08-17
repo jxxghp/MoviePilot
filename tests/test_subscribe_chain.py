@@ -8,6 +8,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app import schemas
+from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaType
 from app.testing import stub_modules
 
@@ -177,8 +178,6 @@ def _load_subscribe_chain_class():
 
     words_module.WordsMatcher = _WordsMatcher
 
-    schemas_module = ensure_module("app.schemas", types.ModuleType("app.schemas"))
-
     class _Notification:
         def __init__(self, *args, **kwargs):
             self.args = args
@@ -192,7 +191,10 @@ def _load_subscribe_chain_class():
             "tmdbid",
             "doubanid",
             "bangumiid",
+            "media_source",
+            "media_id",
             "season",
+            "episode_group",
             "best_version",
             "save_path",
             "search_imdbid",
@@ -255,16 +257,42 @@ def _load_subscribe_chain_class():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
-    schemas_module.Message = _Notification
-    schemas_module.Subscribe = _SubscribeSchema
-    schemas_module.NotExistMediaInfo = _NotExistMediaInfo
-    schemas_module.SubscribeEpisodeInfo = _SubscribeEpisodeInfo
-    schemas_module.SubscrbieInfo = _SubscrbieInfo
-    schemas_module.SubscribeDownloadFileInfo = _SubscribeDownloadFileInfo
-    schemas_module.SubscribeLibraryFileInfo = _SubscribeLibraryFileInfo
-    schemas_module.MediaRecognizeConvertEventData = _MediaRecognizeConvertEventData
-    schemas_module.SubscribeEpisodesRefreshEventData = _SubscribeEpisodesRefreshEventData
-    schemas_module.SubscribeCompletionCheckEventData = _SubscribeCompletionCheckEventData
+    mediaserver_schema_module = ensure_module(
+        "app.schemas.mediaserver",
+        types.ModuleType("app.schemas.mediaserver"),
+    )
+    mediaserver_schema_module.NotExistMediaInfo = _NotExistMediaInfo
+    message_schema_module = ensure_module(
+        "app.schemas.message",
+        types.ModuleType("app.schemas.message"),
+    )
+    message_schema_module.Message = _Notification
+    subscribe_schema_module = ensure_module(
+        "app.schemas.subscribe",
+        types.ModuleType("app.schemas.subscribe"),
+    )
+    subscribe_schema_module.SubscribeEpisodeInfo = _SubscribeEpisodeInfo
+    subscribe_schema_module.SubscrbieInfo = _SubscrbieInfo
+    subscribe_schema_module.SubscribeDownloadFileInfo = _SubscribeDownloadFileInfo
+    subscribe_schema_module.SubscribeLibraryFileInfo = _SubscribeLibraryFileInfo
+    workflow_schema_module = ensure_module(
+        "app.schemas.workflow",
+        types.ModuleType("app.schemas.workflow"),
+    )
+    workflow_schema_module.Subscribe = _SubscribeSchema
+    event_schema_module = ensure_module(
+        "app.schemas.event",
+        types.ModuleType("app.schemas.event"),
+    )
+    event_schema_module.MediaRecognizeConvertEventData = (
+        _MediaRecognizeConvertEventData
+    )
+    event_schema_module.SubscribeEpisodesRefreshEventData = (
+        _SubscribeEpisodesRefreshEventData
+    )
+    event_schema_module.SubscribeCompletionCheckEventData = (
+        _SubscribeCompletionCheckEventData
+    )
 
     logger_module = ensure_module("app.runtime.log", types.ModuleType("app.runtime.log"))
 
@@ -2196,14 +2224,14 @@ class SubscribeProgressEntrypointTest(TestCase):
         subscribe = self._build_subscribe(best_version=0, note=[1])
         missing_all = {
             "tmdb:10001": {
-                1: self.module.schemas.NotExistMediaInfo(
+                1: NotExistMediaInfo(
                     season=1, episodes=[], total_episode=5, start_episode=1
                 )
             }
         }
         missing_some = {
             "tmdb:10001": {
-                1: self.module.schemas.NotExistMediaInfo(
+                1: NotExistMediaInfo(
                     season=1, episodes=[2, 4], total_episode=5, start_episode=1
                 )
             }
@@ -2508,7 +2536,7 @@ class SubscribeProgressEntrypointTest(TestCase):
         )
         no_exists = {
             "tmdb:10001": {
-                1: self.module.schemas.NotExistMediaInfo(
+                1: NotExistMediaInfo(
                     season=1, episodes=[2, 4], total_episode=5, start_episode=1
                 )
             }

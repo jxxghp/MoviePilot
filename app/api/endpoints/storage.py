@@ -7,7 +7,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import Depends, HTTPException
 from starlette.responses import FileResponse, Response
 
-from app import schemas
+from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -26,10 +28,10 @@ router = ResponseAPIRouter()
 
 
 @router.post(
-    "/manage", summary="网盘存储统一管理", response_model=schemas.Response[Dict[str, Any]]
+    "/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]]
 )
 def manage(
-    request: schemas.ManageRequest, _: User = Depends(get_current_active_superuser)
+    request: _SchemaManageRequest, _: User = Depends(get_current_active_superuser)
 ) -> Any:
     """
     网盘存储统一管理入口
@@ -42,16 +44,16 @@ def manage(
         action=request.action,
         **request.params,
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=bool(result.get("success")),
         message=result.get("message"),
         data=result.get("data"),
     )
 
 
-@router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
+@router.post("/list", summary="所有目录和文件", response_model=List[_SchemaFileItem])
 def list_files(
-    fileitem: schemas.FileItem,
+    fileitem: _SchemaFileItem,
     sort: Optional[str] = "updated_at",
     keyword: Optional[str] = None,
     _: User = Depends(get_current_active_manage_user),
@@ -76,9 +78,9 @@ def list_files(
     return file_list
 
 
-@router.post("/mkdir", summary="创建目录", response_model=schemas.Response[None])
+@router.post("/mkdir", summary="创建目录", response_model=_SchemaResponse[None])
 def mkdir(
-    fileitem: schemas.FileItem,
+    fileitem: _SchemaFileItem,
     name: str,
     _: User = Depends(get_current_active_manage_user),
 ) -> Any:
@@ -89,16 +91,16 @@ def mkdir(
     :param _: token
     """
     if not name:
-        return schemas.Response(success=False)
+        return _SchemaResponse(success=False)
     result = StorageChain().create_folder(fileitem, name)
     if result:
-        return schemas.Response(success=True)
-    return schemas.Response(success=False)
+        return _SchemaResponse(success=True)
+    return _SchemaResponse(success=False)
 
 
-@router.post("/delete", summary="删除文件或目录", response_model=schemas.Response[None])
+@router.post("/delete", summary="删除文件或目录", response_model=_SchemaResponse[None])
 def delete(
-    fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     删除文件或目录
@@ -107,8 +109,8 @@ def delete(
     """
     result = StorageChain().delete_file(fileitem)
     if result:
-        return schemas.Response(success=True)
-    return schemas.Response(success=False)
+        return _SchemaResponse(success=True)
+    return _SchemaResponse(success=False)
 
 
 @router.post(
@@ -125,11 +127,11 @@ def delete(
                 }
             },
         },
-        404: {"model": schemas.Response[None], "description": "文件下载失败"},
+        404: {"model": _SchemaResponse[None], "description": "文件下载失败"},
     },
 )
 def download(
-    fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     下载文件或目录
@@ -140,7 +142,7 @@ def download(
     tmp_file = StorageChain().download_file(fileitem)
     if tmp_file:
         return FileResponse(path=tmp_file)
-    return schemas.Response(success=False)
+    return _SchemaResponse(success=False)
 
 
 @router.post(
@@ -158,7 +160,7 @@ def download(
     },
 )
 def image(
-    fileitem: schemas.FileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     下载文件或目录
@@ -172,9 +174,9 @@ def image(
     return Response(content=tmp_file.read_bytes(), media_type="image/jpeg")
 
 
-@router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response[None])
+@router.post("/rename", summary="重命名文件或目录", response_model=_SchemaResponse[None])
 def rename(
-    fileitem: schemas.FileItem,
+    fileitem: _SchemaFileItem,
     new_name: str,
     recursive: Optional[bool] = False,
     _: User = Depends(get_current_active_manage_user),
@@ -187,14 +189,14 @@ def rename(
     :param _: token
     """
     if not new_name:
-        return schemas.Response(success=False, message="新名称为空")
+        return _SchemaResponse(success=False, message="新名称为空")
 
     # 重命名目录内文件
     if recursive:
         transferchain = TransferChain()
         media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
         # 递归修改目录内文件（智能识别命名）
-        sub_files: List[schemas.FileItem] = StorageChain().list_files(fileitem)
+        sub_files: List[_SchemaFileItem] = StorageChain().list_files(fileitem)
         if sub_files:
             # 开始进度
             progress = ProgressHelper(ProgressKey.BatchRename)
@@ -219,7 +221,7 @@ def rename(
                 )
                 if not context or not context.media_info:
                     progress.end()
-                    return schemas.Response(
+                    return _SchemaResponse(
                         success=False, message=f"{sub_path.name} 未识别到媒体信息"
                     )
                 new_path = transferchain.recommend_name(
@@ -227,20 +229,20 @@ def rename(
                 )
                 if not new_path:
                     progress.end()
-                    return schemas.Response(
+                    return _SchemaResponse(
                         success=False, message=f"{sub_path.name} 未识别到新名称"
                     )
-                ret: schemas.Response = rename(
+                ret: _SchemaResponse = rename(
                     fileitem=sub_file, new_name=Path(new_path).name, recursive=False
                 )
                 if not ret.success:
                     progress.end()
-                    return schemas.Response(
+                    return _SchemaResponse(
                         success=False, message=f"{sub_path.name} 重命名失败！"
                     )
             progress.end()
     # 重命名自己
     result = StorageChain().rename_file(fileitem, new_name)
     if result:
-        return schemas.Response(success=True)
-    return schemas.Response(success=False)
+        return _SchemaResponse(success=True)
+    return _SchemaResponse(success=False)

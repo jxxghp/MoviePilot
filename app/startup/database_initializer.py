@@ -6,6 +6,7 @@ from alembic.config import Config
 
 from app.runtime.config import settings
 from app.db import Base
+from app.db.models import load_all_models
 from app.runtime.log import logger
 
 
@@ -19,7 +20,7 @@ def init_db():
     from app.db.engine import get_engine
 
     # 确保所有模型都已注册到 Base.metadata 中
-    import app.db.models  # noqa: F401
+    load_all_models()
 
     # 全量建表
     Base.metadata.create_all(bind=get_engine())
@@ -47,4 +48,3 @@ def update_db():
             f'数据库更新失败：{str(error)} - {traceback.format_exc()}'
         )
         raise
-

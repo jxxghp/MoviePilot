@@ -17,7 +17,8 @@ from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
-from app.schemas import Message, CommandRegisterEventData
+from app.schemas.message import Message
+from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import EventType, NotificationChannel, ChainEventType
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton

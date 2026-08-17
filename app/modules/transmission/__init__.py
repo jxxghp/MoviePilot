@@ -3,13 +3,13 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 
 from transmission_rpc import File
 
-from app import schemas
+from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.modules._base import _DownloaderModuleBase
 from app.modules.transmission.transmission import Transmission
-from app.schemas import DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -534,7 +534,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             return None
         return server.get_files(tid=tid)
 
-    def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[schemas.DownloaderInfo]]:
+    def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """
         下载器信息
         """
@@ -551,7 +551,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             info = server.transfer_info()
             if not info:
                 continue
-            ret_info.append(schemas.DownloaderInfo(
+            ret_info.append(_SchemaDownloaderInfo(
                 download_speed=info.download_speed,
                 upload_speed=info.upload_speed,
                 download_size=info.current_stats.downloaded_bytes,

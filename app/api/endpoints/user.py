@@ -5,7 +5,12 @@ from typing import Annotated, Any, List, Union
 from fastapi import Body, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import schemas
+from app.schemas.common import FileNameData as _SchemaFileNameData
+from app.schemas.common import ValueData as _SchemaValueData
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.user import User as _SchemaUser
+from app.schemas.user import UserCreate as _SchemaUserCreate
+from app.schemas.user import UserUpdate as _SchemaUserUpdate
 from app.api.response import ResponseAPIRouter
 from app.application.security.access import PasswordTooLongError, get_password_hash
 from app.db import get_async_db
@@ -16,7 +21,7 @@ from app.db.oper.userconfig import UserConfigOper
 router = ResponseAPIRouter()
 
 
-@router.get("/", summary="所有用户", response_model=List[schemas.User])
+@router.get("/", summary="所有用户", response_model=List[_SchemaUser])
 async def list_users(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_superuser_async),
@@ -27,11 +32,11 @@ async def list_users(
     return await current_user.async_list(db)
 
 
-@router.post("/", summary="新增用户", response_model=schemas.Response[None])
+@router.post("/", summary="新增用户", response_model=_SchemaResponse[None])
 async def create_user(
     *,
     db: AsyncSession = Depends(get_async_db),
-    user_in: schemas.UserCreate,
+    user_in: _SchemaUserCreate,
     current_user: User = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
@@ -39,23 +44,23 @@ async def create_user(
     """
     user = await current_user.async_get_by_name(db, name=user_in.name)
     if user:
-        return schemas.Response(success=False, message="用户已存在")
+        return _SchemaResponse(success=False, message="用户已存在")
     user_info = user_in.model_dump()
     if user_info.get("password"):
         try:
             user_info["hashed_password"] = get_password_hash(user_info["password"])
         except PasswordTooLongError as error:
-            return schemas.Response(success=False, message=str(error))
+            return _SchemaResponse(success=False, message=str(error))
         user_info.pop("password")
     user = await User(**user_info).async_create(db)
-    return schemas.Response(success=True if user else False)
+    return _SchemaResponse(success=True if user else False)
 
 
-@router.put("/", summary="更新用户", response_model=schemas.Response[None])
+@router.put("/", summary="更新用户", response_model=_SchemaResponse[None])
 async def update_user(
     *,
     db: AsyncSession = Depends(get_async_db),
-    user_in: schemas.UserUpdate,
+    user_in: _SchemaUserUpdate,
     current_user: User = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
@@ -66,31 +71,31 @@ async def update_user(
         # 正则表达式匹配密码包含字母、数字、特殊字符中的至少两项
         pattern = r"^(?![a-zA-Z]+$)(?!\d+$)(?![^\da-zA-Z\s]+$).{6,50}$"
         if not re.match(pattern, user_info.get("password")):
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位",
             )
         try:
             user_info["hashed_password"] = get_password_hash(user_info["password"])
         except PasswordTooLongError as error:
-            return schemas.Response(success=False, message=str(error))
+            return _SchemaResponse(success=False, message=str(error))
         user_info.pop("password")
     user = await current_user.async_get_by_id(db, user_id=user_info["id"])
     user_name = user_info.get("name")
     if not user_name:
-        return schemas.Response(success=False, message="用户名不能为空")
+        return _SchemaResponse(success=False, message="用户名不能为空")
     # 新用户名去重
     users = await current_user.async_list(db)
     for u in users:
         if u.name == user_name and u.id != user_info["id"]:
-            return schemas.Response(success=False, message="用户名已被使用")
+            return _SchemaResponse(success=False, message="用户名已被使用")
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return _SchemaResponse(success=False, message="用户不存在")
     await user.async_update(db, user_info)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
+@router.get("/current", summary="当前登录用户信息", response_model=_SchemaUser)
 async def read_current_user(
     current_user: User = Depends(get_current_active_user_async),
 ) -> Any:
@@ -103,14 +108,14 @@ async def read_current_user(
 @router.post(
     "/avatar/{user_id}",
     summary="上传用户头像",
-    response_model=schemas.Response[schemas.FileNameData],
+    response_model=_SchemaResponse[_SchemaFileNameData],
 )
 async def upload_avatar(
     user_id: int,
     db: AsyncSession = Depends(get_async_db),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     上传用户头像
     """
@@ -122,25 +127,25 @@ async def upload_avatar(
     # 更新到用户表
     user = await User.async_get(db, user_id)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return _SchemaResponse(success=False, message="用户不存在")
     await user.async_update(db, {"avatar": f"data:image/ico;base64,{file_base64}"})
-    return schemas.Response(success=True, data={"filename": file.filename})
+    return _SchemaResponse(success=True, data={"filename": file.filename})
 
 
 @router.get(
     "/config/{key}",
     summary="查询用户配置",
-    response_model=schemas.Response[schemas.ValueData],
+    response_model=_SchemaResponse[_SchemaValueData],
 )
 def get_config(key: str, current_user: User = Depends(get_current_active_user)):
     """
     查询用户配置
     """
     value = UserConfigOper().get(username=current_user.name, key=key)
-    return schemas.Response(success=True, data={"value": value})
+    return _SchemaResponse(success=True, data={"value": value})
 
 
-@router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response[None])
+@router.post("/config/{key}", summary="更新用户配置", response_model=_SchemaResponse[None])
 def set_config(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
@@ -150,10 +155,10 @@ def set_config(
     更新用户配置
     """
     UserConfigOper().set(username=current_user.name, key=key, value=value)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.delete("/id/{user_id}", summary="删除用户", response_model=schemas.Response[None])
+@router.delete("/id/{user_id}", summary="删除用户", response_model=_SchemaResponse[None])
 async def delete_user_by_id(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -165,12 +170,12 @@ async def delete_user_by_id(
     """
     user = await current_user.async_get_by_id(db, user_id=user_id)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return _SchemaResponse(success=False, message="用户不存在")
     await current_user.async_delete(db, user_id)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response[None])
+@router.delete("/name/{user_name}", summary="删除用户", response_model=_SchemaResponse[None])
 async def delete_user_by_name(
     *,
     db: AsyncSession = Depends(get_async_db),
@@ -182,12 +187,12 @@ async def delete_user_by_name(
     """
     user = await current_user.async_get_by_name(db, name=user_name)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return _SchemaResponse(success=False, message="用户不存在")
     await current_user.async_delete(db, user.id)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.get("/{username}", summary="用户详情", response_model=schemas.User)
+@router.get("/{username}", summary="用户详情", response_model=_SchemaUser)
 async def read_user_by_name(
     username: str,
     current_user: User = Depends(get_current_active_user_async),

@@ -16,7 +16,7 @@ from app.schemas.types import (
     MediaType,
     media_type_to_agent,
 )
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 
 PAGE_SIZE = 100
 

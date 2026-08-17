@@ -11,8 +11,9 @@ FastAPI 实例由组合根（factory 创建应用后）注入，端点与 Agent 
 
 from typing import Optional
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
+from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.application.security.access import verify_apikey, verify_token
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.config import settings
@@ -45,7 +46,21 @@ def get_api_app() -> FastAPI:
     return _api_app
 
 
-def register_plugin_api(plugin_id: Optional[str] = None):
+def _route_registry() -> FastAPIDynamicRouteRegistry:
+    """组装绑定当前 FastAPI 应用与插件管理器的动态路由适配器。"""
+    return FastAPIDynamicRouteRegistry(
+        app=get_api_app(),
+        plugin_ids=lambda: PluginManager().get_running_plugin_ids(),
+        plugin_apis=lambda plugin_id: PluginManager().get_plugin_apis(plugin_id),
+        verify_token=verify_token,
+        verify_apikey=verify_apikey,
+        prefix=PLUGIN_PREFIX,
+        protected_routes=PROTECTED_ROUTES,
+        log=logger,
+    )
+
+
+def register_plugin_api(plugin_id: Optional[str] = None) -> None:
     """
     动态注册插件 API
     :param plugin_id: 插件 ID，如果为 None，则注册所有插件
@@ -53,7 +68,7 @@ def register_plugin_api(plugin_id: Optional[str] = None):
     _update_plugin_api_routes(plugin_id, action="add")
 
 
-def remove_plugin_api(plugin_id: str):
+def remove_plugin_api(plugin_id: str) -> None:
     """
     动态移除单个插件的 API
     :param plugin_id: 插件 ID
@@ -61,55 +76,14 @@ def remove_plugin_api(plugin_id: str):
     _update_plugin_api_routes(plugin_id, action="remove")
 
 
-def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
+def _update_plugin_api_routes(plugin_id: Optional[str], action: str) -> None:
     """
     插件 API 路由注册和移除
     :param plugin_id: 插件 ID，如果 action 为 "add" 且 plugin_id 为 None，则处理所有插件
                       如果 action 为 "remove"，plugin_id 必须是有效的插件 ID
     :param action: "add" 或 "remove"，决定是添加还是移除路由
     """
-    if action not in {"add", "remove"}:
-        raise ValueError("Action must be 'add' or 'remove'")
-
-    app = get_api_app()
-    is_modified = False
-    existing_paths = {route.path: route for route in app.routes}
-
-    plugin_ids = [plugin_id] if plugin_id else PluginManager().get_running_plugin_ids()
-    for plugin_id in plugin_ids:
-        routes_removed = _remove_routes(plugin_id)
-        if routes_removed:
-            is_modified = True
-
-        if action != "add":
-            continue
-        # 获取插件的 API 路由信息
-        plugin_apis = PluginManager().get_plugin_apis(plugin_id)
-        for api in plugin_apis:
-            api_path = f"{PLUGIN_PREFIX}{api.get('path', '')}"
-            try:
-                api["path"] = api_path
-                allow_anonymous = api.pop("allow_anonymous", False)
-                auth_mode = api.pop("auth", "apikey")
-                dependencies = api.setdefault("dependencies", [])
-                if not allow_anonymous:
-                    if (
-                        auth_mode == "bear"
-                        and Depends(verify_token) not in dependencies
-                    ):
-                        dependencies.append(Depends(verify_token))
-                    elif Depends(verify_apikey) not in dependencies:
-                        dependencies.append(Depends(verify_apikey))
-                app.add_api_route(**api, tags=["plugin"])
-                is_modified = True
-                logger.debug(f"Added plugin route: {api_path}")
-            except Exception as e:
-                logger.error(f"Error adding plugin route {api_path}: {str(e)}")
-
-    if is_modified:
-        _clean_protected_routes(existing_paths)
-        app.openapi_schema = None
-        app.setup()
+    _route_registry().update(plugin_id, action)
 
 
 def _remove_routes(plugin_id: str) -> bool:
@@ -118,37 +92,15 @@ def _remove_routes(plugin_id: str) -> bool:
     :param plugin_id: 插件 ID
     :return: 是否有路由被移除
     """
-    if not plugin_id:
-        return False
-    app = get_api_app()
-    prefix = f"{PLUGIN_PREFIX}/{plugin_id}/"
-    routes_to_remove = [
-        route for route in app.routes if route.path.startswith(prefix)
-    ]
-    removed = False
-    for route in routes_to_remove:
-        try:
-            app.routes.remove(route)
-            removed = True
-            logger.debug(f"Removed plugin route: {route.path}")
-        except Exception as e:
-            logger.error(f"Error removing plugin route {route.path}: {str(e)}")
-    return removed
+    return _route_registry().remove(plugin_id)
 
 
-def _clean_protected_routes(existing_paths: dict):
+def _clean_protected_routes(existing_paths: dict) -> None:
     """
     清理受保护的路由，防止在插件操作中被删除或重复添加
     :param existing_paths: 当前应用的路由路径映射
     """
-    app = get_api_app()
-    for protected_route in PROTECTED_ROUTES:
-        try:
-            existing_route = existing_paths.get(protected_route)
-            if existing_route:
-                app.routes.remove(existing_route)
-        except Exception as e:
-            logger.error(f"Error removing protected route {protected_route}: {str(e)}")
+    _route_registry().clean(existing_paths)
 
 
 def remove_plugin_from_folders(plugin_id: str):

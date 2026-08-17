@@ -1,43 +1,30 @@
-import asyncio
-import inspect
 import random
 import threading
-import time
 import traceback
 import uuid
-from dataclasses import dataclass
 from queue import Empty, PriorityQueue
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any, Type
-
-from fastapi.concurrency import run_in_threadpool
 
 from app.runtime.config import global_vars
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
-from app.schemas import ChainEventData
+from app.schemas.event import ChainEventData
 from app.schemas.types import ChainEventType, EventType
 from app.runtime.rate import ExponentialBackoffRateLimiter
 from app.foundation.singleton import Singleton
+from app.runtime.event.binding import (
+    EventBindingResolver,
+    EventHandlerBinding,
+    HandlerInstanceResolver,
+)
+from app.runtime.event.dispatch import EventDispatcher
+from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
+from app.runtime.event.registry import EventRegistry
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
 INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
 MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5  # 事件队列空闲时的最大超时时间（秒）
-
-
-@dataclass(frozen=True, slots=True)
-class EventHandlerBinding:
-    """描述上层运行时为某个事件处理器提供的实例绑定。"""
-
-    instance: Optional[Any]
-    owner_name: str
-    run_sync_in_threadpool: bool = False
-
-
-HandlerInstanceResolver = Callable[
-    [Type[Any]], Optional[EventHandlerBinding]
-]
-EventErrorNotifier = Callable[[str, str], object]
 
 
 class Event:
@@ -111,6 +98,32 @@ class EventManager(metaclass=Singleton):
         self.__handler_instance_resolvers: Dict[str, HandlerInstanceResolver] = {}
         # 由启动组合层注入的错误通知回调
         self.__error_notifier: Optional[EventErrorNotifier] = None
+        self.__registry = EventRegistry(
+            lock=self.__lock,
+            broadcast_subscribers=lambda: self.__broadcast_subscribers,
+            chain_subscribers=lambda: self.__chain_subscribers,
+            disabled_handlers=lambda: self.__disabled_handlers,
+            disabled_classes=lambda: self.__disabled_classes,
+        )
+        self.__binding_resolver = EventBindingResolver(
+            lock=self.__lock,
+            resolvers=lambda: self.__handler_instance_resolvers,
+        )
+        self.__error_policy = EventErrorPolicy(
+            notifier=lambda: self.__error_notifier,
+            emit_system_error=lambda payload: self.send_event(
+                EventType.SystemError,
+                payload,
+            ),
+        )
+        self.__dispatcher = EventDispatcher(
+            registry=self.__registry,
+            binding_resolver=self.__binding_resolver,
+            executor=lambda: self.__executor,
+            event_loop=lambda: global_vars.loop,
+            event_factory=Event,
+            error_handler=lambda **kwargs: self.__handle_event_error(**kwargs),
+        )
 
     def register_handler_instance_resolver(
             self,
@@ -122,8 +135,11 @@ class EventManager(metaclass=Singleton):
 
         同名解析器会被替换，避免测试重建单例或热重载后保留旧实例引用。
         """
-        with self.__lock:
-            self.__handler_instance_resolvers[name] = resolver
+        self.__binding_resolver.register(name, resolver)
+
+    def unresolved_handler_bindings(self) -> tuple[str, ...]:
+        """返回未命中显式 resolver 的类处理器诊断清单。"""
+        return self.__binding_resolver.unresolved_handlers()
 
     def set_error_notifier(self, notifier: Optional[EventErrorNotifier]) -> None:
         """设置事件处理异常的外部通知回调。"""
@@ -161,18 +177,7 @@ class EventManager(metaclass=Singleton):
         :param etype: 事件类型 (EventType 或 ChainEventType)
         :return: 返回是否存在可用的处理器
         """
-        if isinstance(etype, ChainEventType):
-            handlers = self.__chain_subscribers.get(etype, {})
-            return any(
-                self.__is_handler_enabled(handler)
-                for _, handler in handlers.values()
-            )
-        else:
-            handlers = self.__broadcast_subscribers.get(etype, {})
-            return any(
-                self.__is_handler_enabled(handler)
-                for handler in handlers.values()
-            )
+        return self.__registry.check(etype)
 
     def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict, ChainEventData]] = None,
                    priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
@@ -219,35 +224,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :param priority: 可选，链式事件的优先级，默认为 10；广播事件不需要优先级
         """
-        with self.__lock:
-            handler_identifier = self.__get_handler_identifier(handler)
-
-            if isinstance(event_type, ChainEventType):
-                # 链式事件，按优先级排序
-                if event_type not in self.__chain_subscribers:
-                    self.__chain_subscribers[event_type] = {}
-                handlers = self.__chain_subscribers[event_type]
-                if handler_identifier in handlers:
-                    handlers.pop(handler_identifier)
-                else:
-                    logger.debug(
-                        f"Subscribed to chain event: {event_type.value}, "
-                        f"Priority: {priority} - {handler_identifier}")
-                handlers[handler_identifier] = (priority, handler)
-                # 根据优先级排序
-                self.__chain_subscribers[event_type] = dict(
-                    sorted(self.__chain_subscribers[event_type].items(), key=lambda x: x[1][0])
-                )
-            else:
-                # 广播事件
-                if event_type not in self.__broadcast_subscribers:
-                    self.__broadcast_subscribers[event_type] = {}
-                handlers = self.__broadcast_subscribers[event_type]
-                if handler_identifier in handlers:
-                    handlers.pop(handler_identifier)
-                else:
-                    logger.debug(f"Subscribed to broadcast event: {event_type.value} - {handler_identifier}")
-                handlers[handler_identifier] = handler
+        self.__registry.add(event_type, handler, priority or DEFAULT_EVENT_PRIORITY)
 
     def remove_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable):
         """
@@ -255,43 +232,21 @@ class EventManager(metaclass=Singleton):
         :param event_type: 事件类型 (EventType 或 ChainEventType)
         :param handler: 要移除的处理器
         """
-        with self.__lock:
-            handler_identifier = self.__get_handler_identifier(handler)
-
-            if isinstance(event_type, ChainEventType) and event_type in self.__chain_subscribers:
-                self.__chain_subscribers[event_type].pop(handler_identifier, None)
-                logger.debug(f"Unsubscribed from chain event: {event_type.value} - {handler_identifier}")
-            elif event_type in self.__broadcast_subscribers:
-                self.__broadcast_subscribers[event_type].pop(handler_identifier, None)
-                logger.debug(f"Unsubscribed from broadcast event: {event_type.value} - {handler_identifier}")
+        self.__registry.remove(event_type, handler)
 
     def disable_event_handler(self, target: Union[Callable, type]):
         """
         禁用指定的事件处理器或事件处理器类
         :param target: 处理器函数或类
         """
-        identifier = self.__get_handler_identifier(target)
-        if identifier in self.__disabled_handlers or identifier in self.__disabled_classes:
-            return
-        if isinstance(target, type):
-            self.__disabled_classes.add(identifier)
-            logger.debug(f"Disabled event handler class - {identifier}")
-        else:
-            self.__disabled_handlers.add(identifier)
-            logger.debug(f"Disabled event handler - {identifier}")
+        self.__registry.disable(target)
 
     def enable_event_handler(self, target: Union[Callable, type]):
         """
         启用指定的事件处理器或事件处理器类
         :param target: 处理器函数或类
         """
-        identifier = self.__get_handler_identifier(target)
-        if isinstance(target, type):
-            self.__disabled_classes.discard(identifier)
-            logger.debug(f"Enabled event handler class - {identifier}")
-        else:
-            self.__disabled_handlers.discard(identifier)
-            logger.debug(f"Enabled event handler - {identifier}")
+        self.__registry.enable(target)
 
     def visualize_handlers(self) -> List[Dict]:
         """
@@ -299,34 +254,7 @@ class EventManager(metaclass=Singleton):
         :return: 处理器列表，包含事件类型、处理器标识符、优先级（如果有）和状态
         """
 
-        def parse_handler_data(data):
-            """
-            解析处理器数据，判断是否包含优先级
-            :param data: 订阅者数据，可能是元组或单一值
-            :return: (priority, handler)，若没有优先级则返回 (None, handler)
-            """
-            if isinstance(data, tuple) and len(data) == 2:
-                return data
-            return None, data
-
-        handler_info = []
-        # 统一处理广播事件和链式事件
-        for event_type, subscribers in {**self.__broadcast_subscribers, **self.__chain_subscribers}.items():
-            for handler_identifier, handler_data in subscribers.items():
-                # 解析优先级和处理器
-                priority, handler = parse_handler_data(handler_data)
-                # 检查处理器的启用状态
-                status = "enabled" if self.__is_handler_enabled(handler) else "disabled"
-                # 构建处理器信息字典
-                handler_dict = {
-                    "event_type": event_type.value,
-                    "handler_identifier": handler_identifier,
-                    "status": status
-                }
-                if priority is not None:
-                    handler_dict["priority"] = priority
-                handler_info.append(handler_dict)
-        return handler_info
+        return self.__registry.visualize()
 
     @classmethod
     def __get_handler_identifier(cls, target: Union[Callable, type]) -> Optional[str]:
@@ -335,13 +263,7 @@ class EventManager(metaclass=Singleton):
         :param target: 处理器函数或类
         :return: 唯一标识符
         """
-        # 统一使用 inspect.getmodule 来获取模块名
-        module = inspect.getmodule(target)
-        module_name = module.__name__ if module else "unknown_module"
-
-        # 使用 __qualname__ 获取目标的限定名
-        qualname = target.__qualname__
-        return f"{module_name}.{qualname}"
+        return EventRegistry.handler_identifier(target)
 
     @classmethod
     def __get_class_from_callable(cls, handler: Callable) -> Optional[str]:
@@ -350,23 +272,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 可调用对象（函数、方法等）
         :return: 类的唯一标识符
         """
-        # 对于绑定方法，通过 __self__.__class__ 获取类
-        if inspect.ismethod(handler) and hasattr(handler, "__self__"):
-            return cls.__get_handler_identifier(handler.__self__.__class__)
-
-        # 对于类实例（实现了 __call__ 方法）
-        if not inspect.isfunction(handler) and hasattr(handler, "__call__"):
-            handler_cls = handler.__class__  # noqa
-            return cls.__get_handler_identifier(handler_cls)
-
-        # 对于未绑定方法、静态方法、类方法，使用 __qualname__ 提取类信息
-        qualname_parts = handler.__qualname__.split(".")
-        if len(qualname_parts) > 1:
-            class_name = ".".join(qualname_parts[:-1])
-            module = inspect.getmodule(handler)
-            module_name = module.__name__ if module else "unknown_module"
-            return f"{module_name}.{class_name}"
-        return None
+        return EventRegistry.handler_class_identifier(handler)
 
     def __is_handler_enabled(self, handler: Callable) -> bool:
         """
@@ -374,17 +280,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器函数
         :return: 如果处理器启用则返回 True，否则返回 False
         """
-        # 获取处理器的唯一标识符
-        handler_id = self.__get_handler_identifier(handler)
-
-        # 获取处理器所属类的唯一标识符
-        class_id = self.__get_class_from_callable(handler)
-
-        # 检查处理器或类是否被禁用，只要其中之一被禁用则返回 False
-        if handler_id in self.__disabled_handlers or (class_id is not None and class_id in self.__disabled_classes):
-            return False
-
-        return True
+        return self.__registry.is_handler_enabled(handler)
 
     def __trigger_chain_event(self, event: Event) -> Optional[Event]:
         """
@@ -415,113 +311,21 @@ class EventManager(metaclass=Singleton):
         同步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
         :param event: 要调度的事件对象
         """
-        # 运行期可以动态注册或移除处理器；当前事件始终使用调度开始时的快照。
-        with self.__lock:
-            handlers = tuple(
-                self.__chain_subscribers.get(event.event_type, {}).items()
-            )
-        if not handlers:
-            logger.debug(f"No handlers found for chain event: {event}")
-            return False
-
-        # 过滤出启用的处理器
-        enabled_handlers = tuple(
-            (handler_id, priority, handler)
-            for handler_id, (priority, handler) in handlers
-            if self.__is_handler_enabled(handler)
-        )
-
-        if not enabled_handlers:
-            logger.debug(f"No enabled handlers found for chain event: {event}. Skipping execution.")
-            return False
-
-        self.__log_event_lifecycle(event, "Started")
-        for handler_id, priority, handler in enabled_handlers:
-            start_time = time.time()
-            self.__safe_invoke_handler(handler, event)
-            logger.debug(
-                f"{self.__get_handler_identifier(handler)} (Priority: {priority}), "
-                f"completed in {time.time() - start_time:.3f}s for event: {event}"
-            )
-        self.__log_event_lifecycle(event, "Completed")
-        return True
+        return self.__dispatcher.dispatch_chain(event)
 
     async def __dispatch_chain_event_async(self, event: Event) -> bool:
         """
         异步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
         :param event: 要调度的事件对象
         """
-        # 快照在锁内建立、在锁外执行，处理器可以安全地修改后续订阅。
-        with self.__lock:
-            handlers = tuple(
-                self.__chain_subscribers.get(event.event_type, {}).items()
-            )
-        if not handlers:
-            logger.debug(f"No handlers found for chain event: {event}")
-            return False
-
-        # 过滤出启用的处理器
-        enabled_handlers = tuple(
-            (handler_id, priority, handler)
-            for handler_id, (priority, handler) in handlers
-            if self.__is_handler_enabled(handler)
-        )
-
-        if not enabled_handlers:
-            logger.debug(f"No enabled handlers found for chain event: {event}. Skipping execution.")
-            return False
-
-        self.__log_event_lifecycle(event, "Started")
-        for handler_id, priority, handler in enabled_handlers:
-            start_time = time.time()
-            await self.__safe_invoke_handler_async(handler, event)
-            logger.debug(
-                f"{self.__get_handler_identifier(handler)} (Priority: {priority}), "
-                f"completed in {time.time() - start_time:.3f}s for event: {event}"
-            )
-        self.__log_event_lifecycle(event, "Completed")
-        return True
+        return await self.__dispatcher.async_dispatch_chain(event)
 
     def __dispatch_broadcast_event(self, event: Event):
         """
         异步方式调度广播事件，通过线程池逐个调用事件处理器
         :param event: 要调度的事件对象
         """
-        # 快照隔离当前调度与运行期订阅变更；变更从下一个事件开始生效。
-        with self.__lock:
-            handlers = tuple(
-                self.__broadcast_subscribers.get(event.event_type, {}).items()
-            )
-        if not handlers:
-            logger.debug(f"No handlers found for broadcast event: {event}")
-            return
-        target_plugin_id = None
-        if event.event_type == EventType.MessageAction and isinstance(event.event_data, dict):
-            target_plugin_id = event.event_data.get("__mp_target_plugin_id")
-        # 为每个处理器提供独立的事件实例，防止某个处理器对 event_data 的修改影响其他处理器
-        for handler_id, handler in handlers:
-            if target_plugin_id and not self.__should_dispatch_to_target_plugin(
-                    handler, handler_id, str(target_plugin_id)
-            ):
-                continue
-            # 仅浅拷贝顶层字典，避免不必要的深拷贝开销；这样可以隔离键级别的替换/赋值
-            if isinstance(event.event_data, dict):
-                event_data_copy = event.event_data.copy()
-                event_data_copy.pop("__mp_target_plugin_id", None)
-            else:
-                event_data_copy = event.event_data
-            isolated_event = Event(event_type=event.event_type,
-                                   event_data=event_data_copy,
-                                   priority=event.priority)
-            if inspect.iscoroutinefunction(handler):
-                # 对于异步函数，直接在事件循环中运行
-                asyncio.run_coroutine_threadsafe(
-                    self.__safe_invoke_handler_async(handler, isolated_event),
-                    global_vars.loop
-                )
-            else:
-                # 对于同步函数，在线程池中运行
-                self.__executor.submit(self.__safe_invoke_handler, handler, isolated_event)
+        self.__dispatcher.dispatch_broadcast(event)
 
     @classmethod
     def __should_dispatch_to_target_plugin(
@@ -533,23 +337,11 @@ class EventManager(metaclass=Singleton):
         """
         限定插件输入事件只投递给目标插件，避免自由文本被其他插件观察到。
         """
-        class_name, method_name = cls.__parse_handler_names(handler)
-        if class_name != target_plugin_id:
-            return False
-        identifier_parts = (handler_identifier or "").split(".")
-        if len(identifier_parts) < 2:
-            logger.debug(
-                "Target plugin dispatch skipped because handler identifier is invalid: "
-                f"target={target_plugin_id}, handler={handler_identifier}"
-            )
-            return False
-        if identifier_parts[-2:] != [class_name, method_name]:
-            logger.debug(
-                "Target plugin dispatch skipped because handler identifier does not match handler: "
-                f"target={target_plugin_id}, handler={handler_identifier}, parsed={class_name}.{method_name}"
-            )
-            return False
-        return True
+        return EventDispatcher.should_dispatch_to_target_plugin(
+            handler,
+            handler_identifier,
+            target_plugin_id,
+        )
 
     def __safe_invoke_handler(self, handler: Callable, event: Event):
         """
@@ -557,11 +349,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :param event: 事件对象
         """
-        if not self.__is_handler_enabled(handler):
-            logger.debug(f"Handler {self.__get_handler_identifier(handler)} is disabled. Skipping execution")
-            return
-
-        self.__invoke_handler_by_type_sync(handler, event)
+        self.__dispatcher.safe_invoke_sync(handler, event)
 
     async def __safe_invoke_handler_async(self, handler: Callable, event: Event):
         """
@@ -569,11 +357,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :param event: 事件对象
         """
-        if not self.__is_handler_enabled(handler):
-            logger.debug(f"Handler {self.__get_handler_identifier(handler)} is disabled. Skipping execution")
-            return
-
-        await self.__invoke_handler_by_type_async(handler, event)
+        await self.__dispatcher.safe_invoke_async(handler, event)
 
     def __invoke_handler_by_type_sync(self, handler: Callable, event: Event):
         """
@@ -581,20 +365,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :param event: 要处理的事件对象
         """
-        resolved = self.__resolve_handler(handler)
-        if not resolved:
-            return
-        method, binding, class_name, method_name = resolved
-        try:
-            method(event)
-        except Exception as e:
-            self.__handle_event_error(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=e,
-            )
+        self.__dispatcher.invoke_sync(handler, event)
 
     async def __invoke_handler_by_type_async(self, handler: Callable, event: Event):
         """
@@ -602,25 +373,7 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :param event: 要处理的事件对象
         """
-        resolved = self.__resolve_handler(handler)
-        if not resolved:
-            return
-        method, binding, class_name, method_name = resolved
-        try:
-            if inspect.iscoroutinefunction(method):
-                await method(event)
-            elif binding.run_sync_in_threadpool or not class_name:
-                await run_in_threadpool(method, event)
-            else:
-                method(event)
-        except Exception as e:
-            self.__handle_event_error(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=e,
-            )
+        await self.__dispatcher.invoke_async(handler, event)
 
     @staticmethod
     def __parse_handler_names(handler: Callable) -> Tuple[str, str]:
@@ -629,82 +382,19 @@ class EventManager(metaclass=Singleton):
         :param handler: 处理器
         :return: (class_name, method_name)
         """
-        names = handler.__qualname__.split(".")
-        if len(names) < 2:
-            return "", names[0]
-        return names[0], names[1]
+        return EventBindingResolver.parse_handler_names(handler)
 
     @staticmethod
     def __get_handler_owner_class(handler: Callable) -> Optional[Type[Any]]:
         """从处理器对象本身解析声明它的类，不按命名约定动态导入模块。"""
-        if inspect.ismethod(handler):
-            owner = handler.__self__
-            return owner if isinstance(owner, type) else type(owner)
-        module = inspect.getmodule(handler)
-        if not module:
-            return None
-        owner: Any = module
-        for part in handler.__qualname__.split(".")[:-1]:
-            if part == "<locals>":
-                return None
-            owner = getattr(owner, part, None)
-            if owner is None:
-                return None
-        return owner if isinstance(owner, type) else None
+        return EventBindingResolver.owner_class(handler)
 
     def __resolve_handler(
             self,
             handler: Callable,
     ) -> Optional[Tuple[Callable, EventHandlerBinding, str, str]]:
         """将装饰阶段保存的函数解析为当前运行实例上的可调用方法。"""
-        owner_class = self.__get_handler_owner_class(handler)
-        method_name = getattr(handler, "__name__", self.__parse_handler_names(handler)[1])
-        if owner_class is None:
-            binding = EventHandlerBinding(
-                instance=None,
-                owner_name=self.__get_handler_identifier(handler),
-                run_sync_in_threadpool=True,
-            )
-            return handler, binding, "", method_name
-
-        with self.__lock:
-            resolvers = list(self.__handler_instance_resolvers.values())
-        binding = next(
-            (result for resolver in resolvers if (result := resolver(owner_class)) is not None),
-            None,
-        )
-        if binding is None:
-            try:
-                get_existing = getattr(owner_class, "get_existing_instance", None)
-                instance = get_existing() if callable(get_existing) else None
-                if instance is None:
-                    instance = owner_class()
-                binding = EventHandlerBinding(
-                    instance=instance,
-                    owner_name=owner_class.__name__,
-                )
-            except Exception as e:
-                logger.error(
-                    f"事件处理出错：创建 {owner_class.__name__} 实例失败："
-                    f"{str(e)} - {traceback.format_exc()}"
-                )
-                return None
-        if binding.instance is None:
-            return None
-        method = getattr(binding.instance, method_name, None)
-        if not callable(method):
-            # 动态生成的处理器可能只同步了 __qualname__，__name__ 与类上方法名不一致时
-            # 回退到限定名末段重试；仍无法解析时记录告警，避免静默跳过
-            fallback_name = self.__parse_handler_names(handler)[1]
-            method = getattr(binding.instance, fallback_name, None)
-            if fallback_name == method_name or not callable(method):
-                logger.warning(
-                    f"事件处理器 {self.__get_handler_identifier(handler)} "
-                    f"无法解析为实例方法 {owner_class.__name__}.{method_name}，跳过执行"
-                )
-                return None
-            method_name = fallback_name
-        return method, binding, owner_class.__name__, method_name
+        return self.__binding_resolver.resolve(handler)
 
     def __broadcast_consumer_loop(self):
         """
@@ -737,28 +427,12 @@ class EventManager(metaclass=Singleton):
         """
         全局错误处理器，用于处理事件处理中的异常
         """
-        logger.error(f"{module_name} 事件处理出错：{str(e)} - {traceback.format_exc()}")
-
-        # 消息实现由启动组合层注入，事件总线不反向依赖消息模块。
-        with self.__lock:
-            notifier = self.__error_notifier
-        if notifier:
-            try:
-                notifier(
-                    f"{module_name} 处理事件 {event.event_type} 时出错",
-                    f"{class_name}.{method_name}：{str(e)}",
-                )
-            except Exception as notify_error:
-                logger.error(f"发送事件错误通知失败：{str(notify_error)}")
-        self.send_event(
-            EventType.SystemError,
-            {
-                "type": "event",
-                "event_type": event.event_type,
-                "event_handle": f"{class_name}.{method_name}",
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
+        self.__error_policy.handle(
+            event=event,
+            module_name=module_name,
+            class_name=class_name,
+            method_name=method_name,
+            error=e,
         )
 
     def register(self, etype: Union[EventType, ChainEventType, List[Union[EventType, ChainEventType]], type],
@@ -797,5 +471,9 @@ class EventManager(metaclass=Singleton):
         return decorator
 
 
-# 全局实例定义
+# 模块热重载时类对象会重新创建，但插件和 SDK 可能仍持有旧全局实例。把旧实例登记到
+# 新 EventManager 类的单例键，确保所有公开入口继续共享同一个事件总线。
+_existing_eventmanager = globals().get("eventmanager")
+if _existing_eventmanager is not None:
+    Singleton._instances[(EventManager, (), frozenset())] = _existing_eventmanager
 eventmanager = EventManager()

@@ -5,7 +5,17 @@ from uuid import UUID
 from fastapi import Depends, Query
 from pydantic import BeforeValidator
 
-from app import schemas
+from app.schemas.category import CategoryConfig as _SchemaCategoryConfig
+from app.schemas.category import MediaCategoryMap as _SchemaMediaCategoryMap
+from app.schemas.context import MediaEpisodeGroup as _SchemaMediaEpisodeGroup
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
+from app.schemas.context import MediaSeason as _SchemaMediaSeason
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.workflow import Context as _SchemaContext
+from app.schemas.workflow import FileItem as _SchemaFileItem
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
@@ -18,9 +28,8 @@ from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.application.security.access import verify_token, verify_apitoken
 from app.db.models import User
 from app.api.deps import get_current_active_user, get_current_active_superuser
-from app.schemas import MediaType
 from app.schemas.category import CategoryConfig
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
 from app.schemas.media import normalize_media_source, resolve_media_identity
 
@@ -103,14 +112,14 @@ def _build_recognize_metainfo(
 
 def _build_media_seasons(
         mediainfo: Any, season: Optional[int] = None,
-) -> List[schemas.MediaSeason]:
+) -> List[_SchemaMediaSeason]:
     """将任意数据源的统一媒体信息转换为季信息响应。"""
     seasons_info = []
     for item in mediainfo.season_info or []:
         season_number = item.get("season_number")
         if season is not None and season_number != season:
             continue
-        seasons_info.append(schemas.MediaSeason(
+        seasons_info.append(_SchemaMediaSeason(
             air_date=item.get("air_date"),
             episode_count=item.get("episode_count"),
             name=item.get("name"),
@@ -128,7 +137,7 @@ def _build_media_seasons(
     elif not season_numbers:
         season_numbers = [mediainfo.season or 1]
     return [
-        schemas.MediaSeason(
+        _SchemaMediaSeason(
             season_number=season_number,
             poster_path=mediainfo.poster_path,
             name=f"第 {season_number} 季",
@@ -145,14 +154,14 @@ def _build_media_seasons(
 
 
 @router.get(
-    "/recognize", summary="识别媒体信息（种子）", response_model=schemas.Context
+    "/recognize", summary="识别媒体信息（种子）", response_model=_SchemaContext
 )
 async def recognize(
     title: str,
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
     media_source: Optional[MediaSource] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
@@ -173,13 +182,13 @@ async def recognize(
     )
     if mediainfo:
         return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
-    return schemas.Context()
+    return _SchemaContext()
 
 
 @router.get(
     "/recognize2",
     summary="识别种子媒体信息（API_TOKEN）",
-    response_model=schemas.Context,
+    response_model=_SchemaContext,
 )
 async def recognize2(
     _: Annotated[str, Depends(verify_apitoken)],
@@ -196,12 +205,12 @@ async def recognize2(
 
 
 @router.get(
-    "/recognize_file", summary="识别媒体信息（文件）", response_model=schemas.Context
+    "/recognize_file", summary="识别媒体信息（文件）", response_model=_SchemaContext
 )
 async def recognize_file(
     path: str,
     media_source: Optional[MediaSource] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据文件路径识别媒体信息，影视与音乐统一走媒体链路径识别入口
@@ -212,13 +221,13 @@ async def recognize_file(
     )
     if context:
         return context.to_dict()
-    return schemas.Context()
+    return _SchemaContext()
 
 
 @router.get(
     "/recognize_file2",
     summary="识别文件媒体信息（API_TOKEN）",
-    response_model=schemas.Context,
+    response_model=_SchemaContext,
 )
 async def recognize_file2(
     path: str,
@@ -235,7 +244,7 @@ async def recognize_file2(
 @router.get(
     "/search",
     summary="搜索媒体/人物信息",
-    response_model=schemas.MediaSearchResults,
+    response_model=_SchemaMediaSearchResults,
 )
 async def search(
     title: str,
@@ -243,7 +252,7 @@ async def search(
     page: int = 1,
     count: int = 8,
     media_source: MediaSourceQuery = (),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     模糊搜索媒体、合集、人物或音乐信息列表。
@@ -257,7 +266,7 @@ async def search(
     :return: 搜索结果列表
     """
 
-    def __get_source(obj: Union[schemas.MediaInfo, schemas.MediaPerson, dict]):
+    def __get_source(obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict]):
         """
         获取对象属性
         """
@@ -317,16 +326,16 @@ async def search(
 
 
 @router.post(
-    "/scrape/{storage}", summary="刮削媒体信息", response_model=schemas.Response[None]
+    "/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None]
 )
 def scrape(
-    fileitem: schemas.FileItem,
+    fileitem: _SchemaFileItem,
     storage: Optional[str] = "local",
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     type_name: Optional[MediaType] = None,
     music_type: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     刮削媒体信息，可按请求指定媒体数据源及其原生ID
@@ -340,17 +349,17 @@ def scrape(
     :param _: Token校验
     """
     if not fileitem or not fileitem.path:
-        return schemas.Response(success=False, message="刮削路径无效")
+        return _SchemaResponse(success=False, message="刮削路径无效")
     has_explicit_media_id = media_id is not None
     normalized_media_id = str(media_id).strip() if has_explicit_media_id else None
     if has_explicit_media_id and not normalized_media_id:
-        return schemas.Response(success=False, message="媒体ID格式无效")
+        return _SchemaResponse(success=False, message="媒体ID格式无效")
     if normalized_media_id and not media_source:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False, message="指定媒体ID时必须同时指定媒体数据源"
         )
     if normalized_media_id and not _is_valid_source_media_id(media_source, normalized_media_id):
-        return schemas.Response(success=False, message="媒体ID格式无效")
+        return _SchemaResponse(success=False, message="媒体ID格式无效")
 
     is_music = (
         type_name == MediaType.MUSIC
@@ -359,7 +368,7 @@ def scrape(
     )
     if is_music:
         if type_name not in (None, MediaType.MUSIC):
-            return schemas.Response(success=False, message="音乐元数据源只能用于音乐刮削")
+            return _SchemaResponse(success=False, message="音乐元数据源只能用于音乐刮削")
         music_info: Optional[MusicInfo] = None
         if normalized_media_id:
             normalized_music_type = normalize_music_type(
@@ -367,7 +376,7 @@ def scrape(
                 allow_artist=False,
             )
             if not normalized_music_type:
-                return schemas.Response(
+                return _SchemaResponse(
                     success=False,
                     message="音乐实体类型无效，仅支持 recording 或 album",
                 )
@@ -379,14 +388,14 @@ def scrape(
                 music_type=normalized_music_type,
             )
             if not music_info:
-                return schemas.Response(success=False, message="刮削失败，无法识别音乐信息")
+                return _SchemaResponse(success=False, message="刮削失败，无法识别音乐信息")
         success, message = ScrapingChain().scrape_music_metadata(
             fileitem=fileitem,
             mediainfo=music_info,
             overwrite=True,
             media_source=media_source,
         )
-        return schemas.Response(success=success, message=message)
+        return _SchemaResponse(success=success, message=message)
 
     chain = MediaChain()
     if normalized_media_id:
@@ -410,12 +419,12 @@ def scrape(
         media_info = context.media_info if context else None
 
     if not media_info:
-        return schemas.Response(success=False, message="刮削失败，无法识别媒体信息")
+        return _SchemaResponse(success=False, message="刮削失败，无法识别媒体信息")
     if media_source:
         media_info.scrape_source = media_source
     if storage == "local":
         if not Path(fileitem.path).exists():
-            return schemas.Response(success=False, message="刮削路径不存在")
+            return _SchemaResponse(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)
     ScrapingChain().scrape_metadata(
         fileitem=fileitem,
@@ -423,24 +432,24 @@ def scrape(
         mediainfo=media_info,
         overwrite=True,
     )
-    return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
+    return _SchemaResponse(success=True, message=f"{fileitem.path} 刮削完成")
 
 
 @router.get(
     "/category/config",
     summary="获取分类策略配置",
-    response_model=schemas.Response[schemas.CategoryConfig],
+    response_model=_SchemaResponse[_SchemaCategoryConfig],
 )
 def get_category_config(_: User = Depends(get_current_active_user)):
     """
     获取分类策略配置
     """
     config = MediaChain().category_config()
-    return schemas.Response(success=True, data=config.model_dump())
+    return _SchemaResponse(success=True, data=config.model_dump())
 
 
 @router.post(
-    "/category/config", summary="保存分类策略配置", response_model=schemas.Response[None]
+    "/category/config", summary="保存分类策略配置", response_model=_SchemaResponse[None]
 )
 def save_category_config(
     config: CategoryConfig, _: User = Depends(get_current_active_superuser)
@@ -449,17 +458,17 @@ def save_category_config(
     保存分类策略配置
     """
     if MediaChain().save_category_config(config):
-        return schemas.Response(success=True, message="保存成功")
+        return _SchemaResponse(success=True, message="保存成功")
     else:
-        return schemas.Response(success=False, message="保存失败")
+        return _SchemaResponse(success=False, message="保存失败")
 
 
 @router.get(
     "/category",
     summary="查询自动分类配置",
-    response_model=schemas.MediaCategoryMap,
+    response_model=_SchemaMediaCategoryMap,
 )
-async def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def category(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询自动分类配置
     """
@@ -469,10 +478,10 @@ async def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.get(
     "/group/seasons/{episode_group}",
     summary="查询剧集组季信息",
-    response_model=List[schemas.MediaSeason],
+    response_model=List[_SchemaMediaSeason],
 )
 async def group_seasons(
-    episode_group: str, _: schemas.TokenPayload = Depends(verify_token)
+    episode_group: str, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     查询剧集组季信息（themoviedb）
@@ -489,9 +498,9 @@ async def group_seasons(
 @router.get(
     "/groups/{tmdbid}",
     summary="查询媒体剧集组",
-    response_model=List[schemas.MediaEpisodeGroup],
+    response_model=List[_SchemaMediaEpisodeGroup],
 )
-async def groups(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def groups(tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体剧集组列表（themoviedb）
     """
@@ -512,7 +521,7 @@ async def groups(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -
 
 
 @router.get(
-    "/seasons", summary="查询媒体季信息", response_model=List[schemas.MediaSeason]
+    "/seasons", summary="查询媒体季信息", response_model=List[_SchemaMediaSeason]
 )
 async def seasons(
     media_source: Optional[MediaSource] = None,
@@ -520,7 +529,7 @@ async def seasons(
     title: Optional[str] = None,
     year: str = None,
     season: int = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     查询媒体季信息
@@ -581,12 +590,12 @@ async def seasons(
     return []
 
 
-@router.get("/{media_id}", summary="查询媒体详情", response_model=schemas.MediaInfo)
+@router.get("/{media_id}", summary="查询媒体详情", response_model=_SchemaMediaInfo)
 async def detail(
     media_id: str,
     media_source: MediaSource,
     type_name: str,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据媒体来源和原生 ID 查询媒体信息，type_name: 电影/电视剧
@@ -597,7 +606,7 @@ async def detail(
         media_id=media_id,
     )
     if not normalized_source or not normalized_media_id:
-        return schemas.MediaInfo()
+        return _SchemaMediaInfo()
     mediachain = MediaChain()
     mediainfo = await mediachain.async_recognize_media(
         media_source=normalized_source,
@@ -614,4 +623,4 @@ async def detail(
                 mediainfo.tvdb_slug = slug
         return mediainfo.to_dict()
 
-    return schemas.MediaInfo()
+    return _SchemaMediaInfo()

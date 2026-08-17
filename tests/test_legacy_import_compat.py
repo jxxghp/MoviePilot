@@ -270,12 +270,27 @@ def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
     schema_media = importlib.import_module("app.schemas.media")
     transfer_schema = importlib.import_module("app.schemas.transfer")
     legacy_transfer = importlib.import_module("app.sdk._legacy.transfer")
+    history_schema = importlib.import_module("app.schemas.history")
+    system_schema = importlib.import_module("app.schemas.system")
+    tmdb_schema = importlib.import_module("app.schemas.tmdb")
+    types_schema = importlib.import_module("app.schemas.types")
+    agent_schema = importlib.import_module("app.schemas.agent")
+    sdk_logging = importlib.import_module("app.sdk.logging")
+    legacy_logging = importlib.import_module("app.log")
+    runtime_logging = importlib.import_module("app.runtime.log")
     schemas_package = importlib.import_module("app.schemas")
 
     assert domain_media.build_media_key is schema_media.build_media_key
     assert domain_media.resolve_media_identity is schema_media.resolve_media_identity
     assert transfer_schema.TransferTask is legacy_transfer.TransferTask
     assert transfer_schema.TransferQueue is legacy_transfer.TransferQueue
+    assert transfer_schema.DownloadHistory is history_schema.DownloadHistory
+    assert transfer_schema.TransferDirectoryConf is system_schema.TransferDirectoryConf
+    assert transfer_schema.TmdbEpisode is tmdb_schema.TmdbEpisode
+    assert transfer_schema.MediaType is types_schema.MediaType
+    assert agent_schema.ReplyMode is types_schema.ReplyMode
+    assert sdk_logging.LoggerManager is runtime_logging.LoggerManager
+    assert legacy_logging.LoggerManager is runtime_logging.LoggerManager
     assert schemas_package.TransferTask is legacy_transfer.TransferTask
     assert schemas_package.TransferQueue is legacy_transfer.TransferQueue
 
@@ -360,6 +375,22 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     assert set(SYMBOL_ALIASES["app.schemas.transfer"]) == {
         "TransferTask",
         "TransferQueue",
+        "DownloadHistory",
+        "TransferDirectoryConf",
+        "TmdbEpisode",
+        "MediaType",
+    }
+    assert set(SYMBOL_ALIASES["app.schemas.agent"]) == {"ReplyMode"}
+    assert set(SYMBOL_ALIASES["app.sdk.logging"]) == {
+        "CustomFormatter",
+        "LogConfigModel",
+        "LogEntry",
+        "LogSettings",
+        "LoggerManager",
+        "NonBlockingFileHandler",
+        "configure_log_settings",
+        "configure_log_writer",
+        "log_settings",
     }
     assert set(SYMBOL_ALIASES["app.schemas.types"]) == {
         "MessageChannel",

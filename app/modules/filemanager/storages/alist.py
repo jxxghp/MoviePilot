@@ -5,7 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.cache import cached
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
@@ -54,7 +55,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def _delay_get_item(
         self, path: Path, /, refresh: bool = False
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         自动延迟重试 get_item 模块
 
@@ -70,8 +71,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         return None
 
     def __build_transfer_item(
-            self, source_item: schemas.FileItem, target_path: Path
-    ) -> schemas.FileItem:
+            self, source_item: _SchemaFileItem, target_path: Path
+    ) -> _SchemaFileItem:
         """
         根据目标路径构造文件项，用于 OpenList 操作成功但元数据短时间不可见的场景。
         目录项路径需要遵循 FileItem 以斜杠结尾的约定。
@@ -80,7 +81,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         if source_item.type == "dir" and not target_path_str.endswith("/"):
             target_path_str = f"{target_path_str}/"
 
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             type=source_item.type,
             path=target_path_str,
@@ -197,12 +198,12 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def list(
         self,
-        fileitem: schemas.FileItem,
+        fileitem: _SchemaFileItem,
         password: Optional[str] = "",
         page: int = 1,
         per_page: int = 0,
         refresh: bool = False,
-    ) -> List[schemas.FileItem]:
+    ) -> List[_SchemaFileItem]:
         """
         浏览文件
         :param fileitem: 文件项
@@ -291,7 +292,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             page_content = page_data.get("content") or []
             items.extend(
                 [
-                    schemas.FileItem(
+                    _SchemaFileItem(
                         storage=self.schema.value,
                         type="dir" if item["is_dir"] else "file",
                         path=(Path(fileitem.path) / item["name"]).as_posix()
@@ -321,8 +322,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             current_page += 1
 
     def create_folder(
-        self, fileitem: schemas.FileItem, name: str
-    ) -> Optional[schemas.FileItem]:
+        self, fileitem: _SchemaFileItem, name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         创建目录
         :param fileitem: 父目录
@@ -364,7 +365,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         return self._delay_get_item(
             path, refresh=True
         ) or self.__build_transfer_item(
-            schemas.FileItem(
+            _SchemaFileItem(
                 storage=self.schema.value,
                 type="dir",
                 path=fileitem.path,
@@ -374,7 +375,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             path,
         )
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取目录，如目录不存在则创建
 
@@ -386,7 +387,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             return folder
         if not folder:
             folder = self.create_folder(
-                schemas.FileItem(
+                _SchemaFileItem(
                     storage=self.schema.value,
                     type="dir",
                     path=path.parent.as_posix(),
@@ -404,7 +405,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         page: int = 1,
         per_page: int = 0,
         refresh: bool = False,
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，不存在返回None
         :param path: 文件路径
@@ -473,14 +474,14 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         return self.__build_fileitem(path, result["data"])
 
-    def __build_fileitem(self, path: Path, data: dict) -> schemas.FileItem:
+    def __build_fileitem(self, path: Path, data: dict) -> _SchemaFileItem:
         """
         根据接口返回数据构建文件项。
         :param path: 文件路径
         :param data: 接口返回的 data 字段
         :return: 文件项
         """
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             type="dir" if data["is_dir"] else "file",
             path=path.as_posix() + ("/" if data["is_dir"] else ""),
@@ -492,7 +493,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             thumbnail=data["thumb"],
         )
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
         只有接口明确回报「对象不存在」才是确定结果，连接失败、HTTP 异常与其他
@@ -523,7 +524,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             raise StorageQueryError(f"【OpenList】查询文件 {path} 失败：{message}")
         return self.__build_fileitem(path, result["data"])
 
-    def get_parent(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def get_parent(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取父目录
 
@@ -532,7 +533,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_folder(Path(fileitem.path).parent)
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件或目录
 
@@ -570,7 +571,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             return False
         return True
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件
 
@@ -619,7 +620,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def download(
         self,
-        fileitem: schemas.FileItem,
+        fileitem: _SchemaFileItem,
         path: Path = None,
         password: Optional[str] = "",
     ) -> Optional[Path]:
@@ -712,11 +713,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def upload(
         self,
-        fileitem: schemas.FileItem,
+        fileitem: _SchemaFileItem,
         path: Path,
         new_name: Optional[str] = None,
         task: bool = False,
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         上传文件（带进度）
         :param fileitem: 上传目录项
@@ -830,13 +831,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             "X-File-Sha256": sha256_hash.hexdigest(),
         }
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件详情
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
         :param fileitem: 文件项
@@ -892,8 +893,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         return True
 
     def copy_item(
-            self, fileitem: schemas.FileItem, path: Path, new_name: str
-    ) -> Optional[schemas.FileItem]:
+            self, fileitem: _SchemaFileItem, path: Path, new_name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         复制文件并返回目标文件项，兼容 OpenList 成功响应不携带目标对象的格式。
         """
@@ -913,7 +914,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             ) or self.__build_transfer_item(fileitem, target_path)
         return None
 
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
         :param fileitem: 文件项
@@ -967,8 +968,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         return True
 
     def move_item(
-            self, fileitem: schemas.FileItem, path: Path, new_name: str
-    ) -> Optional[schemas.FileItem]:
+            self, fileitem: _SchemaFileItem, path: Path, new_name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         移动文件并返回目标文件项，兼容 OpenList 成功响应不携带目标对象的格式。
         """
@@ -979,19 +980,19 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             fileitem, target_path
         )
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         硬链接文件
         """
         pass
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         软链接文件
         """
         pass
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """

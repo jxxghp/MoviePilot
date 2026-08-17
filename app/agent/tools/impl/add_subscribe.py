@@ -10,7 +10,7 @@ from app.chain.subscribe import SubscribeChain
 from app.db.oper.user import UserOper
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, NotificationChannel
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 
 
 class AddSubscribeInput(BaseModel):

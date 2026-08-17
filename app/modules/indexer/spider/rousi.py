@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 from app.runtime.config import settings
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools

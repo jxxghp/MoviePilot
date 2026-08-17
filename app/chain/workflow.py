@@ -18,7 +18,11 @@ from app.runtime.events import Event, eventmanager
 from app.db.models import Workflow
 from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
-from app.schemas import ActionContext, ActionFlow, Action, ActionExecution, ActionResult
+from app.schemas.workflow import ActionContext
+from app.schemas.workflow import ActionFlow
+from app.schemas.workflow import Action
+from app.schemas.workflow import ActionExecution
+from app.schemas.workflow import ActionResult
 from app.schemas.types import EventType
 from app.workflow import WorkFlowManager
 

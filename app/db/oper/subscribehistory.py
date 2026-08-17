@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import List
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.subscribehistory import SubscribeHistory
 
 

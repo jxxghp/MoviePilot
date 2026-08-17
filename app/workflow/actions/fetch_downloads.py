@@ -1,6 +1,7 @@
 from app.workflow.actions import BaseAction, ActionChain
 from app.runtime.config import global_vars
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 from app.runtime.log import logger
 
 

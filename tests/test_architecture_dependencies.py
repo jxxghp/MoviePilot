@@ -66,6 +66,17 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
 )
+PLUGIN_COMPONENT_ROOTS = (
+    "app/adapters/external/plugin",
+    "app/adapters/system/plugin",
+    "app/application/plugin",
+    "app/runtime/extensions/plugin",
+)
+PLUGIN_LEGACY_ABI_NAMES = {
+    "MoviePilotServerHelper",
+    "PluginHelper",
+    "PluginManager",
+}
 FORBIDDEN_IMPORT_PREFIXES = {
     "app.foundation": (
         "app.adapters",
@@ -280,6 +291,86 @@ def test_host_code_does_not_import_legacy_roots():
         if imports:
             violations[str(relative)] = imports
     assert violations == {}
+
+
+def test_plugin_components_do_not_reexport_legacy_abi_names():
+    """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
+    violations: list[str] = []
+    for root in PLUGIN_COMPONENT_ROOTS:
+        for path in (PROJECT_ROOT / root).rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if node.name == "__getattr__" or node.name in PLUGIN_LEGACY_ABI_NAMES:
+                        violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
+                elif isinstance(node, ast.ClassDef):
+                    if node.name in PLUGIN_LEGACY_ABI_NAMES or node.name.endswith("Oper"):
+                        violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    for alias in node.names:
+                        is_legacy_name = (
+                            alias.name in PLUGIN_LEGACY_ABI_NAMES
+                            or alias.name.endswith("Oper")
+                        )
+                        is_private = bool(alias.asname and alias.asname.startswith("_"))
+                        if is_legacy_name and not is_private:
+                            violations.append(
+                                f"{path.relative_to(PROJECT_ROOT)}:{alias.name}"
+                            )
+                elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    names = {
+                        target.id
+                        for target in targets
+                        if isinstance(target, ast.Name)
+                    }
+                    forbidden = {
+                        name
+                        for name in names
+                        if name == "__all__"
+                        or name in PLUGIN_LEGACY_ABI_NAMES
+                        or name.endswith("Oper")
+                    }
+                    violations.extend(
+                        f"{path.relative_to(PROJECT_ROOT)}:{name}"
+                        for name in sorted(forbidden)
+                    )
+    assert violations == []
+
+
+def test_host_code_uses_precise_schema_modules():
+    """宿主不得重新依赖 schema 聚合入口或星号导出。"""
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] in {"plugins", "schemas"}:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app":
+                if any(alias.name == "schemas" for alias in node.names):
+                    violations.append(str(relative))
+                    break
+            if isinstance(node, ast.ImportFrom) and node.module == "app.schemas":
+                violations.append(str(relative))
+                break
+    assert violations == []
+
+
+def test_database_internals_do_not_import_db_facades():
+    """DB 子模块必须依赖具体实现文件，不得回流到包级兼容入口。"""
+    violations: list[str] = []
+    for path in (APP_ROOT / "db").rglob("*.py"):
+        if path.name == "__init__.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and node.module in {"app.db", "app.db.models"}
+            for node in ast.walk(tree)
+        ):
+            violations.append(str(path.relative_to(PROJECT_ROOT)))
+    assert violations == []
 
 
 def test_migrated_modules_are_not_in_import_cycles():

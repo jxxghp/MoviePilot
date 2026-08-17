@@ -2,7 +2,13 @@ from typing import List, Any, Optional
 
 from fastapi import Depends
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.tmdb import TmdbRecognitionCacheData as _SchemaTmdbRecognitionCacheData
+from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.tmdb import TmdbChain
 from app.runtime.config import settings
@@ -18,15 +24,15 @@ router = ResponseAPIRouter()
 @router.get(
     "/cache",
     summary="查询 TheMovieDb 识别缓存",
-    response_model=schemas.Response[schemas.TmdbRecognitionCacheData],
+    response_model=_SchemaResponse[_SchemaTmdbRecognitionCacheData],
 )
 async def tmdb_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """查询可管理的 TheMovieDb 识别缓存。"""
     cache_items = TmdbChain().cache_items()
     recognized_count = sum(1 for item in cache_items if item["tmdb_id"])
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={
             "count": len(cache_items),
@@ -44,35 +50,35 @@ async def tmdb_recognition_cache(
 @router.delete(
     "/cache/{cache_key:path}",
     summary="删除指定 TheMovieDb 识别缓存",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def delete_tmdb_recognition_cache(
     cache_key: str,
     _: User = Depends(get_current_active_superuser_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """按缓存键删除单条 TheMovieDb 识别缓存。"""
     deleted_item = TmdbChain().delete_cache(cache_key)
     if not deleted_item:
-        return schemas.Response(success=False, message="TheMovieDb 识别缓存不存在")
-    return schemas.Response(success=True, message="TheMovieDb 识别缓存删除成功")
+        return _SchemaResponse(success=False, message="TheMovieDb 识别缓存不存在")
+    return _SchemaResponse(success=True, message="TheMovieDb 识别缓存删除成功")
 
 
 @router.delete(
-    "/cache", summary="清空 TheMovieDb 识别缓存", response_model=schemas.Response[None]
+    "/cache", summary="清空 TheMovieDb 识别缓存", response_model=_SchemaResponse[None]
 )
 async def clear_tmdb_recognition_cache(
     _: User = Depends(get_current_active_superuser_async),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """清空全部 TheMovieDb 识别缓存。"""
     TmdbChain().clear_cache()
-    return schemas.Response(success=True, message="TheMovieDb 识别缓存清理完成")
+    return _SchemaResponse(success=True, message="TheMovieDb 识别缓存清理完成")
 
 
 @router.get(
-    "/seasons/{tmdbid}", summary="TMDB所有季", response_model=List[schemas.TmdbSeason]
+    "/seasons/{tmdbid}", summary="TMDB所有季", response_model=List[_SchemaTmdbSeason]
 )
 async def tmdb_seasons(
-    tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)
+    tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     根据TMDBID查询themoviedb所有季信息
@@ -86,10 +92,10 @@ async def tmdb_seasons(
 @router.get(
     "/similar/{tmdbid}/{type_name}",
     summary="类似电影/电视剧",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_similar(
-    tmdbid: int, type_name: str, _: schemas.TokenPayload = Depends(verify_token)
+    tmdbid: int, type_name: str, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     根据TMDBID查询类似电影/电视剧，type_name: 电影/电视剧
@@ -109,10 +115,10 @@ async def tmdb_similar(
 @router.get(
     "/recommend/{tmdbid}/{type_name}",
     summary="推荐电影/电视剧",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_recommend(
-    tmdbid: int, type_name: str, _: schemas.TokenPayload = Depends(verify_token)
+    tmdbid: int, type_name: str, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     根据TMDBID查询推荐电影/电视剧，type_name: 电影/电视剧
@@ -132,13 +138,13 @@ async def tmdb_recommend(
 @router.get(
     "/collection/{collection_id}",
     summary="系列合集详情",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_collection(
     collection_id: int,
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据合集ID查询合集详情
@@ -152,13 +158,13 @@ async def tmdb_collection(
 @router.get(
     "/credits/{tmdbid}/{type_name}",
     summary="演员阵容",
-    response_model=List[schemas.MediaPerson],
+    response_model=List[_SchemaMediaPerson],
 )
 async def tmdb_credits(
     tmdbid: int,
     type_name: str,
     page: Optional[int] = 1,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据TMDBID查询演员阵容，type_name: 电影/电视剧
@@ -174,10 +180,10 @@ async def tmdb_credits(
 
 
 @router.get(
-    "/person/{person_id}", summary="人物详情", response_model=schemas.MediaPerson
+    "/person/{person_id}", summary="人物详情", response_model=_SchemaMediaPerson
 )
 async def tmdb_person(
-    person_id: int, _: schemas.TokenPayload = Depends(verify_token)
+    person_id: int, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     根据人物ID查询人物详情
@@ -188,12 +194,12 @@ async def tmdb_person(
 @router.get(
     "/person/credits/{person_id}",
     summary="人物参演作品",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_person_credits(
     person_id: int,
     page: Optional[int] = 1,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据人物ID查询人物参演作品
@@ -207,13 +213,13 @@ async def tmdb_person_credits(
 @router.get(
     "/{tmdbid}/{season}",
     summary="TMDB季所有集",
-    response_model=List[schemas.TmdbEpisode],
+    response_model=List[_SchemaTmdbEpisode],
 )
 async def tmdb_season_episodes(
     tmdbid: int,
     season: int,
     episode_group: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据TMDBID查询某季的所有信信息

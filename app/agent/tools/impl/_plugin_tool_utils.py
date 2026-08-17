@@ -6,9 +6,11 @@ from typing import Any, Optional
 
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.install import PluginInstallCommand
 from app.db.oper.systemconfig import SystemConfigOper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
+from app.adapters.system.plugin.package import PluginPackageManager
 from app.schemas.types import SystemConfigKey
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。
@@ -65,20 +67,22 @@ def build_preview_payload(value: Any, max_chars: Optional[int]) -> tuple[bool, i
     return True, len(serialized), len(preview), preview
 
 
-def reload_plugin_runtime(plugin_id: str) -> None:
-    """
-    重载插件并重新注册其命令、定时任务和 API。
-    """
+def refresh_plugin_registrations(plugin_id: str) -> None:
+    """重新注册插件的定时任务、命令和动态 API 路由。"""
     # 这些依赖只在真正执行重载时才导入，避免普通查询工具引入不必要的初始化开销。
     from app.application.plugins import register_plugin_api
     from app.application.commands import init_commands
     from app.application.scheduling import update_plugin_job
 
-    plugin_manager = PluginManager()
-    plugin_manager.reload_plugin(plugin_id)
     update_plugin_job(plugin_id)
     init_commands(plugin_id)
     register_plugin_api(plugin_id)
+
+
+def reload_plugin_runtime(plugin_id: str) -> None:
+    """重载插件实例并重新注册其命令、定时任务和 API。"""
+    PluginManager().reload_plugin(plugin_id)
+    refresh_plugin_registrations(plugin_id)
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:
@@ -296,37 +300,80 @@ async def install_plugin_runtime(
     """
     按现有插件接口的行为安装插件，并刷新运行态注册信息。
     """
-    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     plugin_manager = PluginManager()
     plugin_helper = PluginHelper()
-
-    refreshed_only = False
-    if not force and plugin_id in plugin_manager.get_plugin_ids():
-        refreshed_only = True
-        await MoviePilotServerHelper.async_install_plugin_reg(plugin_id=plugin_id, repo_url=repo_url)
-        message = "插件已存在，已刷新加载"
-    else:
-        if not repo_url:
-            return False, "没有传入仓库地址，无法正确安装插件，请检查配置", False
-        state, message = await plugin_helper.async_install(
-            pid=plugin_id,
-            repo_url=repo_url,
-            force_install=force,
-        )
-        if not state:
-            return False, message, False
-        await MoviePilotServerHelper.async_install_plugin_reg(plugin_id=plugin_id, repo_url=repo_url)
-
-    if plugin_id not in install_plugins:
-        install_plugins.append(plugin_id)
-        await SystemConfigOper().async_set(
-            SystemConfigKey.UserInstalledPlugins, install_plugins
-        )
+    package_manager = PluginPackageManager(plugin_helper)
 
     from app.agent.tools.base import run_agent_blocking
 
-    await run_agent_blocking("plugin", reload_plugin_runtime, plugin_id)
-    return True, message or "插件安装成功", refreshed_only
+    async def save_installed_plugins(plugin_ids: list[str]) -> object:
+        """保存智能体安装用例确认后的插件列表。"""
+        return await SystemConfigOper().async_set(
+            SystemConfigKey.UserInstalledPlugins,
+            plugin_ids,
+        )
+
+    async def install_package(
+        target_id: str,
+        target_repo: str,
+        _release_version: Optional[str],
+        force_install: bool,
+    ) -> tuple[bool, str]:
+        """调用插件包适配器执行异步安装。"""
+        return await package_manager.async_install(
+            plugin_id=target_id,
+            repo_url=target_repo,
+            force_install=force_install,
+        )
+
+    async def skip_compatibility_check(
+        _target_id: str,
+        _target_repo: str,
+    ) -> None:
+        """保持 Agent 旧安装入口不额外执行系统版本预检查。"""
+        return None
+
+    async def reload_runtime(target_id: str) -> object:
+        """通过 Agent 阻塞任务适配器重建插件实例。"""
+        return await run_agent_blocking(
+            "plugin",
+            plugin_manager.reload_plugin,
+            target_id,
+        )
+
+    async def refresh_registrations(target_id: str) -> object:
+        """通过 Agent 阻塞任务适配器刷新服务、命令和动态路由。"""
+        return await run_agent_blocking(
+            "plugin",
+            refresh_plugin_registrations,
+            target_id,
+        )
+
+    result = await PluginInstallCommand(
+        installed_plugins_reader=lambda: SystemConfigOper().get(
+            SystemConfigKey.UserInstalledPlugins
+        ) or [],
+        installed_plugins_writer=save_installed_plugins,
+        plugin_ids_provider=plugin_manager.get_plugin_ids,
+        compatibility_checker=skip_compatibility_check,
+        package_installer=install_package,
+        package_checkpointer=package_manager.async_checkpoint,
+        package_committer=package_manager.async_commit,
+        package_rollback=package_manager.async_rollback,
+        install_reporter=lambda target_id, target_repo: (
+            MoviePilotServerHelper.async_install_plugin_reg(
+                plugin_id=target_id,
+                repo_url=target_repo,
+            )
+        ),
+        plugin_reloader=reload_runtime,
+        registration_refresher=refresh_registrations,
+    ).execute(
+        plugin_id=plugin_id,
+        repo_url=repo_url,
+        force=force,
+    )
+    return result.success, result.message, result.refreshed_only
 
 
 async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:

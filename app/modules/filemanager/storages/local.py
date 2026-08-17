@@ -4,7 +4,8 @@ import time
 from pathlib import Path
 from typing import Optional, List
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import global_vars, settings
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
@@ -45,7 +46,7 @@ class LocalStorage(StorageBase):
         """
         return True
 
-    def __get_fileitem(self, path: Path) -> schemas.FileItem:
+    def __get_fileitem(self, path: Path) -> _SchemaFileItem:
         """
         获取文件项
         """
@@ -53,7 +54,7 @@ class LocalStorage(StorageBase):
         # 顺带只 stat 一次——原先 size 与 modify_time 各 stat 一次，在网络挂载上
         # 等于把这个热点路径的开销翻倍
         info = fsproxy.stat(path)
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             type="file",
             path=path.as_posix(),
@@ -64,11 +65,11 @@ class LocalStorage(StorageBase):
             modify_time=info["mtime"],
         )
 
-    def __get_diritem(self, path: Path) -> schemas.FileItem:
+    def __get_diritem(self, path: Path) -> _SchemaFileItem:
         """
         获取目录项
         """
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             type="dir",
             path=path.as_posix() + "/",
@@ -77,7 +78,7 @@ class LocalStorage(StorageBase):
             modify_time=fsproxy.stat(path)["mtime"],
         )
 
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         浏览文件
         """
@@ -88,7 +89,7 @@ class LocalStorage(StorageBase):
             if SystemUtils.is_windows():
                 partitions = SystemUtils.get_windows_drives() or ["C:/"]
                 for partition in partitions:
-                    ret_items.append(schemas.FileItem(
+                    ret_items.append(_SchemaFileItem(
                         storage=self.schema.value,
                         type="dir",
                         path=partition + "/",
@@ -126,7 +127,7 @@ class LocalStorage(StorageBase):
             ret_items.append(self.__get_fileitem(item))
         return ret_items
 
-    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
         创建目录
         :param fileitem: 父目录
@@ -139,7 +140,7 @@ class LocalStorage(StorageBase):
             path_obj.mkdir(parents=True, exist_ok=True)
         return self.__get_diritem(path_obj)
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取目录
         """
@@ -147,7 +148,7 @@ class LocalStorage(StorageBase):
             path.mkdir(parents=True, exist_ok=True)
         return self.__get_diritem(path)
 
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，不存在返回None
         """
@@ -159,7 +160,7 @@ class LocalStorage(StorageBase):
             return self.__get_fileitem(path)
         return self.__get_diritem(path)
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，无法确认状态时抛出 StorageQueryError。
         Path.exists() 会把部分 errno（如 EBADF/ELOOP）归入「不存在」，
@@ -178,7 +179,7 @@ class LocalStorage(StorageBase):
         except OSError as e:
             raise StorageQueryError(f"【本地】读取文件信息失败: {path} - {e}") from e
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件详情
         """
@@ -187,7 +188,7 @@ class LocalStorage(StorageBase):
             return None
         return self.__get_fileitem(path_obj)
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件
         """
@@ -211,7 +212,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件
         """
@@ -225,7 +226,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
         """
@@ -370,10 +371,10 @@ class LocalStorage(StorageBase):
 
     def upload(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             path: Path,
             new_name: Optional[str] = None
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         上传文件（带进度）
         """
@@ -402,7 +403,7 @@ class LocalStorage(StorageBase):
 
     def copy(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             path: Path,
             new_name: str
     ) -> bool:
@@ -413,7 +414,7 @@ class LocalStorage(StorageBase):
 
     def move(
             self,
-            fileitem: schemas.FileItem,
+            fileitem: _SchemaFileItem,
             path: Path,
             new_name: str
     ) -> bool:
@@ -443,7 +444,7 @@ class LocalStorage(StorageBase):
             logger.warn(f"【本地】移动已完成但删除源文件失败：{src} - {err}")
         return True
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         硬链接文件
         """
@@ -454,7 +455,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         软链接文件
         """
@@ -465,7 +466,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """
@@ -475,7 +476,7 @@ class LocalStorage(StorageBase):
             [Path(d.library_path) for d in directory_helper.get_local_library_dirs() if d.library_path],
             btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
         )
-        return schemas.StorageUsage(
+        return _SchemaStorageUsage(
             total=total_storage,
             available=free_storage
         )

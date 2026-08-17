@@ -4,7 +4,15 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app import schemas
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.servarr import RadarrMovie as _SchemaRadarrMovie
+from app.schemas.servarr import ServarrIdResponse as _SchemaServarrIdResponse
+from app.schemas.servarr import ServarrLanguageProfile as _SchemaServarrLanguageProfile
+from app.schemas.servarr import ServarrQualityProfile as _SchemaServarrQualityProfile
+from app.schemas.servarr import ServarrRootFolder as _SchemaServarrRootFolder
+from app.schemas.servarr import ServarrSystemStatus as _SchemaServarrSystemStatus
+from app.schemas.servarr import ServarrTag as _SchemaServarrTag
+from app.schemas.servarr import SonarrSeries as _SchemaSonarrSeries
 from app.api.response import ERROR_RESPONSES
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
@@ -14,7 +22,8 @@ from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_apikey
 from app.db import get_db, get_async_db
 from app.db.models.subscribe import Subscribe
-from app.schemas import RadarrMovie, SonarrSeries
+from app.schemas.servarr import RadarrMovie
+from app.schemas.servarr import SonarrSeries
 from app.schemas.types import MediaSource, MediaType
 from version import APP_VERSION
 
@@ -56,15 +65,15 @@ def _resolve_series_media(
 @arr_router.get(
     "/system/status",
     summary="系统状态",
-    response_model=schemas.ServarrSystemStatus,
+    response_model=_SchemaServarrSystemStatus,
 )
 async def arr_system_status(
     _: Annotated[str, Depends(verify_apikey)],
-) -> schemas.ServarrSystemStatus:
+) -> _SchemaServarrSystemStatus:
     """
     模拟Radarr、Sonarr系统状态
     """
-    return schemas.ServarrSystemStatus.model_validate({
+    return _SchemaServarrSystemStatus.model_validate({
         "appName": "MoviePilot",
         "instanceName": "moviepilot",
         "version": APP_VERSION,
@@ -116,16 +125,16 @@ async def arr_system_status(
 @arr_router.get(
     "/qualityProfile",
     summary="质量配置",
-    response_model=List[schemas.ServarrQualityProfile],
+    response_model=List[_SchemaServarrQualityProfile],
 )
 async def arr_qualityProfile(
     _: Annotated[str, Depends(verify_apikey)],
-) -> List[schemas.ServarrQualityProfile]:
+) -> List[_SchemaServarrQualityProfile]:
     """
     模拟Radarr、Sonarr质量配置
     """
     return [
-        schemas.ServarrQualityProfile.model_validate({
+        _SchemaServarrQualityProfile.model_validate({
             "id": 1,
             "name": "默认",
             "upgradeAllowed": True,
@@ -154,16 +163,16 @@ async def arr_qualityProfile(
 @arr_router.get(
     "/rootfolder",
     summary="根目录",
-    response_model=List[schemas.ServarrRootFolder],
+    response_model=List[_SchemaServarrRootFolder],
 )
 async def arr_rootfolder(
     _: Annotated[str, Depends(verify_apikey)],
-) -> List[schemas.ServarrRootFolder]:
+) -> List[_SchemaServarrRootFolder]:
     """
     模拟Radarr、Sonarr根目录
     """
     return [
-        schemas.ServarrRootFolder.model_validate({
+        _SchemaServarrRootFolder.model_validate({
             "id": 1,
             "path": "/",
             "accessible": True,
@@ -173,29 +182,29 @@ async def arr_rootfolder(
     ]
 
 
-@arr_router.get("/tag", summary="标签", response_model=List[schemas.ServarrTag])
+@arr_router.get("/tag", summary="标签", response_model=List[_SchemaServarrTag])
 async def arr_tag(
     _: Annotated[str, Depends(verify_apikey)],
-) -> List[schemas.ServarrTag]:
+) -> List[_SchemaServarrTag]:
     """
     模拟Radarr、Sonarr标签
     """
-    return [schemas.ServarrTag(id=1, label="默认")]
+    return [_SchemaServarrTag(id=1, label="默认")]
 
 
 @arr_router.get(
     "/languageprofile",
     summary="语言",
-    response_model=List[schemas.ServarrLanguageProfile],
+    response_model=List[_SchemaServarrLanguageProfile],
 )
 async def arr_languageprofile(
     _: Annotated[str, Depends(verify_apikey)],
-) -> List[schemas.ServarrLanguageProfile]:
+) -> List[_SchemaServarrLanguageProfile]:
     """
     模拟Radarr、Sonarr语言
     """
     return [
-        schemas.ServarrLanguageProfile.model_validate({
+        _SchemaServarrLanguageProfile.model_validate({
             "id": 1,
             "name": "默认",
             "upgradeAllowed": True,
@@ -208,11 +217,11 @@ async def arr_languageprofile(
 
 
 @arr_router.get(
-    "/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie]
+    "/movie", summary="所有订阅电影", response_model=List[_SchemaRadarrMovie]
 )
 async def arr_movies(
     _: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)
-) -> List[schemas.RadarrMovie]:
+) -> List[_SchemaRadarrMovie]:
     """
     查询Rardar电影
     """
@@ -304,11 +313,11 @@ async def arr_movies(
 
 
 @arr_router.get(
-    "/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie]
+    "/movie/lookup", summary="查询电影", response_model=List[_SchemaRadarrMovie]
 )
 def arr_movie_lookup(
     term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)
-) -> List[schemas.RadarrMovie]:
+) -> List[_SchemaRadarrMovie]:
     """
     查询Rardar电影 term: `tmdb:${id}`
     存在和不存在均不能返回错误
@@ -362,13 +371,13 @@ def arr_movie_lookup(
 
 
 @arr_router.get(
-    "/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie
+    "/movie/{mid}", summary="电影订阅详情", response_model=_SchemaRadarrMovie
 )
 async def arr_movie(
     mid: int,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.RadarrMovie:
+) -> _SchemaRadarrMovie:
     """
     查询Rardar电影订阅
     """
@@ -390,13 +399,13 @@ async def arr_movie(
 
 
 @arr_router.post(
-    "/movie", summary="新增电影订阅", response_model=schemas.ServarrIdResponse
+    "/movie", summary="新增电影订阅", response_model=_SchemaServarrIdResponse
 )
 async def arr_add_movie(
     _: Annotated[str, Depends(verify_apikey)],
     movie: RadarrMovie,
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.ServarrIdResponse:
+) -> _SchemaServarrIdResponse:
     """
     新增Rardar电影订阅
     """
@@ -405,7 +414,7 @@ async def arr_add_movie(
         db, MediaSource.TMDB.value, str(movie.tmdbId)
     )
     if subscribes:
-        return schemas.ServarrIdResponse(id=subscribes[0].id)
+        return _SchemaServarrIdResponse(id=subscribes[0].id)
     # 添加订阅
     sid, message = await SubscribeChain().async_add(
         title=movie.title,
@@ -416,36 +425,36 @@ async def arr_add_movie(
         username="Seerr",
     )
     if sid:
-        return schemas.ServarrIdResponse(id=sid)
+        return _SchemaServarrIdResponse(id=sid)
     else:
         raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
 
 
 @arr_router.delete(
-    "/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response[None]
+    "/movie/{mid}", summary="删除电影订阅", response_model=_SchemaResponse[None]
 )
 async def arr_remove_movie(
     mid: int,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response[None]:
+) -> _SchemaResponse[None]:
     """
     删除Rardar电影订阅
     """
     subscribe = await Subscribe.async_get(db, mid)
     if subscribe:
         await subscribe.async_delete(db, mid)
-        return schemas.Response(success=True)
+        return _SchemaResponse(success=True)
     else:
         raise HTTPException(status_code=404, detail="未找到该电影！")
 
 
 @arr_router.get(
-    "/series", summary="所有剧集", response_model=List[schemas.SonarrSeries]
+    "/series", summary="所有剧集", response_model=List[_SchemaSonarrSeries]
 )
 async def arr_series(
     _: Annotated[str, Depends(verify_apikey)], db: AsyncSession = Depends(get_async_db)
-) -> List[schemas.SonarrSeries]:
+) -> List[_SchemaSonarrSeries]:
     """
     查询Sonarr剧集
     """
@@ -585,11 +594,11 @@ async def arr_series(
 @arr_router.get(
     "/series/lookup",
     summary="查询剧集",
-    response_model=List[schemas.SonarrSeries],
+    response_model=List[_SchemaSonarrSeries],
 )
 def arr_series_lookup(
     term: str, _: Annotated[str, Depends(verify_apikey)], db: Session = Depends(get_db)
-) -> List[schemas.SonarrSeries]:
+) -> List[_SchemaSonarrSeries]:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
@@ -697,13 +706,13 @@ def arr_series_lookup(
 
 
 @arr_router.get(
-    "/series/{tid}", summary="剧集详情", response_model=schemas.SonarrSeries
+    "/series/{tid}", summary="剧集详情", response_model=_SchemaSonarrSeries
 )
 async def arr_serie(
     tid: int,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.SonarrSeries:
+) -> _SchemaSonarrSeries:
     """
     查询Sonarr剧集
     """
@@ -734,13 +743,13 @@ async def arr_serie(
 
 
 @arr_router.post(
-    "/series", summary="新增剧集订阅", response_model=schemas.ServarrIdResponse
+    "/series", summary="新增剧集订阅", response_model=_SchemaServarrIdResponse
 )
 async def arr_add_series(
-    tv: schemas.SonarrSeries,
+    tv: _SchemaSonarrSeries,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.ServarrIdResponse:
+) -> _SchemaServarrIdResponse:
     """
     新增Sonarr剧集订阅
     """
@@ -790,7 +799,7 @@ async def arr_add_series(
         left_seasons.append(season)
     # 全部已存在订阅
     if not left_seasons:
-        return schemas.ServarrIdResponse(id=1)
+        return _SchemaServarrIdResponse(id=1)
     # 剩下的添加订阅
     sid = 0
     message = ""
@@ -806,19 +815,19 @@ async def arr_add_series(
         )
 
     if sid:
-        return schemas.ServarrIdResponse(id=sid)
+        return _SchemaServarrIdResponse(id=sid)
     else:
         raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
 
 
 @arr_router.put(
-    "/series", summary="更新剧集订阅", response_model=schemas.ServarrIdResponse
+    "/series", summary="更新剧集订阅", response_model=_SchemaServarrIdResponse
 )
 async def arr_update_series(
-    tv: schemas.SonarrSeries,
+    tv: _SchemaSonarrSeries,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.ServarrIdResponse:
+) -> _SchemaServarrIdResponse:
     """
     更新Sonarr剧集订阅
     """
@@ -826,19 +835,19 @@ async def arr_update_series(
 
 
 @arr_router.delete(
-    "/series/{tid}", summary="删除剧集订阅", response_model=schemas.Response[None]
+    "/series/{tid}", summary="删除剧集订阅", response_model=_SchemaResponse[None]
 )
 async def arr_remove_series(
     tid: int,
     _: Annotated[str, Depends(verify_apikey)],
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response[None]:
+) -> _SchemaResponse[None]:
     """
     删除Sonarr剧集订阅
     """
     subscribe = await Subscribe.async_get(db, tid)
     if subscribe:
         await subscribe.async_delete(db, tid)
-        return schemas.Response(success=True)
+        return _SchemaResponse(success=True)
     else:
         raise HTTPException(status_code=404, detail="未找到该电视剧！")

@@ -1,9 +1,11 @@
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import Any, List, Mapping, Tuple, Optional
 
-from app.db import DbOper
-from app.db.models import SiteIcon
+from sqlalchemy import delete as sqlalchemy_delete
+
+from app.db.base import DbOper
 from app.db.models.site import Site
+from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
 
@@ -34,6 +36,48 @@ class SiteOper(DbOper):
         异步查询单个站点
         """
         return await Site.async_get(self._db, sid)
+
+    async def get_by_id(self, site_id: int) -> Optional[Site]:
+        """读取站点写用例需要的目标站点。"""
+        return await self.async_get(site_id)
+
+    async def get_by_domain(self, domain: str) -> Optional[Site]:
+        """按域名读取站点写用例的重复目标。"""
+        return await Site.async_get_by_domain(self._db, domain)
+
+    async def stage_create(self, payload: Mapping[str, Any]) -> None:
+        """暂存新增站点，不由仓储自行提交。"""
+        values = dict(payload)
+        values.pop("id", None)
+        self._db.add(Site(**values))
+
+    async def stage_update(
+            self,
+            site_id: int,
+            payload: Mapping[str, Any],
+    ) -> bool:
+        """暂存站点字段更新，不由模型装饰器提前提交。"""
+        site = await self.async_get(site_id)
+        if not site:
+            return False
+        for key, value in payload.items():
+            if key != "id":
+                setattr(site, key, value)
+        return True
+
+    async def stage_delete(self, site_id: int) -> None:
+        """暂存站点删除，由请求级 UnitOfWork 统一提交。"""
+        await self._db.execute(
+            sqlalchemy_delete(Site).where(Site.id == site_id)
+        )
+
+    async def stage_priorities(self, priorities: list[dict]) -> None:
+        """暂存批量优先级更新，避免逐行独立提交。"""
+        for priority in priorities:
+            site_id = priority.get("id")
+            site = await self.async_get(site_id) if site_id else None
+            if site:
+                site.pri = priority.get("pri")
 
     def list(self) -> List[Site]:
         """

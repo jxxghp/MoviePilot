@@ -6,7 +6,13 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
-from app import schemas
+from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
+from app.schemas.message import Message as _SchemaMessage
+from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import SubscribeDownloadFileInfo as _SchemaSubscribeDownloadFileInfo
+from app.schemas.subscribe import SubscribeEpisodeInfo as _SchemaSubscribeEpisodeInfo
+from app.schemas.subscribe import SubscribeLibraryFileInfo as _SchemaSubscribeLibraryFileInfo
+from app.schemas.workflow import Subscribe as _SchemaSubscribe
 from app.chain import ChainBase
 from app.chain._interaction import InteractionChainMixin
 from app.chain._music import MusicSubscribeMixin
@@ -35,37 +41,25 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscribe import add_subscribe, async_add_subscribe
+from app.application.subscription.contract import (
+    build_subscribe_meta as _build_subscribe_meta,
+    subscribe_media_key,
+    subscribe_media_keys,
+)
+from app.application.subscription.query import SubscriptionQueryService
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import (SubscribeEpisodesRefreshEventData,
-                         SubscribeCompletionCheckEventData)
+from app.schemas.event import SubscribeEpisodesRefreshEventData
+from app.schemas.event import SubscribeCompletionCheckEventData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, SystemConfigKey, NotificationChannel, MessageType, EventType, ChainEventType, \
     ContentType
-from app.schemas.media import build_media_key, normalize_media_source, resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 
 
 def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
-    """
-    按订阅对象构造主程序链路共用的媒体元数据。
-    """
-    if subscribe.type == MediaType.MUSIC.value:
-        is_album = getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM
-        return MetaMusic(
-            title=subscribe.name,
-            album=subscribe.name if is_album else None,
-            year=subscribe.year,
-            total_tracks=getattr(subscribe, "total_tracks", None) if is_album else None,
-            media_source=subscribe.media_source,
-            media_id=str(subscribe.media_id) if subscribe.media_id is not None else None,
-        )
-    meta = MetaInfo(subscribe.name)
-    meta.year = subscribe.year
-    meta.begin_season = subscribe.season
-    meta.type = MediaType(subscribe.type)
-    meta.media_source = subscribe.media_source
-    meta.media_id = subscribe.media_id
-    return meta
+    """兼容旧导入路径，转发订阅媒体元数据构造。"""
+    return _build_subscribe_meta(subscribe)
 
 
 def _media_recognize_kwargs(mediainfo: MediaInfo) -> dict:
@@ -87,19 +81,13 @@ def _subscribe_recognize_kwargs(subscribe: Subscribe) -> dict:
 
 
 def _subscribe_media_key(subscribe: Subscribe) -> Union[str, int, None]:
-    """返回订阅缺失集映射使用的稳定媒体键。"""
-    media_source, media_id = resolve_media_identity(media=subscribe)
-    return build_media_key(media_source, media_id) or media_id
+    """兼容旧导入路径，返回订阅缺失集使用的稳定媒体键。"""
+    return subscribe_media_key(subscribe)
 
 
 def _subscribe_media_keys(subscribe: Subscribe) -> List[Union[str, int]]:
-    """返回缺失集缓存可识别的规范媒体键。"""
-    media_source, media_id = resolve_media_identity(media=subscribe)
-    candidates = [
-        build_media_key(media_source, media_id),
-        media_id,
-    ]
-    return [candidate for candidate in candidates if candidate not in (None, "")]
+    """兼容旧导入路径，返回规范媒体键与旧纯 ID 键。"""
+    return subscribe_media_keys(subscribe)
 
 
 class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
@@ -258,7 +246,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def compute_lack_episode(
             cls,
             subscribe: Subscribe,
-            no_exists: Optional[Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]] = None,
+            no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
     ) -> int:
         """
         计算订阅范围内尚未下载到任何版本的集数。
@@ -681,7 +669,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             cls,
             subscribe: Subscribe,
             mediakey: Union[int, str],
-    ) -> Optional[Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]]:
+    ) -> Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
         构造分集洗版优先全集时使用的整季缺失范围。
         """
@@ -698,7 +686,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         return {
             mediakey: {
-                subscribe.season: schemas.NotExistMediaInfo(
+                subscribe.season: _SchemaNotExistMediaInfo(
                     season=subscribe.season,
                     episodes=[],
                     total_episode=subscribe.total_episode,
@@ -711,14 +699,14 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __download_best_version_with_full_pack_first(
             self,
             contexts: List[Context],
-            no_exists: Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]],
+            no_exists: Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]],
             subscribe: Subscribe,
             mediakey: Union[int, str],
             username: Optional[str] = None,
             save_path: Optional[str] = None,
             downloader: Optional[str] = None,
             source: Optional[str] = None,
-    ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]]:
+    ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
         TV 分集洗版先尝试覆盖目标范围的全集资源，失败后回退到按集下载。
         """
@@ -972,7 +960,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 失败发回原用户
-                self.post_message(schemas.Message(channel=channel,
+                self.post_message(_SchemaMessage(channel=channel,
                                                        source=source,
                                                        mtype=MessageType.Subscribe,
                                                        title=f"{mediainfo.title_year} {metainfo.season} "
@@ -990,7 +978,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
             self.post_message(
-                schemas.Message(
+                _SchemaMessage(
                     channel=channel,
                     source=source,
                     mtype=MessageType.Subscribe,
@@ -1176,7 +1164,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 失败发回原用户
-                await self.async_post_message(schemas.Message(channel=channel,
+                await self.async_post_message(_SchemaMessage(channel=channel,
                                                                    source=source,
                                                                    mtype=MessageType.Subscribe,
                                                                    title=f"{mediainfo.title_year} {metainfo.season} "
@@ -1194,7 +1182,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
             await self.async_post_message(
-                schemas.Message(
+                _SchemaMessage(
                     channel=channel,
                     source=source,
                     mtype=MessageType.Subscribe,
@@ -1234,21 +1222,16 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         return sid, err_msg
 
     @staticmethod
-    def exists(mediainfo: MediaInfo, meta: MetaBase = None):
+    def _subscription_query() -> SubscriptionQueryService:
+        """构造绑定订阅 Oper 的查询应用服务。"""
+        return SubscriptionQueryService(SubscribeOper())
+
+    @classmethod
+    def exists(cls, mediainfo: MediaInfo, meta: MetaBase = None):
         """
         判断订阅是否已存在
         """
-        media_source, media_id = resolve_media_identity(media=mediainfo)
-        if SubscribeOper().exists(
-                media_source=media_source,
-                media_id=media_id,
-                music_type=getattr(mediainfo, "music_type", None)
-                if mediainfo.type == MediaType.MUSIC else None,
-                season=meta.begin_season if meta else None,
-                episode_group=mediainfo.episode_group,
-        ):
-            return True
-        return False
+        return cls._subscription_query().exists(mediainfo, meta)
 
     def search(
             self,
@@ -1529,7 +1512,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
     def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaBase, mediainfo: MediaInfo,
                                 downloads: List[Context] = None,
-                                lefts: Dict[Union[int | str], Dict[int, schemas.NotExistMediaInfo]] = None,
+                                lefts: Dict[Union[int | str], Dict[int, _SchemaNotExistMediaInfo]] = None,
                                 force: Optional[bool] = False):
         """
         判断是否应完成订阅
@@ -1685,9 +1668,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
     def has_music_subscribe(self) -> bool:
         """判断是否存在可搜索状态的音乐订阅，用于决定是否额外刷新站点音乐入口。"""
-        return any(
-            subscribe.type == MediaType.MUSIC.value
-            for subscribe in SubscribeOper().list(self.get_states_for_search('R')) or []
+        return self._subscription_query().has_music(
+            self.get_states_for_search('R')
         )
 
     def match(
@@ -2238,18 +2220,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         从来源获取订阅
         """
-        source_keyword = self.parse_subscribe_source_keyword(source)
-        if not source_keyword:
-            return None
-        # 只保留需要的字段动态获取订阅
-        valid_fields = {
-            k: v for k, v in source_keyword.items()
-            if k in [
-                "type", "season", "media_source", "media_id", "music_type",
-            ]
-        }
-        # 暂时不考虑订阅历史, 若有必要再添加
-        return SubscribeOper().get_by(**valid_fields)
+        return self._subscription_query().get_by_source(
+            self.parse_subscribe_source_keyword(source)
+        )
 
     @staticmethod
     def follow(progress_callback: Optional[Callable[..., None]] = None) -> None:
@@ -2301,10 +2274,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     continue
                 # 去除无效属性
                 for key in list(share_sub.keys()):
-                    if not hasattr(schemas.Subscribe(), key):
+                    if not hasattr(_SchemaSubscribe(), key):
                         share_sub.pop(key)
                 # 类型转换
-                subscribe_in = schemas.Subscribe(**share_sub)
+                subscribe_in = _SchemaSubscribe(**share_sub)
                 mtype = MediaType(subscribe_in.type)
                 # 非 TMDB 标题可能携带季号，入库前统一拆分。
                 if (
@@ -2507,7 +2480,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __prepare_subscribe_progress_fields(
             cls,
             subscribe: Subscribe,
-            no_exists: Optional[Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]] = None,
+            no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
             touch_last_update: Optional[bool] = False,
     ) -> Dict[str, Any]:
         """
@@ -2541,7 +2514,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __refresh_subscribe_progress_with_no_exists(
             self,
             subscribe: Subscribe,
-            no_exists: Optional[Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]] = None,
+            no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
             touch_last_update: Optional[bool] = False,
             scene: str = "download",
     ) -> Dict[str, Any]:
@@ -2835,7 +2808,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
         # 完成订阅按规则发送消息
         self.post_message(
-            schemas.Message(
+            _SchemaMessage(
                 mtype=MessageType.Subscribe,
                 ctype=ContentType.SubscribeComplete,
                 image=mediainfo.get_message_image(),
@@ -2870,7 +2843,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         删除订阅
         """
         if not arg_str:
-            self.post_message(schemas.Message(
+            self.post_message(_SchemaMessage(
                 channel=channel,
                 source=source,
                 title="请输入正确的命令格式：/subscribe_delete [id]，"
@@ -2887,7 +2860,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe_id = int(arg_str)
             subscribe = subscribeoper.get(subscribe_id)
             if not subscribe:
-                self.post_message(schemas.Message(
+                self.post_message(_SchemaMessage(
                     channel=channel, source=source,
                     title=f"订阅编号 {subscribe_id} 不存在！",
                     userid=userid,
@@ -2906,13 +2879,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
     @staticmethod
     def __get_subscribe_no_exits(subscribe_name: str,
-                                 no_exists: Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]],
+                                 no_exists: Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]],
                                  mediakey: Union[str, int],
                                  begin_season: int,
                                  total_episode: Optional[int],
                                  start_episode: Optional[int],
                                  downloaded_episodes: List[int] = None
-                                 ) -> Tuple[bool, Dict[Union[int, str], Dict[int, schemas.NotExistMediaInfo]]]:
+                                 ) -> Tuple[bool, Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
         :param subscribe_name: 订阅名称
@@ -2972,7 +2945,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     if not episodes:
                         return True, {}
                 # 更新集合
-                no_exists[mediakey][begin_season] = schemas.NotExistMediaInfo(
+                no_exists[mediakey][begin_season] = _SchemaNotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total_episode,
@@ -3000,7 +2973,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 if not episodes:
                     return True, {}
                 # 更新集合
-                no_exists[mediakey][begin_season] = schemas.NotExistMediaInfo(
+                no_exists[mediakey][begin_season] = _SchemaNotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total,
@@ -3015,7 +2988,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 # 如果存在已下载剧集，则差集为空时，说明所有均已存在
                 if not episodes:
                     return True, {}
-                no_exists[mediakey][begin_season] = schemas.NotExistMediaInfo(
+                no_exists[mediakey][begin_season] = _SchemaNotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total_episode,
@@ -3115,7 +3088,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 "min_seeders_time": default_rule.get("min_seeders_time"),
             }.items() if value is not None}
 
-    def subscribe_files_info(self, subscribe: Subscribe) -> Optional[schemas.SubscrbieInfo]:
+    def subscribe_files_info(self, subscribe: Subscribe) -> Optional[_SchemaSubscrbieInfo]:
         """
         订阅相关的下载和文件信息
         """
@@ -3123,10 +3096,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             return None
 
         # 返回订阅数据
-        subscribe_info = schemas.SubscrbieInfo()
+        subscribe_info = _SchemaSubscrbieInfo()
 
         # 所有集的数据
-        episodes: Dict[int, schemas.SubscribeEpisodeInfo] = {}
+        episodes: Dict[int, _SchemaSubscribeEpisodeInfo] = {}
         if (
             subscribe.media_source == MediaSource.TMDB.value
             and subscribe.media_id
@@ -3141,7 +3114,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
             if tmdb_episodes:
                 for episode in tmdb_episodes:
-                    info = schemas.SubscribeEpisodeInfo()
+                    info = _SchemaSubscribeEpisodeInfo()
                     info.title = episode.name
                     info.description = episode.overview
                     info.backdrop = settings.TMDB_IMAGE_URL(episode.still_path, "w500")
@@ -3149,12 +3122,12 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         elif subscribe.type == MediaType.TV.value:
             # 根据开始结束集计算集信息
             for i in range(subscribe.start_episode or 1, subscribe.total_episode + 1):
-                info = schemas.SubscribeEpisodeInfo()
+                info = _SchemaSubscribeEpisodeInfo()
                 info.title = f'第 {i} 集'
                 episodes[i] = info
         else:
             # 电影
-            info = schemas.SubscribeEpisodeInfo()
+            info = _SchemaSubscribeEpisodeInfo()
             info.title = subscribe.name
             episodes[0] = info
 
@@ -3174,7 +3147,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                         # 识别文件名
                         file_meta = MetaInfo(file.filepath)
                         # 下载文件信息
-                        file_info = schemas.SubscribeDownloadFileInfo(
+                        file_info = _SchemaSubscribeDownloadFileInfo(
                             torrent_title=his.torrent_name,
                             site_name=his.torrent_site,
                             downloader=file.downloader,
@@ -3218,7 +3191,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 # 识别文件名
                 file_meta = MetaInfo(fileitem.path)
                 # 媒体库文件信息
-                file_info = schemas.SubscribeLibraryFileInfo(
+                file_info = _SchemaSubscribeLibraryFileInfo(
                     storage=fileitem.storage,
                     file_path=fileitem.path,
                 )
@@ -3236,7 +3209,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         mediaserver_chain = MediaServerChain()
         server_names = list(MediaServerHelper().get_services().keys())
 
-        def _has_server_entry(library_list: List[schemas.SubscribeLibraryFileInfo],
+        def _has_server_entry(library_list: List[_SchemaSubscribeLibraryFileInfo],
                               server_name: Optional[str],
                               server_type: Optional[str]) -> bool:
             for info in library_list or []:
@@ -3288,7 +3261,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             item_id=episode_itemid,
                         ) or series_detail_url
                     episode_info.library.append(
-                        schemas.SubscribeLibraryFileInfo(
+                        _SchemaSubscribeLibraryFileInfo(
                             storage=server_storage,
                             file_path=detail_url,
                             server=resolved_server,
@@ -3301,7 +3274,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 if episode_info and not _has_server_entry(
                         episode_info.library, resolved_server, exists_media.server_type):
                     episode_info.library.append(
-                        schemas.SubscribeLibraryFileInfo(
+                        _SchemaSubscribeLibraryFileInfo(
                             storage=server_storage,
                             file_path=series_detail_url,
                             server=resolved_server,
@@ -3409,7 +3382,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                         return True, {}
                 no_exists = {
                     mediakey: {
-                        subscribe.season: schemas.NotExistMediaInfo(
+                        subscribe.season: _SchemaNotExistMediaInfo(
                             season=subscribe.season,
                             episodes=pending_episodes,
                             total_episode=effective_total_episode,

@@ -1,6 +1,11 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.ugreen.ugreen import Ugreen
@@ -74,7 +79,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     def webhook_parser(
         self, body: Any, form: Any, args: Any
-    ) -> Optional[schemas.WebhookEventInfo]:
+    ) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Webhook报文体
         """
@@ -97,7 +102,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     def media_statistic(
         self, server: Optional[str] = None
-    ) -> Optional[List[schemas.Statistic]]:
+    ) -> Optional[List[_SchemaStatistic]]:
         """
         媒体数量统计
         """
@@ -120,7 +125,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     def mediaserver_librarys(
         self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -161,7 +166,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     def mediaserver_iteminfo(
         self, server: str, item_id: str
-    ) -> Optional[schemas.MediaServerItem]:
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         媒体库项目详情
         """
@@ -172,7 +177,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     def mediaserver_tv_episodes(
         self, server: str, item_id: Union[str, int]
-    ) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+    ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
@@ -185,13 +190,13 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         if not seasoninfo:
             return []
         return [
-            schemas.MediaServerSeasonInfo(season=season, episodes=episodes)
+            _SchemaMediaServerSeasonInfo(season=season, episodes=episodes)
             for season, episodes in seasoninfo.items()
         ]
 
     def mediaserver_playing(
         self, server: str, count: Optional[int] = 20, **kwargs
-    ) -> Optional[List[schemas.MediaServerPlayItem]]:
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
@@ -218,7 +223,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         server: Optional[str] = None,
         count: Optional[int] = 20,
         **kwargs,
-    ) -> Optional[List[schemas.MediaServerPlayItem]]:
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """

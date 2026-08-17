@@ -20,6 +20,33 @@ PLUGIN_ID = "DemoPlugin"
 REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
 
 
+@pytest.fixture(autouse=True)
+def _configure_plugin_catalog_factory(monkeypatch):
+    """为直接构造 PluginManager 的测试注入真实目录用例和假持久化接缝。"""
+    from app.adapters.external.plugin.client import PluginMarketClient
+    from app.application.plugin.catalog import PluginCatalogService
+    from app.foundation.version import compare_version
+    from app.runtime.extensions import plugin_manager as manager_module
+
+    def build_catalog(manager):
+        """按生产组合方式连接目录服务，但保留测试可替换的依赖。"""
+        client = PluginMarketClient()
+        return PluginCatalogService(
+            market_loader=client.get_plugins,
+            async_market_loader=client.async_get_plugins,
+            installed_plugins_provider=lambda: manager_module.get_plugin_storage().read(
+                manager_module.SystemConfigKey.UserInstalledPlugins
+            ) or [],
+            plugin_mapper=manager._process_plugin_info,
+            is_local_repo=PluginMarketClient.is_local_repo_url,
+            version_compare=compare_version,
+            warning=manager_module.logger.warning,
+            error=manager_module.logger.error,
+        )
+
+    monkeypatch.setattr(manager_module, "_plugin_catalog_factory", build_catalog)
+
+
 class _FakeResponse:
     """模拟 requests/httpx 响应对象，覆盖插件 release 安装分支读取的最小协议。"""
 
@@ -656,7 +683,10 @@ class TestPluginHelper:
         monkeypatch.setattr(plugin_manager, "_plugins", {})
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
         monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", SimpleNamespace(VERSION_FLAG="v2"))
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
+        monkeypatch.setattr(
+            "app.runtime.extensions.plugin_manager.get_plugin_storage",
+            lambda: SimpleNamespace(read=lambda _key: []),
+        )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin_manager._site_auth_level_provider",
             lambda: 1,
@@ -717,7 +747,10 @@ class TestPluginHelper:
             SimpleNamespace(VERSION_FLAG="v3", PLUGIN_MARKET=REPO_URL),
         )
         monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
+        monkeypatch.setattr(
+            "app.runtime.extensions.plugin_manager.get_plugin_storage",
+            lambda: SimpleNamespace(read=lambda _key: []),
+        )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin_manager._site_auth_level_provider",
             lambda: 1,
@@ -876,10 +909,7 @@ class TestPluginHelper:
             pytest.skip(f"missing dependency: {exc}")
 
         clear_calls = []
-        fake_release_method = SimpleNamespace(cache_clear=lambda: clear_calls.append("clear"))
-        fake_helper = SimpleNamespace(get_plugin_release_versions=fake_release_method)
         monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "get_plugins_from_market", lambda *_args, **_kwargs: [])
 
         PluginManager().get_online_plugins(force=True)
@@ -898,14 +928,10 @@ class TestPluginHelper:
         async def fake_clear():
             clear_calls.append("clear")
 
-        fake_release_method = SimpleNamespace(cache_clear=fake_clear)
-        fake_helper = SimpleNamespace(async_get_plugin_release_versions=fake_release_method)
-
         async def fake_market(*_args, **_kwargs):
             return []
 
         monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.PluginHelper", lambda: fake_helper)
         monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
 
         asyncio.run(PluginManager().async_get_online_plugins(force=True))
@@ -916,7 +942,6 @@ class TestPluginHelper:
         """单插件版本查询不构建全部本地插件信息。"""
         try:
             from app.runtime.extensions.plugin_manager import PluginManager
-            from app.db.oper.systemconfig import SystemConfigOper
             from app.schemas.types import SystemConfigKey
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
@@ -927,9 +952,12 @@ class TestPluginHelper:
         plugin_manager = PluginManager()
         monkeypatch.setattr(plugin_manager, "_plugins", {"DemoPlugin": DemoPlugin})
         monkeypatch.setattr(
-            SystemConfigOper,
-            "get",
-            lambda _self, key: ["DemoPlugin"] if key == SystemConfigKey.UserInstalledPlugins else None,
+            "app.runtime.extensions.plugin_manager.get_plugin_storage",
+            lambda: SimpleNamespace(
+                read=lambda key: ["DemoPlugin"]
+                if key == SystemConfigKey.UserInstalledPlugins
+                else None
+            ),
         )
 
         assert plugin_manager.get_local_plugin_version("DemoPlugin") == "1.2.0"

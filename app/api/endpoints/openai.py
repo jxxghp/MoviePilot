@@ -9,7 +9,17 @@ from fastapi import APIRouter, Request, Security
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app import schemas
+from app.schemas.openai import OpenAIChatCompletionResponse as _SchemaOpenAIChatCompletionResponse
+from app.schemas.openai import OpenAIChatCompletionsRequest as _SchemaOpenAIChatCompletionsRequest
+from app.schemas.openai import OpenAIErrorDetail as _SchemaOpenAIErrorDetail
+from app.schemas.openai import OpenAIErrorResponse as _SchemaOpenAIErrorResponse
+from app.schemas.openai import OpenAIModelInfo as _SchemaOpenAIModelInfo
+from app.schemas.openai import OpenAIModelListResponse as _SchemaOpenAIModelListResponse
+from app.schemas.openai import OpenAIResponsesOutputMessage as _SchemaOpenAIResponsesOutputMessage
+from app.schemas.openai import OpenAIResponsesOutputText as _SchemaOpenAIResponsesOutputText
+from app.schemas.openai import OpenAIResponsesRequest as _SchemaOpenAIResponsesRequest
+from app.schemas.openai import OpenAIResponsesResponse as _SchemaOpenAIResponsesResponse
+from app.schemas.openai import OpenAIUsage as _SchemaOpenAIUsage
 from app.api.openai_utils import (
     build_completion_payload,
     build_prompt,
@@ -26,11 +36,11 @@ from app.application.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
 
 OPENAI_ERROR_RESPONSES = {
-    400: {"model": schemas.OpenAIErrorResponse, "description": "请求格式错误"},
-    401: {"model": schemas.OpenAIErrorResponse, "description": "认证失败"},
-    422: {"model": schemas.OpenAIErrorResponse, "description": "请求参数校验失败"},
-    500: {"model": schemas.OpenAIErrorResponse, "description": "服务内部错误"},
-    503: {"model": schemas.OpenAIErrorResponse, "description": "AI Agent 不可用"},
+    400: {"model": _SchemaOpenAIErrorResponse, "description": "请求格式错误"},
+    401: {"model": _SchemaOpenAIErrorResponse, "description": "认证失败"},
+    422: {"model": _SchemaOpenAIErrorResponse, "description": "请求参数校验失败"},
+    500: {"model": _SchemaOpenAIErrorResponse, "description": "服务内部错误"},
+    503: {"model": _SchemaOpenAIErrorResponse, "description": "AI Agent 不可用"},
 }
 
 router = APIRouter(responses=OPENAI_ERROR_RESPONSES)
@@ -389,8 +399,8 @@ def _error_response(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content=schemas.OpenAIErrorResponse(
-            error=schemas.OpenAIErrorDetail(
+        content=_SchemaOpenAIErrorResponse(
+            error=_SchemaOpenAIErrorDetail(
                 message=message,
                 type=error_type,
                 code=code,
@@ -426,7 +436,7 @@ def _check_auth(
 @router.get(
     "/models",
     summary="OpenAI compatible models",
-    response_model=schemas.OpenAIModelListResponse,
+    response_model=_SchemaOpenAIModelListResponse,
 )
 async def list_models(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
@@ -437,15 +447,15 @@ async def list_models(
     if auth_error:
         return auth_error
     now = int(time.time())
-    return schemas.OpenAIModelListResponse(
-        data=[schemas.OpenAIModelInfo(id=MODEL_ID, created=now)]
+    return _SchemaOpenAIModelListResponse(
+        data=[_SchemaOpenAIModelInfo(id=MODEL_ID, created=now)]
     )
 
 
 @router.post(
     "/chat/completions",
     summary="OpenAI compatible chat completions",
-    response_model=schemas.OpenAIChatCompletionResponse,
+    response_model=_SchemaOpenAIChatCompletionResponse,
     responses={
         200: {
             "description": "OpenAI chat completion 或 SSE 数据流",
@@ -456,7 +466,7 @@ async def list_models(
     },
 )
 async def chat_completions(
-    payload: schemas.OpenAIChatCompletionsRequest,
+    payload: _SchemaOpenAIChatCompletionsRequest,
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
@@ -573,10 +583,10 @@ async def chat_completions(
 @router.post(
     "/responses",
     summary="OpenAI compatible responses",
-    response_model=schemas.OpenAIResponsesResponse,
+    response_model=_SchemaOpenAIResponsesResponse,
 )
 async def responses(
-    payload: schemas.OpenAIResponsesRequest,
+    payload: _SchemaOpenAIResponsesRequest,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
     ),
@@ -669,14 +679,14 @@ async def responses(
 
     created_at = int(time.time())
     response_id = f"resp_{uuid.uuid4().hex}"
-    output_message = schemas.OpenAIResponsesOutputMessage(
+    output_message = _SchemaOpenAIResponsesOutputMessage(
         id=f"msg_{uuid.uuid4().hex}",
-        content=[schemas.OpenAIResponsesOutputText(text=content)],
+        content=[_SchemaOpenAIResponsesOutputText(text=content)],
     )
-    return schemas.OpenAIResponsesResponse(
+    return _SchemaOpenAIResponsesResponse(
         id=response_id,
         created_at=created_at,
         model=MODEL_ID,
         output=[output_message],
-        usage=schemas.OpenAIUsage(),
+        usage=_SchemaOpenAIUsage(),
     )

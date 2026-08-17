@@ -1,10 +1,16 @@
 from typing import Any, Generator, List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.zspace.zspace import ZSpace
-from app.schemas import AuthCredentials, AuthInterceptCredentials
+from app.schemas.event import AuthCredentials
+from app.schemas.event import AuthInterceptCredentials
 from app.schemas.types import ChainEventType, MediaServerType, ModuleType
 
 
@@ -59,7 +65,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Webhook报文体
         :param body:  请求体
@@ -84,7 +90,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
                     return result
         return None
 
-    def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:
+    def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """
         媒体数量统计
         """
@@ -106,7 +112,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
 
     def mediaserver_librarys(self, server: str,
                              username: Optional[str] = None,
-                             hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
+                             hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -145,7 +151,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
             return server_obj.get_items_count(library_id)
         return None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """
         媒体库项目详情
         """
@@ -155,7 +161,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         return None
 
     def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+                                item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
@@ -165,13 +171,13 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []
-        return [schemas.MediaServerSeasonInfo(
+        return [_SchemaMediaServerSeasonInfo(
             season=season,
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+                            username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
@@ -190,7 +196,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         return server_obj.get_play_url(item_id)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+                           username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """

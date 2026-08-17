@@ -8,7 +8,15 @@ from fastapi import BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
-from app import schemas
+from app.schemas.message import MessageClearBefore as _SchemaMessageClearBefore
+from app.schemas.message import MessageClearData as _SchemaMessageClearData
+from app.schemas.message import MessageClearScope as _SchemaMessageClearScope
+from app.schemas.message import MessageHistoryItem as _SchemaMessageHistoryItem
+from app.schemas.message import Subscription as _SchemaSubscription
+from app.schemas.message import SubscriptionMessage as _SchemaSubscriptionMessage
+from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
 from app.chain.message import MessageChain
 from app.runtime.config import settings, global_vars
@@ -71,18 +79,18 @@ def _normalize_notification_clear_timestamp(value: Any) -> int:
     return normalized_value if normalized_value > 0 else 0
 
 
-def _get_notification_clear_before() -> schemas.MessageClearBefore:
+def _get_notification_clear_before() -> _SchemaMessageClearBefore:
     """
     读取通知中心清理时间配置。
     """
     value = SystemConfigOper().get(SystemConfigKey.NotificationClearBefore)
     if isinstance(value, dict):
-        return schemas.MessageClearBefore(
+        return _SchemaMessageClearBefore(
             all=_normalize_notification_clear_timestamp(value.get("all")),
             system=_normalize_notification_clear_timestamp(value.get("system")),
             media=_normalize_notification_clear_timestamp(value.get("media")),
         )
-    return schemas.MessageClearBefore(
+    return _SchemaMessageClearBefore(
         all=_normalize_notification_clear_timestamp(value),
     )
 
@@ -104,11 +112,11 @@ def start_message_chain(body: Any, form: Any, args: Any):
     MessageChain().process(body=body, form=form, args=args)
 
 
-@router.post("/", summary="接收用户消息", response_model=schemas.Response[None])
+@router.post("/", summary="接收用户消息", response_model=_SchemaResponse[None])
 async def user_message(
     background_tasks: BackgroundTasks,
     request: Request,
-    _: schemas.TokenPayload = Depends(verify_apitoken),
+    _: _SchemaTokenPayload = Depends(verify_apitoken),
 ):
     """
     用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
@@ -141,10 +149,10 @@ async def user_message(
         image_markers,
     )
     background_tasks.add_task(start_message_chain, body, form, args)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.post("/web", summary="接收WEB消息", response_model=schemas.Response[None])
+@router.post("/web", summary="接收WEB消息", response_model=_SchemaResponse[None])
 async def web_message(
     request: Request,
     text: Optional[str] = None,
@@ -180,12 +188,12 @@ async def web_message(
         text=text or "",
         images=images,
     )
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.get("/web", summary="获取WEB消息", response_model=List[schemas.WebMessageItem])
+@router.get("/web", summary="获取WEB消息", response_model=List[_SchemaWebMessageItem])
 async def get_web_message(
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
     db: AsyncSession = Depends(get_async_db),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
@@ -204,9 +212,9 @@ async def get_web_message(
     return ret_messages
 
 
-@router.get("/notification", summary="获取通知消息", response_model=List[schemas.MessageHistoryItem])
+@router.get("/notification", summary="获取通知消息", response_model=List[_SchemaMessageHistoryItem])
 async def get_notification_message(
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
     db: AsyncSession = Depends(get_async_db),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
@@ -222,17 +230,17 @@ async def get_notification_message(
         system_clear_before=_format_notification_clear_time(clear_before.system),
         media_clear_before=_format_notification_clear_time(clear_before.media),
     )
-    return [schemas.MessageHistoryItem(**message.to_dict()) for message in messages]
+    return [_SchemaMessageHistoryItem(**message.to_dict()) for message in messages]
 
 
 @router.delete(
     "/notification",
     summary="清理通知消息",
-    response_model=schemas.Response[schemas.MessageClearData],
+    response_model=_SchemaResponse[_SchemaMessageClearData],
 )
 async def clear_notification_message(
-    scope: schemas.MessageClearScope = schemas.MessageClearScope.All,
-    _: schemas.TokenPayload = Depends(verify_token),
+    scope: _SchemaMessageClearScope = _SchemaMessageClearScope.All,
+    _: _SchemaTokenPayload = Depends(verify_token),
 ):
     """
     记录通知中心清理时间，后续通知历史查询会在服务端过滤。
@@ -241,7 +249,7 @@ async def clear_notification_message(
     value = clear_before.model_dump()
     value[scope.value] = int(time.time() * 1000)
     await SystemConfigOper().async_set(SystemConfigKey.NotificationClearBefore, value)
-    return schemas.Response(success=True, data={"clear_before": value})
+    return _SchemaResponse(success=True, data={"clear_before": value})
 
 
 def wechat_verify(
@@ -325,7 +333,7 @@ def incoming_verify(
     timestamp: Union[str, int] = None,
     nonce: Optional[str] = None,
     source: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_apitoken),
+    _: _SchemaTokenPayload = Depends(verify_apitoken),
 ) -> Any:
     """
     微信/VoceChat等验证响应
@@ -342,10 +350,10 @@ def incoming_verify(
 @router.post(
     "/webpush/subscribe",
     summary="客户端webpush通知订阅",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def subscribe(
-    subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)
+    subscription: _SchemaSubscription, _: _SchemaTokenPayload = Depends(verify_token)
 ):
     """
     客户端webpush通知订阅
@@ -353,15 +361,15 @@ async def subscribe(
     subinfo = subscription.model_dump()
     global_vars.push_subscription(subinfo)
     logger.debug(f"通知订阅成功: {subinfo}")
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 @router.post(
-    "/webpush/send", summary="发送webpush通知", response_model=schemas.Response[None]
+    "/webpush/send", summary="发送webpush通知", response_model=_SchemaResponse[None]
 )
 def send_notification(
-    payload: schemas.SubscriptionMessage,
-    _: schemas.TokenPayload = Depends(verify_token),
+    payload: _SchemaSubscriptionMessage,
+    _: _SchemaTokenPayload = Depends(verify_token),
 ):
     """
     发送webpush通知
@@ -382,4 +390,4 @@ def send_notification(
             if is_webpush_subscription_gone(err) and global_vars.remove_subscription(sub):
                 logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
             continue
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)

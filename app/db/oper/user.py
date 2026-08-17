@@ -11,7 +11,7 @@ runtime 兼容映射指向 SDK 薄门面；canonical 数据访问模块仍只依
 """
 from typing import List, Optional
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.user import User
 
 

@@ -14,7 +14,7 @@ from app.application.messaging.interaction import (
 )
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MediaType
 
 

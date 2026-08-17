@@ -12,7 +12,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
+from app.schemas.transfer import EpisodeFormatRule as _SchemaEpisodeFormatRule
 from app.adapters.system.host import SystemUtils
 from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
 from app.application.formatting import EpisodeFormatRuleHelper
@@ -33,19 +34,17 @@ from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
-from app.schemas import (
-    FileItem,
-    Message,
-    TmdbEpisode,
-    TransferInfo,
-)
-from app.schemas.agent import ReplyMode
+from app.schemas.workflow import FileItem
+from app.schemas.message import Message
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     EventType,
     MediaSource,
     MediaType,
     NotificationChannel,
+    ReplyMode,
     SystemConfigKey,
 )
 
@@ -722,17 +721,17 @@ class EpisodeFormatMixin:
         return state, errmsg, data
 
     @staticmethod
-    def _get_episode_format_rules() -> List[schemas.EpisodeFormatRule]:
+    def _get_episode_format_rules() -> List[_SchemaEpisodeFormatRule]:
         """
         获取启用的集数定位规则
         """
         rule_items = SystemConfigOper().get(SystemConfigKey.EpisodeFormatRuleTable) or []
-        rules: List[schemas.EpisodeFormatRule] = []
+        rules: List[_SchemaEpisodeFormatRule] = []
         for item in rule_items:
             if not isinstance(item, dict):
                 continue
             try:
-                rule = schemas.EpisodeFormatRule(**item)
+                rule = _SchemaEpisodeFormatRule(**item)
             except Exception as err:
                 logger.warn(f"忽略无效的集数定位规则：{err}")
                 continue
@@ -941,7 +940,7 @@ class HistoryMatchMixin:
             # 两种 DownloadHistory 都会进来：库模型（本文件按 ORM 行查历史）与
             # schemas DTO（TransferTask.download_history）。本函数只按 getattr 取
             # year 与 type，对两者一视同仁
-            media: Union[DownloadHistory, schemas.DownloadHistory, MediaInfo, MusicInfo]
+            media: Union[DownloadHistory, _SchemaDownloadHistory, MediaInfo, MusicInfo]
     ) -> bool:
         """
         判断文件名年份是否与已识别电影年份冲突。

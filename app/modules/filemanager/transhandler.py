@@ -15,16 +15,14 @@ from app.application.directory import DirectoryHelper
 from app.application.messaging.message import TemplateHelper
 from app.runtime.log import logger
 from app.modules.filemanager.storages import StorageBase
-from app.schemas import (
-    TransferInfo,
-    TmdbEpisode,
-    TransferDirectoryConf,
-    FileItem,
-    TransferInterceptEventData,
-    TransferOverwriteCheckEventData,
-    TransferRenameBuildEventData,
-    TransferRenameEventData,
-)
+from app.schemas.transfer import TransferInfo
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.workflow import FileItem
+from app.schemas.event import TransferInterceptEventData
+from app.schemas.event import TransferOverwriteCheckEventData
+from app.schemas.event import TransferRenameBuildEventData
+from app.schemas.event import TransferRenameEventData
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import MediaType, ChainEventType
 from app.adapters.system.host import SystemUtils

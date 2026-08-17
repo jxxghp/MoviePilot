@@ -21,7 +21,7 @@ from app.runtime.config import settings
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MessageType
 
 if TYPE_CHECKING:

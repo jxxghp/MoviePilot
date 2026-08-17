@@ -2,7 +2,8 @@ import re
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import List, Optional, Tuple
 
-from app import schemas
+from app.schemas.file import FileURI as _SchemaFileURI
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.domain.context import MediaInfo
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
@@ -20,22 +21,22 @@ class DirectoryHelper:
     """
 
     @staticmethod
-    def get_dirs() -> List[schemas.TransferDirectoryConf]:
+    def get_dirs() -> List[_SchemaTransferDirectoryConf]:
         """
         获取所有下载目录
         """
         dir_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
-        return [schemas.TransferDirectoryConf(**d) for d in dir_confs]
+        return [_SchemaTransferDirectoryConf(**d) for d in dir_confs]
 
-    def get_download_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    def get_download_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
         获取所有下载目录
         """
         return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority)
 
-    def get_local_download_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    def get_local_download_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
         获取所有本地的可下载目录
         """
@@ -45,7 +46,7 @@ class DirectoryHelper:
             self,
             media: Optional[MediaInfo],
             save_path: str,
-    ) -> Optional[schemas.TransferDirectoryConf]:
+    ) -> Optional[_SchemaTransferDirectoryConf]:
         """
         按媒体信息和精确保存根路径匹配下载目录配置。
 
@@ -78,13 +79,13 @@ class DirectoryHelper:
                 return dir_info
         return None
 
-    def get_library_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    def get_library_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
         获取所有媒体库目录
         """
         return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority)
 
-    def get_local_library_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    def get_local_library_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
         获取所有本地的媒体库目录
         """
@@ -93,7 +94,7 @@ class DirectoryHelper:
     def get_dir(self, media: Optional[MediaInfo], include_unsorted: Optional[bool] = False,
                 storage: Optional[str] = None, src_path: Path = None,
                 target_storage: Optional[str] = None, dest_path: Path = None
-                ) -> Optional[schemas.TransferDirectoryConf]:
+                ) -> Optional[_SchemaTransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置
         :param media: 媒体信息
@@ -113,7 +114,7 @@ class DirectoryHelper:
         dirs_to_consider = matching_dirs if matching_dirs else dirs
 
         # 已匹配的目录
-        matched_dirs: List[schemas.TransferDirectoryConf] = []
+        matched_dirs: List[_SchemaTransferDirectoryConf] = []
         # 按照配置顺序查找
         for d in dirs_to_consider:
             # 没有启用整理的目录
@@ -297,10 +298,10 @@ def _download_path_uri(storage: str, path: PurePath) -> str:
     path_value = path.as_posix()
     if storage == "local":
         return path_value
-    return schemas.FileURI(storage=storage, path=path_value).uri
+    return _SchemaFileURI(storage=storage, path=path_value).uri
 
 
-def _normalize_download_root(dir_info: schemas.TransferDirectoryConf) -> Optional[Tuple[str, str, PurePath]]:
+def _normalize_download_root(dir_info: _SchemaTransferDirectoryConf) -> Optional[Tuple[str, str, PurePath]]:
     """
     读取下载目录配置中的根路径；无效配置不参与用户 save_path allowlist。
     """

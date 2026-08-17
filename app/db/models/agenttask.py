@@ -3,7 +3,8 @@ from typing import Optional
 from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, db_query, db_update, execute_dml, get_id_column
+from app.db.base import Base, execute_dml, get_id_column
+from app.db.decorators import db_query, db_update
 
 
 class AgentTask(Base):

@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import Integer, String, JSON, Index, delete, or_
+from sqlalchemy import String, JSON, Index, delete, or_
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
+from app.db.base import Base, execute_dml, get_id_column
+from app.db.decorators import async_db_query, db_query, db_update
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 

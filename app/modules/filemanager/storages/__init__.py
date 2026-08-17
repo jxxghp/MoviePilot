@@ -4,7 +4,9 @@ from typing import Optional, List, Dict, Tuple, Callable, Union
 
 from tqdm import tqdm
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.system import StorageConf as _SchemaStorageConf
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.progress import ProgressHelper
 from app.application.storage import StorageHelper
 from app.runtime.log import logger
@@ -69,7 +71,7 @@ class StorageBase(metaclass=ABCMeta):
         """检查存储登录状态"""
         pass
 
-    def get_config(self) -> Optional[schemas.StorageConf]:
+    def get_config(self) -> Optional[_SchemaStorageConf]:
         """
         获取配置
         """
@@ -122,7 +124,7 @@ class StorageBase(metaclass=ABCMeta):
         return safe_name
 
     def _build_download_path(
-        self, fileitem: schemas.FileItem, path: Path
+        self, fileitem: _SchemaFileItem, path: Path
     ) -> Optional[Path]:
         """
         构造本地下载路径，避免远端文件名携带目录片段时越过目标目录。
@@ -148,14 +150,14 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         浏览文件
         """
         pass
 
     @abstractmethod
-    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
         创建目录
         :param fileitem: 父目录
@@ -164,20 +166,20 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取目录，如目录不存在则创建
         """
         pass
 
     @abstractmethod
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，不存在返回None
         """
         pass
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
 
@@ -188,28 +190,28 @@ class StorageBase(metaclass=ABCMeta):
         """
         raise StorageQueryError(f"存储 {self.schema} 未实现严格查询，无法确认目标状态: {path}")
 
-    def get_parent(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def get_parent(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取父目录
         """
         return self.get_item(Path(fileitem.path).parent)
 
     @abstractmethod
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件
         """
         pass
 
     @abstractmethod
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件
         """
         pass
 
     @abstractmethod
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Path:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Path:
         """
         下载文件，保存到本地，返回本地临时文件地址
         :param fileitem: 文件项
@@ -218,8 +220,8 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def upload(self, fileitem: schemas.FileItem, path: Path,
-               new_name: Optional[str] = None) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: _SchemaFileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
@@ -229,14 +231,14 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件详情
         """
         pass
 
     @abstractmethod
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
         :param fileitem: 文件项
@@ -246,7 +248,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
         :param fileitem: 文件项
@@ -256,21 +258,21 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         硬链接文件
         """
         pass
 
     @abstractmethod
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
         软链接文件
         """
         pass
 
     @abstractmethod
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """
@@ -292,8 +294,8 @@ class StorageBase(metaclass=ABCMeta):
             if PurePosixPath(file_path).is_relative_to(root_path)
         }
 
-        def __remove_deleted_children(_fileitm: schemas.FileItem,
-                                      sub_files: List[schemas.FileItem]) -> None:
+        def __remove_deleted_children(_fileitm: _SchemaFileItem,
+                                      sub_files: List[_SchemaFileItem]) -> None:
             """
             清理已确认遍历目录中不再存在的直接子项。
             未变化的子目录仍保留旧基线，避免增量遍历将其误删。
@@ -311,7 +313,7 @@ class StorageBase(metaclass=ABCMeta):
                 if direct_child_path not in child_paths:
                     files_info.pop(old_file_path, None)
 
-        def __snapshot_file(_fileitm: schemas.FileItem, current_depth: int = 0):
+        def __snapshot_file(_fileitm: _SchemaFileItem, current_depth: int = 0):
             """
             递归获取文件信息
             """

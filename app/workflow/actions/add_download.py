@@ -8,7 +8,10 @@ from app.chain.media import MediaChain
 from app.runtime.config import global_vars
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext, DownloadTask, MediaType
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
+from app.schemas.workflow import DownloadTask
+from app.schemas.types import MediaType
 
 
 class AddDownloadParams(ActionParams):

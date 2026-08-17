@@ -2,22 +2,20 @@ import asyncio
 import gc
 import hashlib
 import inspect
-import json
 import multiprocessing
 import threading
 import traceback
 from datetime import datetime, timedelta
-from typing import Callable, Optional, Dict, Any
-from typing import List
+from typing import Callable, Optional, Dict, Any, List
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy.orm import Session
-
-from app import schemas
+from app.schemas.dashboard import ScheduleInfo as _SchemaScheduleInfo
+from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
+from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 from app.chain import ChainBase
 from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
@@ -28,14 +26,9 @@ from app.chain.workflow import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.db import SessionFactory
 from app.db.oper.agenttask import AgentTaskOper
-from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
-from app.db.models.downloadfailure import DownloadFailure
-from app.db.models.message import Message as MessageModel
-from app.db.models.siteuserdata import SiteUserData
-from app.db.models.transferhistory import TransferHistory
 from app.db.oper.systemconfig import SystemConfigOper
+from app.application.maintenance import build_cleanup_service
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import ProgressHelper
@@ -43,7 +36,9 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
-from app.schemas import Message, MessageType, Workflow
+from app.schemas.message import Message
+from app.schemas.message import MessageType
+from app.schemas.workflow import Workflow
 from app.schemas.types import EventType, SystemConfigKey
 from app.runtime.gc import get_memory_usage
 from app.runtime.reload import ConfigReloadMixin
@@ -60,7 +55,7 @@ class SchedulerChain(ChainBase):
     """
     定时任务链，负责执行各类定时任务，包括数据清理等
     """
-    # 每批处理的记录数，避免一次性删除过多数据导致性能问题
+    # 保留旧常量，插件和维护脚本如有引用无需跟随内部职责迁移。
     DEFAULT_BATCH_SIZE = 500
 
     def cleanup(
@@ -71,224 +66,10 @@ class SchedulerChain(ChainBase):
         """
         按配置保留期执行分批清理。
         """
-        started_at = datetime.now()
-        batch_size = batch_size or self.DEFAULT_BATCH_SIZE
-        if batch_size <= 0:
-            batch_size = self.DEFAULT_BATCH_SIZE
-
-        report: Dict[str, Any] = {
-            "started_at": started_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "batch_size": batch_size,
-            "enabled": bool(settings.DATA_CLEANUP_ENABLE),
-            "tables": {},
-            "total_deleted": 0,
-        }
-
-        if not settings.DATA_CLEANUP_ENABLE:
-            report["skipped_reason"] = "disabled"
-            logger.info("数据表清理总开关未开启，跳过执行")
-            return report
-
-        errors = []
-
-        plans = self._build_cleanup_plans(started_at=started_at, batch_size=batch_size)
-        total_plans = len(plans)
-        if progress_callback:
-            progress_callback(value=0, text="开始清理数据表 ...")
-
-        with SessionFactory() as db:
-            for plan_index, plan in enumerate(plans):
-                name = plan["name"]
-                retention_days = plan["retention_days"]
-                if retention_days <= 0:
-                    report["tables"][name] = {
-                        "deleted": 0,
-                        "batches": 0,
-                        "cutoff": None,
-                        "retention_days": retention_days,
-                        "skipped": True,
-                        "reason": "retention_days<=0",
-                    }
-                    if progress_callback:
-                        progress_callback(
-                            value=(plan_index + 1) / total_plans * 100,
-                            text=f"数据表 {name} 跳过清理",
-                        )
-                    continue
-
-                try:
-                    if progress_callback:
-                        progress_callback(
-                            value=plan_index / total_plans * 100,
-                            text=f"正在清理数据表 {name} ...",
-                        )
-                    table_report = self._cleanup_in_batches(
-                        db=db,
-                        table_name=name,
-                        delete_batch=plan["handler"],
-                    )
-                    table_report["cutoff"] = plan["cutoff"]
-                    table_report["retention_days"] = retention_days
-                    report["tables"][name] = table_report
-                    report["total_deleted"] += table_report["deleted"]
-                except Exception as err:
-                    errors.append(f"{name}: {str(err)}")
-                    logger.error(f"数据表 {name} 清理失败：{str(err)}")
-                    report["tables"][name] = {
-                        "deleted": 0,
-                        "batches": 0,
-                        "cutoff": plan["cutoff"],
-                        "retention_days": retention_days,
-                        "error": str(err),
-                    }
-                finally:
-                    if progress_callback:
-                        progress_callback(
-                            value=(plan_index + 1) / total_plans * 100,
-                            text=f"数据表 {name} 清理处理完成",
-                        )
-
-        if errors:
-            report["errors"] = errors
-            logger.error(
-                f"数据表清理部分失败：{json.dumps(report, ensure_ascii=False)}"
-            )
-            raise RuntimeError("；".join(errors))
-
-        logger.info(f"数据表清理完成：{json.dumps(report, ensure_ascii=False)}")
-        return report
-
-    @staticmethod
-    def _normalize_retention_days(retention_days: Any) -> int:
-        try:
-            normalized_days = int(retention_days or 0)
-        except (TypeError, ValueError):
-            return 0
-        return max(normalized_days, 0)
-
-    def _build_cleanup_plans(
-            self,
-            started_at: datetime,
-            batch_size: int,
-    ) -> List[Dict[str, Any]]:
-        message_days = self._normalize_retention_days(settings.DATA_CLEANUP_MESSAGE_DAYS)
-        download_history_days = self._normalize_retention_days(
-            settings.DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS
+        return build_cleanup_service().execute(
+            batch_size=batch_size,
+            progress_callback=progress_callback,
         )
-        site_userdata_days = self._normalize_retention_days(
-            settings.DATA_CLEANUP_SITE_USERDATA_DAYS
-        )
-        transfer_history_days = self._normalize_retention_days(
-            settings.DATA_CLEANUP_TRANSFER_HISTORY_DAYS
-        )
-        download_failure_days = self._normalize_retention_days(
-            settings.DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS
-        )
-
-        message_cutoff = (
-                started_at - timedelta(days=message_days)
-        ).strftime("%Y-%m-%d")
-        download_history_cutoff = (
-                started_at - timedelta(days=download_history_days)
-        ).strftime("%Y-%m-%d")
-        site_userdata_cutoff = (
-                started_at - timedelta(days=site_userdata_days)
-        ).strftime("%Y-%m-%d")
-        transfer_history_cutoff = (
-                started_at - timedelta(days=transfer_history_days)
-        ).strftime("%Y-%m-%d")
-        download_failure_cutoff = (
-                started_at - timedelta(days=download_failure_days)
-        ).strftime("%Y-%m-%d %H:%M:%S")
-
-        return [
-            {
-                "name": "message",
-                "retention_days": message_days,
-                "cutoff": message_cutoff,
-                "handler": lambda db: MessageModel.delete_before(
-                    db=db,
-                    before_time=message_cutoff,
-                    limit=batch_size,
-                ),
-            },
-            {
-                "name": "downloadhistory",
-                "retention_days": download_history_days,
-                "cutoff": download_history_cutoff,
-                "handler": lambda db: DownloadHistory.delete_before(
-                    db=db,
-                    before_time=download_history_cutoff,
-                    limit=batch_size,
-                ),
-            },
-            {
-                "name": "downloadfiles",
-                "retention_days": download_history_days,
-                "cutoff": "follow-parent-history",
-                "handler": lambda db: DownloadFiles.delete_orphans(
-                    db=db,
-                    limit=batch_size,
-                ),
-            },
-            {
-                "name": "siteuserdata",
-                "retention_days": site_userdata_days,
-                "cutoff": site_userdata_cutoff,
-                "handler": lambda db: SiteUserData.delete_before(
-                    db=db,
-                    before_day=site_userdata_cutoff,
-                    limit=batch_size,
-                ),
-            },
-            {
-                "name": "transferhistory",
-                "retention_days": transfer_history_days,
-                "cutoff": transfer_history_cutoff,
-                "handler": lambda db: TransferHistory.delete_before(
-                    db=db,
-                    before_time=transfer_history_cutoff,
-                    limit=batch_size,
-                ),
-            },
-            {
-                "name": "downloadfailure",
-                "retention_days": download_failure_days,
-                "cutoff": download_failure_cutoff,
-                "handler": lambda db: DownloadFailure.delete_expired(
-                    db=db,
-                    before_time=download_failure_cutoff,
-                    limit=batch_size,
-                ),
-            },
-        ]
-
-    @staticmethod
-    def _cleanup_in_batches(
-            db: Session,
-            table_name: str,
-            delete_batch: Callable[[Session], int],
-    ) -> Dict[str, int]:
-        """
-        循环执行单表分批删除，直到没有可删除数据。
-        """
-        total_deleted = 0
-        batches = 0
-
-        while True:
-            deleted = delete_batch(db) or 0
-            if deleted <= 0:
-                break
-            batches += 1
-            total_deleted += deleted
-            logger.info(
-                f"数据表 {table_name} 清理第 {batches} 批完成，删除 {deleted} 条记录"
-            )
-
-        return {
-            "deleted": total_deleted,
-            "batches": batches,
-        }
 
 
 class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
@@ -347,7 +128,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
     @staticmethod
     def _get_mediaserver_sync_interval(
-            mediaserver: schemas.MediaServerConf,
+            mediaserver: _SchemaMediaServerConf,
             default_interval: Optional[int],
     ) -> Optional[int]:
         """
@@ -365,7 +146,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     @classmethod
     def _build_mediaserver_sync_schedules(
             cls,
-            mediaservers: List[schemas.MediaServerConf],
+            mediaservers: List[_SchemaMediaServerConf],
             default_interval: Optional[int],
     ) -> List[dict]:
         """
@@ -863,7 +644,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             value=progress_value,
         )
 
-    def get_progress(self, job_id: str) -> Optional[schemas.ScheduleProgress]:
+    def get_progress(self, job_id: str) -> Optional[_SchemaScheduleProgress]:
         """
         查询指定定时服务的执行进度。
         """
@@ -886,7 +667,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             value = float(value)
         except (TypeError, ValueError):
             value = 0.0
-        return schemas.ScheduleProgress(
+        return _SchemaScheduleProgress(
             id=job_id,
             name=data.get("name") or job_name,
             provider=data.get("provider") or provider_name,
@@ -1450,7 +1231,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                         role="system",
                     )
 
-    def list(self) -> List[schemas.ScheduleInfo]:
+    def list(self) -> List[_SchemaScheduleInfo]:
         """
         当前所有任务
         """
@@ -1476,7 +1257,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                         added.append(job_id)
                     progress = self.get_progress(job_id)
                     schedulers.append(
-                        schemas.ScheduleInfo(
+                        _SchemaScheduleInfo(
                             id=job_id,
                             name=name,
                             provider=provider_name,
@@ -1503,7 +1284,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 next_run = TimerUtils.time_difference(job.next_run_time)
                 progress = self.get_progress(job_id)
                 schedulers.append(
-                    schemas.ScheduleInfo(
+                    _SchemaScheduleInfo(
                         id=job_id,
                         name=job.name,
                         provider=service.get("provider_name", "[系统]"),
@@ -1524,7 +1305,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 added.append(job_id)
                 progress = self.get_progress(job_id)
                 schedulers.append(
-                    schemas.ScheduleInfo(
+                    _SchemaScheduleInfo(
                         id=job_id,
                         name=service.get("name"),
                         provider=service.get("provider_name", "[系统]"),

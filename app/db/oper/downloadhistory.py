@@ -1,6 +1,8 @@
 from typing import Dict, List, Optional, cast
 
-from app.db import DbOper
+from sqlalchemy import delete as sqlalchemy_delete, update as sqlalchemy_update
+
+from app.db.base import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.schemas.types import MediaSource
 
@@ -110,6 +112,17 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.delete_by_fullpath(self._db, fullpath)
 
+    def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
+        """暂存指定完整路径的下载文件记录删除。"""
+        self._db.execute(
+            sqlalchemy_update(DownloadFiles)
+            .where(
+                DownloadFiles.fullpath == fullpath,
+                DownloadFiles.state == 1,
+            )
+            .values(state=0)
+        )
+
     def get_hash_by_fullpath(self, fullpath: str) -> Optional[str]:
         """
         按fullpath查询下载文件记录hash
@@ -191,6 +204,14 @@ class DownloadHistoryOper(DbOper):
         删除下载记录
         """
         DownloadHistory.delete(self._db, historyid)
+
+    def stage_delete_history(self, historyid: int) -> None:
+        """暂存下载记录删除，不由模型装饰器提交事务。"""
+        self._db.execute(
+            sqlalchemy_delete(DownloadHistory).where(
+                DownloadHistory.id == historyid
+            )
+        )
 
     def delete_downloadfile(self, downloadfileid):
         """

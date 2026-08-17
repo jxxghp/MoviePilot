@@ -60,7 +60,14 @@ to make the directory tree look symmetrical.
 
 | Path | Ownership |
 |---|---|
-| `app/application/*.py` | Audio, directory, downloader, filter, formatting, transfer history, image, media-server, notification, recognition, RSS, storage and torrent application services |
+| `app/application/*.py` | Established single-module application services and compatibility facades |
+| `app/application/subscription/` | Subscription contracts and write commands: `contract.py` owns shared metadata/media-key projection; `delete.py` and `identity.py` own deletion use cases |
+| `app/application/search/` | Search state and later search-plan use cases |
+| `app/application/download/` | Download task querying/control and later submission use cases |
+| `app/application/music/` | Multi-source music catalog orchestration |
+| `app/application/chain/` | Injectable Chain runtime context and compatibility provider |
+| `app/application/plugin/` | Plugin market catalog, installation command and dynamic-route port; filenames remain single words (`catalog.py`, `install.py`, `routes.py`) |
+| `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
@@ -87,6 +94,14 @@ create additional top-level directory categories.
 runtime. It injects providers and callbacks, orders initialization/shutdown and
 decides restart policy. Lower-level runtime modules must not import startup.
 
+`app.schemas` and `app.db` are compatibility facades, not implementation
+dependency hubs. Host code imports concrete schema submodules; the schema root
+resolves its generated export manifest lazily for plugins and legacy callers.
+DB internals import `base`, `decorators`, `engine`, `session`, concrete models
+and Oper modules directly. `app.db.models.load_all_models()` is the explicit
+composition entry used before metadata creation or migration; importing one
+model must not import every table.
+
 ### Adapter boundaries
 
 | Path | Ownership |
@@ -95,6 +110,8 @@ decides restart policy. Lower-level runtime modules must not import startup.
 | `app/adapters/network/` | Generic HTTP, browser, DNS, Cloudflare and IP transport mechanisms |
 | `app/adapters/system/` | OS/filesystem/process facilities, stdio, display, packages, resources and optional Rust acceleration |
 | `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
+| `app/adapters/external/plugin/client.py` | Read-only plugin-market and local-repository client over the established `PluginHelper` implementation |
+| `app/adapters/system/plugin/` | Plugin package and dependency I/O (`package.py`, `dependency.py`) |
 
 Generic protocol transport belongs in `adapters/network`; a named product or
 ecosystem workflow belongs in `adapters/external`. An adapter may depend on
@@ -115,6 +132,9 @@ mechanism remains in `app/adapters/system/resource.py`.
 `start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用
 `on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/managed_resources.py`
 显式获取资源。关闭路径先释放消费者，再关闭已初始化 Runtime，未使用的资源不得因关闭而物化。
+应用级启动顺序使用 `app/startup/lifecycle/components.py` 的组件描述声明依赖、
+normal/safe-mode 范围、start/stop 顺序、超时预算和失败策略。新增进程级资源不得只在
+`lifespan()` 中追加过程代码，必须先进入可导出的生命周期清单并补顺序快照测试。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
 旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
@@ -199,6 +219,21 @@ Use these questions in order before creating or moving a migrated capability:
 Do not create generic `common`, `helper` or `utils` buckets. Reuse does not erase
 ownership.
 
+New production Python module filenames use one lowercase word. When one topic
+needs multiple modules, create a topic package and keep each child filename to
+one word, for example `runtime/event/{registry,binding,dispatch,errors}.py` or
+`application/subscription/{contract,delete,identity}.py`. Established multiword
+public import paths may remain as compatibility exceptions after plugin/import
+scanning, but they are not templates for new modules. Test filenames continue
+to follow pytest's descriptive `test_<behavior>.py` convention.
+
+Legacy module paths belong in `app/runtime/compat/manifest.py`. New
+implementation modules must not re-export old managers, helpers or Oper classes
+just to preserve imports or tests. A public runtime object whose path or identity
+is itself part of the plugin ABI stays at its established path as a thin facade;
+new plugin-facing symbols are exported deliberately through `app/sdk` and its
+architecture snapshot, not through incidental module globals.
+
 ## Existing Chain, Module and DB Layers
 
 ### Chain layer
@@ -211,6 +246,15 @@ do not belong here. Chains interact with modules exclusively through
 `run_module` dispatch on method-name contracts; direct imports of module
 internals (classes, exceptions, constants) are forbidden, so every module stays
 pluggable and a chain never names a concrete module implementation.
+The dispatch algorithm belongs to
+`app/runtime/extensions/module/dispatcher.py`; `ChainBase` remains the
+compatibility facade. New chains and tests inject the minimal
+`ChainRuntimeContext` from `app/application/chain/context.py`. No-argument
+`Chain()` remains supported through the startup-configured compatibility
+provider. High-frequency string methods are classified in
+`module/contracts.py`; unknown third-party plugin methods retain the frozen
+legacy aggregation contract, while the architecture baseline records every
+literal method and call site.
 
 Underscore-prefixed files in `app/chain/` are feature-domain mixins for
 `ChainBase` and concrete chains, not chains themselves: `_recognition.py`
@@ -219,7 +263,11 @@ Underscore-prefixed files in `app/chain/` are feature-domain mixins for
 slash-command delegation for `remote_list` / `parse_callback` /
 `handle_callback_interaction` / `handle_text_interaction`), `_music.py`
 (`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
-`SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). A concrete chain that exposes slash-command
+`SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). Shared
+subscription metadata and media-key construction belongs to
+`app.application.subscription.contract`; `app.chain.subscribe` keeps the old helper
+names only as compatibility forwards and `_music` must not import its concrete
+chain owner. A concrete chain that exposes slash-command
 interaction inherits `InteractionChainMixin`, injects its handler class via
 `_interaction_handler_type` and implements only `_interaction_handler`; it must
 not re-export application-layer interaction managers.
@@ -234,6 +282,13 @@ exceptions and value domains used by both modules and upper layers live in
 `schemas`, and module capabilities are exposed to chains only as dispatched
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
+
+`app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
+`FileManagerModule` implementation lives in `app.modules.filemanager.module`,
+while the historical capability path and class module identity remain
+`app.modules.filemanager:FileManagerModule`. Storage and transfer-handler
+submodules must not import the concrete module implementation through the
+package root.
 
 `app/modules/_base/` hosts the shared template base classes for module families
 (`downloader.py`, `mediaserver.py`, `notification.py`), each combining the
@@ -364,9 +419,27 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
 | `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
-| `app/runtime/events.py` | `EventManager`, `Event` and event resolver registration |
+| `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
+| `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
+| `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |
+| `app/runtime/event/dispatch.py` | Chain/broadcast ordering, concurrency, target-plugin filtering and isolated delivery |
+| `app/runtime/event/errors.py` | Handler failure notification and non-recursive `SystemError` downgrade policy |
+| `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
+| `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
+| `app/application/chain/context.py` | Injectable Chain dependencies and no-argument compatibility provider |
+| `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
+| `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
+| `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
+| `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
+| `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol; plugin response payloads remain raw unless the plugin chooses its own envelope |
+| `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
+| `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
+| `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
+| `app/adapters/system/plugin/package.py` | Plugin package installation adapter |
+| `app/adapters/system/plugin/dependency.py` | Plugin dependency inspection and installation adapter |
 | `app/runtime/extensions/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
 | `app/runtime/managed_resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
@@ -396,4 +469,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-16*
+*Last Updated: 2026-08-17*

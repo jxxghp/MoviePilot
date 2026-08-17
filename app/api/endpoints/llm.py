@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import Depends, Request, Response
 from fastapi.responses import HTMLResponse
 
-from app import schemas
+from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.db.models import User
 from app.api.deps import get_current_active_superuser_async
@@ -23,11 +24,11 @@ def _get_llm_provider_manager_type() -> type:
     summary="LLM提供商统一管理",
     # 各动作 data 形态不一：目录查询返回列表，其余动作返回映射，
     # 须用具体联合类型声明，而非单一开放映射
-    response_model=schemas.Response[Union[List[Dict[str, Any]], Dict[str, Any]]],
+    response_model=_SchemaResponse[Union[List[Dict[str, Any]], Dict[str, Any]]],
 )
 async def manage_provider(
         request: Request,
-        payload: schemas.ManageRequest,
+        payload: _SchemaManageRequest,
         _: User = Depends(get_current_active_superuser_async),
 ):
     """
@@ -46,7 +47,7 @@ async def manage_provider(
     result = await _get_llm_provider_manager_type()().provider_manage(
         payload.target, payload.action, **params
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=bool(result.get("success")),
         message=result.get("message"),
         data=result.get("data"),

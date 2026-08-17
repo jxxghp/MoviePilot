@@ -4,7 +4,7 @@ from typing import Any, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import DbOper
+from app.db.base import DbOper
 from app.db.models.agentchat import AgentChat
 from app.schemas.types import NotificationChannel
 

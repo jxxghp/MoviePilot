@@ -3,7 +3,14 @@ from typing import List, Any, Dict, Annotated, Union
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from app import schemas
+from app.schemas.mcp import MCP_JSONRPC_REQUEST_SCHEMA as _SchemaMCP_JSONRPC_REQUEST_SCHEMA
+from app.schemas.mcp import McpJsonRpcError as _SchemaMcpJsonRpcError
+from app.schemas.mcp import McpJsonRpcResponse as _SchemaMcpJsonRpcResponse
+from app.schemas.mcp import McpJsonSchema as _SchemaMcpJsonSchema
+from app.schemas.mcp import McpToolInfo as _SchemaMcpToolInfo
+from app.schemas.mcp import ToolCallData as _SchemaToolCallData
+from app.schemas.mcp import ToolCallRequest as _SchemaToolCallRequest
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.agent.tools.manager import moviepilot_tool_manager
 from app.application.security.access import verify_apikey
@@ -30,13 +37,13 @@ MCP_HIDDEN_TOOLS = {
     "read_file",
 }
 MCP_JSONRPC_ERROR_RESPONSES = {
-    400: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 请求错误"},
-    401: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 认证失败"},
-    403: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 访问被拒绝"},
-    404: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 方法不存在"},
-    409: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 请求冲突"},
-    422: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 参数校验失败"},
-    500: {"model": schemas.McpJsonRpcError, "description": "JSON-RPC 内部错误"},
+    400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},
+    401: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 认证失败"},
+    403: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 访问被拒绝"},
+    404: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 方法不存在"},
+    409: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求冲突"},
+    422: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 参数校验失败"},
+    500: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 内部错误"},
 }
 
 
@@ -80,13 +87,13 @@ def create_jsonrpc_error(
 @router.post(
     "",
     summary="MCP JSON-RPC 端点",
-    response_model=schemas.McpJsonRpcResponse,
+    response_model=_SchemaMcpJsonRpcResponse,
     openapi_extra={
         RAW_RESPONSE_OPENAPI_KEY: True,
         "requestBody": {
             "required": True,
             "content": {
-                "application/json": {"schema": schemas.MCP_JSONRPC_REQUEST_SCHEMA}
+                "application/json": {"schema": _SchemaMCP_JSONRPC_REQUEST_SCHEMA}
             },
         },
     },
@@ -290,7 +297,7 @@ async def delete_mcp_session(
 @router.get(
     "/tools",
     summary="列出所有可用工具",
-    response_model=List[schemas.McpToolInfo],
+    response_model=List[_SchemaMcpToolInfo],
 )
 async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
@@ -321,10 +328,10 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
 @router.post(
     "/tools/call",
     summary="调用工具",
-    response_model=schemas.Response[schemas.ToolCallData],
+    response_model=_SchemaResponse[_SchemaToolCallData],
 )
 async def call_tool(
-    request: schemas.ToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None
+    request: _SchemaToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None
 ) -> Any:
     """
     调用指定的工具
@@ -340,19 +347,19 @@ async def call_tool(
             request.tool_name, request.arguments
         )
 
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
-            data=schemas.ToolCallData(result=result_text),
+            data=_SchemaToolCallData(result=result_text),
         )
     except Exception as e:
         logger.error(f"调用工具 {request.tool_name} 失败: {e}", exc_info=True)
-        return schemas.Response(success=False, message="调用工具失败")
+        return _SchemaResponse(success=False, message="调用工具失败")
 
 
 @router.get(
     "/tools/{tool_name}",
     summary="获取工具详情",
-    response_model=schemas.McpToolInfo,
+    response_model=_SchemaMcpToolInfo,
 )
 async def get_tool_info(
     tool_name: str, _: Annotated[str, Depends(verify_apikey)]
@@ -387,7 +394,7 @@ async def get_tool_info(
 @router.get(
     "/tools/{tool_name}/schema",
     summary="获取工具参数Schema",
-    response_model=schemas.McpJsonSchema,
+    response_model=_SchemaMcpJsonSchema,
 )
 async def get_tool_schema(
     tool_name: str, _: Annotated[str, Depends(verify_apikey)]

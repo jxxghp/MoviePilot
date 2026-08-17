@@ -2,7 +2,7 @@ from typing import Any, Annotated
 
 from fastapi import BackgroundTasks, Request, Depends
 
-from app import schemas
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.chain.webhook import WebhookChain
 from app.application.security.access import verify_apitoken
@@ -17,7 +17,7 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
     WebhookChain().message(body=body, form=form, args=args)
 
 
-@router.post("/", summary="Webhook消息响应", response_model=schemas.Response[None])
+@router.post("/", summary="Webhook消息响应", response_model=_SchemaResponse[None])
 async def webhook_message(
     background_tasks: BackgroundTasks,
     request: Request,
@@ -30,10 +30,10 @@ async def webhook_message(
     form = await request.form()
     args = request.query_params
     background_tasks.add_task(start_webhook_chain, body, form, args)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
-@router.get("/", summary="Webhook消息响应", response_model=schemas.Response[None])
+@router.get("/", summary="Webhook消息响应", response_model=_SchemaResponse[None])
 async def webhook_message_get(
     background_tasks: BackgroundTasks,
     request: Request,
@@ -44,4 +44,4 @@ async def webhook_message_get(
     """
     args = request.query_params
     background_tasks.add_task(start_webhook_chain, None, None, args)
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)

@@ -8,7 +8,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import Message, MessageType
+from app.schemas.message import Message
+from app.schemas.message import MessageType
 
 
 class SendVoiceMessageInput(BaseModel):

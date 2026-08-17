@@ -1,9 +1,8 @@
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 
-from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.service_config import ServiceConfigHelper
-from app.schemas import ServiceInfo
+from app.schemas.system import ServiceInfo
 from app.schemas.types import SystemConfigKey, ModuleType
 
 TConf = TypeVar("TConf")
@@ -11,7 +10,6 @@ TConf = TypeVar("TConf")
 __all__ = [
     "ServiceBaseHelper",
     "ServiceConfigHelper",
-    "SystemConfigOper",
 ]
 
 

@@ -3,7 +3,9 @@ from typing import Optional, List, Tuple, Union, Dict
 
 import cn2an
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -880,7 +882,7 @@ class TheMovieDbModule(_ModuleBase):
 
     def search_persons(
         self, name: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Optional[List[schemas.MediaPerson]]:
+    ) -> Optional[List[_SchemaMediaPerson]]:
         """
         搜索人物信息
         :param name: 人物名称
@@ -893,12 +895,12 @@ class TheMovieDbModule(_ModuleBase):
             return []
         results = self.tmdb.search_persons(name)
         if results:
-            return [schemas.MediaPerson(source='themoviedb', **person) for person in results]
+            return [_SchemaMediaPerson(source='themoviedb', **person) for person in results]
         return []
 
     async def async_search_persons(
         self, name: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Optional[List[schemas.MediaPerson]]:
+    ) -> Optional[List[_SchemaMediaPerson]]:
         """
         异步搜索人物信息
         :param name: 人物名称
@@ -911,7 +913,7 @@ class TheMovieDbModule(_ModuleBase):
             return []
         results = await self.tmdb.async_search_persons(name)
         if results:
-            return [schemas.MediaPerson(source='themoviedb', **person) for person in results]
+            return [_SchemaMediaPerson(source='themoviedb', **person) for person in results]
         return []
 
     def search_collections(
@@ -1048,7 +1050,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in trending]
         return []
 
-    def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
+    def tmdb_seasons(self, tmdbid: int) -> List[_SchemaTmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息
         :param tmdbid:  TMDBID
@@ -1056,10 +1058,10 @@ class TheMovieDbModule(_ModuleBase):
         tmdb_info = self.tmdb.get_info(tmdbid=tmdbid, mtype=MediaType.TV)
         if not tmdb_info:
             return []
-        return [schemas.TmdbSeason(**sea)
+        return [_SchemaTmdbSeason(**sea)
                 for sea in tmdb_info.get("seasons", []) if sea.get("season_number") is not None]
 
-    def tmdb_group_seasons(self, group_id: str) -> List[schemas.TmdbSeason]:
+    def tmdb_group_seasons(self, group_id: str) -> List[_SchemaTmdbSeason]:
         """
         根据剧集组ID查询themoviedb所有季集信息
         :param group_id: 剧集组ID
@@ -1067,14 +1069,14 @@ class TheMovieDbModule(_ModuleBase):
         group_seasons = self.tmdb.get_tv_group_seasons(group_id)
         if not group_seasons:
             return []
-        return [schemas.TmdbSeason(
+        return [_SchemaTmdbSeason(
             season_number=sea.get("order"),
             name=sea.get("name"),
             episode_count=len(sea.get("episodes") or []),
             air_date=sea.get("episodes")[0].get("air_date") if sea.get("episodes") else None,
         ) for sea in group_seasons]
 
-    def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
+    def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[_SchemaTmdbEpisode]:
         """
         根据TMDBID查询某季的所有集信息
         :param tmdbid:  TMDBID
@@ -1087,7 +1089,7 @@ class TheMovieDbModule(_ModuleBase):
             season_info = self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
         if not season_info or not season_info.get("episodes"):
             return []
-        return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes")]
+        return [_SchemaTmdbEpisode(**episode) for episode in season_info.get("episodes")]
 
     def scheduler_job(self) -> None:
         """
@@ -1284,7 +1286,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in recommend]
         return []
 
-    def tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+    def tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param tmdbid:  TMDBID
@@ -1292,10 +1294,10 @@ class TheMovieDbModule(_ModuleBase):
         """
         credit_infos = self.tmdb.get_movie_credits(tmdbid=tmdbid, page=page)
         if credit_infos:
-            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+            return [_SchemaMediaPerson(source="themoviedb", **info) for info in credit_infos]
         return []
 
-    def tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+    def tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电视剧演职员表
         :param tmdbid:  TMDBID
@@ -1303,18 +1305,18 @@ class TheMovieDbModule(_ModuleBase):
         """
         credit_infos = self.tmdb.get_tv_credits(tmdbid=tmdbid, page=page)
         if credit_infos:
-            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+            return [_SchemaMediaPerson(source="themoviedb", **info) for info in credit_infos]
         return []
 
-    def tmdb_person_detail(self, person_id: int) -> schemas.MediaPerson:
+    def tmdb_person_detail(self, person_id: int) -> _SchemaMediaPerson:
         """
         根据TMDBID查询人物详情
         :param person_id:  人物ID
         """
         detail = self.tmdb.get_person_detail(person_id=person_id)
         if detail:
-            return schemas.MediaPerson(source="themoviedb", **detail)
-        return schemas.MediaPerson()
+            return _SchemaMediaPerson(source="themoviedb", **detail)
+        return _SchemaMediaPerson()
 
     def tmdb_person_credits(self, person_id: int, page: Optional[int] = 1) -> List[MediaInfo]:
         """
@@ -1440,7 +1442,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in results]
         return []
 
-    async def async_tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
+    async def async_tmdb_seasons(self, tmdbid: int) -> List[_SchemaTmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息（异步版本）
         :param tmdbid:  TMDBID
@@ -1448,10 +1450,10 @@ class TheMovieDbModule(_ModuleBase):
         tmdb_info = await self.tmdb.async_get_info(tmdbid=tmdbid, mtype=MediaType.TV)
         if not tmdb_info:
             return []
-        return [schemas.TmdbSeason(**sea)
+        return [_SchemaTmdbSeason(**sea)
                 for sea in tmdb_info.get("seasons", []) if sea.get("season_number") is not None]
 
-    async def async_tmdb_group_seasons(self, group_id: str) -> List[schemas.TmdbSeason]:
+    async def async_tmdb_group_seasons(self, group_id: str) -> List[_SchemaTmdbSeason]:
         """
         根据剧集组ID查询themoviedb所有季集信息（异步版本）
         :param group_id: 剧集组ID
@@ -1459,7 +1461,7 @@ class TheMovieDbModule(_ModuleBase):
         group_seasons = await self.tmdb.async_get_tv_group_seasons(group_id)
         if not group_seasons:
             return []
-        return [schemas.TmdbSeason(
+        return [_SchemaTmdbSeason(
             season_number=sea.get("order"),
             name=sea.get("name"),
             episode_count=len(sea.get("episodes") or []),
@@ -1467,7 +1469,7 @@ class TheMovieDbModule(_ModuleBase):
         ) for sea in group_seasons]
 
     async def async_tmdb_episodes(self, tmdbid: int, season: int,
-                                  episode_group: Optional[str] = None) -> List[schemas.TmdbEpisode]:
+                                  episode_group: Optional[str] = None) -> List[_SchemaTmdbEpisode]:
         """
         根据TMDBID查询某季的所有集信息（异步版本）
         :param tmdbid:  TMDBID
@@ -1480,7 +1482,7 @@ class TheMovieDbModule(_ModuleBase):
             season_info = await self.tmdb.async_get_tv_season_detail(tmdbid=tmdbid, season=season)
         if not season_info or not season_info.get("episodes"):
             return []
-        return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes")]
+        return [_SchemaTmdbEpisode(**episode) for episode in season_info.get("episodes")]
 
     async def async_tmdb_movie_similar(self, tmdbid: int) -> List[MediaInfo]:
         """
@@ -1522,7 +1524,7 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaInfo(tmdb_info=info) for info in recommend]
         return []
 
-    async def async_tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+    async def async_tmdb_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电影演职员表（异步版本）
         :param tmdbid:  TMDBID
@@ -1530,10 +1532,10 @@ class TheMovieDbModule(_ModuleBase):
         """
         credit_infos = await self.tmdb.async_get_movie_credits(tmdbid=tmdbid, page=page)
         if credit_infos:
-            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+            return [_SchemaMediaPerson(source="themoviedb", **info) for info in credit_infos]
         return []
 
-    async def async_tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[schemas.MediaPerson]:
+    async def async_tmdb_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电视剧演职员表（异步版本）
         :param tmdbid:  TMDBID
@@ -1541,18 +1543,18 @@ class TheMovieDbModule(_ModuleBase):
         """
         credit_infos = await self.tmdb.async_get_tv_credits(tmdbid=tmdbid, page=page)
         if credit_infos:
-            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+            return [_SchemaMediaPerson(source="themoviedb", **info) for info in credit_infos]
         return []
 
-    async def async_tmdb_person_detail(self, person_id: int) -> schemas.MediaPerson:
+    async def async_tmdb_person_detail(self, person_id: int) -> _SchemaMediaPerson:
         """
         根据TMDBID查询人物详情（异步版本）
         :param person_id:  人物ID
         """
         detail = await self.tmdb.async_get_person_detail(person_id=person_id)
         if detail:
-            return schemas.MediaPerson(source="themoviedb", **detail)
-        return schemas.MediaPerson()
+            return _SchemaMediaPerson(source="themoviedb", **detail)
+        return _SchemaMediaPerson()
 
     async def async_tmdb_person_credits(self, person_id: int, page: Optional[int] = 1) -> List[MediaInfo]:
         """

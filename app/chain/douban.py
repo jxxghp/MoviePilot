@@ -1,11 +1,10 @@
 from typing import Any, List, Optional
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.chain import ChainBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.schemas import MediaType
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 
 class DoubanChain(ChainBase):
@@ -223,7 +222,7 @@ class DoubanChain(ChainBase):
             return None
         return album
 
-    def person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    def person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         根据人物ID查询豆瓣人物详情
         :param person_id:  人物ID
@@ -296,14 +295,14 @@ class DoubanChain(ChainBase):
         """
         return self.run_module("tv_hot", page=page, count=count)
 
-    def movie_credits(self, doubanid: str) -> Optional[List[schemas.MediaPerson]]:
+    def movie_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """
         根据TMDBID查询电影演职人员
         :param doubanid:  豆瓣ID
         """
         return self.run_module("douban_movie_credits", doubanid=doubanid)
 
-    def tv_credits(self, doubanid: str) -> Optional[List[schemas.MediaPerson]]:
+    def tv_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """
         根据TMDBID查询电视剧演职人员
         :param doubanid:  豆瓣ID
@@ -324,7 +323,7 @@ class DoubanChain(ChainBase):
         """
         return self.run_module("douban_tv_recommend", doubanid=doubanid)
 
-    async def async_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         根据人物ID查询豆瓣人物详情（异步版本）
         :param person_id:  人物ID
@@ -404,14 +403,14 @@ class DoubanChain(ChainBase):
         """
         return await self.async_run_module("async_tv_hot", page=page, count=count)
 
-    async def async_movie_credits(self, doubanid: str) -> Optional[List[schemas.MediaPerson]]:
+    async def async_movie_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """
         根据TMDBID查询电影演职人员（异步版本）
         :param doubanid:  豆瓣ID
         """
         return await self.async_run_module("async_douban_movie_credits", doubanid=doubanid)
 
-    async def async_tv_credits(self, doubanid: str) -> Optional[List[schemas.MediaPerson]]:
+    async def async_tv_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """
         根据TMDBID查询电视剧演职人员（异步版本）
         :param doubanid:  豆瓣ID

@@ -1,6 +1,7 @@
 from app.workflow.actions import BaseAction
 from app.runtime.events import eventmanager
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 from app.schemas.types import ChainEventType
 
 

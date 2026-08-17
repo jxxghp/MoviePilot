@@ -295,7 +295,7 @@ def create_app() -> FastAPI:
         localized_validation_exception_handler,
     )
     _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
-    # 动态注册的插件接口也必须使用统一响应路由类。
+    # 主程序静态路由统一使用 ResponseAPIRoute；动态插件注册时会显式覆盖为原生 APIRoute。
     _app.router.route_class = ResponseAPIRoute
 
     # 配置 CORS 中间件

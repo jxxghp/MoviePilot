@@ -5,7 +5,8 @@ from sqlalchemy import Integer, String, Float, JSON, Index, delete, func, or_, s
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, async_db_query, db_query, db_update, execute_dml, get_id_column
+from app.db.base import Base, execute_dml, get_id_column
+from app.db.decorators import async_db_query, db_query, db_update
 
 
 class SiteUserData(Base):

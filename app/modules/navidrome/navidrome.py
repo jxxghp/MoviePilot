@@ -6,7 +6,10 @@ import secrets
 from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import urlencode
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils
@@ -108,10 +111,10 @@ class Navidrome:
         """从 Subsonic 专辑对象提取稳定标题。"""
         return album.get("name") or album.get("album") or ""
 
-    def _album_to_item(self, album: dict) -> schemas.MediaServerItem:
+    def _album_to_item(self, album: dict) -> _SchemaMediaServerItem:
         """将 Subsonic 专辑转换为统一媒体条目。"""
         album_id = str(album.get("id") or "")
-        return schemas.MediaServerItem(
+        return _SchemaMediaServerItem(
             id=album_id,
             item_id=album_id,
             title=self._album_name(album),
@@ -123,11 +126,11 @@ class Navidrome:
             note={"artist": album.get("artist"), "song_count": album.get("songCount")},
         )
 
-    def _song_to_item(self, song: dict) -> schemas.MediaServerItem:
+    def _song_to_item(self, song: dict) -> _SchemaMediaServerItem:
         """将 Subsonic 单曲转换为统一音乐条目。"""
         song_id = str(song.get("id") or "")
         title = song.get("title") or song.get("name") or ""
-        return schemas.MediaServerItem(
+        return _SchemaMediaServerItem(
             id=song_id,
             item_id=song_id,
             title=title,
@@ -181,16 +184,16 @@ class Navidrome:
             offset += len(page)
         return albums
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """统计 Navidrome 专辑数量并映射为音乐数量。"""
-        return schemas.Statistic(music_count=len(self._albums())) if self.user else schemas.Statistic()
+        return _SchemaStatistic(music_count=len(self._albums())) if self.user else _SchemaStatistic()
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[schemas.MediaServerLibrary]]:
+    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """返回单个虚拟音乐库。"""
         if not self.user or (hidden and self._sync_libraries and "all" not in self._sync_libraries):
             return []
         count = self.get_items_count("music")
-        return [schemas.MediaServerLibrary(
+        return [_SchemaMediaServerLibrary(
             server="navidrome",
             id="music",
             item_id="music",
@@ -205,14 +208,14 @@ class Navidrome:
         """返回虚拟音乐库中的专辑数量。"""
         return len(self._albums()) if self.user else 0
 
-    def get_items(self, start_index: int = 0, limit: int = -1) -> Generator[schemas.MediaServerItem, None, None]:
+    def get_items(self, start_index: int = 0, limit: int = -1) -> Generator[_SchemaMediaServerItem, None, None]:
         """逐条返回 Navidrome 专辑。"""
         albums = self._albums()
         end = None if limit is None or limit == -1 else start_index + limit
         for album in albums[start_index:end]:
             yield self._album_to_item(album)
 
-    def get_iteminfo(self, item_id: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """获取 Navidrome 专辑详情。"""
         payload = self._call("getAlbum", id=item_id)
         album = ((payload or {}).get("album") or {})
@@ -221,7 +224,7 @@ class Navidrome:
     def search_music(
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲或专辑名称精确筛选音乐条目，避免模糊搜索误报已入库。"""
         target = album or title
         query = " ".join(dict.fromkeys(filter(None, [target, artist]))).strip()
@@ -245,10 +248,10 @@ class Navidrome:
             and self._same_artist(item, artist)
         ]
 
-    def _to_play_item(self, album: dict) -> schemas.MediaServerPlayItem:
+    def _to_play_item(self, album: dict) -> _SchemaMediaServerPlayItem:
         """将专辑转换为仪表盘播放/最新条目。"""
         album_id = str(album.get("id") or "")
-        return schemas.MediaServerPlayItem(
+        return _SchemaMediaServerPlayItem(
             id=album_id,
             item_id=album_id,
             title=self._album_name(album),
@@ -259,10 +262,10 @@ class Navidrome:
             server_type="navidrome",
         )
 
-    def _song_to_play_item(self, song: dict) -> schemas.MediaServerPlayItem:
+    def _song_to_play_item(self, song: dict) -> _SchemaMediaServerPlayItem:
         """将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。"""
         song_id = str(song.get("id") or "")
-        return schemas.MediaServerPlayItem(
+        return _SchemaMediaServerPlayItem(
             id=song_id,
             item_id=song_id,
             title=song.get("title") or song.get("name") or "",
@@ -273,11 +276,11 @@ class Navidrome:
             server_type="navidrome",
         )
 
-    def get_latest(self, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def get_latest(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
         """返回最近新增专辑。"""
         return [self._to_play_item(album) for album in self._albums("newest")[:count]]
 
-    def get_resume(self, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def get_resume(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
         """返回当前用户正在播放的音乐。"""
         payload = self._call("getNowPlaying")
         items = ((payload or {}).get("nowPlaying") or {}).get("entry") or []

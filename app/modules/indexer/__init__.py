@@ -19,7 +19,7 @@ from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.schemas.types import MediaSource
 from app.schemas.media import resolve_media_identity
 from app.modules.indexer.spider.yema import YemaSpider
-from app.schemas import SiteUserData
+from app.schemas.site import SiteUserData
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.domain import site as site_rules
 from app.foundation import text as text_tools

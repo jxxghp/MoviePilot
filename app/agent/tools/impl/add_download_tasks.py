@@ -18,7 +18,7 @@ from app.domain.metainfo import MetaInfo
 from app.db.oper.site import SiteOper
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.runtime.log import logger
-from app.schemas import FileURI
+from app.schemas.file import FileURI
 from app.foundation.crypto import HashUtils
 
 

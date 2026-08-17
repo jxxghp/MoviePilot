@@ -19,6 +19,37 @@ prepare_backend()
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
 
 
+@pytest.fixture(autouse=True)
+def configure_plugin_system_services():
+    """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""
+    from app.adapters.external.market import (
+        PluginHelper,
+        VERSION_BACKWARD_COMPATIBLE_FLAGS,
+    )
+    from app.adapters.external.plugin.client import PluginMarketClient
+    from app.adapters.system.plugin.dependency import PluginDependencyInstaller
+    from app.adapters.system.plugin.package import PluginPackageManager
+    from app.runtime.extensions.plugin.system import (
+        PluginSystemServices,
+        configure_plugin_system,
+        reset_plugin_system,
+    )
+
+    helper = PluginHelper()
+    configure_plugin_system(PluginSystemServices(
+        market=PluginMarketClient(helper),
+        package=PluginPackageManager(helper),
+        dependency=PluginDependencyInstaller(helper),
+        compatible_flags=lambda flag: (
+            [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
+            if flag else []
+        ),
+        frozen=lambda: False,
+    ))
+    yield
+    reset_plugin_system()
+
+
 class DbHarness:
     """真实数据库会话的测试载具。
 

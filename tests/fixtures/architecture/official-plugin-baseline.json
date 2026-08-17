@@ -1,0 +1,4843 @@
+{
+  "api_routes": {
+    "plugins.v2/agentresourceofficer/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "api_assistant_action",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/action",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_actions",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/actions",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_capabilities",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/capabilities",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_cookie_update",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/cookie/update",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/history",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_maintain",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/maintain",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_pick",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/pick",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plan_execute",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/plan/execute",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plans",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/plans",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plans_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/plans/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_preferences",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST",
+          "DELETE"
+        ],
+        "path": "/assistant/preferences",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_pulse",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/pulse",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_readiness",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/readiness",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_recover",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/recover",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_request_templates",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/request_templates",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/route",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_selfcheck",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/selfcheck",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_session_state",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/session",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_session_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/session/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_sessions",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/sessions",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_sessions_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/sessions/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_startup",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/startup",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_toolbox",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/toolbox",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_workflow",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/workflow",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_config_get",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/config/get",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_config_save",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/config/save",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_feishu_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/feishu/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_account",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/account",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_checkin",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/checkin",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_checkin_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/checkin/history",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_quota",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/quota",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_search",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/search",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_search_by_keyword",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/search_by_keyword",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_unlock",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/unlock",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_unlock_and_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/unlock_and_route",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_usage_today",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/usage_today",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_weekly_free_quota",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/weekly_free_quota",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/p115/pending",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending_cancel",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/pending/cancel",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending_resume",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/pending/resume",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page_refresh",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page/refresh",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_transfer",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/transfer",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_qrcode",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/qrcode",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_qrcode_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/qrcode/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_quark_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/quark/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_quark_transfer",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/quark/transfer",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_session_hdhive_pick",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/session/hdhive/pick",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_session_hdhive_search",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/session/hdhive/search",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_share_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/share/route",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/agenttokens/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "save_config_api",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/config",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "reset_usage_api",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/usage/reset",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "reset_all_usage_api",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/usage/reset_all",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/airecognizerenhancer/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "api_apply_identifiers",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/apply_identifiers",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_apply_suggested_identifier",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/apply_suggested_identifier",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_apply_suggested_identifiers_for_failed_samples",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/apply_suggested_identifiers_for_failed_samples",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_clear_failed_samples",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/clear_failed_samples",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_clear_llm_errors",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/clear_llm_errors",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_failed_samples",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/failed_samples",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_llm_errors",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/llm_errors",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_recognize",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/recognize",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_remove_failed_sample",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/remove_failed_sample",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_replay_failed_sample",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/replay_failed_sample",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_replay_failed_samples",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/replay_failed_samples",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_sample_brief",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/sample_brief",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_sample_insights",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/sample_insights",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_sample_worklist",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/sample_worklist",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_suggest_identifiers",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/suggest_identifiers",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_suggest_identifiers_for_failed_samples",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/suggest_identifiers_for_failed_samples",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_suggest_identifiers_from_sample",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/suggest_identifiers_from_sample",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/animeupscale/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "api_create_jobs",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_jobs",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "GET"
+        ],
+        "path": "/jobs",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_cancel_job",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs/cancel",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_retry_job",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs/retry",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_download_model",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "POST"
+        ],
+        "path": "/models/download",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_verify_models",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "POST"
+        ],
+        "path": "/models/verify",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_status",
+        "endpoint_return": "JSONResponse",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/autoauction/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "create_listing",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/create",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_listings",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/list",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "run_all_tasks",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/run",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/autosignin/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "signin_by_domain",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/signin_by_domain",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/brushflow/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "update_settings",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/settings",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "create_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "delete_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "DELETE"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_task_detail",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "update_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "PUT"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "check_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_task_data",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "run_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/run",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "update_task_state",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/state",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/chatgpt/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "get_cache_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/cache_stats",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_cache",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_cache",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_usage_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_usage_stats",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_usage_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/usage_stats",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/dailysummary/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "_api_clear_history",
+        "endpoint_return": "dict",
+        "methods": [
+          "POST"
+        ],
+        "path": "/clear_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/doubanrank/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/doubansync/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/fullscreenposterwall/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "api_get_config",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/config",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_update_config",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "PUT"
+        ],
+        "path": "/config",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_proxy_image",
+        "endpoint_return": "Any",
+        "methods": [
+          "GET"
+        ],
+        "path": "/img",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_lan_info",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/lan-info",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_lan_wall",
+        "endpoint_return": "Any",
+        "methods": [
+          "GET"
+        ],
+        "path": "/lan-wall",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_public_data",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/public-data",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_get_recommend",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/recommend",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_get_sources",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/sources",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/hrblocker/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "api_records",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/records",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_clear_records",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/records/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_status",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/imdbsource/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_discover",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-discover",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_top_250",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-top-250",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_trending",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-trending",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "trending",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/trending",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/lexiannot/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "task_interface",
+        "endpoint_return": "Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/oidcauth/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "authorize",
+        "endpoint_return": "RedirectResponse",
+        "methods": [
+          "GET"
+        ],
+        "path": "/authorize",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "bind_start",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/bind/start",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "callback",
+        "endpoint_return": "HTMLResponse",
+        "methods": [
+          "GET"
+        ],
+        "path": "/callback",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "save_config_api",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/config",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "public_status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/public/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "test_api",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/test",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "unbind",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/unbind",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/rsssubscribe/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/sitestatistic/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "refresh_by_domain",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/refresh_by_domain",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/tobypasstrackers/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "bypassed_ips",
+        "endpoint_return": "Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/bypassed_ips",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/traktcleaner/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "__authorize_url_api",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/authorize_url",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "__clean_now_api",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clean_now",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "__clear_seen_api",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_seen",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/tvdbdiscover/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "tvdb_discover",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/tvdb_discover",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/tvfirstwatch/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "_clear_history",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_history",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "_storage_status",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/storage_status",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/updatewechatip/__init__.py": [
+      {
+        "auth": "'apikey'",
+        "endpoint": "UpdateIp",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/UpdateIP",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'apikey'",
+        "endpoint": "get_img",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/img/{uuid}",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v2/wechatclawbot/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "logout",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/logout",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "get_logs",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/logs",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "clear_logs",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/logs/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "get_qrcode",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/qrcode",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "get_qrcode_image",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/qrcode/image",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "get_status",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "test_connection_api",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/test_connection",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/agentresourceofficer/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "api_assistant_action",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/action",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_actions",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/actions",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_capabilities",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/capabilities",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_cookie_update",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/cookie/update",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/history",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_maintain",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/maintain",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_pick",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/pick",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plan_execute",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/plan/execute",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plans",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/plans",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_plans_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/plans/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_preferences",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST",
+          "DELETE"
+        ],
+        "path": "/assistant/preferences",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_pulse",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/pulse",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_readiness",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/readiness",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_recover",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/recover",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_request_templates",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/request_templates",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/route",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_selfcheck",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/selfcheck",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_session_state",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/session",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_session_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/session/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_sessions",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/sessions",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_sessions_clear",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/assistant/sessions/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_startup",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/startup",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_toolbox",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/assistant/toolbox",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_assistant_workflow",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/assistant/workflow",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_config_get",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/config/get",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_config_save",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/config/save",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_feishu_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/feishu/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_account",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/account",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_checkin",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/checkin",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_checkin_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/checkin/history",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_quota",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/quota",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_search",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/search",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_search_by_keyword",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/search_by_keyword",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_unlock",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/unlock",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_unlock_and_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/hdhive/unlock_and_route",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_usage_today",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/usage_today",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_hdhive_weekly_free_quota",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/hdhive/weekly_free_quota",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending",
+        "endpoint_return": null,
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path": "/p115/pending",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending_cancel",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/pending/cancel",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_pending_resume",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/pending/resume",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_qrcode_page_refresh",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/qrcode/page/refresh",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_p115_transfer",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/p115/transfer",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_qrcode",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/qrcode",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_p115_ui_qrcode_check",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/p115/ui/qrcode/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_quark_health",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/quark/health",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_quark_transfer",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/quark/transfer",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_session_hdhive_pick",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/session/hdhive/pick",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_session_hdhive_search",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/session/hdhive/search",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "api_share_route",
+        "endpoint_return": null,
+        "methods": [
+          "POST"
+        ],
+        "path": "/share/route",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/animeupscale/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "api_create_jobs",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_jobs",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/jobs",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_cancel_job",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs/cancel",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_retry_job",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/jobs/retry",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_download_model",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/models/download",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_verify_models",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/models/verify",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/brushflow/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "update_settings",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/settings",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_status",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "create_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "delete_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "DELETE"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_task_detail",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "update_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "PUT"
+        ],
+        "path": "/tasks/{task_id}",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "check_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/check",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_task_data",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/clear",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "run_task",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/run",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "update_task_state",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/state",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/doubanrank/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/doubansync/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/episodegroupmeta/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_media_database",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_media_database",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": null,
+        "endpoint": "go_start_rt",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/start_rt",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/imdbsource/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_discover",
+        "endpoint_return": "schemas.Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-discover",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_top_250",
+        "endpoint_return": "schemas.Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-top-250",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "imdb_trending",
+        "endpoint_return": "schemas.Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/imdb-trending",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "trending",
+        "endpoint_return": "schemas.Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/trending",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      }
+    ],
+    "plugins.v3/rsssubscribe/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "delete_history",
+        "endpoint_return": null,
+        "methods": [
+          "GET"
+        ],
+        "path": "/delete_history",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins.v3/tvdbdiscover/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "tvdb_discover",
+        "endpoint_return": "schemas.Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/tvdb_discover",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      }
+    ]
+  },
+  "hooks": {
+    "get_actions": {
+      "file_count": 0,
+      "files": []
+    },
+    "get_agent_tools": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py"
+      ]
+    },
+    "get_api": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "get_auth_provider": {
+      "file_count": 0,
+      "files": []
+    },
+    "get_command": {
+      "file_count": 79,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "get_dashboard": {
+      "file_count": 10,
+      "files": [
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "get_form": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "get_module": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "get_page": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "get_render_mode": {
+      "file_count": 11,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "get_service": {
+      "file_count": 47,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py"
+      ]
+    },
+    "get_sidebar": {
+      "file_count": 0,
+      "files": []
+    },
+    "get_state": {
+      "file_count": 82,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chatgpt/openai.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "init_plugin": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "stop_service": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    }
+  },
+  "imports": {
+    "app.adapters.external.server": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/bangumicoll/__init__.py"
+      ]
+    },
+    "app.agent.llm": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/chatgpt/openai.py"
+      ]
+    },
+    "app.agent.llm.helper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/lexiannot/__init__.py"
+      ]
+    },
+    "app.agent.tools.base": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/agentresourceofficer/agenttool.py",
+        "plugins.v2/lexiannot/agenttool.py",
+        "plugins.v3/agentresourceofficer/agenttool.py"
+      ]
+    },
+    "app.agent.tools.manager": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py"
+      ]
+    },
+    "app.api.endpoints.plugin": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.chain": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "app.chain.anilist": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/fullscreenposterwall/__init__.py"
+      ]
+    },
+    "app.chain.download": {
+      "file_count": 11,
+      "files": [
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py"
+      ]
+    },
+    "app.chain.media": {
+      "file_count": 9,
+      "files": [
+        "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py"
+      ]
+    },
+    "app.chain.mediaserver": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v3/personmeta/__init__.py"
+      ]
+    },
+    "app.chain.message": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/wechatclawbot/__init__.py"
+      ]
+    },
+    "app.chain.recommend": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py"
+      ]
+    },
+    "app.chain.scraping": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/libraryscraper/__init__.py"
+      ]
+    },
+    "app.chain.search": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v3/doubansync/__init__.py"
+      ]
+    },
+    "app.chain.site": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/sitestatistic/__init__.py"
+      ]
+    },
+    "app.chain.storage": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v3/autoclean/__init__.py"
+      ]
+    },
+    "app.chain.subscribe": {
+      "file_count": 10,
+      "files": [
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py"
+      ]
+    },
+    "app.chain.system": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/moviepilotupdatenotify/__init__.py"
+      ]
+    },
+    "app.chain.tmdb": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/personmeta/__init__.py"
+      ]
+    },
+    "app.chain.torrents": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.command": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/wechatclawbot/__init__.py"
+      ]
+    },
+    "app.core.auth": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/oidcauth/__init__.py"
+      ]
+    },
+    "app.core.auth_bridge": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/oidcauth/__init__.py"
+      ]
+    },
+    "app.core.cache": {
+      "file_count": 9,
+      "files": [
+        "plugins.v2/clashruleprovider/services.py",
+        "plugins.v2/clashruleprovider/state.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbapi.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/imdbsource/officialapi.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/lexiannot/spacyworker.py",
+        "plugins.v2/mediaservermsg/__init__.py"
+      ]
+    },
+    "app.core.config": {
+      "file_count": 70,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v2/agentresourceofficer/services/p115_transfer.py",
+        "plugins.v2/agentresourceofficer/services/quark_transfer.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/autosignin/sites/52pt.py",
+        "plugins.v2/autosignin/sites/__init__.py",
+        "plugins.v2/autosignin/sites/chdbits.py",
+        "plugins.v2/autosignin/sites/hares.py",
+        "plugins.v2/autosignin/sites/hdarea.py",
+        "plugins.v2/autosignin/sites/hdchina.py",
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/mteam.py",
+        "plugins.v2/autosignin/sites/nexushd.py",
+        "plugins.v2/autosignin/sites/opencd.py",
+        "plugins.v2/autosignin/sites/rousipro.py",
+        "plugins.v2/autosignin/sites/tjupt.py",
+        "plugins.v2/autosignin/sites/ttg.py",
+        "plugins.v2/autosignin/sites/u2.py",
+        "plugins.v2/autosignin/sites/yema.py",
+        "plugins.v2/autosignin/sites/zhuque.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/clashruleprovider/api.py",
+        "plugins.v2/clashruleprovider/services.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py"
+      ]
+    },
+    "app.core.context": {
+      "file_count": 17,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py"
+      ]
+    },
+    "app.core.event": {
+      "file_count": 40,
+      "files": [
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py"
+      ]
+    },
+    "app.core.meta": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/personmeta/__init__.py"
+      ]
+    },
+    "app.core.meta.words": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/airecognizerenhancer/__init__.py"
+      ]
+    },
+    "app.core.metainfo": {
+      "file_count": 11,
+      "files": [
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py"
+      ]
+    },
+    "app.core.plugin": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agentresourceofficer/agenttool.py",
+        "plugins.v2/agentresourceofficer/services/p115_transfer.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/lexiannot/agenttool.py"
+      ]
+    },
+    "app.db": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/historytov2/__init__.py"
+      ]
+    },
+    "app.db.downloadhistory_oper": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py"
+      ]
+    },
+    "app.db.message_oper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/wechatclawbot/__init__.py"
+      ]
+    },
+    "app.db.models": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py"
+      ]
+    },
+    "app.db.models.downloadhistory": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py"
+      ]
+    },
+    "app.db.models.siteuserdata": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py"
+      ]
+    },
+    "app.db.models.subscribehistory": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/bangumicoll/__init__.py"
+      ]
+    },
+    "app.db.models.user": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/oidcauth/__init__.py"
+      ]
+    },
+    "app.db.oper.downloadhistory": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py"
+      ]
+    },
+    "app.db.oper.site": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.db.oper.subscribe": {
+      "file_count": 3,
+      "files": [
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubansync/__init__.py"
+      ]
+    },
+    "app.db.oper.transferhistory": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py"
+      ]
+    },
+    "app.db.oper.user": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/doubansync/__init__.py"
+      ]
+    },
+    "app.db.plugindata_oper": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/clashruleprovider/helper/dataupgrader/v_2_1_0.py",
+        "plugins.v2/clashruleprovider/state.py",
+        "plugins.v2/dailysummary/__init__.py"
+      ]
+    },
+    "app.db.site_oper": {
+      "file_count": 10,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py"
+      ]
+    },
+    "app.db.subscribe_oper": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubansync/__init__.py"
+      ]
+    },
+    "app.db.systemconfig_oper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/airecognizerenhancer/__init__.py"
+      ]
+    },
+    "app.db.transferhistory_oper": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py"
+      ]
+    },
+    "app.db.user_oper": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/oidcauth/__init__.py"
+      ]
+    },
+    "app.helper.browser": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/agentresourceofficer/services/hdhive_browser.py",
+        "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/autosignin/sites/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py"
+      ]
+    },
+    "app.helper.cloudflare": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/__init__.py"
+      ]
+    },
+    "app.helper.cookiecloud": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/dynamicwechat/__init__.py"
+      ]
+    },
+    "app.helper.directory": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/lexiannot/__init__.py"
+      ]
+    },
+    "app.helper.downloader": {
+      "file_count": 14,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py"
+      ]
+    },
+    "app.helper.image": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py"
+      ]
+    },
+    "app.helper.llm": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/airecognizerenhancer/__init__.py"
+      ]
+    },
+    "app.helper.mediaserver": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py"
+      ]
+    },
+    "app.helper.module": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/contractcheck/__init__.py"
+      ]
+    },
+    "app.helper.nfo": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/libraryscraper/__init__.py"
+      ]
+    },
+    "app.helper.ocr": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/opencd.py"
+      ]
+    },
+    "app.helper.rss": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py"
+      ]
+    },
+    "app.helper.service": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/qbuploadlimiter/__init__.py"
+      ]
+    },
+    "app.helper.sites": {
+      "file_count": 11,
+      "files": [
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py"
+      ]
+    },
+    "app.helper.system": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/moviepilotupdatenotify/__init__.py"
+      ]
+    },
+    "app.helper.thread": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/brushflow/__init__.py"
+      ]
+    },
+    "app.helper.torrent": {
+      "file_count": 4,
+      "files": [
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py"
+      ]
+    },
+    "app.helper.wallpaper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/tmdbwallpaper/__init__.py"
+      ]
+    },
+    "app.log": {
+      "file_count": 97,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
+        "plugins.v2/agentresourceofficer/services/hdhive_browser.py",
+        "plugins.v2/agentresourceofficer/services/quark_transfer.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/autosignin/sites/52pt.py",
+        "plugins.v2/autosignin/sites/__init__.py",
+        "plugins.v2/autosignin/sites/btschool.py",
+        "plugins.v2/autosignin/sites/chdbits.py",
+        "plugins.v2/autosignin/sites/haidan.py",
+        "plugins.v2/autosignin/sites/hares.py",
+        "plugins.v2/autosignin/sites/hdarea.py",
+        "plugins.v2/autosignin/sites/hdchina.py",
+        "plugins.v2/autosignin/sites/hdcity.py",
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/hdupt.py",
+        "plugins.v2/autosignin/sites/nexushd.py",
+        "plugins.v2/autosignin/sites/opencd.py",
+        "plugins.v2/autosignin/sites/pterclub.py",
+        "plugins.v2/autosignin/sites/pttime.py",
+        "plugins.v2/autosignin/sites/rousipro.py",
+        "plugins.v2/autosignin/sites/tjupt.py",
+        "plugins.v2/autosignin/sites/ttg.py",
+        "plugins.v2/autosignin/sites/u2.py",
+        "plugins.v2/autosignin/sites/zhuque.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/clashruleprovider/api.py",
+        "plugins.v2/clashruleprovider/helper/dataupgrader/v_2_1_0.py",
+        "plugins.v2/clashruleprovider/models/configuration.py",
+        "plugins.v2/clashruleprovider/services.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/nexus_php.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbapi.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/imdbsource/officialapi.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/lexiannot/pipeline.py",
+        "plugins.v2/lexiannot/spacyworker.py",
+        "plugins.v2/lexiannot/subtitle.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/tobypasstrackers/dns_helper.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wechatclawbot/ilink/client.py",
+        "plugins.v2/wxpusher/__init__.py"
+      ]
+    },
+    "app.modules.bangumi": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/bangumiproxy/__init__.py"
+      ]
+    },
+    "app.modules.fanart": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/fullscreenposterwall/__init__.py"
+      ]
+    },
+    "app.modules.filemanager.storages": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py"
+      ]
+    },
+    "app.modules.filemanager.storages.local": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py"
+      ]
+    },
+    "app.modules.filemanager.transhandler": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/blurayremux/__init__.py"
+      ]
+    },
+    "app.modules.qbittorrent": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.modules.themoviedb": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py"
+      ]
+    },
+    "app.modules.themoviedb.tmdbapi": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/fullscreenposterwall/__init__.py"
+      ]
+    },
+    "app.modules.themoviedb.tmdbv3api": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/episodegroupmeta/__init__.py"
+      ]
+    },
+    "app.modules.transmission": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.modules.wechat": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/dynamicwechat/helper.py"
+      ]
+    },
+    "app.plugins": {
+      "file_count": 81,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/bangumiproxy/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/bugreporter/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/notifyimage/__init__.py",
+        "plugins.v2/oidcauth/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/storagecleanup/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.plugins.autosignin.sites": {
+      "file_count": 21,
+      "files": [
+        "plugins.v2/autosignin/sites/52pt.py",
+        "plugins.v2/autosignin/sites/btschool.py",
+        "plugins.v2/autosignin/sites/chdbits.py",
+        "plugins.v2/autosignin/sites/haidan.py",
+        "plugins.v2/autosignin/sites/hares.py",
+        "plugins.v2/autosignin/sites/hdarea.py",
+        "plugins.v2/autosignin/sites/hdchina.py",
+        "plugins.v2/autosignin/sites/hdcity.py",
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/hdupt.py",
+        "plugins.v2/autosignin/sites/mteam.py",
+        "plugins.v2/autosignin/sites/nexushd.py",
+        "plugins.v2/autosignin/sites/opencd.py",
+        "plugins.v2/autosignin/sites/pterclub.py",
+        "plugins.v2/autosignin/sites/pttime.py",
+        "plugins.v2/autosignin/sites/rousipro.py",
+        "plugins.v2/autosignin/sites/tjupt.py",
+        "plugins.v2/autosignin/sites/ttg.py",
+        "plugins.v2/autosignin/sites/u2.py",
+        "plugins.v2/autosignin/sites/yema.py",
+        "plugins.v2/autosignin/sites/zhuque.py"
+      ]
+    },
+    "app.plugins.chatgpt.openai": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/chatgpt/__init__.py"
+      ]
+    },
+    "app.plugins.ffmpegthumb.ffmpeg_helper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/ffmpegthumb/__init__.py"
+      ]
+    },
+    "app.plugins.imdbsource.imdbhelper": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "app.plugins.imdbsource.officialapi": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "app.plugins.imdbsource.schema": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "app.plugins.iyuuautoseed.iyuu_helper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/iyuuautoseed/__init__.py"
+      ]
+    },
+    "app.plugins.p115strmhelper.core.config": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/agentresourceofficer/services/p115_transfer.py",
+        "plugins.v3/agentresourceofficer/services/p115_transfer.py"
+      ]
+    },
+    "app.runtime.thread": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.scheduler": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/imdbsource/__init__.py"
+      ]
+    },
+    "app.schemas": {
+      "file_count": 48,
+      "files": [
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/lexiannot/pipeline.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.schemas.event": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/hrblocker/__init__.py"
+      ]
+    },
+    "app.schemas.types": {
+      "file_count": 65,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agenttokens/__init__.py",
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins.v2/dynamicwechat/helper.py",
+        "plugins.v2/episodetag/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/goldprice/__init__.py",
+        "plugins.v2/hrblocker/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/lexiannot/pipeline.py",
+        "plugins.v2/mediaservermsg/__init__.py",
+        "plugins.v2/mediaserverrefresh/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/multiclass/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/traktcleaner/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v2/updatewechatip/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.sdk.browser": {
+      "file_count": 3,
+      "files": [
+        "plugins.v3/agentresourceofficer/services/hdhive_browser.py",
+        "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v3/maoyanrank/__init__.py"
+      ]
+    },
+    "app.sdk.cache": {
+      "file_count": 5,
+      "files": [
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbapi.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/mediaservermsg/__init__.py"
+      ]
+    },
+    "app.sdk.config": {
+      "file_count": 20,
+      "files": [
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v3/agentresourceofficer/services/p115_transfer.py",
+        "plugins.v3/agentresourceofficer/services/quark_transfer.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.sdk.events": {
+      "file_count": 11,
+      "files": [
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.sdk.logging": {
+      "file_count": 24,
+      "files": [
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
+        "plugins.v3/agentresourceofficer/services/hdhive_browser.py",
+        "plugins.v3/agentresourceofficer/services/quark_transfer.py",
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbapi.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.sdk.media": {
+      "file_count": 15,
+      "files": [
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/neodbsync/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py"
+      ]
+    },
+    "app.sdk.network": {
+      "file_count": 17,
+      "files": [
+        "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/historytov2/__init__.py",
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbapi.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvdbdiscover/__init__.py"
+      ]
+    },
+    "app.sdk.plugins": {
+      "file_count": 3,
+      "files": [
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/agenttool.py",
+        "plugins.v3/agentresourceofficer/services/p115_transfer.py"
+      ]
+    },
+    "app.sdk.services": {
+      "file_count": 5,
+      "files": [
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/personmeta/__init__.py"
+      ]
+    },
+    "app.sdk.utilities": {
+      "file_count": 10,
+      "files": [
+        "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/doubanrank/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/episodegroupmeta/__init__.py",
+        "plugins.v3/imdbsource/imdbapi.py",
+        "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/personmeta/__init__.py"
+      ]
+    },
+    "app.utils.common": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/imdbsource/imdbapi.py",
+        "plugins.v2/imdbsource/officialapi.py",
+        "plugins.v2/personmeta/__init__.py"
+      ]
+    },
+    "app.utils.crypto": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/synccookiecloud/__init__.py"
+      ]
+    },
+    "app.utils.dom": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/doubanrank/__init__.py"
+      ]
+    },
+    "app.utils.http": {
+      "file_count": 45,
+      "files": [
+        "plugins.v2/animeupscale/__init__.py",
+        "plugins.v2/autoauction/__init__.py",
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/autosignin/sites/52pt.py",
+        "plugins.v2/autosignin/sites/__init__.py",
+        "plugins.v2/autosignin/sites/chdbits.py",
+        "plugins.v2/autosignin/sites/hares.py",
+        "plugins.v2/autosignin/sites/hdarea.py",
+        "plugins.v2/autosignin/sites/hdchina.py",
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/mteam.py",
+        "plugins.v2/autosignin/sites/nexushd.py",
+        "plugins.v2/autosignin/sites/opencd.py",
+        "plugins.v2/autosignin/sites/rousipro.py",
+        "plugins.v2/autosignin/sites/tjupt.py",
+        "plugins.v2/autosignin/sites/ttg.py",
+        "plugins.v2/autosignin/sites/u2.py",
+        "plugins.v2/autosignin/sites/yema.py",
+        "plugins.v2/autosignin/sites/zhuque.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/clashruleprovider/services.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/__init__.py",
+        "plugins.v2/doubanrank/__init__.py",
+        "plugins.v2/fullscreenposterwall/__init__.py",
+        "plugins.v2/historytov2/__init__.py",
+        "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbapi.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/imdbsource/officialapi.py",
+        "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/iyuuautoseed/iyuu_helper.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/maoyanrank/__init__.py",
+        "plugins.v2/meowmsg/__init__.py",
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/tmdbwallpaper/__init__.py",
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v2/tvdbdiscover/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v2/wechatclawbot/ilink/client.py",
+        "plugins.v2/wxpusher/__init__.py"
+      ]
+    },
+    "app.utils.ip": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/speedlimiter/__init__.py"
+      ]
+    },
+    "app.utils.singleton": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/lexiannot/schemas.py"
+      ]
+    },
+    "app.utils.site": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/__init__.py"
+      ]
+    },
+    "app.utils.string": {
+      "file_count": 43,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/autosignin/sites/52pt.py",
+        "plugins.v2/autosignin/sites/__init__.py",
+        "plugins.v2/autosignin/sites/btschool.py",
+        "plugins.v2/autosignin/sites/chdbits.py",
+        "plugins.v2/autosignin/sites/haidan.py",
+        "plugins.v2/autosignin/sites/hares.py",
+        "plugins.v2/autosignin/sites/hdarea.py",
+        "plugins.v2/autosignin/sites/hdchina.py",
+        "plugins.v2/autosignin/sites/hdcity.py",
+        "plugins.v2/autosignin/sites/hdsky.py",
+        "plugins.v2/autosignin/sites/hdupt.py",
+        "plugins.v2/autosignin/sites/mteam.py",
+        "plugins.v2/autosignin/sites/nexushd.py",
+        "plugins.v2/autosignin/sites/opencd.py",
+        "plugins.v2/autosignin/sites/pterclub.py",
+        "plugins.v2/autosignin/sites/pttime.py",
+        "plugins.v2/autosignin/sites/rousipro.py",
+        "plugins.v2/autosignin/sites/tjupt.py",
+        "plugins.v2/autosignin/sites/ttg.py",
+        "plugins.v2/autosignin/sites/u2.py",
+        "plugins.v2/autosignin/sites/zhuque.py",
+        "plugins.v2/brushflow/__init__.py",
+        "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/clashruleprovider/helper/converters/hysteria.py",
+        "plugins.v2/clashruleprovider/helper/converters/hysteria2.py",
+        "plugins.v2/clashruleprovider/helper/converters/trojan.py",
+        "plugins.v2/cleaninvalidseed/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/contractcheck/siteuserinfo/nexus_php.py",
+        "plugins.v2/contractcheck/siteuserinfo/nexus_ttg.py",
+        "plugins.v2/crossseed/__init__.py",
+        "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/iyuuautoseed/__init__.py",
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v2/personmeta/__init__.py",
+        "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbcommand/__init__.py",
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins.v2/torrentremover/__init__.py",
+        "plugins.v2/torrenttransfer/__init__.py",
+        "plugins.v2/wechatclawbot/__init__.py"
+      ]
+    },
+    "app.utils.system": {
+      "file_count": 5,
+      "files": [
+        "plugins.v2/chinesesubfinder/__init__.py",
+        "plugins.v2/ffmpegthumb/__init__.py",
+        "plugins.v2/ffmpegthumb/ffmpeg_helper.py",
+        "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v2/playletcategory/__init__.py"
+      ]
+    },
+    "app.utils.timer": {
+      "file_count": 3,
+      "files": [
+        "plugins.v2/autosignin/__init__.py",
+        "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/crossseed/__init__.py"
+      ]
+    },
+    "app.utils.web": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/mediaservermsg/__init__.py"
+      ]
+    }
+  },
+  "schema_version": 2,
+  "source": {
+    "head": "68340c0884c3aff4ee027c9c94ce25d096871aa5",
+    "python_file_count": 231,
+    "repository": "MoviePilot-Plugins",
+    "roots": [
+      "plugins.v2",
+      "plugins.v3"
+    ],
+    "source_sha256": "cb69dda1fe0547e85a36c99ebcc31e9f3de62d035d548b4a33875626a24b7197"
+  }
+}

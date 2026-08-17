@@ -1,18 +1,13 @@
 """Agent 音乐工具共享的实体校验与结果精简函数。"""
 
-from typing import Any, Optional
+from typing import Any
 
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
 )
-from app.schemas.types import (
-    MUSIC_ENTITY_TYPES,
-    MUSIC_SUBSCRIBABLE_TYPES,
-    media_type_to_agent,
-)
-from app.domain.media import normalize_music_type
+from app.schemas.types import media_type_to_agent
 
 
 MUSIC_TRACK_PREVIEW_LIMIT = 100

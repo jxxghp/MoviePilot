@@ -10,14 +10,20 @@ from app.agent.llm.provider import (
     LLMProviderAuthError,
     LLMProviderManager,
 )
+from app.foundation.singleton import Singleton
+
+
+_MANAGER_SINGLETON_KEY = (LLMProviderManager, (), frozenset())
 
 
 @pytest.fixture(autouse=True)
 def _reset_manager_singleton():
     """每个用例前后清理 LLMProviderManager 单例，避免缓存互相污染"""
-    LLMProviderManager._instances.clear()
+    previous_manager = Singleton._instances.pop(_MANAGER_SINGLETON_KEY, None)
     yield
-    LLMProviderManager._instances.clear()
+    Singleton._instances.pop(_MANAGER_SINGLETON_KEY, None)
+    if previous_manager is not None:
+        Singleton._instances[_MANAGER_SINGLETON_KEY] = previous_manager
 
 
 def test_bedrock_provider_registered():

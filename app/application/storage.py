@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from app import schemas
+from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.db.oper.systemconfig import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 
@@ -11,16 +11,16 @@ class StorageHelper:
     """
 
     @staticmethod
-    def get_storagies() -> List[schemas.StorageConf]:
+    def get_storagies() -> List[_SchemaStorageConf]:
         """
         获取所有存储设置
         """
         storage_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Storages)
         if not storage_confs:
             return []
-        return [schemas.StorageConf(**s) for s in storage_confs]
+        return [_SchemaStorageConf(**s) for s in storage_confs]
 
-    def get_storage(self, storage: str) -> Optional[schemas.StorageConf]:
+    def get_storage(self, storage: str) -> Optional[_SchemaStorageConf]:
         """
         获取指定存储配置
         """
@@ -37,7 +37,7 @@ class StorageHelper:
         storagies = self.get_storagies()
         if not storagies:
             storagies = [
-                schemas.StorageConf(
+                _SchemaStorageConf(
                     type=storage,
                     config=conf
                 )
@@ -56,14 +56,14 @@ class StorageHelper:
         storagies = self.get_storagies()
         if not storagies:
             storagies = [
-                schemas.StorageConf(
+                _SchemaStorageConf(
                     type=storage,
                     name=name,
                     config=conf
                 )
             ]
         else:
-            storagies.append(schemas.StorageConf(
+            storagies.append(_SchemaStorageConf(
                 type=storage,
                 name=name,
                 config=conf

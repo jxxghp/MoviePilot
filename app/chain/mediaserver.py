@@ -7,7 +7,10 @@ from app.runtime.config import global_vars
 from app.db.oper.mediaserver import MediaServerOper
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas import MediaServerLibrary, MediaServerItem, MediaServerSeasonInfo, MediaServerPlayItem
+from app.schemas.mediaserver import MediaServerLibrary
+from app.schemas.mediaserver import MediaServerItem
+from app.schemas.mediaserver import MediaServerSeasonInfo
+from app.schemas.mediaserver import MediaServerPlayItem
 from app.schemas.types import MediaType
 from app.application.security.url import SecurityUtils
 

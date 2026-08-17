@@ -1,4 +1,3 @@
-import re
 import traceback
 from typing import List, Tuple, Union, Optional
 from urllib.parse import urljoin, urlparse

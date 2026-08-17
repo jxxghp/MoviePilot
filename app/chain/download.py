@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple, Set, Dict, Union
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from app import schemas
+from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -30,11 +32,17 @@ from app.db.oper.downloadfailure import DownloadFailureOper
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.mediaserver import MediaServerOper
 from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.application.download.tasks import DownloadTaskService
 from app.runtime.thread import ThreadHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import ExistMediaInfo, FileURI, NotExistMediaInfo, DownloaderTorrent, Message, ResourceSelectionEventData, \
-    ResourceDownloadEventData
+from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.file import FileURI
+from app.schemas.mediaserver import NotExistMediaInfo
+from app.schemas.transfer import DownloaderTorrent
+from app.schemas.message import Message
+from app.schemas.event import ResourceSelectionEventData
+from app.schemas.event import ResourceDownloadEventData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, NotificationChannel, MessageType, ContentType, \
     ChainEventType
 from app.adapters.network.http import RequestUtils
@@ -221,7 +229,7 @@ class DownloadChain(ChainBase):
             storage_chain: StorageChain,
             storage: str,
             target_path: Path,
-    ) -> Tuple[Optional[schemas.FileItem], str]:
+    ) -> Tuple[Optional[_SchemaFileItem], str]:
         """
         获取字幕保存目录，返回失败原因供前端展示。
         """
@@ -296,7 +304,7 @@ class DownloadChain(ChainBase):
     @staticmethod
     def _append_download_classification(
             root_path: Path,
-            dir_info: schemas.TransferDirectoryConf,
+            dir_info: _SchemaTransferDirectoryConf,
             media_info: MediaInfo,
     ) -> Path:
         """
@@ -318,7 +326,7 @@ class DownloadChain(ChainBase):
     def _upload_subtitle_file(
             storage_chain: StorageChain,
             storage: str,
-            working_dir_item: schemas.FileItem,
+            working_dir_item: _SchemaFileItem,
             subtitle_file: Path,
     ) -> Tuple[Optional[str], str]:
         """
@@ -2030,51 +2038,33 @@ class DownloadChain(ChainBase):
         """
         查询正在下载的任务
         """
-        torrents = self.list_torrents(downloader=name, status=TorrentStatus.DOWNLOADING)
-        if not torrents:
-            return []
-
-        history_map = DownloadHistoryOper().get_by_hashes(
-            [torrent.hash for torrent in torrents if torrent.hash]
-        )
-        ret_torrents = []
-        for torrent in torrents:
-            history = history_map.get(torrent.hash)
-            if history:
-                # 媒体信息
-                torrent.media = {
-                    "media_source": history.media_source,
-                    "media_id": history.media_id,
-                    "type": history.type,
-                    "title": history.title,
-                    "season": history.seasons,
-                    "episode": history.episodes,
-                    "image": history.poster,
-                    "poster": history.poster,
-                    "backdrop": history.image,
-                }
-                torrent.site_name = history.torrent_site
-                # 下载用户
-                torrent.userid = history.userid
-                torrent.username = history.username
-            ret_torrents.append(torrent)
-        return ret_torrents
+        return self._download_task_service().downloading(name)
 
     def set_downloading(self, hash_str, oper: str, name: Optional[str] = None) -> bool:
         """
         控制下载任务 start/stop
         """
-        if oper == "start":
-            return self.start_torrents(hashs=[hash_str], downloader=name)
-        elif oper == "stop":
-            return self.stop_torrents(hashs=[hash_str], downloader=name)
-        return False
+        return self._download_task_service().set_downloading(
+            hash_str,
+            oper,
+            name,
+        )
 
     def remove_downloading(self, hash_str: str, name: Optional[str] = None) -> bool:
         """
         删除下载任务
         """
-        return self.remove_torrents(hashs=[hash_str], downloader=name)
+        return self._download_task_service().remove_downloading(hash_str, name)
+
+    def _download_task_service(self) -> DownloadTaskService:
+        """构造绑定当前下载器能力与历史仓储的任务服务。"""
+        return DownloadTaskService(
+            list_torrents=self.list_torrents,
+            get_history_by_hashes=DownloadHistoryOper().get_by_hashes,
+            start_torrents=self.start_torrents,
+            stop_torrents=self.stop_torrents,
+            remove_torrents=self.remove_torrents,
+        )
 
     @eventmanager.register(EventType.DownloadFileDeleted)
     def download_file_deleted(self, event: Event):
@@ -2088,7 +2078,7 @@ class DownloadChain(ChainBase):
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
         # 先查询种子
-        torrents: List[schemas.DownloaderTorrent] = self.list_torrents(hashs=[hash_str])
+        torrents: List[_SchemaDownloaderTorrent] = self.list_torrents(hashs=[hash_str])
         if torrents:
             self.remove_torrents(hashs=[hash_str], delete_file=False)
             # 发出下载任务删除事件，如需处理辅种，可监听该事件

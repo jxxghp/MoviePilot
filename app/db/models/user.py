@@ -3,7 +3,8 @@ from sqlalchemy import Boolean, JSON, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import Base, db_query, db_update, async_db_query, async_db_update, get_id_column
+from app.db.base import Base, get_id_column
+from app.db.decorators import db_query, db_update, async_db_query, async_db_update
 
 
 class User(Base):

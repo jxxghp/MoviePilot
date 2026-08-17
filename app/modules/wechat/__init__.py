@@ -15,7 +15,9 @@ from app.modules._base import _MessageChannelModuleBase
 from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
-from app.schemas import NotificationChannel, IncomingMessage, Message
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import IncomingMessage
+from app.schemas.message import Message
 from app.schemas.types import ModuleType
 from app.foundation.dom import DomUtils
 

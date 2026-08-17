@@ -2,19 +2,24 @@ import unittest
 from unittest.mock import patch
 
 from app.api.endpoints import download as download_endpoint
+from app.schemas.token import TokenPayload
+from app.schemas.system import TransferDirectoryConf
 
 
 class DownloadPathsEndpointTest(unittest.TestCase):
+    """验证下载路径接口生成可直接提交给下载接口的路径数据。"""
+
     def test_paths_returns_api_ready_save_paths(self):
+        """配置的本地和远程目录应转换为完整下载路径响应。"""
         mocked_dirs = [
-            download_endpoint.schemas.TransferDirectoryConf(
+            TransferDirectoryConf(
                 name="电影目录",
                 priority=1,
                 storage="local",
                 download_path="/downloads/movies",
                 media_type="movie",
             ),
-            download_endpoint.schemas.TransferDirectoryConf(
+            TransferDirectoryConf(
                 name="动漫远程目录",
                 priority=2,
                 storage="rclone",
@@ -25,7 +30,7 @@ class DownloadPathsEndpointTest(unittest.TestCase):
         ]
 
         with patch.object(download_endpoint.DirectoryHelper, "get_download_dirs", return_value=mocked_dirs):
-            ret = download_endpoint.paths(_=download_endpoint.schemas.TokenPayload())
+            ret = download_endpoint.paths(_=TokenPayload())
 
         self.assertEqual(len(ret), 2)
         self.assertEqual(ret[0].name, "电影目录")
@@ -45,7 +50,8 @@ class DownloadPathsEndpointTest(unittest.TestCase):
         self.assertEqual(ret[1].media_category, "动漫")
 
     def test_paths_returns_empty_list_when_unconfigured(self):
+        """未配置目录时接口应返回空列表。"""
         with patch.object(download_endpoint.DirectoryHelper, "get_download_dirs", return_value=[]):
-            ret = download_endpoint.paths(_=download_endpoint.schemas.TokenPayload())
+            ret = download_endpoint.paths(_=TokenPayload())
 
         self.assertEqual(ret, [])

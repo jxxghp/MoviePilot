@@ -18,7 +18,21 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import schemas
+from app.schemas.agent import AgentChatDisplaySaveRequest as _SchemaAgentChatDisplaySaveRequest
+from app.schemas.agent import AgentChatSessionDetail as _SchemaAgentChatSessionDetail
+from app.schemas.agent import AgentChatSessionSummary as _SchemaAgentChatSessionSummary
+from app.schemas.agent import AgentChatUploadAttachment as _SchemaAgentChatUploadAttachment
+from app.schemas.agent import AgentMcpServerListData as _SchemaAgentMcpServerListData
+from app.schemas.agent import AgentMcpServerTestRequest as _SchemaAgentMcpServerTestRequest
+from app.schemas.agent import AgentMcpServerTestResult as _SchemaAgentMcpServerTestResult
+from app.schemas.agent import AgentMcpServersSaveRequest as _SchemaAgentMcpServersSaveRequest
+from app.schemas.agent import AgentSessionStopData as _SchemaAgentSessionStopData
+from app.schemas.agent import AgentWebCallbackData as _SchemaAgentWebCallbackData
+from app.schemas.agent import AgentWebCommandInfo as _SchemaAgentWebCommandInfo
+from app.schemas.message import AgentWebChatRequest as _SchemaAgentWebChatRequest
+from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRequest
+from app.schemas.message import Message as _SchemaMessage
+from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.capability import AgentCapabilityManager
@@ -65,7 +79,7 @@ WEB_AGENT_STREAM_COALESCE_MAX_CHARS = 256
 WEB_AGENT_STREAM_HEARTBEAT_SECONDS = 15.0
 WEB_AGENT_STREAM_QUEUE_MAX_SIZE = 64
 _WEB_AGENT_FILE_REGISTRY: dict[str, dict[str, Any]] = {}
-_WEB_AGENT_MESSAGE_QUEUES: dict[str, list[Queue[schemas.Message]]] = {}
+_WEB_AGENT_MESSAGE_QUEUES: dict[str, list[Queue[_SchemaMessage]]] = {}
 _WEB_AGENT_MESSAGE_LOCK = Lock()
 _WEB_AGENT_MESSAGE_LISTENER_REGISTERED = False
 _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task] = set()
@@ -182,18 +196,18 @@ def _ensure_superuser(user: User) -> None:
 @router.get(
     "/mcp/servers",
     summary="查询 Agent MCP 服务器配置",
-    response_model=schemas.Response[schemas.AgentMcpServerListData],
+    response_model=_SchemaResponse[_SchemaAgentMcpServerListData],
 )
 async def list_agent_mcp_servers(
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     查询 Agent 外部 MCP 服务器配置。
     """
     _ensure_superuser(current_user)
     servers = agent_mcp_manager.get_servers()
     enabled_count = len([server for server in servers if server.enabled])
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={
             "servers": [server.model_dump() for server in servers],
@@ -206,18 +220,18 @@ async def list_agent_mcp_servers(
 @router.post(
     "/mcp/servers",
     summary="保存 Agent MCP 服务器配置",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def save_agent_mcp_servers(
-    request: schemas.AgentMcpServersSaveRequest,
+    request: _SchemaAgentMcpServersSaveRequest,
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     保存 Agent 外部 MCP 服务器配置。
     """
     _ensure_superuser(current_user)
     success = await agent_mcp_manager.save_servers(request.servers)
-    return schemas.Response(
+    return _SchemaResponse(
         success=success,
         message="保存MCP配置成功" if success else "保存MCP配置失败",
     )
@@ -226,26 +240,26 @@ async def save_agent_mcp_servers(
 @router.post(
     "/mcp/servers/test",
     summary="测试 Agent MCP 服务器",
-    response_model=schemas.Response[schemas.AgentMcpServerTestResult],
+    response_model=_SchemaResponse[_SchemaAgentMcpServerTestResult],
 )
 async def test_agent_mcp_server(
-    request: schemas.AgentMcpServerTestRequest,
+    request: _SchemaAgentMcpServerTestRequest,
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     测试 Agent 外部 MCP 服务器连接并读取工具列表。
     """
     _ensure_superuser(current_user)
     try:
         result = await agent_mcp_manager.test_server(request.server)
-        return schemas.Response(
+        return _SchemaResponse(
             success=result.success,
             message=result.message,
             data=result.model_dump(),
         )
     except Exception as err:
         logger.warning(f"测试 Agent MCP 服务器失败: {err}")
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message=f"测试MCP服务器失败: {str(err)}",
             data={
@@ -374,7 +388,7 @@ class _WebAgentMoviePilotAgentMixin:
     def __init__(
         self,
         *args: Any,
-        message_callback: Optional[Callable[[schemas.Message], None]] = None,
+        message_callback: Optional[Callable[[_SchemaMessage], None]] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -391,7 +405,7 @@ class _WebAgentMoviePilotAgentMixin:
 
     def set_message_callback(
             self,
-            message_callback: Optional[Callable[[schemas.Message], None]],
+            message_callback: Optional[Callable[[_SchemaMessage], None]],
     ) -> None:
         """
         更新 Web SSE 通知回调，复用 Agent 实例时指向当前请求队列。
@@ -1034,7 +1048,7 @@ def _merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[st
     return "\n".join(merged_parts).strip()
 
 
-def _build_web_agent_choice_event(message: schemas.Message) -> Optional[dict]:
+def _build_web_agent_choice_event(message: _SchemaMessage) -> Optional[dict]:
     """
     将带按钮通知转换为 Web Agent 选择卡片事件。
 
@@ -1115,7 +1129,7 @@ def _resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Optio
 
 
 def _build_web_agent_message_events(
-    message: schemas.Message,
+    message: _SchemaMessage,
 ) -> list[dict]:
     """
     将 Agent 工具通知转换为 Web SSE 事件。
@@ -1216,7 +1230,7 @@ def _has_web_agent_traditional_interaction(user_id: str) -> bool:
 
 def _extract_web_agent_message_from_event_data(
     data: dict,
-) -> Optional[schemas.Message]:
+) -> Optional[_SchemaMessage]:
     """
     从 NoticeMessage 事件数据中提取 WebAgent 通知。
 
@@ -1228,17 +1242,17 @@ def _extract_web_agent_message_from_event_data(
 
     try:
         message = data.get("message")
-        if isinstance(message, schemas.Message):
+        if isinstance(message, _SchemaMessage):
             message = message
         elif isinstance(message, dict):
             message_data = copy.deepcopy(message)
             message_data.pop("type", None)
-            message = schemas.Message(**message_data)
+            message = _SchemaMessage(**message_data)
         else:
             message_data = copy.deepcopy(data)
             message_data.pop("type", None)
             message_data.pop("current_time", None)
-            message = schemas.Message(**message_data)
+            message = _SchemaMessage(**message_data)
     except Exception as err:
         logger.debug(f"解析WebAgent通知事件失败: {err}")
         return None
@@ -1251,7 +1265,7 @@ def _extract_web_agent_message_from_event_data(
 
 
 def _is_web_agent_message_for_user(
-    message: schemas.Message,
+    message: _SchemaMessage,
     user_id: str,
 ) -> bool:
     """
@@ -1268,7 +1282,7 @@ def _is_web_agent_message_for_user(
         return False
 
 
-def _get_web_agent_message_user_id(message: schemas.Message) -> Optional[str]:
+def _get_web_agent_message_user_id(message: _SchemaMessage) -> Optional[str]:
     """
     从 NoticeMessage 事件中解析 WebAgent 目标用户。
 
@@ -1327,7 +1341,7 @@ def _ensure_web_agent_message_listener() -> None:
         _WEB_AGENT_MESSAGE_LISTENER_REGISTERED = True
 
 
-def _attach_web_agent_message_queue(user_id: str, message_queue: Queue[schemas.Message]) -> None:
+def _attach_web_agent_message_queue(user_id: str, message_queue: Queue[_SchemaMessage]) -> None:
     """
     为当前 WebAgent 请求挂载通知收集队列。
 
@@ -1339,7 +1353,7 @@ def _attach_web_agent_message_queue(user_id: str, message_queue: Queue[schemas.M
         _WEB_AGENT_MESSAGE_QUEUES.setdefault(str(user_id), []).append(message_queue)
 
 
-def _detach_web_agent_message_queue(user_id: str, message_queue: Queue[schemas.Message]) -> None:
+def _detach_web_agent_message_queue(user_id: str, message_queue: Queue[_SchemaMessage]) -> None:
     """
     移除当前 WebAgent 请求的通知收集队列。
 
@@ -1439,7 +1453,7 @@ async def _collect_web_agent_traditional_events(
     :param original_chat_id: WebAgent 原聊天 ID
     :return: 可直接发送给前端的 SSE 事件列表
     """
-    message_queue: Queue[schemas.Message] = Queue()
+    message_queue: Queue[_SchemaMessage] = Queue()
     edit_queue: Queue[dict] = Queue()
     user_id = str(current_user.id)
 
@@ -1618,13 +1632,13 @@ async def download_web_agent_file(file_id: str) -> FileResponse:
 @router.post(
     "/upload",
     summary="上传 Web 智能助手附件",
-    response_model=schemas.Response[schemas.AgentChatUploadAttachment],
+    response_model=_SchemaResponse[_SchemaAgentChatUploadAttachment],
 )
 async def upload_web_agent_file(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     上传 Web 智能助手对话附件。
 
@@ -1646,7 +1660,7 @@ async def upload_web_agent_file(
     )
     if not attachment:
         target_path.unlink(missing_ok=True)
-        return schemas.Response(success=False, message="附件保存失败")
+        return _SchemaResponse(success=False, message="附件保存失败")
 
     attachment.update(
         {
@@ -1656,18 +1670,18 @@ async def upload_web_agent_file(
             "size": size,
         }
     )
-    return schemas.Response(success=True, data=attachment)
+    return _SchemaResponse(success=True, data=attachment)
 
 
 @router.post(
     "/callback",
     summary="Web 智能助手按钮回调",
-    response_model=schemas.Response[schemas.AgentWebCallbackData],
+    response_model=_SchemaResponse[_SchemaAgentWebCallbackData],
 )
 async def web_agent_callback(
-    payload: schemas.AgentWebChoiceRequest,
+    payload: _SchemaAgentWebChoiceRequest,
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     接收 Web 智能助手选择卡片回调。
 
@@ -1678,8 +1692,8 @@ async def web_agent_callback(
     if not parse_agent_choice_callback(payload.callback_data):
         denied_message = _ensure_web_agent_command_allowed(current_user)
         if denied_message:
-            return schemas.Response(success=False, message=denied_message)
-        return schemas.Response(
+            return _SchemaResponse(success=False, message=denied_message)
+        return _SchemaResponse(
             success=True,
             data=_build_web_agent_traditional_callback_payload(
                 payload.callback_data,
@@ -1693,18 +1707,18 @@ async def web_agent_callback(
         user_id=str(current_user.id),
     )
     if not result:
-        return schemas.Response(success=False, message="该选择已失效，请重新发起选择")
-    return schemas.Response(success=True, data=result)
+        return _SchemaResponse(success=False, message="该选择已失效，请重新发起选择")
+    return _SchemaResponse(success=True, data=result)
 
 
 @router.get(
     "/commands",
     summary="获取 Web 智能助手可用命令",
-    response_model=schemas.Response[list[schemas.AgentWebCommandInfo]],
+    response_model=_SchemaResponse[list[_SchemaAgentWebCommandInfo]],
 )
 async def list_web_agent_commands(
     current_user: User = Depends(get_current_active_user),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     获取当前 Web 智能助手可补全的斜杠命令。
 
@@ -1713,21 +1727,21 @@ async def list_web_agent_commands(
     """
     denied_message = _ensure_web_agent_command_allowed(current_user)
     if denied_message:
-        return schemas.Response(success=False, message=denied_message)
-    return schemas.Response(success=True, data=_build_web_agent_command_items())
+        return _SchemaResponse(success=False, message=denied_message)
+    return _SchemaResponse(success=True, data=_build_web_agent_command_items())
 
 
 @router.get(
     "/sessions",
     summary="获取 Agent 历史会话",
-    response_model=schemas.Response[list[schemas.AgentChatSessionSummary]],
+    response_model=_SchemaResponse[list[_SchemaAgentChatSessionSummary]],
 )
 async def list_agent_chat_sessions(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     获取当前用户可访问的 Agent 历史会话列表。
 
@@ -1745,7 +1759,7 @@ async def list_agent_chat_sessions(
         user_id=user_id,
         username=username,
     )
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data=[AgentChatOper.to_summary(chat) for chat in chats],
     )
@@ -1754,13 +1768,13 @@ async def list_agent_chat_sessions(
 @router.get(
     "/sessions/{session_id}",
     summary="获取 Agent 历史会话详情",
-    response_model=schemas.Response[schemas.AgentChatSessionDetail],
+    response_model=_SchemaResponse[_SchemaAgentChatSessionDetail],
 )
 async def get_agent_chat_session(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     获取一条 Agent 历史会话详情。
 
@@ -1779,7 +1793,7 @@ async def get_agent_chat_session(
     if not chat:
         manager = get_running_agent_manager()
         if manager and manager.is_session_busy(server_session_id):
-            return schemas.Response(
+            return _SchemaResponse(
                 success=True,
                 data={
                     "session_id": server_session_id,
@@ -1788,26 +1802,26 @@ async def get_agent_chat_session(
                     "is_processing": True,
                 },
             )
-        return schemas.Response(success=False, message="会话不存在或无权访问")
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
     data = AgentChatOper.to_detail(chat)
     manager = get_running_agent_manager()
     data["is_processing"] = bool(
         manager and manager.is_session_busy(chat.session_id)
     )
-    return schemas.Response(success=True, data=data)
+    return _SchemaResponse(success=True, data=data)
 
 
 @router.put(
     "/sessions/{session_id}/display",
     summary="保存 Agent 展示会话",
-    response_model=schemas.Response[schemas.AgentChatSessionSummary],
+    response_model=_SchemaResponse[_SchemaAgentChatSessionSummary],
 )
 async def save_agent_chat_display(
     session_id: str,
-    payload: schemas.AgentChatDisplaySaveRequest,
+    payload: _SchemaAgentChatDisplaySaveRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     保存前端聚合后的 Agent 展示消息。
 
@@ -1820,7 +1834,7 @@ async def save_agent_chat_display(
     oper = AgentChatOper(db)
     existing_chat = await oper.async_get(session_id=session_id)
     if existing_chat and not _can_access_agent_chat(existing_chat, current_user):
-        return schemas.Response(success=False, message="会话不存在或无权访问")
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
 
     messages = [
         message.model_dump(exclude_none=True)
@@ -1835,20 +1849,20 @@ async def save_agent_chat_display(
     )
     chat = await oper.async_get(session_id=session_id)
     if not chat:
-        return schemas.Response(success=False, message="会话保存失败")
-    return schemas.Response(success=True, data=AgentChatOper.to_summary(chat))
+        return _SchemaResponse(success=False, message="会话保存失败")
+    return _SchemaResponse(success=True, data=AgentChatOper.to_summary(chat))
 
 
 @router.delete(
     "/sessions/{session_id}",
     summary="删除 Agent 历史会话",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def delete_agent_chat_session(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     删除一条 Agent 历史会话。
 
@@ -1860,21 +1874,21 @@ async def delete_agent_chat_session(
     oper = AgentChatOper(db)
     chat = await _get_accessible_agent_chat(oper, session_id, current_user)
     if not chat:
-        return schemas.Response(success=False, message="会话不存在或无权访问")
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
     deleted = await oper.async_delete(session_id=session_id)
-    return schemas.Response(success=deleted, message="删除成功" if deleted else "删除失败")
+    return _SchemaResponse(success=deleted, message="删除成功" if deleted else "删除失败")
 
 
 @router.post(
     "/sessions/{session_id}/stop",
     summary="停止 Web 智能助手当前任务",
-    response_model=schemas.Response[schemas.AgentSessionStopData],
+    response_model=_SchemaResponse[_SchemaAgentSessionStopData],
 )
 async def stop_web_agent_session_task(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_async_db),
-) -> schemas.Response:
+) -> _SchemaResponse:
     """
     停止当前 Web 智能助手会话正在执行的任务。
 
@@ -1890,11 +1904,11 @@ async def stop_web_agent_session_task(
     if not chat and server_session_id != session_id:
         chat = await _get_accessible_agent_chat(AgentChatOper(db), session_id, current_user)
     if chat and not _can_access_agent_chat(chat, current_user):
-        return schemas.Response(success=False, message="会话不存在或无权访问")
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
 
     manager = get_running_agent_manager()
     stopped = await manager.stop_current_task(server_session_id) if manager else False
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={"stopped": stopped},
         message="已停止" if stopped else "当前没有正在执行的任务",
@@ -1914,7 +1928,7 @@ async def stop_web_agent_session_task(
     },
 )
 async def web_agent_stream(
-    payload: schemas.AgentWebChatRequest,
+    payload: _SchemaAgentWebChatRequest,
     request: Request,
     current_user: User = Depends(get_current_active_user),
 ) -> StreamingResponse:
@@ -2170,7 +2184,7 @@ async def web_agent_stream(
             _apply_web_agent_display_event(item, assistant_display_message)
             event_publisher.publish(item)
 
-    def message_callback(message: schemas.Message) -> None:
+    def message_callback(message: _SchemaMessage) -> None:
         """
         接收 Agent 工具主动发送的 Web 通知。
         """

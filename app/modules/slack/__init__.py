@@ -12,13 +12,11 @@ from app.application.messaging.agent import (
 from app.runtime.log import logger
 from app.modules._base import _MessageChannelModuleBase
 from app.modules.slack.slack import Slack
-from app.schemas import (
-    CommandRegisterEventData,
-    IncomingMessage,
-    NotificationChannel,
-    MessageResponse,
-    Message,
-)
+from app.schemas.event import CommandRegisterEventData
+from app.schemas.message import IncomingMessage
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import MessageResponse
+from app.schemas.message import Message
 from app.schemas.types import ModuleType
 
 

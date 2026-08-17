@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-from app.schemas import FileItem, MediaType
+from app.schemas.workflow import FileItem
+from app.schemas.types import MediaType
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 
 
 class TransferFileInput(BaseModel):

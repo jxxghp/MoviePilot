@@ -1,0 +1,4366 @@
+{
+  "compat_manifest": {
+    "module_aliases": {
+      "app.application.filter": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.rules",
+        "target": "app.application.rules"
+      },
+      "app.application.filter_rules": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.rules",
+        "target": "app.application.rules"
+      },
+      "app.chain.media_interaction": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "chain",
+        "replacement": "app.chain.interaction",
+        "target": "app.chain.interaction"
+      },
+      "app.core.auth": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.auth",
+        "target": "app.application.security.auth"
+      },
+      "app.core.auth_bridge": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.auth",
+        "target": "app.application.security.auth"
+      },
+      "app.core.cache": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.cache",
+        "target": "app.sdk.cache"
+      },
+      "app.core.config": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.config",
+        "target": "app.runtime.config"
+      },
+      "app.core.context": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.context"
+      },
+      "app.core.event": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.events",
+        "target": "app.runtime.events"
+      },
+      "app.core.meta.customization": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.customization"
+      },
+      "app.core.meta.infopath": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.infopath"
+      },
+      "app.core.meta.metaanime": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.metaanime"
+      },
+      "app.core.meta.metabase": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.metabase"
+      },
+      "app.core.meta.metamusic": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.metamusic"
+      },
+      "app.core.meta.metavideo": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.metavideo"
+      },
+      "app.core.meta.releasegroup": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.releasegroup"
+      },
+      "app.core.meta.streamingplatform": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.streamingplatform"
+      },
+      "app.core.meta.words": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta.words"
+      },
+      "app.core.metainfo": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.metainfo"
+      },
+      "app.core.module": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.plugins",
+        "target": "app.runtime.extensions.module_manager"
+      },
+      "app.core.plugin": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.plugins",
+        "target": "app.runtime.extensions.plugin_manager"
+      },
+      "app.core.security": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.access",
+        "target": "app.application.security.access"
+      },
+      "app.db.agentchat_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.agentchat",
+        "target": "app.db.oper.agentchat"
+      },
+      "app.db.agenttask_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.agenttask",
+        "target": "app.db.oper.agenttask"
+      },
+      "app.db.downloadfailure_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.downloadfailure",
+        "target": "app.db.oper.downloadfailure"
+      },
+      "app.db.downloadhistory_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.downloadhistory",
+        "target": "app.db.oper.downloadhistory"
+      },
+      "app.db.init": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "startup",
+        "replacement": "app.startup.database_initializer",
+        "target": "app.startup.database_initializer"
+      },
+      "app.db.mediaserver_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.mediaserver",
+        "target": "app.db.oper.mediaserver"
+      },
+      "app.db.message_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.message",
+        "target": "app.db.oper.message"
+      },
+      "app.db.plugindata_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.plugindata",
+        "target": "app.db.oper.plugindata"
+      },
+      "app.db.site_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.site",
+        "target": "app.db.oper.site"
+      },
+      "app.db.subscribe_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.application.subscribe.add_subscribe",
+        "target": "app.sdk._legacy.subscribe"
+      },
+      "app.db.subscribehistory_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.subscribehistory",
+        "target": "app.db.oper.subscribehistory"
+      },
+      "app.db.systemconfig_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.systemconfig",
+        "target": "app.db.oper.systemconfig"
+      },
+      "app.db.transferhistory_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.application.history",
+        "target": "app.sdk._legacy.history"
+      },
+      "app.db.transferpending_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.transferpending",
+        "target": "app.db.oper.transferpending"
+      },
+      "app.db.user_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.db.oper.user 或 app.api.deps",
+        "target": "app.sdk._legacy.user"
+      },
+      "app.db.userconfig_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.userconfig",
+        "target": "app.db.oper.userconfig"
+      },
+      "app.db.workflow_oper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "db",
+        "replacement": "app.db.oper.workflow",
+        "target": "app.db.oper.workflow"
+      },
+      "app.domain.string": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.utilities",
+        "target": "app.sdk.string"
+      },
+      "app.helper.agent": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.messaging.agent",
+        "target": "app.application.messaging.agent"
+      },
+      "app.helper.audio": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.audio",
+        "target": "app.application.audio"
+      },
+      "app.helper.browser": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.network.browser",
+        "target": "app.adapters.network.browser"
+      },
+      "app.helper.cloudflare": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.network.cloudflare",
+        "target": "app.adapters.network.cloudflare"
+      },
+      "app.helper.cookie": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.cookie",
+        "target": "app.application.security.cookie"
+      },
+      "app.helper.cookiecloud": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.external.cookiecloud",
+        "target": "app.adapters.external.cookiecloud"
+      },
+      "app.helper.directory": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.directory",
+        "target": "app.application.directory"
+      },
+      "app.helper.display": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.system.display",
+        "target": "app.adapters.system.display"
+      },
+      "app.helper.doh": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.network.doh",
+        "target": "app.adapters.network.doh"
+      },
+      "app.helper.downloader": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.services",
+        "target": "app.application.downloader"
+      },
+      "app.helper.format": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.formatting",
+        "target": "app.application.formatting"
+      },
+      "app.helper.image": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.image",
+        "target": "app.application.image"
+      },
+      "app.helper.interaction": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.messaging.interaction",
+        "target": "app.application.messaging.interaction"
+      },
+      "app.helper.llm": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "agent",
+        "replacement": "app.agent.llm",
+        "target": "app.agent.llm"
+      },
+      "app.helper.locale": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.utilities",
+        "target": "app.runtime.localization"
+      },
+      "app.helper.market": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.external.market",
+        "target": "app.adapters.external.market"
+      },
+      "app.helper.mediaserver": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.services",
+        "target": "app.application.mediaserver"
+      },
+      "app.helper.message": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.messaging.message",
+        "target": "app.application.messaging.message"
+      },
+      "app.helper.module": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.foundation.reflection",
+        "target": "app.foundation.reflection"
+      },
+      "app.helper.nfo": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.scraper"
+      },
+      "app.helper.notification": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.services",
+        "target": "app.application.notification"
+      },
+      "app.helper.ocr": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.external.ocr",
+        "target": "app.adapters.external.ocr"
+      },
+      "app.helper.package": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.system.package",
+        "target": "app.adapters.system.package"
+      },
+      "app.helper.passkey": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.passkey",
+        "target": "app.application.security.passkey"
+      },
+      "app.helper.plugin": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.external.market",
+        "target": "app.adapters.external.market"
+      },
+      "app.helper.progress": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.progress",
+        "target": "app.runtime.progress"
+      },
+      "app.helper.redis": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.cache.redis",
+        "target": "app.adapters.cache.redis"
+      },
+      "app.helper.resource": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.system.resource",
+        "target": "app.adapters.system.resource"
+      },
+      "app.helper.rss": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.network",
+        "target": "app.application.rss"
+      },
+      "app.helper.rule": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.services",
+        "target": "app.application.rules"
+      },
+      "app.helper.scraper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.domain.scraper",
+        "target": "app.domain.scraper"
+      },
+      "app.helper.server": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.external.server",
+        "target": "app.adapters.external.server"
+      },
+      "app.helper.service": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.services",
+        "target": "app.runtime.extensions.service_registry"
+      },
+      "app.helper.sites": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.network",
+        "target": "app.application.site.sites"
+      },
+      "app.helper.skill": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "agent",
+        "replacement": "app.agent.skills.registry",
+        "target": "app.agent.skills.registry"
+      },
+      "app.helper.storage": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.services",
+        "target": "app.application.storage"
+      },
+      "app.helper.system": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.services",
+        "target": "app.runtime.state"
+      },
+      "app.helper.thread": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.thread",
+        "target": "app.runtime.thread"
+      },
+      "app.helper.torrent": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.torrent",
+        "target": "app.application.torrent"
+      },
+      "app.helper.transferhistory": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.history",
+        "target": "app.application.history"
+      },
+      "app.helper.twofa": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.security.twofactor",
+        "target": "app.application.security.twofactor"
+      },
+      "app.helper.wallpaper": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.image",
+        "target": "app.application.image"
+      },
+      "app.helper.webpush": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "api",
+        "replacement": "app.api.endpoints.message",
+        "target": "app.api.endpoints.message"
+      },
+      "app.log": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.logging",
+        "target": "app.sdk.logging"
+      },
+      "app.utils.coalesce": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.coalesce",
+        "target": "app.runtime.coalesce"
+      },
+      "app.utils.common": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.utilities",
+        "target": "app.sdk.utilities"
+      },
+      "app.utils.crypto": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.utilities",
+        "target": "app.foundation.crypto"
+      },
+      "app.utils.debounce": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.debounce",
+        "target": "app.runtime.debounce"
+      },
+      "app.utils.dom": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.utilities",
+        "target": "app.foundation.dom"
+      },
+      "app.utils.gc": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.gc",
+        "target": "app.runtime.gc"
+      },
+      "app.utils.http": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.network",
+        "target": "app.adapters.network.http"
+      },
+      "app.utils.identity": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.foundation.identity",
+        "target": "app.foundation.identity"
+      },
+      "app.utils.ip": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.sdk.network",
+        "target": "app.adapters.network.ip"
+      },
+      "app.utils.jieba": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.utilities",
+        "target": "app.foundation.text"
+      },
+      "app.utils.limit": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.rate",
+        "target": "app.runtime.rate"
+      },
+      "app.utils.media": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.media",
+        "target": "app.sdk.media"
+      },
+      "app.utils.mixins": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.reload",
+        "target": "app.runtime.reload"
+      },
+      "app.utils.object": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.utilities",
+        "target": "app.foundation.reflection"
+      },
+      "app.utils.otp": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.utilities",
+        "target": "app.application.security.otp"
+      },
+      "app.utils.rust_accel": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.system.rust",
+        "target": "app.adapters.system.rust"
+      },
+      "app.utils.security": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.sdk.network",
+        "target": "app.application.security.url"
+      },
+      "app.utils.singleton": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.utilities",
+        "target": "app.foundation.singleton"
+      },
+      "app.utils.site": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.network",
+        "target": "app.domain.site"
+      },
+      "app.utils.stdio": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.adapters.system.stdio",
+        "target": "app.adapters.system.stdio"
+      },
+      "app.utils.string": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.utilities",
+        "target": "app.sdk.string"
+      },
+      "app.utils.structures": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.foundation.collections",
+        "target": "app.foundation.collections"
+      },
+      "app.utils.system": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.sdk.utilities",
+        "target": "app.adapters.system.host"
+      },
+      "app.utils.timer": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.sdk.utilities",
+        "target": "app.runtime.scheduling"
+      },
+      "app.utils.tokens": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.tokens"
+      },
+      "app.utils.url": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.sdk.network",
+        "target": "app.foundation.url"
+      },
+      "app.utils.web": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "adapters",
+        "replacement": "app.sdk.network",
+        "target": "app.adapters.external.location"
+      },
+      "app.utils.zhconv": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "foundation",
+        "replacement": "app.foundation.text",
+        "target": "app.foundation.text"
+      }
+    },
+    "package_aliases": {
+      "app.core.meta": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "domain",
+        "replacement": "app.sdk.media",
+        "target": "app.domain.meta"
+      }
+    },
+    "package_exports": {
+      "app.core.meta": {
+        "MetaAnime": {
+          "replacement": "app.sdk.media.MetaAnime",
+          "target_module": "app.domain.meta.metaanime",
+          "target_name": "MetaAnime"
+        },
+        "MetaBase": {
+          "replacement": "app.sdk.media.MetaBase",
+          "target_module": "app.domain.meta.metabase",
+          "target_name": "MetaBase"
+        },
+        "MetaMusic": {
+          "replacement": "app.sdk.media.MetaMusic",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MetaMusic"
+        },
+        "MetaVideo": {
+          "replacement": "app.sdk.media.MetaVideo",
+          "target_module": "app.domain.meta.metavideo",
+          "target_name": "MetaVideo"
+        },
+        "MusicNameContext": {
+          "replacement": "app.sdk.media.MusicNameContext",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNameContext"
+        },
+        "MusicNameParseResult": {
+          "replacement": "app.sdk.media.MusicNameParseResult",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNameParseResult"
+        },
+        "MusicNameParser": {
+          "replacement": "app.sdk.media.MusicNameParser",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNameParser"
+        },
+        "MusicNamePattern": {
+          "replacement": "app.sdk.media.MusicNamePattern",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNamePattern"
+        },
+        "MusicNamePatternMatch": {
+          "replacement": "app.sdk.media.MusicNamePatternMatch",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNamePatternMatch"
+        },
+        "MusicNameRegistry": {
+          "replacement": "app.sdk.media.MusicNameRegistry",
+          "target_module": "app.domain.meta.metamusic",
+          "target_name": "MusicNameRegistry"
+        }
+      }
+    },
+    "symbol_aliases": {
+      "app.agent.orchestrator": {
+        "AgentChain": {
+          "replacement": "app.chain.agent.AgentChain",
+          "target_module": "app.chain.agent",
+          "target_name": "AgentChain"
+        },
+        "ReplyMode": {
+          "replacement": "app.schemas.types.ReplyMode",
+          "target_module": "app.schemas.types",
+          "target_name": "ReplyMode"
+        }
+      },
+      "app.chain.media": {
+        "ScrapingChain": {
+          "replacement": "app.chain.scraping.ScrapingChain",
+          "target_module": "app.chain.scraping",
+          "target_name": "ScrapingChain"
+        },
+        "ScrapingConfig": {
+          "replacement": "app.chain.scraping.ScrapingConfig",
+          "target_module": "app.chain.scraping",
+          "target_name": "ScrapingConfig"
+        },
+        "ScrapingOption": {
+          "replacement": "app.chain.scraping.ScrapingOption",
+          "target_module": "app.chain.scraping",
+          "target_name": "ScrapingOption"
+        }
+      },
+      "app.chain.message": {
+        "MediaInteractionChain": {
+          "replacement": "app.chain.interaction.MediaInteractionChain",
+          "target_module": "app.chain.interaction",
+          "target_name": "MediaInteractionChain"
+        }
+      },
+      "app.domain.media": {
+        "MEDIA_SOURCE_ALIASES": {
+          "replacement": "app.schemas.media.MEDIA_SOURCE_ALIASES",
+          "target_module": "app.schemas.media",
+          "target_name": "MEDIA_SOURCE_ALIASES"
+        },
+        "MEDIA_SOURCE_PREFIXES": {
+          "replacement": "app.schemas.media.MEDIA_SOURCE_PREFIXES",
+          "target_module": "app.schemas.media",
+          "target_name": "MEDIA_SOURCE_PREFIXES"
+        },
+        "build_media_key": {
+          "replacement": "app.schemas.media.build_media_key",
+          "target_module": "app.schemas.media",
+          "target_name": "build_media_key"
+        },
+        "normalize_media_identity_payload": {
+          "replacement": "app.schemas.media.normalize_media_identity_payload",
+          "target_module": "app.schemas.media",
+          "target_name": "normalize_media_identity_payload"
+        },
+        "normalize_media_source": {
+          "replacement": "app.schemas.media.normalize_media_source",
+          "target_module": "app.schemas.media",
+          "target_name": "normalize_media_source"
+        },
+        "parse_media_key": {
+          "replacement": "app.schemas.media.parse_media_key",
+          "target_module": "app.schemas.media",
+          "target_name": "parse_media_key"
+        },
+        "resolve_media_identity": {
+          "replacement": "app.schemas.media.resolve_media_identity",
+          "target_module": "app.schemas.media",
+          "target_name": "resolve_media_identity"
+        }
+      },
+      "app.schemas": {
+        "ChannelCapabilities": {
+          "replacement": "app.schemas.notification.ChannelCapabilities",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapabilities"
+        },
+        "ChannelCapability": {
+          "replacement": "app.schemas.notification.ChannelCapability",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapability"
+        },
+        "ChannelCapabilityManager": {
+          "replacement": "app.schemas.notification.ChannelCapabilityManager",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapabilityManager"
+        },
+        "CommingMessage": {
+          "replacement": "app.schemas.message.IncomingMessage",
+          "target_module": "app.schemas.message",
+          "target_name": "IncomingMessage"
+        },
+        "MessageChannel": {
+          "replacement": "app.schemas.types.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "Notification": {
+          "replacement": "app.schemas.message.Message",
+          "target_module": "app.schemas.message",
+          "target_name": "Message"
+        },
+        "NotificationClearBefore": {
+          "replacement": "app.schemas.message.MessageClearBefore",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearBefore"
+        },
+        "NotificationClearData": {
+          "replacement": "app.schemas.message.MessageClearData",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearData"
+        },
+        "NotificationClearScope": {
+          "replacement": "app.schemas.message.MessageClearScope",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearScope"
+        },
+        "NotificationHistoryItem": {
+          "replacement": "app.schemas.message.MessageHistoryItem",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageHistoryItem"
+        },
+        "NotificationType": {
+          "replacement": "app.schemas.types.MessageType",
+          "target_module": "app.schemas.types",
+          "target_name": "MessageType"
+        },
+        "TransferQueue": {
+          "replacement": "app.application.transfer.TransferQueue",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferQueue"
+        },
+        "TransferTask": {
+          "replacement": "app.application.transfer.TransferTask",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferTask"
+        }
+      },
+      "app.schemas.agent": {
+        "ReplyMode": {
+          "replacement": "app.schemas.types.ReplyMode",
+          "target_module": "app.schemas.types",
+          "target_name": "ReplyMode"
+        }
+      },
+      "app.schemas.message": {
+        "ChannelCapabilities": {
+          "replacement": "app.schemas.notification.ChannelCapabilities",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapabilities"
+        },
+        "ChannelCapability": {
+          "replacement": "app.schemas.notification.ChannelCapability",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapability"
+        },
+        "ChannelCapabilityManager": {
+          "replacement": "app.schemas.notification.ChannelCapabilityManager",
+          "target_module": "app.schemas.notification",
+          "target_name": "ChannelCapabilityManager"
+        },
+        "CommingMessage": {
+          "replacement": "app.schemas.message.IncomingMessage",
+          "target_module": "app.schemas.message",
+          "target_name": "IncomingMessage"
+        },
+        "MessageChannel": {
+          "replacement": "app.schemas.types.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "Notification": {
+          "replacement": "app.schemas.message.Message",
+          "target_module": "app.schemas.message",
+          "target_name": "Message"
+        },
+        "NotificationClearBefore": {
+          "replacement": "app.schemas.message.MessageClearBefore",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearBefore"
+        },
+        "NotificationClearData": {
+          "replacement": "app.schemas.message.MessageClearData",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearData"
+        },
+        "NotificationClearScope": {
+          "replacement": "app.schemas.message.MessageClearScope",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageClearScope"
+        },
+        "NotificationHistoryItem": {
+          "replacement": "app.schemas.message.MessageHistoryItem",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageHistoryItem"
+        },
+        "NotificationType": {
+          "replacement": "app.schemas.types.MessageType",
+          "target_module": "app.schemas.types",
+          "target_name": "MessageType"
+        }
+      },
+      "app.schemas.transfer": {
+        "DownloadHistory": {
+          "replacement": "app.schemas.history.DownloadHistory",
+          "target_module": "app.schemas.history",
+          "target_name": "DownloadHistory"
+        },
+        "MediaType": {
+          "replacement": "app.schemas.types.MediaType",
+          "target_module": "app.schemas.types",
+          "target_name": "MediaType"
+        },
+        "TmdbEpisode": {
+          "replacement": "app.schemas.tmdb.TmdbEpisode",
+          "target_module": "app.schemas.tmdb",
+          "target_name": "TmdbEpisode"
+        },
+        "TransferDirectoryConf": {
+          "replacement": "app.schemas.system.TransferDirectoryConf",
+          "target_module": "app.schemas.system",
+          "target_name": "TransferDirectoryConf"
+        },
+        "TransferQueue": {
+          "replacement": "app.application.transfer.TransferQueue",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferQueue"
+        },
+        "TransferTask": {
+          "replacement": "app.application.transfer.TransferTask",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferTask"
+        }
+      },
+      "app.schemas.types": {
+        "MessageChannel": {
+          "replacement": "app.schemas.types.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "NotificationType": {
+          "replacement": "app.schemas.types.MessageType",
+          "target_module": "app.schemas.types",
+          "target_name": "MessageType"
+        }
+      },
+      "app.sdk.logging": {
+        "CustomFormatter": {
+          "replacement": "app.runtime.log.CustomFormatter",
+          "target_module": "app.runtime.log",
+          "target_name": "CustomFormatter"
+        },
+        "LogConfigModel": {
+          "replacement": "app.runtime.log.LogConfigModel",
+          "target_module": "app.runtime.log",
+          "target_name": "LogConfigModel"
+        },
+        "LogEntry": {
+          "replacement": "app.runtime.log.LogEntry",
+          "target_module": "app.runtime.log",
+          "target_name": "LogEntry"
+        },
+        "LogSettings": {
+          "replacement": "app.runtime.log.LogSettings",
+          "target_module": "app.runtime.log",
+          "target_name": "LogSettings"
+        },
+        "LoggerManager": {
+          "replacement": "app.runtime.log.LoggerManager",
+          "target_module": "app.runtime.log",
+          "target_name": "LoggerManager"
+        },
+        "NonBlockingFileHandler": {
+          "replacement": "app.runtime.log.NonBlockingFileHandler",
+          "target_module": "app.runtime.log",
+          "target_name": "NonBlockingFileHandler"
+        },
+        "configure_log_settings": {
+          "replacement": "app.runtime.log.configure_log_settings",
+          "target_module": "app.runtime.log",
+          "target_name": "configure_log_settings"
+        },
+        "configure_log_writer": {
+          "replacement": "app.runtime.log.configure_log_writer",
+          "target_module": "app.runtime.log",
+          "target_name": "configure_log_writer"
+        },
+        "log_settings": {
+          "replacement": "app.runtime.log.log_settings",
+          "target_module": "app.runtime.log",
+          "target_name": "log_settings"
+        }
+      }
+    },
+    "virtual_packages": [
+      "app.core",
+      "app.helper",
+      "app.utils"
+    ]
+  },
+  "events": {
+    "consumer_count": 15,
+    "dynamic_consumers": [
+      {
+        "caller": "app.adapters.system.fsproxy",
+        "line": 392
+      },
+      {
+        "caller": "app.agent.llm.provider",
+        "line": 2253
+      },
+      {
+        "caller": "app.chain.transfer",
+        "line": 608
+      },
+      {
+        "caller": "app.db.oper.transferpending",
+        "line": 23
+      },
+      {
+        "caller": "app.runtime.events",
+        "line": 138
+      },
+      {
+        "caller": "app.runtime.events",
+        "line": 461
+      },
+      {
+        "caller": "app.runtime.events",
+        "line": 465
+      },
+      {
+        "caller": "app.testing.bootstrap",
+        "line": 111
+      },
+      {
+        "caller": "app.workflow",
+        "line": 311
+      }
+    ],
+    "dynamic_producers": [
+      {
+        "caller": "app.agent.tools.impl._filter_rule_utils",
+        "line": 433
+      },
+      {
+        "caller": "app.agent.tools.impl.update_system_settings",
+        "line": 276
+      },
+      {
+        "caller": "app.api.endpoints.system",
+        "line": 816
+      },
+      {
+        "caller": "app.api.endpoints.system",
+        "line": 930
+      },
+      {
+        "caller": "app.api.endpoints.system",
+        "line": 984
+      },
+      {
+        "caller": "app.api.endpoints.system",
+        "line": 998
+      },
+      {
+        "caller": "app.chain._messaging",
+        "line": 217
+      },
+      {
+        "caller": "app.chain._messaging",
+        "line": 227
+      },
+      {
+        "caller": "app.chain._messaging",
+        "line": 333
+      },
+      {
+        "caller": "app.chain._messaging",
+        "line": 343
+      },
+      {
+        "caller": "app.chain._recognition",
+        "line": 460
+      },
+      {
+        "caller": "app.chain._recognition",
+        "line": 500
+      },
+      {
+        "caller": "app.chain.user",
+        "line": 160
+      },
+      {
+        "caller": "app.chain.user",
+        "line": 223
+      },
+      {
+        "caller": "app.command",
+        "line": 440
+      },
+      {
+        "caller": "app.modules._base.mediaserver",
+        "line": 56
+      },
+      {
+        "caller": "app.modules.navidrome",
+        "line": 91
+      },
+      {
+        "caller": "app.modules.plex",
+        "line": 99
+      },
+      {
+        "caller": "app.runtime.extensions.module_manager",
+        "line": 238
+      }
+    ],
+    "event_count": 53,
+    "events": {
+      "ChainEventType.AgentLLMProvider": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.agent.orchestrator",
+            "line": 1272
+          }
+        ]
+      },
+      "ChainEventType.AuthIntercept": {
+        "consumers": [],
+        "producers": []
+      },
+      "ChainEventType.AuthVerification": {
+        "consumers": [],
+        "producers": []
+      },
+      "ChainEventType.CommandRegister": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.command",
+            "line": 267
+          },
+          {
+            "caller": "app.modules._base.notification",
+            "line": 92
+          }
+        ]
+      },
+      "ChainEventType.DiscoverSource": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.api.endpoints.discover",
+            "line": 31
+          }
+        ]
+      },
+      "ChainEventType.MediaRecognize": {
+        "consumers": [],
+        "producers": []
+      },
+      "ChainEventType.MediaRecognizeConvert": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.media",
+            "line": 1502
+          },
+          {
+            "caller": "app.chain.media",
+            "line": 2048
+          }
+        ]
+      },
+      "ChainEventType.MusicMediaRecognize": {
+        "consumers": [],
+        "producers": []
+      },
+      "ChainEventType.MusicNameRecognize": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.media",
+            "line": 815
+          },
+          {
+            "caller": "app.chain.media",
+            "line": 1753
+          }
+        ]
+      },
+      "ChainEventType.NameRecognize": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.media",
+            "line": 753
+          },
+          {
+            "caller": "app.chain.media",
+            "line": 1691
+          }
+        ]
+      },
+      "ChainEventType.PluginDataReset": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.api.deps",
+            "line": 230
+          }
+        ]
+      },
+      "ChainEventType.RecommendSource": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.api.endpoints.recommend",
+            "line": 42
+          },
+          {
+            "caller": "app.workflow.actions.fetch_medias",
+            "line": 111
+          }
+        ]
+      },
+      "ChainEventType.ResourceDownload": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.download",
+            "line": 1052
+          }
+        ]
+      },
+      "ChainEventType.ResourceSelection": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.download",
+            "line": 1419
+          }
+        ]
+      },
+      "ChainEventType.StorageOperSelection": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 1094
+          },
+          {
+            "caller": "app.chain.transfer",
+            "line": 1110
+          }
+        ]
+      },
+      "ChainEventType.SubscribeCompletionCheck": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.subscribe",
+            "line": 2786
+          }
+        ]
+      },
+      "ChainEventType.SubscribeEpisodesRefresh": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.subscribe",
+            "line": 3524
+          },
+          {
+            "caller": "app.chain.subscribe",
+            "line": 3546
+          }
+        ]
+      },
+      "ChainEventType.TransferIntercept": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.modules.filemanager.transhandler",
+            "line": 983
+          },
+          {
+            "caller": "app.modules.filemanager.transhandler",
+            "line": 1105
+          }
+        ]
+      },
+      "ChainEventType.TransferOverwriteCheck": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.modules.filemanager.transhandler",
+            "line": 509
+          }
+        ]
+      },
+      "ChainEventType.TransferRename": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.modules.filemanager.transhandler",
+            "line": 1329
+          }
+        ]
+      },
+      "ChainEventType.TransferRenameBuild": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.modules.filemanager.transhandler",
+            "line": 1308
+          }
+        ]
+      },
+      "ChainEventType.WorkflowExecution": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.workflow.actions.send_event",
+            "line": 46
+          }
+        ]
+      },
+      "EventType.AgentTokensUsage": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.agent.orchestrator",
+            "line": 865
+          }
+        ]
+      },
+      "EventType.AudioTransferComplete": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 388
+          }
+        ]
+      },
+      "EventType.AudioTransferFailed": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 267
+          }
+        ]
+      },
+      "EventType.CommandExcute": {
+        "consumers": [
+          {
+            "caller": "app.command",
+            "line": 442
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.agent.tools.impl.run_slash_command",
+            "line": 90
+          },
+          {
+            "caller": "app.chain.message",
+            "line": 443
+          }
+        ]
+      },
+      "EventType.ConfigChanged": {
+        "consumers": [
+          {
+            "caller": "app.runtime.extensions.module_manager",
+            "line": 69
+          },
+          {
+            "caller": "app.runtime.reload",
+            "line": 81
+          },
+          {
+            "caller": "app.startup.agent_initializer",
+            "line": 91
+          }
+        ],
+        "producers": []
+      },
+      "EventType.DownloadAdded": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.download",
+            "line": 1240
+          }
+        ]
+      },
+      "EventType.DownloadDeleted": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.download",
+            "line": 2085
+          }
+        ]
+      },
+      "EventType.DownloadFileDeleted": {
+        "consumers": [
+          {
+            "caller": "app.chain.download",
+            "line": 2069
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.api.deps",
+            "line": 216
+          }
+        ]
+      },
+      "EventType.HistoryDeleted": {
+        "consumers": [],
+        "producers": []
+      },
+      "EventType.MessageAction": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.application.messaging.plugin",
+            "line": 414
+          },
+          {
+            "caller": "app.application.messaging.plugin",
+            "line": 445
+          },
+          {
+            "caller": "app.application.messaging.plugin",
+            "line": 475
+          },
+          {
+            "caller": "app.chain.message",
+            "line": 687
+          }
+        ]
+      },
+      "EventType.MetadataScrape": {
+        "consumers": [
+          {
+            "caller": "app.chain.scraping",
+            "line": 586
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.chain._transfer",
+            "line": 460
+          },
+          {
+            "caller": "app.chain._transfer",
+            "line": 635
+          }
+        ]
+      },
+      "EventType.ModuleReload": {
+        "consumers": [
+          {
+            "caller": "app.command",
+            "line": 476
+          }
+        ],
+        "producers": []
+      },
+      "EventType.NoticeMessage": {
+        "consumers": [
+          {
+            "caller": "app.api.endpoints.agent",
+            "line": 1337
+          }
+        ],
+        "producers": []
+      },
+      "EventType.PluginAction": {
+        "consumers": [],
+        "producers": []
+      },
+      "EventType.PluginReload": {
+        "consumers": [
+          {
+            "caller": "app.scheduler",
+            "line": 1046
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.runtime.extensions.plugin_manager",
+            "line": 756
+          }
+        ]
+      },
+      "EventType.PluginTriggered": {
+        "consumers": [],
+        "producers": []
+      },
+      "EventType.SiteDeleted": {
+        "consumers": [
+          {
+            "caller": "app.chain.search",
+            "line": 2861
+          },
+          {
+            "caller": "app.chain.subscribe",
+            "line": 3001
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.api.deps",
+            "line": 133
+          },
+          {
+            "caller": "app.api.endpoints.site",
+            "line": 199
+          }
+        ]
+      },
+      "EventType.SiteRefreshed": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.site",
+            "line": 74
+          },
+          {
+            "caller": "app.chain.site",
+            "line": 163
+          }
+        ]
+      },
+      "EventType.SiteUpdated": {
+        "consumers": [
+          {
+            "caller": "app.chain.site",
+            "line": 586
+          },
+          {
+            "caller": "app.chain.site",
+            "line": 628
+          },
+          {
+            "caller": "app.chain.site",
+            "line": 650
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.agent.tools.impl.update_site",
+            "line": 200
+          },
+          {
+            "caller": "app.api.deps",
+            "line": 128
+          },
+          {
+            "caller": "app.chain.site",
+            "line": 566
+          }
+        ]
+      },
+      "EventType.SubscribeAdded": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.subscribe",
+            "line": 996
+          },
+          {
+            "caller": "app.chain.subscribe",
+            "line": 1200
+          }
+        ]
+      },
+      "EventType.SubscribeComplete": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.subscribe",
+            "line": 2824
+          }
+        ]
+      },
+      "EventType.SubscribeDeleted": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.agent.tools.impl.delete_subscribe",
+            "line": 70
+          },
+          {
+            "caller": "app.api.deps",
+            "line": 64
+          }
+        ]
+      },
+      "EventType.SubscribeModified": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.agent.tools.impl.update_subscribe",
+            "line": 316
+          },
+          {
+            "caller": "app.api.endpoints.subscribe",
+            "line": 333
+          },
+          {
+            "caller": "app.api.endpoints.subscribe",
+            "line": 366
+          },
+          {
+            "caller": "app.api.endpoints.subscribe",
+            "line": 444
+          }
+        ]
+      },
+      "EventType.SubtitleTransferComplete": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 374
+          }
+        ]
+      },
+      "EventType.SubtitleTransferFailed": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 253
+          }
+        ]
+      },
+      "EventType.SystemError": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain",
+            "line": 136
+          },
+          {
+            "caller": "app.chain",
+            "line": 162
+          },
+          {
+            "caller": "app.runtime.events",
+            "line": 114
+          },
+          {
+            "caller": "app.scheduler",
+            "line": 696
+          }
+        ]
+      },
+      "EventType.TransferComplete": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 360
+          }
+        ]
+      },
+      "EventType.TransferFailed": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.transfer",
+            "line": 239
+          }
+        ]
+      },
+      "EventType.UserMessage": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.message",
+            "line": 505
+          }
+        ]
+      },
+      "EventType.WebhookMessage": {
+        "consumers": [],
+        "producers": [
+          {
+            "caller": "app.chain.webhook",
+            "line": 21
+          }
+        ]
+      },
+      "EventType.WorkflowExecute": {
+        "consumers": [
+          {
+            "caller": "app.chain.workflow",
+            "line": 1161
+          }
+        ],
+        "producers": [
+          {
+            "caller": "app.workflow",
+            "line": 379
+          }
+        ]
+      }
+    },
+    "producer_count": 68
+  },
+  "run_module": {
+    "call_count": 259,
+    "dynamic_call_count": 0,
+    "dynamic_calls": [],
+    "method_count": 211,
+    "methods": {
+      "anilist_credits": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 95,
+          "mode": "sync"
+        }
+      ],
+      "anilist_discover": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 77,
+          "mode": "sync"
+        }
+      ],
+      "anilist_info": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 20,
+          "mode": "sync"
+        }
+      ],
+      "anilist_person_credits": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 164,
+          "mode": "sync"
+        }
+      ],
+      "anilist_person_detail": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 144,
+          "mode": "sync"
+        }
+      ],
+      "anilist_popular_this_season": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 55,
+          "mode": "sync"
+        }
+      ],
+      "anilist_recommendations": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 119,
+          "mode": "sync"
+        }
+      ],
+      "anilist_trending": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 37,
+          "mode": "sync"
+        }
+      ],
+      "any_files": [
+        {
+          "caller": "app.chain.storage",
+          "line": 41,
+          "mode": "sync"
+        }
+      ],
+      "async_anilist_credits": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 107,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_discover": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 85,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_info": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 29,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_person_credits": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 176,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_person_detail": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 152,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_popular_this_season": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 67,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_recommendations": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 131,
+          "mode": "async"
+        }
+      ],
+      "async_anilist_trending": [
+        {
+          "caller": "app.chain.anilist",
+          "line": 45,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_calendar": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 65,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 560,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_credits": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 86,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_discover": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 71,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_info": [
+        {
+          "caller": "app.chain",
+          "line": 455,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.bangumi",
+          "line": 79,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_person_credits": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 107,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_person_detail": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 100,
+          "mode": "async"
+        }
+      ],
+      "async_bangumi_recommend": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 93,
+          "mode": "async"
+        }
+      ],
+      "async_douban_discover": [
+        {
+          "caller": "app.chain.douban",
+          "line": 382,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 606,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 617,
+          "mode": "async"
+        }
+      ],
+      "async_douban_info": [
+        {
+          "caller": "app.chain",
+          "line": 392,
+          "mode": "async"
+        }
+      ],
+      "async_douban_movie_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 411,
+          "mode": "async"
+        }
+      ],
+      "async_douban_movie_recommend": [
+        {
+          "caller": "app.chain.douban",
+          "line": 425,
+          "mode": "async"
+        }
+      ],
+      "async_douban_person_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 339,
+          "mode": "async"
+        }
+      ],
+      "async_douban_person_detail": [
+        {
+          "caller": "app.chain.douban",
+          "line": 331,
+          "mode": "async"
+        }
+      ],
+      "async_douban_tv_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 418,
+          "mode": "async"
+        }
+      ],
+      "async_douban_tv_recommend": [
+        {
+          "caller": "app.chain.douban",
+          "line": 432,
+          "mode": "async"
+        }
+      ],
+      "async_identify_music_by_fingerprint": [
+        {
+          "caller": "app.chain.acoustid",
+          "line": 26,
+          "mode": "async"
+        }
+      ],
+      "async_match_doubaninfo": [
+        {
+          "caller": "app.chain",
+          "line": 265,
+          "mode": "async"
+        }
+      ],
+      "async_match_music_album": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 283,
+          "mode": "async"
+        }
+      ],
+      "async_match_tmdbinfo": [
+        {
+          "caller": "app.chain",
+          "line": 307,
+          "mode": "async"
+        }
+      ],
+      "async_movie_hot": [
+        {
+          "caller": "app.chain.douban",
+          "line": 397,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 663,
+          "mode": "async"
+        }
+      ],
+      "async_movie_showing": [
+        {
+          "caller": "app.chain.douban",
+          "line": 355,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 569,
+          "mode": "async"
+        }
+      ],
+      "async_movie_top250": [
+        {
+          "caller": "app.chain.douban",
+          "line": 348,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 627,
+          "mode": "async"
+        }
+      ],
+      "async_obtain_images": [
+        {
+          "caller": "app.chain",
+          "line": 329,
+          "mode": "async"
+        }
+      ],
+      "async_recognize_media": [
+        {
+          "caller": "app.chain._recognition",
+          "line": 108,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.douban",
+          "line": 70,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 63,
+          "mode": "async"
+        }
+      ],
+      "async_refresh_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 687,
+          "mode": "async"
+        }
+      ],
+      "async_search_collections": [
+        {
+          "caller": "app.chain",
+          "line": 561,
+          "mode": "async"
+        }
+      ],
+      "async_search_medias": [
+        {
+          "caller": "app.chain",
+          "line": 509,
+          "mode": "async"
+        }
+      ],
+      "async_search_persons": [
+        {
+          "caller": "app.chain",
+          "line": 535,
+          "mode": "async"
+        }
+      ],
+      "async_search_subtitles": [
+        {
+          "caller": "app.chain",
+          "line": 645,
+          "mode": "async"
+        }
+      ],
+      "async_search_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 628,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_collection": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 218,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_discover": [
+        {
+          "caller": "app.chain.recommend",
+          "line": 498,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 526,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.tmdb",
+          "line": 194,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_episodes": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 242,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_group_seasons": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 232,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_info": [
+        {
+          "caller": "app.chain",
+          "line": 437,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_movie_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 279,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_movie_recommend": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 264,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_movie_similar": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 250,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_person_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 302,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_person_detail": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 294,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_seasons": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 225,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_trending": [
+        {
+          "caller": "app.chain.recommend",
+          "line": 547,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.tmdb",
+          "line": 211,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_tv_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 287,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_tv_recommend": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 271,
+          "mode": "async"
+        }
+      ],
+      "async_tmdb_tv_similar": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 257,
+          "mode": "async"
+        }
+      ],
+      "async_tv_animation": [
+        {
+          "caller": "app.chain.douban",
+          "line": 390,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 654,
+          "mode": "async"
+        }
+      ],
+      "async_tv_hot": [
+        {
+          "caller": "app.chain.douban",
+          "line": 404,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 672,
+          "mode": "async"
+        }
+      ],
+      "async_tv_weekly_chinese": [
+        {
+          "caller": "app.chain.douban",
+          "line": 362,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 636,
+          "mode": "async"
+        }
+      ],
+      "async_tv_weekly_global": [
+        {
+          "caller": "app.chain.douban",
+          "line": 369,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.recommend",
+          "line": 645,
+          "mode": "async"
+        }
+      ],
+      "async_update_recognize_cache": [
+        {
+          "caller": "app.chain._recognition",
+          "line": 78,
+          "mode": "async"
+        }
+      ],
+      "bangumi_calendar": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 17,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_credits": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 38,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_discover": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 23,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_info": [
+        {
+          "caller": "app.chain",
+          "line": 447,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.bangumi",
+          "line": 31,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_person_credits": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 59,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_person_detail": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 52,
+          "mode": "sync"
+        }
+      ],
+      "bangumi_recommend": [
+        {
+          "caller": "app.chain.bangumi",
+          "line": 45,
+          "mode": "sync"
+        }
+      ],
+      "channel_manage": [
+        {
+          "caller": "app.chain.notification",
+          "line": 28,
+          "mode": "sync"
+        }
+      ],
+      "clear_cache": [
+        {
+          "caller": "app.chain",
+          "line": 1043,
+          "mode": "sync"
+        }
+      ],
+      "create_folder": [
+        {
+          "caller": "app.chain.storage",
+          "line": 47,
+          "mode": "sync"
+        }
+      ],
+      "delete_file": [
+        {
+          "caller": "app.chain.storage",
+          "line": 77,
+          "mode": "sync"
+        }
+      ],
+      "delete_message": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 410,
+          "mode": "sync"
+        }
+      ],
+      "douban_discover": [
+        {
+          "caller": "app.chain.douban",
+          "line": 277,
+          "mode": "sync"
+        }
+      ],
+      "douban_info": [
+        {
+          "caller": "app.chain",
+          "line": 372,
+          "mode": "sync"
+        }
+      ],
+      "douban_movie_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 303,
+          "mode": "sync"
+        }
+      ],
+      "douban_movie_recommend": [
+        {
+          "caller": "app.chain.douban",
+          "line": 317,
+          "mode": "sync"
+        }
+      ],
+      "douban_person_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 238,
+          "mode": "sync"
+        }
+      ],
+      "douban_person_detail": [
+        {
+          "caller": "app.chain.douban",
+          "line": 230,
+          "mode": "sync"
+        }
+      ],
+      "douban_tv_credits": [
+        {
+          "caller": "app.chain.douban",
+          "line": 310,
+          "mode": "sync"
+        }
+      ],
+      "douban_tv_recommend": [
+        {
+          "caller": "app.chain.douban",
+          "line": 324,
+          "mode": "sync"
+        }
+      ],
+      "download": [
+        {
+          "caller": "app.chain",
+          "line": 732,
+          "mode": "sync"
+        }
+      ],
+      "download_added": [
+        {
+          "caller": "app.chain",
+          "line": 756,
+          "mode": "sync"
+        }
+      ],
+      "download_discord_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1412,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1742,
+          "mode": "sync"
+        }
+      ],
+      "download_feishu_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1446,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1734,
+          "mode": "sync"
+        }
+      ],
+      "download_feishu_image_to_data_url": [
+        {
+          "caller": "app.chain.message",
+          "line": 1553,
+          "mode": "sync"
+        }
+      ],
+      "download_file": [
+        {
+          "caller": "app.chain.storage",
+          "line": 61,
+          "mode": "sync"
+        }
+      ],
+      "download_qq_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1419,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1746,
+          "mode": "sync"
+        }
+      ],
+      "download_slack_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1405,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1738,
+          "mode": "sync"
+        }
+      ],
+      "download_slack_file_to_data_url": [
+        {
+          "caller": "app.chain.message",
+          "line": 1561,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1759,
+          "mode": "sync"
+        }
+      ],
+      "download_synologychat_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1435,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1754,
+          "mode": "sync"
+        }
+      ],
+      "download_telegram_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1378,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1384,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1699,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1704,
+          "mode": "sync"
+        }
+      ],
+      "download_telegram_file_to_base64": [
+        {
+          "caller": "app.chain.message",
+          "line": 1531,
+          "mode": "sync"
+        }
+      ],
+      "download_vocechat_file_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1426,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1750,
+          "mode": "sync"
+        }
+      ],
+      "download_vocechat_image_to_data_url": [
+        {
+          "caller": "app.chain.message",
+          "line": 1569,
+          "mode": "sync"
+        }
+      ],
+      "download_wechat_image_to_data_url": [
+        {
+          "caller": "app.chain.message",
+          "line": 1545,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1716,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1721,
+          "mode": "sync"
+        }
+      ],
+      "download_wechat_media_bytes": [
+        {
+          "caller": "app.chain.message",
+          "line": 1389,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1396,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1708,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1712,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
+          "line": 1730,
+          "mode": "sync"
+        }
+      ],
+      "downloader_info": [
+        {
+          "caller": "app.chain.dashboard",
+          "line": 22,
+          "mode": "sync"
+        }
+      ],
+      "edit_message": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 456,
+          "mode": "sync"
+        }
+      ],
+      "filter_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 704,
+          "mode": "sync"
+        }
+      ],
+      "finalize_message": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 488,
+          "mode": "sync"
+        }
+      ],
+      "get_file_item": [
+        {
+          "caller": "app.chain.storage",
+          "line": 101,
+          "mode": "sync"
+        }
+      ],
+      "get_folder": [
+        {
+          "caller": "app.chain.storage",
+          "line": 53,
+          "mode": "sync"
+        }
+      ],
+      "get_parent_item": [
+        {
+          "caller": "app.chain.storage",
+          "line": 107,
+          "mode": "sync"
+        }
+      ],
+      "get_search_page_size": [
+        {
+          "caller": "app.chain",
+          "line": 573,
+          "mode": "sync"
+        }
+      ],
+      "get_torrent_trackers": [
+        {
+          "caller": "app.chain",
+          "line": 950,
+          "mode": "sync"
+        }
+      ],
+      "identify_music_by_fingerprint": [
+        {
+          "caller": "app.chain.acoustid",
+          "line": 15,
+          "mode": "sync"
+        }
+      ],
+      "list_files": [
+        {
+          "caller": "app.chain.storage",
+          "line": 35,
+          "mode": "sync"
+        }
+      ],
+      "list_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 778,
+          "mode": "sync"
+        }
+      ],
+      "load_category_config": [
+        {
+          "caller": "app.chain",
+          "line": 1019,
+          "mode": "sync"
+        }
+      ],
+      "mark_message_processing_finished": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 85,
+          "mode": "sync"
+        }
+      ],
+      "mark_message_processing_started": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 47,
+          "mode": "sync"
+        }
+      ],
+      "match_doubaninfo": [
+        {
+          "caller": "app.chain",
+          "line": 237,
+          "mode": "sync"
+        }
+      ],
+      "match_music_album": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 268,
+          "mode": "sync"
+        }
+      ],
+      "match_tmdbinfo": [
+        {
+          "caller": "app.chain",
+          "line": 289,
+          "mode": "sync"
+        }
+      ],
+      "media_category": [
+        {
+          "caller": "app.chain",
+          "line": 1013,
+          "mode": "sync"
+        }
+      ],
+      "media_exists": [
+        {
+          "caller": "app.chain",
+          "line": 980,
+          "mode": "sync"
+        }
+      ],
+      "media_files": [
+        {
+          "caller": "app.chain",
+          "line": 990,
+          "mode": "sync"
+        }
+      ],
+      "media_statistic": [
+        {
+          "caller": "app.chain.dashboard",
+          "line": 16,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 163,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_image_cookies": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 269,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_iteminfo": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 177,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_items": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 139,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_items_count": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 150,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_latest": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 205,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_latest_images": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 218,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_librarys": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 92,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_play_url": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 243,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_playing": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 191,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_season_episode_ids": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 255,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_tv_episodes": [
+        {
+          "caller": "app.chain.mediaserver",
+          "line": 183,
+          "mode": "sync"
+        }
+      ],
+      "message_parser": [
+        {
+          "caller": "app.chain",
+          "line": 471,
+          "mode": "sync"
+        }
+      ],
+      "metadata_img": [
+        {
+          "caller": "app.chain",
+          "line": 1004,
+          "mode": "sync"
+        }
+      ],
+      "metadata_nfo": [
+        {
+          "caller": "app.chain.scraping",
+          "line": 552,
+          "mode": "sync"
+        }
+      ],
+      "movie_hot": [
+        {
+          "caller": "app.chain.douban",
+          "line": 290,
+          "mode": "sync"
+        }
+      ],
+      "movie_showing": [
+        {
+          "caller": "app.chain.douban",
+          "line": 252,
+          "mode": "sync"
+        }
+      ],
+      "movie_top250": [
+        {
+          "caller": "app.chain.douban",
+          "line": 246,
+          "mode": "sync"
+        }
+      ],
+      "music_album": [
+        {
+          "caller": "app.chain.douban",
+          "line": 86,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.douban",
+          "line": 98,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 79,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 91,
+          "mode": "async"
+        }
+      ],
+      "music_album_related": [
+        {
+          "caller": "app.chain.douban",
+          "line": 114,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 107,
+          "mode": "async"
+        }
+      ],
+      "music_artist": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 120,
+          "mode": "async"
+        }
+      ],
+      "music_artist_albums": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 138,
+          "mode": "async"
+        }
+      ],
+      "music_artist_related": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 157,
+          "mode": "async"
+        }
+      ],
+      "music_cache_clear": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 303,
+          "mode": "sync"
+        }
+      ],
+      "music_cache_delete": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 298,
+          "mode": "sync"
+        }
+      ],
+      "music_cache_items": [
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 293,
+          "mode": "sync"
+        }
+      ],
+      "music_chart": [
+        {
+          "caller": "app.chain.listenbrainz",
+          "line": 34,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.listenbrainz",
+          "line": 51,
+          "mode": "async"
+        }
+      ],
+      "music_discover": [
+        {
+          "caller": "app.chain.douban",
+          "line": 132,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.douban",
+          "line": 154,
+          "mode": "async"
+        }
+      ],
+      "music_fresh_releases": [
+        {
+          "caller": "app.chain.listenbrainz",
+          "line": 70,
+          "mode": "async"
+        }
+      ],
+      "music_lyrics": [
+        {
+          "caller": "app.chain.lrclib",
+          "line": 16,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.lrclib",
+          "line": 26,
+          "mode": "async"
+        }
+      ],
+      "obtain_images": [
+        {
+          "caller": "app.chain",
+          "line": 319,
+          "mode": "sync"
+        }
+      ],
+      "obtain_specific_image": [
+        {
+          "caller": "app.chain",
+          "line": 349,
+          "mode": "sync"
+        }
+      ],
+      "recognize_media": [
+        {
+          "caller": "app.chain._recognition",
+          "line": 99,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.douban",
+          "line": 50,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 43,
+          "mode": "sync"
+        }
+      ],
+      "recommend_name": [
+        {
+          "caller": "app.chain._transfer",
+          "line": 668,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain._transfer",
+          "line": 675,
+          "mode": "sync"
+        }
+      ],
+      "refresh_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 666,
+          "mode": "sync"
+        }
+      ],
+      "refresh_userdata": [
+        {
+          "caller": "app.chain.site",
+          "line": 68,
+          "mode": "sync"
+        }
+      ],
+      "register_commands": [
+        {
+          "caller": "app.chain",
+          "line": 1031,
+          "mode": "sync"
+        }
+      ],
+      "remove_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 860,
+          "mode": "sync"
+        }
+      ],
+      "rename_file": [
+        {
+          "caller": "app.chain.storage",
+          "line": 83,
+          "mode": "sync"
+        }
+      ],
+      "save_category_config": [
+        {
+          "caller": "app.chain",
+          "line": 1025,
+          "mode": "sync"
+        }
+      ],
+      "scheduler_job": [
+        {
+          "caller": "app.chain",
+          "line": 1037,
+          "mode": "sync"
+        }
+      ],
+      "search_collections": [
+        {
+          "caller": "app.chain",
+          "line": 548,
+          "mode": "sync"
+        }
+      ],
+      "search_medias": [
+        {
+          "caller": "app.chain",
+          "line": 496,
+          "mode": "sync"
+        }
+      ],
+      "search_music": [
+        {
+          "caller": "app.chain.douban",
+          "line": 19,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.douban",
+          "line": 33,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 16,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "line": 26,
+          "mode": "async"
+        }
+      ],
+      "search_persons": [
+        {
+          "caller": "app.chain",
+          "line": 522,
+          "mode": "sync"
+        }
+      ],
+      "search_subtitles": [
+        {
+          "caller": "app.chain",
+          "line": 609,
+          "mode": "sync"
+        }
+      ],
+      "search_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 592,
+          "mode": "sync"
+        }
+      ],
+      "search_tvdb": [
+        {
+          "caller": "app.chain.tvdb",
+          "line": 12,
+          "mode": "sync"
+        }
+      ],
+      "send_direct_message": [
+        {
+          "caller": "app.chain._messaging",
+          "line": 475,
+          "mode": "sync"
+        }
+      ],
+      "set_torrents_tag": [
+        {
+          "caller": "app.chain",
+          "line": 899,
+          "mode": "sync"
+        }
+      ],
+      "site_subtitle_links": [
+        {
+          "caller": "app.chain.download",
+          "line": 567,
+          "mode": "sync"
+        }
+      ],
+      "snapshot_storage": [
+        {
+          "caller": "app.chain.storage",
+          "line": 120,
+          "mode": "sync"
+        }
+      ],
+      "start_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 876,
+          "mode": "sync"
+        }
+      ],
+      "stop_torrents": [
+        {
+          "caller": "app.chain",
+          "line": 887,
+          "mode": "sync"
+        }
+      ],
+      "storage_manage": [
+        {
+          "caller": "app.chain.storage",
+          "line": 28,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_cache_clear": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 344,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_cache_delete": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 337,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_cache_items": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 330,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_collection": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 64,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_discover": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 40,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_episodes": [
+        {
+          "caller": "app.chain._transfer",
+          "line": 661,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.tmdb",
+          "line": 87,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_group_seasons": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 78,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_info": [
+        {
+          "caller": "app.chain",
+          "line": 425,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_movie_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 123,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_movie_recommend": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 108,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_movie_similar": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 94,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_person_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 146,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_person_detail": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 138,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_seasons": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 71,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_trending": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 57,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_tv_credits": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 131,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_tv_recommend": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 115,
+          "mode": "sync"
+        }
+      ],
+      "tmdb_tv_similar": [
+        {
+          "caller": "app.chain.tmdb",
+          "line": 101,
+          "mode": "sync"
+        }
+      ],
+      "torrent_files": [
+        {
+          "caller": "app.chain",
+          "line": 965,
+          "mode": "sync"
+        }
+      ],
+      "transfer": [
+        {
+          "caller": "app.chain",
+          "line": 821,
+          "mode": "sync"
+        }
+      ],
+      "transfer_completed": [
+        {
+          "caller": "app.chain",
+          "line": 845,
+          "mode": "sync"
+        }
+      ],
+      "tv_animation": [
+        {
+          "caller": "app.chain.douban",
+          "line": 284,
+          "mode": "sync"
+        }
+      ],
+      "tv_hot": [
+        {
+          "caller": "app.chain.douban",
+          "line": 296,
+          "mode": "sync"
+        }
+      ],
+      "tv_weekly_chinese": [
+        {
+          "caller": "app.chain.douban",
+          "line": 258,
+          "mode": "sync"
+        }
+      ],
+      "tv_weekly_global": [
+        {
+          "caller": "app.chain.douban",
+          "line": 264,
+          "mode": "sync"
+        }
+      ],
+      "tvdb_info": [
+        {
+          "caller": "app.chain",
+          "line": 405,
+          "mode": "sync"
+        }
+      ],
+      "tvdb_slug": [
+        {
+          "caller": "app.chain",
+          "line": 413,
+          "mode": "sync"
+        }
+      ],
+      "update_recognize_cache": [
+        {
+          "caller": "app.chain._recognition",
+          "line": 62,
+          "mode": "sync"
+        }
+      ],
+      "update_torrent": [
+        {
+          "caller": "app.chain",
+          "line": 926,
+          "mode": "sync"
+        }
+      ],
+      "upload_file": [
+        {
+          "caller": "app.chain.storage",
+          "line": 71,
+          "mode": "sync"
+        }
+      ],
+      "user_authenticate": [
+        {
+          "caller": "app.chain.user",
+          "line": 156,
+          "mode": "sync"
+        }
+      ],
+      "webhook_parser": [
+        {
+          "caller": "app.chain",
+          "line": 485,
+          "mode": "sync"
+        }
+      ]
+    }
+  },
+  "schema_version": 1,
+  "sdk_exports": {
+    "app.sdk": [],
+    "app.sdk.browser": [
+      {
+        "kind": "import",
+        "name": "Any",
+        "target": "typing.Any"
+      },
+      {
+        "kind": "import",
+        "name": "annotations",
+        "target": "__future__.annotations"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "launch_browser_context",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "launch_browser_context_async",
+        "target": ""
+      }
+    ],
+    "app.sdk.cache": [
+      {
+        "kind": "import",
+        "name": "AsyncCache",
+        "target": "app.runtime.cache.AsyncCache"
+      },
+      {
+        "kind": "import",
+        "name": "AsyncCacheBackend",
+        "target": "app.runtime.cache.AsyncCacheBackend"
+      },
+      {
+        "kind": "import",
+        "name": "AsyncFileBackend",
+        "target": "app.adapters.cache.backends.AsyncFileBackend"
+      },
+      {
+        "kind": "import",
+        "name": "AsyncFileCache",
+        "target": "app.runtime.cache.AsyncFileCache"
+      },
+      {
+        "kind": "import",
+        "name": "AsyncMemoryBackend",
+        "target": "app.runtime.cache.AsyncMemoryBackend"
+      },
+      {
+        "kind": "import",
+        "name": "AsyncRedisBackend",
+        "target": "app.adapters.cache.backends.AsyncRedisBackend"
+      },
+      {
+        "kind": "import",
+        "name": "Cache",
+        "target": "app.runtime.cache.Cache"
+      },
+      {
+        "kind": "import",
+        "name": "CacheBackend",
+        "target": "app.runtime.cache.CacheBackend"
+      },
+      {
+        "kind": "import",
+        "name": "FileBackend",
+        "target": "app.adapters.cache.backends.FileBackend"
+      },
+      {
+        "kind": "import",
+        "name": "FileCache",
+        "target": "app.runtime.cache.FileCache"
+      },
+      {
+        "kind": "import",
+        "name": "LRUCache",
+        "target": "app.runtime.cache.LRUCache"
+      },
+      {
+        "kind": "import",
+        "name": "MemoryBackend",
+        "target": "app.runtime.cache.MemoryBackend"
+      },
+      {
+        "kind": "import",
+        "name": "RedisBackend",
+        "target": "app.adapters.cache.backends.RedisBackend"
+      },
+      {
+        "kind": "import",
+        "name": "TTLCache",
+        "target": "app.runtime.cache.TTLCache"
+      },
+      {
+        "kind": "import",
+        "name": "async_fresh",
+        "target": "app.runtime.cache.async_fresh"
+      },
+      {
+        "kind": "import",
+        "name": "cached",
+        "target": "app.runtime.cache.cached"
+      },
+      {
+        "kind": "import",
+        "name": "fresh",
+        "target": "app.runtime.cache.fresh"
+      },
+      {
+        "kind": "import",
+        "name": "is_fresh",
+        "target": "app.runtime.cache.is_fresh"
+      }
+    ],
+    "app.sdk.config": [
+      {
+        "kind": "import",
+        "name": "global_vars",
+        "target": "app.runtime.config.global_vars"
+      },
+      {
+        "kind": "import",
+        "name": "settings",
+        "target": "app.runtime.config.settings"
+      }
+    ],
+    "app.sdk.events": [
+      {
+        "kind": "import",
+        "name": "Event",
+        "target": "app.runtime.events.Event"
+      },
+      {
+        "kind": "import",
+        "name": "EventManager",
+        "target": "app.runtime.events.EventManager"
+      },
+      {
+        "kind": "import",
+        "name": "eventmanager",
+        "target": "app.runtime.events.eventmanager"
+      }
+    ],
+    "app.sdk.logging": [
+      {
+        "kind": "import",
+        "name": "logger",
+        "target": "app.runtime.log.logger"
+      }
+    ],
+    "app.sdk.media": [
+      {
+        "kind": "import",
+        "name": "Context",
+        "target": "app.domain.context.Context"
+      },
+      {
+        "kind": "import",
+        "name": "MEDIA_SOURCE_ALIASES",
+        "target": "app.schemas.media.MEDIA_SOURCE_ALIASES"
+      },
+      {
+        "kind": "import",
+        "name": "MEDIA_SOURCE_PREFIXES",
+        "target": "app.schemas.media.MEDIA_SOURCE_PREFIXES"
+      },
+      {
+        "kind": "import",
+        "name": "MUSIC_MEDIA_SOURCES",
+        "target": "app.domain.media.MUSIC_MEDIA_SOURCES"
+      },
+      {
+        "kind": "import",
+        "name": "MUSIC_MEDIA_SOURCE_ORDER",
+        "target": "app.domain.media.MUSIC_MEDIA_SOURCE_ORDER"
+      },
+      {
+        "kind": "import",
+        "name": "MediaInfo",
+        "target": "app.domain.context.MediaInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MetaAnime",
+        "target": "app.domain.meta.metaanime.MetaAnime"
+      },
+      {
+        "kind": "import",
+        "name": "MetaBase",
+        "target": "app.domain.meta.metabase.MetaBase"
+      },
+      {
+        "kind": "import",
+        "name": "MetaInfo",
+        "target": "app.domain.metainfo.MetaInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MetaInfoPath",
+        "target": "app.domain.metainfo.MetaInfoPath"
+      },
+      {
+        "kind": "import",
+        "name": "MetaMusic",
+        "target": "app.domain.meta.metamusic.MetaMusic"
+      },
+      {
+        "kind": "import",
+        "name": "MetaVideo",
+        "target": "app.domain.meta.metavideo.MetaVideo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNameContext",
+        "target": "app.domain.meta.metamusic.MusicNameContext"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNameParseResult",
+        "target": "app.domain.meta.metamusic.MusicNameParseResult"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNameParser",
+        "target": "app.domain.meta.metamusic.MusicNameParser"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNamePattern",
+        "target": "app.domain.meta.metamusic.MusicNamePattern"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNamePatternMatch",
+        "target": "app.domain.meta.metamusic.MusicNamePatternMatch"
+      },
+      {
+        "kind": "import",
+        "name": "MusicNameRegistry",
+        "target": "app.domain.meta.metamusic.MusicNameRegistry"
+      },
+      {
+        "kind": "import",
+        "name": "NfoReader",
+        "target": "app.domain.scraper.NfoReader"
+      },
+      {
+        "kind": "import",
+        "name": "Tokens",
+        "target": "app.domain.tokens.Tokens"
+      },
+      {
+        "kind": "import",
+        "name": "TorrentInfo",
+        "target": "app.domain.context.TorrentInfo"
+      },
+      {
+        "kind": "import",
+        "name": "WordsMatcher",
+        "target": "app.domain.meta.words.WordsMatcher"
+      },
+      {
+        "kind": "import",
+        "name": "build_media_key",
+        "target": "app.schemas.media.build_media_key"
+      },
+      {
+        "kind": "import",
+        "name": "configure_search_source_provider",
+        "target": "app.domain.media.configure_search_source_provider"
+      },
+      {
+        "kind": "import",
+        "name": "is_media_source_enabled",
+        "target": "app.domain.media.is_media_source_enabled"
+      },
+      {
+        "kind": "import",
+        "name": "is_media_source_selected",
+        "target": "app.domain.media.is_media_source_selected"
+      },
+      {
+        "kind": "import",
+        "name": "is_music_media_source",
+        "target": "app.domain.media.is_music_media_source"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_media_identity_payload",
+        "target": "app.schemas.media.normalize_media_identity_payload"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_media_source",
+        "target": "app.schemas.media.normalize_media_source"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_music_type",
+        "target": "app.domain.media.normalize_music_type"
+      },
+      {
+        "kind": "import",
+        "name": "parse_media_key",
+        "target": "app.schemas.media.parse_media_key"
+      },
+      {
+        "kind": "import",
+        "name": "parse_media_source_selection",
+        "target": "app.domain.media.parse_media_source_selection"
+      },
+      {
+        "kind": "import",
+        "name": "resolve_media_identity",
+        "target": "app.schemas.media.resolve_media_identity"
+      }
+    ],
+    "app.sdk.network": [
+      {
+        "kind": "import",
+        "name": "AsyncRequestUtils",
+        "target": "app.adapters.network.http.AsyncRequestUtils"
+      },
+      {
+        "kind": "import",
+        "name": "IpUtils",
+        "target": "app.adapters.network.ip.IpUtils"
+      },
+      {
+        "kind": "import",
+        "name": "RequestUtils",
+        "target": "app.adapters.network.http.RequestUtils"
+      },
+      {
+        "kind": "import",
+        "name": "RssHelper",
+        "target": "app.application.rss.RssHelper"
+      },
+      {
+        "kind": "import",
+        "name": "SecurityUtils",
+        "target": "app.application.security.url.SecurityUtils"
+      },
+      {
+        "kind": "import",
+        "name": "SiteUtils",
+        "target": "app.domain.site.SiteUtils"
+      },
+      {
+        "kind": "import",
+        "name": "SitesHelper",
+        "target": "app.application.site.sites.SitesHelper"
+      },
+      {
+        "kind": "import",
+        "name": "UrlUtils",
+        "target": "app.foundation.url.UrlUtils"
+      },
+      {
+        "kind": "import",
+        "name": "WebUtils",
+        "target": "app.adapters.external.location.WebUtils"
+      }
+    ],
+    "app.sdk.plugins": [
+      {
+        "kind": "import",
+        "name": "ModuleManager",
+        "target": "app.runtime.extensions.module_manager.ModuleManager"
+      },
+      {
+        "kind": "import",
+        "name": "PluginManager",
+        "target": "app.runtime.extensions.plugin_manager.PluginManager"
+      }
+    ],
+    "app.sdk.services": [
+      {
+        "kind": "import",
+        "name": "DownloaderHelper",
+        "target": "app.application.downloader.DownloaderHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MediaServerHelper",
+        "target": "app.application.mediaserver.MediaServerHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MediaServerIdentityHelper",
+        "target": "app.application.mediaserver.MediaServerIdentityHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MusicMediaServerHelper",
+        "target": "app.application.mediaserver.MusicMediaServerHelper"
+      },
+      {
+        "kind": "import",
+        "name": "NotificationHelper",
+        "target": "app.application.notification.NotificationHelper"
+      },
+      {
+        "kind": "import",
+        "name": "RuleHelper",
+        "target": "app.application.rules.RuleHelper"
+      },
+      {
+        "kind": "import",
+        "name": "ServiceBaseHelper",
+        "target": "app.runtime.extensions.service_registry.ServiceBaseHelper"
+      },
+      {
+        "kind": "import",
+        "name": "ServiceConfigHelper",
+        "target": "app.runtime.extensions.service_registry.ServiceConfigHelper"
+      },
+      {
+        "kind": "import",
+        "name": "StorageHelper",
+        "target": "app.application.storage.StorageHelper"
+      },
+      {
+        "kind": "import",
+        "name": "SystemHelper",
+        "target": "app.runtime.state.SystemHelper"
+      }
+    ],
+    "app.sdk.string": [
+      {
+        "kind": "import",
+        "name": "Callable",
+        "target": "typing.Callable"
+      },
+      {
+        "kind": "import",
+        "name": "DomUtils",
+        "target": "app.foundation.dom.DomUtils"
+      },
+      {
+        "kind": "import",
+        "name": "HashUtils",
+        "target": "app.foundation.crypto.HashUtils"
+      },
+      {
+        "kind": "ClassDef",
+        "name": "StringUtils",
+        "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "base_url",
+        "target": "app.foundation.url.base_url"
+      },
+      {
+        "kind": "import",
+        "name": "common_prefix",
+        "target": "app.foundation.text.common_prefix"
+      },
+      {
+        "kind": "import",
+        "name": "compact_numbers",
+        "target": "app.domain.episode.compact_numbers"
+      },
+      {
+        "kind": "import",
+        "name": "compare_version",
+        "target": "app.foundation.version.compare_version"
+      },
+      {
+        "kind": "import",
+        "name": "contains_chinese",
+        "target": "app.foundation.text.contains_chinese"
+      },
+      {
+        "kind": "import",
+        "name": "contains_japanese",
+        "target": "app.foundation.text.contains_japanese"
+      },
+      {
+        "kind": "import",
+        "name": "contains_korean",
+        "target": "app.foundation.text.contains_korean"
+      },
+      {
+        "kind": "import",
+        "name": "cookiejar_to_string",
+        "target": "app.foundation.text.cookiejar_to_string"
+      },
+      {
+        "kind": "import",
+        "name": "count_words",
+        "target": "app.foundation.text.count_words"
+      },
+      {
+        "kind": "import",
+        "name": "escape_markdown",
+        "target": "app.foundation.text.escape_markdown"
+      },
+      {
+        "kind": "import",
+        "name": "extract_domain",
+        "target": "app.domain.site.extract_domain"
+      },
+      {
+        "kind": "import",
+        "name": "extract_named_ids",
+        "target": "app.foundation.text.extract_named_ids"
+      },
+      {
+        "kind": "import",
+        "name": "format_amount",
+        "target": "app.foundation.text.format_amount"
+      },
+      {
+        "kind": "import",
+        "name": "format_approx_duration",
+        "target": "app.foundation.temporal.format_approx_duration"
+      },
+      {
+        "kind": "import",
+        "name": "format_compact_size",
+        "target": "app.foundation.size.format_compact_size"
+      },
+      {
+        "kind": "import",
+        "name": "format_duration",
+        "target": "app.foundation.temporal.format_duration"
+      },
+      {
+        "kind": "import",
+        "name": "format_minutes",
+        "target": "app.foundation.temporal.format_minutes"
+      },
+      {
+        "kind": "import",
+        "name": "format_ranges",
+        "target": "app.domain.episode.format_ranges"
+      },
+      {
+        "kind": "import",
+        "name": "format_remaining",
+        "target": "app.foundation.temporal.format_remaining"
+      },
+      {
+        "kind": "import",
+        "name": "format_size",
+        "target": "app.foundation.size.format_size"
+      },
+      {
+        "kind": "import",
+        "name": "format_timestamp",
+        "target": "app.foundation.temporal.format_timestamp"
+      },
+      {
+        "kind": "import",
+        "name": "host_label",
+        "target": "app.foundation.url.host_label"
+      },
+      {
+        "kind": "import",
+        "name": "is_all_chinese",
+        "target": "app.foundation.text.is_all_chinese"
+      },
+      {
+        "kind": "import",
+        "name": "is_english_word",
+        "target": "app.foundation.text.is_english_word"
+      },
+      {
+        "kind": "import",
+        "name": "is_link",
+        "target": "app.foundation.url.is_link"
+      },
+      {
+        "kind": "import",
+        "name": "is_magnet_link",
+        "target": "app.domain.torrent.is_magnet_link"
+      },
+      {
+        "kind": "import",
+        "name": "is_media_title_like",
+        "target": "app.domain.title.is_media_title_like"
+      },
+      {
+        "kind": "import",
+        "name": "is_number",
+        "target": "app.foundation.text.is_number"
+      },
+      {
+        "kind": "import",
+        "name": "natural_sort_key",
+        "target": "app.foundation.text.natural_sort_key"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_datetime",
+        "target": "app.foundation.temporal.normalize_datetime"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_upper",
+        "target": "app.foundation.text.normalize_upper"
+      },
+      {
+        "kind": "import",
+        "name": "parse_address",
+        "target": "app.foundation.url.parse_address"
+      },
+      {
+        "kind": "import",
+        "name": "parse_bool",
+        "target": "app.foundation.text.parse_bool"
+      },
+      {
+        "kind": "import",
+        "name": "parse_datetime",
+        "target": "app.foundation.temporal.parse_datetime"
+      },
+      {
+        "kind": "import",
+        "name": "parse_float",
+        "target": "app.foundation.text.parse_float"
+      },
+      {
+        "kind": "import",
+        "name": "parse_int",
+        "target": "app.foundation.text.parse_int"
+      },
+      {
+        "kind": "import",
+        "name": "parse_search_keyword",
+        "target": "app.domain.title.parse_search_keyword"
+      },
+      {
+        "kind": "import",
+        "name": "parse_size",
+        "target": "app.foundation.size.parse_size"
+      },
+      {
+        "kind": "import",
+        "name": "parse_timestamp",
+        "target": "app.foundation.temporal.parse_timestamp"
+      },
+      {
+        "kind": "import",
+        "name": "random_string",
+        "target": "app.foundation.text.random_string"
+      },
+      {
+        "kind": "import",
+        "name": "remove_punctuation",
+        "target": "app.foundation.text.remove_punctuation"
+      },
+      {
+        "kind": "import",
+        "name": "sanitize_filename",
+        "target": "app.foundation.text.sanitize_filename"
+      },
+      {
+        "kind": "import",
+        "name": "second_level_label",
+        "target": "app.foundation.url.second_level_label"
+      },
+      {
+        "kind": "import",
+        "name": "signature",
+        "target": "inspect.signature"
+      },
+      {
+        "kind": "import",
+        "name": "split_by_bytes",
+        "target": "app.foundation.text.split_by_bytes"
+      },
+      {
+        "kind": "import",
+        "name": "split_netloc",
+        "target": "app.foundation.url.split_netloc"
+      },
+      {
+        "kind": "import",
+        "name": "strip_optional",
+        "target": "app.foundation.text.strip_optional"
+      },
+      {
+        "kind": "import",
+        "name": "title_case",
+        "target": "app.foundation.text.title_case"
+      },
+      {
+        "kind": "import",
+        "name": "urls_match",
+        "target": "app.domain.site.urls_match"
+      },
+      {
+        "kind": "import",
+        "name": "wraps",
+        "target": "functools.wraps"
+      }
+    ],
+    "app.sdk.utilities": [
+      {
+        "kind": "import",
+        "name": "CryptoJsUtils",
+        "target": "app.foundation.crypto.CryptoJsUtils"
+      },
+      {
+        "kind": "import",
+        "name": "DomUtils",
+        "target": "app.foundation.dom.DomUtils"
+      },
+      {
+        "kind": "import",
+        "name": "LocaleHelper",
+        "target": "app.runtime.localization.LocaleHelper"
+      },
+      {
+        "kind": "import",
+        "name": "ObjectUtils",
+        "target": "app.foundation.reflection.ObjectUtils"
+      },
+      {
+        "kind": "import",
+        "name": "OtpUtils",
+        "target": "app.application.security.otp.OtpUtils"
+      },
+      {
+        "kind": "import",
+        "name": "Singleton",
+        "target": "app.foundation.singleton.Singleton"
+      },
+      {
+        "kind": "import",
+        "name": "StringUtils",
+        "target": "app.sdk.string.StringUtils"
+      },
+      {
+        "kind": "import",
+        "name": "SystemUtils",
+        "target": "app.adapters.system.host.SystemUtils"
+      },
+      {
+        "kind": "import",
+        "name": "TimerUtils",
+        "target": "app.runtime.scheduling.TimerUtils"
+      },
+      {
+        "kind": "import",
+        "name": "cut",
+        "target": "app.foundation.text.cut"
+      },
+      {
+        "kind": "import",
+        "name": "log_execution_time",
+        "target": "app.runtime.execution.log_execution_time"
+      },
+      {
+        "kind": "import",
+        "name": "retry",
+        "target": "app.runtime.execution.retry"
+      }
+    ]
+  }
+}

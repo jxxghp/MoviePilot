@@ -1,6 +1,6 @@
 from typing import Callable, List, Optional
 
-import pillow_avif  # noqa 用于自动注册AVIF支持
+import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 
 from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
@@ -12,11 +12,11 @@ from app.runtime.config import settings, global_vars
 from app.domain.context import MusicInfo
 from app.application.image import ImageHelper
 from app.runtime.log import logger
-from app.schemas import MediaType
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
+    MediaType,
 )
 from app.runtime.execution import log_execution_time
 from app.schemas.media import normalize_media_source

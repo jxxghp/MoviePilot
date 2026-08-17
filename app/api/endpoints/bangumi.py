@@ -2,7 +2,9 @@ from typing import List, Any, Optional
 
 from fastapi import Depends
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.domain.context import MediaInfo
@@ -14,13 +16,13 @@ router = ResponseAPIRouter()
 @router.get(
     "/credits/{bangumiid}",
     summary="查询Bangumi演职员表",
-    response_model=List[schemas.MediaPerson],
+    response_model=List[_SchemaMediaPerson],
 )
 async def bangumi_credits(
     bangumiid: int,
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     查询Bangumi演职员表
@@ -34,13 +36,13 @@ async def bangumi_credits(
 @router.get(
     "/recommend/{bangumiid}",
     summary="查询Bangumi推荐",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def bangumi_recommend(
     bangumiid: int,
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     查询Bangumi推荐
@@ -52,10 +54,10 @@ async def bangumi_recommend(
 
 
 @router.get(
-    "/person/{person_id}", summary="人物详情", response_model=schemas.MediaPerson
+    "/person/{person_id}", summary="人物详情", response_model=_SchemaMediaPerson
 )
 async def bangumi_person(
-    person_id: int, _: schemas.TokenPayload = Depends(verify_token)
+    person_id: int, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     根据人物ID查询人物详情
@@ -66,13 +68,13 @@ async def bangumi_person(
 @router.get(
     "/person/credits/{person_id}",
     summary="人物参演作品",
-    response_model=List[schemas.MediaInfo],
+    response_model=List[_SchemaMediaInfo],
 )
 async def bangumi_person_credits(
     person_id: int,
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据人物ID查询人物参演作品
@@ -83,9 +85,9 @@ async def bangumi_person_credits(
     return []
 
 
-@router.get("/{bangumiid}", summary="查询Bangumi详情", response_model=schemas.MediaInfo)
+@router.get("/{bangumiid}", summary="查询Bangumi详情", response_model=_SchemaMediaInfo)
 async def bangumi_info(
-    bangumiid: int, _: schemas.TokenPayload = Depends(verify_token)
+    bangumiid: int, _: _SchemaTokenPayload = Depends(verify_token)
 ) -> Any:
     """
     查询Bangumi详情
@@ -94,4 +96,4 @@ async def bangumi_info(
     if info:
         return MediaInfo(bangumi_info=info).to_dict()
     else:
-        return schemas.MediaInfo()
+        return _SchemaMediaInfo()

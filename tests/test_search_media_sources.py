@@ -11,6 +11,7 @@ from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import normalize_media_source
+from app.schemas.workflow import MediaInfo as SchemaMediaInfo
 
 
 def test_media_source_normalization_accepts_plugin_source() -> None:
@@ -203,7 +204,7 @@ def test_media_detail_does_not_fallback_for_explicit_identity(monkeypatch) -> No
         )
     )
 
-    assert isinstance(result, media_endpoint.schemas.MediaInfo)
+    assert isinstance(result, SchemaMediaInfo)
     media_chain.async_recognize_by_meta.assert_not_awaited()
 
 
@@ -221,7 +222,7 @@ def test_media_detail_rejects_zero_identity_before_chain(monkeypatch) -> None:
         )
     )
 
-    assert isinstance(result, media_endpoint.schemas.MediaInfo)
+    assert isinstance(result, SchemaMediaInfo)
     media_chain.assert_not_called()
 
 

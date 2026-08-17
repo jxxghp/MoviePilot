@@ -7,7 +7,13 @@ from uuid import uuid4
 from fastapi import Depends, Body, Request
 from fastapi.responses import StreamingResponse
 
-from app import schemas
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.search import SearchLastContextData as _SchemaSearchLastContextData
+from app.schemas.search import SearchRecommendStatusData as _SchemaSearchRecommendStatusData
+from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
+from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.workflow import Context as _SchemaContext
 from app.api.response import ResponseAPIRouter
 from app.chain.search import SearchChain
 from app.application.security.access import verify_resource_token, verify_token
@@ -323,8 +329,8 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
         )
 
 
-@router.get("/last", summary="查询搜索结果", response_model=List[schemas.Context])
-async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/last", summary="查询搜索结果", response_model=List[_SchemaContext])
+async def search_latest(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询搜索结果
     """
@@ -335,9 +341,9 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.get(
     "/last/context",
     summary="查询上次搜索上下文",
-    response_model=schemas.Response[schemas.SearchLastContextData],
+    response_model=_SchemaResponse[_SchemaSearchLastContextData],
 )
-async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def search_latest_context(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询上次搜索结果及其对应的搜索参数。
     """
@@ -347,7 +353,7 @@ async def search_latest_context(_: schemas.TokenPayload = Depends(verify_token))
         results = await search_chain.async_last_subtitle_search_results() or []
     else:
         results = await search_chain.async_last_search_results() or []
-    return schemas.Response(
+    return _SchemaResponse(
         success=True,
         data={
             "params": params,
@@ -379,7 +385,7 @@ async def search_by_id_stream(
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据媒体来源和原生 ID 渐进式搜索站点资源，返回格式为 SSE。
@@ -421,7 +427,7 @@ async def search_by_id_stream(
 @router.get(
     "/media/{media_id}",
     summary="精确搜索资源",
-    response_model=schemas.Response[list[schemas.TorrentInfo]],
+    response_model=_SchemaResponse[list[_SchemaTorrentInfo]],
 )
 async def search_by_id(
     media_id: str,
@@ -431,7 +437,7 @@ async def search_by_id(
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点资源。
@@ -445,7 +451,7 @@ async def search_by_id(
         music_type=music_type,
     )
     if not search_params:
-        return schemas.Response(success=False, message=message)
+        return _SchemaResponse(success=False, message=message)
     torrents = await SearchChain().async_search_by_id(
         **search_params,
         mtype=media_type,
@@ -455,8 +461,8 @@ async def search_by_id(
         cache_local=True,
     )
     if not torrents:
-        return schemas.Response(success=False, message="未搜索到任何资源")
-    return schemas.Response(
+        return _SchemaResponse(success=False, message="未搜索到任何资源")
+    return _SchemaResponse(
         success=True, data=[torrent.to_dict() for torrent in torrents]
     )
 
@@ -479,7 +485,7 @@ async def search_by_title_stream(
     mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据名称渐进式模糊搜索站点资源，返回格式为SSE
@@ -502,14 +508,14 @@ async def search_by_title_stream(
 @router.get(
     "/title",
     summary="模糊搜索资源",
-    response_model=schemas.Response[list[schemas.TorrentInfo]],
+    response_model=_SchemaResponse[list[_SchemaTorrentInfo]],
 )
 async def search_by_title(
     keyword: Optional[str] = None,
     mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
@@ -522,8 +528,8 @@ async def search_by_title(
         mtype=_parse_media_type(mtype),
     )
     if not torrents:
-        return schemas.Response(success=False, message="未搜索到任何资源")
-    return schemas.Response(
+        return _SchemaResponse(success=False, message="未搜索到任何资源")
+    return _SchemaResponse(
         success=True, data=[torrent.to_dict() for torrent in torrents]
     )
 
@@ -545,7 +551,7 @@ async def search_subtitle_by_title_stream(
     keyword: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据名称渐进式模糊搜索站点字幕资源，返回格式为SSE。
@@ -567,13 +573,13 @@ async def search_subtitle_by_title_stream(
 @router.get(
     "/subtitle/title",
     summary="模糊搜索字幕",
-    response_model=schemas.Response[list[schemas.SubtitleInfo]],
+    response_model=_SchemaResponse[list[_SchemaSubtitleInfo]],
 )
 async def search_subtitle_by_title(
     keyword: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据名称模糊搜索站点字幕资源，支持分页。
@@ -582,8 +588,8 @@ async def search_subtitle_by_title(
         title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
     )
     if not subtitles:
-        return schemas.Response(success=False, message="未搜索到任何字幕")
-    return schemas.Response(
+        return _SchemaResponse(success=False, message="未搜索到任何字幕")
+    return _SchemaResponse(
         success=True, data=_serialize_signed_subtitle_results(subtitles)
     )
 
@@ -652,7 +658,7 @@ async def search_subtitle_by_id_stream(
     season: Optional[str] = None,
     episode: Optional[str] = None,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_resource_token),
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据媒体来源和原生 ID 渐进式精确搜索站点字幕资源，返回格式为 SSE。
@@ -690,7 +696,7 @@ async def search_subtitle_by_id_stream(
 @router.get(
     "/subtitle/media/{media_id}",
     summary="精确搜索字幕",
-    response_model=schemas.Response[list[schemas.SubtitleInfo]],
+    response_model=_SchemaResponse[list[_SchemaSubtitleInfo]],
 )
 async def search_subtitle_by_id(
     media_id: str,
@@ -699,7 +705,7 @@ async def search_subtitle_by_id(
     season: Optional[str] = None,
     episode: Optional[str] = None,
     sites: Optional[str] = None,
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点字幕资源。
@@ -713,12 +719,12 @@ async def search_subtitle_by_id(
         sites=sites,
     )
     if not subtitles:
-        return schemas.Response(success=False, message=message or "未搜索到任何字幕")
+        return _SchemaResponse(success=False, message=message or "未搜索到任何字幕")
 
     subtitles = await subtitles
     if not subtitles:
-        return schemas.Response(success=False, message="未搜索到任何字幕")
-    return schemas.Response(
+        return _SchemaResponse(success=False, message="未搜索到任何字幕")
+    return _SchemaResponse(
         success=True, data=_serialize_signed_subtitle_results(subtitles)
     )
 
@@ -726,7 +732,7 @@ async def search_subtitle_by_id(
 @router.post(
     "/recommend",
     summary="AI推荐资源",
-    response_model=schemas.Response[schemas.SearchRecommendStatusData],
+    response_model=_SchemaResponse[_SchemaSearchRecommendStatusData],
 )
 async def recommend_search_results(
     filtered_indices: Optional[List[int]] = Body(
@@ -734,7 +740,7 @@ async def recommend_search_results(
     ),
     check_only: bool = Body(False, embed=True, description="仅检查状态，不启动新任务"),
     force: bool = Body(False, embed=True, description="强制重新推荐，清除旧结果"),
-    _: schemas.TokenPayload = Depends(verify_token),
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     AI推荐资源 - 轮询接口
@@ -759,7 +765,7 @@ async def recommend_search_results(
     # 从缓存获取上次搜索结果
     results = await SearchChain().async_last_search_results() or []
     if not results:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False, message="没有可用的搜索结果", data={"status": "error"}
         )
 
@@ -769,12 +775,12 @@ async def recommend_search_results(
     if force:
         # 检查功能是否启用
         if not recommend_chain.is_ai_recommend_enabled:
-            return schemas.Response(success=True, data={"status": "disabled"})
+            return _SchemaResponse(success=True, data={"status": "disabled"})
         logger.info("收到新推荐请求，清除旧结果并启动新任务")
         recommend_chain.cancel_ai_recommend()
         recommend_chain.start_recommend_task(filtered_indices, len(results), results)
         # 直接返回运行中状态
-        return schemas.Response(success=True, data={"status": "running"})
+        return _SchemaResponse(success=True, data={"status": "running"})
 
     # 如果是仅检查模式，不传递 filtered_indices（避免触发请求变化检测）
     if check_only:
@@ -783,28 +789,28 @@ async def recommend_search_results(
         # 如果有错误，将错误信息放到message中
         if current_status.get("status") == "error":
             error_msg = current_status.pop("error", "未知错误")
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False, message=error_msg, data=current_status
             )
-        return schemas.Response(success=True, data=current_status)
+        return _SchemaResponse(success=True, data=current_status)
 
     # 获取当前状态（会检测请求是否变化）
     status_data = recommend_chain.get_recommend_status(filtered_indices, len(results))
 
     # 如果功能未启用，直接返回禁用状态
     if status_data.get("status") == "disabled":
-        return schemas.Response(success=True, data=status_data)
+        return _SchemaResponse(success=True, data=status_data)
 
     # 如果是空闲状态，启动新任务
     if status_data["status"] == "idle":
         recommend_chain.start_recommend_task(filtered_indices, len(results), results)
         # 立即返回运行中状态
-        return schemas.Response(success=True, data={"status": "running"})
+        return _SchemaResponse(success=True, data={"status": "running"})
 
     # 如果有错误，将错误信息放到message中
     if status_data.get("status") == "error":
         error_msg = status_data.pop("error", "未知错误")
-        return schemas.Response(success=False, message=error_msg, data=status_data)
+        return _SchemaResponse(success=False, message=error_msg, data=status_data)
 
     # 返回当前状态
-    return schemas.Response(success=True, data=status_data)
+    return _SchemaResponse(success=True, data=status_data)

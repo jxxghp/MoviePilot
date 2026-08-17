@@ -5,7 +5,10 @@ from app.application.messaging.agent import register_channel_admin_resolver, res
 from app.runtime.log import logger
 from app.modules._base import _MessageChannelModuleBase
 from app.modules.feishu.feishu import Feishu
-from app.schemas import IncomingMessage, NotificationChannel, MessageResponse, Message
+from app.schemas.message import IncomingMessage
+from app.schemas.notification import NotificationChannel
+from app.schemas.message import MessageResponse
+from app.schemas.message import Message
 from app.schemas.types import ModuleType
 
 

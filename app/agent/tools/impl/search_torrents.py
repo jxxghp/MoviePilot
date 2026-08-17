@@ -12,7 +12,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 from ._torrent_search_utils import (
     SEARCH_RESULT_CACHE_FILE,
     build_filter_options,

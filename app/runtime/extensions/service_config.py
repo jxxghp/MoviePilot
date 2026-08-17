@@ -1,16 +1,31 @@
-from typing import List, Optional, Type
+from collections.abc import Callable
+from typing import Any, List, Optional, Type
 
 from pydantic import ValidationError
 
-from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
-from app.schemas import (
-    DownloaderConf,
-    MediaServerConf,
-    NotificationConf,
-    NotificationSwitchConf,
-)
+from app.schemas.system import DownloaderConf
+from app.schemas.system import MediaServerConf
+from app.schemas.system import NotificationConf
+from app.schemas.system import NotificationSwitchConf
 from app.schemas.types import MessageType, SystemConfigKey
+
+
+ServiceConfigReader = Callable[[SystemConfigKey], Any]
+
+
+def _empty_service_config(_config_key: SystemConfigKey) -> Any:
+    """组合根尚未装配时返回空服务配置。"""
+    return None
+
+
+_service_config_reader: ServiceConfigReader = _empty_service_config
+
+
+def configure_service_config_reader(reader: ServiceConfigReader) -> None:
+    """由启动组合根注入服务配置读取能力。"""
+    global _service_config_reader
+    _service_config_reader = reader
 
 
 class ServiceConfigHelper:
@@ -19,7 +34,7 @@ class ServiceConfigHelper:
     @staticmethod
     def get_configs(config_key: SystemConfigKey, conf_type: Type) -> List:
         """按指定 Schema 过滤单条非法配置，避免影响同组其它服务。"""
-        config_data = SystemConfigOper().get(config_key)
+        config_data = _service_config_reader(config_key)
         if not config_data:
             return []
         configs = []

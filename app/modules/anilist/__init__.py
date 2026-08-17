@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -168,7 +168,7 @@ class AniListModule(_ModuleBase):
         return MediaInfo._anilist_date(date_info)
 
     @classmethod
-    def _build_credit_person(cls, edge: dict) -> Optional[schemas.MediaPerson]:
+    def _build_credit_person(cls, edge: dict) -> Optional[_SchemaMediaPerson]:
         """
         将 AniList 角色配音关系转换为统一人物信息。
 
@@ -181,7 +181,7 @@ class AniListModule(_ModuleBase):
         name_info = actor.get("name") or {}
         character_name = (edge.get("node") or {}).get("name") or {}
         images = actor.get("image") or {}
-        return schemas.MediaPerson(
+        return _SchemaMediaPerson(
             source="anilist",
             id=actor.get("id"),
             name=cls._person_name(name_info),
@@ -194,7 +194,7 @@ class AniListModule(_ModuleBase):
         )
 
     @classmethod
-    def _build_person_detail(cls, info: dict) -> schemas.MediaPerson:
+    def _build_person_detail(cls, info: dict) -> _SchemaMediaPerson:
         """
         将 AniList 人物详情转换为统一人物信息。
 
@@ -203,7 +203,7 @@ class AniListModule(_ModuleBase):
         """
         name_info = info.get("name") or {}
         images = info.get("image") or {}
-        return schemas.MediaPerson(
+        return _SchemaMediaPerson(
             source="anilist",
             id=info.get("id"),
             name=cls._person_name(name_info),
@@ -458,7 +458,7 @@ class AniListModule(_ModuleBase):
 
     def anilist_credits(
         self, anilist_id: int, page: int = 1, count: int = 20
-    ) -> List[schemas.MediaPerson]:
+    ) -> List[_SchemaMediaPerson]:
         """
         获取 AniList 动画配音演员。
 
@@ -472,7 +472,7 @@ class AniListModule(_ModuleBase):
 
     async def async_anilist_credits(
         self, anilist_id: int, page: int = 1, count: int = 20
-    ) -> List[schemas.MediaPerson]:
+    ) -> List[_SchemaMediaPerson]:
         """
         异步获取 AniList 动画配音演员。
 
@@ -506,7 +506,7 @@ class AniListModule(_ModuleBase):
         )
         return [MediaInfo(anilist_info=info) for info in infos]
 
-    def anilist_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    def anilist_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         获取 AniList 人物详情。
 
@@ -518,7 +518,7 @@ class AniListModule(_ModuleBase):
 
     async def async_anilist_person_detail(
         self, person_id: int
-    ) -> Optional[schemas.MediaPerson]:
+    ) -> Optional[_SchemaMediaPerson]:
         """
         异步获取 AniList 人物详情。
 

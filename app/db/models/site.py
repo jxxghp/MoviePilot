@@ -5,7 +5,8 @@ from sqlalchemy import Boolean, Integer, String, JSON, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, db_update, Base, async_db_query, async_db_update, get_id_column
+from app.db.base import Base, get_id_column
+from app.db.decorators import db_query, db_update, async_db_query, async_db_update
 
 
 class Site(Base):

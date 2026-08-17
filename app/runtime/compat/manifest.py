@@ -757,9 +757,9 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             replacement="app.chain.agent.AgentChain",
         ),
         "ReplyMode": SymbolAlias(
-            target_module="app.schemas.agent",
+            target_module="app.schemas.types",
             target_name="ReplyMode",
-            replacement="app.schemas.agent.ReplyMode",
+            replacement="app.schemas.types.ReplyMode",
         ),
     },
     # 刮削能力从 MediaChain 拆出为独立 ScrapingChain 后，
@@ -807,12 +807,59 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         **_MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
     },
     "app.schemas.transfer": {
+        **{
+            name: SymbolAlias(
+                target_module="app.sdk._legacy.transfer",
+                target_name=name,
+                replacement=f"app.application.transfer.{name}",
+            )
+            for name in ("TransferTask", "TransferQueue")
+        },
+        "DownloadHistory": SymbolAlias(
+            target_module="app.schemas.history",
+            target_name="DownloadHistory",
+            replacement="app.schemas.history.DownloadHistory",
+        ),
+        "TransferDirectoryConf": SymbolAlias(
+            target_module="app.schemas.system",
+            target_name="TransferDirectoryConf",
+            replacement="app.schemas.system.TransferDirectoryConf",
+        ),
+        "TmdbEpisode": SymbolAlias(
+            target_module="app.schemas.tmdb",
+            target_name="TmdbEpisode",
+            replacement="app.schemas.tmdb.TmdbEpisode",
+        ),
+        "MediaType": SymbolAlias(
+            target_module="app.schemas.types",
+            target_name="MediaType",
+            replacement="app.schemas.types.MediaType",
+        ),
+    },
+    "app.schemas.agent": {
+        "ReplyMode": SymbolAlias(
+            target_module="app.schemas.types",
+            target_name="ReplyMode",
+            replacement="app.schemas.types.ReplyMode",
+        ),
+    },
+    "app.sdk.logging": {
         name: SymbolAlias(
-            target_module="app.sdk._legacy.transfer",
+            target_module="app.runtime.log",
             target_name=name,
-            replacement=f"app.application.transfer.{name}",
+            replacement=f"app.runtime.log.{name}",
         )
-        for name in ("TransferTask", "TransferQueue")
+        for name in (
+            "CustomFormatter",
+            "LogConfigModel",
+            "LogEntry",
+            "LogSettings",
+            "LoggerManager",
+            "NonBlockingFileHandler",
+            "configure_log_settings",
+            "configure_log_writer",
+            "log_settings",
+        )
     },
     # message/notification 命名统一：通知渠道能力归 notification，消息收发归 message
     "app.schemas.types": {

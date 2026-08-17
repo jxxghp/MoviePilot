@@ -6,7 +6,7 @@ from pywebpush import webpush, WebPushException
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import ModuleType, NotificationChannel
 
 

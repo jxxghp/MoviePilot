@@ -13,7 +13,7 @@ from app.application.messaging.interaction import (
     supports_interaction_buttons,
     update_or_post_message,
 )
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
 
 

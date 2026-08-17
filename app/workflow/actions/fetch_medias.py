@@ -4,11 +4,13 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.chain.recommend import RecommendChain
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 from app.runtime.config import settings, global_vars
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
-from app.schemas import RecommendSourceEventData, MediaInfo
+from app.schemas.event import RecommendSourceEventData
+from app.schemas.workflow import MediaInfo
 from app.schemas.types import ChainEventType
 from app.adapters.network.http import RequestUtils
 

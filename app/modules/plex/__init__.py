@@ -1,13 +1,20 @@
 from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
 from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.plex.plex import Plex
-from app.schemas import AuthCredentials, AuthInterceptCredentials
+from app.schemas.event import AuthCredentials
+from app.schemas.event import AuthInterceptCredentials
 from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 
@@ -109,7 +116,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                 return credentials
         return None
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Webhook报文体
         :param body:  请求体
@@ -135,7 +142,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return None
 
     def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
-                     server: Optional[str] = None) -> Optional[schemas.ExistMediaInfo]:
+                     server: Optional[str] = None) -> Optional[_SchemaExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -154,7 +161,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                 matches = s.get_music(**MusicMediaServerHelper.search_params(mediainfo))
                 match = MusicMediaServerHelper.find_match(mediainfo, matches)
                 if match:
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.MUSIC,
                         server_type="plex",
                         server=name,
@@ -166,7 +173,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     movie = s.get_iteminfo(itemid)
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
-                        return schemas.ExistMediaInfo(
+                        return _SchemaExistMediaInfo(
                             type=MediaType.MOVIE,
                             server_type="plex",
                             server=name,
@@ -182,7 +189,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     continue
                 else:
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.MOVIE,
                         server_type="plex",
                         server=name,
@@ -200,7 +207,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     continue
                 else:
                     logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到了这些季集：{tvs}")
-                    return schemas.ExistMediaInfo(
+                    return _SchemaExistMediaInfo(
                         type=MediaType.TV,
                         seasons=tvs,
                         server_type="plex",
@@ -209,7 +216,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     )
         return None
 
-    def media_statistic(self, server: Optional[str] = None) -> Optional[List[schemas.Statistic]]:
+    def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """
         媒体数量统计
         """
@@ -230,7 +237,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return media_statistics
 
     def mediaserver_librarys(self, server: Optional[str] = None, hidden: Optional[bool] = False,
-                             **kwargs) -> Optional[List[schemas.MediaServerLibrary]]:
+                             **kwargs) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -269,7 +276,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return server_obj.get_items_count(library_id)
         return None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """
         媒体库项目详情
         """
@@ -279,7 +286,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return None
 
     def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+                                item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
@@ -289,13 +296,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []
-        return [schemas.MediaServerSeasonInfo(
+        return [_SchemaMediaServerSeasonInfo(
             season=season,
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            **kwargs) -> Optional[List[schemas.MediaServerPlayItem]]:
+                            **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器正在播放信息
         """
@@ -305,7 +312,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return server_obj.get_resume(num=count)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           **kwargs) -> Optional[List[schemas.MediaServerPlayItem]]:
+                           **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取媒体服务器最新入库条目
         """

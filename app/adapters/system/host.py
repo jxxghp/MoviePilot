@@ -21,7 +21,9 @@ except ImportError:
 
 import psutil
 
-from app import schemas
+from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
+from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
+from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
 from version import APP_VERSION
 
 
@@ -674,7 +676,7 @@ class SystemUtils:
         return psutil.disk_usage(str(path)).total
 
     @staticmethod
-    def processes() -> List[schemas.ProcessInfo]:
+    def processes() -> List[_SchemaProcessInfo]:
         """
         获取所有进程
         """
@@ -687,7 +689,7 @@ class SystemUtils:
                     mem_info = getattr(proc, 'memory_info', None)()
                     if mem_info is not None:
                         mem_mb = round(mem_info.rss / (1024 * 1024), 1)
-                        processes.append(schemas.ProcessInfo(
+                        processes.append(_SchemaProcessInfo(
                             pid=proc.pid, name=proc.name(), run_time=runtime.seconds, memory=mem_mb
                         ))
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -695,14 +697,14 @@ class SystemUtils:
         return processes
 
     @staticmethod
-    def dashboard_system_info() -> schemas.DashboardSystemInfo:
+    def dashboard_system_info() -> _SchemaDashboardSystemInfo:
         """
         获取仪表板展示所需的系统摘要信息。
 
         运行时间以当前 MoviePilot 进程为基准，避免宿主机或容器长期运行时间
         掩盖服务最近一次重启。
         """
-        return schemas.DashboardSystemInfo(
+        return _SchemaDashboardSystemInfo(
             hostname=socket.gethostname(),
             operating_system=SystemUtils._operating_system_name(),
             runtime=max(0, int(time.time() - psutil.Process().create_time())),
@@ -761,7 +763,7 @@ class SystemUtils:
         return psutil.cpu_percent()
 
     @staticmethod
-    def memory_usage() -> schemas.DashboardMemoryInfo:
+    def memory_usage() -> _SchemaDashboardMemoryInfo:
         """
         获取当前 MoviePilot 进程内存与系统缓存、可用和总内存信息。
         """
@@ -775,7 +777,7 @@ class SystemUtils:
         )
         available = max(0, int(memory.available))
         usage = used / total * 100 if total else 0.0
-        return schemas.DashboardMemoryInfo(
+        return _SchemaDashboardMemoryInfo(
             total=total,
             used=used,
             cached=cached,

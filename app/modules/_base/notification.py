@@ -15,7 +15,7 @@ from app.foundation.collections import DictUtils
 from app.modules import _MessageBase, _ModuleBase, TService
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
-from app.schemas import CommandRegisterEventData
+from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import ChainEventType
 
 

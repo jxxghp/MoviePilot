@@ -9,9 +9,6 @@ from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
@@ -24,6 +21,21 @@ from app.domain.media import normalize_music_type
 from app.schemas.media import resolve_media_identity
 from app.adapters.system.host import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
+
+
+_server_report_service: Any = None
+_server_sharing_service: Any = None
+
+
+def configure_server_application_services(
+        *,
+        report_service: Any,
+        sharing_service: Any,
+) -> None:
+    """由启动组合根注入分享和存量上报应用服务。"""
+    global _server_report_service, _server_sharing_service
+    _server_report_service = report_service
+    _server_sharing_service = sharing_service
 
 
 class MoviePilotServerHelper:
@@ -51,21 +63,22 @@ class MoviePilotServerHelper:
     _RECOGNIZE_SHARE_PATH = "/recognize/share"
     _USER_PERMISSIONS_PATH = "/user/permissions"
     _LOCAL_REPO_PREFIX = "local://"
-    _SUBSCRIBE_STATISTIC_FIELDS = frozenset({
-        "name", "year", "type", "media_source", "media_id", "music_type",
-        "total_tracks", "genre_ids", "season", "poster", "backdrop", "vote",
-        "description",
-    })
-    _SUBSCRIBE_SHARE_FIELDS = frozenset({
-        "share_title", "share_comment", "share_user", "share_uid", "name",
-        "year", "type", "keyword", "media_source", "media_id", "music_type",
-        "total_tracks", "season", "poster", "backdrop", "vote", "description",
-        "genre_ids", "include", "exclude", "quality", "resolution", "effect",
-        "total_episode", "custom_words", "media_category", "episode_group",
-        "date",
-    })
     _user_uid: Optional[str] = None
     _github_user: Optional[str] = None
+
+    @classmethod
+    def _report_service(cls) -> Any:
+        """返回启动组合根注入的存量上报应用服务。"""
+        if _server_report_service is None:
+            raise RuntimeError("中心服务上报用例尚未由启动组合根装配")
+        return _server_report_service
+
+    @classmethod
+    def _sharing_service(cls) -> Any:
+        """返回启动组合根注入的订阅和工作流分享应用服务。"""
+        if _server_sharing_service is None:
+            raise RuntimeError("中心服务分享用例尚未由启动组合根装配")
+        return _server_sharing_service
 
     @classmethod
     def get_user_uid(cls) -> Optional[str]:
@@ -334,22 +347,22 @@ class MoviePilotServerHelper:
         """
         初始化订阅统计上报状态。
         """
-        systemconfig = SystemConfigOper()
-        if settings.SUBSCRIBE_STATISTIC_SHARE:
-            if not systemconfig.get(SystemConfigKey.SubscribeReport):
-                if cls.sub_report():
-                    systemconfig.set(SystemConfigKey.SubscribeReport, "1")
+        cls._report_service().init_report(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+            state_key=SystemConfigKey.SubscribeReport,
+            reporter=cls.sub_report,
+        )
 
     @classmethod
     def init_plugin_report(cls) -> None:
         """
         初始化插件安装统计上报状态。
         """
-        systemconfig = SystemConfigOper()
-        if settings.PLUGIN_STATISTIC_SHARE:
-            if not systemconfig.get(SystemConfigKey.PluginInstallReport):
-                if cls.install_plugin_report():
-                    systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
+        cls._report_service().init_report(
+            enabled=settings.PLUGIN_STATISTIC_SHARE,
+            state_key=SystemConfigKey.PluginInstallReport,
+            reporter=cls.install_plugin_report,
+        )
 
     @staticmethod
     def _handle_list_response(res) -> List[dict]:
@@ -599,26 +612,20 @@ class MoviePilotServerHelper:
         """
         批量上报存量插件安装统计。
         """
-        if not settings.PLUGIN_STATISTIC_SHARE:
-            return False
-        payload_plugins = cls._build_plugin_report_payload(items)
-        if not payload_plugins:
-            return False
-        res = cls.plugin_install_report(payload_plugins)
-        return bool(res is not None and res.status_code == 200)
+        return cls._report_service().report_plugins(
+            enabled=settings.PLUGIN_STATISTIC_SHARE,
+            items=items,
+        )
 
     @classmethod
     async def async_install_plugin_report(cls, items: Optional[List[Tuple[str, Optional[str]]]] = None) -> bool:
         """
         异步批量上报存量插件安装统计。
         """
-        if not settings.PLUGIN_STATISTIC_SHARE:
-            return False
-        payload_plugins = cls._build_plugin_report_payload(items)
-        if not payload_plugins:
-            return False
-        res = await cls.async_plugin_install_report(payload_plugins)
-        return bool(res is not None and res.status_code == 200)
+        return await cls._report_service().async_report_plugins(
+            enabled=settings.PLUGIN_STATISTIC_SHARE,
+            items=items,
+        )
 
     @classmethod
     def subscribe_statistic(cls, params: Dict[str, Any]):
@@ -888,20 +895,9 @@ class MoviePilotServerHelper:
         """
         上报存量订阅统计。
         """
-        if not settings.SUBSCRIBE_STATISTIC_SHARE:
-            return False
-        subscribes = SubscribeOper().list()
-        if not subscribes:
-            return True
-        payloads = [
-            payload
-            for sub in subscribes
-            if (payload := cls._build_subscribe_statistic_payload(sub.to_dict()))
-        ]
-        if not payloads:
-            return True
-        res = cls.subscribe_report(payloads)
-        return bool(res is not None and res.status_code == 200)
+        return cls._report_service().report_subscribes(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+        )
 
     @classmethod
     def sub_share(
@@ -914,21 +910,13 @@ class MoviePilotServerHelper:
         """
         分享订阅。
         """
-        if not settings.SUBSCRIBE_STATISTIC_SHARE:
-            return False, "当前没有开启订阅数据共享功能"
-        subscribe = SubscribeOper().get(subscribe_id)
-        if not subscribe:
-            return False, "订阅不存在"
-        payload = cls._build_subscribe_share_payload({
-            "share_title": share_title,
-            "share_comment": share_comment,
-            "share_user": share_user,
-            "share_uid": cls.get_user_uuid(),
-            **subscribe.to_dict(),
-        })
-        if not payload:
-            return False, "订阅媒体身份不完整"
-        return cls._handle_response(cls.subscribe_share(payload), cls._clear_subscribe_share_cache)
+        return cls._sharing_service().share_subscribe(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+            subscribe_id=subscribe_id,
+            share_title=share_title,
+            share_comment=share_comment,
+            share_user=share_user,
+        )
 
     @classmethod
     async def async_sub_share(
@@ -941,23 +929,12 @@ class MoviePilotServerHelper:
         """
         异步分享订阅。
         """
-        if not settings.SUBSCRIBE_STATISTIC_SHARE:
-            return False, "当前没有开启订阅数据共享功能"
-        subscribe = await SubscribeOper().async_get(subscribe_id)
-        if not subscribe:
-            return False, "订阅不存在"
-        payload = cls._build_subscribe_share_payload({
-            "share_title": share_title,
-            "share_comment": share_comment,
-            "share_user": share_user,
-            "share_uid": cls.get_user_uuid(),
-            **subscribe.to_dict(),
-        })
-        if not payload:
-            return False, "订阅媒体身份不完整"
-        return cls._handle_response(
-            await cls.async_subscribe_share(payload),
-            cls._clear_subscribe_share_cache,
+        return await cls._sharing_service().async_share_subscribe(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+            subscribe_id=subscribe_id,
+            share_title=share_title,
+            share_comment=share_comment,
+            share_user=share_user,
         )
 
     @classmethod
@@ -965,38 +942,14 @@ class MoviePilotServerHelper:
             cls, item: Optional[dict]
     ) -> Optional[dict]:
         """构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。"""
-        if not isinstance(item, dict):
-            return None
-        media_source, media_id = resolve_media_identity(media=item)
-        if not media_source or not media_id:
-            return None
-        payload = {
-            key: value
-            for key, value in item.items()
-            if key in cls._SUBSCRIBE_STATISTIC_FIELDS
-        }
-        payload["media_source"] = str(media_source)
-        payload["media_id"] = media_id
-        return payload
+        return cls._report_service().build_subscribe_payload(item)
 
     @classmethod
     def _build_subscribe_share_payload(
             cls, item: Optional[dict]
     ) -> Optional[dict]:
         """构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。"""
-        if not isinstance(item, dict):
-            return None
-        media_source, media_id = resolve_media_identity(media=item)
-        if not media_source or not media_id:
-            return None
-        payload = {
-            key: value
-            for key, value in item.items()
-            if key in cls._SUBSCRIBE_SHARE_FIELDS
-        }
-        payload["media_source"] = str(media_source)
-        payload["media_id"] = media_id
-        return payload
+        return cls._sharing_service().build_subscribe_payload(item)
 
     @classmethod
     def share_delete(cls, share_id: int) -> Tuple[bool, str]:
@@ -1180,17 +1133,12 @@ class MoviePilotServerHelper:
         """
         return await cls._async_get(cls._server_url(cls._WORKFLOW_SHARES_PATH), params=params, timeout=15)
 
-    @staticmethod
-    def _prepare_workflow_data(workflow) -> dict:
+    @classmethod
+    def _prepare_workflow_data(cls, workflow) -> dict:
         """
         准备工作流分享数据。
         """
-        workflow_dict = workflow.to_dict()
-        workflow_dict.pop("id", None)
-        workflow_dict.pop("context", None)
-        workflow_dict["actions"] = json.dumps(workflow_dict["actions"] or [])
-        workflow_dict["flows"] = json.dumps(workflow_dict["flows"] or [])
-        return workflow_dict
+        return cls._sharing_service().prepare_workflow(workflow)
 
     @classmethod
     def workflow_share_by_id(
@@ -1203,20 +1151,13 @@ class MoviePilotServerHelper:
         """
         分享工作流。
         """
-        if not settings.WORKFLOW_STATISTIC_SHARE:
-            return False, "当前没有开启工作流数据共享功能"
-        workflow = WorkflowOper().get(workflow_id)
-        valid, message = cls._validate_workflow(workflow)
-        if not valid:
-            return False, message
-        payload = {
-            "share_title": share_title,
-            "share_comment": share_comment,
-            "share_user": share_user,
-            "share_uid": cls.get_user_uuid(),
-            **cls._prepare_workflow_data(workflow),
-        }
-        return cls._handle_response(cls.workflow_share(payload), cls._clear_workflow_share_cache)
+        return cls._sharing_service().share_workflow(
+            enabled=settings.WORKFLOW_STATISTIC_SHARE,
+            workflow_id=workflow_id,
+            share_title=share_title,
+            share_comment=share_comment,
+            share_user=share_user,
+        )
 
     @classmethod
     async def async_workflow_share_by_id(
@@ -1229,22 +1170,12 @@ class MoviePilotServerHelper:
         """
         异步分享工作流。
         """
-        if not settings.WORKFLOW_STATISTIC_SHARE:
-            return False, "当前没有开启工作流数据共享功能"
-        workflow = await WorkflowOper().async_get(workflow_id)
-        valid, message = cls._validate_workflow(workflow)
-        if not valid:
-            return False, message
-        payload = {
-            "share_title": share_title,
-            "share_comment": share_comment,
-            "share_user": share_user,
-            "share_uid": cls.get_user_uuid(),
-            **cls._prepare_workflow_data(workflow),
-        }
-        return cls._handle_response(
-            await cls.async_workflow_share(payload),
-            cls._clear_workflow_share_cache,
+        return await cls._sharing_service().async_share_workflow(
+            enabled=settings.WORKFLOW_STATISTIC_SHARE,
+            workflow_id=workflow_id,
+            share_title=share_title,
+            share_comment=share_comment,
+            share_user=share_user,
         )
 
     @classmethod
@@ -1327,16 +1258,12 @@ class MoviePilotServerHelper:
             "count": count,
         }))
 
-    @staticmethod
-    def _validate_workflow(workflow) -> Tuple[bool, str]:
+    @classmethod
+    def _validate_workflow(cls, workflow) -> Tuple[bool, str]:
         """
         验证工作流是否可以分享。
         """
-        if not workflow:
-            return False, "工作流不存在"
-        if not workflow.actions or not workflow.flows:
-            return False, "请分享有动作和流程的工作流"
-        return True, ""
+        return cls._sharing_service().validate_workflow(workflow)
 
     @classmethod
     def recognize_share_url(cls) -> Optional[str]:
@@ -1754,20 +1681,7 @@ class MoviePilotServerHelper:
         """
         构建批量插件安装统计载荷。
         """
-        if items:
-            return [
-                {
-                    "plugin_id": plugin_id,
-                    "repo_url": cls.sanitize_plugin_repo_url(repo_url),
-                }
-                for plugin_id, repo_url in items
-                if plugin_id
-            ]
-
-        plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins)
-        if not plugins:
-            return []
-        return [{"plugin_id": plugin, "repo_url": None} for plugin in plugins]
+        return cls._report_service().build_plugin_payload(items)
 
     @classmethod
     def _parse_local_repo_plugin_id(cls, repo_url: str) -> Optional[str]:

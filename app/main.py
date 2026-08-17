@@ -26,7 +26,6 @@ def _prepare_direct_execution_import_path() -> None:
 
 _prepare_direct_execution_import_path()
 
-import multiprocessing
 import setproctitle
 import signal
 import threading

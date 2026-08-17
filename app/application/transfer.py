@@ -22,7 +22,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict
 
-from app import schemas
+from app.schemas.transfer import MetaInfo as _SchemaMetaInfo
+from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
+from app.schemas.transfer import MusicMeta as _SchemaMusicMeta
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.adapters.system.host import SystemUtils
 from app.application.agent import get_prompt_manager, get_running_agent_manager
 from app.domain.context import MediaInfo, MusicInfo
@@ -31,7 +34,6 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.log import logger
-from app.schemas.agent import ReplyMode
 from app.schemas.file import FileItem
 from app.schemas.history import DownloadHistory
 from app.schemas.media import OptionalMediaIdentityMixin, resolve_media_identity
@@ -43,6 +45,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
+    ReplyMode,
 )
 
 
@@ -107,6 +110,49 @@ class TransferQueue(BaseModel):
     callback: Optional[Callable] = None
     # 整理结果
     result: Optional[TransferInfo] = None
+
+
+class TransferQueueService:
+    """协调整理任务登记、入队、移除和队列视图查询。"""
+
+    def __init__(
+            self,
+            *,
+            register_task: Callable[[TransferTask], bool],
+            enqueue: Callable[[TransferQueue], None],
+            before_enqueue: Callable[[TransferTask], None],
+            after_enqueue: Callable[[TransferTask], None],
+            remove_task: Callable[[FileItem], None],
+            list_tasks: Callable[[], List[TransferJob]],
+            expire_tasks: Callable[[], None],
+    ) -> None:
+        """保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。"""
+        self._register_task = register_task
+        self._enqueue = enqueue
+        self._before_enqueue = before_enqueue
+        self._after_enqueue = after_enqueue
+        self._remove_task = remove_task
+        self._list_tasks = list_tasks
+        self._expire_tasks = expire_tasks
+
+    def put(self, task: TransferTask, callback: Callable) -> bool:
+        """登记并入队一个整理任务，保持原有副作用顺序。"""
+        if not task or not self._register_task(task):
+            return False
+        self._before_enqueue(task)
+        self._enqueue(TransferQueue(task=task, callback=callback))
+        self._after_enqueue(task)
+        return True
+
+    def remove(self, fileitem: FileItem) -> None:
+        """从整理任务视图移除指定文件。"""
+        if fileitem:
+            self._remove_task(fileitem)
+
+    def list(self) -> List[TransferJob]:
+        """先处理失活任务，再返回当前整理作业视图。"""
+        self._expire_tasks()
+        return self._list_tasks()
 
 
 # 作业锁：JobManager 与 TransferChain 共享，保护整理作业视图。
@@ -214,7 +260,7 @@ class JobManager:
         return self.__get_id(task)
 
     @staticmethod
-    def __get_media(task: TransferTask) -> Union[schemas.MediaInfo, schemas.MusicInfo]:
+    def __get_media(task: TransferTask) -> Union[_SchemaMediaInfo, _SchemaMusicInfo]:
         """
         获取媒体信息
         """
@@ -223,15 +269,15 @@ class JobManager:
             mediainfo = deepcopy(task.mediainfo)
             mediainfo.clear()
             if isinstance(mediainfo, MusicInfo):
-                return schemas.MusicInfo(**mediainfo.to_dict())
-            return schemas.MediaInfo(**mediainfo.to_dict())
+                return _SchemaMusicInfo(**mediainfo.to_dict())
+            return _SchemaMediaInfo(**mediainfo.to_dict())
         else:
             # 没有媒体信息
             meta: MetaBase = task.meta
             if isinstance(meta, MetaMusic):
                 # 未识别的音乐按已解析元数据兜底展示；音乐年份为 int，
                 # 不能复用 MediaInfo（year 为 str），否则触发 pydantic 校验异常
-                return schemas.MusicInfo(
+                return _SchemaMusicInfo(
                     title=meta.name,
                     artists=list(meta.artists or []),
                     artist=meta.artist,
@@ -242,7 +288,7 @@ class JobManager:
                     media_source=meta.media_source,
                     media_id=meta.media_id,
                 )
-            return schemas.MediaInfo(
+            return _SchemaMediaInfo(
                 title=meta.name,
                 year=meta.year,
                 title_year=f"{meta.name} ({meta.year})",
@@ -250,13 +296,13 @@ class JobManager:
             )
 
     @staticmethod
-    def __get_meta(task: TransferTask) -> schemas.MetaInfo:
+    def __get_meta(task: TransferTask) -> _SchemaMetaInfo:
         """
         获取元数据
         """
         if isinstance(task.meta, MetaMusic):
-            return schemas.MusicMeta(**task.meta.to_dict())
-        return schemas.MetaInfo(**task.meta.to_dict())
+            return _SchemaMusicMeta(**task.meta.to_dict())
+        return _SchemaMetaInfo(**task.meta.to_dict())
 
     def add_task(self, task: TransferTask, state: Optional[str] = "waiting") -> bool:
         """
@@ -975,4 +1021,3 @@ class FailedRetryScheduler:
             logger.error(
                 f"智能体重试整理失败 (IDs=[{ids_str}], group={group_key}): {err}"
             )
-

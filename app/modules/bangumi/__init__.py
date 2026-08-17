@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
-from app import schemas
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -345,24 +345,24 @@ class BangumiModule(_ModuleBase):
             return [MediaInfo(bangumi_info=info) for info in infos]
         return []
 
-    def bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
+    def bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param bangumiid:  BangumiID
         """
         persons = self.bangumiapi.credits(bangumiid)
         if persons:
-            return [schemas.MediaPerson(source='bangumi', **person) for person in persons]
+            return [_SchemaMediaPerson(source='bangumi', **person) for person in persons]
         return []
 
-    async def async_bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
+    async def async_bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电影演职员表（异步版本）
         :param bangumiid:  BangumiID
         """
         persons = await self.bangumiapi.async_credits(bangumiid)
         if persons:
-            return [schemas.MediaPerson(source='bangumi', **person) for person in persons]
+            return [_SchemaMediaPerson(source='bangumi', **person) for person in persons]
         return []
 
     def bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
@@ -385,7 +385,7 @@ class BangumiModule(_ModuleBase):
             return [MediaInfo(bangumi_info=subject) for subject in subjects]
         return []
 
-    def bangumi_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    def bangumi_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         获取人物详细信息
         :param person_id:  豆瓣人物ID
@@ -395,7 +395,7 @@ class BangumiModule(_ModuleBase):
             return self._build_person_detail(personinfo)
         return None
 
-    async def async_bangumi_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    async def async_bangumi_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         获取人物详细信息（异步版本）
         :param person_id:  豆瓣人物ID
@@ -406,13 +406,13 @@ class BangumiModule(_ModuleBase):
         return None
 
     @classmethod
-    def _build_person_detail(cls, personinfo: dict) -> schemas.MediaPerson:
+    def _build_person_detail(cls, personinfo: dict) -> _SchemaMediaPerson:
         """
         构造Bangumi人物详情信息。
         :param personinfo: Bangumi人物详情接口返回数据
         :return: 媒体人物信息
         """
-        return schemas.MediaPerson(source='bangumi', **{
+        return _SchemaMediaPerson(source='bangumi', **{
             "id": personinfo.get("id"),
             "name": personinfo.get("name"),
             "images": personinfo.get("images"),

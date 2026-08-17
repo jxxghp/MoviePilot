@@ -3,13 +3,13 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 
 from qbittorrentapi import TorrentFilesList
 
-from app import schemas
+from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.modules._base import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
-from app.schemas import DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -522,7 +522,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
             return None
         return server.get_files(tid=tid)
 
-    def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[schemas.DownloaderInfo]]:
+    def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """
         下载器信息
         """
@@ -539,7 +539,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
             info = server.transfer_info()
             if not info:
                 continue
-            ret_info.append(schemas.DownloaderInfo(
+            ret_info.append(_SchemaDownloaderInfo(
                 download_speed=info.get("dl_info_speed"),
                 upload_speed=info.get("up_info_speed"),
                 download_size=info.get("dl_info_data"),

@@ -17,7 +17,7 @@ from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
-from app.schemas import IncomingMessage
+from app.schemas.message import IncomingMessage
 from app.schemas.types import NotificationChannel
 from app.adapters.network.http import RequestUtils
 from app.foundation import size as size_tools

@@ -10,10 +10,13 @@ sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 
 from app.chain import ChainBase
+from app.application.chain.context import ChainRuntimeContext
 from app.schemas import RateLimitExceededException
 
 
 class _LimitedModule:
+    """模拟始终触发本地限流的宿主模块。"""
+
     def get_name(self):
         """
         返回测试模块名称。
@@ -40,18 +43,31 @@ class _LimitedModule:
 
 
 class ChainRateLimitTest(unittest.TestCase):
+    """验证模块限流异常的兼容传播和告警语义。"""
+
     def _build_chain(self):
         """
         构造隔离的 ChainBase，避免依赖真实模块和插件运行状态。
         """
-        chain = ChainBase()
         limited_module = _LimitedModule()
-        chain.pluginmanager = Mock()
-        chain.pluginmanager.get_plugin_modules.return_value = {}
-        chain.modulemanager = Mock()
-        chain.modulemanager.get_running_modules.return_value = [limited_module]
-        chain.messagehelper = Mock()
-        chain.eventmanager = Mock()
+        plugin_manager = Mock()
+        plugin_manager.get_plugin_modules.return_value = {}
+        module_manager = Mock()
+        module_manager.get_running_modules.return_value = [limited_module]
+        message_helper = Mock()
+        event_manager = Mock()
+        chain = ChainBase(
+            ChainRuntimeContext(
+                module_manager=module_manager,
+                plugin_manager=plugin_manager,
+                event_manager=event_manager,
+                message_oper=Mock(),
+                message_helper=message_helper,
+                file_cache=Mock(),
+                async_file_cache=Mock(),
+                message_queue_factory=lambda _callback: Mock(),
+            )
+        )
         return chain
 
     def test_rate_limit_is_not_reported_as_system_error(self):

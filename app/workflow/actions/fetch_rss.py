@@ -9,7 +9,8 @@ from app.domain.context import Context, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.application.rss import RssHelper
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 
 
 class FetchRssParams(ActionParams):

@@ -3,7 +3,8 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from app import schemas
+from app.schemas.token import Token as _SchemaToken
+from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.application.security.auth import build_token_response, consume_plugin_auth_ticket
 from app.runtime.extensions.plugin_manager import PluginManager
@@ -43,7 +44,7 @@ def _system_auth_providers() -> list[dict[str, Any]]:
 @router.get(
     "/providers",
     summary="查询登录认证提供方",
-    response_model=list[schemas.AuthProviderInfo],
+    response_model=list[_SchemaAuthProviderInfo],
 )
 def auth_providers() -> list[dict[str, Any]]:
     """
@@ -59,10 +60,10 @@ def auth_providers() -> list[dict[str, Any]]:
 @router.post(
     "/exchange",
     summary="兑换插件认证登录票据",
-    response_model=schemas.Token,
+    response_model=_SchemaToken,
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
-def auth_exchange(body: AuthExchangeRequest) -> schemas.Token:
+def auth_exchange(body: AuthExchangeRequest) -> _SchemaToken:
     """
     将插件认证成功后生成的一次性票据兑换为系统 Token。
 

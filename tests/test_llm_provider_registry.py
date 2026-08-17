@@ -9,14 +9,25 @@ from app.agent.llm.provider import (
     LLMProviderManager,
     PendingAuthSession,
 )
+from app.foundation.singleton import Singleton
+
+
+_MANAGER_SINGLETON_KEY = (LLMProviderManager, (), frozenset())
 
 
 class LlmProviderRegistryTest(unittest.TestCase):
     def setUp(self):
-        LLMProviderManager._instances.clear()
+        """隔离当前测试使用的 LLM 管理器单例，不影响其他运行时单例。"""
+        self._previous_manager = Singleton._instances.pop(
+            _MANAGER_SINGLETON_KEY,
+            None,
+        )
 
     def tearDown(self):
-        LLMProviderManager._instances.clear()
+        """恢复测试前的 LLM 管理器单例。"""
+        Singleton._instances.pop(_MANAGER_SINGLETON_KEY, None)
+        if self._previous_manager is not None:
+            Singleton._instances[_MANAGER_SINGLETON_KEY] = self._previous_manager
 
     def test_dynamic_provider_is_exposed_from_models_dev_cache(self):
         manager = LLMProviderManager()

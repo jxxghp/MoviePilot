@@ -2,6 +2,10 @@ import copy
 from typing import Any, List, Optional, Tuple
 
 from app.application.torrent import TorrentHelper
+from app.application.subscription.contract import (
+    build_subscribe_meta,
+    subscribe_media_key,
+)
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
@@ -37,8 +41,8 @@ class MusicSubscribeMixin:
     该域方法通过 self 复用 SubscribeChain 主体的 get_sub_sites / get_params /
     filter_torrents / check_and_handle_existing_media / finish_subscribe_or_not /
     get_subscribe_source_keyword 等编排能力，因此仅作为 mixin 混入 SubscribeChain，
-    不独立成链。build_subscribe_meta / _subscribe_media_key 等订阅通用辅助仍保留在
-    subscribe.py，方法内延迟导入以避免 _music ↔ subscribe 的模块级循环。
+    不独立成链。订阅元数据与媒体键由 Application 共享契约提供，避免 mixin 与
+    SubscribeChain 主体形成双向模块依赖。
     """
 
     @staticmethod
@@ -100,8 +104,6 @@ class MusicSubscribeMixin:
     @staticmethod
     def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
         """按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
-        # 延迟导入订阅通用辅助，避免 _music ↔ subscribe 模块级循环
-        from app.chain.subscribe import build_subscribe_meta
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = MediaChain().recognize_media(
@@ -131,8 +133,6 @@ class MusicSubscribeMixin:
     @staticmethod
     async def _async_recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
         """异步按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
-        # 延迟导入订阅通用辅助，避免 _music ↔ subscribe 模块级循环
-        from app.chain.subscribe import build_subscribe_meta
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
             mediainfo = await MediaChain().async_recognize_media(
@@ -219,8 +219,6 @@ class MusicSubscribeMixin:
             subscribe: Subscribe,
     ) -> Optional[Tuple[MusicInfo, MetaMusic]]:
         """识别音乐订阅目标、同步实体快照，并在搜索前处理已完整入库的目标。"""
-        # 延迟导入订阅通用辅助，避免 _music ↔ subscribe 模块级循环
-        from app.chain.subscribe import _subscribe_media_key
         mediainfo = self._recognize_music_subscribe(subscribe)
         if not mediainfo:
             logger.warning(
@@ -241,7 +239,7 @@ class MusicSubscribeMixin:
             subscribe=subscribe,
             meta=meta,
             mediainfo=mediainfo,
-            mediakey=_subscribe_media_key(subscribe),
+            mediakey=subscribe_media_key(subscribe),
         )
         if exists:
             return None

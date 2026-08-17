@@ -4,7 +4,10 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ValidationError
+from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
 from app.api.response import (
@@ -683,7 +686,7 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
 
 
 def test_plugin_routes_only_register_v1(monkeypatch):
-    """插件动态路由只应注册 v1 地址并由应用统一路由类处理。"""
+    """插件动态路由只注册 v1 地址，并显式绕过主程序响应路由。"""
     from app.application import plugins
 
     class FakeApp:
@@ -691,11 +694,14 @@ def test_plugin_routes_only_register_v1(monkeypatch):
 
         def __init__(self):
             self.routes = []
+            self.route_options = []
             self.openapi_schema = None
+            self.router = self
 
         def add_api_route(self, **kwargs):
             """记录新增的路由路径。"""
             self.routes.append(SimpleNamespace(path=kwargs["path"]))
+            self.route_options.append(kwargs)
 
         def setup(self):
             """模拟 FastAPI 路由重建。"""
@@ -722,6 +728,7 @@ def test_plugin_routes_only_register_v1(monkeypatch):
     assert [route.path for route in fake_app.routes] == [
         "/api/v1/plugin/DemoPlugin/health"
     ]
+    assert fake_app.route_options[0]["route_class_override"] is APIRoute
 
     plugins._update_plugin_api_routes("DemoPlugin", action="remove")
     assert fake_app.routes == []
@@ -739,8 +746,8 @@ def test_response_router_uses_response_route_class():
     assert isinstance(router.routes[0], ResponseAPIRoute)
 
 
-def test_dynamic_route_without_annotation_uses_recursive_json_model():
-    """动态插件未声明模型时应以 OpenAPI 可递归展示的 JSON 类型约束 data。"""
+def test_dynamic_host_route_without_annotation_uses_recursive_json_model():
+    """主应用动态路由未声明模型时仍应使用统一响应模型。"""
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
 
@@ -753,6 +760,125 @@ def test_dynamic_route_without_annotation_uses_recursive_json_model():
     generic_args = route.response_model.__pydantic_generic_metadata__["args"]
 
     assert generic_args == (JsonData,)
+
+
+def build_plugin_api_app(monkeypatch) -> FastAPI:
+    """构造覆盖插件自由返回类型的动态路由测试应用。"""
+    from app.application import plugins
+
+    class PluginPayload(BaseModel):
+        """插件自行声明的响应模型。"""
+
+        ok: bool
+
+    def dict_endpoint() -> dict[str, bool]:
+        """返回插件自定义字典。"""
+        return {"ok": True}
+
+    def model_endpoint() -> PluginPayload:
+        """返回插件自定义模型。"""
+        return PluginPayload(ok=True)
+
+    def response_endpoint() -> JSONResponse:
+        """返回插件自定义状态码和响应头。"""
+        return JSONResponse(
+            {"accepted": True},
+            status_code=202,
+            headers={"X-Plugin-Response": "yes"},
+        )
+
+    async def stream_endpoint() -> StreamingResponse:
+        """返回插件自定义事件流。"""
+        async def stream_source():
+            """生成插件测试事件。"""
+            yield "data: plugin\n\n"
+
+        return StreamingResponse(stream_source(), media_type="text/event-stream")
+
+    def empty_endpoint() -> StarletteResponse:
+        """返回插件自定义空响应。"""
+        return StarletteResponse(status_code=204)
+
+    class FakePluginManager:
+        """返回覆盖插件响应边界的路由声明。"""
+
+        def get_plugin_apis(self, plugin_id):
+            """返回测试插件 API。"""
+            assert plugin_id == "DemoPlugin"
+            common = {"methods": ["GET"], "allow_anonymous": True}
+            return [
+                {
+                    **common,
+                    "path": "/DemoPlugin/dict",
+                    "endpoint": dict_endpoint,
+                },
+                {
+                    **common,
+                    "path": "/DemoPlugin/model",
+                    "endpoint": model_endpoint,
+                    "response_model": PluginPayload,
+                },
+                {
+                    **common,
+                    "path": "/DemoPlugin/response",
+                    "endpoint": response_endpoint,
+                },
+                {
+                    **common,
+                    "path": "/DemoPlugin/stream",
+                    "endpoint": stream_endpoint,
+                    "response_model": None,
+                },
+                {
+                    **common,
+                    "path": "/DemoPlugin/empty",
+                    "endpoint": empty_endpoint,
+                    "status_code": 204,
+                    "response_model": None,
+                },
+            ]
+
+    app = FastAPI()
+    app.router.route_class = ResponseAPIRoute
+    monkeypatch.setattr(plugins, "_api_app", app)
+    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
+    plugins._update_plugin_api_routes("DemoPlugin", action="add")
+    return app
+
+
+async def test_plugin_dynamic_routes_preserve_raw_runtime_responses(monkeypatch):
+    """插件动态 API 应完整保留自行选择的响应体、状态码和流。"""
+    app = build_plugin_api_app(monkeypatch)
+
+    async with make_client(app) as client:
+        dict_response = await client.get("/api/v1/plugin/DemoPlugin/dict")
+        model_response = await client.get("/api/v1/plugin/DemoPlugin/model")
+        native_response = await client.get("/api/v1/plugin/DemoPlugin/response")
+        stream_response = await client.get("/api/v1/plugin/DemoPlugin/stream")
+        empty_response = await client.get("/api/v1/plugin/DemoPlugin/empty")
+
+    assert dict_response.json() == {"ok": True}
+    assert model_response.json() == {"ok": True}
+    assert native_response.status_code == 202
+    assert native_response.json() == {"accepted": True}
+    assert native_response.headers["X-Plugin-Response"] == "yes"
+    assert stream_response.text == "data: plugin\n\n"
+    assert empty_response.status_code == 204
+    assert empty_response.content == b""
+
+
+def test_plugin_dynamic_routes_keep_plugin_openapi_model_raw(monkeypatch):
+    """插件声明的模型应直接进入 OpenAPI，不得套入主程序 Response。"""
+    app = build_plugin_api_app(monkeypatch)
+
+    operation = app.openapi()["paths"]["/api/v1/plugin/DemoPlugin/model"]["get"]
+    response_schema = operation["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert response_schema == {
+        "$ref": "#/components/schemas/PluginPayload",
+    }
 
 
 def test_dynamic_bare_response_uses_recursive_json_without_double_wrapping():

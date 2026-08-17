@@ -12,7 +12,8 @@ from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
 from cryptography.hazmat.primitives import hashes
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
 from app.modules.filemanager import StorageBase
@@ -474,7 +475,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     def init_storage(self):
         pass
 
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         目录遍历实现
         """
@@ -520,7 +521,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 item_name = item["fn"]
                 full_path = parent_path / item_name
                 items.append(
-                    schemas.FileItem(
+                    _SchemaFileItem(
                         storage=self.schema.value,
                         fileid=str(item["fid"]),
                         parent_fileid=cid,
@@ -542,8 +543,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return items
 
     def create_folder(
-        self, parent_item: schemas.FileItem, name: str
-    ) -> Optional[schemas.FileItem]:
+        self, parent_item: _SchemaFileItem, name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         创建目录
         """
@@ -564,7 +565,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 return self.get_item(new_path)
             logger.warn(f"【115】创建目录失败: {resp.get('error')}")
             return None
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             fileid=str(resp["data"]["file_id"]),
             path=new_path.as_posix() + "/",
@@ -576,10 +577,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def upload(
         self,
-        target_dir: schemas.FileItem,
+        target_dir: _SchemaFileItem,
         local_path: Path,
         new_name: Optional[str] = None,
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         实现带秒传、断点续传和二次认证的文件上传
         """
@@ -678,7 +679,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     params={"file_id": int(file_id)},
                 )
                 if info_resp:
-                    return schemas.FileItem(
+                    return _SchemaFileItem(
                         storage=self.schema.value,
                         fileid=str(info_resp["file_id"]),
                         path=target_path.as_posix()
@@ -872,11 +873,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def __build_uploaded_fileitem(
         self, target_path: Path, local_path: Path, file_size: int
-    ) -> schemas.FileItem:
+    ) -> _SchemaFileItem:
         """
         构造已上传文件项，用于兼容 115 上传成功后目录索引延迟刷新。
         """
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             path=target_path.as_posix(),
             type="file",
@@ -887,7 +888,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=local_path.stat().st_mtime if local_path.exists() else None,
         )
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
@@ -957,7 +958,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     def check(self) -> bool:
         return self.access_token is not None
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件/目录
         """
@@ -969,7 +970,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         except httpx.HTTPError:
             return False
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件/目录
         """
@@ -984,7 +985,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return True
         return False
 
-    def __get_info_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def __get_info_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         查询指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
         接口业务码 20004（记录不存在）、430004（路径不存在）与 0 一样
@@ -1004,7 +1005,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if not data or not data.get("file_id"):
             # 115 对记录不存在和路径不存在返回不同业务码，两者都可确认目标不存在
             return None
-        return schemas.FileItem(
+        return _SchemaFileItem(
             storage=self.schema.value,
             fileid=str(data["file_id"]),
             path=path.as_posix() + ("/" if data["file_category"] == "0" else ""),
@@ -1019,7 +1020,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=data["utime"],
         )
 
-    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件/目录项
         """
@@ -1029,7 +1030,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.debug(f"【115】获取文件信息失败: {str(e)}")
             return None
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
         """
@@ -1040,14 +1041,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             raise StorageQueryError(f"【115】查询文件信息失败: {path} - {e}") from e
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件夹，如不存在则创建
         """
 
         def __find_dir(
-            _fileitem: schemas.FileItem, _name: str
-        ) -> Optional[schemas.FileItem]:
+            _fileitem: _SchemaFileItem, _name: str
+        ) -> Optional[_SchemaFileItem]:
             """
             查找下级目录中匹配名称的目录
             """
@@ -1063,7 +1064,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(storage=self.schema.value, path="/")
+        fileitem = _SchemaFileItem(storage=self.schema.value, path="/")
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:
@@ -1076,13 +1077,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 fileitem = dir_file
         return fileitem
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件/目录详细信息
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制
         """
@@ -1115,7 +1116,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 return True
         return False
 
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动
         """
@@ -1147,13 +1148,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 return True
         return False
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         存储使用情况
         """
@@ -1162,7 +1163,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if not resp:
                 return None
             space = resp["rt_space_info"]
-            return schemas.StorageUsage(
+            return _SchemaStorageUsage(
                 total=space["all_total"]["size"], available=space["all_remain"]["size"]
             )
         except NoCheckInException:

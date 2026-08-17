@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import pickle
 import traceback
 from abc import ABCMeta
@@ -8,32 +7,23 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
-from fastapi.concurrency import run_in_threadpool
-
-from app.application.messaging.message import MessageHelper, MessageQueueManager
+from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
-from app.db.oper.message import MessageOper
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.foundation.reflection import ObjectUtils
-from app.runtime.cache import FileCache, AsyncFileCache
-from app.runtime.events import EventManager
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.log import logger
-from app.schemas import (
-    RateLimitExceededException,
-    TransferInfo,
-    ExistMediaInfo,
-    DownloaderTorrent,
-    IncomingMessage,
-    WebhookEventInfo,
-    TmdbEpisode,
-    MediaPerson,
-    FileItem,
-    TransferDirectoryConf,
-)
+from app.schemas.exception import RateLimitExceededException
+from app.schemas.transfer import TransferInfo
+from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.transfer import DownloaderTorrent
+from app.schemas.message import IncomingMessage
+from app.schemas.mediaserver import WebhookEventInfo
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.context import MediaPerson
+from app.schemas.workflow import FileItem
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
     TorrentStatus,
@@ -50,18 +40,26 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
     处理链基类
     """
 
-    def __init__(self):
+    def __init__(self, runtime_context: Optional[ChainRuntimeContext] = None):
         """
-        公共初始化
+        公共初始化；未显式传入上下文时继续使用兼容运行时 provider。
         """
-        self.modulemanager = ModuleManager()
-        self.eventmanager = EventManager()
-        self.messageoper = MessageOper()
-        self.messagehelper = MessageHelper()
-        self.messagequeue = MessageQueueManager(send_callback=self.run_module)
-        self.pluginmanager = PluginManager()
-        self.filecache = FileCache()
-        self.async_filecache = AsyncFileCache()
+        context = runtime_context or get_chain_runtime_context()
+        self.modulemanager = context.module_manager
+        self.eventmanager = context.event_manager
+        self.messageoper = context.message_oper
+        self.messagehelper = context.message_helper
+        self.pluginmanager = context.plugin_manager
+        self.filecache = context.file_cache
+        self.async_filecache = context.async_file_cache
+        self._module_dispatcher = ModuleInvocationDispatcher(
+            module_catalog=self.modulemanager,
+            plugin_catalog=self.pluginmanager,
+            plugin_error_handler=self.__handle_plugin_error,
+            system_error_handler=self.__handle_system_error,
+            rate_limit_handler=self.__handle_rate_limit_error,
+        )
+        self.messagequeue = context.message_queue_factory(self.run_module)
 
     def load_cache(self, filename: str) -> Any:
         """
@@ -120,16 +118,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         异步删除缓存，同时删除Redis和本地缓存
         """
         await self.async_filecache.delete(filename)
-
-    @staticmethod
-    def __is_valid_empty(ret):
-        """
-        判断结果是否为空
-        """
-        if isinstance(ret, tuple):
-            return all(value is None for value in ret)
-        else:
-            return ret is None
 
     def __handle_plugin_error(
             self, err: Exception, plugin_id: str, plugin_name: str, method: str, **kwargs
@@ -195,178 +183,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             raise err
         logger.info(f"{source_type} {source_id}.{method} 已限流，跳过执行：{str(err)}")
 
-    def __execute_plugin_modules(
-            self, method: str, result: Any, *args, **kwargs
-    ) -> Any:
-        """
-        执行插件模块
-        """
-        for plugin, module_dict in self.pluginmanager.get_plugin_modules().items():
-            plugin_id, plugin_name = plugin
-            if method in module_dict:
-                func = module_dict[method]
-                if func:
-                    try:
-                        logger.info(f"请求插件 {plugin_name} 执行：{method} ...")
-                        if self.__is_valid_empty(result):
-                            # 返回None，第一次执行或者需继续执行下一模块
-                            result = func(*args, **kwargs)
-                        elif isinstance(result, list):
-                            # 返回为列表，有多个模块运行结果时进行合并
-                            temp = func(*args, **kwargs)
-                            if isinstance(temp, list):
-                                result.extend(temp)
-                        else:
-                            break
-                    except RateLimitExceededException as err:
-                        self.__handle_rate_limit_error(
-                            err, "插件", plugin_id, method, **kwargs
-                        )
-                    except Exception as err:
-                        self.__handle_plugin_error(
-                            err, plugin_id, plugin_name, method, **kwargs
-                        )
-        return result
-
-    async def __async_execute_plugin_modules(
-            self, method: str, result: Any, *args, **kwargs
-    ) -> Any:
-        """
-        异步执行插件模块
-        """
-        for plugin, module_dict in self.pluginmanager.get_plugin_modules().items():
-            plugin_id, plugin_name = plugin
-            if method in module_dict:
-                func = module_dict[method]
-                if func:
-                    try:
-                        logger.info(f"请求插件 {plugin_name} 执行：{method} ...")
-                        if self.__is_valid_empty(result):
-                            # 返回None，第一次执行或者需继续执行下一模块
-                            if inspect.iscoroutinefunction(func):
-                                result = await func(*args, **kwargs)
-                            else:
-                                # 插件同步函数在异步环境中运行，避免阻塞
-                                result = await run_in_threadpool(func, *args, **kwargs)
-                        elif isinstance(result, list):
-                            # 返回为列表，有多个模块运行结果时进行合并
-                            if inspect.iscoroutinefunction(func):
-                                temp = await func(*args, **kwargs)
-                            else:
-                                # 插件同步函数在异步环境中运行，避免阻塞
-                                temp = await run_in_threadpool(func, *args, **kwargs)
-                            if isinstance(temp, list):
-                                result.extend(temp)
-                        else:
-                            break
-                    except RateLimitExceededException as err:
-                        self.__handle_rate_limit_error(
-                            err, "插件", plugin_id, method, **kwargs
-                        )
-                    except Exception as err:
-                        self.__handle_plugin_error(
-                            err, plugin_id, plugin_name, method, **kwargs
-                        )
-        return result
-
-    def __execute_system_modules(
-            self, method: str, result: Any, *args, **kwargs
-    ) -> Any:
-        """
-        执行系统模块
-        """
-        logger.debug(f"请求系统模块执行：{method} ...")
-        for module in sorted(
-                self.modulemanager.get_running_modules(method),
-                key=lambda x: x.get_priority(),
-        ):
-            module_id = module.__class__.__name__
-            try:
-                module_name = module.get_name()
-            except Exception as err:
-                logger.debug(f"获取模块名称出错：{str(err)}")
-                module_name = module_id
-            try:
-                func = getattr(module, method)
-                if self.__is_valid_empty(result):
-                    # 返回None，第一次执行或者需继续执行下一模块
-                    result = func(*args, **kwargs)
-                elif ObjectUtils.check_signature(func, result):
-                    # 返回结果与方法签名一致，将结果传入
-                    result = func(result)
-                elif isinstance(result, list):
-                    # 返回为列表，有多个模块运行结果时进行合并
-                    temp = func(*args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    # 中止继续执行
-                    break
-            except RateLimitExceededException as err:
-                self.__handle_rate_limit_error(
-                    err, "模块", module_id, method, **kwargs
-                )
-            except Exception as err:
-                logger.error(traceback.format_exc())
-                self.__handle_system_error(
-                    err, module_id, module_name, method, **kwargs
-                )
-        return result
-
-    async def __async_execute_system_modules(
-            self, method: str, result: Any, *args, **kwargs
-    ) -> Any:
-        """
-        异步执行系统模块
-        """
-        logger.debug(f"请求系统模块执行：{method} ...")
-        for module in sorted(
-                self.modulemanager.get_running_modules(method),
-                key=lambda x: x.get_priority(),
-        ):
-            module_id = module.__class__.__name__
-            try:
-                module_name = module.get_name()
-            except Exception as err:
-                logger.debug(f"获取模块名称出错：{str(err)}")
-                module_name = module_id
-            try:
-                func = getattr(module, method)
-                if self.__is_valid_empty(result):
-                    # 返回None，第一次执行或者需继续执行下一模块
-                    if inspect.iscoroutinefunction(func):
-                        result = await func(*args, **kwargs)
-                    else:
-                        # 系统同步模块在异步路径里也必须切到线程池，避免阻塞共享事件循环。
-                        result = await run_in_threadpool(func, *args, **kwargs)
-                elif ObjectUtils.check_signature(func, result):
-                    # 返回结果与方法签名一致，将结果传入
-                    if inspect.iscoroutinefunction(func):
-                        result = await func(result)
-                    else:
-                        result = await run_in_threadpool(func, result)
-                elif isinstance(result, list):
-                    # 返回为列表，有多个模块运行结果时进行合并
-                    if inspect.iscoroutinefunction(func):
-                        temp = await func(*args, **kwargs)
-                    else:
-                        temp = await run_in_threadpool(func, *args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    # 中止继续执行
-                    break
-            except RateLimitExceededException as err:
-                self.__handle_rate_limit_error(
-                    err, "模块", module_id, method, **kwargs
-                )
-            except Exception as err:
-                logger.error(traceback.format_exc())
-                self.__handle_system_error(
-                    err, module_id, module_name, method, **kwargs
-                )
-        return result
-
     def run_module(
             self,
             method: str,
@@ -379,15 +195,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
 
         :param method: 模块方法名称
         """
-        # 执行插件模块
-        result = self.__execute_plugin_modules(method, None, *args, **kwargs)
-
-        if not self.__is_valid_empty(result) and not isinstance(result, list):
-            # 插件模块返回结果不为空且不是列表，直接返回
-            return result
-
-        # 执行系统模块
-        return self.__execute_system_modules(method, result, *args, **kwargs)
+        return self._module_dispatcher.dispatch(method, *args, **kwargs)
 
     async def async_run_module(
             self,
@@ -402,18 +210,10 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
 
         :param method: 模块方法名称
         """
-        # 执行插件模块
-        result = await self.__async_execute_plugin_modules(
-            method, None, *args, **kwargs
-        )
-
-        if not self.__is_valid_empty(result) and not isinstance(result, list):
-            # 插件模块返回结果不为空且不是列表，直接返回
-            return result
-
-        # 执行系统模块
-        return await self.__async_execute_system_modules(
-            method, result, *args, **kwargs
+        return await self._module_dispatcher.async_dispatch(
+            method,
+            *args,
+            **kwargs,
         )
 
     def match_doubaninfo(

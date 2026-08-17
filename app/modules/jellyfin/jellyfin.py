@@ -5,15 +5,20 @@ from typing import List, Union, Optional, Dict, Generator, Tuple, Any
 
 from requests import Response
 
-from app import schemas
+from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
+from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.config import settings
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 from app.schemas.types import MediaSource
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
-from app.schemas import MediaServerItem
+from app.schemas.mediaserver import MediaServerItem
 
 
 class Jellyfin:
@@ -160,7 +165,7 @@ class Jellyfin:
         self,
         username: Optional[str] = None,
         hidden: Optional[bool] = False,
-    ) -> Optional[List[schemas.MediaServerLibrary]]:
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -192,7 +197,7 @@ class Jellyfin:
                        f"/library.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
-                schemas.MediaServerLibrary(
+                _SchemaMediaServerLibrary(
                     server="jellyfin",
                     id=library.get("Id"),
                     name=library.get("Name"),
@@ -342,7 +347,7 @@ class Jellyfin:
             logger.error(f"连接System/Info出错：" + str(e))
         return None
 
-    def get_medias_count(self) -> schemas.Statistic:
+    def get_medias_count(self) -> _SchemaStatistic:
         """
         获得电影、电视剧、动漫媒体数量
 
@@ -353,7 +358,7 @@ class Jellyfin:
         :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
-            return schemas.Statistic()
+            return _SchemaStatistic()
         stat = self.__count_medias_by_librarys()
         if stat is not None:
             return stat
@@ -365,7 +370,7 @@ class Jellyfin:
             res = self._request().get_res(url, params)
             if res:
                 result = res.json()
-                return schemas.Statistic(
+                return _SchemaStatistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
                     episode_count=result.get("EpisodeCount") or 0,
@@ -374,12 +379,12 @@ class Jellyfin:
                 )
             else:
                 logger.error(f"Items/Counts 未获取到返回数据")
-                return schemas.Statistic()
+                return _SchemaStatistic()
         except Exception as e:
             logger.error(f"连接Items/Counts出错：" + str(e))
-        return schemas.Statistic()
+        return _SchemaStatistic()
 
-    def __count_medias_by_librarys(self) -> Optional[schemas.Statistic]:
+    def __count_medias_by_librarys(self) -> Optional[_SchemaStatistic]:
         """
         遍历用户媒体库视图逐库统计媒体数量
 
@@ -392,7 +397,7 @@ class Jellyfin:
         librarys = self.__get_jellyfin_librarys()
         if not librarys:
             return None
-        stat = schemas.Statistic()
+        stat = _SchemaStatistic()
         for library in librarys:
             library_id = library.get("Id")
             if not library_id:
@@ -439,7 +444,7 @@ class Jellyfin:
                    title: str,
                    year: Optional[str] = None,
                    media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[schemas.MediaServerItem]]:
+                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Jellyfin中存在，存在则返回列表
         :param title: 标题
@@ -486,7 +491,7 @@ class Jellyfin:
     def get_music(
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
-    ) -> List[schemas.MediaServerItem]:
+    ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询 Jellyfin 音乐条目。"""
         if not self._host or not self._apikey or not self.user:
             return []
@@ -744,7 +749,7 @@ class Jellyfin:
             logger.error(f"连接Library/Refresh出错：" + str(e))
             return False
 
-    def get_webhook_message(self, body: Any) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, body: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析Jellyfin报文
         {
@@ -820,7 +825,7 @@ class Jellyfin:
         eventType = message.get('NotificationType')
         if not eventType:
             return None
-        eventItem = schemas.WebhookEventInfo(
+        eventItem = _SchemaWebhookEventInfo(
             event=eventType,
             channel="jellyfin"
         )
@@ -881,7 +886,7 @@ class Jellyfin:
         return eventItem
 
     @staticmethod
-    def __format_item_info(item) -> Optional[schemas.MediaServerItem]:
+    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
         """
         格式化item
         """
@@ -895,7 +900,7 @@ class Jellyfin:
                 last_played_date = item.get("UserData", {}).get("LastPlayedDate")
                 if last_played_date is not None and "." in last_played_date:
                     last_played_date = last_played_date.split(".")[0]
-                user_state = schemas.MediaServerItemUserState(
+                user_state = _SchemaMediaServerItemUserState(
                     played=item.get("UserData", {}).get("Played"),
                     resume=resume,
                     last_played_date=datetime.strptime(last_played_date, "%Y-%m-%dT%H:%M:%S").strftime(
@@ -906,7 +911,7 @@ class Jellyfin:
             media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
                 item.get("ProviderIds")
             )
-            return schemas.MediaServerItem(
+            return _SchemaMediaServerItem(
                 server="jellyfin",
                 library=item.get("ParentId"),
                 item_id=item.get("Id"),
@@ -926,7 +931,7 @@ class Jellyfin:
             logger.error(e)
         return None
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         获取单个项目详情
         """
@@ -1090,7 +1095,7 @@ class Jellyfin:
         return f"{host_url}Items/{item_id}/" \
                f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -1143,7 +1148,7 @@ class Jellyfin:
                     else:
                         title = f'{item.get("SeriesName")}'
                         subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
-                    ret_resume.append(schemas.MediaServerPlayItem(
+                    ret_resume.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         title=title,
                         subtitle=subtitle,
@@ -1160,7 +1165,7 @@ class Jellyfin:
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
         return None
 
-    def get_latest(self, num=20, username: Optional[str] = None) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num=20, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获得最近更新
         """
@@ -1198,7 +1203,7 @@ class Jellyfin:
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
                     image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(schemas.MediaServerPlayItem(
+                    ret_latest.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         title=item.get("Name"),
                         subtitle=str(item.get("ProductionYear")) if item.get("ProductionYear") else None,

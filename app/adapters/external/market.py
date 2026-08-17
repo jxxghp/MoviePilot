@@ -30,10 +30,8 @@ from requests import Response
 
 from app.runtime.cache import cached, is_fresh
 from app.runtime.config import settings
-from app.db.oper.systemconfig import SystemConfigOper
 from app.adapters.system.package import PackageInstallRequest, build_package_install_strategies
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
 
@@ -58,6 +56,24 @@ PLUGIN_MARKET_REPO_PATTERN = re.compile(
 VERSION_BACKWARD_COMPATIBLE_FLAGS: Dict[str, List[str]] = {
     "v3": ["v2"],
 }
+
+InstalledPluginsProvider = Callable[[], List[str]]
+
+
+def _empty_installed_plugins() -> List[str]:
+    """组合根尚未注入配置读取器时返回空安装清单。"""
+    return []
+
+
+_installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
+
+
+def configure_installed_plugins_provider(
+    provider: InstalledPluginsProvider,
+) -> None:
+    """由启动组合层注入已安装插件读取器，避免市场适配器访问数据库。"""
+    global _installed_plugins_provider
+    _installed_plugins_provider = provider
 
 
 def normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
@@ -164,10 +180,6 @@ class PluginHelper(metaclass=WeakSingleton):
         "import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, "
         "sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
     )
-
-    def __init__(self):
-        """初始化插件仓库配置访问器。"""
-        self.systemconfig = SystemConfigOper()
 
     @staticmethod
     def is_local_repo_url(repo_url: Optional[str]) -> bool:
@@ -1173,7 +1185,7 @@ class PluginHelper(metaclass=WeakSingleton):
         try:
             install_plugins = {
                 plugin_id.lower()
-                for plugin_id in self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
+                for plugin_id in _installed_plugins_provider() or []
             }
             for plugin_id in install_plugins:
                 wheels_dir = PLUGIN_DIR / plugin_id / "wheels"
@@ -2099,68 +2111,26 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, f"解压 Release 压缩包失败：{e}"
 
     def find_missing_dependencies(self) -> List[str]:
-        """
-        收集所有需要安装或更新的依赖项
-        1. 收集所有插件的依赖项，合并版本约束
-        2. 获取已安装的包及其版本
-        3. 比较已安装的包与所需的依赖项，找出需要安装或升级的包
-        :return: 需要安装或更新的依赖项列表，例如 ["package1>=1.0.0", "package2"]
-        """
-        try:
-            # 收集所有插件的依赖项
-            plugin_dependencies = self.__find_plugin_dependencies()  # 返回格式为 {package_name: version_specifier}
-            # 获取已安装的包及其版本
-            installed_packages = self.__get_installed_packages()  # 返回格式为 {package_name: Version}
-            # 需要安装或更新的依赖项列表
-            dependencies_to_install = []
-            for pkg_name, version_specifier in plugin_dependencies.items():
-                spec_set = SpecifierSet(version_specifier)
-                installed_version = installed_packages.get(pkg_name)
-                if installed_version is None:
-                    # 包未安装，需要安装
-                    if version_specifier:
-                        dependencies_to_install.append(f"{pkg_name}{version_specifier}")
-                    else:
-                        dependencies_to_install.append(pkg_name)
-                elif not spec_set.contains(installed_version, prereleases=True):
-                    # 已安装的版本不满足版本约束，需要升级或降级
-                    if version_specifier:
-                        dependencies_to_install.append(f"{pkg_name}{version_specifier}")
-                    else:
-                        dependencies_to_install.append(pkg_name)
-                # 已安装的版本满足要求，无需操作
-            return dependencies_to_install
-        except Exception as e:
-            logger.error(f"收集所有需要安装或更新的依赖项时发生错误：{e}")
-            return []
+        """兼容旧市场入口，转发到独立依赖适配器。"""
+        installer = importlib.import_module(
+            "app.adapters.system.plugin.dependency"
+        ).PluginDependencyInstaller
+        return installer(
+            self,
+            installed_plugins_provider=_installed_plugins_provider,
+            plugin_dir=PLUGIN_DIR,
+        ).find_missing()
 
     def install_dependencies(self, dependencies: List[str]) -> Tuple[bool, str]:
-        """
-        安装指定的依赖项列表
-        :param dependencies: 需要安装或更新的依赖项列表
-        :return: (success, message)
-        """
-        if not dependencies:
-            return False, "没有传入需要安装的依赖项"
-
-        try:
-            logger.debug(f"需要安装或更新的依赖项：{dependencies}")
-            # 创建临时的 requirements.txt 文件用于批量安装
-            requirements_temp_file = Path(settings.TEMP_PATH) / "plugin_dependencies" / "requirements.txt"
-            requirements_temp_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(requirements_temp_file, "w", encoding="utf-8") as f:
-                for dep in dependencies:
-                    f.write(dep + "\n")
-            try:
-                # 使用自动降级策略安装依赖
-                wheels_dirs = self.__collect_plugin_wheels_dirs()
-                return self.pip_install_with_fallback(requirements_temp_file, wheels_dirs)
-            finally:
-                # 删除临时文件
-                requirements_temp_file.unlink()
-        except Exception as e:
-            logger.error(f"安装依赖项时发生错误：{e}")
-            return False, f"安装依赖项时发生错误：{e}"
+        """兼容旧市场入口，转发到独立依赖适配器。"""
+        installer = importlib.import_module(
+            "app.adapters.system.plugin.dependency"
+        ).PluginDependencyInstaller
+        return installer(
+            self,
+            installed_plugins_provider=_installed_plugins_provider,
+            plugin_dir=PLUGIN_DIR,
+        ).install(dependencies)
 
     @classmethod
     def __get_installed_packages(cls) -> Dict[str, Version]:
@@ -2203,9 +2173,7 @@ class PluginHelper(metaclass=WeakSingleton):
         try:
             install_plugins = {
                 plugin_id.lower()  # 对应插件的小写目录名
-                for plugin_id in SystemConfigOper().get(
-                    SystemConfigKey.UserInstalledPlugins
-                ) or []
+                for plugin_id in _installed_plugins_provider() or []
             }
             for plugin_dir in PLUGIN_DIR.iterdir():
                 if plugin_dir.is_dir():
@@ -2739,34 +2707,15 @@ class PluginHelper(metaclass=WeakSingleton):
         return False, False, "不存在依赖"
 
     async def async_install_dependencies(self, dependencies: List[str]) -> Tuple[bool, str]:
-        """
-        异步安装指定的依赖项列表
-        :param dependencies: 需要安装或更新的依赖项列表
-        :return: (success, message)
-        """
-        if not dependencies:
-            return False, "没有传入需要安装的依赖项"
-
-        try:
-            logger.debug(f"需要安装或更新的依赖项：{dependencies}")
-            # 创建临时的 requirements.txt 文件用于批量安装
-            requirements_temp_file = AsyncPath(settings.TEMP_PATH) / "plugin_dependencies" / "requirements.txt"
-            await requirements_temp_file.parent.mkdir(parents=True, exist_ok=True)
-
-            async with aiofiles.open(requirements_temp_file, "w", encoding="utf-8") as f:
-                for dep in dependencies:
-                    await f.write(dep + "\n")
-
-            try:
-                # 使用自动降级策略安装依赖
-                wheels_dirs = self.__collect_plugin_wheels_dirs()
-                return await self.__async_pip_install_with_fallback(Path(requirements_temp_file), wheels_dirs)
-            finally:
-                # 删除临时文件
-                await requirements_temp_file.unlink()
-        except Exception as e:
-            logger.error(f"安装依赖项时发生错误：{e}")
-            return False, f"安装依赖项时发生错误：{e}"
+        """兼容旧异步市场入口，转发到独立依赖适配器。"""
+        installer = importlib.import_module(
+            "app.adapters.system.plugin.dependency"
+        ).PluginDependencyInstaller
+        return await installer(
+            self,
+            installed_plugins_provider=_installed_plugins_provider,
+            plugin_dir=PLUGIN_DIR,
+        ).async_install(dependencies)
 
     async def __async_find_plugin_dependencies(self) -> Dict[str, str]:
         """
@@ -2779,9 +2728,7 @@ class PluginHelper(metaclass=WeakSingleton):
         try:
             install_plugins = {
                 plugin_id.lower()  # 对应插件的小写目录名
-                for plugin_id in SystemConfigOper().get(
-                    SystemConfigKey.UserInstalledPlugins
-                ) or []
+                for plugin_id in _installed_plugins_provider() or []
             }
 
             plugin_dir_path = AsyncPath(PLUGIN_DIR)
@@ -2838,40 +2785,15 @@ class PluginHelper(metaclass=WeakSingleton):
             return {}
 
     async def async_find_missing_dependencies(self) -> List[str]:
-        """
-        异步收集所有需要安装或更新的依赖项
-        1. 收集所有插件的依赖项，合并版本约束
-        2. 获取已安装的包及其版本
-        3. 比较已安装的包与所需的依赖项，找出需要安装或升级的包
-        :return: 需要安装或更新的依赖项列表，例如 ["package1>=1.0.0", "package2"]
-        """
-        try:
-            # 收集所有插件的依赖项
-            plugin_dependencies = await self.__async_find_plugin_dependencies()  # 返回格式为 {package_name: version_specifier}
-            # 获取已安装的包及其版本
-            installed_packages = self.__get_installed_packages()  # 返回格式为 {package_name: Version}
-            # 需要安装或更新的依赖项列表
-            dependencies_to_install = []
-            for pkg_name, version_specifier in plugin_dependencies.items():
-                spec_set = SpecifierSet(version_specifier)
-                installed_version = installed_packages.get(pkg_name)
-                if installed_version is None:
-                    # 包未安装，需要安装
-                    if version_specifier:
-                        dependencies_to_install.append(f"{pkg_name}{version_specifier}")
-                    else:
-                        dependencies_to_install.append(pkg_name)
-                elif not spec_set.contains(installed_version, prereleases=True):
-                    # 已安装的版本不满足版本约束，需要升级或降级
-                    if version_specifier:
-                        dependencies_to_install.append(f"{pkg_name}{version_specifier}")
-                    else:
-                        dependencies_to_install.append(pkg_name)
-                # 已安装的版本满足要求，无需操作
-            return dependencies_to_install
-        except Exception as e:
-            logger.error(f"收集所有需要安装或更新的依赖项时发生错误：{e}")
-            return []
+        """兼容旧异步市场入口，转发到独立依赖适配器。"""
+        installer = importlib.import_module(
+            "app.adapters.system.plugin.dependency"
+        ).PluginDependencyInstaller
+        return await installer(
+            self,
+            installed_plugins_provider=_installed_plugins_provider,
+            plugin_dir=PLUGIN_DIR,
+        ).async_find_missing()
 
     async def async_install(self, pid: str, repo_url: str, package_version: Optional[str] = None,
                             release_version: Optional[str] = None,

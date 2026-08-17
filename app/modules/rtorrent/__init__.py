@@ -1,13 +1,13 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List, Dict
 
-from app import schemas
+from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.modules._base import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
-from app.schemas import DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -530,7 +530,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     def downloader_info(
         self, downloader: Optional[str] = None
-    ) -> Optional[List[schemas.DownloaderInfo]]:
+    ) -> Optional[List[_SchemaDownloaderInfo]]:
         """
         下载器信息
         """
@@ -547,7 +547,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             if not info:
                 continue
             ret_info.append(
-                schemas.DownloaderInfo(
+                _SchemaDownloaderInfo(
                     download_speed=info.get("dl_info_speed"),
                     upload_speed=info.get("up_info_speed"),
                     download_size=info.get("dl_info_data"),

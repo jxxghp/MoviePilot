@@ -15,7 +15,7 @@ from Crypto.Util.Padding import pad
 from cryptography.fernet import Fernet
 from fastapi import HTTPException, status, Security, Request, Response
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader, APIKeyQuery, APIKeyCookie, HTTPBearer
-from app import schemas
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.runtime.cache import cached
 from app.runtime.config import settings
 from app.runtime.log import logger
@@ -23,7 +23,7 @@ from app.runtime.log import logger
 BCRYPT_PASSWORD_MAX_BYTES = 72
 BCRYPT_ROUNDS = 12
 ALGORITHM = "HS256"
-SuperuserTokenPayloadProvider = Callable[[], schemas.TokenPayload]
+SuperuserTokenPayloadProvider = Callable[[], _SchemaTokenPayload]
 _superuser_token_payload_provider: Optional[SuperuserTokenPayloadProvider] = None
 
 
@@ -102,7 +102,7 @@ def __get_api_key(
 
 
 @cached(maxsize=1, ttl=600)
-def __create_superuser_token_payload() -> schemas.TokenPayload:
+def __create_superuser_token_payload() -> _SchemaTokenPayload:
     """
     创建管理员用户的TokenPayload
 
@@ -164,7 +164,7 @@ def create_access_token(
 
 
 def set_or_refresh_resource_token_cookie(
-        request: Request, response: Response, payload: schemas.TokenPayload
+        request: Request, response: Response, payload: _SchemaTokenPayload
 ) -> None:
     """
     设置资源令牌 Cookie
@@ -229,7 +229,7 @@ def set_or_refresh_resource_token_cookie(
     )
 
 
-def __verify_token(token: str, purpose: Optional[str] = "authentication") -> schemas.TokenPayload:
+def __verify_token(token: str, purpose: Optional[str] = "authentication") -> _SchemaTokenPayload:
     """
     使用 JWT Token 进行身份认证并解析 Token 的内容
     :param token: JWT 令牌
@@ -253,12 +253,12 @@ def __verify_token(token: str, purpose: Optional[str] = "authentication") -> sch
             token, secret_key, algorithms=[ALGORITHM]
         )
 
-        token_payload = schemas.TokenPayload(**payload)
+        token_payload = _SchemaTokenPayload(**payload)
 
         if token_payload.purpose != purpose:
             raise jwt.InvalidTokenError("令牌用途不匹配")
 
-        return schemas.TokenPayload(**payload)
+        return _SchemaTokenPayload(**payload)
     except (jwt.DecodeError, jwt.InvalidTokenError, jwt.ImmatureSignatureError):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -272,7 +272,7 @@ def verify_token(
         jwt_token: Annotated[str | None, Security(oauth2_scheme_manual_error)],
         api_key: Annotated[str | None, Security(__get_api_key)],
         api_token: Annotated[str | None, Security(__get_api_token)],
-) -> schemas.TokenPayload:
+) -> _SchemaTokenPayload:
     """
     验证 JWT 令牌并自动处理 resource_token 写入
 
@@ -310,7 +310,7 @@ def verify_token(
 
 def verify_resource_token(
         resource_token: Annotated[str, Security(resource_token_cookie)]
-) -> schemas.TokenPayload:
+) -> _SchemaTokenPayload:
     """
     验证资源访问令牌（从 Cookie 中获取）
     :param resource_token: 从 Cookie 中获取的资源访问令牌

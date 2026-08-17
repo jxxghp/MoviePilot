@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools

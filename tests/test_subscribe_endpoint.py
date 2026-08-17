@@ -81,6 +81,26 @@ class SubscribeEndpointTest(TestCase):
 
             self.assertEqual(getattr(result, "id", None), expected_id)
 
+    def test_delete_subscribe_delegates_identity_without_database_access(self):
+        """按 ID 删除端点只映射用户身份，并保持不存在时也返回成功。"""
+        from app.api.endpoints.subscribe import delete_subscribe
+
+        command = SimpleNamespace(execute=AsyncMock(return_value=False))
+        response = asyncio.run(
+            delete_subscribe(
+                subscribe_id=7,
+                command=command,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        self.assertTrue(response.success)
+        command.execute.assert_awaited_once()
+        subscribe_id, actor = command.execute.await_args.args
+        self.assertEqual(subscribe_id, 7)
+        self.assertEqual(actor.username, "alice")
+        self.assertFalse(actor.is_superuser)
+
     def test_manage_permission_does_not_allow_cross_user_update(self):
         """
         manage 权限不等于跨用户订阅管理权限，普通用户不能修改他人或 legacy 订阅。
@@ -512,99 +532,76 @@ class SubscribeEndpointTest(TestCase):
 
     def test_delete_subscribe_by_media_identity_deletes_owner_candidate(self):
         """
-        按媒体删除订阅时，应在候选集合中删除当前用户自己的订阅。
+        按媒体删除端点应把媒体身份和当前用户交给应用命令。
         """
         from app.api.endpoints.subscribe import delete_subscribe_by_media_identity
 
-        other = _EndpointSubscribe(
-            id=15, username="bob", media_source="douban", media_id="douban-1"
-        )
-        own = _EndpointSubscribe(
-            id=16, username="alice", media_source="douban", media_id="douban-1"
-        )
-        db = _EndpointAsyncDb()
-
-        with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
-            new=AsyncMock(return_value=[other, own]),
-        ), patch(
-            "app.api.endpoints.subscribe.build_subscribe_event_payload",
-            return_value={"id": 16, "media_source": "douban", "media_id": "douban-1"},
-        ), patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
-            new=AsyncMock(),
-        ) as send_event:
-            response = asyncio.run(
-                delete_subscribe_by_media_identity(
-                    media_id="douban-1",
-                    media_source=MediaSource.Douban,
-                    db=db,
-                    current_user=_EndpointUser(name="alice", is_superuser=False),
-                )
+        command = SimpleNamespace(execute=AsyncMock(return_value=1))
+        response = asyncio.run(
+            delete_subscribe_by_media_identity(
+                media_id="douban-1",
+                media_source=MediaSource.Douban,
+                command=command,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
             )
+        )
 
         self.assertTrue(response.success)
-        self.assertEqual(db.deleted, [own])
-        send_event.assert_awaited_once()
+        command.execute.assert_awaited_once()
+        media_source, media_id, season, music_type, actor = command.execute.await_args.args
+        self.assertEqual(media_source, MediaSource.Douban)
+        self.assertEqual(media_id, "douban-1")
+        self.assertIsNone(season)
+        self.assertIsNone(music_type)
+        self.assertEqual(actor.username, "alice")
+        self.assertFalse(actor.is_superuser)
 
     def test_delete_subscribe_by_media_identity_forwards_music_entity(self):
         """取消专辑订阅时必须把实体类型传给统一身份查询。"""
         from app.api.endpoints.subscribe import delete_subscribe_by_media_identity
 
-        db = _EndpointAsyncDb()
-        with patch(
-            "app.api.endpoints.subscribe.list_subscribes_by_media_identity",
-            new=AsyncMock(return_value=[]),
-        ) as list_by_key:
-            response = asyncio.run(
-                delete_subscribe_by_media_identity(
-                    media_id="release-group-1",
-                    media_source=MediaSource.MusicBrainz,
-                    music_type="album",
-                    db=db,
-                    current_user=_EndpointUser(name="alice", is_superuser=False),
-                )
+        command = SimpleNamespace(execute=AsyncMock(return_value=0))
+        response = asyncio.run(
+            delete_subscribe_by_media_identity(
+                media_id="release-group-1",
+                media_source=MediaSource.MusicBrainz,
+                music_type="album",
+                command=command,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
             )
+        )
 
         self.assertTrue(response.success)
-        list_by_key.assert_awaited_once_with(
-            db,
+        command.execute.assert_awaited_once()
+        self.assertEqual(
+            command.execute.await_args.args[:4],
+            (
             MediaSource.MusicBrainz,
             "release-group-1",
             None,
             "album",
+            ),
         )
 
     def test_search_subscribes_regular_user_schedules_only_owned_rows(self):
         """
-        普通用户批量搜索只按自己的订阅 ID 入队。
+        普通用户批量搜索把用户身份交给应用命令。
         """
         from app.api.endpoints.subscribe import search_subscribes
 
-        background_tasks = _EndpointBackgroundTasks()
-        owned = [
-            _EndpointSubscribe(id=17, username="alice", state="R"),
-            _EndpointSubscribe(id=18, username="alice", state="R"),
-        ]
-
-        with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_username",
-            new=AsyncMock(return_value=owned),
-        ), patch("app.api.endpoints.subscribe.Scheduler") as scheduler_cls:
-            response = asyncio.run(
-                search_subscribes(
-                    background_tasks=background_tasks,
-                    db=object(),
-                    current_user=_EndpointUser(name="alice", is_superuser=False),
-                )
+        command = SimpleNamespace(execute=AsyncMock(return_value=True))
+        response = asyncio.run(
+            search_subscribes(
+                command=command,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
             )
+        )
 
         self.assertTrue(response.success)
-        self.assertEqual(
-            [task["kwargs"]["sid"] for task in background_tasks.tasks],
-            [17, 18],
-        )
-        self.assertEqual(scheduler_cls.return_value.start.call_count, 0)
+        command.execute.assert_awaited_once()
+        actor = command.execute.await_args.args[0]
+        self.assertEqual(actor.username, "alice")
+        self.assertFalse(actor.is_superuser)
 
     def test_subscribe_files_hides_other_user_row(self):
         """

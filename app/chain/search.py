@@ -24,9 +24,14 @@ from app.domain.context import MusicInfo
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.progress import ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.search.state import (
+    SearchStateService,
+    normalize_search_params,
+    stringify_sites,
+)
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
-from app.schemas import NotExistMediaInfo
+from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     EventType,
@@ -35,7 +40,7 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.schemas.media import build_media_key, parse_media_key, resolve_media_identity
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.foundation import size as size_tools
 from app.foundation.text import convert as zhconv_convert
 
@@ -291,7 +296,7 @@ class SearchChain(ChainBase):
         """
         将站点ID列表转换为前端可直接复用的查询字符串。
         """
-        return ",".join(str(site) for site in sites) if sites else ""
+        return stringify_sites(sites)
 
     @staticmethod
     def _normalize_search_params(params: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
@@ -299,35 +304,19 @@ class SearchChain(ChainBase):
         规范化上次搜索参数，供前端结果页重新搜索使用；旧复合关键字仅在
         缓存读取边界转换为独立的媒体来源和原生 ID。
         """
-        if not isinstance(params, dict):
-            return None
+        return normalize_search_params(params)
 
-        media_source, media_id = resolve_media_identity(
-            media_source=params.get("media_source"),
-            media_id=params.get("media_id"),
+    def _search_state(self) -> SearchStateService:
+        """构造绑定当前 Chain 缓存端口的搜索状态服务。"""
+        return SearchStateService(
+            save_cache=self.save_cache,
+            load_cache=self.load_cache,
+            async_save_cache=self.async_save_cache,
+            async_load_cache=self.async_load_cache,
+            params_key=self.__search_params_temp_file,
+            result_key=self.__result_temp_file,
+            subtitle_result_key=self.__subtitle_result_temp_file,
         )
-        keyword = str(params.get("keyword") or "")
-        if not media_source and keyword:
-            media_source, media_id = parse_media_key(keyword)
-            if media_source and media_id:
-                keyword = ""
-
-        normalized = {
-            "keyword": keyword,
-            "media_source": str(media_source) if media_source else "",
-            "media_id": media_id or "",
-            "type": str(params.get("type") or ""),
-            "area": str(params.get("area") or ""),
-            "title": str(params.get("title") or ""),
-            "year": str(params.get("year") or ""),
-            "season": str(params["season"]) if params.get("season") is not None else "",
-            "episode": str(params.get("episode") or ""),
-            "sites": str(params.get("sites") or ""),
-            "result_type": str(params.get("result_type") or "torrent"),
-        }
-        if params.get("music_type"):
-            normalized["music_type"] = str(params["music_type"])
-        return normalized if normalized["keyword"] or media_id else None
 
     def save_last_search_params(
             self,
@@ -348,24 +337,20 @@ class SearchChain(ChainBase):
         """
         保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
         """
-        params = self._normalize_search_params(
-            {
-                "keyword": keyword,
-                "media_source": media_source,
-                "media_id": media_id,
-                "type": mtype.value if isinstance(mtype, MediaType) else mtype,
-                "area": area,
-                "title": title,
-                "year": year,
-                "season": season,
-                "episode": episode,
-                "sites": self._stringify_sites(sites),
-                "music_type": music_type,
-                "result_type": result_type or "torrent",
-            }
+        self._search_state().save_params(
+            keyword=keyword,
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            area=area,
+            title=title,
+            year=year,
+            season=season,
+            episode=episode,
+            sites=sites,
+            music_type=music_type,
+            result_type=result_type,
         )
-        if params:
-            self.save_cache(params, self.__search_params_temp_file)
 
     async def async_save_last_search_params(
             self,
@@ -386,38 +371,32 @@ class SearchChain(ChainBase):
         """
         异步保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
         """
-        params = self._normalize_search_params(
-            {
-                "keyword": keyword,
-                "media_source": media_source,
-                "media_id": media_id,
-                "type": mtype.value if isinstance(mtype, MediaType) else mtype,
-                "area": area,
-                "title": title,
-                "year": year,
-                "season": season,
-                "episode": episode,
-                "sites": self._stringify_sites(sites),
-                "music_type": music_type,
-                "result_type": result_type or "torrent",
-            }
+        await self._search_state().async_save_params(
+            keyword=keyword,
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            area=area,
+            title=title,
+            year=year,
+            season=season,
+            episode=episode,
+            sites=sites,
+            music_type=music_type,
+            result_type=result_type,
         )
-        if params:
-            await self.async_save_cache(params, self.__search_params_temp_file)
 
     def last_search_params(self) -> Optional[Dict[str, str]]:
         """
         获取上次搜索使用的参数。
         """
-        return self._normalize_search_params(self.load_cache(self.__search_params_temp_file))
+        return self._search_state().load_params()
 
     async def async_last_search_params(self) -> Optional[Dict[str, str]]:
         """
         异步获取上次搜索使用的参数。
         """
-        return self._normalize_search_params(
-            await self.async_load_cache(self.__search_params_temp_file)
-        )
+        return await self._search_state().async_load_params()
 
     @staticmethod
     def _normalize_ai_indices(ai_indices: List[Any]) -> List[int]:
@@ -510,7 +489,7 @@ class SearchChain(ChainBase):
         通过统一后台提示词机制执行资源推荐。
         """
         from app.application.agent import get_prompt_manager, get_running_agent_manager
-        from app.schemas.agent import ReplyMode
+        from app.schemas.types import ReplyMode
 
         prompt = get_prompt_manager().render_system_task_message(
             "search_recommend",
@@ -733,19 +712,19 @@ class SearchChain(ChainBase):
         """
         获取上次搜索结果
         """
-        return self.load_cache(self.__result_temp_file)
+        return self._search_state().load_results()
 
     async def async_last_search_results(self) -> Optional[List[Context]]:
         """
         异步获取上次搜索结果
         """
-        return await self.async_load_cache(self.__result_temp_file)
+        return await self._search_state().async_load_results()
 
     async def async_last_subtitle_search_results(self) -> Optional[List[SubtitleInfo]]:
         """
         异步获取上次字幕搜索结果。
         """
-        return await self.async_load_cache(self.__subtitle_result_temp_file)
+        return await self._search_state().async_load_subtitle_results()
 
     async def async_search_subtitles_by_title(self, title: str, page: Optional[int] = 0,
                                               sites: List[int] = None,

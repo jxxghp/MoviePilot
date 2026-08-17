@@ -7,6 +7,7 @@ from app.api.endpoints.plugin import plugin_history
 from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
+from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.event import PluginDataResetEventData
@@ -426,13 +427,29 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
     plugin_manager.delete_plugin_config.side_effect = delete_config
     plugin_manager.delete_plugin_data.side_effect = delete_data
 
-    with (
-        patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
-        patch("app.api.endpoints.plugin.eventmanager") as eventmanager,
-        patch("app.api.endpoints.plugin.reload_plugin") as reload_plugin_mock,
-    ):
-        eventmanager.send_event.side_effect = lambda etype, data: calls.append(("event", etype, data))
-        result = reset_plugin("SubscribeAssistantEnhanced", None)
+    def publish_reset(plugin_id):
+        """记录重置前事件，验证应用用例保留补偿时序。"""
+        calls.append((
+            "event",
+            ChainEventType.PluginDataReset,
+            PluginDataResetEventData(
+                plugin_id=plugin_id,
+                reset_config=True,
+                reset_data=True,
+            ),
+        ))
+
+    command = PluginConfigCommand(
+        save_config=plugin_manager.save_plugin_config,
+        initialize=plugin_manager.init_plugin,
+        stop=plugin_manager.stop,
+        delete_config=plugin_manager.delete_plugin_config,
+        delete_data=plugin_manager.delete_plugin_data,
+        reload_runtime=plugin_manager.reload_plugin,
+        publish_reset=publish_reset,
+        refresh_registrations=lambda _plugin_id: None,
+    )
+    result = reset_plugin("SubscribeAssistantEnhanced", None, command)
 
     assert result.success is True
     assert len(calls) == 4
@@ -448,7 +465,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         ("delete_config", "SubscribeAssistantEnhanced", True),
         ("delete_data", "SubscribeAssistantEnhanced", True),
     ]
-    reload_plugin_mock.assert_called_once_with("SubscribeAssistantEnhanced")
+    plugin_manager.reload_plugin.assert_called_once_with("SubscribeAssistantEnhanced")
 
 
 def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
@@ -458,11 +475,12 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
 
-    with patch("app.runtime.extensions.plugin_manager.SystemConfigOper") as system_config_oper:
-        system_config_oper.return_value.delete.return_value = True
+    storage = MagicMock()
+    storage.delete.return_value = True
+    with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
         assert manager.delete_plugin_config("DemoPlugin", force=True) is True
 
-    system_config_oper.return_value.delete.assert_called_once_with("plugin.DemoPlugin")
+    storage.delete.assert_called_once_with("plugin.DemoPlugin")
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
 
 
@@ -474,8 +492,9 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
     manager = PluginManager()
     calls = []
 
-    with patch("app.runtime.extensions.plugin_manager.PluginDataOper") as plugin_data_oper:
-        plugin_data_oper.return_value.del_data.side_effect = lambda pid: calls.append(pid)
+    storage = MagicMock()
+    storage.delete_data.side_effect = lambda pid: calls.append(pid)
+    with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
         assert manager.delete_plugin_data("DemoPlugin", force=True) is True
 
     assert calls == ["DemoPlugin"]

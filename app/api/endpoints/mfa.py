@@ -11,7 +11,15 @@ from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in
 from fastapi import Depends, HTTPException, Body, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import schemas
+from app.schemas.mcp import BaseModel as _SchemaBaseModel
+from app.schemas.mcp import JsonData as _SchemaJsonData
+from app.schemas.mfa import MfaStatusData as _SchemaMfaStatusData
+from app.schemas.mfa import OtpGenerateData as _SchemaOtpGenerateData
+from app.schemas.mfa import PasskeyInfo as _SchemaPasskeyInfo
+from app.schemas.mfa import PasskeyStartData as _SchemaPasskeyStartData
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import Token as _SchemaToken
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.application.security import access as security
 from app.runtime.config import settings
@@ -93,20 +101,20 @@ def _verify_passkey_and_update(
 # ==================== 请求模型 ====================
 
 
-class OtpVerifyRequest(schemas.BaseModel):
+class OtpVerifyRequest(_SchemaBaseModel):
     """OTP验证请求"""
 
     uri: str
     otpPassword: str
 
 
-class OtpDisableRequest(schemas.BaseModel):
+class OtpDisableRequest(_SchemaBaseModel):
     """OTP禁用请求"""
 
     password: str
 
 
-class PassKeyDeleteRequest(schemas.BaseModel):
+class PassKeyDeleteRequest(_SchemaBaseModel):
     """PassKey删除请求"""
 
     passkey_id: int
@@ -119,7 +127,7 @@ class PassKeyDeleteRequest(schemas.BaseModel):
 @router.get(
     "/status/{username}",
     summary="判断用户是否开启二次验证",
-    response_model=schemas.Response[schemas.MfaStatusData],
+    response_model=_SchemaResponse[_SchemaMfaStatusData],
 )
 async def mfa_status(username: str, db: AsyncSession = Depends(get_async_db)) -> Any:
     """
@@ -127,12 +135,12 @@ async def mfa_status(username: str, db: AsyncSession = Depends(get_async_db)) ->
     """
     user: User = await User.async_get_by_name(db, username)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return _SchemaResponse(success=False, message="用户不存在")
 
     # 检查是否启用了OTP
     has_otp = user.is_otp
 
-    return schemas.Response(success=True, data={"enabled": bool(has_otp)})
+    return _SchemaResponse(success=True, data={"enabled": bool(has_otp)})
 
 
 # ==================== OTP 相关接口 ====================
@@ -141,17 +149,17 @@ async def mfa_status(username: str, db: AsyncSession = Depends(get_async_db)) ->
 @router.post(
     "/otp/generate",
     summary="生成 OTP 验证 URI",
-    response_model=schemas.Response[schemas.OtpGenerateData],
+    response_model=_SchemaResponse[_SchemaOtpGenerateData],
 )
 def otp_generate(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> Any:
     """生成 OTP 密钥及对应的 URI"""
     secret, uri = OtpUtils.generate_secret_key(current_user.name)
-    return schemas.Response(success=secret != "", data={"secret": secret, "uri": uri})
+    return _SchemaResponse(success=secret != "", data={"secret": secret, "uri": uri})
 
 
-@router.post("/otp/verify", summary="绑定并验证 OTP", response_model=schemas.Response[None])
+@router.post("/otp/verify", summary="绑定并验证 OTP", response_model=_SchemaResponse[None])
 async def otp_verify(
     data: OtpVerifyRequest,
     db: AsyncSession = Depends(get_async_db),
@@ -159,17 +167,17 @@ async def otp_verify(
 ) -> Any:
     """验证用户输入的 OTP 码，验证通过后正式开启 OTP 验证"""
     if not OtpUtils.is_legal(data.uri, data.otpPassword):
-        return schemas.Response(success=False, message="验证码错误")
+        return _SchemaResponse(success=False, message="验证码错误")
     await current_user.async_update_otp_by_name(
         db, current_user.name, True, OtpUtils.get_secret(data.uri)
     )
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 @router.post(
     "/otp/disable",
     summary="关闭当前用户的 OTP 验证",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def otp_disable(
     data: OtpDisableRequest,
@@ -179,45 +187,45 @@ async def otp_disable(
     """关闭当前用户的 OTP 验证功能"""
     # 验证密码
     if not security.verify_password(data.password, str(current_user.hashed_password)):
-        return schemas.Response(success=False, message="密码错误")
+        return _SchemaResponse(success=False, message="密码错误")
     await current_user.async_update_otp_by_name(db, current_user.name, False, "")
-    return schemas.Response(success=True)
+    return _SchemaResponse(success=True)
 
 
 # ==================== PassKey 相关接口 ====================
 
 
-class PassKeyRegistrationStart(schemas.BaseModel):
+class PassKeyRegistrationStart(_SchemaBaseModel):
     """PassKey注册开始请求"""
 
     name: str = "通行密钥"
 
 
-class PassKeyRegistrationFinish(schemas.BaseModel):
+class PassKeyRegistrationFinish(_SchemaBaseModel):
     """PassKey注册完成请求"""
 
-    credential: dict[str, schemas.JsonData]
+    credential: dict[str, _SchemaJsonData]
     transaction_token: str
     name: str = "通行密钥"
 
 
-class PassKeyAuthenticationStart(schemas.BaseModel):
+class PassKeyAuthenticationStart(_SchemaBaseModel):
     """PassKey认证开始请求"""
 
     username: Optional[str] = None
 
 
-class PassKeyAuthenticationFinish(schemas.BaseModel):
+class PassKeyAuthenticationFinish(_SchemaBaseModel):
     """PassKey认证完成请求"""
 
-    credential: dict[str, schemas.JsonData]
+    credential: dict[str, _SchemaJsonData]
     transaction_token: str
 
 
 @router.post(
     "/passkey/register/start",
     summary="开始注册 PassKey",
-    response_model=schemas.Response[schemas.PasskeyStartData],
+    response_model=_SchemaResponse[_SchemaPasskeyStartData],
 )
 def passkey_register_start(
     current_user: Annotated[User, Depends(get_current_active_user)],
@@ -245,7 +253,7 @@ def passkey_register_start(
             purpose="registration",
             user_id=current_user.id,
         )
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
             data={
                 "options": json.loads(options_json),
@@ -254,13 +262,13 @@ def passkey_register_start(
         )
     except Exception as e:
         logger.error(f"生成PassKey注册选项失败: {e}")
-        return schemas.Response(success=False, message=f"生成注册选项失败: {str(e)}")
+        return _SchemaResponse(success=False, message=f"生成注册选项失败: {str(e)}")
 
 
 @router.post(
     "/passkey/register/finish",
     summary="完成注册 PassKey",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 def passkey_register_finish(
     passkey_req: PassKeyRegistrationFinish,
@@ -273,7 +281,7 @@ def passkey_register_finish(
             purpose="registration",
         )
         if not challenge_state or challenge_state.user_id != current_user.id:
-            return schemas.Response(
+            return _SchemaResponse(
                 success=False,
                 message="注册请求已失效，请重新发起注册",
             )
@@ -308,26 +316,26 @@ def passkey_register_finish(
 
         logger.info(f"用户 {current_user.name} 成功注册PassKey: {passkey_req.name}")
 
-        return schemas.Response(success=True, message="通行密钥注册成功")
+        return _SchemaResponse(success=True, message="通行密钥注册成功")
     except PassKeyRegistrationOriginMismatchError:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="访问域名与系统配置不一致，请使用配置的域名重试",
         )
     except PassKeyRegistrationVerificationError:
-        return schemas.Response(
+        return _SchemaResponse(
             success=False,
             message="通行密钥注册验证失败，请重新发起注册后重试",
         )
     except Exception as e:
         logger.error(f"注册PassKey失败: {e}")
-        return schemas.Response(success=False, message="通行密钥注册失败，请稍后重试")
+        return _SchemaResponse(success=False, message="通行密钥注册失败，请稍后重试")
 
 
 @router.post(
     "/passkey/authenticate/start",
     summary="开始 PassKey 认证",
-    response_model=schemas.Response[schemas.PasskeyStartData],
+    response_model=_SchemaResponse[_SchemaPasskeyStartData],
 )
 def passkey_authenticate_start(
     passkey_req: PassKeyAuthenticationStart = Body(...),
@@ -345,7 +353,7 @@ def passkey_authenticate_start(
             )
 
             if not user or not existing_passkeys:
-                return schemas.Response(success=False, message="认证失败")
+                return _SchemaResponse(success=False, message="认证失败")
 
             existing_credentials = _build_credential_list(existing_passkeys)
             user_id = user.id
@@ -360,7 +368,7 @@ def passkey_authenticate_start(
             purpose="authentication",
             user_id=user_id,
         )
-        return schemas.Response(
+        return _SchemaResponse(
             success=True,
             data={
                 "options": json.loads(options_json),
@@ -369,13 +377,13 @@ def passkey_authenticate_start(
         )
     except Exception as e:
         logger.error(f"生成PassKey认证选项失败: {e}")
-        return schemas.Response(success=False, message="认证失败")
+        return _SchemaResponse(success=False, message="认证失败")
 
 
 @router.post(
     "/passkey/authenticate/finish",
     summary="完成 PassKey 认证",
-    response_model=schemas.Token,
+    response_model=_SchemaToken,
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
 def passkey_authenticate_finish(
@@ -436,7 +444,7 @@ def passkey_authenticate_finish(
         security.set_or_refresh_resource_token_cookie(
             request,
             response,
-            schemas.TokenPayload(
+            _SchemaTokenPayload(
                 sub=user.id,
                 username=user.name,
                 super_user=user.is_superuser,
@@ -445,7 +453,7 @@ def passkey_authenticate_finish(
             ),
         )
 
-        return schemas.Token(
+        return _SchemaToken(
             access_token=access_token,
             token_type="bearer",
             super_user=user.is_superuser,
@@ -466,7 +474,7 @@ def passkey_authenticate_finish(
 @router.get(
     "/passkey/list",
     summary="获取当前用户的 PassKey 列表",
-    response_model=schemas.Response[list[schemas.PasskeyInfo]],
+    response_model=_SchemaResponse[list[_SchemaPasskeyInfo]],
 )
 def passkey_list(
     current_user: Annotated[User, Depends(get_current_active_user)],
@@ -493,16 +501,16 @@ def passkey_list(
             else []
         )
 
-        return schemas.Response(success=True, data=key_list)
+        return _SchemaResponse(success=True, data=key_list)
     except Exception as e:
         logger.error(f"获取PassKey列表失败: {e}")
-        return schemas.Response(success=False, message=f"获取列表失败: {str(e)}")
+        return _SchemaResponse(success=False, message=f"获取列表失败: {str(e)}")
 
 
 @router.post(
     "/passkey/delete",
     summary="删除 PassKey",
-    response_model=schemas.Response[None],
+    response_model=_SchemaResponse[None],
 )
 async def passkey_delete(
     data: PassKeyDeleteRequest,
@@ -514,7 +522,7 @@ async def passkey_delete(
         if not security.verify_password(
             data.password, str(current_user.hashed_password)
         ):
-            return schemas.Response(success=False, message="密码错误")
+            return _SchemaResponse(success=False, message="密码错误")
 
         success = PassKey.delete_by_id(
             db=None, passkey_id=data.passkey_id, user_id=current_user.id
@@ -522,9 +530,9 @@ async def passkey_delete(
 
         if success:
             logger.info(f"用户 {current_user.name} 删除了PassKey: {data.passkey_id}")
-            return schemas.Response(success=True, message="通行密钥已删除")
+            return _SchemaResponse(success=True, message="通行密钥已删除")
         else:
-            return schemas.Response(success=False, message="通行密钥不存在或无权删除")
+            return _SchemaResponse(success=False, message="通行密钥不存在或无权删除")
     except Exception as e:
         logger.error(f"删除PassKey失败: {e}")
-        return schemas.Response(success=False, message=f"删除失败: {str(e)}")
+        return _SchemaResponse(success=False, message=f"删除失败: {str(e)}")

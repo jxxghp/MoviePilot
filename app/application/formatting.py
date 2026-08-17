@@ -11,7 +11,8 @@ from app.runtime.config import settings
 from app.domain.metainfo import MetaInfoPath
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
-from app.schemas import EpisodeFormatRule, FileItem
+from app.schemas.transfer import EpisodeFormatRule
+from app.schemas.workflow import FileItem
 
 
 @dataclass(frozen=True)

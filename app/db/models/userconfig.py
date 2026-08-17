@@ -2,7 +2,8 @@ from typing import Any, Optional
 from sqlalchemy import String, UniqueConstraint, JSON, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, db_update, get_id_column, Base
+from app.db.base import get_id_column, Base
+from app.db.decorators import db_query, db_update
 
 
 class UserConfig(Base):

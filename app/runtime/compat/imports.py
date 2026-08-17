@@ -5,7 +5,7 @@ import importlib.util
 import sys
 import threading
 from types import ModuleType
-from typing import Dict, Optional
+from typing import Dict
 
 from app.runtime.compat.diagnostics import record_legacy_import
 from app.runtime.compat.manifest import (

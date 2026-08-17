@@ -19,10 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from app.runtime.config import global_vars, settings
-from app.db import engine as engine_module
+import app.db.engine as engine_module
 from app.db.engine import (_async_pool_enabled, _get_database_engine,
                            get_engine, get_global_async_engine)
+from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
 
 # 会话工厂同样惰性：sessionmaker 在构造时就要绑定引擎，模块级构造等于把引擎的

@@ -1,7 +1,9 @@
 import time
 from typing import Any, List, Optional
 
-from app.db import DbOper
+from sqlalchemy import delete as sqlalchemy_delete
+
+from app.db.base import DbOper
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource
 
@@ -206,6 +208,18 @@ class TransferHistoryOper(DbOper):
         删除转移记录
         """
         TransferHistory.delete(self._db, historyid)
+
+    def stage_delete(self, historyid: int) -> None:
+        """暂存整理记录删除，不由模型装饰器提交事务。"""
+        self._db.execute(
+            sqlalchemy_delete(TransferHistory).where(
+                TransferHistory.id == historyid
+            )
+        )
+
+    def stage_truncate(self) -> None:
+        """暂存全部整理记录删除，由请求级事务统一提交。"""
+        self._db.execute(sqlalchemy_delete(TransferHistory))
 
     async def async_delete(self, historyid):
         """

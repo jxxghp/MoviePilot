@@ -17,8 +17,8 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
+from app.domain.media import normalize_music_type
 from ._music_utils import (
-    normalize_music_type,
     simplify_music_album,
     simplify_music_artist,
     simplify_music_info,

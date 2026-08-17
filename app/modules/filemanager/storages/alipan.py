@@ -8,7 +8,8 @@ from typing import List, Optional, Tuple, Union
 
 import requests
 
-from app import schemas
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
 from app.modules.filemanager import StorageBase
@@ -287,16 +288,16 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return ret_data.get(result_key)
         return ret_data
 
-    def __get_fileitem(self, fileinfo: dict, parent: str = "/") -> schemas.FileItem:
+    def __get_fileitem(self, fileinfo: dict, parent: str = "/") -> _SchemaFileItem:
         """
         获取文件信息
         """
         if not fileinfo:
-            return schemas.FileItem()
+            return _SchemaFileItem()
         if not parent.endswith("/"):
             parent += "/"
         if fileinfo.get("type") == "folder":
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 fileid=fileinfo.get("file_id"),
                 parent_fileid=fileinfo.get("parent_file_id"),
@@ -309,7 +310,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 drive_id=fileinfo.get("drive_id"),
             )
         else:
-            return schemas.FileItem(
+            return _SchemaFileItem(
                 storage=self.schema.value,
                 fileid=fileinfo.get("file_id"),
                 parent_fileid=fileinfo.get("parent_file_id"),
@@ -343,7 +344,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
     def init_storage(self):
         pass
 
-    def list(self, fileitem: schemas.FileItem) -> List[schemas.FileItem]:
+    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         目录遍历实现
         """
@@ -386,7 +387,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 break
         return items
 
-    def _delay_get_item(self, path: Path) -> Optional[schemas.FileItem]:
+    def _delay_get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         自动延迟重试 get_item 模块
         """
@@ -398,8 +399,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         return None
 
     def create_folder(
-        self, parent_item: schemas.FileItem, name: str
-    ) -> Optional[schemas.FileItem]:
+        self, parent_item: _SchemaFileItem, name: str
+    ) -> Optional[_SchemaFileItem]:
         """
         创建目录
         """
@@ -588,10 +589,10 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
 
     def upload(
         self,
-        target_dir: schemas.FileItem,
+        target_dir: _SchemaFileItem,
         local_path: Path,
         new_name: Optional[str] = None,
-    ) -> Optional[schemas.FileItem]:
+    ) -> Optional[_SchemaFileItem]:
         """
         文件上传：分片、支持秒传
         """
@@ -721,7 +722,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             )
         return self.__get_fileitem(result, parent=target_dir.path)
 
-    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
@@ -801,7 +802,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
     def check(self) -> bool:
         return self.access_token is not None
 
-    def delete(self, fileitem: schemas.FileItem) -> bool:
+    def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
         删除文件/目录
         """
@@ -815,7 +816,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         except requests.exceptions.HTTPError:
             return False
 
-    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
         重命名文件/目录
         """
@@ -835,7 +836,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return False
         return True
 
-    def __get_by_path_item(self, path: Path, drive_id: str = None) -> Optional[schemas.FileItem]:
+    def __get_by_path_item(self, path: Path, drive_id: str = None) -> Optional[_SchemaFileItem]:
         """
         按路径查询文件/目录项，无法确认状态时抛出 StorageQueryError。
         NotFound 系列错误码表示确认不存在，其余错误（网络失败、限流、
@@ -861,7 +862,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 f"【阿里云盘】查询文件信息出错: {path} - {code} {resp.get('message')}")
         return self.__get_fileitem(resp, parent=str(path.parent))
 
-    def get_item(self, path: Path, drive_id: str = None) -> Optional[schemas.FileItem]:
+    def get_item(self, path: Path, drive_id: str = None) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件/目录项
         """
@@ -871,7 +872,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             logger.debug(f"【阿里云盘】获取文件信息失败: {str(e)}")
             return None
 
-    def get_item_strict(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
         """
@@ -882,14 +883,14 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             raise StorageQueryError(f"【阿里云盘】查询文件信息失败: {path} - {e}") from e
 
-    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+    def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取指定路径的文件夹，如不存在则创建
         """
 
         def __find_dir(
-            _fileitem: schemas.FileItem, _name: str
-        ) -> Optional[schemas.FileItem]:
+            _fileitem: _SchemaFileItem, _name: str
+        ) -> Optional[_SchemaFileItem]:
             """
             查找下级目录中匹配名称的目录
             """
@@ -905,7 +906,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = schemas.FileItem(
+        fileitem = _SchemaFileItem(
             storage=self.schema.value, path="/", drive_id=self._default_drive_id
         )
         for part in path.parts[1:]:
@@ -920,13 +921,13 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 fileitem = dir_file
         return fileitem
 
-    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取文件/目录详细信息
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制文件到指定路径
         :param fileitem: 要复制的文件项
@@ -958,7 +959,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         self.rename(new_file, new_name)
         return True
 
-    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+    def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         移动文件到指定路径
         :param fileitem: 要移动的文件项
@@ -988,13 +989,13 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return False
         return True
 
-    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         pass
 
-    def usage(self) -> Optional[schemas.StorageUsage]:
+    def usage(self) -> Optional[_SchemaStorageUsage]:
         """
         获取带有企业级配额信息的存储使用情况
         """
@@ -1005,7 +1006,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             space = resp.get("personal_space_info") or {}
             total_size = space.get("total_size") or 0
             used_size = space.get("used_size") or 0
-            return schemas.StorageUsage(
+            return _SchemaStorageUsage(
                 total=total_size, available=total_size - used_size
             )
         except NoCheckInException:

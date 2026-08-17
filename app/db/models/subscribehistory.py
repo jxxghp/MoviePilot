@@ -4,7 +4,8 @@ from sqlalchemy import Integer, String, Float, JSON, Index, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db import db_query, Base, get_id_column, async_db_query
+from app.db.base import Base, get_id_column
+from app.db.decorators import db_query, async_db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 

@@ -5,7 +5,8 @@ from pydantic import Field
 from app.workflow.actions import BaseAction
 from app.runtime.config import global_vars
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 
 
 class FilterMediasParams(ActionParams):

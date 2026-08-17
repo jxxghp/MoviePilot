@@ -10,7 +10,7 @@ from app.agent.tools.tags import ToolTag
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
-from ._music_utils import normalize_music_type
+from app.domain.media import normalize_music_type
 
 PAGE_SIZE = 20
 

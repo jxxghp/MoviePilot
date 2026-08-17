@@ -1,28 +1,60 @@
-"""
-ORM 模型。
+"""ORM 模型的惰性兼容导出与显式注册入口。"""
 
-_identity 必须在此处导入：它在 import 期把媒体身份归一挂到 mapper 事件上，是六张带
-身份列的表的写入不变量。导入任一模型都会先初始化本包，因此这一行让强制点无处可绕。
-"""
-from . import _identity  # noqa: F401  仅为注册 mapper 事件，不导出符号
-from .agentchat import AgentChat
-from .agenttask import AgentTask
-from .agenttaskrun import AgentTaskRun
-from .downloadfailure import DownloadFailure
-from .downloadhistory import DownloadHistory, DownloadFiles
-from .mediaserver import MediaServerItem
-from .message import Message
-from .passkey import PassKey
-from .plugindata import PluginData
-from .site import Site
-from .siteicon import SiteIcon
-from .sitestatistic import SiteStatistic
-from .siteuserdata import SiteUserData
-from .subscribe import Subscribe
-from .subscribehistory import SubscribeHistory
-from .systemconfig import SystemConfig
-from .transferhistory import TransferHistory
-from .transferpending import TransferPending
-from .user import User
-from .userconfig import UserConfig
-from .workflow import Workflow
+from importlib import import_module
+from typing import Any
+
+from . import _identity  # noqa: F401  注册全局媒体身份写入不变量
+
+
+_MODEL_EXPORTS = {
+    "AgentChat": ("app.db.models.agentchat", "AgentChat"),
+    "AgentTask": ("app.db.models.agenttask", "AgentTask"),
+    "AgentTaskRun": ("app.db.models.agenttaskrun", "AgentTaskRun"),
+    "DownloadFailure": ("app.db.models.downloadfailure", "DownloadFailure"),
+    "DownloadFiles": ("app.db.models.downloadhistory", "DownloadFiles"),
+    "DownloadHistory": ("app.db.models.downloadhistory", "DownloadHistory"),
+    "MediaServerItem": ("app.db.models.mediaserver", "MediaServerItem"),
+    "Message": ("app.db.models.message", "Message"),
+    "PassKey": ("app.db.models.passkey", "PassKey"),
+    "PluginData": ("app.db.models.plugindata", "PluginData"),
+    "Site": ("app.db.models.site", "Site"),
+    "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),
+    "SiteStatistic": ("app.db.models.sitestatistic", "SiteStatistic"),
+    "SiteUserData": ("app.db.models.siteuserdata", "SiteUserData"),
+    "Subscribe": ("app.db.models.subscribe", "Subscribe"),
+    "SubscribeHistory": (
+        "app.db.models.subscribehistory",
+        "SubscribeHistory",
+    ),
+    "SystemConfig": ("app.db.models.systemconfig", "SystemConfig"),
+    "TransferHistory": ("app.db.models.transferhistory", "TransferHistory"),
+    "TransferPending": ("app.db.models.transferpending", "TransferPending"),
+    "User": ("app.db.models.user", "User"),
+    "UserConfig": ("app.db.models.userconfig", "UserConfig"),
+    "Workflow": ("app.db.models.workflow", "Workflow"),
+}
+
+
+def load_all_models() -> None:
+    """显式导入全部 ORM 模型，供建表和 Alembic 元数据收集使用。"""
+    for module_name, _ in dict.fromkeys(_MODEL_EXPORTS.values()):
+        import_module(module_name)
+
+
+def __getattr__(name: str) -> Any:
+    """按需解析旧模型包级导出，并缓存模型类。"""
+    contract = _MODEL_EXPORTS.get(name)
+    if contract is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, symbol_name = contract
+    value = getattr(import_module(module_name), symbol_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """返回模型包的兼容公开面。"""
+    return sorted({*globals(), *_MODEL_EXPORTS, "load_all_models"})
+
+
+__all__ = [*_MODEL_EXPORTS, "load_all_models"]

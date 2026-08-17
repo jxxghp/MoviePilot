@@ -3,7 +3,8 @@ from pydantic import Field
 from app.workflow.actions import BaseAction
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
-from app.schemas import ActionParams, ActionContext
+from app.schemas.workflow import ActionParams
+from app.schemas.workflow import ActionContext
 
 
 class InvokePluginParams(ActionParams):
