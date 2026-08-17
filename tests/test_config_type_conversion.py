@@ -11,14 +11,14 @@ def test_update_float_setting_accepts_json_integer(monkeypatch) -> None:
         field_name: str,
         original_value: Any,
         converted_value: Any,
-    ) -> tuple[bool, None]:
+    ) -> tuple[bool, str]:
         """记录待持久化配置，避免测试写入真实配置文件。"""
         persisted.update(
             field_name=field_name,
             original_value=original_value,
             converted_value=converted_value,
         )
-        return True, None
+        return True, ""
 
     monkeypatch.setattr(settings, "LLM_TEMPERATURE", 0.3)
     monkeypatch.setattr(
@@ -30,7 +30,7 @@ def test_update_float_setting_accepts_json_integer(monkeypatch) -> None:
     success, message = settings.update_setting("LLM_TEMPERATURE", 1)
 
     assert success is True
-    assert message is None
+    assert message == ""
     assert settings.LLM_TEMPERATURE == 1.0
     assert isinstance(settings.LLM_TEMPERATURE, float)
     assert persisted == {

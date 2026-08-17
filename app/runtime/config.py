@@ -907,7 +907,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         更新 env 配置
         """
-        message = None
+        # 成功且无提示时使用空字符串，保证与 Tuple[bool, str] 返回类型一致
+        message = ""
         is_converted = original_value is not None and str(original_value) != str(
             converted_value
         )
