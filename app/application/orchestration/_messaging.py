@@ -20,6 +20,7 @@ from app.schemas.message import MessageResponse
 from app.schemas.message import Message
 from app.schemas.transfer import TransferInfo
 from app.schemas.message import ChannelCapability, ChannelCapabilityManager
+from app.schemas.notification import ChannelRef, resolve_channel
 from app.schemas.types import EventType, NotificationChannel
 
 
@@ -28,7 +29,7 @@ class MessageProcessingMixin:
 
     def start_message_processing_status(
             self,
-            channel: NotificationChannel,
+            channel: ChannelRef,
             source: Optional[str],
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
@@ -61,7 +62,7 @@ class MessageProcessingMixin:
     def finish_message_processing_status(
             self,
             status: Optional[dict] = None,
-            channel: Optional[NotificationChannel] = None,
+            channel: Optional[ChannelRef] = None,
             source: Optional[str] = None,
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
@@ -73,10 +74,7 @@ class MessageProcessingMixin:
         """
         target_channel = channel
         if status:
-            try:
-                target_channel = NotificationChannel(status.get("channel"))
-            except Exception:
-                target_channel = channel
+            target_channel = resolve_channel(status.get("channel")) or channel
         if not target_channel or not ChannelCapabilityManager.supports_capability(
                 target_channel, ChannelCapability.PROCESSING_STATUS
         ):
@@ -417,7 +415,7 @@ class NotificationMixin:
 
     def edit_message(
             self,
-            channel: NotificationChannel,
+            channel: ChannelRef,
             source: str,
             message_id: Union[str, int],
             chat_id: Union[str, int],

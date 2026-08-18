@@ -9,7 +9,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
-from app.schemas.types import EventType, NotificationChannel
+from app.schemas.notification import resolve_channel
+from app.schemas.types import EventType
 
 
 class RunSlashCommandInput(BaseModel):
@@ -79,12 +80,7 @@ class RunSlashCommandTool(MoviePilotTool):
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
             # 构建消息渠道，优先使用当前会话的渠道信息
-            channel = None
-            if self._channel:
-                try:
-                    channel = NotificationChannel(self._channel)
-                except (ValueError, KeyError):
-                    channel = None
+            channel = resolve_channel(self._channel)
 
             # 发送命令执行事件，与 message.py 中的方式一致
             eventmanager.send_event(

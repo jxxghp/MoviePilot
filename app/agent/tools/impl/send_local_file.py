@@ -10,8 +10,7 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.message import MessageType
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
-from app.schemas.types import NotificationChannel
+from app.schemas.notification import ChannelCapabilityManager, ChannelCapability, channel_identity, resolve_channel
 
 
 class SendLocalFileInput(BaseModel):
@@ -72,15 +71,14 @@ class SendLocalFileTool(MoviePilotTool):
         if not self._channel or not self._source:
             return "当前不在可回传消息的会话中，无法发送附件"
 
-        try:
-            channel = NotificationChannel(self._channel)
-        except ValueError:
+        channel = resolve_channel(self._channel)
+        if not channel:
             return f"不支持的消息渠道: {self._channel}"
 
         if not ChannelCapabilityManager.supports_capability(
             channel, ChannelCapability.FILE_SENDING
         ):
-            return f"当前渠道 {channel.value} 暂不支持发送本地文件"
+            return f"当前渠道 {channel_identity(channel)} 暂不支持发送本地文件"
 
         resolved_path = Path(file_path).expanduser()
         if not resolved_path.is_absolute():
@@ -91,7 +89,7 @@ class SendLocalFileTool(MoviePilotTool):
         logger.info(
             "执行工具: %s, channel=%s, file=%s",
             self.name,
-            channel.value,
+            channel_identity(channel),
             resolved_path,
         )
 

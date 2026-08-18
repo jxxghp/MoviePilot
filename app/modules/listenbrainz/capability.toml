@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "ListenBrainz"
-subtype = "ListenBrainz"
 priority = 5
 
 [activation]

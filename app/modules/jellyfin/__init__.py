@@ -9,7 +9,6 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas.types import MediaServerType
 
 
 class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
@@ -27,13 +26,6 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
     @staticmethod
     def get_name() -> str:
         return "Jellyfin"
-
-    @staticmethod
-    def get_subtype() -> MediaServerType:
-        """
-        获取模块子类型
-        """
-        return MediaServerType.Jellyfin
 
     @staticmethod
     def get_priority() -> int:

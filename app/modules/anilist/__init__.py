@@ -9,7 +9,6 @@ from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
 from app.schemas.types import (
-    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -49,11 +48,6 @@ class AniListModule(_ModuleBase):
     def get_name() -> str:
         """获取模块名称"""
         return "AniList"
-
-    @staticmethod
-    def get_subtype() -> MediaRecognizeType:
-        """获取模块子类型"""
-        return MediaRecognizeType.AniList
 
     @staticmethod
     def get_priority() -> int:

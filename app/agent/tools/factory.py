@@ -7,8 +7,7 @@ from app.agent.llm.capability import AgentCapabilityManager
 from app.foundation.reflection import ModuleHelper
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
-from app.schemas.notification import ChannelCapabilityManager
-from app.schemas.types import NotificationChannel
+from app.schemas.notification import ChannelCapabilityManager, resolve_channel
 from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
@@ -141,11 +140,8 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _should_enable_choice_tool(channel: Optional[str] = None) -> bool:
-        if not channel:
-            return False
-        try:
-            message_channel = NotificationChannel(channel)
-        except ValueError:
+        message_channel = resolve_channel(channel)
+        if not message_channel:
             return False
         return ChannelCapabilityManager.supports_buttons(
             message_channel

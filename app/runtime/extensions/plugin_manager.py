@@ -30,6 +30,7 @@ from app.runtime.extensions.plugin.projection import PluginExtension, PluginProj
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -211,6 +212,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 # 存储运行实例
                 self._running_plugins[plugin_id] = plugin_obj
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
+                # 同步插件声明的渠道能力
+                self._sync_channel_capabilities(plugin_id)
                 # 启用的插件才设置事件注册状态可用
                 if extension.is_enabled():
                     eventmanager.enable_event_handler(plugin)
@@ -239,6 +242,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         else:
             # 禁用插件类的事件处理器
             eventmanager.disable_event_handler(type(plugin))
+        # 配置变更可能启用或停用插件，重新同步渠道能力登记
+        self._sync_channel_capabilities(plugin_id)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -278,6 +283,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         for plugin_id, plugin in plugins.items():
             eventmanager.disable_event_handler(type(plugin))
             self.__stop_plugin(plugin)
+            # 插件停止后撤销其渠道能力登记，不留残留
+            self._revoke_channel_capabilities(plugin_id)
         # 清空对象
         if pid:
             # 清空指定插件
@@ -959,6 +966,35 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger,
             self.get_plugin_remote_entry,
         )
+
+    def _sync_channel_capabilities(self, plugin_id: str) -> None:
+        """按插件当前声明重建其在渠道能力管理器中的登记。
+
+        :param plugin_id: 插件 ID
+        :return: 无返回值
+        """
+        try:
+            declared = self._plugin_projection().channel_capabilities(plugin_id)
+            ChannelCapabilityManager.register_extension_capabilities(
+                plugin_id, declared.get(plugin_id, [])
+            )
+        except Exception as error:
+            logger.error(f"同步插件 {plugin_id} 渠道能力登记出错：{str(error)}")
+
+    @staticmethod
+    def _revoke_channel_capabilities(plugin_id: str) -> None:
+        """撤销插件在渠道能力管理器中的登记。
+
+        插件停止后其启用状态声明不再可信，须直接清空登记，不能依赖
+        重新查询插件当前声明的同步路径。
+
+        :param plugin_id: 插件 ID
+        :return: 无返回值
+        """
+        try:
+            ChannelCapabilityManager.register_extension_capabilities(plugin_id, [])
+        except Exception as error:
+            logger.error(f"撤销插件 {plugin_id} 渠道能力登记出错：{str(error)}")
 
     def _plugin_catalog(self) -> Any:
         """构造绑定当前市场客户端和插件 DTO 映射器的目录应用服务。"""

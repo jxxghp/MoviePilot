@@ -43,6 +43,7 @@ from app.schemas.transfer import DownloaderTorrent
 from app.schemas.message import Message
 from app.schemas.event import ResourceSelectionEventData
 from app.schemas.event import ResourceDownloadEventData
+from app.schemas.notification import channel_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, NotificationChannel, MessageType, ContentType, \
     ChainEventType
 from app.adapters.network.http import RequestUtils
@@ -1179,7 +1180,7 @@ class DownloadChain(ChainBase):
                 torrent_site=_torrent.site_name,
                 userid=userid,
                 username=username,
-                channel=channel.value if channel else None,
+                channel=channel_identity(channel),
                 date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                 media_category=_media.category,
                 episode_group=_media.episode_group,

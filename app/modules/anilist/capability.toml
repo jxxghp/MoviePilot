@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "AniList"
-subtype = "AniList"
 priority = 4
 
 [activation]

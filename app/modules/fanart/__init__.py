@@ -7,7 +7,7 @@ from app.domain.context import MediaInfo
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import MediaType, OtherModulesType
+from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 
@@ -339,13 +339,6 @@ class FanartModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Fanart"
-
-    @staticmethod
-    def get_subtype() -> OtherModulesType:
-        """
-        获取模块子类型
-        """
-        return OtherModulesType.Fanart
 
     @staticmethod
     def get_priority() -> int:

@@ -7,7 +7,6 @@ depends_on = []
 [metadata]
 name = "Emby"
 service_config = "MediaServers"
-subtype = "Emby"
 priority = 1
 
 [activation]

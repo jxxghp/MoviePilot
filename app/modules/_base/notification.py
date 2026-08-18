@@ -16,7 +16,7 @@ from app.modules import _MessageBase, _ModuleBase, TService
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
-from app.schemas.types import ChainEventType
+from app.schemas.types import ChainEventType, NotificationChannel
 
 
 class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
@@ -28,6 +28,13 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
     _admin_config_key: str = ""
     # 命令注册事件源标识，默认取模块名，子类可覆写
     _command_origin: Optional[str] = None
+
+    @staticmethod
+    def get_subtype() -> NotificationChannel:
+        """
+        返回本渠道的标识
+        """
+        pass
 
     @classmethod
     def _get_admins(cls, config: Optional[dict]) -> List[str]:

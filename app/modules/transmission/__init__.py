@@ -12,7 +12,6 @@ from app.modules.transmission.transmission import Transmission
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
-    DownloaderType,
     TorrentQueryStatus,
     TorrentStatus,
 )
@@ -40,13 +39,6 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     @staticmethod
     def get_name() -> str:
         return "Transmission"
-
-    @staticmethod
-    def get_subtype() -> DownloaderType:
-        """
-        获取模块子类型
-        """
-        return DownloaderType.Transmission
 
     @staticmethod
     def get_priority() -> int:

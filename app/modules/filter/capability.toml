@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "过滤器"
-subtype = "Filter"
 priority = 4
 
 [activation]

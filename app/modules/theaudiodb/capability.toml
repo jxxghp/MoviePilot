@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "TheAudioDB"
-subtype = "TheAudioDB"
 priority = 1
 
 [activation]

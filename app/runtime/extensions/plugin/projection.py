@@ -9,6 +9,7 @@ from app.runtime.extensions.contract import (
     supports_extension_hook,
 )
 from app.runtime.log import logger as default_logger
+from app.schemas.notification import ChannelCapabilities, channel_identity
 
 
 class PluginExtension:
@@ -401,6 +402,41 @@ class PluginProjection:
             )
         )
         return items
+
+    def channel_capabilities(
+        self, pid: Optional[str] = None
+    ) -> Dict[str, List[ChannelCapabilities]]:
+        """投影启用插件声明的消息渠道能力。
+
+        :param pid: 插件 ID，为空时返回全部运行态插件
+        :return: 插件 ID 到其声明的 `ChannelCapabilities` 列表的映射
+        """
+        result: Dict[str, List[ChannelCapabilities]] = {}
+        for extension in self._extensions(pid):
+            plugin_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "get_channel_capabilities"
+            ):
+                continue
+            try:
+                declared = plugin.get_channel_capabilities() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {plugin_id} 渠道能力出错：{str(error)}"
+                )
+                continue
+            accepted: List[ChannelCapabilities] = []
+            for item in declared:
+                if not isinstance(item, ChannelCapabilities):
+                    self._logger.warning(
+                        f"插件[{plugin_id}]声明的渠道能力类型无效，已跳过：{item!r}"
+                    )
+                    continue
+                if not channel_identity(item.channel):
+                    continue
+                accepted.append(item)
+            result[plugin_id] = accepted
+        return result
 
     def dashboard_metadata(self) -> List[Dict[str, str]]:
         """投影启用插件的单仪表板或多仪表板元信息。"""

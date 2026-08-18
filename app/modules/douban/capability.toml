@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "豆瓣"
-subtype = "Douban"
 priority = 2
 
 [activation]

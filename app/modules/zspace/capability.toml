@@ -7,7 +7,6 @@ depends_on = []
 [metadata]
 name = "极影视"
 service_config = "MediaServers"
-subtype = "ZSpace"
 priority = 6
 
 [activation]

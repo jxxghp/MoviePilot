@@ -9,7 +9,6 @@ from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import OtherModulesType
 from app.adapters.network.http import RequestUtils
 
 
@@ -42,11 +41,6 @@ class LrclibModule(_ModuleBase):
     def get_name() -> str:
         """返回模块展示名称。"""
         return "LRCLIB"
-
-    @staticmethod
-    def get_subtype() -> OtherModulesType:
-        """返回 LRCLIB 模块子类型。"""
-        return OtherModulesType.Lrclib
 
     @staticmethod
     def get_priority() -> int:

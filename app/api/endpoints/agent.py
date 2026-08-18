@@ -61,6 +61,7 @@ from app.application.messaging.agent import (
 from app.application.messaging.router import has_pending_interaction
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
+from app.schemas.notification import channel_identity
 from app.schemas.types import EventType, NotificationChannel
 
 router = ResponseAPIRouter()
@@ -1257,9 +1258,7 @@ def _extract_web_agent_message_from_event_data(
         logger.debug(f"解析WebAgent通知事件失败: {err}")
         return None
 
-    channel = message.channel
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else channel
-    if channel_value != NotificationChannel.WebAgent.value:
+    if channel_identity(message.channel) != NotificationChannel.WebAgent.value:
         return None
     return message
 
@@ -1290,9 +1289,7 @@ def _get_web_agent_message_user_id(message: _SchemaMessage) -> Optional[str]:
     :return: 用户 ID 字符串，事件不属于 WebAgent 时返回 None
     """
     try:
-        channel = message.channel
-        channel_value = channel.value if isinstance(channel, NotificationChannel) else channel
-        if channel_value != NotificationChannel.WebAgent.value:
+        if channel_identity(message.channel) != NotificationChannel.WebAgent.value:
             return None
         user_id = message.userid
         return str(user_id) if user_id is not None else None

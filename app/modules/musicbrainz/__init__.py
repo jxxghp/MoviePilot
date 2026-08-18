@@ -23,7 +23,6 @@ from app.modules.musicbrainz.music_cache import MusicBrainzCache
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
-    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -140,11 +139,6 @@ class MusicBrainzModule(_ModuleBase):
     def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return MusicBrainzModule._source
-
-    @staticmethod
-    def get_subtype() -> MediaRecognizeType:
-        """返回 MusicBrainz 模块子类型。"""
-        return MediaRecognizeType.MusicBrainz
 
     @staticmethod
     def get_priority() -> int:

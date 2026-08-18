@@ -9,7 +9,6 @@ from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
 from app.schemas.types import (
-    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -62,13 +61,6 @@ class BangumiModule(_ModuleBase):
         获取模块名称
         """
         return "Bangumi"
-
-    @staticmethod
-    def get_subtype() -> MediaRecognizeType:
-        """
-        获取模块子类型
-        """
-        return MediaRecognizeType.Bangumi
 
     @staticmethod
     def get_priority() -> int:

@@ -10,7 +10,6 @@ from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
-    DownloaderType,
     TorrentQueryStatus,
     TorrentStatus,
 )
@@ -31,13 +30,6 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
     @staticmethod
     def get_name() -> str:
         return "Rtorrent"
-
-    @staticmethod
-    def get_subtype() -> DownloaderType:
-        """
-        获取模块子类型
-        """
-        return DownloaderType.Rtorrent
 
     @staticmethod
     def get_priority() -> int:

@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Dict, Any, List, Set, Callable
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import JsonData
-from app.schemas.types import NotificationChannel
+from app.schemas.notification import ChannelField
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource
@@ -380,7 +380,7 @@ class ResourceDownloadEventData(ChainEventData):
     # 输入参数
     context: Any = Field(None, description="当前资源上下文")
     episodes: Optional[Set[int]] = Field(None, description="需要下载的集数")
-    channel: Optional[NotificationChannel] = Field(None, description="通知渠道")
+    channel: ChannelField = Field(None, description="通知渠道")
     origin: Optional[str] = Field(None, description="来源")
     downloader: Optional[str] = Field(None, description="下载器")
     options: Optional[dict] = Field(default={}, description="其他参数")

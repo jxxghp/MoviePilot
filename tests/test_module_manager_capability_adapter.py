@@ -1009,7 +1009,8 @@ assert len(modules) == len(manager.list_specs()) == 44
 for spec in manager.list_specs():
     implementation = modules[spec.id]
     assert implementation.get_name() == spec.metadata["name"]
-    assert implementation.get_subtype().name == spec.metadata["subtype"]
+    if "subtype" in spec.metadata:
+        assert implementation.get_subtype().name == spec.metadata["subtype"]
     assert implementation.get_priority() == spec.metadata["priority"]
 manager.shutdown()
 """
@@ -1036,20 +1037,21 @@ def _write_single_module_manifest(
     module_root: Path,
     *,
     package: str,
-    subtype: str,
+    subtype: Optional[str] = None,
     service_config: Optional[str] = None,
 ) -> None:
     """在合成模块根下写入一个只含单个包的 Host Module 声明，用于单独测试 metadata 校验。
 
     :param module_root: 合成模块根目录
     :param package: 一级模块包名
-    :param subtype: 模块子类型
+    :param subtype: 模块子类型，为空时不声明
     :param service_config: 模块消费的服务配置键，为空时不声明
     """
     package_dir = module_root / package
     package_dir.mkdir(parents=True)
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
     service_line = f'service_config = "{service_config}"\n' if service_config else ""
+    subtype_line = f'subtype = "{subtype}"\n' if subtype else ""
     watch = f'["{service_config}"]' if service_config else "[]"
     (package_dir / "capability.toml").write_text(
         f"""
@@ -1061,8 +1063,7 @@ depends_on = []
 
 [metadata]
 name = "{package.title()}"
-{service_line}subtype = "{subtype}"
-priority = 1
+{service_line}{subtype_line}priority = 1
 
 [activation]
 policy = "bootstrap"
@@ -1094,11 +1095,11 @@ def test_manifest_accepts_unregistered_subtype_for_non_notification_module(
     assert specs[0].metadata["subtype"] == "TotallyNewBackend"
 
 
-def test_manifest_rejects_unregistered_subtype_for_notification_module(
+def test_manifest_accepts_unregistered_subtype_for_notification_module(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """通知渠道模块声明未登记的 subtype 时仍被拒绝，因为它驱动 Message.channel 枚举字段。"""
+    """通知渠道模块声明未登记的 subtype 仍能通过 inventory 校验，渠道标识取值不再要求登记于内核枚举。"""
     module_root = tmp_path / "modules"
     _write_single_module_manifest(
         module_root,
@@ -1108,7 +1109,27 @@ def test_manifest_rejects_unregistered_subtype_for_notification_module(
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
-    with pytest.raises(ValueError, match="NotificationChannel"):
+    registry = host_module_adapter.build_host_module_registry()
+
+    specs = registry.list_specs()
+    assert len(specs) == 1
+    assert specs[0].metadata["subtype"] == "TotallyNewChannel"
+
+
+def test_manifest_requires_subtype_for_notification_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """通知渠道模块必须声明 subtype，它是渠道标识的必要元数据。"""
+    module_root = tmp_path / "modules"
+    _write_single_module_manifest(
+        module_root,
+        package="unlabeledchannel",
+        service_config="Notifications",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    with pytest.raises(ValueError, match="subtype"):
         host_module_adapter.build_host_module_registry()
 
 

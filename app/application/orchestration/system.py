@@ -10,7 +10,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
-from app.schemas.notification import NotificationChannel
+from app.schemas.notification import ChannelRef, channel_identity, resolve_channel
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
 from version import FRONTEND_VERSION, APP_VERSION
@@ -23,7 +23,7 @@ class SystemChain(ChainBase):
 
     _restart_file = "__system_restart__"
 
-    def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def remote_clear_cache(self, channel: ChannelRef, userid: Union[int, str], source: Optional[str] = None):
         """
         清理系统缓存
         """
@@ -35,7 +35,7 @@ class SystemChain(ChainBase):
             userid=userid,
             save_history=False))
 
-    def restart(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def restart(self, channel: ChannelRef, userid: Union[int, str], source: Optional[str] = None):
         """
         重启系统
         """
@@ -48,7 +48,7 @@ class SystemChain(ChainBase):
                 save_history=False))
             # 保存重启信息
             self.save_cache({
-                "channel": channel.value,
+                "channel": channel_identity(channel),
                 "userid": userid
             }, self._restart_file)
         # 主动备份一次插件
@@ -181,7 +181,7 @@ class SystemChain(ChainBase):
             title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         return title
 
-    def version(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def version(self, channel: ChannelRef, userid: Union[int, str], source: Optional[str] = None):
         """
         查看当前版本、远程版本
         """
@@ -203,9 +203,7 @@ class SystemChain(ChainBase):
             # 发送重启完成msg
             if not isinstance(restart_channel, dict):
                 restart_channel = json.loads(restart_channel)
-            channel = next(
-                (channel for channel in NotificationChannel.__members__.values() if
-                 channel.value == restart_channel.get('channel')), None)
+            channel = resolve_channel(restart_channel.get('channel'))
             userid = restart_channel.get('userid')
 
             # 版本号

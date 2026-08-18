@@ -10,6 +10,7 @@ from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
 from app.schemas.message import Message
+from app.schemas.notification import ChannelCapabilities
 from app.schemas.types import MessageType, NotificationChannel
 
 
@@ -198,6 +199,14 @@ class _PluginBase(metaclass=ABCMeta):
             "id1": self.xxx1,
             "id2": self.xxx2,
         }
+        """
+        pass
+
+    def get_channel_capabilities(self) -> Optional[List[ChannelCapabilities]]:
+        """
+        声明本插件承载的消息渠道能力
+
+        :return: `ChannelCapabilities` 列表；插件不作为消息渠道时无需实现
         """
         pass
 

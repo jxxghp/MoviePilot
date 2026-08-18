@@ -770,19 +770,19 @@ class AgentCapabilityManager:
 
     @classmethod
     def _parse_message_channel(cls, channel: Optional[Any]):
-        """将渠道入参归一化为消息渠道枚举。"""
-        if not channel:
-            return None
+        """将渠道入参归一化为内建渠道枚举，非内建取值保留为渠道标识。
 
+        :param channel: 渠道枚举、枚举取值、枚举成员名、带枚举类名前缀的写法或扩展渠道标识
+        :return: 命中内建渠道时为枚举成员，否则为渠道标识字符串；空取值为 ``None``
+        """
+        from app.schemas.notification import resolve_channel
         from app.schemas.types import NotificationChannel
 
-        if isinstance(channel, NotificationChannel):
-            return channel
+        resolved = resolve_channel(channel)
+        if not isinstance(resolved, str):
+            return resolved
 
-        channel_text = str(channel).strip()
-        if not channel_text:
-            return None
-        lowered_channel = channel_text.lower()
+        lowered_channel = resolved.lower()
         for channel_item in NotificationChannel:
             aliases = {
                 channel_item.value.lower(),
@@ -791,7 +791,7 @@ class AgentCapabilityManager:
             }
             if lowered_channel in aliases:
                 return channel_item
-        return None
+        return resolved
 
     @staticmethod
     def _is_wechat_app_mode(source: Optional[str]) -> bool:

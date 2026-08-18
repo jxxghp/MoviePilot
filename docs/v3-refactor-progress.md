@@ -206,6 +206,62 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
   是否加进 SDK 仍需人工决定。含行为适配的模块（旧关键字参数转发、签名伪装、
   子类覆写）只校验不生成。
 
+### 1.11 模块类型枚举退役，服务实例按配置归属定位
+
+`ModuleType` 到最后只剩一个真实职责：按族找出模块、再问模块要其内部的服务实例。
+其余四十余个模块的类型取值无任何代码读取，属于被迫声明。
+
+- 能力清单新增可选的 `metadata.service_config`，20 个多实例服务模块声明自己消费哪个
+  配置键；清单校验要求该字段必须同时出现在配置变更监听里，确保配置改动能重建实例。
+- 服务注册表按配置归属定位模块实例，取代按类型枚举查找；模块内两百余处实例取用零改动。
+- 类型枚举、41 个模块的 `get_type()`、按类型与按子类型的查找一并移除，
+  其中按子类型查找早已无调用者。
+
+同期落地扩展实例的运行期标识（`app/runtime/extensions/instance.py`）：默认实例的实例键
+退化为裸扩展标识，因此单实例扩展的取值与不区分实例时一致。实例键构造只约束不含分隔符，
+路径安全校验移到真正构造路径处——插件数据目录此前完全没有校验。
+
+### 1.12 渠道标识开放：最后一处闭集焊死
+
+`NotificationChannel` 此前是内核里的闭集：新增一个消息渠道必须改 `app/schemas/types.py`
+（加枚举成员）和 `app/schemas/notification.py`（加静态能力表条目），插件无从参与。
+判定它是焊缝而非类型系统硬约束的依据：
+
+- 落库的 `channel` 全部是 `String` 列，枚举只活在内存；
+- 12 处 `NotificationChannel(...)` 转换点**全部**有 try/except 守卫，未知取值降级不崩溃；
+- 姊妹族早已开放——`FileItem.storage`、`DownloaderConf.type`、`MediaServerConf.type`
+  都是自由字符串，`storage_backend_identity` 用 `getattr(schema, "value", schema)`
+  同时接受枚举与裸字符串。通知渠道是唯一把标识泄漏进 Pydantic 字段类型的一族。
+
+改动：
+
+- 标识归一收敛为一份实现。渠道在接口、配置与插件之间以枚举对象、枚举取值、枚举成员名
+  三种形式流通，此前 `runtime/channels.py`、`db/oper/agentchat.py`、`api/endpoints/agent.py`、
+  `agent/llm/capability.py` 各写各的转换，`wechatclawbot` 甚至在模块内手写三态兼容。
+  现由 `resolve_channel` / `channel_identity` 统一收口。
+- 能力表双轨：内建 10 渠道的静态表内容一字未动，新增按登记方整体替换的扩展登记表，
+  查表内建优先、未命中查扩展。插件经 `_PluginBase.get_channel_capabilities()` 声明，
+  由插件投影按严格契约校验后在加载、配置变更、停止三个生命周期点同步登记；
+  停止走无条件撤销而非重算，因为终止不翻转插件自身的启用态声明。
+- 传输模型放开：`Message` / `IncomingMessage` / `MessageResponse` /
+  `ResourceDownloadEventData` 的 `channel` 改为入模型前归一，内建渠道仍得到
+  同一枚举对象，既有 `==` 比较与 `to_dict()` 行为不变。
+- 修掉 25 处 `channel.value`：扩展渠道是字符串，取 `.value` 会抛 `AttributeError`。
+
+顺带暴露并修掉的缺陷：`app/agent/tools/base.py` 的管理员判定对任何非内建渠道
+恒返回 `False`——`matches_channel_admin` 本身早已接受字符串，是这层多余的枚举
+构造把扩展渠道的管理员挡在门外。
+
+同时退役无人读取的 `subtype`：`metadata.subtype` 的唯一读取点是它自己的校验逻辑，
+`/modulelist` 不返回该字段；`get_subtype()` 的真实读取点只有通知渠道的管理员回退、
+`wechatclawbot` 自过滤与存储基类三处。据此删除 27 个模块的 `get_subtype()` 与
+对应的清单声明、以及 `_ModuleBase` 上的全域契约声明；`subtype` 降为可选元数据，
+仅通知渠道（标识必需）与存储后端（由后端 schema 推导）保留，共 17 个。
+清单校验中"通知渠道 subtype 必须是内核枚举已登记成员名"这条准入被删除。
+`DownloaderType` / `MediaServerType` / `MediaRecognizeType` / `OtherModulesType`
+四个枚举保留在 `app/schemas/types.py`——宿主不再使用，但它们是插件可直接 import
+的公共词表，删除是无谓的生态破坏。
+
 ---
 
 ## 二、待办
@@ -223,6 +279,11 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
    纯插件兼容门面；其中约 11 个类插件并不使用，可正常化为普通服务。
 4. 能力索引的返回值从模块实例改为契约视图（受编排层与既有测试的实例身份依赖阻碍），
    以及为插件补连通性自检契约（当前插件视图的自检恒为空）。
+5. **插件多实例**：同一插件类按配置扇出多个独立实例（各自启用态、日志等级、
+   业务参数、数据目录），当前只有物理复制文件、改类名生成新插件 ID 的克隆机制。
+   前置依赖是插件自管理数据库（独立 MetaData 与库文件），当前全局单例 DB
+   结构性阻断插件自有表。1.11 落地的扩展实例标识只服务内建宿主模块，
+   插件层零引用，可作为接入点。
 
 ---
 
@@ -231,7 +292,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **5185 passed / 1 failed** |
+| 当前 | **5276 passed / 1 failed** |
 
 官方基线上那条失败是
 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`：

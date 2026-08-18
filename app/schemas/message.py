@@ -4,6 +4,7 @@ from typing import Optional, Union, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import JsonData
+from app.schemas.notification import ChannelField
 from app.schemas.types import ContentType, MessageType, NotificationChannel
 
 
@@ -43,7 +44,7 @@ class MessageResponse(BaseModel):
     # 聊天ID
     chat_id: Optional[Union[str, int]] = None
     # 消息渠道
-    channel: Optional[NotificationChannel] = None
+    channel: ChannelField = None
     # 消息来源
     source: Optional[str] = None
     # 渠道自定义上下文（如飞书流式卡片 card_id/element_id/sequence）
@@ -170,7 +171,7 @@ class IncomingMessage(BaseModel):
     # 渠道适配器依据稳定用户 ID、管理员名单及渠道主用户 ID 生成的授权事实
     is_channel_admin: Optional[bool] = None
     # 消息渠道
-    channel: Optional[NotificationChannel] = None
+    channel: ChannelField = None
     # 来源（渠道名称）
     source: Optional[str] = None
     # 消息体
@@ -224,7 +225,7 @@ class Message(BaseModel):
     """
 
     # 消息渠道
-    channel: Optional[NotificationChannel] = None
+    channel: ChannelField = None
     # 消息来源
     source: Optional[str] = None
     # 消息类型

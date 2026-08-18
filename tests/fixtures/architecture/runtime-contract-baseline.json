@@ -1663,19 +1663,19 @@
       },
       {
         "caller": "app.application.orchestration._messaging",
-        "line": 217
+        "line": 215
       },
       {
         "caller": "app.application.orchestration._messaging",
-        "line": 227
+        "line": 225
       },
       {
         "caller": "app.application.orchestration._messaging",
-        "line": 333
+        "line": 331
       },
       {
         "caller": "app.application.orchestration._messaging",
-        "line": 343
+        "line": 341
       },
       {
         "caller": "app.application.orchestration._recognition",
@@ -1703,11 +1703,11 @@
       },
       {
         "caller": "app.modules.navidrome",
-        "line": 86
+        "line": 81
       },
       {
         "caller": "app.modules.plex",
-        "line": 92
+        "line": 85
       },
       {
         "caller": "app.runtime.extensions.module_manager",
@@ -1721,7 +1721,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 1272
+            "line": 1271
           }
         ]
       },
@@ -1742,7 +1742,7 @@
           },
           {
             "caller": "app.modules._base.notification",
-            "line": 92
+            "line": 99
           }
         ]
       },
@@ -1829,7 +1829,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1052
+            "line": 1053
           }
         ]
       },
@@ -1838,7 +1838,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1419
+            "line": 1420
           }
         ]
       },
@@ -1963,11 +1963,11 @@
         "producers": [
           {
             "caller": "app.agent.tools.impl.run_slash_command",
-            "line": 90
+            "line": 86
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 443
+            "line": 444
           }
         ]
       },
@@ -1993,7 +1993,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1240
+            "line": 1241
           }
         ]
       },
@@ -2002,7 +2002,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2085
+            "line": 2086
           }
         ]
       },
@@ -2010,7 +2010,7 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2069
+            "line": 2070
           }
         ],
         "producers": [
@@ -2041,7 +2041,7 @@
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 687
+            "line": 688
           }
         ]
       },
@@ -2076,7 +2076,7 @@
         "consumers": [
           {
             "caller": "app.api.endpoints.agent",
-            "line": 1337
+            "line": 1334
           }
         ],
         "producers": []
@@ -2095,7 +2095,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 755
+            "line": 762
           }
         ]
       },
@@ -2286,7 +2286,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.message",
-            "line": 505
+            "line": 506
           }
         ]
       },

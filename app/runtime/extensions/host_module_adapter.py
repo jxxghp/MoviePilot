@@ -24,10 +24,7 @@ from app.runtime.extensions.contract import (
 )
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas.types import (
-    NotificationChannel,
-    SystemConfigKey,
-)
+from app.schemas.types import SystemConfigKey
 
 
 HOST_MODULE_KIND = "host_module"
@@ -40,14 +37,13 @@ _SERVICE_CONFIG_GETTERS = MappingProxyType({
     SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
 })
 # 模块 manifest 必须声明的元数据字段
-_REQUIRED_METADATA_FIELDS = frozenset({"name", "subtype", "priority"})
+_REQUIRED_METADATA_FIELDS = frozenset({"name", "priority"})
 # 只有按服务配置扇出多实例的模块才声明的元数据字段
 _SERVICE_CONFIG_FIELD = "service_config"
-# 通知渠道的 subtype 会成为 Message.channel（Pydantic 枚举字段）与
-# ChannelCapabilityManager 按渠道能力表的查找键，未登记的取值会在消息分发
-# 路径上以枚举校验失败告终，因此仍要求必须是 NotificationChannel 已登记成员名。
+# subtype 是可选元数据字段，声明时必须是非空字符串；渠道标识的取值不
+# 再要求登记于内核枚举，是否声明由模块自身决定
+_SUBTYPE_FIELD = "subtype"
 _NOTIFICATION_CONFIG_KEY = SystemConfigKey.Notifications.value
-_NOTIFICATION_SUBTYPE_NAMES = frozenset(item.name for item in NotificationChannel)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +122,9 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
         metadata_fields = set(spec.metadata)
         missing_metadata = _REQUIRED_METADATA_FIELDS - metadata_fields
         unknown_metadata = (
-            metadata_fields - _REQUIRED_METADATA_FIELDS - {_SERVICE_CONFIG_FIELD}
+            metadata_fields
+            - _REQUIRED_METADATA_FIELDS
+            - {_SERVICE_CONFIG_FIELD, _SUBTYPE_FIELD}
         )
         if missing_metadata or unknown_metadata:
             raise ValueError(
@@ -143,16 +141,12 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
                 raise ValueError(
                     f"{spec.source}: activation.watch 必须包含 metadata.service_config"
                 )
-        subtype = spec.metadata["subtype"]
-        if not isinstance(subtype, str) or not subtype:
+        subtype = spec.metadata.get(_SUBTYPE_FIELD)
+        if subtype is not None and (not isinstance(subtype, str) or not subtype):
             raise ValueError(f"{spec.source}: metadata.subtype 必须是非空字符串")
-        # 非通知渠道模块的 subtype 只是展示/追溯元数据（族内识别已经改走
-        # 运行期反射与 selector 的 match_value 字符串），未登记的取值不再
-        # 阻止能力加载，新增后端/存储/识别源不必先改内核枚举。
-        if service_config == _NOTIFICATION_CONFIG_KEY and subtype not in _NOTIFICATION_SUBTYPE_NAMES:
+        if service_config == _NOTIFICATION_CONFIG_KEY and subtype is None:
             raise ValueError(
-                f"{spec.source}: 非法 metadata.subtype={subtype!r}，"
-                "通知渠道模块的 subtype 必须是 NotificationChannel 已登记的枚举成员名"
+                f"{spec.source}: 通知渠道模块必须声明 metadata.subtype"
             )
         priority = spec.metadata["priority"]
         if isinstance(priority, bool) or not isinstance(priority, int):

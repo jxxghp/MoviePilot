@@ -9,7 +9,6 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.types import MediaServerType
 
 
 class EmbyModule(_MediaServerModuleBase[Emby]):
@@ -27,13 +26,6 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     @staticmethod
     def get_name() -> str:
         return "Emby"
-
-    @staticmethod
-    def get_subtype() -> MediaServerType:
-        """
-        获取模块子类型
-        """
-        return MediaServerType.Emby
 
     @staticmethod
     def get_priority() -> int:

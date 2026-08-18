@@ -14,7 +14,6 @@ from app.modules import _ModuleBase
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
-    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -54,11 +53,6 @@ class TheAudioDbModule(_ModuleBase):
     def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return TheAudioDbModule._source
-
-    @staticmethod
-    def get_subtype() -> MediaRecognizeType:
-        """返回 TheAudioDB 模块子类型。"""
-        return MediaRecognizeType.TheAudioDB
 
     @staticmethod
     def get_priority() -> int:

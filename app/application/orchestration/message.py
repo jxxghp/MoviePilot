@@ -34,6 +34,7 @@ from app.runtime.log import logger
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
+from app.schemas.notification import channel_identity
 from app.schemas.types import EventType, NotificationChannel
 from app.adapters.network.http import RequestUtils
 
@@ -100,7 +101,7 @@ class MessageChain(ChainBase):
         def to_dict(self) -> Dict[str, Any]:
             """转换为模块接口可安全传递的普通字典。"""
             return {
-                "channel": self.channel.value,
+                "channel": channel_identity(self.channel),
                 "source": self.source,
                 "userid": self.userid,
                 "message_id": self.message_id,
@@ -349,7 +350,7 @@ class MessageChain(ChainBase):
         if manager is None or not manager.matches_secret_confirmation(
             session_id,
             str(userid),
-            channel=channel.value,
+            channel=channel_identity(channel),
             source=source,
         ):
             return False
@@ -407,7 +408,7 @@ class MessageChain(ChainBase):
             else:
                 logger.warning(
                     "渠道 %s 不支持回调，但收到了回调消息：%s",
-                    channel.value,
+                    channel_identity(channel),
                     callback_data,
                 )
             return False
@@ -1333,7 +1334,7 @@ class MessageChain(ChainBase):
                 "message": user_message,
                 "images": images,
                 "files": prepared_files,
-                "channel": channel.value if channel else None,
+                "channel": channel_identity(channel),
                 "source": source,
                 "username": username,
                 "is_channel_admin": is_channel_admin,
@@ -1458,7 +1459,7 @@ class MessageChain(ChainBase):
                 else:
                     logger.debug(
                         "暂不支持的语音引用: channel=%s, source=%s, ref=%s",
-                        channel.value if channel else None,
+                        channel_identity(channel),
                         source,
                         audio_ref,
                     )
@@ -1467,7 +1468,7 @@ class MessageChain(ChainBase):
                 if not content:
                     logger.warning(
                         "语音下载失败，跳过识别: channel=%s, source=%s, ref=%s",
-                        channel.value if channel else None,
+                        channel_identity(channel),
                         source,
                         audio_ref,
                     )
@@ -1480,7 +1481,7 @@ class MessageChain(ChainBase):
                     transcripts.append(transcript)
                     logger.info(
                         "语音识别成功: channel=%s, source=%s, ref=%s, text_len=%s",
-                        channel.value if channel else None,
+                        channel_identity(channel),
                         source,
                         audio_ref,
                         len(transcript),
@@ -1582,7 +1583,7 @@ class MessageChain(ChainBase):
                 else:
                     logger.debug(
                         "暂不支持直接转换为 data URL 的附件引用: channel=%s, source=%s, ref=%s",
-                        channel.value if channel else None,
+                        channel_identity(channel),
                         source,
                         attachment_ref,
                     )
@@ -1591,7 +1592,7 @@ class MessageChain(ChainBase):
                 if len(data_urls) > before_count:
                     logger.info(
                         "附件读取成功并已转换为 data URL: channel=%s, source=%s, ref=%s, mime_type=%s",
-                        channel.value if channel else None,
+                        channel_identity(channel),
                         source,
                         attachment_ref,
                         attachment.mime_type,
@@ -1599,7 +1600,7 @@ class MessageChain(ChainBase):
             except Exception as err:
                 logger.error(
                     "附件读取失败，无法转换为 data URL: channel=%s, source=%s, ref=%s, error=%s",
-                    channel.value if channel else None,
+                    channel_identity(channel),
                     source,
                     attachment_ref,
                     err,
@@ -1764,7 +1765,7 @@ class MessageChain(ChainBase):
             return resp.content if resp and resp.content else None
         logger.debug(
             "暂不支持的附件引用: channel=%s, source=%s, ref=%s",
-            channel.value if channel else None,
+            channel_identity(channel),
             source,
             file_ref,
         )

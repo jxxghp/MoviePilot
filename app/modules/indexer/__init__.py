@@ -14,7 +14,7 @@ from app.modules.indexer.spider.registry import build_search_kwargs, resolve_spi
 from app.schemas.types import MediaSource
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
-from app.schemas.types import MediaType, OtherModulesType
+from app.schemas.types import MediaType
 from app.domain import site as site_rules
 from app.foundation import text as text_tools
 
@@ -38,13 +38,6 @@ class IndexerModule(_ModuleBase):
     def get_name() -> str:
         """获取模块名称"""
         return "站点索引"
-
-    @staticmethod
-    def get_subtype() -> OtherModulesType:
-        """
-        获取模块子类型
-        """
-        return OtherModulesType.Indexer
 
     @staticmethod
     def get_priority() -> int:

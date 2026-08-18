@@ -19,7 +19,6 @@ from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
 from app.schemas.category import CategoryConfig
 from app.schemas.types import (
     MediaImageType,
-    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
@@ -57,13 +56,6 @@ class TheMovieDbModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "TheMovieDb"
-
-    @staticmethod
-    def get_subtype() -> MediaRecognizeType:
-        """
-        获取模块子类型
-        """
-        return MediaRecognizeType.TMDB
 
     @staticmethod
     def get_priority() -> int:

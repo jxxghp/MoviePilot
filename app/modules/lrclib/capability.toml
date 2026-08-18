@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "LRCLIB"
-subtype = "Lrclib"
 priority = 5
 
 [activation]

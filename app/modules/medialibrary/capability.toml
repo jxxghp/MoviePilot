@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "文件整理"
-subtype = "FileManager"
 priority = 4
 
 [activation]

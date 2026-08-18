@@ -2,7 +2,7 @@
 
 from typing import Callable, Iterable, Optional, Union
 
-from app.schemas.types import NotificationChannel
+from app.schemas.notification import ChannelRef, channel_identity
 
 
 _ChannelAdminResolver = Callable[[Optional[dict]], Iterable[Union[str, int]]]
@@ -10,7 +10,7 @@ _CHANNEL_ADMIN_RESOLVERS: dict[str, _ChannelAdminResolver] = {}
 
 
 def register_channel_admin_resolver(
-        channel: Union[NotificationChannel, str],
+        channel: ChannelRef,
         resolver: _ChannelAdminResolver,
 ) -> None:
     """
@@ -19,8 +19,10 @@ def register_channel_admin_resolver(
     :param channel: 消息渠道
     :param resolver: 由渠道配置解析全部管理员主体 ID 的函数
     """
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
-    _CHANNEL_ADMIN_RESOLVERS[channel_value] = resolver
+    identity = channel_identity(channel)
+    if not identity:
+        raise ValueError("消息渠道标识不能为空")
+    _CHANNEL_ADMIN_RESOLVERS[identity] = resolver
 
 
 def resolve_config_principal_ids(
@@ -45,7 +47,7 @@ def resolve_config_principal_ids(
 
 
 def matches_channel_admin(
-        channel: Union[NotificationChannel, str],
+        channel: Optional[ChannelRef],
         config: Optional[dict],
         *principal_ids: Optional[Union[str, int]],
 ) -> bool:
@@ -57,8 +59,7 @@ def matches_channel_admin(
     :param principal_ids: 消息渠道提供的稳定用户主体 ID
     :return: 任一用户主体 ID 命中渠道注册的管理员集合时返回 True
     """
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
-    resolver = _CHANNEL_ADMIN_RESOLVERS.get(channel_value)
+    resolver = _CHANNEL_ADMIN_RESOLVERS.get(channel_identity(channel))
     if not resolver:
         return False
     authorized_ids = {

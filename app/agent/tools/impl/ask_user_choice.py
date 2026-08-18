@@ -14,8 +14,7 @@ from app.application.messaging.agent import (
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.message import MessageType
-from app.schemas.notification import ChannelCapabilityManager
-from app.schemas.types import NotificationChannel
+from app.schemas.notification import ChannelCapabilityManager, channel_identity, resolve_channel
 
 
 class UserChoiceOptionInput(BaseModel):
@@ -140,16 +139,15 @@ class AskUserChoiceTool(MoviePilotTool):
         if not self._channel or not self._source:
             return "当前不在可回传消息的会话中，无法发起按钮选择"
 
-        try:
-            channel = NotificationChannel(self._channel)
-        except ValueError:
+        channel = resolve_channel(self._channel)
+        if not channel:
             return f"不支持的消息渠道: {self._channel}"
 
         if not (
             ChannelCapabilityManager.supports_buttons(channel)
             and ChannelCapabilityManager.supports_callbacks(channel)
         ):
-            return f"当前渠道 {channel.value} 不支持按钮选择"
+            return f"当前渠道 {channel_identity(channel)} 不支持按钮选择"
 
         max_per_row = 1
         max_rows = ChannelCapabilityManager.get_max_button_rows(channel)
@@ -168,7 +166,7 @@ class AskUserChoiceTool(MoviePilotTool):
         request = agent_interaction_manager.create_request(
             session_id=self._session_id,
             user_id=str(self._user_id),
-            channel=channel.value,
+            channel=channel_identity(channel),
             source=self._source,
             username=self._username,
             title=title,
@@ -196,7 +194,7 @@ class AskUserChoiceTool(MoviePilotTool):
         logger.info(
             "执行工具: %s, channel=%s, session_id=%s, options=%s",
             self.name,
-            channel.value,
+            channel_identity(channel),
             self._session_id,
             len(choice_options),
         )

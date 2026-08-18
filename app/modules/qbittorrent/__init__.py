@@ -12,7 +12,6 @@ from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
-    DownloaderType,
     TorrentQueryStatus,
     TorrentStatus,
 )
@@ -58,13 +57,6 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         获取模块名称
         """
         return "Qbittorrent"
-
-    @staticmethod
-    def get_subtype() -> DownloaderType:
-        """
-        获取模块子类型
-        """
-        return DownloaderType.Qbittorrent
 
     @staticmethod
     def get_priority() -> int:

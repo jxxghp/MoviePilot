@@ -77,7 +77,7 @@ from app.schemas.event import AgentLLMProviderEventData
 from app.schemas.event import AgentTokensUsageEventData
 from app.schemas.message import Message
 from app.schemas.message import MessageType
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
+from app.schemas.notification import ChannelCapabilityManager, ChannelCapability, resolve_channel
 from app.schemas.types import ChainEventType, EventType, NotificationChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
@@ -106,7 +106,7 @@ async def _async_start_processing_status(task: "_MessageTask") -> Optional[dict]
         """在线程池中通过统一 Chain 接口启动处理状态。"""
         try:
             return AgentChain().start_message_processing_status(
-                channel=NotificationChannel(task.channel),
+                channel=resolve_channel(task.channel),
                 source=task.source,
                 userid=task.user_id,
                 message_id=task.original_message_id,
@@ -1211,13 +1211,12 @@ class MoviePilotAgent:
         # 啰嗦模式下始终需要流式输出来捕获工具调用前的 Agent 文字
         if settings.AI_AGENT_VERBOSE:
             return True
-        try:
-            channel_enum = NotificationChannel(self.channel)
-            return ChannelCapabilityManager.supports_capability(
-                channel_enum, ChannelCapability.MESSAGE_EDITING
-            )
-        except (ValueError, KeyError):
+        channel_ref = resolve_channel(self.channel)
+        if not channel_ref:
             return False
+        return ChannelCapabilityManager.supports_capability(
+            channel_ref, ChannelCapability.MESSAGE_EDITING
+        )
 
     @staticmethod
     def _get_event_value(event_data: Any, key: str, default: Any = None) -> Any:

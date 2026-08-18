@@ -14,7 +14,8 @@ from app.schemas.message import (
     ChannelCapabilityManager,
     ChannelCapability,
 )
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.notification import resolve_channel
+from app.schemas.types import MessageType
 
 
 class _StreamChain(ChainBase):
@@ -200,12 +201,12 @@ class StreamingHandler:
             return
 
         # 从渠道能力中获取单条消息最大长度
-        try:
-            channel_enum = NotificationChannel(self._channel)
+        channel_ref = resolve_channel(self._channel)
+        if channel_ref:
             self._max_message_length = ChannelCapabilityManager.get_max_message_length(
-                channel_enum
+                channel_ref
             )
-        except (ValueError, KeyError):
+        else:
             self._max_message_length = 0
 
         # 启动异步定时刷新任务
@@ -476,15 +477,12 @@ class StreamingHandler:
         """
         检查当前渠道是否支持流式输出（消息编辑）
         """
-        if not self._channel:
+        channel_ref = resolve_channel(self._channel)
+        if not channel_ref:
             return False
-        try:
-            channel_enum = NotificationChannel(self._channel)
-            return ChannelCapabilityManager.supports_capability(
-                channel_enum, ChannelCapability.MESSAGE_EDITING
-            )
-        except (ValueError, KeyError):
-            return False
+        return ChannelCapabilityManager.supports_capability(
+            channel_ref, ChannelCapability.MESSAGE_EDITING
+        )
 
     async def _flush_loop(self):
         """
@@ -618,14 +616,13 @@ class StreamingHandler:
                             self._streaming_enabled = False
                 else:
                     # 后续更新：编辑已有消息
-                    try:
-                        channel_enum = NotificationChannel(self._channel)
-                    except (ValueError, KeyError):
+                    channel_ref = resolve_channel(self._channel)
+                    if not channel_ref:
                         return
 
                     success = await run_in_threadpool(
                         chain.edit_message,
-                        channel=channel_enum,
+                        channel=channel_ref,
                         source=self._message_response.source,
                         message_id=self._message_response.message_id,
                         chat_id=self._message_response.chat_id,

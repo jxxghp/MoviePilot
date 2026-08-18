@@ -7,7 +7,6 @@ depends_on = []
 [metadata]
 name = "绿联影视"
 service_config = "MediaServers"
-subtype = "Ugreen"
 priority = 5
 
 [activation]

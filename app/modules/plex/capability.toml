@@ -7,7 +7,6 @@ depends_on = []
 [metadata]
 name = "Plex"
 service_config = "MediaServers"
-subtype = "Plex"
 priority = 3
 
 [activation]

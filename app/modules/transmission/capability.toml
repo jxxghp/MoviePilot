@@ -7,7 +7,6 @@ depends_on = []
 [metadata]
 name = "Transmission"
 service_config = "Downloaders"
-subtype = "Transmission"
 priority = 2
 
 [activation]

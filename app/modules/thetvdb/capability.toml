@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "TheTvDb"
-subtype = "TVDB"
 priority = 4
 
 [activation]

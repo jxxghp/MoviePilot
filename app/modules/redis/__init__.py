@@ -3,7 +3,6 @@ from typing import Tuple, Union
 from app.runtime.config import settings
 from app.adapters.cache.redis import RedisHelper
 from app.modules import _ModuleBase
-from app.schemas.types import OtherModulesType
 
 
 class RedisModule(_ModuleBase):
@@ -17,13 +16,6 @@ class RedisModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Redis缓存"
-
-    @staticmethod
-    def get_subtype() -> OtherModulesType:
-        """
-        获取模块子类型
-        """
-        return OtherModulesType.Redis
 
     @staticmethod
     def get_priority() -> int:
