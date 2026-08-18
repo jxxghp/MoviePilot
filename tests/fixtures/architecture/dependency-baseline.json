@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6240,
-  "edge_sha256": "8d8007bd5751e83215138b722c5f7c34ee4845465c51b3b2eca284333952696a",
+  "edge_count": 6241,
+  "edge_sha256": "ebce2283d879e94a4ab92a46566b25866b54e3042852eb8c7a7a11ef6b4d3cf4",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2928,6 +2928,7 @@
     "app.application.orchestration.ports.library -> app.domain.context",
     "app.application.orchestration.ports.library -> app.schemas",
     "app.application.orchestration.ports.library -> app.schemas.mediaserver",
+    "app.application.orchestration.ports.library -> app.schemas.types",
     "app.application.orchestration.ports.library -> app.schemas.workflow",
     "app.application.orchestration.ports.metadata -> app.application",
     "app.application.orchestration.ports.metadata -> app.application.orchestration",

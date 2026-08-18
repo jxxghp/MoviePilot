@@ -23,7 +23,43 @@ class ModuleMethodContract:
     plugin_short_circuit: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class MultiSourceCapabilityContract:
+    """记录一个多来源能力的应答来源、让出方式、收窄开关与结果取用规则。"""
+
+    method: str
+    sources: tuple[str, ...]
+    abstain: str
+    narrowing: tuple[tuple[str, str], ...]
+    arbitration: str
+
+
 _DEFAULT_CONTRACT = ModuleMethodContract(family="legacy")
+
+# 由多类来源共同应答的能力，其应答协议不体现在方法签名上，登记于此供实现方与调用方共同遵循。
+_MULTI_SOURCE_CONTRACTS = {
+    "media_exists": MultiSourceCapabilityContract(
+        method="media_exists",
+        sources=(
+            "媒体服务器：Emby、Jellyfin、Plex、TrimeMedia、Ugreen、ZSpace、Navidrome，按各自库中的条目应答",
+            "文件系统：medialibrary 按标准媒体库结构扫描已入库文件应答",
+        ),
+        abstain=(
+            "返回 None 表示本来源不认领，既涵盖库中没有该媒体，也涵盖被收窄开关排除在外；"
+            "调度据此继续询问下一来源"
+        ),
+        narrowing=(
+            ("server", "媒体服务器专有：仅同名媒体服务器应答，其余媒体服务器与文件系统来源全部让出"),
+            ("itemid", "媒体服务器专有：媒体服务器条目 ID，文件系统来源收到后直接忽略"),
+            ("LOCAL_EXISTS_SEARCH", "文件系统专有：关闭时文件系统来源一律让出，媒体服务器来源不受影响"),
+        ),
+        arbitration=(
+            "电视剧收齐全部来源答案后按季号取已存在集的并集，媒体库标识沿用最高优先级来源；"
+            "电影与音乐取首个非空答案；"
+            "同一模块下的多台同类型服务器由模块自行仲裁，对外只出一个答案"
+        ),
+    ),
+}
 
 # 首批登记高频能力族。方法名仍保持开放字符串，以兼容第三方插件自定义模块能力；
 # 未命中项继续使用冻结的 legacy 规则，并由架构快照记录新增调用位置。
@@ -32,6 +68,8 @@ _METHOD_CONTRACTS = {
     "search_medias": ModuleMethodContract(family="media-recognition"),
     "obtain_images": ModuleMethodContract(family="media-recognition"),
     "media_category": ModuleMethodContract(family="media-recognition"),
+    "media_exists": ModuleMethodContract(family="media-library"),
+    "media_files": ModuleMethodContract(family="media-library"),
     "mediaserver_items": ModuleMethodContract(family="media-server"),
     "mediaserver_iteminfo": ModuleMethodContract(family="media-server"),
     "mediaserver_play_url": ModuleMethodContract(family="media-server"),
@@ -75,6 +113,11 @@ def get_module_method_contract(method: str) -> ModuleMethodContract:
         if method.startswith(prefix):
             return contract
     return _DEFAULT_CONTRACT
+
+
+def get_multi_source_contract(method: str) -> MultiSourceCapabilityContract | None:
+    """返回方法的多来源应答契约，单一来源能力返回 ``None``。"""
+    return _MULTI_SOURCE_CONTRACTS.get(method)
 
 
 def is_explicit_module_method(method: str) -> bool:
