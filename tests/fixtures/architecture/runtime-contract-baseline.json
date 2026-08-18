@@ -1593,35 +1593,39 @@
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 80
+        "line": 92
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 81
+        "line": 93
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 82
+        "line": 94
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 83
+        "line": 95
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 84
+        "line": 96
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 85
+        "line": 97
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 86
+        "line": 98
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 87
+        "line": 99
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 109
       },
       {
         "caller": "app.testing.bootstrap",

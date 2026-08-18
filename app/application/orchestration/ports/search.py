@@ -8,6 +8,7 @@ from app.application.orchestration.ports.dispatch import CapabilityPorts
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.context import MediaPerson
+from app.schemas.filter import TorrentVerdict
 from app.schemas.types import MediaSourceSelection, MediaType
 
 
@@ -257,6 +258,26 @@ class SearchPorts(CapabilityPorts):
         """
         return self._dispatch.unicast(
             "filter_torrents",
+            rule_groups=rule_groups,
+            torrent_list=torrent_list,
+            mediainfo=mediainfo,
+        )
+
+    def analyze_torrent_candidates(
+            self,
+            rule_groups: List[str],
+            torrent_list: List[TorrentInfo],
+            mediainfo: MediaInfo = None,
+    ) -> List[List[TorrentVerdict]]:
+        """
+        收集全部分析器对候选种子的判定
+        :param rule_groups:  过滤规则组名称列表
+        :param torrent_list:  资源列表
+        :param mediainfo:  识别的媒体信息
+        :return: 每个分析器一份、按下标与资源列表对应的判定列表；不参与的分析器不计入
+        """
+        return self._dispatch.multicast(
+            "analyze_torrent_candidates",
             rule_groups=rule_groups,
             torrent_list=torrent_list,
             mediainfo=mediainfo,

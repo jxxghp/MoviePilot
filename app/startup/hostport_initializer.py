@@ -1,9 +1,11 @@
 """扩展层宿主服务端口的组合根装配。
 
 扩展经 ``app.runtime`` 下的端口取用目录、存储、命名、站点资源、规则组配置、
-文件整理、自检诊断与工作流执行。端口只保存 provider，注册本身不导入应用服务实现；
-首次取用时才物化。
+文件整理、自检诊断、工作流执行与候选种子分析。端口只保存 provider，注册本身不导入
+应用服务实现；首次取用时才物化。
 """
+
+from functools import lru_cache
 
 from app.runtime.diagnostics import DiagnosticsProvider, diagnostics_port
 from app.runtime.directories import DirectoryConfigProvider, directory_config_port
@@ -12,6 +14,7 @@ from app.runtime.mediatransfer import MediaTransferProvider, media_transfer_port
 from app.runtime.naming import NamingContextProvider, naming_context_port
 from app.runtime.siteresource import SiteResourceProvider, site_resource_port
 from app.runtime.storages import StorageConfigProvider, storage_config_port
+from app.runtime.torrentanalysis import TorrentAnalysisProvider, torrent_analysis_port
 from app.runtime.workflows import WorkflowExecutionProvider, workflow_execution_port
 
 
@@ -71,6 +74,15 @@ def _get_workflow_execution() -> WorkflowExecutionProvider:
     return WorkflowChain()
 
 
+@lru_cache(maxsize=1)
+def _get_torrent_analysis() -> TorrentAnalysisProvider:
+    """首个候选分析请求才装配模块分发，之后复用同一个调度器。"""
+    from app.application.orchestration.ports.dispatch import ModuleCapabilityDispatch
+    from app.application.orchestration.ports.search import SearchPorts
+
+    return SearchPorts(ModuleCapabilityDispatch())
+
+
 def configure_host_ports() -> None:
     """
     为扩展注册目录、存储、命名、站点资源、规则组配置、文件整理、自检诊断与工作流执行端口实现。
@@ -85,3 +97,13 @@ def configure_host_ports() -> None:
     filter_rule_group_port.register(_get_filter_rule_group)
     diagnostics_port.register(_get_diagnostics)
     workflow_execution_port.register(_get_workflow_execution)
+
+
+def configure_dispatch_host_ports() -> None:
+    """
+    为扩展注册需要模块分发的端口实现。
+
+    这类端口在解析时会物化模块目录与插件目录，因此与只读宿主服务的端口分开注册，
+    须在模块系统装配阶段调用；未注册时扩展只运行自身实现。
+    """
+    torrent_analysis_port.register(_get_torrent_analysis)

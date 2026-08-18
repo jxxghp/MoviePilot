@@ -55,7 +55,10 @@ from app.application.chain.context import (
     configure_chain_runtime_context_provider,
 )
 from app.runtime.extensions.service_config import configure_service_config_reader
-from app.startup.hostport_initializer import configure_host_ports
+from app.startup.hostport_initializer import (
+    configure_dispatch_host_ports,
+    configure_host_ports,
+)
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -347,6 +350,8 @@ async def init_modules():
     configure_host_event_handler_resolver()
     # 加载模块
     ModuleManager()
+    # 需要模块分发的扩展端口在模块目录就绪后注册。
+    configure_dispatch_host_ports()
     # 启动事件消费
     EventManager().start()
     # 初始化共享服务端状态

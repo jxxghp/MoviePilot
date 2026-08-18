@@ -22,6 +22,7 @@ SCHEMA_MODULES = (
     "event",
     "exception",
     "file",
+    "filter",
     "history",
     "llm",
     "mediaserver",
