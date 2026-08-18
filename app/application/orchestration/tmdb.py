@@ -91,28 +91,32 @@ class TmdbChain(ChainBase):
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
-        return self.unicast("tmdb_movie_similar", tmdbid=tmdbid)
+        return self.unicast("media_similar", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.MOVIE)
 
     def tv_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
-        return self.unicast("tmdb_tv_similar", tmdbid=tmdbid)
+        return self.unicast("media_similar", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.TV)
 
     def movie_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
-        return self.unicast("tmdb_movie_recommend", tmdbid=tmdbid)
+        return self.unicast("media_recommend", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.MOVIE)
 
     def tv_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
-        return self.unicast("tmdb_tv_recommend", tmdbid=tmdbid)
+        return self.unicast("media_recommend", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.TV)
 
     def movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -254,28 +258,32 @@ class TmdbChain(ChainBase):
         根据TMDBID查询类似电影（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_unicast("async_tmdb_movie_similar", tmdbid=tmdbid)
+        return await self.async_unicast("async_media_similar", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.MOVIE)
 
     async def async_tv_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询类似电视剧（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_unicast("async_tmdb_tv_similar", tmdbid=tmdbid)
+        return await self.async_unicast("async_media_similar", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.TV)
 
     async def async_movie_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电影（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_unicast("async_tmdb_movie_recommend", tmdbid=tmdbid)
+        return await self.async_unicast("async_media_recommend", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.MOVIE)
 
     async def async_tv_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电视剧（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_unicast("async_tmdb_tv_recommend", tmdbid=tmdbid)
+        return await self.async_unicast("async_media_recommend", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.TV)
 
     async def async_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """

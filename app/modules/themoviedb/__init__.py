@@ -1731,3 +1731,103 @@ class TheMovieDbModule(_ModuleBase):
         if mtype == MediaType.TV:
             return await self.async_tmdb_tv_credits(tmdbid=tmdbid, page=page)
         return await self.async_tmdb_movie_credits(tmdbid=tmdbid, page=page)
+
+    def media_recommend(self, source: Optional[MediaSource] = None,
+                         media_id: Any = None,
+                         mtype: Optional[MediaType] = None,
+                         page: int = 1,
+                         count: Optional[int] = None,
+                         **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相关推荐媒体
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 推荐媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return self.tmdb_tv_recommend(tmdbid=tmdbid)
+        return self.tmdb_movie_recommend(tmdbid=tmdbid)
+
+    async def async_media_recommend(self, source: Optional[MediaSource] = None,
+                                     media_id: Any = None,
+                                     mtype: Optional[MediaType] = None,
+                                     page: int = 1,
+                                     count: Optional[int] = None,
+                                     **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相关推荐媒体（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 推荐媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return await self.async_tmdb_tv_recommend(tmdbid=tmdbid)
+        return await self.async_tmdb_movie_recommend(tmdbid=tmdbid)
+
+    def media_similar(self, source: Optional[MediaSource] = None,
+                       media_id: Any = None,
+                       mtype: Optional[MediaType] = None,
+                       **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相似媒体
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :return: 相似媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return self.tmdb_tv_similar(tmdbid=tmdbid)
+        return self.tmdb_movie_similar(tmdbid=tmdbid)
+
+    async def async_media_similar(self, source: Optional[MediaSource] = None,
+                                   media_id: Any = None,
+                                   mtype: Optional[MediaType] = None,
+                                   **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相似媒体（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :return: 相似媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return await self.async_tmdb_tv_similar(tmdbid=tmdbid)
+        return await self.async_tmdb_movie_similar(tmdbid=tmdbid)

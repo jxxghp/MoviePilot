@@ -316,14 +316,16 @@ class DoubanChain(ChainBase):
         根据豆瓣ID查询推荐电影
         :param doubanid:  豆瓣ID
         """
-        return self.unicast("douban_movie_recommend", doubanid=doubanid)
+        return self.unicast("media_recommend", source=MediaSource.Douban, media_id=doubanid,
+                            mtype=MediaType.MOVIE)
 
     def tv_recommend(self, doubanid: str) -> List[MediaInfo]:
         """
         根据豆瓣ID查询推荐电视剧
         :param doubanid:  豆瓣ID
         """
-        return self.unicast("douban_tv_recommend", doubanid=doubanid)
+        return self.unicast("media_recommend", source=MediaSource.Douban, media_id=doubanid,
+                            mtype=MediaType.TV)
 
     async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
@@ -428,11 +430,13 @@ class DoubanChain(ChainBase):
         根据豆瓣ID查询推荐电影（异步版本）
         :param doubanid:  豆瓣ID
         """
-        return await self.async_unicast("async_douban_movie_recommend", doubanid=doubanid)
+        return await self.async_unicast("async_media_recommend", source=MediaSource.Douban, media_id=doubanid,
+                                        mtype=MediaType.MOVIE)
 
     async def async_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
         """
         根据豆瓣ID查询推荐电视剧（异步版本）
         :param doubanid:  豆瓣ID
         """
-        return await self.async_unicast("async_douban_tv_recommend", doubanid=doubanid)
+        return await self.async_unicast("async_media_recommend", source=MediaSource.Douban, media_id=doubanid,
+                                        mtype=MediaType.TV)

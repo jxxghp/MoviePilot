@@ -2098,3 +2098,51 @@ class DoubanModule(_ModuleBase):
         if mtype == MediaType.TV:
             return await self.async_douban_tv_credits(doubanid=doubanid)
         return await self.async_douban_movie_credits(doubanid=doubanid)
+
+    def media_recommend(self, source: Optional[MediaSource] = None,
+                         media_id: Any = None,
+                         mtype: Optional[MediaType] = None,
+                         page: int = 1,
+                         count: Optional[int] = None,
+                         **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相关推荐媒体
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param media_id: 媒体来源原生ID，为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 推荐媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        if media_id is None:
+            return None
+        doubanid = str(media_id)
+        if mtype == MediaType.TV:
+            return self.douban_tv_recommend(doubanid=doubanid)
+        return self.douban_movie_recommend(doubanid=doubanid)
+
+    async def async_media_recommend(self, source: Optional[MediaSource] = None,
+                                     media_id: Any = None,
+                                     mtype: Optional[MediaType] = None,
+                                     page: int = 1,
+                                     count: Optional[int] = None,
+                                     **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的相关推荐媒体（异步版本）
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param media_id: 媒体来源原生ID，为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 推荐媒体列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        if media_id is None:
+            return None
+        doubanid = str(media_id)
+        if mtype == MediaType.TV:
+            return await self.async_douban_tv_recommend(doubanid=doubanid)
+        return await self.async_douban_movie_recommend(doubanid=doubanid)
