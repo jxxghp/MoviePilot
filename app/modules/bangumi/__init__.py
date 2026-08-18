@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.config import settings
@@ -522,3 +522,53 @@ class BangumiModule(_ModuleBase):
         if normalize_media_source(source) is not MediaSource.Bangumi:
             return None
         return await self.async_bangumi_person_credits(person_id=person_id)
+
+    def media_credits(self, source: Optional[MediaSource] = None,
+                       media_id: Any = None,
+                       mtype: Optional[MediaType] = None,
+                       page: int = 1,
+                       count: Optional[int] = None,
+                       **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持，单一接口不分电影剧集
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        if media_id is None:
+            return None
+        try:
+            bangumiid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return self.bangumi_credits(bangumiid=bangumiid)
+
+    async def async_media_credits(self, source: Optional[MediaSource] = None,
+                                   media_id: Any = None,
+                                   mtype: Optional[MediaType] = None,
+                                   page: int = 1,
+                                   count: Optional[int] = None,
+                                   **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表（异步版本）
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持，单一接口不分电影剧集
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        if media_id is None:
+            return None
+        try:
+            bangumiid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return await self.async_bangumi_credits(bangumiid=bangumiid)

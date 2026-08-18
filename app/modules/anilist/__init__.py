@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.config import settings
@@ -646,4 +646,58 @@ class AniListModule(_ModuleBase):
             return None
         return await self.async_anilist_person_credits(
             person_id=person_id, page=page, count=count if count is not None else 20
+        )
+
+    def media_credits(self, source: Optional[MediaSource] = None,
+                       media_id: Any = None,
+                       mtype: Optional[MediaType] = None,
+                       page: int = 1,
+                       count: Optional[int] = None,
+                       **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表
+        :param source: 媒体来源，非AniList来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持
+        :param page: 页码
+        :param count: 每页数量，未指定时使用本源缺省值 20
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        if media_id is None:
+            return None
+        try:
+            anilist_id = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return self.anilist_credits(
+            anilist_id, page=page, count=count if count is not None else 20
+        )
+
+    async def async_media_credits(self, source: Optional[MediaSource] = None,
+                                   media_id: Any = None,
+                                   mtype: Optional[MediaType] = None,
+                                   page: int = 1,
+                                   count: Optional[int] = None,
+                                   **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表（异步版本）
+        :param source: 媒体来源，非AniList来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持
+        :param page: 页码
+        :param count: 每页数量，未指定时使用本源缺省值 20
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        if media_id is None:
+            return None
+        try:
+            anilist_id = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return await self.async_anilist_credits(
+            anilist_id, page=page, count=count if count is not None else 20
         )

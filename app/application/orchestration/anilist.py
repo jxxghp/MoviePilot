@@ -94,7 +94,7 @@ class AniListChain(ChainBase):
         :return: 媒体人物列表
         """
         return self.unicast(
-            "anilist_credits", anilist_id=anilist_id, page=page, count=count
+            "media_credits", source=MediaSource.AniList, media_id=anilist_id, page=page, count=count
         ) or []
 
     async def async_credits(
@@ -106,7 +106,7 @@ class AniListChain(ChainBase):
         :return: 媒体人物列表
         """
         return await self.async_unicast(
-            "async_anilist_credits", anilist_id=anilist_id, page=page, count=count
+            "async_media_credits", source=MediaSource.AniList, media_id=anilist_id, page=page, count=count
         ) or []
 
     def recommendations(

@@ -120,7 +120,8 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.unicast("tmdb_movie_credits", tmdbid=tmdbid, page=page)
+        return self.unicast("media_credits", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.MOVIE, page=page)
 
     def tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -128,7 +129,8 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.unicast("tmdb_tv_credits", tmdbid=tmdbid, page=page)
+        return self.unicast("media_credits", source=MediaSource.TMDB, media_id=tmdbid,
+                            mtype=MediaType.TV, page=page)
 
     def person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
@@ -281,7 +283,8 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return await self.async_unicast("async_tmdb_movie_credits", tmdbid=tmdbid, page=page)
+        return await self.async_unicast("async_media_credits", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.MOVIE, page=page)
 
     async def async_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -289,7 +292,8 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return await self.async_unicast("async_tmdb_tv_credits", tmdbid=tmdbid, page=page)
+        return await self.async_unicast("async_media_credits", source=MediaSource.TMDB, media_id=tmdbid,
+                                        mtype=MediaType.TV, page=page)
 
     async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """

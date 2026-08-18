@@ -36,7 +36,7 @@ class BangumiChain(ChainBase):
         根据BangumiID查询电影演职员表
         :param bangumiid:  BangumiID
         """
-        return self.unicast("bangumi_credits", bangumiid=bangumiid)
+        return self.unicast("media_credits", source=MediaSource.Bangumi, media_id=bangumiid)
 
     def bangumi_recommend(self, bangumiid: int) -> Optional[List[MediaInfo]]:
         """
@@ -84,7 +84,7 @@ class BangumiChain(ChainBase):
         根据BangumiID查询电影演职员表（异步版本）
         :param bangumiid:  BangumiID
         """
-        return await self.async_unicast("async_bangumi_credits", bangumiid=bangumiid)
+        return await self.async_unicast("async_media_credits", source=MediaSource.Bangumi, media_id=bangumiid)
 
     async def async_bangumi_recommend(self, bangumiid: int) -> Optional[List[MediaInfo]]:
         """

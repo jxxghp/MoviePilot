@@ -1,5 +1,5 @@
 import re
-from typing import Optional, List, Tuple, Union, Dict
+from typing import Any, Optional, List, Tuple, Union, Dict
 
 import cn2an
 
@@ -1677,3 +1677,57 @@ class TheMovieDbModule(_ModuleBase):
         if normalize_media_source(source) is not MediaSource.TMDB:
             return None
         return await self.async_tmdb_person_credits(person_id=person_id, page=page)
+
+    def media_credits(self, source: Optional[MediaSource] = None,
+                       media_id: Any = None,
+                       mtype: Optional[MediaType] = None,
+                       page: int = 1,
+                       count: Optional[int] = None,
+                       **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 页码
+        :param count: 本源不支持
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return self.tmdb_tv_credits(tmdbid=tmdbid, page=page)
+        return self.tmdb_movie_credits(tmdbid=tmdbid, page=page)
+
+    async def async_media_credits(self, source: Optional[MediaSource] = None,
+                                   media_id: Any = None,
+                                   mtype: Optional[MediaType] = None,
+                                   page: int = 1,
+                                   count: Optional[int] = None,
+                                   **kwargs) -> Optional[List[_SchemaMediaPerson]]:
+        """
+        查询指定来源的媒体演职员表（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型，TV走剧集接口，其余（含未指定）按电影处理
+        :param page: 页码
+        :param count: 本源不支持
+        :return: 演职员列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        if mtype == MediaType.TV:
+            return await self.async_tmdb_tv_credits(tmdbid=tmdbid, page=page)
+        return await self.async_tmdb_movie_credits(tmdbid=tmdbid, page=page)
