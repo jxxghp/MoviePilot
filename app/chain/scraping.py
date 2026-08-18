@@ -567,6 +567,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         获取图片名称和url，合并所有模块的结果。
         优先使用高优先级模块的图片，低优先级模块补充缺失的图片类型。
         """
+        # 插件扩展来源没有宿主内置刮削器，优先让插件按自身来源返回图片地址；
+        # 内置来源仍保留原有多模块合并逻辑，避免改变既有图片补全顺序。
+        if mediainfo and mediainfo.media_source not in tuple(MediaSource):
+            plugin_images = self.run_module(
+                "metadata_img",
+                mediainfo=mediainfo,
+                season=season,
+                episode=episode,
+            )
+            if isinstance(plugin_images, dict):
+                return plugin_images or None
         merged = {}
         for module in sorted(
             self.modulemanager.get_running_modules("metadata_img"),

@@ -124,6 +124,9 @@ class SiteUserData(BaseModel):
     # 更新时间
     updated_time: Optional[str] = None
 
+    # 查询仓储返回 SQLAlchemy ORM 对象时，从对象属性读取字段。
+    model_config = ConfigDict(from_attributes=True)
+
 
 class SiteAuth(BaseModel):
     """站点认证模块及其参数。"""

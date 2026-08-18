@@ -92,6 +92,24 @@ class PluginProjection:
                 self._logger.error(f"获取插件 {plugin_id} 模块出错：{str(error)}")
         return modules
 
+    def media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """聚合启用插件声明的媒体数据源。"""
+        sources: list[dict] = []
+        for plugin_id, plugin in self._items(pid):
+            if not supports_plugin_hook(plugin, "get_media_source"):
+                continue
+            try:
+                if not plugin.get_state():
+                    continue
+                for source in plugin.get_media_source() or []:
+                    if isinstance(source, dict):
+                        item = source.copy()
+                        item.setdefault("plugin_id", plugin_id)
+                        sources.append(item)
+            except Exception as error:
+                self._logger.error(f"获取插件 {plugin_id} 媒体数据源出错：{str(error)}")
+        return sources
+
     def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件的工作流动作。"""
         actions: list[dict] = []

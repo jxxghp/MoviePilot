@@ -28,11 +28,60 @@ from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.api.deps import get_current_active_user, get_current_active_superuser
 from app.schemas.category import CategoryConfig
+from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
 from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
+
+
+_BUILTIN_MEDIA_SOURCES = (
+    _SchemaMediaSourceInfo(name="TheMovieDb", media_source=MediaSource.TMDB),
+    _SchemaMediaSourceInfo(name="豆瓣", media_source=MediaSource.Douban),
+    _SchemaMediaSourceInfo(name="Bangumi", media_source=MediaSource.Bangumi),
+    _SchemaMediaSourceInfo(name="AniList", media_source=MediaSource.AniList),
+    _SchemaMediaSourceInfo(name="IMDb", media_source=MediaSource.IMDb),
+    _SchemaMediaSourceInfo(name="TVDB", media_source=MediaSource.TVDB),
+    _SchemaMediaSourceInfo(
+        name="MusicBrainz",
+        media_source=MediaSource.MusicBrainz,
+        media_types=[MediaType.MUSIC],
+    ),
+    _SchemaMediaSourceInfo(
+        name="TheAudioDB",
+        media_source=MediaSource.TheAudioDB,
+        media_types=[MediaType.MUSIC],
+    ),
+    _SchemaMediaSourceInfo(
+        name="豆瓣音乐",
+        media_source=MediaSource.DoubanMusic,
+        media_types=[MediaType.MUSIC],
+    ),
+    _SchemaMediaSourceInfo(name="哔哩哔哩", media_source=MediaSource.Bilibili),
+    _SchemaMediaSourceInfo(name="芒果TV", media_source=MediaSource.MangoTV),
+    _SchemaMediaSourceInfo(name="咪咕视频", media_source=MediaSource.MiguVideo),
+    _SchemaMediaSourceInfo(name="腾讯视频", media_source=MediaSource.TencentVideo),
+    _SchemaMediaSourceInfo(name="爱奇艺", media_source=MediaSource.Iqiyi),
+)
+
+
+def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
+    """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
+    from app.runtime.extensions.plugin_manager import PluginManager
+
+    result = list(_BUILTIN_MEDIA_SOURCES)
+    seen = {source.media_source for source in result}
+    for raw_source in PluginManager().get_media_sources():
+        try:
+            source = _SchemaMediaSourceInfo.model_validate(raw_source)
+        except Exception:
+            continue
+        if source.media_source in seen:
+            continue
+        result.append(source)
+        seen.add(source.media_source)
+    return result
 
 
 def _split_media_source_query(value: object) -> tuple[str, ...]:
@@ -322,6 +371,16 @@ async def search(
 
     sorted_result = sorted(result, key=lambda x: sort_order.get(__get_source(x), 4))
     return sorted_result[(page - 1) * count : page * count]
+
+
+@router.get(
+    "/source",
+    summary="获取媒体数据源",
+    response_model=list[_SchemaMediaSourceInfo],
+)
+def source(_: _SchemaTokenPayload = Depends(verify_token)) -> list[_SchemaMediaSourceInfo]:
+    """返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。"""
+    return _registered_media_sources()
 
 
 @router.post(

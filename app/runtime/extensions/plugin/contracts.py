@@ -34,6 +34,7 @@ PLUGIN_HOOK_CONTRACTS = {
         PluginHookContract("get_api"),
         PluginHookContract("get_service", requires_enabled=True),
         PluginHookContract("get_module", requires_enabled=True),
+        PluginHookContract("get_media_source", requires_enabled=True),
         PluginHookContract("get_actions", requires_enabled=True),
         PluginHookContract("get_agent_tools", requires_enabled=True),
         PluginHookContract("get_auth_providers", requires_enabled=True),

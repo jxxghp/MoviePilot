@@ -80,6 +80,29 @@ def test_projection_preserves_services_modules_actions_and_pid_filter():
     }]
 
 
+def test_projection_collects_enabled_media_source_declarations():
+    """只投影启用插件的媒体来源声明，并附带插件 ID 便于诊断。"""
+    demo = _Plugin(
+        get_media_source=lambda: [{
+            "name": "Acme Video",
+            "media_source": "acme.video",
+            "media_types": ["电影", "电视剧"],
+        }],
+    )
+    disabled = _Plugin(
+        enabled=False,
+        get_media_source=lambda: [{"name": "Disabled", "media_source": "disabled"}],
+    )
+    projection = PluginProjection({"Demo": demo, "Disabled": disabled})
+
+    assert projection.media_sources() == [{
+        "name": "Acme Video",
+        "media_source": "acme.video",
+        "media_types": ["电影", "电视剧"],
+        "plugin_id": "Demo",
+    }]
+
+
 def test_projection_isolates_one_plugin_hook_failure():
     """单个插件 hook 失败只记日志，不阻断其他插件投影。"""
     errors = []

@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Dict, Any, List, Set, Callable
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import JsonData
-from app.schemas.types import NotificationChannel
+from app.schemas.types import MediaType, NotificationChannel
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource
@@ -525,6 +525,22 @@ class DiscoverMediaSource(BaseModel):
         if mediaid_prefix in aliases:
             return aliases[mediaid_prefix]
         return MediaSource(mediaid_prefix)
+
+
+class MediaSourceInfo(BaseModel):
+    """
+    媒体数据源注册描述。
+
+    插件通过该描述声明来源的展示名称和支持的媒体类型；识别、搜索和刮削的
+    实际实现仍由插件模块方法提供，宿主只负责把来源传递到统一媒体链路。
+    """
+
+    name: str = Field(..., description="数据源展示名称")
+    media_source: MediaSource = Field(..., description="规范媒体来源标识")
+    media_types: List[MediaType] = Field(
+        default_factory=lambda: [MediaType.MOVIE, MediaType.TV],
+        description="支持的媒体类型",
+    )
 
 
 class DiscoverSourceEventData(ChainEventData):

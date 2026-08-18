@@ -199,6 +199,15 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_media_source(self) -> List[Dict[str, Any]]:
+        """
+        注册插件提供的媒体数据源。
+
+        返回的每项至少包含 ``name``、``media_source`` 和 ``media_types``；实际的
+        搜索、识别、图片和 NFO 刮削实现通过 ``get_module`` 暴露对应方法。
+        """
+        pass
+
     def get_actions(self) -> List[Dict[str, Any]]:
         """
         获取插件工作流动作

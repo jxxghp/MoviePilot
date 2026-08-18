@@ -616,6 +616,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_projection().modules(pid)
 
+    def get_media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """获取运行中插件声明的媒体数据源。"""
+        return self._plugin_projection().media_sources(pid)
+
     def get_plugin_actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件动作
