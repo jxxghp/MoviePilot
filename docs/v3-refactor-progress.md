@@ -22,7 +22,15 @@
 | `adapters ↔ runtime` | 宿主环境探针下沉 `foundation/hostenv.py`，`SystemUtils` 委托 |
 | `chain ↔ workflow` | 工作流服务迁入 `workflow/service.py` 并脱离基类继承 |
 
-反向边 `modules → application` 由 35 条降至 12 条（29 文件 → 8 文件）。
+反向边 `modules → application` **已清零**（35 条 → 0）。扩展不再 import 应用服务实现：
+
+- `runtime/hostport.py` 提供端口槽位；`directories` / `storages` / `naming` /
+  `siteresource` / `filterrules` / `ruleexpression` 六个端口各自只声明模块
+  实际调用到的方法，由组合根 `startup/hostport_initializer.py` 惰性注入实现。
+- 媒体根路径推导下沉 `domain/mediapath.py`：返回问题描述而不打日志，
+  日志级别交回各层调用侧决定（domain 不依赖 runtime）。
+- URL 与路径安全原语迁入 `adapters/network/urlsafety.py`，
+  原位置再导出以承接兼容层映射与 SDK 导出。
 
 ### 1.2 分发内核：v2 聚合 → v3 能力索引三级分发
 
@@ -86,12 +94,12 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 
 按价值与风险排序：
 
-1. **`modules → application` 剩余 12 条**：属"配置查询"与"宿主服务"两类。
-   前者做成窄协议 + 组合根注入；后者（消息通知）改为模块发事件、应用层订阅。
-2. **`SecurityUtils` 整体迁入 `adapters/network/`**：需同步约 25 处测试
-   patch 字符串与 SDK 导出，单独一笔提交。
-3. **`RuleParser` / `BUILTIN_RULE_SET` 下沉**：阻碍是 rust 加速调用需先
-   收敛为可注入的解析后端。
+1. **`RuleParser` / `BUILTIN_RULE_SET` 下沉 domain**：当前以窄协议端口消除了反向边，
+   但规则解析器与内置规则集在语义上属领域层。下沉的阻碍是 `RuleParser.parse`
+   依赖 rust 加速（domain 不得依赖 adapters），需先把加速收敛为可注入的解析后端。
+2. **`agent → doctor` / `agent → workflow` 跨扩展依赖**：两条已登记为负债，
+   应经服务门面暴露，而不是扩展之间直接 import。
+3. **`sdk → api` 向上依赖**：认证依赖仍落在端点层，待安全服务下沉后由两侧共用。
 4. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
    合并主要是命名与目录收敛，收益中等而改动面极大，建议在其余项清偿后评估。
 5. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
@@ -105,7 +113,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **4929 passed / 1 failed** |
+| 当前 | **4953 passed / 1 failed** |
 
 唯一失败 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`
 在基线上同样失败：容器文件系统 `st_ctime_ns` 无纳秒级精度，
