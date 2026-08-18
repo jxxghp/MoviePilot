@@ -274,7 +274,7 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 ```text
 app/runtime/extensions/module/contracts.py
 app/runtime/extensions/module/dispatcher.py
-app/application/chain/context.py
+app/application/orchestration/context.py
 app/application/orchestration/__init__.py                 # ChainBase 实现
 ```
 
@@ -1077,7 +1077,7 @@ startup 注入具体依赖
 | 1 | `tests/test_architecture_dependencies.py`、dependency baseline | Adapter/Runtime 到 DB 零新增，API/Session/Model 与 Application/Agent 采用趋势基线治理 |
 | 2 | `app/runtime/extensions/module/contracts.py`、`dispatcher.py` | 插件优先、短路、列表合并、参数签名和同步/异步执行顺序保持 |
 | 2 | `app/runtime/event/{registry,binding,dispatch,errors}.py` | 事件注册、实例解析、分发和错误降级拆开；总线不再隐式构造未绑定处理器 |
-| 2 | `app/application/chain/context.py`、`app/startup/lifecycle/components.py`、`scripts/startup/performance.py` | Chain 依赖可注入；正常/安全模式启停顺序、超时、阶段耗时及隔离资源快照可导出测试 |
+| 2 | `app/application/orchestration/context.py`、`app/startup/lifecycle/components.py`、`scripts/startup/performance.py` | Chain 依赖可注入；正常/安全模式启停顺序、超时、阶段耗时及隔离资源快照可导出测试 |
 | 3 | `app/db/uow.py`、`app/application/subscription/{delete,identity}.py` | 订阅删除事务、权限、提交后事件/上报时序归 Application 所有；端点只做传输映射 |
 | 3 | `app/application/subscription/query.py`、`app/application/maintenance.py`、`app/db/maintenance.py` | 订阅查询三条垂直切片和六张维护表的保留期/批次/失败汇总归 Application；Scheduler 只触发 |
 | 4 | `app/application/search/state.py` | 搜索状态查询和控制从巨型 Chain 提取，保留原同步/异步状态语义 |

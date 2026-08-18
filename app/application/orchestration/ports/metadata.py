@@ -6,7 +6,7 @@ from typing import Optional, Union
 
 from app.application.orchestration.ports.dispatch import CapabilityPorts
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaImageType, MediaType
+from app.schemas.types import MediaImageType, MediaSource, MediaType
 
 
 class MetadataPorts(CapabilityPorts):
@@ -31,7 +31,8 @@ class MetadataPorts(CapabilityPorts):
         :param raise_exception: 触发速率限制时是否抛出异常
         """
         return self._dispatch.unicast(
-            "match_doubaninfo",
+            "match_media",
+            source=MediaSource.Douban,
             name=name,
             imdbid=imdbid,
             mtype=mtype,
@@ -59,7 +60,8 @@ class MetadataPorts(CapabilityPorts):
         :param raise_exception: 触发速率限制时是否抛出异常
         """
         return await self._dispatch.async_unicast(
-            "async_match_doubaninfo",
+            "async_match_media",
+            source=MediaSource.Douban,
             name=name,
             imdbid=imdbid,
             mtype=mtype,
@@ -83,7 +85,7 @@ class MetadataPorts(CapabilityPorts):
         :param season: 季
         """
         return self._dispatch.unicast(
-            "match_tmdbinfo", name=name, mtype=mtype, year=year, season=season
+            "match_media", source=MediaSource.TMDB, name=name, mtype=mtype, year=year, season=season
         )
 
     async def async_match_tmdbinfo(
@@ -101,7 +103,7 @@ class MetadataPorts(CapabilityPorts):
         :param season: 季
         """
         return await self._dispatch.async_unicast(
-            "async_match_tmdbinfo", name=name, mtype=mtype, year=year, season=season
+            "async_match_media", source=MediaSource.TMDB, name=name, mtype=mtype, year=year, season=season
         )
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:

@@ -66,7 +66,7 @@ to make the directory tree look symmetrical.
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and later submission use cases |
 | `app/application/music/` | Multi-source music catalog orchestration |
-| `app/application/chain/` | Injectable Chain runtime context and compatibility provider |
+| `app/application/orchestration/` | Processing chains and their dispatch primitives; `context.py` owns the injectable runtime context and its no-argument compatibility provider |
 | `app/application/plugin/` | Plugin market catalog, installation command and dynamic-route port; filenames remain single words (`catalog.py`, `install.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
@@ -249,7 +249,7 @@ pluggable and a chain never names a concrete module implementation.
 The dispatch algorithm belongs to
 `app/runtime/extensions/module/dispatcher.py`; `ChainBase` remains the
 compatibility facade. New chains and tests inject the minimal
-`ChainRuntimeContext` from `app/application/chain/context.py`. No-argument
+`ChainRuntimeContext` from `app/application/orchestration/context.py`. No-argument
 `Chain()` remains supported through the startup-configured compatibility
 provider. High-frequency string methods are classified in
 `module/contracts.py`; unknown third-party plugin methods retain the frozen
@@ -427,7 +427,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/runtime/event/errors.py` | Handler failure notification and non-recursive `SystemError` downgrade policy |
 | `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
 | `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
-| `app/application/chain/context.py` | Injectable Chain dependencies and no-argument compatibility provider |
+| `app/application/orchestration/context.py` | Injectable Chain dependencies and no-argument compatibility provider |
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |

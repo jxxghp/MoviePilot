@@ -1565,7 +1565,7 @@
       },
       {
         "caller": "app.agent.llm.provider",
-        "line": 2253
+        "line": 2307
       },
       {
         "caller": "app.application.orchestration.transfer",
@@ -2325,14 +2325,14 @@
       "async_obtain_images": [
         {
           "caller": "app.application.orchestration.ports.metadata",
-          "line": 125,
+          "line": 127,
           "mode": "async"
         }
       ],
       "obtain_images": [
         {
           "caller": "app.application.orchestration.ports.metadata",
-          "line": 115,
+          "line": 117,
           "mode": "sync"
         }
       ]

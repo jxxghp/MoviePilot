@@ -50,7 +50,7 @@ from app.startup.managed_resources_initializer import (
 from app.application.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
-from app.application.chain.context import (
+from app.application.orchestration.context import (
     build_default_chain_runtime_context,
     configure_chain_runtime_context_provider,
 )
@@ -359,6 +359,12 @@ async def init_modules():
     MoviePilotServerHelper.init_subscribe_report()
     MoviePilotServerHelper.get_user_uuid()
     MoviePilotServerHelper.get_github_user()
+    # LLM 提供商管理动作（测试连接、模型目录查询）依赖的构建能力独立于 Agent 启用开关，
+    # 须在此无条件注入，使用户在开启智能助手前也能测试模型连接。
+    from app.agent.llm import LLMHelper
+    from app.agent.llm.provider import configure_llm_operations
+
+    configure_llm_operations(LLMHelper())
     # 初始化AI智能体
     await init_agent()
     # 启动前端服务

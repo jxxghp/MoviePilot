@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
-from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
+from app.application.orchestration.context import ChainRuntimeContext, get_chain_runtime_context
 from app.application.orchestration._messaging import MessageProcessingMixin, NotificationMixin
 from app.application.orchestration._recognition import RecognitionMixin
 from app.application.orchestration.ports import (

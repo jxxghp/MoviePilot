@@ -13,7 +13,7 @@ setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
 sys.modules.setdefault("transmission_rpc", _PyModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 
-from app.application.chain.context import ChainRuntimeContext  # noqa: E402
+from app.application.orchestration.context import ChainRuntimeContext  # noqa: E402
 from app.application.orchestration import ChainBase  # noqa: E402
 
 

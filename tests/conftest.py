@@ -50,6 +50,16 @@ def configure_plugin_system_services():
     reset_plugin_system()
 
 
+@pytest.fixture(autouse=True)
+def configure_llm_operations_port():
+    """为绕过完整启动流程的单元测试装配真实 LLM 操作端口。"""
+    from app.agent.llm.helper import LLMHelper
+    from app.agent.llm.provider import configure_llm_operations
+
+    configure_llm_operations(LLMHelper())
+    yield
+
+
 class DbHarness:
     """真实数据库会话的测试载具。
 

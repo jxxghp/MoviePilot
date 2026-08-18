@@ -1571,3 +1571,49 @@ class TheMovieDbModule(_ModuleBase):
         保存分类配置
         """
         return self.category.save(config)
+
+    def match_media(self, source: Optional[MediaSource] = None,
+                     name: str = None,
+                     mtype: Optional[MediaType] = None,
+                     year: Optional[str] = None,
+                     season: Optional[int] = None,
+                     imdbid: Optional[str] = None,
+                     raise_exception: bool = False,
+                     **kwargs) -> Optional[dict]:
+        """
+        搜索和匹配指定来源的媒体信息
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param name: 名称
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 用于匹配指定季，0 表示特别季
+        :param imdbid: 本源不支持
+        :param raise_exception: 本源不支持
+        :return: 匹配到的媒体信息
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return self.match_tmdbinfo(name=name, mtype=mtype, year=year, season=season)
+
+    async def async_match_media(self, source: Optional[MediaSource] = None,
+                                 name: str = None,
+                                 mtype: Optional[MediaType] = None,
+                                 year: Optional[str] = None,
+                                 season: Optional[int] = None,
+                                 imdbid: Optional[str] = None,
+                                 raise_exception: bool = False,
+                                 **kwargs) -> Optional[dict]:
+        """
+        搜索和匹配指定来源的媒体信息（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param name: 名称
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 用于匹配指定季，0 表示特别季
+        :param imdbid: 本源不支持
+        :param raise_exception: 本源不支持
+        :return: 匹配到的媒体信息
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return await self.async_match_tmdbinfo(name=name, mtype=mtype, year=year, season=season)

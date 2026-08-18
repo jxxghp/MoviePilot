@@ -5,7 +5,7 @@ from __future__ import annotations
 import traceback
 from typing import Any, List, Optional, Protocol
 
-from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
+from app.application.orchestration.context import ChainRuntimeContext, get_chain_runtime_context
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException

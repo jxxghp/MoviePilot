@@ -31,6 +31,7 @@ from app.adapters.network.http import RequestUtils
 from app.runtime.rate import rate_limit_exponential
 from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.foundation.text import convert as zhconv_convert
+from app.schemas.media import normalize_media_source
 
 
 class DoubanModule(_ModuleBase):
@@ -1941,3 +1942,51 @@ class DoubanModule(_ModuleBase):
                 works = collections.get("works")
                 return [MediaInfo(douban_info=work.get("subject")) for work in works]
         return []
+
+    def match_media(self, source: Optional[MediaSource] = None,
+                     name: str = None,
+                     mtype: Optional[MediaType] = None,
+                     year: Optional[str] = None,
+                     season: Optional[int] = None,
+                     imdbid: Optional[str] = None,
+                     raise_exception: bool = False,
+                     **kwargs) -> Optional[dict]:
+        """
+        搜索和匹配指定来源的媒体信息
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param name: 名称
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 季号
+        :param imdbid: IMDB ID
+        :param raise_exception: 触发速率限制时是否抛出异常
+        :return: 匹配到的媒体信息
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        return self.match_doubaninfo(name=name, imdbid=imdbid, mtype=mtype,
+                                      year=year, season=season, raise_exception=raise_exception)
+
+    async def async_match_media(self, source: Optional[MediaSource] = None,
+                                 name: str = None,
+                                 mtype: Optional[MediaType] = None,
+                                 year: Optional[str] = None,
+                                 season: Optional[int] = None,
+                                 imdbid: Optional[str] = None,
+                                 raise_exception: bool = False,
+                                 **kwargs) -> Optional[dict]:
+        """
+        搜索和匹配指定来源的媒体信息（异步版本）
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param name: 名称
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 季号
+        :param imdbid: IMDB ID
+        :param raise_exception: 触发速率限制时是否抛出异常
+        :return: 匹配到的媒体信息
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        return await self.async_match_doubaninfo(name=name, imdbid=imdbid, mtype=mtype,
+                                                  year=year, season=season, raise_exception=raise_exception)

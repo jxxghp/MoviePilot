@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Protocol, Tuple, runtime_checkable
 from urllib.parse import urlencode, urlsplit
 
 import aiofiles
@@ -98,6 +98,60 @@ class PendingAuthSession:
     expires_at: float = 0
     created_at: float = field(default_factory=time.time)
     context: Dict[str, Any] = field(default_factory=dict)
+
+
+@runtime_checkable
+class _LLMOperationsPort(Protocol):
+    """测试连接与模型目录查询动作依赖的 LLM 构建能力。"""
+
+    async def test_current_settings(self, **kwargs: Any) -> Dict[str, Any]:
+        """
+        使用给定或已保存的配置执行一次最小 LLM 调用。
+
+        :param kwargs: 连接与模型参数
+        :return: 包含 provider/model/reply_preview 等字段的调用结果
+        """
+        ...
+
+    async def get_models(self, provider: str, **kwargs: Any) -> Any:
+        """
+        查询指定提供商的模型目录。
+
+        :param provider: 提供商标识
+        :param kwargs: 查询参数
+        :return: 模型信息列表
+        """
+        ...
+
+
+_llm_operations: Optional[_LLMOperationsPort] = None
+
+
+def configure_llm_operations(operations: _LLMOperationsPort) -> None:
+    """
+    注入测试连接与模型目录查询动作所需的 LLM 构建能力，由组合根在启动时调用。
+
+    :param operations: 须提供 ``test_current_settings(**kwargs)`` 与
+        ``get_models(provider, **kwargs)`` 两个方法的对象
+    :return: 无
+    """
+    global _llm_operations
+    _llm_operations = operations
+
+
+def _require_llm_operations() -> _LLMOperationsPort:
+    """
+    返回已注入的 LLM 构建能力。
+
+    :return: 已注入的实现
+    :raises RuntimeError: 组合根尚未调用 configure_llm_operations 完成注入
+    """
+    if _llm_operations is None:
+        raise RuntimeError(
+            "LLM 操作能力未注入：测试连接与模型目录查询动作需要组合根先调用 "
+            "configure_llm_operations 完成装配"
+        )
+    return _llm_operations
 
 
 class LLMProviderManager(metaclass=Singleton):
@@ -2995,11 +3049,11 @@ class LLMProviderManager(metaclass=Singleton):
 
     async def _manage_list_models(self, provider: str, **params: Any) -> Dict[str, Any]:
         """管理动作：查询模型目录，附带授权状态摘要。"""
-        from app.agent.llm.helper import LLMHelper
+        llm_operations = _require_llm_operations()
 
         api_key = params.get("api_key")
         try:
-            models = await LLMHelper().get_models(
+            models = await llm_operations.get_models(
                 provider=provider,
                 api_key=api_key,
                 base_url=params.get("base_url"),
@@ -3032,7 +3086,7 @@ class LLMProviderManager(metaclass=Singleton):
 
     async def _manage_test(self, provider: str, **params: Any) -> Dict[str, Any]:
         """管理动作：使用传入配置或当前已保存配置执行一次最小 LLM 调用。"""
-        from app.agent.llm.helper import LLMHelper, LLMTestTimeout
+        llm_operations = _require_llm_operations()
 
         provider_name = provider or settings.LLM_PROVIDER
         model = params.get("model") if params.get("model") is not None else settings.LLM_MODEL
@@ -3066,8 +3120,9 @@ class LLMProviderManager(metaclass=Singleton):
             test_kwargs["temperature"] = params.get("temperature")
 
         try:
-            result = await LLMHelper.test_current_settings(**test_kwargs)
-        except (LLMTestTimeout, TimeoutError) as err:
+            result = await llm_operations.test_current_settings(**test_kwargs)
+        except TimeoutError as err:
+            # LLMTestTimeout 是 TimeoutError 的子类，无需单独捕获。
             logger.warning(err)
             return {"success": False, "message": "LLM 调用超时", "data": None}
         except Exception as err:

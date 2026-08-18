@@ -2,8 +2,8 @@
 
 from unittest.mock import Mock
 
-from app.application.chain.context import ChainRuntimeContext
-from app.application.chain import context as chain_context
+from app.application.orchestration.context import ChainRuntimeContext
+from app.application.orchestration import context as chain_context
 from app.application.orchestration import ChainBase
 
 

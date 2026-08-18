@@ -59,6 +59,22 @@ _MULTI_SOURCE_CONTRACTS = {
             "同一模块下的多台同类型服务器由模块自行仲裁，对外只出一个答案"
         ),
     ),
+    "match_media": MultiSourceCapabilityContract(
+        method="match_media",
+        sources=(
+            "TMDB：TheMovieDbModule 按 source=TMDB 应答",
+            "豆瓣：DoubanModule 按 source=Douban 应答",
+            "插件：模块自带 match_media 实现按 source 自认领应答",
+        ),
+        abstain=(
+            "返回 None 表示本来源不认领，既涵盖 source 非本来源，也涵盖本来源未匹配到媒体信息；"
+            "调度据此继续询问下一来源"
+        ),
+        narrowing=(
+            ("source", "唯一收窄键：非本来源一律让出"),
+        ),
+        arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
+    ),
 }
 
 # 首批登记高频能力族。方法名仍保持开放字符串，以兼容第三方插件自定义模块能力；
@@ -69,6 +85,8 @@ _METHOD_CONTRACTS = {
     "obtain_images": ModuleMethodContract(family="media-recognition"),
     "media_category": ModuleMethodContract(family="media-recognition"),
     "media_exists": ModuleMethodContract(family="media-library"),
+    "match_media": ModuleMethodContract(family="media-metadata"),
+    "async_match_media": ModuleMethodContract(family="media-metadata"),
     "media_files": ModuleMethodContract(family="media-library"),
     "mediaserver_items": ModuleMethodContract(family="media-server"),
     "mediaserver_iteminfo": ModuleMethodContract(family="media-server"),
