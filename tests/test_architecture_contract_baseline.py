@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -166,7 +167,7 @@ assert sanitize_for_host({'token': 'secret'}) == {'token': '***'}
     assert result.returncode == 0, result.stderr
 
 
-def test_doctor_and_monitor_roots_are_lazy_identity_preserving_facades():
+def test_doctor_and_monitor_roots_are_lazy_identity_preserving_facades(tmp_path):
     """诊断和监控包根不得预载实现，旧路径仍需返回同一公开对象。"""
     script = """
 import sys
@@ -175,6 +176,11 @@ import app.monitor
 
 assert not any(name.startswith('app.doctor.') for name in sys.modules)
 assert not any(name.startswith('app.monitor.') for name in sys.modules)
+
+# CI 无 app.application.site.sites 资源模块，触发实现加载前先补 conftest 同源垫片；
+# 独立子进程不经过 pytest 引导，必须在此显式安装，否则链式 import 会因缺模块失败。
+from app.testing.bootstrap import ensure_sites_stub
+ensure_sites_stub()
 
 from app.doctor import DoctorRunner, run_doctor
 from app.doctor.runner import DoctorRunner as DirectDoctorRunner
@@ -187,9 +193,11 @@ assert Monitor is DirectMonitor
 assert LocalDirectoryWatcher is DirectWatcher
 assert callable(run_doctor)
 """
+    env = {**os.environ, "CONFIG_DIR": str(tmp_path / "config")}
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=PROJECT_ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=False,
