@@ -292,12 +292,15 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **5276 passed / 1 failed** |
+| 当前 | **5277 passed / 0 failed** |
 
 官方基线上那条失败是
 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`：
-容器文件系统 `st_ctime_ns` 无纳秒级精度，扫描器缓存键无法区分
-"同尺寸且保留 mtime"的改动，与本重构无关，在负载与时序变化下时通时不通。
+容器文件系统对 inode 时间戳只提供粗粒度时钟，用例内紧邻的两次写入常落在同一刻度，
+拿到完全相同的 `(mtime, ctime, size, dev, ino)`，"内容已变"在时间戳层面不可区分。
+症结是同一用例内两次写入之间缺乏可观测的时间戳差异，与执行顺序相关而非缓存污染。
+现补自旋等待辅助函数，在替换文件前触碰探测文件直到观测到新刻度（带超时兜底），
+断言强度不变，只是让被测场景的时序前提在任意环境下都成立。
 
 架构基线快照（`tests/fixtures/architecture/*.json`）与 `app/schemas/exports.py`
 在每轮改动后由 `scripts/architecture/baseline.py --write` 与

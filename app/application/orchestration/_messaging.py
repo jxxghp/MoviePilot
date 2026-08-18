@@ -478,9 +478,11 @@ class NotificationMixin:
     def finalize_message(
             self,
             response: MessageResponse,
-    ) -> bool:
+    ) -> Optional[bool]:
         """
         对已发送消息执行渠道收尾动作。
-        例如关闭流式卡片状态；无特殊收尾的渠道直接返回 False。
+
+        :param response: 消息发送响应，携带渠道与渠道自定义上下文
+        :return: 收尾结果；无渠道认领这条消息时为 ``None``
         """
         return self.unicast("finalize_message", response=response)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -36,6 +37,28 @@ def _write_plugin(root: Path, plugin_id: str, source: str) -> Path:
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "__init__.py").write_text(source, encoding="utf-8")
     return plugin_dir
+
+
+def _await_new_fs_tick(reference: os.stat_result, probe_dir: Path) -> None:
+    """自旋等待，直到文件系统时间戳推进到一个新的可观测刻度。
+
+    部分文件系统/内核对 inode 时间戳使用粗粒度时钟，间隔极短的两次写入可能
+    落在同一刻度内、拿到完全相同的 mtime/ctime，使基于时间戳比较的缓存失效
+    判断失去区分度、产生与执行顺序相关的偶发失败。通过反复触碰一个探测文件，
+    直到其 ctime 晚于 reference，确保调用方紧随其后的写入必然落入新刻度。
+
+    :param reference: 作为时间基准的 stat 结果
+    :param probe_dir: 探测文件所在目录，测试结束后随 tmp_path 一并清理
+    """
+    probe = probe_dir / ".fs_tick_probe"
+    deadline = time.monotonic() + 2.0
+    while True:
+        probe.write_text("x", encoding="utf-8")
+        if probe.stat().st_ctime_ns > reference.st_ctime_ns:
+            return
+        if time.monotonic() > deadline:
+            pytest.fail("等待文件系统时间戳刻度推进超时，无法验证 ctime 失效路径")
+        time.sleep(0.001)
 
 
 @pytest.mark.parametrize(
@@ -193,6 +216,9 @@ def test_scanner_invalidates_equal_size_source_with_preserved_mtime(
     assert scan_plugin_resource_imports("ReplacedPlugin", plugin_dir) == (
         "host.display",
     )
+    # 保证接下来的写入必然落入新的文件系统时间戳刻度，让 ctime 的变化
+    # 真实可观测，测试不再依赖执行顺序带来的偶然时序间隔。
+    _await_new_fs_tick(original_stat, plugin_dir)
     source_path.write_text("import cloakbrowsex\n", encoding="utf-8")
     os.utime(
         source_path,
