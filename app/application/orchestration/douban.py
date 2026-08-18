@@ -243,25 +243,29 @@ class DoubanChain(ChainBase):
         :param page:  页码
         :param count:  每页数量
         """
-        return self.unicast("movie_top250", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="movie_top250",
+                               page=page, count=count)
 
     def movie_showing(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取正在上映的电影
         """
-        return self.unicast("movie_showing", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="movie_showing",
+                               page=page, count=count)
 
     def tv_weekly_chinese(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周中国剧集榜
         """
-        return self.unicast("tv_weekly_chinese", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="tv_weekly_chinese",
+                               page=page, count=count)
 
     def tv_weekly_global(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周全球剧集榜
         """
-        return self.unicast("tv_weekly_global", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="tv_weekly_global",
+                               page=page, count=count)
 
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
                         page: Optional[int] = 0, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
@@ -274,26 +278,29 @@ class DoubanChain(ChainBase):
         :param count:  数量
         :return: 媒体信息列表
         """
-        return self.unicast("douban_discover", mtype=mtype, sort=sort, tags=tags,
+        return self.unicast("discover", source=MediaSource.Douban, mtype=mtype, sort=sort, tags=tags,
                                page=page, count=count)
 
     def tv_animation(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取动画剧集
         """
-        return self.unicast("tv_animation", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="tv_animation",
+                               page=page, count=count)
 
     def movie_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门电影
         """
-        return self.unicast("movie_hot", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="movie_hot",
+                               page=page, count=count)
 
     def tv_hot(self, page: Optional[int] = 1, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门剧集
         """
-        return self.unicast("tv_hot", page=page, count=count)
+        return self.unicast("discover_board", source=MediaSource.Douban, board="tv_hot",
+                               page=page, count=count)
 
     def movie_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -351,28 +358,32 @@ class DoubanChain(ChainBase):
         :param page:  页码
         :param count:  每页数量
         """
-        return await self.async_unicast("async_movie_top250", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="movie_top250", page=page, count=count)
 
     async def async_movie_showing(self, page: Optional[int] = 1,
                                   count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取正在上映的电影（异步版本）
         """
-        return await self.async_unicast("async_movie_showing", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="movie_showing", page=page, count=count)
 
     async def async_tv_weekly_chinese(self, page: Optional[int] = 1,
                                       count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周中国剧集榜（异步版本）
         """
-        return await self.async_unicast("async_tv_weekly_chinese", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="tv_weekly_chinese", page=page, count=count)
 
     async def async_tv_weekly_global(self, page: Optional[int] = 1,
                                      count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取本周全球剧集榜（异步版本）
         """
-        return await self.async_unicast("async_tv_weekly_global", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="tv_weekly_global", page=page, count=count)
 
     async def async_douban_discover(self, mtype: MediaType, sort: str, tags: str,
                                     page: Optional[int] = 0, count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
@@ -385,29 +396,32 @@ class DoubanChain(ChainBase):
         :param count:  数量
         :return: 媒体信息列表
         """
-        return await self.async_unicast("async_douban_discover", mtype=mtype, sort=sort, tags=tags,
-                                           page=page, count=count)
+        return await self.async_unicast("async_discover", source=MediaSource.Douban, mtype=mtype,
+                                           sort=sort, tags=tags, page=page, count=count)
 
     async def async_tv_animation(self, page: Optional[int] = 1,
                                  count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取动画剧集（异步版本）
         """
-        return await self.async_unicast("async_tv_animation", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="tv_animation", page=page, count=count)
 
     async def async_movie_hot(self, page: Optional[int] = 1,
                               count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门电影（异步版本）
         """
-        return await self.async_unicast("async_movie_hot", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="movie_hot", page=page, count=count)
 
     async def async_tv_hot(self, page: Optional[int] = 1,
                            count: Optional[int] = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门剧集（异步版本）
         """
-        return await self.async_unicast("async_tv_hot", page=page, count=count)
+        return await self.async_unicast("async_discover_board", source=MediaSource.Douban,
+                                           board="tv_hot", page=page, count=count)
 
     async def async_movie_credits(self, doubanid: str) -> Optional[List[_SchemaMediaPerson]]:
         """

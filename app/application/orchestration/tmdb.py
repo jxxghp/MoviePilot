@@ -37,7 +37,7 @@ class TmdbChain(ChainBase):
         :param page:  页码
         :return: 媒体信息列表
         """
-        return self.unicast("tmdb_discover", mtype=mtype,
+        return self.unicast("discover", source=MediaSource.TMDB, mtype=mtype,
                                sort_by=sort_by,
                                with_genres=with_genres,
                                with_original_language=with_original_language,
@@ -54,7 +54,7 @@ class TmdbChain(ChainBase):
         :param page: 第几页
         :return: TMDB信息列表
         """
-        return self.unicast("tmdb_trending", page=page)
+        return self.unicast("discover_board", source=MediaSource.TMDB, board="trending", page=page)
 
     def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
         """
@@ -199,7 +199,7 @@ class TmdbChain(ChainBase):
         :param raise_exception:  触发速率限制时是否抛出异常
         :return: 媒体信息列表
         """
-        return await self.async_unicast("async_tmdb_discover", mtype=mtype,
+        return await self.async_unicast("async_discover", source=MediaSource.TMDB, mtype=mtype,
                                            sort_by=sort_by,
                                            with_genres=with_genres,
                                            with_original_language=with_original_language,
@@ -219,7 +219,8 @@ class TmdbChain(ChainBase):
         :param raise_exception:  触发速率限制时是否抛出异常
         :return: TMDB信息列表
         """
-        return await self.async_unicast("async_tmdb_trending", page=page, raise_exception=raise_exception)
+        return await self.async_unicast("async_discover_board", source=MediaSource.TMDB, board="trending",
+                                           page=page, raise_exception=raise_exception)
 
     async def async_tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
         """

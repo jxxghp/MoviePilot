@@ -17,6 +17,11 @@ from app.adapters.network.http import RequestUtils
 from app.domain.media import is_media_source_enabled
 from app.schemas.media import normalize_media_source
 
+# 榜单标识到本模块方法名的映射，discover_board 只接受在册标识，白名单校验先于 getattr 完成
+_DISCOVER_BOARDS = {
+    "calendar": "bangumi_calendar",
+}
+
 
 class BangumiModule(_ModuleBase):
     """
@@ -622,3 +627,67 @@ class BangumiModule(_ModuleBase):
         except (TypeError, ValueError):
             return None
         return await self.async_bangumi_recommend(bangumiid=bangumiid)
+
+    def discover(self, source: Optional[MediaSource] = None,
+                 **criteria) -> Optional[List[MediaInfo]]:
+        """
+        按条件发现指定来源的媒体
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param criteria: 筛选条件，原样转发给 bangumi_discover，不补默认值
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return self.bangumi_discover(**criteria)
+
+    async def async_discover(self, source: Optional[MediaSource] = None,
+                              **criteria) -> Optional[List[MediaInfo]]:
+        """
+        按条件发现指定来源的媒体（异步版本）
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param criteria: 筛选条件，原样转发给 async_bangumi_discover，不补默认值
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return await self.async_bangumi_discover(**criteria)
+
+    def discover_board(self, source: Optional[MediaSource] = None,
+                        board: str = None,
+                        page: int = 1,
+                        count: int = 30,
+                        **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的榜单
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param board: 榜单标识，须命中本源白名单，未登记标识返回 None
+        :param page: 本源不支持，calendar 接口无分页参数
+        :param count: 本源不支持，calendar 接口无分页参数
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        method_name = _DISCOVER_BOARDS.get(board)
+        if method_name is None:
+            return None
+        return getattr(self, method_name)()
+
+    async def async_discover_board(self, source: Optional[MediaSource] = None,
+                                    board: str = None,
+                                    page: int = 1,
+                                    count: int = 30,
+                                    **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的榜单（异步版本）
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param board: 榜单标识，须命中本源白名单，未登记标识返回 None
+        :param page: 本源不支持，calendar 接口无分页参数
+        :param count: 本源不支持，calendar 接口无分页参数
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        method_name = _DISCOVER_BOARDS.get(board)
+        if method_name is None:
+            return None
+        return await getattr(self, f"async_{method_name}")()

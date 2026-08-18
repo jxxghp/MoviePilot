@@ -167,6 +167,50 @@ _MULTI_SOURCE_CONTRACTS = {
         ),
         arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
     ),
+    "discover": MultiSourceCapabilityContract(
+        method="discover",
+        sources=(
+            "TMDB：TheMovieDbModule 按 source=TMDB 应答，筛选条件原样转发给 tmdb_discover",
+            "豆瓣：DoubanModule 按 source=Douban 应答，筛选条件原样转发给 douban_discover",
+            "Bangumi：BangumiModule 按 source=Bangumi 应答，筛选条件原样转发给 bangumi_discover",
+            "AniList：AniListModule 按 source=AniList 应答，筛选条件原样转发给 anilist_discover",
+            "插件：模块自带 discover 实现按 source 自认领应答",
+        ),
+        abstain=(
+            "返回 None 表示本来源不认领，仅涵盖 source 非本来源；"
+            "筛选条件（criteria）按各来源原方法签名原样转发，本契约不为任何条件补默认值，"
+            "本来源必填条件缺失时由被委托的原方法自身抛出异常，而非静默返回 None 或默认结果；"
+            "调度据此继续询问下一来源"
+        ),
+        narrowing=(
+            ("source", "唯一收窄键：非本来源一律让出，其余条件原样转发不做归一"),
+        ),
+        arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
+    ),
+    "discover_board": MultiSourceCapabilityContract(
+        method="discover_board",
+        sources=(
+            "豆瓣：DoubanModule 按 source=Douban 应答，支持 movie_showing/movie_hot/movie_top250/"
+            "tv_hot/tv_animation/tv_weekly_chinese/tv_weekly_global 共7个榜单，接受 page 与 count",
+            "TMDB：TheMovieDbModule 按 source=TMDB 应答，仅支持 trending 榜单，只接受 page",
+            "Bangumi：BangumiModule 按 source=Bangumi 应答，仅支持 calendar 榜单，不接受分页参数",
+            "AniList：AniListModule 按 source=AniList 应答，支持 trending/popular_this_season 两个"
+            "榜单，接受 page 与 count",
+            "插件：模块自带 discover_board 实现按 source 自认领应答",
+        ),
+        abstain=(
+            "返回 None 表示本来源不认领，既涵盖 source 非本来源，也涵盖 board 未命中本来源榜单白名单；"
+            "白名单校验先于方法查找完成，未登记标识不会触发任意方法调用；"
+            "返回空列表会被视为已认领而短路，因此非本来源与未登记榜单都必须返回 None；"
+            "调度据此继续询问下一来源"
+        ),
+        narrowing=(
+            ("source", "收窄键之一：非本来源一律让出"),
+            ("board", "收窄键之一：须命中本来源榜单白名单，否则让出；"
+                      "各来源只下传自己认得的分页参数，其余就地丢弃"),
+        ),
+        arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
+    ),
 }
 
 # 首批登记高频能力族。方法名仍保持开放字符串，以兼容第三方插件自定义模块能力；
@@ -189,6 +233,10 @@ _METHOD_CONTRACTS = {
     "async_media_recommend": ModuleMethodContract(family="media-metadata"),
     "media_similar": ModuleMethodContract(family="media-metadata"),
     "async_media_similar": ModuleMethodContract(family="media-metadata"),
+    "discover": ModuleMethodContract(family="media-discovery"),
+    "async_discover": ModuleMethodContract(family="media-discovery"),
+    "discover_board": ModuleMethodContract(family="media-discovery"),
+    "async_discover_board": ModuleMethodContract(family="media-discovery"),
     "media_files": ModuleMethodContract(family="media-library"),
     "mediaserver_items": ModuleMethodContract(family="media-server"),
     "mediaserver_iteminfo": ModuleMethodContract(family="media-server"),

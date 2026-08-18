@@ -33,6 +33,17 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.media import normalize_media_source
 
+# 榜单标识到本模块方法名的映射，discover_board 只接受在册标识，白名单校验先于 getattr 完成
+_DISCOVER_BOARDS = {
+    "movie_showing": "movie_showing",
+    "movie_hot": "movie_hot",
+    "movie_top250": "movie_top250",
+    "tv_hot": "tv_hot",
+    "tv_animation": "tv_animation",
+    "tv_weekly_chinese": "tv_weekly_chinese",
+    "tv_weekly_global": "tv_weekly_global",
+}
+
 
 class DoubanModule(_ModuleBase):
     """提供豆瓣影视与豆瓣音乐元数据识别能力。"""
@@ -2146,3 +2157,69 @@ class DoubanModule(_ModuleBase):
         if mtype == MediaType.TV:
             return await self.async_douban_tv_recommend(doubanid=doubanid)
         return await self.async_douban_movie_recommend(doubanid=doubanid)
+
+    def discover(self, source: Optional[MediaSource] = None,
+                 **criteria) -> Optional[List[MediaInfo]]:
+        """
+        按条件发现指定来源的媒体
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param criteria: 筛选条件，原样转发给 douban_discover，不补默认值；本源要求 mtype、sort、
+                         tags 等必填项与可选的 page、count，必填项缺失时由 douban_discover 自身
+                         抛出异常
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        return self.douban_discover(**criteria)
+
+    async def async_discover(self, source: Optional[MediaSource] = None,
+                              **criteria) -> Optional[List[MediaInfo]]:
+        """
+        按条件发现指定来源的媒体（异步版本）
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param criteria: 筛选条件，原样转发给 async_douban_discover，规则同步版本一致
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        return await self.async_douban_discover(**criteria)
+
+    def discover_board(self, source: Optional[MediaSource] = None,
+                        board: str = None,
+                        page: int = 1,
+                        count: int = 30,
+                        **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的榜单
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param board: 榜单标识，须命中本源白名单，未登记标识返回 None
+        :param page: 页码
+        :param count: 每页数量
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        method_name = _DISCOVER_BOARDS.get(board)
+        if method_name is None:
+            return None
+        return getattr(self, method_name)(page=page, count=count)
+
+    async def async_discover_board(self, source: Optional[MediaSource] = None,
+                                    board: str = None,
+                                    page: int = 1,
+                                    count: int = 30,
+                                    **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的榜单（异步版本）
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param board: 榜单标识，须命中本源白名单，未登记标识返回 None
+        :param page: 页码
+        :param count: 每页数量
+        :return: 媒体信息列表
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        method_name = _DISCOVER_BOARDS.get(board)
+        if method_name is None:
+            return None
+        return await getattr(self, f"async_{method_name}")(page=page, count=count)

@@ -15,13 +15,13 @@ class BangumiChain(ChainBase):
         """
         获取Bangumi每日放送
         """
-        return self.unicast("bangumi_calendar")
+        return self.unicast("discover_board", source=MediaSource.Bangumi, board="calendar")
 
     def discover(self, **kwargs) -> Optional[List[MediaInfo]]:
         """
         发现Bangumi番剧
         """
-        return self.unicast("bangumi_discover", **kwargs)
+        return self.unicast("discover", source=MediaSource.Bangumi, **kwargs)
 
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
@@ -63,13 +63,13 @@ class BangumiChain(ChainBase):
         """
         获取Bangumi每日放送（异步版本）
         """
-        return await self.async_unicast("async_bangumi_calendar")
+        return await self.async_unicast("async_discover_board", source=MediaSource.Bangumi, board="calendar")
 
     async def async_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
         """
         发现Bangumi番剧（异步版本）
         """
-        return await self.async_unicast("async_bangumi_discover", **kwargs)
+        return await self.async_unicast("async_discover", source=MediaSource.Bangumi, **kwargs)
 
     async def async_bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
