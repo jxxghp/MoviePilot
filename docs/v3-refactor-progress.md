@@ -284,6 +284,15 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
    前置依赖是插件自管理数据库（独立 MetaData 与库文件），当前全局单例 DB
    结构性阻断插件自有表。1.11 落地的扩展实例标识只服务内建宿主模块，
    插件层零引用，可作为接入点。
+6. **数据源仍编码在方法名里**：`tmdb_person_detail` / `douban_person_detail` /
+   `bangumi_person_detail` 是同一个问题的三个方法名，`movie_credits` 与
+   `tv_credits`、`movie_similar` 与 `tv_similar` 则把 `mtype` 编码进了方法名。
+   分发面因此按「源 × 实体 × 类型」笛卡尔展开，新增一个数据源要在分发面上
+   新增一整族方法名，插件无法以对等身份提供同一能力。归一方向是把源与类型
+   降为契约参数（`person_detail(source, person_id)`、`media_credits(media_id, mtype)`），
+   识别侧同理（`match_tmdbinfo` / `match_doubaninfo` → `match_media(source, ...)`）。
+7. **插件模块注册 SPI**：插件目前只能经 `get_module()` 注入方法表参与分发，
+   不能声明系统模块的入口与生命周期，也无法向能力内核做运行期注册。
 
 ---
 
