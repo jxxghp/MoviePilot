@@ -1,9 +1,6 @@
 """插件运行时钩子契约。"""
 
 from dataclasses import dataclass
-from typing import Any
-
-from app.foundation.reflection import ObjectUtils
 
 
 @dataclass(frozen=True)
@@ -33,9 +30,3 @@ PLUGIN_HOOK_CONTRACTS = {
         PluginHookContract("get_render_mode", isolates_errors=False),
     )
 }
-
-
-def supports_plugin_hook(plugin: Any, name: str) -> bool:
-    """按旧插件的方法判定规则检查实例是否实现指定钩子。"""
-    method = getattr(plugin, name, None)
-    return bool(method and ObjectUtils.check_method(method))

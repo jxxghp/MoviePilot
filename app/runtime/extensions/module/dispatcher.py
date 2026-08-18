@@ -1,16 +1,23 @@
-"""宿主模块与插件模块的统一调用算法。"""
+"""按扩展契约取用提供者的统一调用算法。"""
 
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Protocol
 
 from fastapi.concurrency import run_in_threadpool
 
 from app.foundation.reflection import ObjectUtils
-from app.runtime.log import logger
+from app.runtime.extensions.contract import (
+    ExtensionFaultScope,
+    ExtensionProvider,
+    ExtensionProviderSource,
+)
+from app.runtime.extensions.host_module_adapter import HostModuleProviderSource
 from app.runtime.extensions.module.contracts import get_module_method_contract
+from app.runtime.extensions.plugin.projection import PluginProviderSource
+from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException
 
 
@@ -38,7 +45,7 @@ AsyncFunctionRunner = Callable[..., Any]
 
 
 class ModuleInvocationDispatcher:
-    """按既有聚合、短路和异常规则执行插件与宿主模块。"""
+    """按既有聚合、短路和异常规则执行各发行方式的扩展提供者。"""
 
     def __init__(
         self,
@@ -49,49 +56,74 @@ class ModuleInvocationDispatcher:
         system_error_handler: ModuleErrorHandler,
         rate_limit_handler: ModuleErrorHandler,
         async_function_runner: AsyncFunctionRunner = run_in_threadpool,
+        extra_sources: Sequence[ExtensionProviderSource] = (),
     ) -> None:
-        """保存模块目录和策略回调，不主动发现或创建任何运行时资源。"""
-        self._module_catalog = module_catalog
-        self._plugin_catalog = plugin_catalog
-        self._plugin_error_handler = plugin_error_handler
-        self._system_error_handler = system_error_handler
+        """保存扩展目录和策略回调，不主动发现或创建任何运行时资源。
+
+        :param module_catalog: 宿主模块目录
+        :param plugin_catalog: 插件模块目录
+        :param plugin_error_handler: 市场扩展执行异常的上报回调
+        :param system_error_handler: 内建扩展执行异常的上报回调
+        :param rate_limit_handler: 本地限流跳过的上报回调
+        :param async_function_runner: 把同步方法移出事件循环的执行器
+        :param extra_sources: 追加的扩展目录，按给定顺序参与分发
+        """
+        self._sources: tuple[ExtensionProviderSource, ...] = (
+            PluginProviderSource(plugin_catalog),
+            HostModuleProviderSource(module_catalog),
+            *extra_sources,
+        )
+        self._fault_handlers = {
+            ExtensionFaultScope.PLUGIN: plugin_error_handler,
+            ExtensionFaultScope.HOST: system_error_handler,
+        }
         self._rate_limit_handler = rate_limit_handler
         self._async_function_runner = async_function_runner
 
     @staticmethod
     def is_valid_empty(result: Any) -> bool:
-        """保持旧协议中 ``None`` 与全 ``None`` 元组的空结果定义。"""
+        """判断结果是否为空，``None`` 与全 ``None`` 元组都视为未认领。
+
+        :param result: 提供者返回值
+        :return: 结果为空时为 True
+        """
         if isinstance(result, tuple):
             return all(value is None for value in result)
         return result is None
 
     def dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        """先执行插件模块，再按优先级执行宿主模块。"""
-        contract = get_module_method_contract(method)
-        logger.debug("模块方法契约：%s -> %s", method, contract.family)
-        result = self.execute_plugin_modules(method, None, *args, **kwargs)
-        if not self.is_valid_empty(result) and not isinstance(result, list):
-            return result
-        return self.execute_system_modules(method, result, *args, **kwargs)
+        """按发行方式分阶段接力执行，先得到的标量答案终止后续阶段。"""
+        self._log_contract(method)
+        result: Any = None
+        for source in self._sources:
+            source.announce_phase(method)
+            result = self._execute_chain(
+                source.notify_providers(method),
+                method,
+                result,
+                *args,
+                **kwargs,
+            )
+            if self._is_settled(result):
+                break
+        return result
 
     async def async_dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        """以与同步路径相同的聚合规则执行同步或异步模块方法。"""
-        contract = get_module_method_contract(method)
-        logger.debug("异步模块方法契约：%s -> %s", method, contract.family)
-        result = await self.async_execute_plugin_modules(
-            method,
-            None,
-            *args,
-            **kwargs,
-        )
-        if not self.is_valid_empty(result) and not isinstance(result, list):
-            return result
-        return await self.async_execute_system_modules(
-            method,
-            result,
-            *args,
-            **kwargs,
-        )
+        """以与同步路径相同的聚合规则执行同步或异步扩展方法。"""
+        self._log_contract(method)
+        result: Any = None
+        for source in self._sources:
+            source.announce_phase(method)
+            result = await self._async_execute_chain(
+                source.notify_providers(method),
+                method,
+                result,
+                *args,
+                **kwargs,
+            )
+            if self._is_settled(result):
+                break
+        return result
 
     def broadcast(self, method: str, *args: Any, **kwargs: Any) -> None:
         """把方法通知给全部提供者，不收集结果也不短路。
@@ -101,10 +133,8 @@ class ModuleInvocationDispatcher:
         :param kwargs: 透传给提供者的命名参数
         :return: 无返回值
         """
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            self._invoke_plugin(method, plugin_id, plugin_name, func, *args, **kwargs)
-        for module in self._broadcast_modules(method):
-            self._invoke_module(method, module, *args, **kwargs)
+        for provider in self._notify_providers(method):
+            self._invoke(provider, method, *args, **kwargs)
 
     async def async_broadcast(self, method: str, *args: Any, **kwargs: Any) -> None:
         """以广播语义执行同步或异步方法，同步函数移出事件循环。
@@ -114,17 +144,8 @@ class ModuleInvocationDispatcher:
         :param kwargs: 透传给提供者的命名参数
         :return: 无返回值
         """
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            await self._async_invoke_plugin(
-                method,
-                plugin_id,
-                plugin_name,
-                func,
-                *args,
-                **kwargs,
-            )
-        for module in self._broadcast_modules(method):
-            await self._async_invoke_module(method, module, *args, **kwargs)
+        for provider in self._notify_providers(method):
+            await self._async_invoke(provider, method, *args, **kwargs)
 
     def multicast(self, method: str, *args: Any, **kwargs: Any) -> list:
         """在能力族内收集全部提供者的非空答案。
@@ -132,22 +153,11 @@ class ModuleInvocationDispatcher:
         :param method: 模块方法名称
         :param args: 透传给提供者的位置参数
         :param kwargs: 透传给提供者的命名参数
-        :return: 按插件优先、宿主优先级排序的非空结果列表
+        :return: 按发行方式与优先级排序的非空结果列表
         """
         results: list[Any] = []
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            result = self._invoke_plugin(
-                method,
-                plugin_id,
-                plugin_name,
-                func,
-                *args,
-                **kwargs,
-            )
-            if not self.is_valid_empty(result):
-                results.append(result)
-        for module in self._module_catalog.providers_for(method):
-            result = self._invoke_module(method, module, *args, **kwargs)
+        for provider in self._answer_providers(method):
+            result = self._invoke(provider, method, *args, **kwargs)
             if not self.is_valid_empty(result):
                 results.append(result)
         return results
@@ -158,22 +168,11 @@ class ModuleInvocationDispatcher:
         :param method: 模块方法名称
         :param args: 透传给提供者的位置参数
         :param kwargs: 透传给提供者的命名参数
-        :return: 按插件优先、宿主优先级排序的非空结果列表
+        :return: 按发行方式与优先级排序的非空结果列表
         """
         results: list[Any] = []
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            result = await self._async_invoke_plugin(
-                method,
-                plugin_id,
-                plugin_name,
-                func,
-                *args,
-                **kwargs,
-            )
-            if not self.is_valid_empty(result):
-                results.append(result)
-        for module in self._module_catalog.providers_for(method):
-            result = await self._async_invoke_module(method, module, *args, **kwargs)
+        for provider in self._answer_providers(method):
+            result = await self._async_invoke(provider, method, *args, **kwargs)
             if not self.is_valid_empty(result):
                 results.append(result)
         return results
@@ -186,19 +185,8 @@ class ModuleInvocationDispatcher:
         :param kwargs: 透传给提供者的命名参数
         :return: 首个非空结果；无人认领时返回 ``None``
         """
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            result = self._invoke_plugin(
-                method,
-                plugin_id,
-                plugin_name,
-                func,
-                *args,
-                **kwargs,
-            )
-            if not self.is_valid_empty(result):
-                return result
-        for module in self._module_catalog.providers_for(method):
-            result = self._invoke_module(method, module, *args, **kwargs)
+        for provider in self._answer_providers(method):
+            result = self._invoke(provider, method, *args, **kwargs)
             if not self.is_valid_empty(result):
                 return result
         return None
@@ -211,332 +199,230 @@ class ModuleInvocationDispatcher:
         :param kwargs: 透传给提供者的命名参数
         :return: 首个非空结果；无人认领时返回 ``None``
         """
-        for plugin_id, plugin_name, func in self._plugin_providers(method):
-            result = await self._async_invoke_plugin(
+        for provider in self._answer_providers(method):
+            result = await self._async_invoke(provider, method, *args, **kwargs)
+            if not self.is_valid_empty(result):
+                return result
+        return None
+
+    @staticmethod
+    def _log_contract(method: str) -> None:
+        """记录方法命中的能力族契约。
+
+        :param method: 模块方法名称
+        :return: 无返回值
+        """
+        contract = get_module_method_contract(method)
+        logger.debug("模块方法契约：%s -> %s", method, contract.family)
+
+    def _is_settled(self, result: Any) -> bool:
+        """判断接力结果是否已成为不可再合并的最终答案。
+
+        :param result: 当前接力结果
+        :return: 结果非空且不是可继续合并的列表时为 True
+        """
+        return not self.is_valid_empty(result) and not isinstance(result, list)
+
+    def _notify_providers(self, method: str) -> Iterator[ExtensionProvider]:
+        """按目录顺序遍历应被通知的全部提供者。
+
+        :param method: 模块方法名称
+        :return: 提供者迭代器
+        """
+        for source in self._sources:
+            yield from source.notify_providers(method)
+
+    def _answer_providers(self, method: str) -> Iterator[ExtensionProvider]:
+        """按目录顺序遍历参与仲裁的提供者。
+
+        :param method: 模块方法名称
+        :return: 提供者迭代器
+        """
+        for source in self._sources:
+            yield from source.answer_providers(method)
+
+    def _invoke(
+        self,
+        provider: ExtensionProvider,
+        method: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """执行单个提供者，异常按其归属策略上报后视为未认领。
+
+        :param provider: 提供者记录
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 提供者返回值；限流或出错时返回 ``None``
+        """
+        try:
+            self._announce_invocation(provider, method)
+            return provider.invoke(*args, **kwargs)
+        except RateLimitExceededException as err:
+            self._report_rate_limit(provider, method, err, **kwargs)
+        except Exception as err:
+            self._report_fault(provider, method, err, **kwargs)
+        return None
+
+    async def _async_invoke(
+        self,
+        provider: ExtensionProvider,
+        method: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """执行单个提供者，协程直接等待，同步函数移入线程池。
+
+        :param provider: 提供者记录
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 提供者返回值；限流或出错时返回 ``None``
+        """
+        try:
+            self._announce_invocation(provider, method)
+            return await self._async_call(provider.invoke, *args, **kwargs)
+        except RateLimitExceededException as err:
+            self._report_rate_limit(provider, method, err, **kwargs)
+        except Exception as err:
+            self._report_fault(provider, method, err, **kwargs)
+        return None
+
+    def _execute_chain(
+        self,
+        providers: Iterable[ExtensionProvider],
+        method: str,
+        result: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """沿提供者顺序接力聚合结果，保持空结果补位、列表合并与标量短路。
+
+        :param providers: 参与接力的提供者
+        :param method: 模块方法名称
+        :param result: 上一阶段的接力结果
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 本阶段结束后的接力结果
+        """
+        for provider in providers:
+            try:
+                self._announce_invocation(provider, method)
+                if self.is_valid_empty(result):
+                    result = provider.invoke(*args, **kwargs)
+                elif provider.relays_result and ObjectUtils.check_signature(
+                    provider.invoke,
+                    result,
+                ):
+                    result = provider.invoke(result)
+                elif isinstance(result, list):
+                    temp = provider.invoke(*args, **kwargs)
+                    if isinstance(temp, list):
+                        result.extend(temp)
+                else:
+                    break
+            except RateLimitExceededException as err:
+                self._report_rate_limit(provider, method, err, **kwargs)
+            except Exception as err:
+                self._report_fault(provider, method, err, **kwargs)
+        return result
+
+    async def _async_execute_chain(
+        self,
+        providers: Iterable[ExtensionProvider],
+        method: str,
+        result: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """以同步路径的接力规则执行同步或异步提供者。
+
+        :param providers: 参与接力的提供者
+        :param method: 模块方法名称
+        :param result: 上一阶段的接力结果
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 本阶段结束后的接力结果
+        """
+        for provider in providers:
+            try:
+                self._announce_invocation(provider, method)
+                if self.is_valid_empty(result):
+                    result = await self._async_call(provider.invoke, *args, **kwargs)
+                elif provider.relays_result and ObjectUtils.check_signature(
+                    provider.invoke,
+                    result,
+                ):
+                    result = await self._async_call(provider.invoke, result)
+                elif isinstance(result, list):
+                    temp = await self._async_call(provider.invoke, *args, **kwargs)
+                    if isinstance(temp, list):
+                        result.extend(temp)
+                else:
+                    break
+            except RateLimitExceededException as err:
+                self._report_rate_limit(provider, method, err, **kwargs)
+            except Exception as err:
+                self._report_fault(provider, method, err, **kwargs)
+        return result
+
+    @staticmethod
+    def _announce_invocation(provider: ExtensionProvider, method: str) -> None:
+        """按提供者声明记录本次调用请求。
+
+        :param provider: 提供者记录
+        :param method: 模块方法名称
+        :return: 无返回值
+        """
+        if provider.announces_invocation:
+            logger.info(
+                "请求%s %s 执行：%s ...",
+                provider.fault_scope.value,
+                provider.display_name,
                 method,
-                plugin_id,
-                plugin_name,
-                func,
-                *args,
-                **kwargs,
             )
-            if not self.is_valid_empty(result):
-                return result
-        for module in self._module_catalog.providers_for(method):
-            result = await self._async_invoke_module(method, module, *args, **kwargs)
-            if not self.is_valid_empty(result):
-                return result
-        return None
 
-    def _plugin_providers(
+    def _report_fault(
         self,
+        provider: ExtensionProvider,
         method: str,
-    ) -> Iterator[tuple[str, str, Callable[..., Any]]]:
-        """遍历插件注入的同名方法。
+        err: Exception,
+        **kwargs: Any,
+    ) -> None:
+        """把执行异常交给提供者归属方的上报策略。
 
+        :param provider: 提供者记录
         :param method: 模块方法名称
-        :return: `(插件 ID, 插件名称, 插件方法)` 迭代器
+        :param err: 捕获到的异常
+        :param kwargs: 透传给上报策略的命名参数
+        :return: 无返回值
         """
-        plugin_modules = self._plugin_catalog.get_plugin_modules()
-        for (plugin_id, plugin_name), module_dict in plugin_modules.items():
-            func = module_dict.get(method)
-            if func:
-                yield plugin_id, plugin_name, func
+        handler = self._fault_handlers[provider.fault_scope]
+        handler(err, provider.extension_id, provider.display_name, method, **kwargs)
 
-    def _broadcast_modules(self, method: str) -> list:
-        """线性扫描全部运行模块，得到广播的宿主提供者。
+    def _report_rate_limit(
+        self,
+        provider: ExtensionProvider,
+        method: str,
+        err: RateLimitExceededException,
+        **kwargs: Any,
+    ) -> None:
+        """把本地限流跳过交给限流上报策略。
 
+        :param provider: 提供者记录
         :param method: 模块方法名称
-        :return: 按 `get_priority()` 升序排列的宿主模块列表
+        :param err: 捕获到的限流异常
+        :param kwargs: 透传给上报策略的命名参数
+        :return: 无返回值
         """
-        return sorted(
-            self._module_catalog.get_running_modules(method),
-            key=lambda module: module.get_priority(),
+        self._rate_limit_handler(
+            err,
+            provider.fault_scope.value,
+            provider.extension_id,
+            method,
+            **kwargs,
         )
-
-    def _invoke_plugin(
-        self,
-        method: str,
-        plugin_id: str,
-        plugin_name: str,
-        func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """执行单个插件提供者，异常按插件策略上报后视为未认领。
-
-        :param method: 模块方法名称
-        :param plugin_id: 插件 ID
-        :param plugin_name: 插件名称
-        :param func: 插件注入的方法
-        :param args: 透传给插件方法的位置参数
-        :param kwargs: 透传给插件方法的命名参数
-        :return: 插件返回值；限流或出错时返回 ``None``
-        """
-        try:
-            logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-            return func(*args, **kwargs)
-        except RateLimitExceededException as err:
-            self._rate_limit_handler(err, "插件", plugin_id, method, **kwargs)
-        except Exception as err:
-            self._plugin_error_handler(err, plugin_id, plugin_name, method, **kwargs)
-        return None
-
-    async def _async_invoke_plugin(
-        self,
-        method: str,
-        plugin_id: str,
-        plugin_name: str,
-        func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """执行单个插件提供者，协程直接等待，同步函数移入线程池。
-
-        :param method: 模块方法名称
-        :param plugin_id: 插件 ID
-        :param plugin_name: 插件名称
-        :param func: 插件注入的方法
-        :param args: 透传给插件方法的位置参数
-        :param kwargs: 透传给插件方法的命名参数
-        :return: 插件返回值；限流或出错时返回 ``None``
-        """
-        try:
-            logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-            return await self._async_call(func, *args, **kwargs)
-        except RateLimitExceededException as err:
-            self._rate_limit_handler(err, "插件", plugin_id, method, **kwargs)
-        except Exception as err:
-            self._plugin_error_handler(err, plugin_id, plugin_name, method, **kwargs)
-        return None
-
-    def _invoke_module(
-        self,
-        method: str,
-        module: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """执行单个宿主提供者，异常按系统策略上报后视为未认领。
-
-        :param method: 模块方法名称
-        :param module: 运行中的宿主模块实例
-        :param args: 透传给模块方法的位置参数
-        :param kwargs: 透传给模块方法的命名参数
-        :return: 模块返回值；限流或出错时返回 ``None``
-        """
-        module_id = module.__class__.__name__
-        module_name = self._module_name(module, module_id)
-        try:
-            return getattr(module, method)(*args, **kwargs)
-        except RateLimitExceededException as err:
-            self._rate_limit_handler(err, "模块", module_id, method, **kwargs)
-        except Exception as err:
-            self._system_error_handler(err, module_id, module_name, method, **kwargs)
-        return None
-
-    async def _async_invoke_module(
-        self,
-        method: str,
-        module: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """执行单个宿主提供者，协程直接等待，同步函数移入线程池。
-
-        :param method: 模块方法名称
-        :param module: 运行中的宿主模块实例
-        :param args: 透传给模块方法的位置参数
-        :param kwargs: 透传给模块方法的命名参数
-        :return: 模块返回值；限流或出错时返回 ``None``
-        """
-        module_id = module.__class__.__name__
-        module_name = self._module_name(module, module_id)
-        try:
-            return await self._async_call(
-                getattr(module, method),
-                *args,
-                **kwargs,
-            )
-        except RateLimitExceededException as err:
-            self._rate_limit_handler(err, "模块", module_id, method, **kwargs)
-        except Exception as err:
-            self._system_error_handler(err, module_id, module_name, method, **kwargs)
-        return None
-
-    def execute_plugin_modules(
-        self,
-        method: str,
-        result: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """同步执行插件方法，保留插件顺序、短路和列表合并语义。"""
-        for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
-            plugin_id, plugin_name = plugin
-            func = module_dict.get(method)
-            if not func:
-                continue
-            try:
-                logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-                if self.is_valid_empty(result):
-                    result = func(*args, **kwargs)
-                elif isinstance(result, list):
-                    temp = func(*args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    break
-            except RateLimitExceededException as err:
-                self._rate_limit_handler(
-                    err,
-                    "插件",
-                    plugin_id,
-                    method,
-                    **kwargs,
-                )
-            except Exception as err:
-                self._plugin_error_handler(
-                    err,
-                    plugin_id,
-                    plugin_name,
-                    method,
-                    **kwargs,
-                )
-        return result
-
-    async def async_execute_plugin_modules(
-        self,
-        method: str,
-        result: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """异步执行插件方法，并把同步函数移入线程池。"""
-        for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
-            plugin_id, plugin_name = plugin
-            func = module_dict.get(method)
-            if not func:
-                continue
-            try:
-                logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-                if self.is_valid_empty(result):
-                    result = await self._async_call(func, *args, **kwargs)
-                elif isinstance(result, list):
-                    temp = await self._async_call(func, *args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    break
-            except RateLimitExceededException as err:
-                self._rate_limit_handler(
-                    err,
-                    "插件",
-                    plugin_id,
-                    method,
-                    **kwargs,
-                )
-            except Exception as err:
-                self._plugin_error_handler(
-                    err,
-                    plugin_id,
-                    plugin_name,
-                    method,
-                    **kwargs,
-                )
-        return result
-
-    def execute_system_modules(
-        self,
-        method: str,
-        result: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """同步执行按优先级排序的宿主模块，并支持签名接力。"""
-        logger.debug("请求系统模块执行：%s ...", method)
-        modules = sorted(
-            self._module_catalog.get_running_modules(method),
-            key=lambda module: module.get_priority(),
-        )
-        for module in modules:
-            module_id = module.__class__.__name__
-            module_name = self._module_name(module, module_id)
-            try:
-                func = getattr(module, method)
-                if self.is_valid_empty(result):
-                    result = func(*args, **kwargs)
-                elif ObjectUtils.check_signature(func, result):
-                    result = func(result)
-                elif isinstance(result, list):
-                    temp = func(*args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    break
-            except RateLimitExceededException as err:
-                self._rate_limit_handler(
-                    err,
-                    "模块",
-                    module_id,
-                    method,
-                    **kwargs,
-                )
-            except Exception as err:
-                self._system_error_handler(
-                    err,
-                    module_id,
-                    module_name,
-                    method,
-                    **kwargs,
-                )
-        return result
-
-    async def async_execute_system_modules(
-        self,
-        method: str,
-        result: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """异步执行宿主模块，并保持同步路径的签名接力与聚合顺序。"""
-        logger.debug("请求系统模块执行：%s ...", method)
-        modules = sorted(
-            self._module_catalog.get_running_modules(method),
-            key=lambda module: module.get_priority(),
-        )
-        for module in modules:
-            module_id = module.__class__.__name__
-            module_name = self._module_name(module, module_id)
-            try:
-                func = getattr(module, method)
-                if self.is_valid_empty(result):
-                    result = await self._async_call(func, *args, **kwargs)
-                elif ObjectUtils.check_signature(func, result):
-                    result = await self._async_call(func, result)
-                elif isinstance(result, list):
-                    temp = await self._async_call(func, *args, **kwargs)
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
-                    break
-            except RateLimitExceededException as err:
-                self._rate_limit_handler(
-                    err,
-                    "模块",
-                    module_id,
-                    method,
-                    **kwargs,
-                )
-            except Exception as err:
-                self._system_error_handler(
-                    err,
-                    module_id,
-                    module_name,
-                    method,
-                    **kwargs,
-                )
-        return result
 
     async def _async_call(
         self,
@@ -548,12 +434,3 @@ class ModuleInvocationDispatcher:
         if inspect.iscoroutinefunction(func):
             return await func(*args, **kwargs)
         return await self._async_function_runner(func, *args, **kwargs)
-
-    @staticmethod
-    def _module_name(module: Any, fallback: str) -> str:
-        """读取模块展示名，失败时回退到稳定类名。"""
-        try:
-            return module.get_name()
-        except Exception as err:
-            logger.debug("获取模块名称出错：%s", str(err))
-            return fallback

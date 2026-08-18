@@ -4,7 +4,7 @@ import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from app.runtime.capabilities.model import (
     ActivationPolicy,
@@ -14,7 +14,16 @@ from app.runtime.capabilities.model import (
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.config import settings
+from app.runtime.extensions.contract import (
+    ExtensionDistribution,
+    ExtensionFaultScope,
+    ExtensionProvider,
+    extension_capability_names,
+    is_implemented_callable,
+    supports_extension_hook,
+)
 from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.log import logger
 from app.schemas.types import (
     NotificationChannel,
     ModuleType,
@@ -205,6 +214,149 @@ def should_run_host_module(
             for item in snapshot.services[config["key"]]
         )
     raise ValueError(f"未支持的 Host Module selector：{selector.kind}")
+
+
+class HostModuleExtension:
+    """把运行中的宿主模块实例投影为扩展视图。"""
+
+    distribution = ExtensionDistribution.BUILTIN
+    fault_scope = ExtensionFaultScope.HOST
+
+    def __init__(self, instance: Any) -> None:
+        """保存被投影的宿主模块实例。
+
+        :param instance: 运行中的宿主模块实例
+        """
+        self.instance = instance
+
+    @property
+    def extension_id(self) -> str:
+        """返回模块类名作为稳定标识。"""
+        return self.instance.__class__.__name__
+
+    @property
+    def display_name(self) -> str:
+        """返回模块展示名，读取失败时回退到稳定标识。"""
+        try:
+            return self.instance.get_name()
+        except Exception as err:
+            logger.debug("获取模块名称出错：%s", str(err))
+            return self.extension_id
+
+    @property
+    def priority(self) -> int:
+        """返回模块在同一能力下的仲裁顺序。"""
+        return self.instance.get_priority()
+
+    def is_enabled(self) -> bool:
+        """宿主模块的启用与否由配置决定，能拿到运行实例即为启用。"""
+        return True
+
+    def initialize(self, config: Optional[dict] = None) -> None:
+        """初始化模块自有的连接、线程或客户端资源。
+
+        :param config: 扩展配置；宿主模块的配置来自应用设置，此入参不参与初始化
+        :return: 无返回值
+        """
+        del config
+        self.instance.init_module()
+
+    def terminate(self) -> None:
+        """停止模块自有的连接、线程或客户端资源。"""
+        self.instance.stop()
+
+    def self_test(self) -> Optional[tuple]:
+        """执行模块连通性自检。
+
+        :return: `(是否成功, 错误信息)`；模块未给出结论时为 ``None``
+        """
+        return self.instance.test()
+
+    def supports_hook(self, name: str) -> bool:
+        """判断模块是否实现了指定扩展点。
+
+        :param name: 扩展点名称
+        :return: 该扩展点已实现时为 True
+        """
+        return supports_extension_hook(self.instance, name)
+
+    def capability_names(self) -> tuple[str, ...]:
+        """列出模块可被分发触达的方法名。
+
+        :return: 已实现的公开方法名元组
+        """
+        return extension_capability_names(self.instance)
+
+    def capability(self, name: str) -> Optional[Any]:
+        """取用模块的指定可分发方法。
+
+        :param name: 方法名称
+        :return: 已实现的方法；未提供时为 ``None``
+        """
+        candidate = getattr(self.instance, name, None)
+        return candidate if is_implemented_callable(candidate) else None
+
+
+class HostModuleProviderSource:
+    """把运行中的宿主模块目录投影为分发提供者。"""
+
+    distribution = ExtensionDistribution.BUILTIN
+
+    def __init__(self, catalog: Any) -> None:
+        """保存宿主模块目录端口。
+
+        :param catalog: 提供运行中宿主模块查询的目录
+        """
+        self._catalog = catalog
+
+    @staticmethod
+    def announce_phase(method: str) -> None:
+        """记录宿主模块参与接力的阶段日志。
+
+        :param method: 模块方法名称
+        :return: 无返回值
+        """
+        logger.debug("请求系统模块执行：%s ...", method)
+
+    def notify_providers(self, method: str):
+        """线性扫描全部运行模块，按优先级升序产出提供者。
+
+        :param method: 模块方法名称
+        :return: 提供者迭代器
+        """
+        modules = sorted(
+            self._catalog.get_running_modules(method),
+            key=lambda module: module.get_priority(),
+        )
+        for module in modules:
+            yield self._provider(module, method)
+
+    def answer_providers(self, method: str):
+        """按能力索引产出已排序的提供者。
+
+        :param method: 模块方法名称
+        :return: 提供者迭代器
+        """
+        for module in self._catalog.providers_for(method):
+            yield self._provider(module, method)
+
+    @staticmethod
+    def _provider(instance: Any, method: str) -> ExtensionProvider:
+        """把一个运行模块的方法包装成提供者记录。
+
+        :param instance: 运行中的宿主模块实例
+        :param method: 模块方法名称
+        :return: 提供者记录
+        """
+        extension = HostModuleExtension(instance)
+        return ExtensionProvider(
+            extension_id=extension.extension_id,
+            display_name=extension.display_name,
+            distribution=ExtensionDistribution.BUILTIN,
+            fault_scope=ExtensionFaultScope.HOST,
+            invoke=getattr(instance, method),
+            relays_result=True,
+        )
 
 
 class HostModuleAdapter:

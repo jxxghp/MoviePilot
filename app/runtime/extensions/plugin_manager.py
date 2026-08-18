@@ -25,8 +25,8 @@ from app.runtime.log import logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
-from app.runtime.extensions.plugin.contracts import supports_plugin_hook
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.contract import supports_extension_hook
+from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
@@ -205,13 +205,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 self._plugins[plugin_id] = plugin
                 # 生成实例
                 plugin_obj = plugin()
+                extension = PluginExtension(plugin_obj, plugin_id)
                 # 生效插件配置
-                plugin_obj.init_plugin(self.get_plugin_config(plugin_id))
+                extension.initialize(self.get_plugin_config(plugin_id))
                 # 存储运行实例
                 self._running_plugins[plugin_id] = plugin_obj
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
                 # 启用的插件才设置事件注册状态可用
-                if plugin_obj.get_state():
+                if extension.is_enabled():
                     eventmanager.enable_event_handler(plugin)
                 else:
                     eventmanager.disable_event_handler(plugin)
@@ -228,10 +229,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugin = self._running_plugins.get(plugin_id)
         if not plugin:
             return
+        extension = PluginExtension(plugin, plugin_id)
         # 初始化插件
-        plugin.init_plugin(conf)
+        extension.initialize(conf)
         # 检查插件状态并启用/禁用事件处理器
-        if plugin.get_state():
+        if extension.is_enabled():
             # 启用插件类的事件处理器
             eventmanager.enable_event_handler(type(plugin))
         else:
@@ -726,15 +728,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         停止插件
         :param plugin: 插件实例
         """
+        extension = PluginExtension(plugin)
         try:
-            # 关闭数据库
-            if hasattr(plugin, "close"):
-                plugin.close()
-            # 关闭插件
-            if hasattr(plugin, "stop_service"):
-                plugin.stop_service()
+            # 关闭数据库连接与插件后台服务
+            extension.terminate()
         except Exception as e:
-            logger.warn(f"停止插件 {plugin.get_name()} 时发生错误: {str(e)}")
+            logger.warn(f"停止插件 {extension.display_name} 时发生错误: {str(e)}")
 
     def remove_plugin(self, plugin_id: str):
         """
@@ -1067,7 +1066,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             for plugin_id, plugin in running_plugins_snapshot.items():
                 if pid and pid != plugin_id:
                     continue
-                if supports_plugin_hook(plugin, "get_agent_tools"):
+                if supports_extension_hook(plugin, "get_agent_tools"):
                     try:
                         if not plugin.get_state():
                             continue
@@ -1296,7 +1295,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugin.state = False
             # 是否有详情页面
             if hasattr(plugin_class, "get_page"):
-                plugin.has_page = supports_plugin_hook(plugin_class, "get_page")
+                plugin.has_page = supports_extension_hook(plugin_class, "get_page")
             # 公钥
             if hasattr(plugin_class, "plugin_public_key"):
                 plugin.plugin_public_key = plugin_class.plugin_public_key
@@ -1503,7 +1502,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin.state = False
         # 是否有详情页面
         plugin.has_page = False
-        if plugin_obj and supports_plugin_hook(plugin_obj, "get_page"):
+        if plugin_obj and supports_extension_hook(plugin_obj, "get_page"):
             plugin.has_page = True
         # 公钥
         if plugin_info.get("key"):

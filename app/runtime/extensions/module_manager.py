@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import inspect
 import sys
 import threading
 from typing import Any, Generator, List, Optional, Tuple, Union
 
-from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.model import (
     CapabilityLifecycleState,
@@ -15,9 +13,11 @@ from app.runtime.capabilities.model import (
 from app.runtime.capabilities.runtime import CapabilityRuntime
 from app.runtime.config import settings
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.extensions.contract import supports_extension_hook
 from app.runtime.extensions.host_module_adapter import (
     HOST_MODULE_KIND,
     HostModuleAdapter,
+    HostModuleExtension,
     build_host_module_registry,
     capture_host_module_config,
     should_run_host_module,
@@ -250,10 +250,11 @@ class ModuleManager(metaclass=Singleton):
         module = self.get_running_module(modleid)
         if module is None:
             return False, ""
-        if hasattr(module, "test") and ObjectUtils.check_method(module.test):
-            result = module.test()
-            return result if result else (False, "")
-        return True, "模块不支持测试"
+        extension = HostModuleExtension(module)
+        if not extension.supports_hook("test"):
+            return True, "模块不支持测试"
+        result = extension.self_test()
+        return result if result else (False, "")
 
     @staticmethod
     def check_setting(setting: Optional[tuple]) -> bool:
@@ -285,54 +286,28 @@ class ModuleManager(metaclass=Singleton):
     def get_running_modules(self, method: str) -> Generator:
         """返回实现了指定方法的运行模块快照。"""
         for module in self._running_snapshot():
-            candidate = getattr(module, method, None)
-            if callable(candidate) and ObjectUtils.check_method(candidate):
+            if supports_extension_hook(module, method):
                 yield module
 
-    @staticmethod
-    def _capability_method_names(module: Any) -> tuple[str, ...]:
-        """列出实例可能提供的公开方法名，跳过属性描述符以免触发求值。
-
-        :param module: 运行中的宿主模块实例
-        :return: 去重后的公开方法名元组
-        """
-        names: list[str] = []
-        seen: set[str] = set()
-        for name, value in getattr(module, "__dict__", {}).items():
-            if name.startswith("_") or name in seen:
-                continue
-            seen.add(name)
-            if callable(value):
-                names.append(name)
-        for klass in type(module).__mro__:
-            if klass is object:
-                continue
-            for name, attribute in vars(klass).items():
-                if name.startswith("_") or name in seen:
-                    continue
-                seen.add(name)
-                if inspect.isroutine(attribute) or isinstance(
-                    attribute,
-                    (staticmethod, classmethod),
-                ):
-                    names.append(name)
-        return tuple(names)
-
     def _build_capability_index(self) -> dict[str, tuple[Any, ...]]:
-        """反射运行实例的已实现方法，构建方法名到提供者的索引。
+        """按扩展契约取用运行实例的已实现方法，构建方法名到提供者的索引。
 
         :return: 方法名到按优先级升序排列的提供者元组的映射
         """
-        collected: dict[str, list[Any]] = {}
+        collected: dict[str, list[HostModuleExtension]] = {}
         for module in self._running_snapshot():
-            for name in self._capability_method_names(module):
-                candidate = getattr(module, name, None)
-                if not callable(candidate) or not ObjectUtils.check_method(candidate):
-                    continue
-                collected.setdefault(name, []).append(module)
+            extension = HostModuleExtension(module)
+            for name in extension.capability_names():
+                collected.setdefault(name, []).append(extension)
         return {
-            name: tuple(sorted(providers, key=lambda item: item.get_priority()))
-            for name, providers in collected.items()
+            name: tuple(
+                extension.instance
+                for extension in sorted(
+                    extensions,
+                    key=lambda item: item.priority,
+                )
+            )
+            for name, extensions in collected.items()
         }
 
     def _capability_index_snapshot(self) -> dict[str, tuple[Any, ...]]:
