@@ -95,8 +95,14 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 ### 1.7 治理换轨
 
 `tests/test_architecture_dependencies.py` 新增**包级允许依赖矩阵**断言，
-取代结构上不完备的禁止前缀黑名单；未清偿的方向进**显式负债清单**，
-每条附清偿方向，边消失后条目可直接删除。
+取代结构上不完备的禁止前缀黑名单。负债清单 `DEPENDENCY_DEBT` **已清空**，
+矩阵成为无例外的硬约束：
+
+- Agent 工具经 `runtime/diagnostics.py`、`runtime/workflows.py` 端口取用
+  自检诊断与工作流执行，扩展之间不再互相 import。
+- 认证依赖下沉 `application/security/dependencies.py`：函数名、签名、
+  `Depends` 链、状态码与文案逐字保留；`api/deps.py` 再导出使端点侧零改动，
+  插件兼容门面改从应用层取用，SDK 不再反向依赖入口层。
 
 ---
 
@@ -107,14 +113,12 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 1. **`RuleParser` / `BUILTIN_RULE_SET` 下沉 domain**：当前以窄协议端口消除了反向边，
    但规则解析器与内置规则集在语义上属领域层。下沉的阻碍是 `RuleParser.parse`
    依赖 rust 加速（domain 不得依赖 adapters），需先把加速收敛为可注入的解析后端。
-2. **`agent → doctor` / `agent → workflow` 跨扩展依赖**：两条已登记为负债，
-   应经服务门面暴露，而不是扩展之间直接 import。
-3. **`sdk → api` 向上依赖**：认证依赖仍落在端点层，待安全服务下沉后由两侧共用。
-4. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
+2. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
    合并主要是命名与目录收敛，收益中等而改动面极大，建议在其余项清偿后评估。
-5. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
-   目标是"内建与三方只有发行方式之别"，需先完成 1–3 项。
-6. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾。
+3. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
+   目标是"内建与三方只有发行方式之别"，是"一切皆扩展"的最后一块，改动面最大。
+4. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
+   （SDK 目前在宿主生产代码中仍是零消费者）。
 
 ---
 
@@ -123,7 +127,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **4953 passed / 1 failed** |
+| 当前 | **4959 passed / 1 failed** |
 
 唯一失败 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`
 在基线上同样失败：容器文件系统 `st_ctime_ns` 无纳秒级精度，
