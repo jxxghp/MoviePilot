@@ -4,13 +4,13 @@
 以及扩展模块经端口取用宿主服务的集成路径。
 """
 
+from unittest.mock import patch
+
 import pytest
 
-from app.application.rules import RuleParser
 from app.modules.filter import FilterModule
 from app.modules.indexer import IndexerModule
 from app.runtime.filterrules import filter_rule_group_port
-from app.runtime.ruleexpression import rule_expression_port
 from app.runtime.siteresource import site_resource_port
 from app.startup.hostport_initializer import configure_host_ports
 
@@ -36,13 +36,6 @@ def test_filter_rule_group_port_raises_clear_error_when_not_registered():
         filter_rule_group_port.resolve()
 
 
-def test_rule_expression_port_raises_clear_error_when_not_registered():
-    """规则表达式端口未注册时应给出可定位的报错。"""
-    rule_expression_port.reset()
-    with pytest.raises(RuntimeError, match="rule_expression"):
-        rule_expression_port.resolve()
-
-
 def test_configure_host_ports_registers_working_site_resource():
     """组合根注册后站点资源端口应解析到可正常调用的实现。"""
     configure_host_ports()
@@ -61,17 +54,6 @@ def test_configure_host_ports_registers_working_filter_rule_group():
 
     assert filter_rule_group.get_custom_rules() == []
     assert filter_rule_group.get_rule_group_by_media() == []
-
-
-def test_configure_host_ports_registers_working_rule_expression():
-    """组合根注册后规则表达式端口应解析到与既有 RuleParser 一致的实现。"""
-    configure_host_ports()
-
-    rule_expression = rule_expression_port.resolve()
-
-    assert "4K" in rule_expression.get_builtin_rule_set()
-    expected = RuleParser().parse("4K").as_list()[0]
-    assert rule_expression.parse_rule_group("4K") == expected
 
 
 class _FakeSiteResource:
@@ -123,19 +105,6 @@ class _FakeFilterRuleGroupProvider:
         return self._groups
 
 
-class _FakeRuleExpressionProvider:
-    """过滤扩展集成测试用的规则表达式替身，直接把规则名当作解析结果。"""
-
-    def __init__(self, builtin_rule_set):
-        self._builtin_rule_set = builtin_rule_set
-
-    def get_builtin_rule_set(self):
-        return self._builtin_rule_set
-
-    def parse_rule_group(self, rule_group):
-        return rule_group
-
-
 def test_filter_module_init_resolves_rule_group_port():
     """过滤扩展构造时应经端口取用注册的规则组仓库实现。"""
     fake_rule_group_provider = _FakeFilterRuleGroupProvider()
@@ -146,37 +115,32 @@ def test_filter_module_init_resolves_rule_group_port():
     assert module.rulehelper is fake_rule_group_provider
 
 
-def test_filter_module_init_module_resolves_rule_expression_port():
-    """过滤扩展 init_module 应经端口取用内置规则集，并叠加自定义规则。"""
+def test_filter_module_init_module_merges_custom_rules_into_builtin_set():
+    """过滤扩展 init_module 应取用领域内置规则集，并叠加自定义规则。"""
     filter_rule_group_port.register(lambda: _FakeFilterRuleGroupProvider())
-    rule_expression_port.register(
-        lambda: _FakeRuleExpressionProvider({"X": {"include": ["x"]}})
-    )
 
-    module = FilterModule()
-    module.init_module()
+    with patch("app.modules.filter.get_builtin_rule_set", return_value={"X": {"include": ["x"]}}):
+        module = FilterModule()
+        module.init_module()
 
     assert module.builtin_rule_set == {"X": {"include": ["x"]}}
     assert module.rule_set["X"] == {"include": ["x"]}
 
 
-def test_filter_module_filter_torrents_uses_registered_rule_expression_port():
-    """过滤扩展的 Python 兜底路径应经端口解析规则表达式层级。"""
+def test_filter_module_filter_torrents_uses_domain_rule_expression_parser():
+    """过滤扩展的 Python 兜底路径应使用领域层规则表达式解析器。"""
     from app.domain.context import TorrentInfo
 
     filter_rule_group_port.register(lambda: _FakeFilterRuleGroupProvider())
-    rule_expression_port.register(
-        lambda: _FakeRuleExpressionProvider({"KEEP": {"include": ["Movie"]}})
-    )
 
-    module = FilterModule()
-    module.init_module()
+    with patch("app.modules.filter.get_builtin_rule_set", return_value={"KEEP": {"include": ["Movie"]}}):
+        module = FilterModule()
+        module.init_module()
     module.rulehelper = _FakeFilterRuleGroupProvider(
         groups=[type("Group", (), {"name": "test", "rule_string": "KEEP"})()]
     )
     torrent = TorrentInfo(title="Movie", description="")
 
-    from unittest.mock import patch
     with patch("app.modules.filter.rust_accel.is_enabled", return_value=False):
         filtered = module.filter_torrents(rule_groups=["test"], torrent_list=[torrent])
 

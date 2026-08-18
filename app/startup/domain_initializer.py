@@ -1,4 +1,5 @@
 from app.domain.context import configure_tmdb_image_url_builder
+from app.domain.filterrule import configure_filter_rule_runtime
 from app.domain.media import configure_search_source_provider
 from app.domain.meta.customization import configure_customization_provider
 from app.domain.meta.releasegroup import configure_release_groups_provider
@@ -29,6 +30,7 @@ def configure_domain_dependencies() -> None:
         audio_extensions_provider=lambda: settings.RMT_AUDIOEXT,
         accelerator=rust_accelerator,
     )
+    configure_filter_rule_runtime(accelerator=rust_accelerator)
     clear_rust_parse_options_cache()
     configure_translator(
         lambda text: LocaleHelper.translate_text(text, locale=LocaleHelper.get_current_locale())

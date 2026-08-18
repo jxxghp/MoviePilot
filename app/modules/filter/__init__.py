@@ -4,11 +4,11 @@ from functools import lru_cache
 from typing import List, Tuple, Union, Dict, Optional
 
 from app.domain.context import TorrentInfo, MediaInfo
+from app.domain.filterrule import get_builtin_rule_set, parse_rule_group
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.runtime.filterrules import filter_rule_group_port
-from app.runtime.ruleexpression import RuleExpressionProvider, rule_expression_port
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
 from app.foundation import size as size_tools
@@ -88,7 +88,7 @@ class FilterModule(_ModuleBase):
         初始化过滤规则集，合并内置规则和用户自定义规则。
         """
         # 每次重载都先恢复为纯内置规则，避免旧的自定义规则残留在内存里。
-        self.builtin_rule_set = deepcopy(rule_expression_port.resolve().get_builtin_rule_set())
+        self.builtin_rule_set = deepcopy(get_builtin_rule_set())
         self.rule_set = deepcopy(self.builtin_rule_set)
         self.__init_custom_rules()
 
@@ -212,7 +212,6 @@ class FilterModule(_ModuleBase):
         使用 Python 旧路径过滤种子，供 Rust 加速关闭或不可用时兜底。
         """
         ret_torrents = torrent_list
-        parser = rule_expression_port.resolve()
         parsed_rule_cache = {}
         for group in groups:
             rule_string = group.get("rule_string")
@@ -223,7 +222,6 @@ class FilterModule(_ModuleBase):
                 rule_name=group.get("name") or rule_string,
                 torrent_list=ret_torrents,
                 mediainfo=mediainfo,
-                parser=parser,
                 parsed_rule_cache=parsed_rule_cache,
             )
             if not ret_torrents:
@@ -245,7 +243,6 @@ class FilterModule(_ModuleBase):
     def __filter_torrents(self, rule_string: str, rule_name: str,
                           torrent_list: List[TorrentInfo],
                           mediainfo: MediaInfo,
-                          parser: RuleExpressionProvider,
                           parsed_rule_cache: Dict[str, Union[list, str]]) -> List[TorrentInfo]:
         """
         过滤种子
@@ -258,7 +255,7 @@ class FilterModule(_ModuleBase):
         ret_torrents = []
         for torrent in torrent_list:
             # 能命中优先级的才返回
-            if not self.__get_order(torrent, rule_groups, mediainfo, parser, parsed_rule_cache):
+            if not self.__get_order(torrent, rule_groups, mediainfo, parsed_rule_cache):
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description or ''} "
                              f"不匹配 {rule_name} 过滤规则")
                 continue
@@ -267,7 +264,7 @@ class FilterModule(_ModuleBase):
         return ret_torrents
 
     def __get_order(self, torrent: TorrentInfo, rule_groups: List[str],
-                    mediainfo: MediaInfo, parser: RuleExpressionProvider,
+                    mediainfo: MediaInfo,
                     parsed_rule_cache: Dict[str, Union[list, str]]) -> Optional[TorrentInfo]:
         """
         获取种子匹配的规则优先级，值越大越优先，未匹配时返回None
@@ -279,7 +276,7 @@ class FilterModule(_ModuleBase):
 
         for rule_group in rule_groups:
             # 解析规则组
-            parsed_group = self.__parse_rule_group(rule_group, parser, parsed_rule_cache)
+            parsed_group = self.__parse_rule_group(rule_group, parsed_rule_cache)
             if self.__match_group(torrent, parsed_group, mediainfo):
                 # 出现匹配时中断
                 matched = True
@@ -292,14 +289,14 @@ class FilterModule(_ModuleBase):
         return None if not matched else torrent
 
     @staticmethod
-    def __parse_rule_group(rule_group: str, parser: RuleExpressionProvider,
+    def __parse_rule_group(rule_group: str,
                            parsed_rule_cache: Dict[str, Union[list, str]]) -> Union[list, str]:
         """
         解析单个优先级层级。
         缓存粒度放在层级表达式上，兼容多个规则组复用相同表达式的情况。
         """
         if rule_group not in parsed_rule_cache:
-            parsed_rule_cache[rule_group] = parser.parse_rule_group(rule_group)
+            parsed_rule_cache[rule_group] = parse_rule_group(rule_group)
         return parsed_rule_cache[rule_group]
 
     def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str],
