@@ -31,7 +31,7 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.pluginmanager is context.plugin_manager
     assert chain.eventmanager is context.event_manager
     assert chain.messagehelper is context.message_helper
-    context.message_queue_factory.assert_called_once_with(chain.run_module)
+    context.message_queue_factory.assert_called_once_with(chain.multicast)
 
 
 def test_no_arg_chain_uses_compatibility_context_provider(monkeypatch) -> None:

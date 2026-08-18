@@ -70,7 +70,11 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             system_error_handler=error_reporter.handle_system_error,
             rate_limit_handler=error_reporter.handle_rate_limit_error,
         )
-        self.messagequeue = context.message_queue_factory(self.run_module)
+        # 消息主干走多播：认领本条消息的渠道都要发出，聚合分发会在拿到首个标量
+        # 答案后短路，插件注入的同名方法一旦返回真值就会把后续渠道整个吞掉。
+        # 渠道是一个族类，「谁能发消息」是查询而非通知，因此按能力索引取候选，
+        # 代价为 O(k) 而非遍历全体模块的 O(n)
+        self.messagequeue = context.message_queue_factory(self.multicast)
 
     def load_cache(self, filename: str) -> Any:
         """
