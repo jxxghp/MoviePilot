@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "TheMovieDb"
-type = "mediarecognize"
 subtype = "TMDB"
 priority = 1
 

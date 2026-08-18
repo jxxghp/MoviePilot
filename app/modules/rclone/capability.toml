@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "Rclone"
-type = "storage"
 subtype = "Rclone"
 priority = 5
 

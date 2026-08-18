@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "PostgreSQL"
-type = "other"
 subtype = "PostgreSQL"
 priority = 0
 

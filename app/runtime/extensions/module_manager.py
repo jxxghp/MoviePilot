@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from typing import Any, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator, List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.model import (
@@ -23,29 +23,11 @@ from app.runtime.extensions.host_module_adapter import (
     should_run_host_module,
 )
 from app.runtime.log import logger
-from app.schemas.types import (
-    DownloaderType,
-    EventType,
-    MediaRecognizeType,
-    MediaServerType,
-    NotificationChannel,
-    ModuleType,
-    OtherModulesType,
-    StorageSchema,
-)
+from app.schemas.types import EventType
 
 
 class ModuleManager(metaclass=Singleton):
     """以 Capability Runtime 管理宿主模块，并保留旧插件同步查询合同。"""
-
-    SubType = Union[
-        DownloaderType,
-        MediaServerType,
-        NotificationChannel,
-        StorageSchema,
-        OtherModulesType,
-        MediaRecognizeType,
-    ]
 
     def __init__(self) -> None:
         """发现 data-only manifest，并按当前配置激活所需宿主模块。"""
@@ -341,17 +323,20 @@ class ModuleManager(metaclass=Singleton):
             return ()
         return self._capability_index_snapshot().get(method, ())
 
-    def get_running_type_modules(self, module_type: ModuleType) -> Generator:
-        """返回指定类型的运行模块快照。"""
-        for module in self._running_snapshot():
-            if module.get_type() == module_type:
-                yield module
+    def get_service_config_modules(self, config_key: str) -> Generator:
+        """返回 manifest 声明消费指定服务配置键的运行模块快照。
 
-    def get_running_subtype_module(self, module_subtype: SubType) -> Generator:
-        """返回指定子类型的运行模块快照。"""
-        for module in self._running_snapshot():
-            if module.get_subtype() == module_subtype:
-                yield module
+        :param config_key: 服务配置键，取值为 `SystemConfigKey` 的成员值
+        :return: 运行模块迭代器，按 manifest 发现顺序产出
+        """
+        if not config_key:
+            return
+        for spec in self._specs:
+            if spec.metadata.get("service_config") != config_key:
+                continue
+            instance = self._runtime.get_running(spec.id)
+            if instance is not None:
+                yield instance
 
     def get_module(self, module_id: str) -> Any:
         """显式物化并返回 canonical 模块类；失败保持旧合同返回 None。"""

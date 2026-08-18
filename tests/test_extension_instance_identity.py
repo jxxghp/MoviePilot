@@ -50,35 +50,43 @@ def test_key_without_instance_id_is_kept_whole() -> None:
 @pytest.mark.parametrize(
     "instance_id",
     [
-        "living room",
-        "living/room",
-        "living\\room",
-        "..",
-        "living.room",
-        "../../etc",
-        "/absolute",
-        "实例",
         "home@work",
+        "@",
+        "客厅@卧室",
     ],
 )
-def test_illegal_instance_id_is_rejected(instance_id: str) -> None:
-    """路径分隔符、点号与分隔符等非法字符不被接受。"""
+def test_instance_id_containing_separator_is_rejected(instance_id: str) -> None:
+    """含实例键分隔符的实例标识不被接受，否则实例键无法无损反解。"""
     with pytest.raises(ValueError):
         normalize_instance_id(instance_id)
     with pytest.raises(ValueError):
         instance_key("Emby", instance_id)
 
 
-def test_instance_id_length_boundary() -> None:
-    """实例标识最长 64 字符，超长被拒。"""
-    longest = "a" * 64
+@pytest.mark.parametrize(
+    "instance_id",
+    [
+        "客厅 Emby",
+        "living room",
+        "living/room",
+        "living\\room",
+        "..",
+        "living.room",
+        "/absolute",
+        "实例",
+        "a" * 200,
+    ],
+)
+def test_service_name_is_usable_as_instance_id(instance_id: str) -> None:
+    """服务配置里用户自填的名称可直接作为实例标识，并可无损反解。"""
+    key = instance_key("Emby", instance_id)
 
-    assert normalize_instance_id(longest) == longest
-    assert instance_key("Emby", longest) == f"Emby@{longest}"
-    with pytest.raises(ValueError):
-        normalize_instance_id("a" * 65)
-    with pytest.raises(ValueError):
-        instance_key("Emby", "a" * 65)
+    assert key == f"Emby@{instance_id}"
+    assert normalize_instance_id(instance_id) == instance_id
+    assert split_instance_key(key) == ("Emby", instance_id)
+    assert extension_id_of(key) == "Emby"
+    assert is_default_instance_key(key) is False
+    assert matches_extension(key, "Emby") is True
 
 
 def test_matches_extension_selects_all_instances_of_one_extension() -> None:

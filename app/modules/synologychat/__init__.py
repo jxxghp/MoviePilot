@@ -14,7 +14,6 @@ from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 from app.adapters.network.http import RequestUtils
 
 
@@ -63,13 +62,6 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
     @staticmethod
     def get_name() -> str:
         return "Synology Chat"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

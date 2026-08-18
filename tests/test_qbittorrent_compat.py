@@ -151,9 +151,6 @@ def _load_qbittorrent_modules():
         PAUSED = "paused"
         COMPLETED = "completed"
 
-    class ModuleType(Enum):
-        Downloader = "Downloader"
-
     class DownloaderType(Enum):
         Qbittorrent = "Qbittorrent"
 
@@ -168,7 +165,6 @@ def _load_qbittorrent_modules():
     schema_types_module.TorrentStatus = TorrentStatus
     schema_types_module.TorrentQueryStatus = TorrentQueryStatus
     schema_types_module.DownloadTaskState = DownloadTaskState
-    schema_types_module.ModuleType = ModuleType
     schema_types_module.DownloaderType = DownloaderType
     torrent_rules_module.is_magnet_link = _is_magnet_link
     url_tools_module.parse_address = _parse_address

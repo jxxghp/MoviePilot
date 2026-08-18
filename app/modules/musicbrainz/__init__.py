@@ -27,7 +27,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    ModuleType,
 )
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.media import is_media_source_selected
@@ -141,11 +140,6 @@ class MusicBrainzModule(_ModuleBase):
     def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return MusicBrainzModule._source
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """返回模块所属的媒体识别类型。"""
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

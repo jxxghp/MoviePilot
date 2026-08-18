@@ -6,13 +6,12 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.domain.context import MusicInfo
 from app.modules.navidrome import NavidromeModule
 from app.modules.navidrome.navidrome import Navidrome
-from app.schemas.types import MediaServerType, ModuleType
+from app.schemas.types import MediaServerType
 
 
 def test_navidrome_module_declares_media_server_identity():
     """Navidrome 应以媒体服务器身份注册，供统一媒体服务器链调用。"""
     assert NavidromeModule.get_name() == "Navidrome"
-    assert NavidromeModule.get_type() == ModuleType.MediaServer
     assert NavidromeModule.get_subtype() == MediaServerType.Navidrome
 
 

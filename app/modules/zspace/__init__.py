@@ -11,7 +11,7 @@ from app.modules._base import _MediaServerModuleBase
 from app.modules.zspace.zspace import ZSpace
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials
-from app.schemas.types import ChainEventType, MediaServerType, ModuleType
+from app.schemas.types import ChainEventType, MediaServerType
 
 
 class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
@@ -29,13 +29,6 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
     @staticmethod
     def get_name() -> str:
         return "极影视"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:

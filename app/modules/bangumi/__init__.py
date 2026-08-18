@@ -13,7 +13,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    ModuleType,
 )
 from app.adapters.network.http import RequestUtils
 from app.domain.media import is_media_source_enabled
@@ -63,13 +62,6 @@ class BangumiModule(_ModuleBase):
         获取模块名称
         """
         return "Bangumi"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

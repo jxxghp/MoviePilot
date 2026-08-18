@@ -20,7 +20,6 @@ from app.modules.qqbot.qqbot import QQBot
 from app.schemas.message import IncomingMessage
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 from app.adapters.network.http import RequestUtils
 
 
@@ -70,10 +69,6 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     @staticmethod
     def get_name() -> str:
         return "QQ"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

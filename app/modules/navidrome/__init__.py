@@ -16,7 +16,7 @@ from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials
-from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
+from app.schemas.types import ChainEventType, MediaServerType, MediaType
 
 
 class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
@@ -33,11 +33,6 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def get_name() -> str:
         """返回模块显示名称。"""
         return "Navidrome"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """返回模块类型。"""
-        return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:

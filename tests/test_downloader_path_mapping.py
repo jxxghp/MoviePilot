@@ -41,7 +41,6 @@ def _load_downloader_base():
             return []
 
     schema_types_module.StorageSchema = StorageSchema
-    schema_types_module.ModuleType = Enum("ModuleType", {"Downloader": "downloader"})
     schema_types_module.DownloaderType = Enum("DownloaderType", {"Qbittorrent": "Qbittorrent"})
     schema_types_module.MediaServerType = Enum("MediaServerType", {"Emby": "Emby"})
     schema_types_module.NotificationChannel = Enum("NotificationChannel", {"Telegram": "telegram"})
@@ -234,7 +233,6 @@ def _load_transmission_module():
     schema_types_module.TorrentStatus = TorrentStatus
     schema_types_module.TorrentQueryStatus = TorrentQueryStatus
     schema_types_module.DownloadTaskState = DownloadTaskState
-    schema_types_module.ModuleType = Enum("ModuleType", {"Downloader": "downloader"})
     schema_types_module.DownloaderType = Enum(
         "DownloaderType", {"Transmission": "Transmission"}
     )

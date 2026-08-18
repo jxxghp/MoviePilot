@@ -15,7 +15,7 @@ from app.modules._base import _MediaServerModuleBase
 from app.modules.plex.plex import Plex
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials
-from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
+from app.schemas.types import MediaType, ChainEventType, MediaServerType
 
 
 class PlexModule(_MediaServerModuleBase[Plex]):
@@ -33,13 +33,6 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     @staticmethod
     def get_name() -> str:
         return "Plex"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:

@@ -9,7 +9,6 @@ from app.schemas.message import IncomingMessage
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 
 
 register_channel_admin_resolver(
@@ -28,10 +27,6 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
     @staticmethod
     def get_name() -> str:
         return "飞书"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

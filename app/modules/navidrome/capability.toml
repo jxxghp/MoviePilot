@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Navidrome"
-type = "mediaserver"
+service_config = "MediaServers"
 subtype = "Navidrome"
 priority = 7
 

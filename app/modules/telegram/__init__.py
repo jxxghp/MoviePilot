@@ -16,7 +16,6 @@ from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.message import MessageResponse
-from app.schemas.types import ModuleType
 
 
 register_channel_admin_resolver(
@@ -50,13 +49,6 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         获取模块名称
         """
         return "Telegram"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

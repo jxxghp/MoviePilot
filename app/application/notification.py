@@ -3,18 +3,17 @@ from typing import Optional
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import NotificationConf
 from app.schemas.system import ServiceInfo
-from app.schemas.types import ModuleType, SystemConfigKey
+from app.schemas.types import SystemConfigKey
 
 
 class NotificationHelper(ServiceBaseHelper[NotificationConf]):
     """提供按持久化配置发现通知服务的能力。"""
 
     def __init__(self):
-        """绑定通知配置和通知模块类型。"""
+        """绑定通知配置键与配置模型。"""
         super().__init__(
             config_key=SystemConfigKey.Notifications,
             conf_type=NotificationConf,
-            module_type=ModuleType.Notification,
         )
 
     def is_notification(

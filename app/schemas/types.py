@@ -627,24 +627,6 @@ class StorageSchema(Enum):
     SMB = "smb"
 
 
-# 模块类型
-class ModuleType(Enum):
-    # 下载器
-    Downloader = "downloader"
-    # 媒体服务器
-    MediaServer = "mediaserver"
-    # 消息服务
-    Notification = "notification"
-    # 媒体识别
-    MediaRecognize = "mediarecognize"
-    # 站点索引
-    Indexer = "indexer"
-    # 存储
-    Storage = "storage"
-    # 其它
-    Other = "other"
-
-
 # 其他杂项模块类型
 class OtherModulesType(Enum):
     # 字幕

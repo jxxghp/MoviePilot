@@ -5,7 +5,7 @@ from app.runtime.config import settings
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdb_v4_official
-from app.schemas.types import ModuleType, MediaRecognizeType
+from app.schemas.types import MediaRecognizeType
 
 
 class TheTvDbModule(_ModuleBase):
@@ -91,13 +91,6 @@ class TheTvDbModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "TheTvDb"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

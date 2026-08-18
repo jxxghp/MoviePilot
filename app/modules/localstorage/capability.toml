@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "本地存储"
-type = "storage"
 subtype = "Local"
 priority = 4
 

@@ -25,7 +25,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    ModuleType,
     MediaRecognizeType,
 )
 from app.runtime.execution import retry
@@ -69,13 +68,6 @@ class DoubanModule(_ModuleBase):
     def get_music_source() -> MediaSource:
         """返回音乐识别使用的数据源标识。"""
         return DoubanModule._music_source
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

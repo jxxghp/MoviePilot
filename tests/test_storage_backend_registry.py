@@ -28,7 +28,7 @@ from app.runtime.extensions.storage_registry import (
 )
 from app.runtime.storages import storage_config_port
 from app.schemas.file import FileURI
-from app.schemas.types import ModuleType, StorageSchema
+from app.schemas.types import StorageSchema
 from app.schemas.workflow import FileItem
 from app.startup.hostport_initializer import configure_host_ports
 
@@ -181,7 +181,6 @@ def test_each_backend_is_an_independent_first_class_module():
     for storage_id, module_class, backend in BUILTIN_STORAGE_MODULES:
         assert module_class.storage_class is backend
         assert module_class.storage_id() == storage_id
-        assert module_class.get_type() is ModuleType.Storage
         assert module_class.get_subtype() is backend.schema
 
 

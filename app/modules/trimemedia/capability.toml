@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "飞牛影视"
-type = "mediaserver"
+service_config = "MediaServers"
 subtype = "TrimeMedia"
 priority = 4
 

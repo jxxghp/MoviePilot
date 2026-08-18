@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "115网盘"
-type = "storage"
 subtype = "U115"
 priority = 7
 

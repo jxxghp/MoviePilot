@@ -11,7 +11,7 @@ from app.modules import _ModuleBase
 from app.runtime.filterrules import filter_rule_group_port
 from app.runtime.torrentanalysis import torrent_analysis_port
 from app.schemas.filter import TorrentVerdict
-from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
+from app.schemas.types import OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
 from app.foundation import size as size_tools
 
@@ -113,13 +113,6 @@ class FilterModule(_ModuleBase):
         获取模块名称。
         """
         return "过滤器"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

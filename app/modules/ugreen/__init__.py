@@ -9,7 +9,7 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.ugreen.ugreen import Ugreen
-from app.schemas.types import MediaServerType, ModuleType
+from app.schemas.types import MediaServerType
 
 
 class UgreenModule(_MediaServerModuleBase[Ugreen]):
@@ -31,13 +31,6 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
     @staticmethod
     def get_name() -> str:
         return "绿联影视"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:

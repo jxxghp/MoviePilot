@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "微信 ClawBot"
-type = "notification"
+service_config = "Notifications"
 subtype = "WechatClawBot"
 priority = 2
 

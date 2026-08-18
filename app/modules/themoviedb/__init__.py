@@ -23,7 +23,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    ModuleType,
 )
 from app.adapters.network.http import RequestUtils
 from app.domain.media import is_media_source_enabled, is_media_source_selected
@@ -58,13 +57,6 @@ class TheMovieDbModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "TheMovieDb"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

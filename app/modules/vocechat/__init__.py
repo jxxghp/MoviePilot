@@ -14,7 +14,6 @@ from app.modules.vocechat.vocechat import VoceChat
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 
 
 register_channel_admin_resolver(
@@ -62,13 +61,6 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
     @staticmethod
     def get_name() -> str:
         return "VoceChat"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

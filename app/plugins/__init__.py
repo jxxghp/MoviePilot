@@ -6,6 +6,7 @@ from app.application.messaging.message import MessageHelper
 from app.application.orchestration import ChainBase
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
 from app.schemas.message import Message
@@ -259,10 +260,14 @@ class _PluginBase(metaclass=ABCMeta):
     def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
         """
         获取插件数据保存目录
+        :param plugin_id: 插件ID，为空时取当前插件
+        :return: 插件数据目录，不存在时创建
+        :raises ValueError: 插件ID包含路径分隔符、盘符，或指向数据根目录之外
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        data_path = settings.PLUGIN_DATA_PATH / f"{plugin_id}"
+        directory_name = ensure_path_segment(f"{plugin_id}", subject="插件ID")
+        data_path = settings.PLUGIN_DATA_PATH / directory_name
         if not data_path.exists():
             data_path.mkdir(parents=True)
         return data_path

@@ -28,7 +28,7 @@ from app.runtime.extensions.plugin.projection import (
     PluginProviderSource,
 )
 from app.schemas.exception import RateLimitExceededException
-from app.schemas.types import ModuleType, OtherModulesType
+from app.schemas.types import OtherModulesType
 
 
 CONTRACT_MEMBERS = (
@@ -82,11 +82,6 @@ class DemoModule(_ModuleBase):
     def get_name() -> str:
         """返回模块展示名。"""
         return "内建演示模块"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """返回模块类型。"""
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

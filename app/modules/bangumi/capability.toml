@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "Bangumi"
-type = "mediarecognize"
 subtype = "Bangumi"
 priority = 3
 

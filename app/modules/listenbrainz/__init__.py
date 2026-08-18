@@ -12,7 +12,6 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
-    ModuleType,
     OtherModulesType,
 )
 from app.adapters.network.http import RequestUtils
@@ -52,11 +51,6 @@ class ListenBrainzModule(_ModuleBase):
     def get_name() -> str:
         """返回模块展示名称。"""
         return "ListenBrainz"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """返回模块所属的其它能力类型。"""
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

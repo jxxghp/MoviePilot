@@ -18,7 +18,6 @@ from app.modules.wechat.wechatbot import WeChatBot
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 from app.foundation.dom import DomUtils
 
 
@@ -51,13 +50,6 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
     @staticmethod
     def get_name() -> str:
         return "企业微信"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

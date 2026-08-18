@@ -3,18 +3,17 @@ from typing import Optional
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import MediaServerConf
 from app.schemas.system import ServiceInfo
-from app.schemas.types import ModuleType, SystemConfigKey
+from app.schemas.types import SystemConfigKey
 
 
 class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
     """管理媒体服务器配置，并按类型发现已启用的服务实例。"""
 
     def __init__(self) -> None:
-        """绑定媒体服务器配置键、配置模型和模块类型。"""
+        """绑定媒体服务器配置键与配置模型。"""
         super().__init__(
             config_key=SystemConfigKey.MediaServers,
             conf_type=MediaServerConf,
-            module_type=ModuleType.MediaServer,
         )
 
     def is_media_server(

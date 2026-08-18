@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Iterator
+from typing import Iterator, Optional
 from unittest.mock import Mock
 
 import pytest
@@ -36,7 +36,7 @@ depends_on = []
 
 [metadata]
 name = "Sample"
-type = "notification"
+service_config = "Notifications"
 subtype = "Telegram"
 priority = 10
 
@@ -61,7 +61,7 @@ depends_on = []
 
 [metadata]
 name = "Other"
-type = "notification"
+service_config = "Notifications"
 subtype = "Telegram"
 priority = 20
 
@@ -100,10 +100,6 @@ class {class_name}:
     @staticmethod
     def get_name():
         return "{name}"
-
-    @staticmethod
-    def get_type():
-        return "notification"
 
     @staticmethod
     def get_subtype():
@@ -346,6 +342,41 @@ def test_providers_for_indexes_running_modules_by_priority(
     assert set(providers) == set(manager.get_running_modules("capability_method"))
     assert manager.providers_for("not_a_capability") == ()
     assert manager.providers_for("") == ()
+
+
+def test_service_config_modules_follow_declared_ownership(
+    module_manager_harness,
+) -> None:
+    """按 manifest 声明的服务配置归属定位运行模块，未声明该键的配置取不到模块。"""
+    manager = module_manager_harness.manager
+    assert list(manager.get_service_config_modules("Notifications")) == []
+
+    _enable_all(module_manager_harness.config_values)
+    manager.load_modules()
+
+    sample = manager.get_running_module("SampleModule")
+    other = manager.get_running_module("OtherModule")
+
+    assert list(manager.get_service_config_modules("Notifications")) == [other, sample]
+    assert list(manager.get_service_config_modules("Downloaders")) == []
+    assert list(manager.get_service_config_modules("MediaServers")) == []
+    assert list(manager.get_service_config_modules("")) == []
+
+
+def test_service_config_modules_track_lifecycle(
+    module_manager_harness,
+) -> None:
+    """只有已发布运行实例的模块会被服务配置归属查询取到。"""
+    manager = module_manager_harness.manager
+
+    _enable_sample(module_manager_harness.config_values)
+    manager.load_modules()
+    assert list(manager.get_service_config_modules("Notifications")) == [
+        manager.get_running_module("SampleModule"),
+    ]
+
+    manager.stop()
+    assert list(manager.get_service_config_modules("Notifications")) == []
 
 
 def test_providers_for_cache_is_invalidated_on_lifecycle_changes(
@@ -978,7 +1009,6 @@ assert len(modules) == len(manager.list_specs()) == 44
 for spec in manager.list_specs():
     implementation = modules[spec.id]
     assert implementation.get_name() == spec.metadata["name"]
-    assert implementation.get_type().value == spec.metadata["type"]
     assert implementation.get_subtype().name == spec.metadata["subtype"]
     assert implementation.get_priority() == spec.metadata["priority"]
 manager.shutdown()
@@ -1006,13 +1036,21 @@ def _write_single_module_manifest(
     module_root: Path,
     *,
     package: str,
-    module_type: str,
     subtype: str,
+    service_config: Optional[str] = None,
 ) -> None:
-    """在合成模块根下写入一个只含单个包的 Host Module 声明，用于单独测试 subtype 校验。"""
+    """在合成模块根下写入一个只含单个包的 Host Module 声明，用于单独测试 metadata 校验。
+
+    :param module_root: 合成模块根目录
+    :param package: 一级模块包名
+    :param subtype: 模块子类型
+    :param service_config: 模块消费的服务配置键，为空时不声明
+    """
     package_dir = module_root / package
     package_dir.mkdir(parents=True)
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    service_line = f'service_config = "{service_config}"\n' if service_config else ""
+    watch = f'["{service_config}"]' if service_config else "[]"
     (package_dir / "capability.toml").write_text(
         f"""
 schema_version = 1
@@ -1023,13 +1061,12 @@ depends_on = []
 
 [metadata]
 name = "{package.title()}"
-type = "{module_type}"
-subtype = "{subtype}"
+{service_line}subtype = "{subtype}"
 priority = 1
 
 [activation]
 policy = "bootstrap"
-watch = []
+watch = {watch}
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -1045,8 +1082,8 @@ def test_manifest_accepts_unregistered_subtype_for_non_notification_module(
     _write_single_module_manifest(
         module_root,
         package="newbackend",
-        module_type="downloader",
         subtype="TotallyNewBackend",
+        service_config="Downloaders",
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
@@ -1066,10 +1103,100 @@ def test_manifest_rejects_unregistered_subtype_for_notification_module(
     _write_single_module_manifest(
         module_root,
         package="newchannel",
-        module_type="notification",
         subtype="TotallyNewChannel",
+        service_config="Notifications",
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
     with pytest.raises(ValueError, match="NotificationChannel"):
+        host_module_adapter.build_host_module_registry()
+
+
+def test_manifest_rejects_unknown_service_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """metadata.service_config 只能是宿主已支持的服务配置键。"""
+    module_root = tmp_path / "modules"
+    _write_single_module_manifest(
+        module_root,
+        package="newservice",
+        subtype="NewService",
+        service_config="Sites",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    with pytest.raises(ValueError, match="service_config"):
+        host_module_adapter.build_host_module_registry()
+
+
+def test_manifest_requires_service_config_to_be_watched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """声明了服务配置归属的模块必须同时监听该配置键，配置变更才能重建实例。"""
+    module_root = tmp_path / "modules"
+    package_dir = module_root / "unwatched"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "capability.toml").write_text(
+        """
+schema_version = 1
+id = "UnwatchedModule"
+kind = "host_module"
+entrypoint = "app.modules.unwatched:UnwatchedModule"
+depends_on = []
+
+[metadata]
+name = "Unwatched"
+service_config = "Downloaders"
+subtype = "Unwatched"
+priority = 1
+
+[activation]
+policy = "bootstrap"
+watch = []
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    with pytest.raises(ValueError, match="activation.watch"):
+        host_module_adapter.build_host_module_registry()
+
+
+def test_manifest_rejects_legacy_module_type_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """metadata 不再接受模块族枚举字段，族识别只由服务配置归属承担。"""
+    module_root = tmp_path / "modules"
+    package_dir = module_root / "typed"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "capability.toml").write_text(
+        """
+schema_version = 1
+id = "TypedModule"
+kind = "host_module"
+entrypoint = "app.modules.typed:TypedModule"
+depends_on = []
+
+[metadata]
+name = "Typed"
+type = "downloader"
+subtype = "Typed"
+priority = 1
+
+[activation]
+policy = "bootstrap"
+watch = []
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    with pytest.raises(ValueError, match="unknown=\\['type'\\]"):
         host_module_adapter.build_host_module_registry()

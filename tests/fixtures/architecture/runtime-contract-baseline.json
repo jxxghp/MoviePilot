@@ -1703,15 +1703,15 @@
       },
       {
         "caller": "app.modules.navidrome",
-        "line": 91
+        "line": 86
       },
       {
         "caller": "app.modules.plex",
-        "line": 99
+        "line": 92
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 246
+        "line": 228
       }
     ],
     "event_count": 53,
@@ -1975,7 +1975,7 @@
         "consumers": [
           {
             "caller": "app.runtime.extensions.module_manager",
-            "line": 74
+            "line": 56
           },
           {
             "caller": "app.runtime.reload",

@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "Redis缓存"
-type = "other"
 subtype = "Redis"
 priority = 0
 

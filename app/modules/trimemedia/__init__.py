@@ -9,7 +9,7 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.trimemedia.trimemedia import TrimeMedia
-from app.schemas.types import MediaServerType, ModuleType
+from app.schemas.types import MediaServerType
 
 
 class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
@@ -31,13 +31,6 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
     @staticmethod
     def get_name() -> str:
         return "飞牛影视"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:

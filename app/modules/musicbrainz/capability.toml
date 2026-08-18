@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "MusicBrainz"
-type = "mediarecognize"
 subtype = "MusicBrainz"
 priority = 0
 

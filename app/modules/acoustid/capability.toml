@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "AcoustID"
-type = "other"
 subtype = "AcoustId"
 priority = 0
 

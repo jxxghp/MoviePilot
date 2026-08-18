@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Rtorrent"
-type = "downloader"
+service_config = "Downloaders"
 subtype = "Rtorrent"
 priority = 3
 

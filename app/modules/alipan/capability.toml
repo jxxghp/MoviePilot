@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "阿里云盘"
-type = "storage"
 subtype = "Alipan"
 priority = 1
 

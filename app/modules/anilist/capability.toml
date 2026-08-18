@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "AniList"
-type = "mediarecognize"
 subtype = "AniList"
 priority = 4
 

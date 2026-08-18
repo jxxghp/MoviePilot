@@ -18,7 +18,7 @@ from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.workflow import FileItem
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, OtherModulesType
 from app.adapters.system.host import SystemUtils
 from app.foundation import text as text_tools
 
@@ -62,13 +62,6 @@ class MediaLibraryModule(_ModuleBase):
     def get_name() -> str:
         """获取模块名称"""
         return "文件整理"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

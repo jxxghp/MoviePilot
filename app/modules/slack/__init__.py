@@ -17,7 +17,6 @@ from app.schemas.message import IncomingMessage
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message
-from app.schemas.types import ModuleType
 
 
 register_channel_admin_resolver(
@@ -55,13 +54,6 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
     @staticmethod
     def get_name() -> str:
         return "Slack"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

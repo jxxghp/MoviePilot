@@ -22,7 +22,7 @@ from app.runtime.extensions.storage_registry import (
 )
 from app.runtime.log import logger
 from app.schemas.exception import StorageQueryError
-from app.schemas.types import ModuleType, StorageAction, StorageSchema
+from app.schemas.types import StorageAction, StorageSchema
 from app.foundation.crypto import HashUtils
 
 
@@ -466,11 +466,6 @@ class _StorageModuleBase(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """存储模块不使用应用设置开关。"""
         pass
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """获取模块类型。"""
-        return ModuleType.Storage
 
     @classmethod
     def get_subtype(cls) -> StorageSchema:

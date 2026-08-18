@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Emby"
-type = "mediaserver"
+service_config = "MediaServers"
 subtype = "Emby"
 priority = 1
 

@@ -3,7 +3,7 @@ from typing import Tuple, Union
 from app.runtime.config import settings
 from app.db import SessionFactory
 from app.modules import _ModuleBase
-from app.schemas.types import ModuleType, OtherModulesType
+from app.schemas.types import OtherModulesType
 from sqlalchemy import text
 
 
@@ -18,13 +18,6 @@ class PostgreSQLModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "PostgreSQL"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

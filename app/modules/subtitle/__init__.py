@@ -10,7 +10,7 @@ from app.db.oper.site import SiteOper
 from app.runtime.log import logger
 from app.runtime.siteresource import site_resource_port
 from app.modules import _ModuleBase
-from app.schemas.types import ModuleType, OtherModulesType
+from app.schemas.types import OtherModulesType
 from app.adapters.network.http import RequestUtils
 
 
@@ -44,13 +44,6 @@ class SubtitleModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "站点字幕"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
-        """
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

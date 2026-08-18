@@ -26,7 +26,6 @@ from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.types import (
     NotificationChannel,
-    ModuleType,
     SystemConfigKey,
 )
 
@@ -40,10 +39,14 @@ _SERVICE_CONFIG_GETTERS = MappingProxyType({
     SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
     SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
 })
+# 模块 manifest 必须声明的元数据字段
+_REQUIRED_METADATA_FIELDS = frozenset({"name", "subtype", "priority"})
+# 只有按服务配置扇出多实例的模块才声明的元数据字段
+_SERVICE_CONFIG_FIELD = "service_config"
 # 通知渠道的 subtype 会成为 Message.channel（Pydantic 枚举字段）与
 # ChannelCapabilityManager 按渠道能力表的查找键，未登记的取值会在消息分发
 # 路径上以枚举校验失败告终，因此仍要求必须是 NotificationChannel 已登记成员名。
-_NOTIFICATION_MODULE_TYPE = ModuleType.Notification.value
+_NOTIFICATION_CONFIG_KEY = SystemConfigKey.Notifications.value
 _NOTIFICATION_SUBTYPE_NAMES = frozenset(item.name for item in NotificationChannel)
 
 
@@ -111,8 +114,6 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
             f"Host Module manifest inventory 不一致：missing={missing} unknown={unknown}"
         )
 
-    allowed_metadata = {"name", "type", "subtype", "priority"}
-    module_type_values = {item.value for item in ModuleType}
     for spec in specs:
         if spec.source.parent.parent != _MODULE_ROOT:
             raise ValueError(f"Host Module manifest 必须位于一级模块包：{spec.source}")
@@ -122,20 +123,33 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
             raise ValueError(
                 f"{spec.source}: entrypoint 必须指向同包且类名等于 capability id"
             )
-        if set(spec.metadata) != allowed_metadata:
+        metadata_fields = set(spec.metadata)
+        missing_metadata = _REQUIRED_METADATA_FIELDS - metadata_fields
+        unknown_metadata = (
+            metadata_fields - _REQUIRED_METADATA_FIELDS - {_SERVICE_CONFIG_FIELD}
+        )
+        if missing_metadata or unknown_metadata:
             raise ValueError(
-                f"{spec.source}: metadata 字段必须是 {sorted(allowed_metadata)}"
+                f"{spec.source}: metadata 字段非法，"
+                f"missing={sorted(missing_metadata)} unknown={sorted(unknown_metadata)}"
             )
-        module_type = spec.metadata["type"]
-        if module_type not in module_type_values:
-            raise ValueError(f"{spec.source}: 非法 metadata.type={module_type!r}")
+        service_config = spec.metadata.get(_SERVICE_CONFIG_FIELD)
+        if service_config is not None:
+            if service_config not in _SERVICE_CONFIG_GETTERS:
+                raise ValueError(
+                    f"{spec.source}: 非法 metadata.service_config={service_config!r}"
+                )
+            if service_config not in spec.watch:
+                raise ValueError(
+                    f"{spec.source}: activation.watch 必须包含 metadata.service_config"
+                )
         subtype = spec.metadata["subtype"]
         if not isinstance(subtype, str) or not subtype:
             raise ValueError(f"{spec.source}: metadata.subtype 必须是非空字符串")
         # 非通知渠道模块的 subtype 只是展示/追溯元数据（族内识别已经改走
         # 运行期反射与 selector 的 match_value 字符串），未登记的取值不再
         # 阻止能力加载，新增后端/存储/识别源不必先改内核枚举。
-        if module_type == _NOTIFICATION_MODULE_TYPE and subtype not in _NOTIFICATION_SUBTYPE_NAMES:
+        if service_config == _NOTIFICATION_CONFIG_KEY and subtype not in _NOTIFICATION_SUBTYPE_NAMES:
             raise ValueError(
                 f"{spec.source}: 非法 metadata.subtype={subtype!r}，"
                 "通知渠道模块的 subtype 必须是 NotificationChannel 已登记的枚举成员名"

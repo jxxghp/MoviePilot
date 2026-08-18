@@ -27,7 +27,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 | Helper classes | `<Domain>Helper` | `TorrentHelper`, `DirectoryHelper`, `MessageHelper` |
 | Pydantic schema models | `PascalCase`, noun-focused | `MediaInfo`, `TorrentInfo`, `DownloadingTorrent` |
 | SQLAlchemy model classes | `PascalCase`, singular noun | `Subscribe`, `TransferHistory`, `SystemConfig` |
-| Enum classes | `PascalCase` | `MediaType`, `EventType`, `ModuleType` |
+| Enum classes | `PascalCase` | `MediaType`, `EventType`, `SystemConfigKey` |
 | Manager classes | `<Domain>Manager` | `ModuleManager`, `PluginManager`, `EventManager` |
 | General classes | `PascalCase` | `MetaInfo`, `Context`, `ChainBase` |
 
@@ -40,7 +40,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 | All functions and methods | `snake_case` | `get_subscribe`, `run_module`, `on_config_changed` |
 | Private methods | `_snake_case` (leading underscore) | `_submit_download_added_task`, `_parse_result` |
 | Event handler methods | `on_<event_name>` or descriptive | `on_transfer_complete`, `handle_config_changed` |
-| Module interface methods | Match `_ModuleBase` contract | `init_module`, `init_setting`, `get_name`, `get_type`, `test`, `stop` |
+| Module interface methods | Match `_ModuleBase` contract | `init_module`, `init_setting`, `get_name`, `get_subtype`, `test`, `stop` |
 | Oper methods | Verb + noun | `get`, `add`, `update`, `delete`, `list` |
 
 ---
@@ -94,7 +94,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 
 | 语义域 | 职责 | 规范命名示例 |
 |---|---|---|
-| `notification` | 通知渠道能力：渠道枚举、渠道配置、渠道发现、渠道管理、渠道能力描述 | `NotificationChannel`, `NotificationConf`, `NotificationHelper`, `NotificationChain`, `NotificationAction`, `ChannelCapabilityManager`, `ModuleType.Notification`, `channel_manage` |
+| `notification` | 通知渠道能力：渠道枚举、渠道配置、渠道发现、渠道管理、渠道能力描述 | `NotificationChannel`, `NotificationConf`, `NotificationHelper`, `NotificationChain`, `NotificationAction`, `ChannelCapabilityManager`, `channel_manage` |
 | `message` | 各渠道发送或接收的消息：消息体、消息类型、消息链、消息历史、消息队列 | `Message`, `MessageType`, `IncomingMessage`, `MessageChain`, `MessageHistoryItem`, `MessageOper`, `post_message`, `message_parser` |
 
 | 规则 | 说明 |

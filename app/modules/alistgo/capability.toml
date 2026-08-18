@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "AListGo"
-type = "storage"
 subtype = "AlistGo"
 priority = 3
 

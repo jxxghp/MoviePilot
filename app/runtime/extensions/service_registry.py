@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.schemas.system import ServiceInfo
-from app.schemas.types import SystemConfigKey, ModuleType
+from app.schemas.types import SystemConfigKey
 
 TConf = TypeVar("TConf")
 
@@ -18,12 +18,15 @@ class ServiceBaseHelper(Generic[TConf]):
     通用服务帮助类，抽象获取配置和服务实例的通用逻辑
     """
 
-    def __init__(self, config_key: SystemConfigKey, conf_type: Type[TConf], module_type: ModuleType):
-        """绑定服务配置类型与对应的运行模块类型。"""
+    def __init__(self, config_key: SystemConfigKey, conf_type: Type[TConf]):
+        """绑定服务配置键与配置模型。
+
+        :param config_key: 服务配置键，同时用于定位声明消费该配置的模块
+        :param conf_type: 服务配置模型
+        """
         self.modulemanager = ModuleManager()
         self.config_key = config_key
         self.conf_type = conf_type
-        self.module_type = module_type
 
     def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:
         """
@@ -50,10 +53,10 @@ class ServiceBaseHelper(Generic[TConf]):
 
     def iterate_module_instances(self) -> Iterator[ServiceInfo]:
         """
-        迭代所有模块的实例及其对应的配置，返回 ServiceInfo 实例
+        迭代消费同一服务配置的模块所持有的实例及其对应的配置，返回 ServiceInfo 实例
         """
         configs = self.get_configs()
-        for module in self.modulemanager.get_running_type_modules(self.module_type):
+        for module in self.modulemanager.get_service_config_modules(self.config_key.value):
             if not module:
                 continue
             module_instances = module.get_instances()

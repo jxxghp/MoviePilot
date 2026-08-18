@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "TheAudioDB"
-type = "mediarecognize"
 subtype = "TheAudioDB"
 priority = 1
 

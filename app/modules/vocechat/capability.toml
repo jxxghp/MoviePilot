@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "VoceChat"
-type = "notification"
+service_config = "Notifications"
 subtype = "VoceChat"
 priority = 4
 

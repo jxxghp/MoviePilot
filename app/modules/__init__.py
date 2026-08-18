@@ -10,7 +10,7 @@ from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.system import MediaServerConf
 from app.schemas.system import DownloaderConf
-from app.schemas.types import ModuleType, DownloaderType, MediaServerType, NotificationChannel, StorageSchema, \
+from app.schemas.types import DownloaderType, MediaServerType, NotificationChannel, StorageSchema, \
     OtherModulesType, SystemConfigKey, MediaRecognizeType
 from app.runtime.reload import ConfigReloadMixin
 
@@ -62,13 +62,6 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
     def get_name() -> str:
         """
         获取模块名称
-        """
-        pass
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """
-        获取模块类型
         """
         pass
 

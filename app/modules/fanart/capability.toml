@@ -6,7 +6,6 @@ depends_on = []
 
 [metadata]
 name = "Fanart"
-type = "other"
 subtype = "Fanart"
 priority = 0
 

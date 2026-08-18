@@ -13,7 +13,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    ModuleType,
 )
 from app.domain.media import is_media_source_enabled
 
@@ -50,11 +49,6 @@ class AniListModule(_ModuleBase):
     def get_name() -> str:
         """获取模块名称"""
         return "AniList"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """获取模块类型"""
-        return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:

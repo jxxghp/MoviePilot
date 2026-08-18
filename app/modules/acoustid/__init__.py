@@ -12,7 +12,7 @@ from uuid import UUID
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import ModuleType, OtherModulesType
+from app.schemas.types import OtherModulesType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 
 
@@ -93,11 +93,6 @@ class AcoustIdModule(_ModuleBase):
     def get_name() -> str:
         """返回模块展示名称。"""
         return "AcoustID"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """返回模块所属的其它音乐能力类型。"""
-        return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:

@@ -3,7 +3,7 @@ from typing import Optional
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import DownloaderConf
 from app.schemas.system import ServiceInfo
-from app.schemas.types import SystemConfigKey, ModuleType
+from app.schemas.types import SystemConfigKey
 
 
 class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
@@ -12,11 +12,10 @@ class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
     """
 
     def __init__(self):
-        """绑定下载器配置和下载器模块类型。"""
+        """绑定下载器配置键与配置模型。"""
         super().__init__(
             config_key=SystemConfigKey.Downloaders,
             conf_type=DownloaderConf,
-            module_type=ModuleType.Downloader
         )
 
     def is_downloader(

@@ -32,10 +32,6 @@ class ExampleModule(_ModuleBase, _DownloaderBase):
         return "Example"
 
     @staticmethod
-    def get_type() -> ModuleType:
-        return ModuleType.Downloader
-
-    @staticmethod
     def get_subtype() -> DownloaderType:
         return DownloaderType.Example
 
@@ -53,7 +49,9 @@ class ExampleModule(_ModuleBase, _DownloaderBase):
 
 **Module directory convention:** `app/modules/<backend_name>/` containing at minimum `__init__.py` (the module class) and the implementation class.
 
-**Module types** are defined in `app/schemas/types.py` as `ModuleType`, `DownloaderType`, `MediaServerType`, `MessageChannel`, `StorageSchema`, `OtherModulesType`. When adding a new category, update these enums.
+**Module subtypes** are defined in `app/schemas/types.py` as `DownloaderType`, `MediaServerType`, `NotificationChannel`, `StorageSchema`, `OtherModulesType`, `MediaRecognizeType`.
+
+**Service config ownership:** a module that fans out into per-config service instances declares the `SystemConfigKey` it consumes via `metadata.service_config` in its `capability.toml` (`Downloaders`, `MediaServers` or `Notifications`). `ServiceBaseHelper` locates a family's modules through that declaration; there is no module-family enum.
 
 ---
 

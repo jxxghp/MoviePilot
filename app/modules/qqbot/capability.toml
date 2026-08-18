@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "QQ"
-type = "notification"
+service_config = "Notifications"
 subtype = "QQ"
 priority = 10
 

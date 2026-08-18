@@ -13,7 +13,7 @@ from app.modules._base import _MessageChannelModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, ModuleType, NotificationAction
+from app.schemas.types import NotificationChannel, NotificationAction
 
 
 register_channel_admin_resolver(
@@ -46,11 +46,6 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
     def get_name() -> str:
         """获取模块名称。"""
         return "微信 ClawBot"
-
-    @staticmethod
-    def get_type() -> ModuleType:
-        """获取模块类型。"""
-        return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:

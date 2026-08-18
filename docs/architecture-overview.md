@@ -166,7 +166,7 @@ flowchart TB
 | `app/application/orchestration/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
 | `app/db/` | SQLAlchemy 模型（`models/`）与一一对应的数据访问类（`oper/`） | `models/subscribe.py` ↔ `oper/subscribe.py` |
-| `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
+| `app/schemas/` | Pydantic 传输模型、枚举（`EventType`、`SystemConfigKey`、`NotificationChannel` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 端点、鉴权依赖、统一响应封装 | `apiv1.py`、`endpoints/`、`response.py` |
 | `app/agent/` | AI Agent：编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `orchestrator.py`、`runtime_loader.py`、`tools/` |
 | `app/startup/` | 组合根：装配注入、初始化/关停排序、重启策略 | `lifecycle.py`、`modules_initializer.py` |
@@ -236,7 +236,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph 契约["_ModuleBase 契约"]
-        A["get_name / get_type / get_subtype"]
+        A["get_name / get_subtype"]
         B["init_setting()：返回控制开关的配置项"]
         C["init_module()：初始化"]
         D["test()：连通性测试"]

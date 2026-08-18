@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Qbittorrent"
-type = "downloader"
+service_config = "Downloaders"
 subtype = "Qbittorrent"
 priority = 1
 
