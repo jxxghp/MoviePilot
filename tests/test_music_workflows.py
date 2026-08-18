@@ -287,7 +287,7 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
     chain = ListenBrainzChain()
     requested = {}
 
-    def fake_run_module(method, **kwargs):
+    def fake_unicast(method, **kwargs):
         """记录榜单模块调用并返回重复候选。"""
         requested.update(method=method, **kwargs)
         return [
@@ -295,7 +295,7 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
             MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天"),
         ]
 
-    monkeypatch.setattr(chain, "run_module", fake_run_module)
+    monkeypatch.setattr(chain, "unicast", fake_unicast)
 
     results = chain.music_chart(range_name="this_week", page=2, count=30)
 
@@ -528,30 +528,30 @@ def test_musicbrainz_source_chain_calls_module_async_method(monkeypatch):
         media_id="recording-1",
         title="晴天",
     )
-    async_run_module = AsyncMock(return_value=expected)
-    run_module = Mock(side_effect=AssertionError("异步识别不应调用同步模块方法"))
-    monkeypatch.setattr(chain, "async_run_module", async_run_module)
-    monkeypatch.setattr(chain, "run_module", run_module)
+    async_unicast = AsyncMock(return_value=expected)
+    unicast = Mock(side_effect=AssertionError("异步识别不应调用同步模块方法"))
+    monkeypatch.setattr(chain, "async_unicast", async_unicast)
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = asyncio.run(chain.async_recognize_music(
         meta=MetaMusic(title="晴天"), cache=True
     ))
 
     assert result is expected
-    async_run_module.assert_awaited_once()
-    run_module.assert_not_called()
+    async_unicast.assert_awaited_once()
+    unicast.assert_not_called()
 
 
 def test_async_identify_by_fingerprint_uses_async_module_contract(monkeypatch):
     """指纹异步链路应请求模块的异步方法名。"""
     chain = AcoustIdChain()
-    async_run_module = AsyncMock(return_value="recording-1")
-    monkeypatch.setattr(chain, "async_run_module", async_run_module)
+    async_unicast = AsyncMock(return_value="recording-1")
+    monkeypatch.setattr(chain, "async_unicast", async_unicast)
 
     result = asyncio.run(chain.async_identify_music_by_fingerprint("/music/track.flac"))
 
     assert result == "recording-1"
-    async_run_module.assert_awaited_once_with(
+    async_unicast.assert_awaited_once_with(
         "async_identify_music_by_fingerprint",
         path=Path("/music/track.flac"),
     )
@@ -562,7 +562,7 @@ def test_async_chart_forwards_album_entity(monkeypatch):
     chain = ListenBrainzChain()
     requested = {}
 
-    async def fake_async_run_module(method, **kwargs):
+    async def fake_async_unicast(method, **kwargs):
         """记录榜单请求参数并返回一个专辑候选。"""
         requested.update(method=method, **kwargs)
         return [
@@ -575,7 +575,7 @@ def test_async_chart_forwards_album_entity(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+    monkeypatch.setattr(chain, "async_unicast", fake_async_unicast)
 
     results = asyncio.run(chain.async_music_chart(range_name="week", page=3, count=20, entity="album"))
 
@@ -623,7 +623,7 @@ def test_async_artist_related_preserves_source_results(monkeypatch):
     """关联艺术家来源链应保留来源返回顺序和实体。"""
     chain = MusicBrainzChain()
 
-    async def fake_async_run_module(method, **kwargs):
+    async def fake_async_unicast(method, **kwargs):
         """返回重复的关联艺术家候选。"""
         assert method == "music_artist_related"
         return [
@@ -632,7 +632,7 @@ def test_async_artist_related_preserves_source_results(monkeypatch):
             MusicArtistInfo(media_source="musicbrainz", media_id="artist-2", name="John Deacon"),
         ]
 
-    monkeypatch.setattr(chain, "async_run_module", fake_async_run_module)
+    monkeypatch.setattr(chain, "async_unicast", fake_async_unicast)
 
     results = asyncio.run(chain.async_get_music_artist_related(media_id="artist-0"))
 

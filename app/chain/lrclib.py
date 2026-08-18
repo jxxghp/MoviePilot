@@ -13,7 +13,7 @@ class LrclibChain(ChainBase):
             music: Union[MetaMusic, MusicInfo],
     ) -> Optional[MusicLyrics]:
         """按单曲元数据获取标准化歌词。"""
-        result = self.run_module("music_lyrics", music=music)
+        result = self.unicast("music_lyrics", music=music)
         if isinstance(result, MusicLyrics):
             return result
         return MusicLyrics.from_dict(result) if isinstance(result, dict) else None
@@ -23,7 +23,7 @@ class LrclibChain(ChainBase):
             music: Union[MetaMusic, MusicInfo],
     ) -> Optional[MusicLyrics]:
         """异步按单曲元数据获取标准化歌词。"""
-        result = await self.async_run_module("music_lyrics", music=music)
+        result = await self.async_unicast("music_lyrics", music=music)
         if isinstance(result, MusicLyrics):
             return result
         return MusicLyrics.from_dict(result) if isinstance(result, dict) else None

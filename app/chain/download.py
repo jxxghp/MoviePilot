@@ -564,7 +564,7 @@ class DownloadChain(ChainBase):
         """
         解析站点详情页的字幕下载链接，模块内部自行区分页面解析与API站点
         """
-        return self.run_module("site_subtitle_links", context=context)
+        return self.unicast("site_subtitle_links", context=context)
 
     def download_site_subtitles(
             self,

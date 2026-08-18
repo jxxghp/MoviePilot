@@ -89,7 +89,7 @@ class MediaServerChain(ChainBase):
         获取媒体服务器所有媒体库
         """
         return self._sign_library_images(
-            self.run_module(
+            self.unicast(
                 "mediaserver_librarys",
                 server=server,
                 username=username,
@@ -117,14 +117,14 @@ class MediaServerChain(ChainBase):
         - 即通过 `while` 循环在上层进行分页控制，逐步获取所有数据，避免内存爆炸，当前该逻辑由具体实例来实现不分页的处理
         - Plex 实际上已默认支持内部分页处理，Jellyfin 与 Emby 获取数据时存在内部过滤场景，如排除合集等，分页数据可能是错误的
         if limit is not None and limit != -1:
-            yield from self.run_module("mediaserver_items", server=server, library_id=library_id,
-                                   start_index=start_index, limit=limit)
+            yield from self.unicast("mediaserver_items", server=server, library_id=library_id,
+                                    start_index=start_index, limit=limit)
         else:
             # 自分页逻辑，通过循环逐步获取所有数据
             page_size = 10
             while True:
-                data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id,
-                                                 start_index=start_index, limit=page_size)
+                data_generator = self.unicast("mediaserver_items", server=server, library_id=library_id,
+                                              start_index=start_index, limit=page_size)
                 if not data_generator:
                     break
                 count = 0
@@ -136,8 +136,8 @@ class MediaServerChain(ChainBase):
                     break
                 start_index += page_size
         """
-        yield from self.run_module("mediaserver_items", server=server, library_id=library_id,
-                                   start_index=start_index, limit=limit)
+        yield from self.unicast("mediaserver_items", server=server, library_id=library_id,
+                                start_index=start_index, limit=limit)
 
     def items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
         """
@@ -147,7 +147,7 @@ class MediaServerChain(ChainBase):
         :param library_id: 媒体库ID
         :return: 媒体条目总数，无法获取时返回None
         """
-        return self.run_module(
+        return self.unicast(
             "mediaserver_items_count",
             server=server,
             library_id=library_id,
@@ -160,7 +160,11 @@ class MediaServerChain(ChainBase):
         :param server: 媒体服务器名称
         :return: 电影、电视剧和音乐总数，无法获取时返回None
         """
-        statistics = self.run_module("media_statistic", server=server)
+        statistics = [
+            statistic
+            for statistics_group in self.multicast("media_statistic", server=server)
+            for statistic in (statistics_group or [])
+        ]
         if not statistics:
             return None
         return sum(
@@ -174,13 +178,13 @@ class MediaServerChain(ChainBase):
         """
         获取媒体服务器项目信息
         """
-        return self.run_module("mediaserver_iteminfo", server=server, item_id=item_id)
+        return self.unicast("mediaserver_iteminfo", server=server, item_id=item_id)
 
     def episodes(self, server: str, item_id: Union[str, int]) -> List[MediaServerSeasonInfo]:
         """
         获取媒体服务器剧集信息
         """
-        return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
+        return self.unicast("mediaserver_tv_episodes", server=server, item_id=item_id)
 
     def playing(self, server: str, count: Optional[int] = 20,
                 username: Optional[str] = None) -> Optional[List[MediaServerPlayItem]]:
@@ -188,7 +192,7 @@ class MediaServerChain(ChainBase):
         获取媒体服务器正在播放信息
         """
         return self._sign_play_item_images(
-            self.run_module(
+            self.unicast(
                 "mediaserver_playing",
                 count=count,
                 server=server,
@@ -202,7 +206,7 @@ class MediaServerChain(ChainBase):
         获取媒体服务器最新入库条目
         """
         return self._sign_play_item_images(
-            self.run_module(
+            self.unicast(
                 "mediaserver_latest",
                 count=count,
                 server=server,
@@ -215,7 +219,7 @@ class MediaServerChain(ChainBase):
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
-        wallpapers = self.run_module(
+        wallpaper_groups = self.multicast(
             "mediaserver_latest_images",
             server=server,
             count=count,
@@ -224,7 +228,8 @@ class MediaServerChain(ChainBase):
         )
         return [
             self._sign_image_url(wallpaper)
-            for wallpaper in wallpapers or []
+            for wallpapers in wallpaper_groups
+            for wallpaper in (wallpapers or [])
             if wallpaper
         ]
 
@@ -240,7 +245,7 @@ class MediaServerChain(ChainBase):
         """
         获取播放地址
         """
-        return self.run_module("mediaserver_play_url", server=server, item_id=item_id)
+        return self.unicast("mediaserver_play_url", server=server, item_id=item_id)
 
     def get_season_episode_ids(self, server: str, item_id: Union[str, int],
                                season: int) -> Dict[int, str]:
@@ -252,7 +257,7 @@ class MediaServerChain(ChainBase):
         :param season: 季号
         :return: 集号到条目 ID 的映射，无数据时返回空字典
         """
-        result = self.run_module(
+        result = self.unicast(
             "mediaserver_season_episode_ids",
             server=server,
             item_id=item_id,
@@ -266,7 +271,7 @@ class MediaServerChain(ChainBase):
         """
         获取图片的Cookies
         """
-        return self.run_module(
+        return self.unicast(
             "mediaserver_image_cookies", server=server, image_url=image_url
         )
 

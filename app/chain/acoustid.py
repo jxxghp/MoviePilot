@@ -12,7 +12,7 @@ class AcoustIdChain(ChainBase):
             path: Union[str, Path],
     ) -> Optional[str]:
         """根据本地音频指纹返回 MusicBrainz Recording ID。"""
-        result = self.run_module(
+        result = self.unicast(
             "identify_music_by_fingerprint",
             path=Path(path),
         )
@@ -23,7 +23,7 @@ class AcoustIdChain(ChainBase):
             path: Union[str, Path],
     ) -> Optional[str]:
         """异步根据本地音频指纹返回 MusicBrainz Recording ID。"""
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "async_identify_music_by_fingerprint",
             path=Path(path),
         )

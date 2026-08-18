@@ -31,7 +31,7 @@ class ListenBrainzChain(ChainBase):
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
         """分页读取 ListenBrainz 全站音乐榜单。"""
-        result = self.run_module(
+        result = self.unicast(
             "music_chart",
             range_name=range_name,
             offset=max(page - 1, 0) * max(1, count),
@@ -48,7 +48,7 @@ class ListenBrainzChain(ChainBase):
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
         """异步分页读取 ListenBrainz 全站音乐榜单。"""
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_chart",
             range_name=range_name,
             offset=max(page - 1, 0) * max(1, count),
@@ -67,7 +67,7 @@ class ListenBrainzChain(ChainBase):
             count: int = 30,
     ) -> list[MusicInfo]:
         """异步分页读取 ListenBrainz 官方新发行专辑。"""
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_fresh_releases",
             days=days,
             sort=sort,

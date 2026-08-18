@@ -1375,25 +1375,25 @@ class MessageChain(ChainBase):
             try:
                 if audio_ref.startswith("tg://voice_file_id/"):
                     file_id = audio_ref.replace("tg://voice_file_id/", "", 1)
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_telegram_file_bytes", file_id=file_id, source=source
                     )
                     filename = "input.ogg"
                 elif audio_ref.startswith("tg://audio_file_id/"):
                     file_id = audio_ref.replace("tg://audio_file_id/", "", 1)
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_telegram_file_bytes", file_id=file_id, source=source
                     )
                     filename = "input.mp3"
                 elif audio_ref.startswith("wxwork://voice_media_id/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_wechat_media_bytes",
                         media_ref=audio_ref,
                         source=source,
                     )
                     filename = "input.amr"
                 elif audio_ref.startswith("wxclaw://voice/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_wechat_media_bytes",
                         media_ref=audio_ref,
                         source=source,
@@ -1402,28 +1402,28 @@ class MessageChain(ChainBase):
                         audio_ref, default="input.amr"
                     )
                 elif audio_ref.startswith("slack://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_slack_file_bytes", file_ref=audio_ref, source=source
                     )
                     filename = self._guess_audio_filename(
                         audio_ref, default="input.ogg"
                     )
                 elif audio_ref.startswith("discord://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_discord_file_bytes", file_ref=audio_ref, source=source
                     )
                     filename = self._guess_audio_filename(
                         audio_ref, default="input.ogg"
                     )
                 elif audio_ref.startswith("qq://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_qq_file_bytes", file_ref=audio_ref, source=source
                     )
                     filename = self._guess_audio_filename(
                         audio_ref, default="input.ogg"
                     )
                 elif audio_ref.startswith("vocechat://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_vocechat_file_bytes",
                         file_ref=audio_ref,
                         source=source,
@@ -1432,7 +1432,7 @@ class MessageChain(ChainBase):
                         audio_ref, default="input.ogg"
                     )
                 elif audio_ref.startswith("synology://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_synologychat_file_bytes",
                         file_ref=audio_ref,
                         source=source,
@@ -1443,7 +1443,7 @@ class MessageChain(ChainBase):
                 elif audio_ref.startswith("wxbot://voice"):
                     continue
                 elif audio_ref.startswith("feishu://file/"):
-                    content = self.run_module(
+                    content = self.unicast(
                         "download_feishu_file_bytes", file_ref=audio_ref, source=source
                     )
                     filename = self._guess_audio_filename(
@@ -1528,7 +1528,7 @@ class MessageChain(ChainBase):
                     data_urls.append(attachment_ref)
                 elif attachment_ref.startswith("tg://file_id/"):
                     file_id = attachment_ref.replace("tg://file_id/", "")
-                    base64_data = self.run_module(
+                    base64_data = self.unicast(
                         "download_telegram_file_to_base64",
                         file_id=file_id,
                         source=source,
@@ -1542,7 +1542,7 @@ class MessageChain(ChainBase):
                 ) or attachment_ref.startswith(
                     "wxclaw://image/"
                 ):
-                    data_url = self.run_module(
+                    data_url = self.unicast(
                         "download_wechat_image_to_data_url",
                         image_ref=attachment_ref,
                         source=source,
@@ -1550,7 +1550,7 @@ class MessageChain(ChainBase):
                     if data_url:
                         data_urls.append(data_url)
                 elif attachment_ref.startswith("feishu://image/"):
-                    data_url = self.run_module(
+                    data_url = self.unicast(
                         "download_feishu_image_to_data_url",
                         image_ref=attachment_ref,
                         source=source,
@@ -1558,7 +1558,7 @@ class MessageChain(ChainBase):
                     if data_url:
                         data_urls.append(data_url)
                 elif channel == NotificationChannel.Slack:
-                    data_url = self.run_module(
+                    data_url = self.unicast(
                         "download_slack_file_to_data_url",
                         file_url=attachment_ref,
                         source=source,
@@ -1566,7 +1566,7 @@ class MessageChain(ChainBase):
                     if data_url:
                         data_urls.append(data_url)
                 elif attachment_ref.startswith("vocechat://file/"):
-                    data_url = self.run_module(
+                    data_url = self.unicast(
                         "download_vocechat_image_to_data_url",
                         image_ref=attachment_ref,
                         source=source,
@@ -1696,29 +1696,29 @@ class MessageChain(ChainBase):
             return self._decode_data_url_bytes(file_ref)
         if file_ref.startswith("tg://file_id/"):
             file_id = file_ref.replace("tg://file_id/", "", 1)
-            return self.run_module(
+            return self.unicast(
                 "download_telegram_file_bytes", file_id=file_id, source=source
             )
         if file_ref.startswith("tg://document_file_id/"):
             file_id = file_ref.replace("tg://document_file_id/", "", 1)
-            return self.run_module(
+            return self.unicast(
                 "download_telegram_file_bytes", file_id=file_id, source=source
             )
         if file_ref.startswith("wxwork://media_id/"):
-            return self.run_module(
+            return self.unicast(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
             )
         if file_ref.startswith("wxwork://file_media_id/"):
-            return self.run_module(
+            return self.unicast(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
             )
         if file_ref.startswith("wxbot://image/"):
-            data_url = self.run_module(
+            data_url = self.unicast(
                 "download_wechat_image_to_data_url", image_ref=file_ref, source=source
             )
             return self._decode_data_url_bytes(data_url) if data_url else None
         if file_ref.startswith("wxclaw://image/"):
-            data_url = self.run_module(
+            data_url = self.unicast(
                 "download_wechat_image_to_data_url", image_ref=file_ref, source=source
             )
             return self._decode_data_url_bytes(data_url) if data_url else None
@@ -1727,36 +1727,36 @@ class MessageChain(ChainBase):
             resp = RequestUtils(timeout=30).get_res(file_url)
             return resp.content if resp and resp.content else None
         if file_ref.startswith("wxclaw://file/") or file_ref.startswith("wxclaw://voice/"):
-            return self.run_module(
+            return self.unicast(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
             )
         if file_ref.startswith("feishu://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_feishu_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("slack://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_slack_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("discord://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_discord_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("qq://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_qq_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("vocechat://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_vocechat_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("synology://file/"):
-            return self.run_module(
+            return self.unicast(
                 "download_synologychat_file_bytes", file_ref=file_ref, source=source
             )
         if file_ref.startswith("http"):
             if channel == NotificationChannel.Slack:
-                data_url = self.run_module(
+                data_url = self.unicast(
                     "download_slack_file_to_data_url", file_url=file_ref, source=source
                 )
                 return self._decode_data_url_bytes(data_url) if data_url else None

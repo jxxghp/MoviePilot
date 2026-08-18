@@ -56,8 +56,8 @@ def test_add_allows_same_item_id_across_servers(database):
 def test_media_count_reuses_existing_server_statistics():
     """整服同步应复用现有媒体统计并排除剧集集数。"""
     chain = object.__new__(MediaServerChain)
-    chain.run_module = lambda *_args, **_kwargs: [
-        schemas.Statistic(movie_count=12, tv_count=8, music_count=3, episode_count=200)
+    chain.multicast = lambda *_args, **_kwargs: [
+        [schemas.Statistic(movie_count=12, tv_count=8, music_count=3, episode_count=200)]
     ]
 
     assert chain.media_count("plex") == 23

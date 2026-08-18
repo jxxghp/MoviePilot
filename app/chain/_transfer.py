@@ -658,21 +658,21 @@ class EpisodeFormatMixin:
             # 默认值1
             if season_num is None:
                 season_num = 1
-            episodes_info = self.run_module(
+            episodes_info = self.unicast(
                 "tmdb_episodes",
                 tmdbid=mediainfo.tmdb_id,
                 season=season_num,
                 episode_group=mediainfo.episode_group,
             )
         if episodes_info:
-            return self.run_module(
+            return self.unicast(
                 "recommend_name",
                 meta=meta,
                 mediainfo=mediainfo,
                 episodes_info=episodes_info,
             )
         # 电影或无集信息时保持原有参数集，避免影响旧签名的模块实现
-        return self.run_module("recommend_name", meta=meta, mediainfo=mediainfo)
+        return self.unicast("recommend_name", meta=meta, mediainfo=mediainfo)
 
     def recommend_episode_format(
             self,

@@ -25,32 +25,32 @@ class StorageChain(ChainBase):
         :param params: 表单与动作参数，原样透传给模块
         :return: 统一结构 {"success": bool, "message": ..., "data": ...}
         """
-        result = self.run_module("storage_manage", storage=storage, action=action, **params)
+        result = self.unicast("storage_manage", storage=storage, action=action, **params)
         return result or {"success": False, "message": "该存储类型未启用或不支持此管理动作"}
 
     def list_files(self, fileitem: _SchemaFileItem, recursion: bool = False) -> Optional[List[_SchemaFileItem]]:
         """
         查询当前目录下所有目录和文件
         """
-        return self.run_module("list_files", fileitem=fileitem, recursion=recursion)
+        return self.unicast("list_files", fileitem=fileitem, recursion=recursion)
 
     def any_files(self, fileitem: _SchemaFileItem, extensions: list = None) -> Optional[bool]:
         """
         查询当前目录下是否存在指定扩展名任意文件
         """
-        return self.run_module("any_files", fileitem=fileitem, extensions=extensions)
+        return self.unicast("any_files", fileitem=fileitem, extensions=extensions)
 
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
         创建目录
         """
-        return self.run_module("create_folder", fileitem=fileitem, name=name)
+        return self.unicast("create_folder", fileitem=fileitem, name=name)
 
     def get_folder(self, storage: str, path: Path) -> Optional[_SchemaFileItem]:
         """
         获取目录，不存在则递归创建
         """
-        return self.run_module("get_folder", storage=storage, path=path)
+        return self.unicast("get_folder", storage=storage, path=path)
 
     def download_file(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
@@ -58,7 +58,7 @@ class StorageChain(ChainBase):
         :param fileitem: 文件项
         :param path: 本地保存路径
         """
-        return self.run_module("download_file", fileitem=fileitem, path=path)
+        return self.unicast("download_file", fileitem=fileitem, path=path)
 
     def upload_file(self, fileitem: _SchemaFileItem, path: Path,
                     new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
@@ -68,19 +68,19 @@ class StorageChain(ChainBase):
         :param path: 本地文件路径
         :param new_name: 新文件名
         """
-        return self.run_module("upload_file", fileitem=fileitem, path=path, new_name=new_name)
+        return self.unicast("upload_file", fileitem=fileitem, path=path, new_name=new_name)
 
     def delete_file(self, fileitem: _SchemaFileItem) -> Optional[bool]:
         """
         删除文件或目录
         """
-        return self.run_module("delete_file", fileitem=fileitem)
+        return self.unicast("delete_file", fileitem=fileitem)
 
     def rename_file(self, fileitem: _SchemaFileItem, name: str) -> Optional[bool]:
         """
         重命名文件或目录
         """
-        return self.run_module("rename_file", fileitem=fileitem, name=name)
+        return self.unicast("rename_file", fileitem=fileitem, name=name)
 
     def exists(self, fileitem: _SchemaFileItem) -> Optional[bool]:
         """
@@ -98,13 +98,13 @@ class StorageChain(ChainBase):
         """
         根据路径获取文件项
         """
-        return self.run_module("get_file_item", storage=storage, path=path)
+        return self.unicast("get_file_item", storage=storage, path=path)
 
     def get_parent_item(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
         获取上级目录项
         """
-        return self.run_module("get_parent_item", fileitem=fileitem)
+        return self.unicast("get_parent_item", fileitem=fileitem)
 
     def snapshot_storage(self, storage: str, path: Path,
                          last_snapshot_time: float = None, max_depth: int = 5,
@@ -117,9 +117,9 @@ class StorageChain(ChainBase):
         :param max_depth: 最大递归深度，避免过深遍历
         :param previous_snapshot: 上次完整快照，用于增量对账
         """
-        return self.run_module("snapshot_storage", storage=storage, path=path,
-                               last_snapshot_time=last_snapshot_time, max_depth=max_depth,
-                               previous_snapshot=previous_snapshot)
+        return self.unicast("snapshot_storage", storage=storage, path=path,
+                            last_snapshot_time=last_snapshot_time, max_depth=max_depth,
+                            previous_snapshot=previous_snapshot)
 
     def is_bluray_folder(self, fileitem: Optional[_SchemaFileItem]) -> bool:
         """

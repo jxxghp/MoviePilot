@@ -21,7 +21,7 @@ def module():
 
 
 def test_channel_manage_routes_only_matching_channel(module):
-    """非本渠道的管理请求返回 None，run_module 分发将继续执行其它模块。"""
+    """非本渠道的管理请求返回 None，单播分发将继续询问其它模块。"""
     result = module.channel_manage(
         channel=NotificationChannel.Telegram,
         action=NotificationAction.STATUS,
@@ -125,11 +125,11 @@ def test_notification_chain_forwards_target_action_and_params(monkeypatch):
     """链层接受字符串标识与透传参数，按 channel_manage 契约原样转发。"""
     captured = {}
 
-    def fake_run_module(self, method, **kwargs):
+    def fake_unicast(self, method, **kwargs):
         captured.update(method=method, kwargs=kwargs)
         return {"success": True, "data": {"connected": True}}
 
-    monkeypatch.setattr(NotificationChain, "run_module", fake_run_module)
+    monkeypatch.setattr(NotificationChain, "unicast", fake_unicast)
     chain = NotificationChain.__new__(NotificationChain)
     result = chain.manage_channel(channel="WechatClawBot", action="status", source="预览")
 
@@ -144,7 +144,7 @@ def test_notification_chain_forwards_target_action_and_params(monkeypatch):
 
 def test_notification_chain_reports_missing_module(monkeypatch):
     """无模块实现 channel_manage 时返回统一失败结构。"""
-    monkeypatch.setattr(NotificationChain, "run_module", lambda self, method, **kwargs: None)
+    monkeypatch.setattr(NotificationChain, "unicast", lambda self, method, **kwargs: None)
     chain = NotificationChain.__new__(NotificationChain)
     result = chain.manage_channel(channel="unknown", action="status")
     assert result["success"] is False

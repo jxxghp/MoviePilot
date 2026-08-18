@@ -65,7 +65,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :param site:  站点
         :return: 用户数据
         """
-        userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
+        userdata: SiteUserData = self.unicast("refresh_userdata", site=site)
         if userdata:
             SiteOper().update_userdata(domain=site_rules.extract_domain(site.get("domain")),
                                        name=site.get("name"),

@@ -26,19 +26,19 @@ SYNC_EMPTY_CACHE_CASES = [
 ]
 
 ASYNC_EMPTY_CACHE_CASES = [
-    ("async_tmdb_movies", "app.chain.recommend.TmdbChain"),
-    ("async_tmdb_tvs", "app.chain.recommend.TmdbChain"),
-    ("async_tmdb_trending", "app.chain.recommend.TmdbChain"),
-    ("async_bangumi_calendar", "app.chain.recommend.BangumiChain"),
-    ("async_douban_movie_showing", "app.chain.recommend.DoubanChain"),
-    ("async_douban_movies", "app.chain.recommend.DoubanChain"),
-    ("async_douban_tvs", "app.chain.recommend.DoubanChain"),
-    ("async_douban_movie_top250", "app.chain.recommend.DoubanChain"),
-    ("async_douban_tv_weekly_chinese", "app.chain.recommend.DoubanChain"),
-    ("async_douban_tv_weekly_global", "app.chain.recommend.DoubanChain"),
-    ("async_douban_tv_animation", "app.chain.recommend.DoubanChain"),
-    ("async_douban_movie_hot", "app.chain.recommend.DoubanChain"),
-    ("async_douban_tv_hot", "app.chain.recommend.DoubanChain"),
+    ("async_tmdb_movies", "app.chain.recommend.TmdbChain", "async_tmdb_discover"),
+    ("async_tmdb_tvs", "app.chain.recommend.TmdbChain", "async_tmdb_discover"),
+    ("async_tmdb_trending", "app.chain.recommend.TmdbChain", "async_tmdb_trending"),
+    ("async_bangumi_calendar", "app.chain.recommend.BangumiChain", "async_calendar"),
+    ("async_douban_movie_showing", "app.chain.recommend.DoubanChain", "async_movie_showing"),
+    ("async_douban_movies", "app.chain.recommend.DoubanChain", "async_douban_discover"),
+    ("async_douban_tvs", "app.chain.recommend.DoubanChain", "async_douban_discover"),
+    ("async_douban_movie_top250", "app.chain.recommend.DoubanChain", "async_movie_top250"),
+    ("async_douban_tv_weekly_chinese", "app.chain.recommend.DoubanChain", "async_tv_weekly_chinese"),
+    ("async_douban_tv_weekly_global", "app.chain.recommend.DoubanChain", "async_tv_weekly_global"),
+    ("async_douban_tv_animation", "app.chain.recommend.DoubanChain", "async_tv_animation"),
+    ("async_douban_movie_hot", "app.chain.recommend.DoubanChain", "async_movie_hot"),
+    ("async_douban_tv_hot", "app.chain.recommend.DoubanChain", "async_tv_hot"),
 ]
 
 
@@ -78,22 +78,27 @@ def test_sync_recommend_methods_do_not_cache_empty_result(
     assert backend_call.call_count == 2
 
 
-@pytest.mark.parametrize(("method_name", "chain_target"), ASYNC_EMPTY_CACHE_CASES)
+@pytest.mark.parametrize(
+    ("method_name", "chain_target", "backend_method"),
+    ASYNC_EMPTY_CACHE_CASES,
+)
 def test_async_recommend_methods_do_not_cache_empty_result(
     method_name: str,
     chain_target: str,
+    backend_method: str,
 ) -> None:
     """异步推荐来源返回空列表时不应缓存。"""
     chain = RecommendChain()
     recommend_method = getattr(chain, method_name)
 
     with patch(chain_target) as backend_chain:
-        backend_chain.return_value.async_run_module = AsyncMock(side_effect=[[], []])
+        backend_call = AsyncMock(side_effect=[[], []])
+        setattr(backend_chain.return_value, backend_method, backend_call)
 
         assert asyncio.run(recommend_method(page=1)) == []
         assert asyncio.run(recommend_method(page=1)) == []
 
-    assert backend_chain.return_value.async_run_module.call_count == 2
+    assert backend_call.call_count == 2
 
 
 def test_music_weekly_uses_music_chart():

@@ -549,7 +549,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param season: 季号
         :param episode: 集号
         """
-        return self.run_module(
+        return self.unicast(
             "metadata_nfo",
             meta=meta,
             mediainfo=mediainfo,

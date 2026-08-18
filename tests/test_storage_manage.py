@@ -60,11 +60,11 @@ def test_storage_chain_forwards_target_action_and_params(monkeypatch):
     """链层按 storage_manage 契约原样透传，不引入存储特定逻辑。"""
     captured = {}
 
-    def fake_run_module(self, method, **kwargs):
+    def fake_unicast(self, method, **kwargs):
         captured.update(method=method, kwargs=kwargs)
         return {"success": True, "data": {"total": 100}}
 
-    monkeypatch.setattr(StorageChain, "run_module", fake_run_module)
+    monkeypatch.setattr(StorageChain, "unicast", fake_unicast)
     chain = StorageChain.__new__(StorageChain)
     result = chain.manage_storage(storage="fakestore", action="usage", extra="value")
 
@@ -75,7 +75,7 @@ def test_storage_chain_forwards_target_action_and_params(monkeypatch):
 
 def test_storage_chain_reports_missing_module(monkeypatch):
     """无模块实现 storage_manage 时返回统一失败结构。"""
-    monkeypatch.setattr(StorageChain, "run_module", lambda self, method, **kwargs: None)
+    monkeypatch.setattr(StorageChain, "unicast", lambda self, method, **kwargs: None)
     chain = StorageChain.__new__(StorageChain)
     result = chain.manage_storage(storage="unknown", action="usage")
     assert result["success"] is False

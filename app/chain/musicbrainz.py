@@ -13,7 +13,7 @@ class _MusicMetadataSourceChain(ChainBase):
 
     def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
         """按音乐元数据搜索当前来源候选。"""
-        result = self.run_module(
+        result = self.unicast(
             "search_music",
             meta=meta,
             limit=limit,
@@ -23,7 +23,7 @@ class _MusicMetadataSourceChain(ChainBase):
 
     async def async_search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
         """异步按音乐元数据搜索当前来源候选。"""
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "search_music",
             meta=meta,
             limit=limit,
@@ -40,7 +40,7 @@ class _MusicMetadataSourceChain(ChainBase):
     ) -> Optional[MusicInfo]:
         """按当前来源身份或音乐元数据识别标准音乐信息。"""
         normalized_id = self._normalize_media_id(media_id)
-        result = self.run_module(
+        result = self.unicast(
             "recognize_media",
             meta=meta,
             mtype=MediaType.MUSIC,
@@ -60,7 +60,7 @@ class _MusicMetadataSourceChain(ChainBase):
     ) -> Optional[MusicInfo]:
         """异步按当前来源身份或音乐元数据识别标准音乐信息。"""
         normalized_id = self._normalize_media_id(media_id)
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "async_recognize_media",
             meta=meta,
             mtype=MediaType.MUSIC,
@@ -76,7 +76,7 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
-        result = self.run_module(
+        result = self.unicast(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
@@ -88,7 +88,7 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
@@ -104,7 +104,7 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return []
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_album_related",
             media_source=self.source,
             media_id=normalized_id,
@@ -117,7 +117,7 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_artist",
             media_source=self.source,
             media_id=normalized_id,
@@ -131,11 +131,11 @@ class _MusicMetadataSourceChain(ChainBase):
             count: int = 30,
             album_type: Optional[str] = None,
     ) -> list[MusicInfo]:
-        """异步分页获取当前来源艺术家的专辑目录。"""
+        """异步分页获取当前来源艺术家的专辑目录，来源不匹配的提供者以空列表出让，按多播展平后返回。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return []
-        result = await self.async_run_module(
+        groups = await self.async_multicast(
             "music_artist_albums",
             media_source=self.source,
             media_id=normalized_id,
@@ -143,6 +143,7 @@ class _MusicMetadataSourceChain(ChainBase):
             count=count,
             album_type=album_type,
         )
+        result = [item for group in groups if isinstance(group, list) for item in group]
         return self._music_infos(result, limit=count)
 
     async def async_get_music_artist_related(
@@ -154,7 +155,7 @@ class _MusicMetadataSourceChain(ChainBase):
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return []
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "music_artist_related",
             media_source=self.source,
             media_id=normalized_id,
@@ -265,7 +266,7 @@ class MusicBrainzChain(_MusicMetadataSourceChain):
             limit: int = 5,
     ) -> Optional[MusicAlbumInfo]:
         """按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
-        result = self.run_module(
+        result = self.unicast(
             "match_music_album",
             meta=meta,
             tracks=tracks,
@@ -280,7 +281,7 @@ class MusicBrainzChain(_MusicMetadataSourceChain):
             limit: int = 5,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
-        result = await self.async_run_module(
+        result = await self.async_unicast(
             "async_match_music_album",
             meta=meta,
             tracks=tracks,
@@ -290,14 +291,14 @@ class MusicBrainzChain(_MusicMetadataSourceChain):
 
     def cache_items(self) -> list[dict]:
         """查询音乐识别缓存条目列表。"""
-        result = self.run_module("music_cache_items")
+        result = self.unicast("music_cache_items")
         return result or []
 
     def delete_cache(self, cache_key: str) -> dict:
         """按缓存键删除单条音乐识别缓存。"""
-        result = self.run_module("music_cache_delete", cache_key=cache_key)
+        result = self.unicast("music_cache_delete", cache_key=cache_key)
         return result or {}
 
     def clear_cache(self) -> None:
         """清空全部音乐识别缓存。"""
-        self.run_module("music_cache_clear")
+        self.broadcast("music_cache_clear")

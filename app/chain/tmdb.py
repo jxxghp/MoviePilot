@@ -37,7 +37,7 @@ class TmdbChain(ChainBase):
         :param page:  页码
         :return: 媒体信息列表
         """
-        return self.run_module("tmdb_discover", mtype=mtype,
+        return self.unicast("tmdb_discover", mtype=mtype,
                                sort_by=sort_by,
                                with_genres=with_genres,
                                with_original_language=with_original_language,
@@ -54,28 +54,28 @@ class TmdbChain(ChainBase):
         :param page: 第几页
         :return: TMDB信息列表
         """
-        return self.run_module("tmdb_trending", page=page)
+        return self.unicast("tmdb_trending", page=page)
 
     def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
         """
         根据合集ID查询集合
         :param collection_id:  合集ID
         """
-        return self.run_module("tmdb_collection", collection_id=collection_id)
+        return self.unicast("tmdb_collection", collection_id=collection_id)
 
     def tmdb_seasons(self, tmdbid: int) -> List[_SchemaTmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tmdb_seasons", tmdbid=tmdbid)
+        return self.unicast("tmdb_seasons", tmdbid=tmdbid)
 
     def tmdb_group_seasons(self, group_id: str) -> List[_SchemaTmdbSeason]:
         """
         根据剧集组ID查询themoviedb所有季集信息
         :param group_id: 剧集组ID
         """
-        return self.run_module("tmdb_group_seasons", group_id=group_id)
+        return self.unicast("tmdb_group_seasons", group_id=group_id)
 
     def tmdb_episodes(self, tmdbid: int, season: int, episode_group: Optional[str] = None) -> List[_SchemaTmdbEpisode]:
         """
@@ -84,35 +84,35 @@ class TmdbChain(ChainBase):
         :param season:  季
         :param episode_group:  剧集组
         """
-        return self.run_module("tmdb_episodes", tmdbid=tmdbid, season=season, episode_group=episode_group)
+        return self.unicast("tmdb_episodes", tmdbid=tmdbid, season=season, episode_group=episode_group)
 
     def movie_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tmdb_movie_similar", tmdbid=tmdbid)
+        return self.unicast("tmdb_movie_similar", tmdbid=tmdbid)
 
     def tv_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tmdb_tv_similar", tmdbid=tmdbid)
+        return self.unicast("tmdb_tv_similar", tmdbid=tmdbid)
 
     def movie_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tmdb_movie_recommend", tmdbid=tmdbid)
+        return self.unicast("tmdb_movie_recommend", tmdbid=tmdbid)
 
     def tv_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tmdb_tv_recommend", tmdbid=tmdbid)
+        return self.unicast("tmdb_tv_recommend", tmdbid=tmdbid)
 
     def movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -120,7 +120,7 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.run_module("tmdb_movie_credits", tmdbid=tmdbid, page=page)
+        return self.unicast("tmdb_movie_credits", tmdbid=tmdbid, page=page)
 
     def tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -128,14 +128,14 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.run_module("tmdb_tv_credits", tmdbid=tmdbid, page=page)
+        return self.unicast("tmdb_tv_credits", tmdbid=tmdbid, page=page)
 
     def person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         根据TMDBID查询演职员详情
         :param person_id:  人物ID
         """
-        return self.run_module("tmdb_person_detail", person_id=person_id)
+        return self.unicast("tmdb_person_detail", person_id=person_id)
 
     def person_credits(self, person_id: int, page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
         """
@@ -143,7 +143,7 @@ class TmdbChain(ChainBase):
         :param person_id:  人物ID
         :param page:  页码
         """
-        return self.run_module("tmdb_person_credits", person_id=person_id, page=page)
+        return self.unicast("tmdb_person_credits", person_id=person_id, page=page)
 
     def get_random_wallpager(self) -> Optional[str]:
         """
@@ -176,7 +176,8 @@ class TmdbChain(ChainBase):
                                   vote_average: float,
                                   vote_count: int,
                                   release_date: str,
-                                  page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
+                                  page: Optional[int] = 1,
+                                  raise_exception: bool = False) -> Optional[List[MediaInfo]]:
         """
         发现TMDB电影、剧集（异步版本）
         :param mtype:  媒体类型
@@ -189,9 +190,10 @@ class TmdbChain(ChainBase):
         :param vote_count:  评分人数
         :param release_date:  上映日期
         :param page:  页码
+        :param raise_exception:  触发速率限制时是否抛出异常
         :return: 媒体信息列表
         """
-        return await self.async_run_module("async_tmdb_discover", mtype=mtype,
+        return await self.async_unicast("async_tmdb_discover", mtype=mtype,
                                            sort_by=sort_by,
                                            with_genres=with_genres,
                                            with_original_language=with_original_language,
@@ -200,36 +202,39 @@ class TmdbChain(ChainBase):
                                            vote_average=vote_average,
                                            vote_count=vote_count,
                                            release_date=release_date,
-                                           page=page)
+                                           page=page,
+                                           raise_exception=raise_exception)
 
-    async def async_tmdb_trending(self, page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
+    async def async_tmdb_trending(self, page: Optional[int] = 1,
+                                  raise_exception: bool = False) -> Optional[List[MediaInfo]]:
         """
         TMDB流行趋势（异步版本）
         :param page: 第几页
+        :param raise_exception:  触发速率限制时是否抛出异常
         :return: TMDB信息列表
         """
-        return await self.async_run_module("async_tmdb_trending", page=page)
+        return await self.async_unicast("async_tmdb_trending", page=page, raise_exception=raise_exception)
 
     async def async_tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
         """
         根据合集ID查询集合（异步版本）
         :param collection_id:  合集ID
         """
-        return await self.async_run_module("async_tmdb_collection", collection_id=collection_id)
+        return await self.async_unicast("async_tmdb_collection", collection_id=collection_id)
 
     async def async_tmdb_seasons(self, tmdbid: int) -> List[_SchemaTmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_run_module("async_tmdb_seasons", tmdbid=tmdbid)
+        return await self.async_unicast("async_tmdb_seasons", tmdbid=tmdbid)
 
     async def async_tmdb_group_seasons(self, group_id: str) -> List[_SchemaTmdbSeason]:
         """
         根据剧集组ID查询themoviedb所有季集信息（异步版本）
         :param group_id: 剧集组ID
         """
-        return await self.async_run_module("async_tmdb_group_seasons", group_id=group_id)
+        return await self.async_unicast("async_tmdb_group_seasons", group_id=group_id)
 
     async def async_tmdb_episodes(self, tmdbid: int, season: int,
                                   episode_group: Optional[str] = None) -> List[_SchemaTmdbEpisode]:
@@ -239,7 +244,7 @@ class TmdbChain(ChainBase):
         :param season:  季
         :param episode_group:  剧集组
         """
-        return await self.async_run_module("async_tmdb_episodes", tmdbid=tmdbid, season=season,
+        return await self.async_unicast("async_tmdb_episodes", tmdbid=tmdbid, season=season,
                                            episode_group=episode_group)
 
     async def async_movie_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
@@ -247,28 +252,28 @@ class TmdbChain(ChainBase):
         根据TMDBID查询类似电影（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_run_module("async_tmdb_movie_similar", tmdbid=tmdbid)
+        return await self.async_unicast("async_tmdb_movie_similar", tmdbid=tmdbid)
 
     async def async_tv_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询类似电视剧（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_run_module("async_tmdb_tv_similar", tmdbid=tmdbid)
+        return await self.async_unicast("async_tmdb_tv_similar", tmdbid=tmdbid)
 
     async def async_movie_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电影（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_run_module("async_tmdb_movie_recommend", tmdbid=tmdbid)
+        return await self.async_unicast("async_tmdb_movie_recommend", tmdbid=tmdbid)
 
     async def async_tv_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
         """
         根据TMDBID查询推荐电视剧（异步版本）
         :param tmdbid:  TMDBID
         """
-        return await self.async_run_module("async_tmdb_tv_recommend", tmdbid=tmdbid)
+        return await self.async_unicast("async_tmdb_tv_recommend", tmdbid=tmdbid)
 
     async def async_movie_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -276,7 +281,7 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return await self.async_run_module("async_tmdb_movie_credits", tmdbid=tmdbid, page=page)
+        return await self.async_unicast("async_tmdb_movie_credits", tmdbid=tmdbid, page=page)
 
     async def async_tv_credits(self, tmdbid: int, page: Optional[int] = 1) -> Optional[List[_SchemaMediaPerson]]:
         """
@@ -284,14 +289,14 @@ class TmdbChain(ChainBase):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return await self.async_run_module("async_tmdb_tv_credits", tmdbid=tmdbid, page=page)
+        return await self.async_unicast("async_tmdb_tv_credits", tmdbid=tmdbid, page=page)
 
     async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
         根据TMDBID查询演职员详情（异步版本）
         :param person_id:  人物ID
         """
-        return await self.async_run_module("async_tmdb_person_detail", person_id=person_id)
+        return await self.async_unicast("async_tmdb_person_detail", person_id=person_id)
 
     async def async_person_credits(self, person_id: int, page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
         """
@@ -299,7 +304,7 @@ class TmdbChain(ChainBase):
         :param person_id:  人物ID
         :param page:  页码
         """
-        return await self.async_run_module("async_tmdb_person_credits", person_id=person_id, page=page)
+        return await self.async_unicast("async_tmdb_person_credits", person_id=person_id, page=page)
 
     async def async_get_random_wallpager(self) -> Optional[str]:
         """
@@ -327,18 +332,18 @@ class TmdbChain(ChainBase):
         """
         查询TMDB识别缓存条目列表
         """
-        result = self.run_module("tmdb_cache_items")
+        result = self.unicast("tmdb_cache_items")
         return result or []
 
     def delete_cache(self, cache_key: str) -> dict:
         """
         按缓存键删除单条TMDB识别缓存
         """
-        result = self.run_module("tmdb_cache_delete", cache_key=cache_key)
+        result = self.unicast("tmdb_cache_delete", cache_key=cache_key)
         return result or {}
 
     def clear_cache(self) -> None:
         """
         清空全部TMDB识别缓存
         """
-        self.run_module("tmdb_cache_clear")
+        self.broadcast("tmdb_cache_clear")

@@ -25,5 +25,5 @@ class NotificationChain(ChainBase):
         :param params: 表单与动作参数，原样透传给模块
         :return: 统一结构 {"success": bool, "message": ..., ...}
         """
-        result = self.run_module("channel_manage", channel=channel, action=action, **params)
+        result = self.unicast("channel_manage", channel=channel, action=action, **params)
         return result or {"success": False, "message": "该通知渠道未启用或不支持此管理动作"}

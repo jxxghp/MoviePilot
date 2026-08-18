@@ -10,10 +10,11 @@ class MediaServerImageSigningTest(unittest.TestCase):
     @staticmethod
     def _build_chain(result):
         """
-        构造只带 run_module 的 MediaServerChain，避免单测初始化真实模块管理器。
+        构造只带分发桩的 MediaServerChain，避免单测初始化真实模块管理器。
         """
         chain = MediaServerChain.__new__(MediaServerChain)
-        chain.run_module = Mock(return_value=result)
+        chain.unicast = Mock(return_value=result)
+        chain.multicast = Mock(return_value=[result])
         return chain
 
     def test_librarys_signs_image_fields(self):

@@ -153,7 +153,7 @@ class UserChain(ChainBase):
                 return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
 
         logger.debug(f"认证类型：{credentials.grant_type}，尝试通过系统模块进行辅助认证，用户: {credentials.username}")
-        result = self.run_module("user_authenticate", credentials=credentials)
+        result = self.unicast("user_authenticate", credentials=credentials)
 
         if not result:
             logger.debug(f"通过系统模块辅助认证失败，尝试触发 {ChainEventType.AuthVerification} 事件")

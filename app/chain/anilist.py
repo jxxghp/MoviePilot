@@ -17,7 +17,7 @@ class AniListChain(ChainBase):
         :param anilist_id: AniList 媒体 ID
         :return: AniList 媒体详情
         """
-        return self.run_module("anilist_info", anilist_id=anilist_id)
+        return self.unicast("anilist_info", anilist_id=anilist_id)
 
     async def async_info(self, anilist_id: int) -> Optional[dict]:
         """
@@ -26,7 +26,7 @@ class AniListChain(ChainBase):
         :param anilist_id: AniList 媒体 ID
         :return: AniList 媒体详情
         """
-        return await self.async_run_module("async_anilist_info", anilist_id=anilist_id)
+        return await self.async_unicast("async_anilist_info", anilist_id=anilist_id)
 
     def trending(self, page: int = 1, count: int = 20) -> list[MediaInfo]:
         """
@@ -34,7 +34,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return self.run_module("anilist_trending", page=page, count=count) or []
+        return self.unicast("anilist_trending", page=page, count=count) or []
 
     async def async_trending(self, page: int = 1, count: int = 20) -> list[MediaInfo]:
         """
@@ -42,7 +42,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_trending", page=page, count=count
         ) or []
 
@@ -52,7 +52,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return self.run_module(
+        return self.unicast(
             "anilist_popular_this_season", page=page, count=count
         ) or []
 
@@ -64,7 +64,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_popular_this_season", page=page, count=count
         ) or []
 
@@ -74,7 +74,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return self.run_module("anilist_discover", **kwargs) or []
+        return self.unicast("anilist_discover", **kwargs) or []
 
     async def async_discover(self, **kwargs) -> list[MediaInfo]:
         """
@@ -82,7 +82,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return await self.async_run_module("async_anilist_discover", **kwargs) or []
+        return await self.async_unicast("async_anilist_discover", **kwargs) or []
 
     def credits(
         self, anilist_id: int, page: int = 1, count: int = 20
@@ -92,7 +92,7 @@ class AniListChain(ChainBase):
 
         :return: 媒体人物列表
         """
-        return self.run_module(
+        return self.unicast(
             "anilist_credits", anilist_id=anilist_id, page=page, count=count
         ) or []
 
@@ -104,7 +104,7 @@ class AniListChain(ChainBase):
 
         :return: 媒体人物列表
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_credits", anilist_id=anilist_id, page=page, count=count
         ) or []
 
@@ -116,7 +116,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return self.run_module(
+        return self.unicast(
             "anilist_recommendations", anilist_id=anilist_id, page=page, count=count
         ) or []
 
@@ -128,7 +128,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_recommendations",
             anilist_id=anilist_id,
             page=page,
@@ -141,7 +141,7 @@ class AniListChain(ChainBase):
 
         :return: 媒体人物信息
         """
-        return self.run_module("anilist_person_detail", person_id=person_id)
+        return self.unicast("anilist_person_detail", person_id=person_id)
 
     async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
@@ -149,7 +149,7 @@ class AniListChain(ChainBase):
 
         :return: 媒体人物信息
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_person_detail", person_id=person_id
         )
 
@@ -161,7 +161,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return self.run_module(
+        return self.unicast(
             "anilist_person_credits", person_id=person_id, page=page, count=count
         ) or []
 
@@ -173,7 +173,7 @@ class AniListChain(ChainBase):
 
         :return: 统一媒体信息列表
         """
-        return await self.async_run_module(
+        return await self.async_unicast(
             "async_anilist_person_credits",
             person_id=person_id,
             page=page,

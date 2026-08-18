@@ -16,38 +16,38 @@ from app.schemas.types import MediaSource
 def test_musicbrainz_chain_fixes_source_on_search(monkeypatch) -> None:
     """MusicBrainz 来源链应固定请求来源并拒绝跨来源候选。"""
     chain = MusicBrainzChain()
-    run_module = Mock(return_value=[
+    unicast = Mock(return_value=[
         MusicInfo(media_source="musicbrainz", media_id="recording-1", title="One"),
         MusicInfo(media_source="theaudiodb", media_id="track-2", title="Two"),
     ])
-    monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = chain.search_music(MetaMusic(title="One"), limit=5)
 
     assert [item.media_id for item in result] == ["recording-1"]
-    assert run_module.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
+    assert unicast.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
 
 
 def test_theaudiodb_chain_exposes_only_theaudiodb_results(monkeypatch) -> None:
     """TheAudioDB 来源链应仅返回自身来源的标准音乐信息。"""
     chain = TheAudioDbChain()
-    run_module = Mock(return_value=MusicInfo(
+    unicast = Mock(return_value=MusicInfo(
         media_source="theaudiodb",
         media_id="track-1",
         title="Track",
     ))
-    monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = chain.recognize_music(media_id="track-1")
 
     assert result and result.media_source == MediaSource.TheAudioDB
-    assert run_module.call_args.kwargs["media_source"] == MediaSource.TheAudioDB
+    assert unicast.call_args.kwargs["media_source"] == MediaSource.TheAudioDB
 
 
 def test_musicbrainz_album_rejects_mismatched_identity(monkeypatch) -> None:
     """显式专辑 ID 查询不应接受另一身份的详情结果。"""
     chain = MusicBrainzChain()
-    monkeypatch.setattr(chain, "run_module", Mock(return_value=MusicAlbumInfo(
+    monkeypatch.setattr(chain, "unicast", Mock(return_value=MusicAlbumInfo(
         media_source="musicbrainz",
         media_id="other-album",
         title="Other",
@@ -59,36 +59,36 @@ def test_musicbrainz_album_rejects_mismatched_identity(monkeypatch) -> None:
 def test_douban_music_discover_fixes_source(monkeypatch) -> None:
     """豆瓣音乐发现端口应固定 doubanmusic 而非影视 douban 来源。"""
     chain = DoubanChain()
-    run_module = Mock(return_value=[
+    unicast = Mock(return_value=[
         MusicInfo(media_source="doubanmusic", media_id="album-1", title="Album")
     ])
-    monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = chain.music_discover(page=2, count=10)
 
     assert result[0].media_source == MediaSource.DoubanMusic
-    assert run_module.call_args.kwargs["media_source"] == MediaSource.DoubanMusic
+    assert unicast.call_args.kwargs["media_source"] == MediaSource.DoubanMusic
 
 
 def test_listenbrainz_chain_translates_page_to_offset(monkeypatch) -> None:
     """ListenBrainz 来源链应把页码转换为模块使用的偏移量。"""
     chain = ListenBrainzChain()
-    run_module = Mock(return_value=[
+    unicast = Mock(return_value=[
         MusicInfo(media_source="musicbrainz", media_id="recording-1", title="Track")
     ])
-    monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = chain.music_chart("this_week", page=3, count=10)
 
     assert result[0].media_id == "recording-1"
-    assert run_module.call_args.kwargs["offset"] == 20
+    assert unicast.call_args.kwargs["offset"] == 20
 
 
 def test_acoustid_chain_normalizes_fingerprint_result(monkeypatch) -> None:
     """AcoustID 来源链应把指纹结果规范化为 Recording ID 文本。"""
     chain = AcoustIdChain()
-    run_module = Mock(return_value="  recording-1  ")
-    monkeypatch.setattr(chain, "run_module", run_module)
+    unicast = Mock(return_value="  recording-1  ")
+    monkeypatch.setattr(chain, "unicast", unicast)
 
     result = chain.identify_music_by_fingerprint(Path("track.flac"))
 
@@ -98,7 +98,7 @@ def test_acoustid_chain_normalizes_fingerprint_result(monkeypatch) -> None:
 def test_lrclib_chain_converts_dictionary_result(monkeypatch) -> None:
     """LRCLIB 来源链应把字典结果转换为标准歌词对象。"""
     chain = LrclibChain()
-    monkeypatch.setattr(chain, "run_module", Mock(return_value={
+    monkeypatch.setattr(chain, "unicast", Mock(return_value={
         "provider": "lrclib",
         "provider_id": "1",
         "synced_lyrics": "[00:01] Track",
@@ -111,16 +111,16 @@ def test_lrclib_chain_converts_dictionary_result(monkeypatch) -> None:
 
 
 def test_async_source_ports_use_async_dispatch(monkeypatch) -> None:
-    """来源链异步端口应通过 async_run_module 分发模块能力。"""
+    """来源链异步端口应通过 async_unicast 分发模块能力。"""
     chain = MusicBrainzChain()
-    async_run_module = AsyncMock(return_value=MusicInfo(
+    async_unicast = AsyncMock(return_value=MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
         title="Track",
     ))
-    monkeypatch.setattr(chain, "async_run_module", async_run_module)
+    monkeypatch.setattr(chain, "async_unicast", async_unicast)
 
     result = asyncio.run(chain.async_recognize_music(media_id="recording-1"))
 
     assert result and result.media_id == "recording-1"
-    async_run_module.assert_awaited_once()
+    async_unicast.assert_awaited_once()
