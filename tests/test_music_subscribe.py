@@ -702,7 +702,7 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
     media_chain = Mock()
     media_chain.recognize_media = Mock(return_value=target)
     subscribe_oper = Mock()
-    # 落库入口已迁到 app/application/subscribe.py，链路层能截到的接缝是 add_subscribe，
+    # 落库入口已迁到 application/subscription/write.py，链路层能截到的接缝是 add_subscribe，
     # 它收到的正是链路交给写入路径的那份字段
     add_subscribe = Mock(return_value=(1, ""))
 

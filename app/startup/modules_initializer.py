@@ -54,7 +54,7 @@ from app.application.site.health import SiteHealthService, configure_site_health
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
 from app.application.agentdata import configure_agent_data_ports
 from app.api.data import configure_api_data_ports
-from app.application.subscribe import configure_subscribe_writer
+from app.application.subscription.write import configure_subscribe_writer
 from app.application.maintenance import (
     DataCleanupService,
     configure_cleanup_service_factory,

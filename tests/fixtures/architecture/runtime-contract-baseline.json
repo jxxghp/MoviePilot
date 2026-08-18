@@ -222,7 +222,7 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "sdk",
-        "replacement": "app.application.subscribe.add_subscribe",
+        "replacement": "app.application.subscription.write.add_subscribe",
         "target": "app.sdk._legacy.subscribe"
       },
       "app.db.subscribehistory_oper": {

@@ -41,7 +41,7 @@ from app.application.chain.data import (
 from app.application.configuration import get_configured_system_config
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
-from app.application.subscribe import add_subscribe, async_add_subscribe
+from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.application.subscription.contract import (
     build_subscribe_meta as _build_subscribe_meta,
     subscribe_media_key,

@@ -62,6 +62,8 @@ RETIRED_CANONICAL_FILES = (
     "app/runtime/runtime.py",
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
+    "app/application/plugins.py",
+    "app/application/subscribe.py",
 )
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",

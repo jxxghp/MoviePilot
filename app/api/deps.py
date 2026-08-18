@@ -41,7 +41,7 @@ from app.application.history import (
 )
 from app.application.plugin.config import PluginConfigCommand
 from app.application.commands import init_commands
-from app.application.plugins import register_plugin_api
+from app.application.plugin.routes import register_plugin_api
 from app.application.scheduling import update_plugin_job
 from app.adapters.web.security.access import verify_token
 from app.application.security.user import UserService

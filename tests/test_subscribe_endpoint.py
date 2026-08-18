@@ -674,7 +674,7 @@ class SubscribeEndpointTest(TestCase):
         """
         owner-aware 创建不应把他人已有订阅当作当前用户订阅。
         """
-        from app.application.subscribe import async_add_subscribe
+        from app.application.subscription.write import async_add_subscribe
         from app.db.oper.subscribe import SubscribeOper
 
         other = _EndpointSubscribe(id=21, username="bob")

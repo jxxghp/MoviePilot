@@ -112,7 +112,7 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
     ),
     "app.db.subscribe_oper": ModuleAlias(
         target="app.sdk._legacy.subscribe",
-        replacement="app.application.subscribe.add_subscribe",
+        replacement="app.application.subscription.write.add_subscribe",
         introduced="v3.0.0",
         owner="sdk",
     ),

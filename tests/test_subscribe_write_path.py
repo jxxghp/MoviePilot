@@ -1,5 +1,5 @@
 """
-订阅的写入路径：app/application/subscribe.py 的 add_subscribe / async_add_subscribe。
+订阅的写入路径：app/application/subscription/write.py 的 add_subscribe / async_add_subscribe。
 
 这两个函数是订阅表的唯一写入口，把 MediaInfo / MusicInfo 翻译成一行订阅：
 标题、年份、类型、海报背景、评分简介、剧集组、音乐实体与曲目数，再叠上
@@ -26,7 +26,7 @@ import asyncio
 
 import pytest
 
-from app.application.subscribe import add_subscribe, async_add_subscribe
+from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper
 from app.domain.context import MediaInfo, MusicInfo

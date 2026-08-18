@@ -3,7 +3,7 @@
 > 文档性质：现状审计、目标约束、迁移路线和 AI 实施手册
 > 适用仓库：`MoviePilot`，分支 `v3`
 > 审计基线：2026-08-18 当前工作树
-> 相关规范：`AGENTS.md`、`docs/rules/05-architecture.md`、`docs/architecture-overview.md`、`docs/backend-module-refactor-compatibility.md`
+> 相关规范：`AGENTS.md`、`docs/rules/05-architecture.md`、`docs/architecture-overview.md`、`docs/refactor/backend-module-refactor-compatibility.md`
 
 ## 1. 文档目的
 
@@ -25,7 +25,8 @@
 3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
-6. 当前机器基线为 746 个宿主 Python 模块、6,021 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+6. 当前机器基线为 746 个宿主 Python 模块、6,024 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+7. 订阅写入统一归入 `app/application/subscription/write.py`；插件动态路由和文件夹操作统一归入 `app/application/plugin/routes.py`、`folders.py`。重构期间新增且未形成插件 ABI 的 `app/application/subscribe.py`、`app/application/plugins.py` 已直接删除，不进入 compat manifest。
 
 ## 2. 范围与明确排除项
 
@@ -98,7 +99,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，当前静态扫描得到 746 个 Python 模块、6,021 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，当前静态扫描得到 746 个 Python 模块、6,024 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
@@ -147,7 +148,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | 指标 | 初始审计 | 当前基线 | 说明 |
 | --- | ---: | ---: | --- |
 | Python 模块数 | 约 654 | 746 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
-| 内部导入边 | 约 5,623 | 6,021 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
+| 内部导入边 | 约 5,623 | 6,024 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
 | SCC 数 | 14 | 1 | 自有代码 SCC 已归零，仅保留 TMDB 移植包内部隔离例外 |
 | `adapters -> db` | 存在 | 0 | `PluginHelper`、`MoviePilotServerHelper` 的本地数据读取已移到组合根/Application |
 | `runtime -> db` | 存在 | 0 | 插件存储、服务配置均改为启动注入 |
@@ -324,25 +325,24 @@ app/chain/__init__.py                 # 保留 ChainBase 兼容门面
 4. 原 Facade 的参数默认值、返回类型、事件时机和消息副作用必须保持。
 5. 不为了缩短文件把相互调用的方法机械分散到多个 `helper.py`。
 
-#### 建议的订阅拆分
+#### 已落地的订阅应用拆分
 
 ```text
-app/domain/subscription/
-  identity.py          # 订阅媒体键、稳定身份和纯比较
-  matching.py          # 不访问 DB/网络的匹配规则
-  completion.py        # 完整性与完成判定
-
 app/application/subscription/
-  commands.py          # 新增、修改、删除、完成
-  queries.py           # 可见性和订阅读取
-  recognition.py       # 通过端口恢复媒体信息
-  search.py            # 搜索用例协调
-  ports.py             # Repository、Search、Recognition、Event 等协议
+  write.py             # 新增订阅、媒体翻译和写入端口
+  query.py             # 存在性、来源定位和公开查询
+  mutation.py          # 更新、重置和历史删除
+  delete.py            # 单条删除与事务端口
+  identity.py          # 按媒体身份批量删除
+  search.py            # 手工搜索调度
+  contract.py          # Chain 共用的媒体元数据与媒体键契约
 
 app/chain/subscribe.py # V3 Facade，继续暴露 SubscribeChain 与旧辅助符号
 ```
 
-`app/application/subscribe.py` 已经承担订阅写入翻译，可先作为新目录的入口门面，或保留并转发到新服务。不能同时出现同名文件和包；若最终改为包，必须在一个原子批次中完成，并验证 `app.application.subscribe` 的所有导入。
+`app/application/subscribe.py` 是 V3 重构期间新增的内部过渡文件，插件仓与运行时插件均无导入；
+在宿主、测试和旧 `app.db.subscribe_oper` 行为适配切换到 `subscription/write.py` 后直接删除，
+不保留门面，也不在 `manifest.py` 中新增没有历史消费者的映射。
 
 #### 建议的整理拆分
 
@@ -541,7 +541,7 @@ app/domain/events/                   # 逐步增加 Typed payload，不承载总
 
 #### 动态插件 API 的 P0 兼容冲突
 
-这是治理前发现并已完成的 P0 兼容修复。主应用仍使用 `ResponseAPIRoute`，但 `app/adapters/web/plugin/routes.py` 在动态插件注册时显式使用原生 `APIRoute`；`app/application/plugin/routes.py` 只定义 `DynamicRouteRegistry` 端口。因此插件 `get_api()` 返回的 dict、Pydantic model、原生 `Response`、文件/流响应和自定义状态码均不进入主 API envelope。前端 `pluginApi` 也只在检测到严格 `Response` envelope 时解包，否则原样交付。
+这是治理前发现并已完成的 P0 兼容修复。主应用仍使用 `ResponseAPIRoute`，但 `app/adapters/web/plugin/routes.py` 在动态插件注册时显式使用原生 `APIRoute`；`app/application/plugin/routes.py` 定义 `DynamicRouteRegistry` 端口并承载注册/移除用例，不依赖 FastAPI。因此插件 `get_api()` 返回的 dict、Pydantic model、原生 `Response`、文件/流响应和自定义状态码均不进入主 API envelope。前端 `pluginApi` 也只在检测到严格 `Response` envelope 时解包，否则原样交付。
 
 真实运行验证已覆盖：官方 V3 `TvdbDiscover` 插件加载后生成 `/api/v1/plugin/TvdbDiscover/tvdb_discover` 动态路由，未认证请求返回插件路由自己的认证错误体而非主 API 404/统一路由包装；对应 route class、raw 响应和前端 pass-through 均有测试。
 
@@ -578,7 +578,8 @@ app/runtime/extensions/plugin/projection.py    # commands/apis/services/modules/
 app/runtime/extensions/plugin/storage.py       # 运行时持久化窄端口
 app/application/plugin/catalog.py              # 市场目录查询、代际合并和来源去重
 app/application/plugin/install.py              # 安装用例与阶段结果
-app/application/plugin/routes.py               # 动态 API 注册端口
+app/application/plugin/routes.py               # 动态 API 注册端口与用例
+app/application/plugin/folders.py              # 插件文件夹清理用例
 ```
 
 #### 插件钩子契约
@@ -701,7 +702,7 @@ app/application/server/share.py                # 订阅/工作流等分享用例
 #### 典型证据
 
 - `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.agent_initializer` 才导入并注入 `SkillHelper`。
-- `app/application/plugins.py` 只持有 `DynamicRouteRegistry` Protocol；FastAPI app、`app.routes`、`openapi_schema` 和 `setup()` 均封装在 `app/adapters/web/plugin/routes.py`。
+- `app/application/plugin/routes.py` 持有 `DynamicRouteRegistry` Protocol 和注册/移除用例；FastAPI app、`app.routes`、`openapi_schema` 和 `setup()` 均封装在 `app/adapters/web/plugin/routes.py`。
 - 多个 `modules` 直接导入 `app.application.messaging.agent`、`mediaserver`、`storage` 等；其中一部分是合理 SPI 消费，一部分表明应用能力接口和具体实现未区分。
 - `SystemConfigOper()` 在大量文件中被直接构造，形成持久化配置服务定位器。
 
@@ -1120,7 +1121,8 @@ startup 注入具体依赖
 | 插件配置和数据持久化 | `app/runtime/extensions/plugin/storage.py` | 启动层用 `SystemConfigOper`、`PluginDataOper` 注入；Runtime 不导入 Oper |
 | 市场目录和版本/来源合并 | `app/application/plugin/catalog.py` | `PluginManager.get_online_plugins()` 等公开方法经启动注入的目录工厂委托 |
 | 插件安装阶段编排 | `app/application/plugin/install.py` | API 和 Agent 共用命令；旧管理器/Helper 安装入口保留 |
-| 动态插件路由 | `app/application/plugin/routes.py` + `app/adapters/web/plugin/routes.py` | `app/application/plugins.py` 保留旧 Facade；插件响应默认 raw |
+| 动态插件路由 | `app/application/plugin/routes.py` + `app/adapters/web/plugin/routes.py` | 过渡聚合文件无插件 ABI，已删除；插件响应默认 raw |
+| 插件文件夹清理 | `app/application/plugin/folders.py` | API 与 Agent 直接调用 canonical 用例，兼容新旧配置存储形态 |
 | 市场读取 | `app/adapters/external/plugin/client.py` | `app.adapters.external.market.PluginHelper` 保留正式公共实现路径 |
 | 包与依赖安装 | `app/adapters/system/plugin/package.py`、`dependency.py` | PluginManager 原方法只做委托和日志/上报 |
 | 中心服务统计/分享 | `app/application/server/report.py`、`share.py` | `MoviePilotServerHelper` 保留 transport 和公开静态/类方法，由启动层注入用例 |
@@ -1196,7 +1198,7 @@ startup 注入具体依赖
 
 ### 任务 A：插件动态 API raw 契约
 
-**范围**：`app/application/plugins.py`、`app/api/response.py`、`app/factory.py`、对应测试。
+**范围**：`app/application/plugin/routes.py`、`app/adapters/web/plugin/routes.py`、`app/api/response.py`、`app/factory.py`、对应测试。
 **目标**：主 API 统一信封，插件动态 API 默认自由返回。
 **禁止**：修改插件副本、修改普通 API 响应格式、修改鉴权默认值。
 **验证**：dict、Pydantic model、Response、StreamingResponse、204、自定义状态码、OpenAPI。
@@ -1359,7 +1361,7 @@ done_when: []
 | 范围 | 命令 | 结果 |
 | --- | --- | --- |
 | 后端完整门禁 | `./.venv/bin/python tests/run.py` | 4,914 passed、2 failed、3 skipped（2026-08-18）；失败为未修改的 Agent 图片能力测试，架构专项不受影响 |
-| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,021 边 |
+| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
 | 前端联邦 API 客户端 | `yarn test:run src/api/__tests__/client.spec.ts src/api/__tests__/index.spec.ts` | 36 passed |
 | 前端类型检查 | `yarn typecheck` | 通过 |
 | V3 插件契约与版本门禁 | `../MoviePilot/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q` | 16 passed |

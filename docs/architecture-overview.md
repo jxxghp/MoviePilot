@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-17*
+> *Last Updated: 2026-08-18*
 
 ---
 
@@ -28,7 +28,8 @@ flowchart LR
 
     subgraph 后端["MoviePilot 后端（FastAPI）"]
         API["REST API / MCP / 兼容协议"]
-        Core["核心引擎<br/>Chain / Module / Plugin / Agent"]
+        Core["核心引擎<br/>Chain / Application / Module / Plugin / Agent"]
+        Persist["持久化端口 / Oper"]
     end
 
     subgraph 外部服务["外部生态"]
@@ -45,7 +46,8 @@ flowchart LR
     Msg -->|Webhook / 轮询| Core
     ExtAgent -->|JSON-RPC| API
     API --> Core
-    Core --> DB
+    Core -->|通过应用端口 / Oper| Persist
+    Persist --> DB
     Core <--> Site
     Core <--> DL
     Core <--> MS
@@ -69,7 +71,7 @@ flowchart TB
         Workflow["app/workflow<br/>工作流"]
         Scheduler["app/scheduler<br/>定时任务"]
         CLI["app/cli<br/>命令行"]
-        PluginPkg["app/plugins<br/>插件"]
+        PluginPkg["插件运行时目录<br/>app/plugins/*（副本/覆盖层）"]
     end
 
     subgraph 编排层["编排层"]
@@ -96,7 +98,7 @@ flowchart TB
     subgraph 组合根["组合根 / 边界"]
         Startup["app/startup<br/>Composition Root"]
         Sdk["app/sdk<br/>插件稳定导入面"]
-        Compat["app/runtime/compat<br/>旧导入路径映射"]
+        Compat["app/runtime/compat<br/>旧导入路径与符号映射"]
     end
 
     ApiPkg --> Chain
@@ -109,9 +111,9 @@ flowchart TB
 
     Chain -->|run_module 分发| Modules
     Chain --> App
-    Chain --> Db
+    Chain -->|经应用端口 / Oper 适配| Db
     App --> Modules
-    App --> Db
+    App -->|应用端口 / Oper 适配| Db
 
     Modules --> Domain
     App --> Domain
@@ -122,14 +124,24 @@ flowchart TB
     Runtime --> Foundation
     Adapters --> Domain
     Adapters --> Foundation
-    App --> Adapters
+    App -->|允许的技术适配依赖；优先由 startup 装配| Adapters
 
     Startup -.注入/装配.-> Runtime
     Startup -.注入/装配.-> App
     Startup -.注入/装配.-> Modules
     Sdk -.门面转发.-> App
     Compat -.惰性映射.-> Sdk
+    Compat -.精确别名.-> App
+    Compat -.精确别名.-> Db
+    Compat -.精确别名.-> Foundation
+    Compat -.精确别名.-> Adapters
 ```
+
+图中的 `Chain → Db`、`Application → Db` 表示通过应用端口、Oper 或组合根注入的实现完成持久化，
+不是允许在用例代码中直接创建数据库引擎或拼接 SQL。`compat` 也不是只面向 SDK 的转发层，
+它按 `app/runtime/compat/manifest.py` 的白名单把已经删除的旧模块/符号精确映射到各自的 canonical
+归属。`app/application/subscribe.py` 与 `app/application/plugins.py` 都是 V3 重构过程中新增、
+未形成插件 ABI 的宿主内部聚合文件，主题实现收口后直接删除，不在 manifest 中制造新的兼容债务。
 
 **依赖方向的核心约束**（由 `tests/test_architecture_dependencies.py` 强制检查）：
 
@@ -155,26 +167,29 @@ flowchart TB
 | `app/foundation/` | 无状态、无配置、无 I/O 的底层原语：反射/动态导入、加密、DOM、单例、文本、URL、版本比较 | `reflection.py`、`crypto.py`、`singleton.py` |
 | `app/domain/` | 纯 MoviePilot 业务语义：媒体上下文、识别解析、站点状态解释、磁力语义、NFO 刮削 | `context.py`、`metainfo.py`、`meta/`、`scraper.py` |
 | `app/runtime/` | 进程级运行机制：配置、事件、完整日志、缓存契约与内存后端、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`log.py`、`cache.py` |
-| `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配 | `module_manager.py`、`plugin_manager.py` |
-| `app/runtime/compat/` | 仅标准库的精确旧导入路由（`app.core/helper/utils/log` → canonical） | `manifest.py`、`imports.py` |
+| `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；旧管理器文件保留稳定 ABI 门面，具体实现拆在主题子包 | `module_manager.py`、`plugin_manager.py`、`plugin/` |
+| `app/runtime/compat/` | 仅标准库的精确旧模块、包与符号导入路由；不是业务实现，也不是通用 re-export 层 | `manifest.py`、`imports.py` |
 | `app/adapters/network/` | 通用 HTTP、浏览器、DNS、Cloudflare、IP 传输机制 | `http.py`、`browser.py` |
 | `app/adapters/cache/` | Redis 与文件缓存的具体实现 | `backends.py`、`redis.py` |
 | `app/adapters/system/` | OS/文件/进程/stdio/显示/包安装/Rust 加速适配 | `host.py`、`resource.py`、`fsproxy.py` |
 | `app/adapters/external/` | 命名外部生态：插件市场、CookieCloud、OCR、IP 归属、MP Server、微信加密 | `market.py`、`server.py`、`wechat_crypt.py` |
-| `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则等 | `recognition.py`、`filter.py`、`rss.py`、`site/` |
+| `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`site/`、`subscription/`、`plugin/` |
+| `app/application/subscription/` | 订阅新增、查询、变更、删除、媒体身份与搜索契约 | `write.py`、`contract.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
+| `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
 | `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
 | `app/db/` | SQLAlchemy 模型（`models/`）与一一对应的数据访问类（`oper/`） | `models/subscribe.py` ↔ `oper/subscribe.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
-| `app/api/` | FastAPI 端点、鉴权依赖、统一响应封装 | `apiv1.py`、`endpoints/`、`response.py` |
+| `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
+| `app/adapters/web/plugin/` | FastAPI 动态插件路由的技术适配：注册/移除、认证依赖、OpenAPI 重建；保留插件原生响应结构 | `routes.py` |
 | `app/agent/` | AI Agent：编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `orchestrator.py`、`runtime_loader.py`、`tools/` |
 | `app/startup/` | 组合根：装配注入、初始化/关停排序、重启策略 | `lifecycle.py`、`modules_initializer.py` |
-| `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等） | `network.py`、`browser.py`、`cache.py` |
+| `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
 | `app/workflow/` | 工作流引擎 | — |
-| `app/plugins/` | 内置插件宿主目录（插件可访问 `app.core/helper/utils` 旧路径） | — |
+| `app/plugins/` | 插件运行时副本/覆盖目录，由插件管理器加载；不是官方插件源码或宿主架构实现，架构审计以插件仓库与宿主边界为准 | — |
 
 ---
 
@@ -327,7 +342,9 @@ flowchart LR
 ```
 
 - Oper 只接收和返回持久化值；`MediaInfo` / `MetaBase` 与数据库行之间的转换属于业务逻辑，
-  归 `app/application/`（见 `application/subscribe.py`、`application/history.py`）。
+  归 `app/application/`（见 `application/subscription/write.py`、`application/history.py`）。
+  订阅新增、查询、变更、删除、身份和搜索契约已经统一收口在 `application/subscription/`，
+  不再保留主题包之外的第二个写入入口。
 - 每次表结构变更必须新增 `database/versions/` 下的 Alembic 迁移。
 - 运行期业务配置使用 `SystemConfigKey` 枚举 + `SystemConfigOper`，禁止裸字符串键；
   用户级配置使用 `UserConfigOper`。
@@ -370,7 +387,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    A["用户创建订阅<br/>API / 消息 / Agent"] --> B["SubscribeChain<br/>写入订阅（application/subscribe → SubscribeOper）"]
+    A["用户创建订阅<br/>API / 消息 / Agent"] --> B["SubscribeChain<br/>写入订阅（application/subscription/write.py）"]
     B --> C{"调度器周期触发<br/>SubscribeChain.process"}
     C --> D["搜索缺失集数<br/>（复用搜索流程）"]
     D --> E{"命中资源？"}
@@ -445,8 +462,10 @@ flowchart TB
 
 - Chain 访问 Agent 运行时只能经 `app/application/agent.py`；
   `app/chain/agent.py` 的 `AgentChain` 是链层入口，Agent 实现保持在 `app/agent/`。
-- Agent 工具不直接 import API / 调度器 / 命令，统一使用
-  `application/plugins.py`、`application/scheduling.py`、`application/commands.py` 三个门面。
+- Agent 工具不直接 import API / 调度器 / 命令：插件动态路由与文件夹操作使用
+  `application/plugin/routes.py`、`application/plugin/folders.py`，调度和命令分别使用
+  `application/scheduling.py`、`application/commands.py`。FastAPI 具体实现位于
+  `adapters/web/plugin/`，入口层不承载路由实现。
 - 对外暴露 MCP 端点 `/api/v1/mcp` 与 OpenAI / Anthropic 兼容端点，
   错误响应在 `app/factory.py` 中按协议原生格式单独处理（不走统一 `Response` 包装）。
 
@@ -457,12 +476,12 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph 插件侧
-        P["app/plugins/*<br/>（含第三方插件）"]
+        P["app/plugins/*<br/>（运行时副本/覆盖层）"]
     end
 
     subgraph 宿主边界
         SDK["app/sdk<br/>新插件稳定导入面<br/>network / cache / logging / browser ..."]
-        Compat["app/runtime/compat<br/>精确旧路径映射 manifest<br/>app.core / app.helper / app.utils / app.log"]
+        Compat["app/runtime/compat<br/>manifest 精确模块/符号映射<br/>app.core / app.helper / app.utils / app.log 及已删除旧路径"]
         PM["PluginManager<br/>发现 / 生命周期 / 事件桥接"]
     end
 
@@ -474,16 +493,25 @@ flowchart TB
     P -->|旧插件（DEBUG 下告警）| Compat
     SDK -->|门面转发| Canonical
     Compat -.惰性解析.-> SDK
+    Compat -.惰性解析.-> Canonical
     PM -->|run_plugin 方法分发 / 事件广播| P
     Canonical -.-|禁止 import| Compat
     Canonical -.-|禁止 import| SDK
 ```
 
-- 宿主代码只使用 canonical 路径；只有 `app/plugins/` 与兼容性测试可用旧路径。
+- `app/plugins/` 是运行时插件副本，不是官方插件仓库的源码副本；它不纳入宿主架构拆分的源代码审计。
+  宿主代码只使用 canonical 路径；只有运行时插件与兼容性测试可用旧路径。
 - `compat` 只存字符串映射并惰性解析，不得在模块导入期急切 import canonical 实现；
   canonical 包也不得为兼容而反向 import `compat` / `sdk`。
-- 插件 API 的动态注册/移除经 `app/application/plugins.py` 完成，
-  FastAPI 实例由组合根（`app/factory.py`）在创建后注入，端点层禁止直接依赖 `factory`。
+- 插件 API 的动态注册/移除及端口协议统一位于 `app/application/plugin/routes.py`，
+  FastAPI 技术实现位于
+  `app/adapters/web/plugin/routes.py`；FastAPI 实例由组合根（`app/factory.py`）在创建后注入，
+  端点层禁止直接依赖 `factory`。
+- 动态插件路由使用原生 `APIRoute`，插件自行决定返回结构；主程序的统一 `Response` 封装只适用于
+  `app/api/` 的宿主端点。插件若已经自行返回 `Response`、字典、列表或其它可序列化值，宿主不再二次包裹。
+- `app/runtime/extensions/plugin_manager.py` 是保留插件 ABI 的管理器门面，发现、加载、生命周期、
+  目录、同步等实现拆在 `app/runtime/extensions/plugin/`；这个“门面 + 实现包”是有意的兼容边界，
+  不应为了目录整齐而让外部插件改用内部实现文件。
 - 插件可参与 `run_module` 方法分发（同名方法优先响应）并注册事件处理器。
 
 ---
@@ -552,6 +580,29 @@ flowchart LR
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
 
+### 10.1 2026-08-18 收口状态与后续边界
+
+本总览与本轮架构治理的关系如下：
+
+- 已完成的宿主边界：旧 `app.core` / `app.helper` / `app.utils` / `app.log` 根路径通过
+  `app/runtime/compat/manifest.py` 精确映射；订阅、历史、用户认证等旧 Oper 入口通过
+  `app/sdk/_legacy/` 薄门面保留行为兼容。兼容清单是导入路由，不负责合并模块，也不负责把任意
+  新实现重新导出到旧模块。
+- 已完成的插件边界：插件 API 的动态路由由 application 端口 + web adapter 组成，使用原生
+  `APIRoute` 保留插件响应；插件管理器保留 `plugin_manager.py` 的稳定 ABI，内部实现拆在
+  `runtime/extensions/plugin/`；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
+- 已完成的主题收口：订阅写入归入 `app/application/subscription/write.py`；插件动态路由与
+  文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
+  `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，
+  宿主调用统一改为 canonical 路径。
+- 判断是否需要新增 manifest 映射的标准：只有当旧物理模块被删除、改名或公开符号迁移时才登记；
+  物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
+  保留多余导出。
+
+详细的迁移批次、风险、验证命令和插件兼容矩阵见
+[`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) 与
+[`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md)。
+
 ---
 
 ## 附录：相关文档索引
@@ -566,3 +617,5 @@ flowchart LR
 | [`docs/rules/10-data-and-persistent.md`](rules/10-data-and-persistent.md) | 数据模型、迁移与缓存规范 |
 | [`docs/subscribe-lifecycle.md`](subscribe-lifecycle.md) | 订阅生命周期详解 |
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
+| [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) | 分阶段架构治理、边界门禁与迁移验收 |
+| [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md) | 模块迁移与插件兼容层实施矩阵 |

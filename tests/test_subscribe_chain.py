@@ -3368,7 +3368,7 @@ class SubscribeProgressConsolidationTest(TestCase):
         chain = SubscribeChain()
         chain.obtain_images = lambda **_kwargs: None
 
-        # 落库入口已迁到 app/application/subscribe.py，链路层的接缝是 add_subscribe；
+        # 落库入口已迁到 application/subscription/write.py，链路层的接缝是 add_subscribe；
         # 截在这里拿到的就是链路交给写入路径的原始字段，正是本用例要断言的总集数
         def _add_subscribe(**kwargs):
             added.append(kwargs)

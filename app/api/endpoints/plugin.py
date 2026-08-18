@@ -24,11 +24,8 @@ from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavIt
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
-from app.application.plugins import (
-    register_plugin_api,
-    remove_plugin_api,
-    remove_plugin_from_folders,
-)
+from app.application.plugin.folders import remove_plugin_from_folders
+from app.application.plugin.routes import register_plugin_api, remove_plugin_api
 from app.application.plugin.install import PluginInstallCommand
 from app.application.plugin.config import PluginConfigCommand
 from app.application.commands import init_commands

@@ -9,7 +9,7 @@ from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
-from app.application.plugins import configure_plugin_routes
+from app.application.plugin.routes import configure_plugin_routes
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,

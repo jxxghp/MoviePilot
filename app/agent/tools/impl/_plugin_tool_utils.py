@@ -70,7 +70,7 @@ def build_preview_payload(value: Any, max_chars: Optional[int]) -> tuple[bool, i
 def refresh_plugin_registrations(plugin_id: str) -> None:
     """重新注册插件的定时任务、命令和动态 API 路由。"""
     # 这些依赖只在真正执行重载时才导入，避免普通查询工具引入不必要的初始化开销。
-    from app.application.plugins import register_plugin_api
+    from app.application.plugin.routes import register_plugin_api
     from app.application.commands import init_commands
     from app.application.scheduling import update_plugin_job
 
@@ -380,10 +380,8 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     """
     按现有卸载逻辑移除插件，并清理运行态注册与分组信息。
     """
-    from app.application.plugins import (
-        remove_plugin_api,
-        remove_plugin_from_folders,
-    )
+    from app.application.plugin.folders import remove_plugin_from_folders
+    from app.application.plugin.routes import remove_plugin_api
     from app.application.scheduling import remove_plugin_job
 
     config_oper = SystemConfigOper()

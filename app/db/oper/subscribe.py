@@ -2,7 +2,7 @@
 订阅数据访问。
 
 本模块只收敛针对订阅表的读写。把 MediaInfo / MusicInfo 翻译成一行订阅是订阅业务的
-规则，住在 app/application/subscribe.py；这里收到的 payload 已经是纯粹的持久化字段，
+规则，住在 app/application/subscription/write.py；这里收到的 payload 已经是纯粹的持久化字段，
 因此不 import 任何领域对象。
 
 留在这一层的只有列类型强转与建库时间戳——它们跟着订阅表的列走，换谁来调都一样。
@@ -97,7 +97,7 @@ class SubscribeOper(DbOper):
         回读不是多余的一次查询——写入可能被唯一约束或事务回滚吞掉，此时若报成功，
         调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
-        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """
@@ -115,7 +115,7 @@ class SubscribeOper(DbOper):
         """
         异步新增订阅，语义与 add 完全一致。
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
-        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """

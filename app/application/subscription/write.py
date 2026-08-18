@@ -1,7 +1,7 @@
 """
-订阅的写入路径。
+订阅写入应用用例。
 
-这两个函数把 MediaInfo / MusicInfo 翻译成一行订阅，是订阅表的唯一写入口。翻译此前
+本模块把 MediaInfo / MusicInfo 翻译成一行订阅，是订阅表的唯一业务写入口。翻译此前
 长在 SubscribeOper.add 上，但取标题、选海报尺寸、判音乐实体、决定哪几个字段构成一条
 订阅的身份，都是订阅业务的规则而非数据访问——Oper 只该收敛查询，领域对象不该出现在
 它的入参里。搬上来之后 SubscribeOper 收到的是纯粹的持久化字典，与
@@ -14,6 +14,7 @@ app/application/history.py 里整理历史的写入路径同构。
 张表。同步与异步是两份逐字复制的实现，改一条漏一条就是真实缺陷，故翻译与身份构造由
 下方 _translate 单点承担，两条链路只在「怎么查、怎么写」上分叉。
 """
+
 from collections.abc import Callable
 from typing import Optional, Protocol, Tuple
 
@@ -29,7 +30,12 @@ INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
 class SubscribeWriter(Protocol):
     """订阅写入应用服务使用的数据端口。"""
 
-    def add(self, identity: dict, payload: dict, username: Optional[str] = None) -> Tuple[int, str]:
+    def add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> Tuple[int, str]:
         """同步新增订阅。"""
 
     async def async_add(
@@ -73,8 +79,10 @@ def _music_entity(mediainfo: MediaInfo | MusicInfo) -> Optional[str]:
     return getattr(mediainfo, "music_type", None)
 
 
-def _translate(mediainfo: MediaInfo | MusicInfo,
-               kwargs: dict) -> Optional[Tuple[dict, dict, Optional[str]]]:
+def _translate(
+    mediainfo: MediaInfo | MusicInfo,
+    kwargs: dict,
+) -> Optional[Tuple[dict, dict, Optional[str]]]:
     """
     把识别结果翻译成查重身份与写入字段。
 
@@ -119,13 +127,16 @@ def _translate(mediainfo: MediaInfo | MusicInfo,
     return identity, payload, username
 
 
-def add_subscribe(mediainfo: MediaInfo | MusicInfo,
-                  subscribe_oper: Optional[SubscribeWriter] = None,
-                  **kwargs) -> Tuple[int, str]:
+def add_subscribe(
+    mediainfo: MediaInfo | MusicInfo,
+    subscribe_oper: Optional[SubscribeWriter] = None,
+    **kwargs,
+) -> Tuple[int, str]:
     """
     新增订阅。
+
     :param mediainfo: 识别结果
-    :param subscribe_oper: 复用的订阅操作对象，未传时新建
+    :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -137,13 +148,16 @@ def add_subscribe(mediainfo: MediaInfo | MusicInfo,
     return oper.add(identity=identity, payload=payload, username=username)
 
 
-async def async_add_subscribe(mediainfo: MediaInfo | MusicInfo,
-                              subscribe_oper: Optional[SubscribeWriter] = None,
-                              **kwargs) -> Tuple[int, str]:
+async def async_add_subscribe(
+    mediainfo: MediaInfo | MusicInfo,
+    subscribe_oper: Optional[SubscribeWriter] = None,
+    **kwargs,
+) -> Tuple[int, str]:
     """
     异步新增订阅。
+
     :param mediainfo: 识别结果
-    :param subscribe_oper: 复用的订阅操作对象，未传时新建
+    :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -153,3 +167,12 @@ async def async_add_subscribe(mediainfo: MediaInfo | MusicInfo,
     identity, payload, username = translated
     oper = _get_subscribe_writer(subscribe_oper)
     return await oper.async_add(identity=identity, payload=payload, username=username)
+
+
+__all__ = [
+    "INCOMPLETE_IDENTITY",
+    "SubscribeWriter",
+    "add_subscribe",
+    "async_add_subscribe",
+    "configure_subscribe_writer",
+]
