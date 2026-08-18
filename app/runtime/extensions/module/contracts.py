@@ -281,15 +281,6 @@ _METHOD_CONTRACTS = {
 }
 
 _PREFIX_CONTRACTS = (
-    ("async_tmdb_", ModuleMethodContract(family="tmdb")),
-    ("tmdb_", ModuleMethodContract(family="tmdb")),
-    ("async_douban_", ModuleMethodContract(family="douban")),
-    ("douban_", ModuleMethodContract(family="douban")),
-    ("async_bangumi_", ModuleMethodContract(family="bangumi")),
-    ("bangumi_", ModuleMethodContract(family="bangumi")),
-    ("async_anilist_", ModuleMethodContract(family="anilist")),
-    ("anilist_", ModuleMethodContract(family="anilist")),
-    ("tvdb_", ModuleMethodContract(family="tvdb")),
     ("music_", ModuleMethodContract(family="music")),
     ("torrent_", ModuleMethodContract(family="downloader")),
 )

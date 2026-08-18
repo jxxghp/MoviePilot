@@ -31,21 +31,35 @@ def test_all_scanned_module_methods_resolve_a_contract() -> None:
 def test_high_frequency_capability_families_are_explicit() -> None:
     """媒体发现、识别、存储和消息族不能退回未分类 legacy 契约。"""
     expected_families = {
-        "async_tmdb_discover": "tmdb",
-        "async_douban_discover": "douban",
-        "bangumi_info": "bangumi",
-        "anilist_info": "anilist",
+        "match_media": "media-metadata",
+        "media_detail": "media-metadata",
+        "discover": "media-discovery",
         "recognize_media": "media-recognition",
         "media_exists": "media-library",
         "mediaserver_items": "media-server",
         "list_files": "storage",
         "finalize_message": "messaging",
         "scheduler_job": "scheduling",
+        "torrent_files": "downloader",
     }
 
     for method, family in expected_families.items():
         assert is_explicit_module_method(method)
         assert get_module_method_contract(method).family == family
+
+
+def test_source_prefixed_methods_no_longer_declare_a_dedicated_family() -> None:
+    """六个多来源能力契约把数据源降为参数后，源前缀方法名退回未分类 legacy 契约。"""
+    for method in (
+        "tmdb_collection",
+        "async_tmdb_episodes",
+        "douban_info",
+        "bangumi_info",
+        "anilist_info",
+        "tvdb_slug",
+    ):
+        assert not is_explicit_module_method(method)
+        assert get_module_method_contract(method).family == "legacy"
 
 
 def test_media_exists_declares_its_multi_source_protocol() -> None:

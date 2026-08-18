@@ -262,6 +262,67 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 四个枚举保留在 `app/schemas/types.py`——宿主不再使用，但它们是插件可直接 import
 的公共词表，删除是无谓的生态破坏。
 
+### 1.13 分发面源前缀方法名归一
+
+分发面按「源 × 实体 × 类型」笛卡尔展开：`tmdb_person_detail` / `douban_person_detail` /
+`bangumi_person_detail` 是同一能力的三个方法名，`movie_credits` 与 `tv_credits`、
+`movie_similar` 与 `tv_similar` 还把 `mtype` 编码进方法名。新增一个数据源要在方法名族上
+新增一整族，插件无法以对等身份提供同一能力——插件想接管"人物详情"，必须猜中并覆盖
+调用方实际询问的那一个源前缀方法名。
+
+六个多来源能力契约把源与类型降为参数，登记于
+`app/runtime/extensions/module/contracts.py` 的 `_MULTI_SOURCE_CONTRACTS`：
+
+| 契约 | 覆盖来源 |
+|---|---|
+| `match_media` | TMDB、豆瓣、插件 |
+| `person_detail` / `person_credits` | TMDB、豆瓣、Bangumi、AniList、插件 |
+| `media_credits` | TMDB、豆瓣、Bangumi、AniList、插件 |
+| `media_recommend` | TMDB、豆瓣、Bangumi、AniList、插件 |
+| `media_similar` | TMDB、插件（豆瓣、Bangumi、AniList 均未实现，不进能力索引） |
+| `discover` / `discover_board` | TMDB、豆瓣、Bangumi、AniList、插件 |
+| `media_detail` | TMDB、豆瓣、Bangumi、AniList、TVDB、插件 |
+
+判据：
+
+- 数据源与媒体类型降为参数（`source`、`mtype`），不再编进方法名；
+- 非本来源返回 `None` 让出，调度据此询问下一来源；返回空列表会被单播当成已认领
+  而短路，因此这一让出协议对所有来源硬性统一；
+- 契约方法只委托原方法，不重新实现——缓存与限流仍挂在被委托的原方法路径上；
+- 本来源不支持的参数（如 Bangumi、AniList 的 `media_detail` 不支持 `mtype`、`season`）
+  就地丢弃，在参数说明里注明，不静默改写调用方语义。
+
+刻意不做：不为榜单引入枚举契约与专属传输模型——`discover_board` 的 `board` 标识本就
+按来源各自的白名单校验，没有消费方读取一份统一枚举，硬造出来是死代码；相似推荐
+（`media_similar`）单独成契约而不与推荐（`media_recommend`）合并，因为它只有 TMDB
+一个内建实现，豆瓣、Bangumi、AniList 均未实现，未实现的来源不进能力索引，
+因而不需要为它们编写让出逻辑。
+
+旧的源特定方法名（`match_tmdbinfo`、`match_doubaninfo`、`tmdb_info`、`douban_info`、
+`bangumi_info`、`async_bangumi_info` 等）全部保留为公开访问器，只是退出分发面——
+内部改为委托统一契约。**对外部插件市场的影响**：若某插件在 `get_module()` 里挂的方法名
+是旧的源前缀写法（如 `tmdb_person_detail`），归一后分发面已不再以该名义提问，该方法
+不会再被分发到，是一条静默失效路径，插件作者需要把方法名改成 `person_detail` 并以
+`source` 参数收窄。
+
+`contracts.py` 的 `_PREFIX_CONTRACTS` 随之删除 `tmdb_` / `douban_` / `bangumi_` /
+`anilist_` / `tvdb_` 五条前缀规则——那是「源编进方法名」问题的成文化。删除后这些方法名
+退回默认的 `legacy` 契约，字段值与原先的专属 family 完全一致（聚合方式、同步/异步支持、
+插件短路开关三个字段皆为默认值），故行为不变，只是不再拥有专属 family 标签。`music_`
+与 `torrent_` 两条非源前缀规则保留。
+
+`tmdb_collection`、`tmdb_seasons`、`tmdb_group_seasons`、`tmdb_episodes`、
+`tmdb_cache_items`、`tmdb_cache_delete`、`tmdb_cache_clear`、`tvdb_slug` 八个分发方法名
+仍带源前缀，但它们是 TMDB、TVDB 各自 API 原生的结构（合集、季、剧集组、识别缓存管理、
+TVDB 详情页别名），没有跨源等价物，从未落入「源 × 实体 × 类型」笛卡尔展开问题，
+不在本轮六契约归一范围内；`tests/test_dispatch_surface.py` 的门禁对它们显式登记豁免。
+
+`tests/test_dispatch_surface.py` 新增 AST 静态门禁：扫描 `app/application/` 下全部
+`unicast` / `async_unicast` / `multicast` / `async_multicast` / `broadcast` /
+`async_broadcast` / `run_module` / `async_run_module` 调用，首个位置参数为字符串字面量时
+不得以 `tmdb_` / `douban_` / `bangumi_` / `anilist_` / `tvdb_`（含 `async_` 前缀变体）开头，
+防止「源编进方法名」问题回潮；豁免清单另有测试守着不得腐化为无引用条目。
+
 ---
 
 ## 二、待办
@@ -284,14 +345,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
    前置依赖是插件自管理数据库（独立 MetaData 与库文件），当前全局单例 DB
    结构性阻断插件自有表。1.11 落地的扩展实例标识只服务内建宿主模块，
    插件层零引用，可作为接入点。
-6. **数据源仍编码在方法名里**：`tmdb_person_detail` / `douban_person_detail` /
-   `bangumi_person_detail` 是同一个问题的三个方法名，`movie_credits` 与
-   `tv_credits`、`movie_similar` 与 `tv_similar` 则把 `mtype` 编码进了方法名。
-   分发面因此按「源 × 实体 × 类型」笛卡尔展开，新增一个数据源要在分发面上
-   新增一整族方法名，插件无法以对等身份提供同一能力。归一方向是把源与类型
-   降为契约参数（`person_detail(source, person_id)`、`media_credits(media_id, mtype)`），
-   识别侧同理（`match_tmdbinfo` / `match_doubaninfo` → `match_media(source, ...)`）。
-7. **插件模块注册 SPI**：插件目前只能经 `get_module()` 注入方法表参与分发，
+6. **插件模块注册 SPI**：插件目前只能经 `get_module()` 注入方法表参与分发，
    不能声明系统模块的入口与生命周期，也无法向能力内核做运行期注册。
 
 ---
@@ -301,7 +355,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **5277 passed / 0 failed** |
+| 当前 | **5514 passed / 0 failed**（另 3 skipped、14 subtests passed） |
 
 官方基线上那条失败是
 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`：
