@@ -7,7 +7,7 @@ import pytest
 
 from app import schemas
 from app.domain.context import MusicInfo
-from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.library import MusicMediaServerHelper
 from app.modules.emby import EmbyModule
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin import JellyfinModule

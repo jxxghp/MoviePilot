@@ -54,7 +54,7 @@ _STUB_MODULES = dict([
     _stub("app.application.rules", RuleHelper=_Dummy),
     _stub("app.adapters.external.server", MoviePilotServerHelper=_Dummy),
     _stub("app.runtime.state", SystemHelper=_Dummy),
-    _stub("app.application.image", ImageHelper=_Dummy),
+    _stub("app.adapters.media.image", ImageHelper=_Dummy),
     _stub("app.scheduler", Scheduler=_Dummy),
     _stub("app.runtime.log", logger=_Dummy(), log_settings=_Dummy(),
           LogConfigModel=type("LogConfigModel", (), {})),

@@ -9,7 +9,7 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.application.mediaserver import MediaServerIdentityHelper
+from app.domain.library import MediaServerIdentityHelper
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.schemas.types import MediaSource

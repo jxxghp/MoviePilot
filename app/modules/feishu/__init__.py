@@ -1,7 +1,7 @@
 from typing import Any, List, Optional, Tuple, Union
 
 from app.domain.context import Context, MediaInfo
-from app.application.messaging.agent import register_channel_admin_resolver, resolve_config_principal_ids
+from app.runtime.channels import register_channel_admin_resolver, resolve_config_principal_ids
 from app.runtime.log import logger
 from app.modules._base import _MessageChannelModuleBase
 from app.modules.feishu.feishu import Feishu

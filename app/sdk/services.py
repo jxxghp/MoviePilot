@@ -4,11 +4,8 @@ from app.runtime.extensions.service_registry import ServiceBaseHelper, ServiceCo
 from app.runtime.state import SystemHelper
 from app.application.downloader import DownloaderHelper
 from app.application.rules import RuleHelper
-from app.application.mediaserver import (
-    MediaServerIdentityHelper,
-    MediaServerHelper,
-    MusicMediaServerHelper,
-)
+from app.application.mediaserver import MediaServerHelper
+from app.domain.library import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.application.storage import StorageHelper
 from app.application.notification import NotificationHelper
 

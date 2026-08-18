@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 from app.runtime.config import settings
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.application.audio import AudioMetadataHelper
+from app.adapters.media.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
 from app.modules.filemanager import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler

@@ -195,17 +195,11 @@ def test_agent_task_tools_are_registered_with_relative_delay_schema() -> None:
         "run_agent_task",
         "delete_agent_task",
     }
-    assert [
+    assert {
         tool_class.model_fields["name"].default
         for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
         if tool_class.model_fields["name"].default in agent_task_tool_names
-    ] == [
-        "create_agent_task",
-        "query_agent_tasks",
-        "update_agent_task",
-        "run_agent_task",
-        "delete_agent_task",
-    ]
+    } == agent_task_tool_names
     assert "delay_minutes" in CreateAgentTaskInput.model_json_schema()["properties"]
 
     agent_task_tools = [

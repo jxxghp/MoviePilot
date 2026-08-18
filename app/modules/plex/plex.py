@@ -16,7 +16,7 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.cache import cached
-from app.application.mediaserver import MediaServerIdentityHelper
+from app.domain.library import MediaServerIdentityHelper
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.adapters.network.http import RequestUtils

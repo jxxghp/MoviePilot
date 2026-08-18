@@ -9,7 +9,7 @@ from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerS
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
-from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.library import MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules._base import _MediaServerModuleBase
 from app.modules.plex.plex import Plex

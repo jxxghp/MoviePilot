@@ -7,6 +7,59 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
+# 包级依赖矩阵：键是包，值是它允许 import 的包全集。
+# 未列出的包（api / startup / cli 等边缘层与组合根）可依赖任意下层。
+PACKAGE_LAYERS: dict[str, frozenset[str]] = {
+    "foundation": frozenset(),
+    "schemas": frozenset(),
+    "domain": frozenset({"foundation", "schemas"}),
+    "runtime": frozenset({"foundation", "schemas"}),
+    "db": frozenset({"foundation", "schemas", "runtime"}),
+    "adapters": frozenset({"foundation", "schemas", "domain", "runtime"}),
+    "application": frozenset(
+        {"foundation", "schemas", "domain", "runtime", "db", "adapters"}
+    ),
+    "chain": frozenset(
+        {"foundation", "schemas", "domain", "runtime", "db", "adapters", "application"}
+    ),
+    "modules": frozenset(
+        {"foundation", "schemas", "domain", "runtime", "db", "adapters"}
+    ),
+    "workflow": frozenset(
+        {
+            "foundation", "schemas", "domain", "runtime", "db", "adapters",
+            "application", "chain",
+        }
+    ),
+    "monitor": frozenset(
+        {
+            "foundation", "schemas", "domain", "runtime", "db", "adapters",
+            "application", "chain",
+        }
+    ),
+    "doctor": frozenset({"foundation", "schemas", "domain", "runtime", "adapters"}),
+    "agent": frozenset(
+        {
+            "foundation", "schemas", "domain", "runtime", "db", "adapters",
+            "application", "chain",
+        }
+    ),
+    "sdk": frozenset(
+        {
+            "foundation", "schemas", "domain", "runtime", "db", "adapters",
+            "application",
+        }
+    ),
+    "testing": frozenset({"application", "startup"}),
+}
+# 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
+# 边消失后条目可直接删除，留着不会导致失败。
+DEPENDENCY_DEBT: dict[tuple[str, str], str] = {
+    ("modules", "application"): "模块消费宿主服务，待按能力下沉或经注入与事件通信",
+    ("agent", "doctor"): "Agent 工具直接调用自检入口，待经服务门面暴露",
+    ("agent", "workflow"): "Agent 工具直接触达工作流服务，待经服务门面暴露",
+    ("sdk", "api"): "认证依赖仍落在端点层，待下沉安全服务后由两侧共用",
+}
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
@@ -726,3 +779,33 @@ def test_process_level_packages_are_not_mutually_cyclic():
         if len(involved) > 1:
             violations.append(sorted(component))
     assert violations == []
+
+
+def _package_of(module_name: str) -> str:
+    """取模块所属的顶级包名；``app`` 下的散件归入 ``(root)``。"""
+    parts = module_name.split(".")
+    if len(parts) < 3:
+        return "(root)"
+    return parts[1]
+
+
+def test_package_dependencies_follow_the_layer_matrix():
+    """包级依赖必须落在允许矩阵内，未登记为负债的越界一律拒绝。
+
+    文件级无环由强连通分量断言保证；本断言约束方向本身：
+    下层不得依赖上层，扩展之间不得互相依赖。
+    """
+    violations: dict[str, set[str]] = {}
+    for module_name, dependencies in _build_module_graph().items():
+        source = _package_of(module_name)
+        allowed = PACKAGE_LAYERS.get(source)
+        if allowed is None:
+            continue
+        for dependency in dependencies:
+            target = _package_of(dependency)
+            if target in (source, "(root)") or target in allowed:
+                continue
+            if (source, target) in DEPENDENCY_DEBT:
+                continue
+            violations.setdefault(module_name, set()).add(dependency)
+    assert violations == {}

@@ -43,7 +43,7 @@ from app.application.security.access import verify_apitoken, verify_resource_tok
 from app.db.models import User
 from app.db.oper.systemconfig import SystemConfigOper
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async, get_current_active_user_async
-from app.application.image import ImageHelper
+from app.adapters.media.image import ImageHelper
 from app.runtime.localization import LocaleHelper
 from app.adapters.external.market import (
     PLUGIN_MARKET_WIKI_URL,

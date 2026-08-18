@@ -282,7 +282,7 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
     audio_file = tmp_path / "03. 晴天.flac"
     audio_file.write_bytes(b"fake-flac")
 
-    from app.application.audio import AudioMetadataHelper
+    from app.adapters.media.audio import AudioMetadataHelper
 
     monkeypatch.setattr(
         AudioMetadataHelper,
@@ -327,7 +327,7 @@ def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path,
     audio_file = tmp_path / "07.幸福.flac"
     audio_file.write_bytes(b"fake-flac")
 
-    from app.application.audio import AudioMetadataHelper
+    from app.adapters.media.audio import AudioMetadataHelper
 
     monkeypatch.setattr(
         AudioMetadataHelper,

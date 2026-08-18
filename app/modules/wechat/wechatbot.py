@@ -15,7 +15,7 @@ from app.runtime.cache import FileCache
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
-from app.application.messaging.agent import matches_channel_admin
+from app.runtime.channels import matches_channel_admin
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage
 from app.schemas.types import NotificationChannel

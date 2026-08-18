@@ -3578,12 +3578,12 @@
       {
         "kind": "import",
         "name": "MediaServerIdentityHelper",
-        "target": "app.application.mediaserver.MediaServerIdentityHelper"
+        "target": "app.domain.library.MediaServerIdentityHelper"
       },
       {
         "kind": "import",
         "name": "MusicMediaServerHelper",
-        "target": "app.application.mediaserver.MusicMediaServerHelper"
+        "target": "app.domain.library.MusicMediaServerHelper"
       },
       {
         "kind": "import",

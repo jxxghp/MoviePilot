@@ -10,7 +10,7 @@ from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
-from app.application.audio import AudioMetadataHelper
+from app.adapters.media.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import TemplateHelper
 from app.runtime.log import logger

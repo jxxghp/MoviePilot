@@ -14,7 +14,7 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.domain.library import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
 from app.schemas.mediaserver import MediaServerItem
 from app.schemas.types import MediaSource, MediaType

@@ -37,7 +37,7 @@ except ImportError:
 from app.runtime.config import settings  # noqa: E402
 from app.domain.context import MediaInfo, Context  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
-from app.application.image import ImageHelper  # noqa: E402
+from app.adapters.media.image import ImageHelper  # noqa: E402
 from app.runtime.thread import ThreadHelper  # noqa: E402
 from app.runtime.log import logger  # noqa: E402
 from app.runtime.execution import retry  # noqa: E402

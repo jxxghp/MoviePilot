@@ -8,7 +8,7 @@ from enum import Enum
 from hashlib import sha256
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Union
-from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from anyio import Path as AsyncPath
 from cachetools import TTLCache
@@ -20,6 +20,7 @@ from app.runtime.coalesce import (
     CoalesceSummary,
     EventCoalescer,
 )
+from app.foundation.url import sanitize_path
 
 
 # DNS 解析结果缓存。
@@ -834,22 +835,7 @@ class SecurityUtils:
         :param max_length: 路径允许的最大长度，超出时进行压缩
         :return: 处理后的路径字符串
         """
-        # 解析 URL，获取路径部分
-        parsed_url = urlparse(url)
-        path = parsed_url.path.lstrip("/")
-
-        # 对路径中的特殊字符进行编码
-        safe_path = quote(path)
-
-        # 如果路径过长，进行压缩处理
-        if len(safe_path) > max_length:
-            # 使用 SHA-256 对路径进行哈希，取前 16 位作为压缩后的路径
-            hash_value = sha256(safe_path.encode()).hexdigest()[:16]
-            # 使用哈希值代替过长的路径，同时保留文件扩展名
-            file_extension = Path(safe_path).suffix.lower() if Path(safe_path).suffix else ""
-            safe_path = f"compressed_{hash_value}{file_extension}"
-
-        return safe_path
+        return sanitize_path(url, max_length=max_length)
 
 
 # 图片代理阻断日志聚合窗口（秒）。媒体详情页一次请求会批量触发同 host/同原因的拦截，

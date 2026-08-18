@@ -3,7 +3,7 @@ import re
 from typing import Optional, Union, List, Tuple, Any
 
 from app.domain.context import MediaInfo, Context
-from app.application.messaging.agent import (
+from app.runtime.channels import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,

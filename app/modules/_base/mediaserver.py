@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from app.schemas.event import AuthCredentials as _SchemaAuthCredentials
 from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
-from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.library import MusicMediaServerHelper
 from app.domain.context import MediaInfo
 from app.modules import _MediaServerBase, _ModuleBase, TService
 from app.runtime.events import eventmanager

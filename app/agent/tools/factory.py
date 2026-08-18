@@ -1,93 +1,10 @@
 import hashlib
+import inspect
 
-from typing import Callable, List, Optional, Type
+from typing import Any, Callable, List, Optional, Type
 
-from app.agent.tools.impl.add_download_tasks import AddDownloadTasksTool
-from app.agent.tools.impl.add_subscribe import AddSubscribeTool
-from app.agent.tools.impl.update_subscribe import UpdateSubscribeTool
-from app.agent.tools.impl.search_subscribe import SearchSubscribeTool
-from app.agent.tools.impl.get_recommendations import GetRecommendationsTool
-from app.agent.tools.impl.query_downloaders import QueryDownloadersTool
-from app.agent.tools.impl.query_download_tasks import QueryDownloadTasksTool
-from app.agent.tools.impl.query_library_exists import QueryLibraryExistsTool
-from app.agent.tools.impl.query_library_latest import QueryLibraryLatestTool
-from app.agent.tools.impl.query_sites import QuerySitesTool
-from app.agent.tools.impl.update_site import UpdateSiteTool
-from app.agent.tools.impl.query_site_userdata import QuerySiteUserdataTool
-from app.agent.tools.impl.test_site import TestSiteTool
-from app.agent.tools.impl.query_subscribes import QuerySubscribesTool
-from app.agent.tools.impl.query_subscribe_shares import QuerySubscribeSharesTool
-from app.agent.tools.impl.query_rule_groups import QueryRuleGroupsTool
-from app.agent.tools.impl.query_builtin_filter_rules import QueryBuiltinFilterRulesTool
-from app.agent.tools.impl.query_custom_filter_rules import QueryCustomFilterRulesTool
-from app.agent.tools.impl.add_custom_filter_rule import AddCustomFilterRuleTool
-from app.agent.tools.impl.update_custom_filter_rule import UpdateCustomFilterRuleTool
-from app.agent.tools.impl.delete_custom_filter_rule import DeleteCustomFilterRuleTool
-from app.agent.tools.impl.add_rule_group import AddRuleGroupTool
-from app.agent.tools.impl.update_rule_group import UpdateRuleGroupTool
-from app.agent.tools.impl.delete_rule_group import DeleteRuleGroupTool
-from app.agent.tools.impl.query_popular_subscribes import QueryPopularSubscribesTool
-from app.agent.tools.impl.query_subscribe_history import QuerySubscribeHistoryTool
-from app.agent.tools.impl.delete_subscribe import DeleteSubscribeTool
-from app.agent.tools.impl.search_media import SearchMediaTool
-from app.agent.tools.impl.search_person import SearchPersonTool
-from app.agent.tools.impl.search_person_credits import SearchPersonCreditsTool
-from app.agent.tools.impl.recognize_media import RecognizeMediaTool
-from app.agent.tools.impl.scrape_metadata import ScrapeMetadataTool
-from app.agent.tools.impl.query_episode_schedule import QueryEpisodeScheduleTool
-from app.agent.tools.impl.query_media_detail import QueryMediaDetailTool
-from app.agent.tools.impl.search_torrents import SearchTorrentsTool
-from app.agent.tools.impl.get_search_results import GetSearchResultsTool
-from app.agent.tools.impl.search_web import SearchWebTool
-from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
-from app.agent.tools.impl.send_message import SendMessageTool
-from app.agent.tools.impl.ask_user_choice import AskUserChoiceTool
-from app.agent.tools.impl.send_local_file import SendLocalFileTool
-from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.agent.tools.impl.create_agent_task import CreateAgentTaskTool
-from app.agent.tools.impl.delete_agent_task import DeleteAgentTaskTool
-from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
-from app.agent.tools.impl.query_schedulers import QuerySchedulersTool
-from app.agent.tools.impl.run_agent_task import RunAgentTaskTool
-from app.agent.tools.impl.run_scheduler import RunSchedulerTool
-from app.agent.tools.impl.update_agent_task import UpdateAgentTaskTool
-from app.agent.tools.impl.query_workflows import QueryWorkflowsTool
-from app.agent.tools.impl.run_workflow import RunWorkflowTool
-from app.agent.tools.impl.query_personas import QueryPersonasTool
-from app.agent.tools.impl.switch_persona import SwitchPersonaTool
-from app.agent.tools.impl.update_persona_definition import UpdatePersonaDefinitionTool
-from app.agent.tools.impl.update_site_cookie import UpdateSiteCookieTool
-from app.agent.tools.impl.delete_download_tasks import DeleteDownloadTasksTool
-from app.agent.tools.impl.delete_download_history import DeleteDownloadHistoryTool
-from app.agent.tools.impl.delete_transfer_history import DeleteTransferHistoryTool
-from app.agent.tools.impl.update_download_tasks import UpdateDownloadTasksTool
-from app.agent.tools.impl.query_directory_settings import QueryDirectorySettingsTool
-from app.agent.tools.impl.list_directory import ListDirectoryTool
-from app.agent.tools.impl.query_transfer_history import QueryTransferHistoryTool
-from app.agent.tools.impl.transfer_file import TransferFileTool
-from app.agent.tools.impl.execute_command import ExecuteCommandTool
-from app.agent.tools.impl.apply_patch import ApplyPatchTool
-from app.agent.tools.impl.edit_file import EditFileTool
-from app.agent.tools.impl.write_file import WriteFileTool
-from app.agent.tools.impl.read_file import ReadFileTool
-from app.agent.tools.impl.browse_webpage import BrowseWebpageTool
-from app.agent.tools.impl.query_installed_plugins import QueryInstalledPluginsTool
-from app.agent.tools.impl.query_market_plugins import QueryMarketPluginsTool
-from app.agent.tools.impl.query_plugin_capabilities import QueryPluginCapabilitiesTool
-from app.agent.tools.impl.query_plugin_config import QueryPluginConfigTool
-from app.agent.tools.impl.update_plugin_config import UpdatePluginConfigTool
-from app.agent.tools.impl.reload_plugin import ReloadPluginTool
-from app.agent.tools.impl.query_plugin_data import QueryPluginDataTool
-from app.agent.tools.impl.install_plugin import InstallPluginTool
-from app.agent.tools.impl.uninstall_plugin import UninstallPluginTool
-from app.agent.tools.impl.run_slash_command import RunSlashCommandTool
-from app.agent.tools.impl.list_slash_commands import ListSlashCommandsTool
-from app.agent.tools.impl.query_custom_identifiers import QueryCustomIdentifiersTool
-from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
-from app.agent.tools.impl.update_custom_identifiers import UpdateCustomIdentifiersTool
-from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.llm.capability import AgentCapabilityManager
+from app.foundation.reflection import ModuleHelper
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
 from app.schemas.notification import ChannelCapabilityManager
@@ -95,96 +12,106 @@ from app.schemas.types import NotificationChannel
 from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
+# 内置工具实现目录：每个一级模块提供一个具体 MoviePilotTool 子类，新增工具只需
+# 在此目录下新建模块，无需改动本文件。
+_BUILTIN_TOOL_IMPL_PACKAGE = "app.agent.tools.impl"
+
+# 目录扫描默认排除的一级模块：mcp.py 是外部 MCP 工具的运行时适配器，
+# 其工具实例按已配置的 MCP 服务器动态构造，不属于固定内置工具集。
+_EXCLUDED_BUILTIN_IMPL_MODULE_NAMES = frozenset({"mcp"})
+
+# 按渠道能力或系统配置条件性加入的内置工具的限定名（模块路径 + 类名）。
+# 这些工具由 `_get_builtin_tool_classes` 按条件追加，不出现在固定工具集合中。
+_ASK_USER_CHOICE_TOOL_QUALNAME = f"{_BUILTIN_TOOL_IMPL_PACKAGE}.ask_user_choice.AskUserChoiceTool"
+_SEND_LOCAL_FILE_TOOL_QUALNAME = f"{_BUILTIN_TOOL_IMPL_PACKAGE}.send_local_file.SendLocalFileTool"
+_SEND_VOICE_MESSAGE_TOOL_QUALNAME = f"{_BUILTIN_TOOL_IMPL_PACKAGE}.send_voice_message.SendVoiceMessageTool"
+_CONDITIONAL_BUILTIN_TOOL_QUALNAMES = frozenset({
+    _ASK_USER_CHOICE_TOOL_QUALNAME,
+    _SEND_LOCAL_FILE_TOOL_QUALNAME,
+    _SEND_VOICE_MESSAGE_TOOL_QUALNAME,
+})
+
+
+def _tool_class_qualname(tool_class: Type[MoviePilotTool]) -> str:
+    """返回工具类不依赖对象地址的限定名（模块路径 + 类名）。"""
+    return f"{tool_class.__module__}.{tool_class.__qualname__}"
+
+
+def _is_builtin_tool_class(name: str, obj: Any) -> bool:
+    """判断扫描到的类对象是否为内置工具实现目录直接定义的具体工具类。
+
+    :param name: 类在所属模块命名空间中的属性名
+    :param obj: 待判定的类对象
+    :return: 是 MoviePilotTool 具体子类（非基类、非抽象类），且定义在内置工具
+        实现目录的非排除模块中时返回 True
+    """
+    if not (isinstance(obj, type) and issubclass(obj, MoviePilotTool)):
+        return False
+    if obj is MoviePilotTool or inspect.isabstract(obj):
+        return False
+    module_name = str(obj.__module__)
+    if not module_name.startswith(f"{_BUILTIN_TOOL_IMPL_PACKAGE}."):
+        return False
+    impl_module_name = module_name.rsplit(".", 1)[-1]
+    return impl_module_name not in _EXCLUDED_BUILTIN_IMPL_MODULE_NAMES
+
+
+def _discover_builtin_tool_classes() -> tuple[Type[MoviePilotTool], ...]:
+    """扫描内置工具实现目录，返回按类名稳定排序的全部具体工具类。
+
+    :return: 内置工具实现目录中发现的工具类元组，按 `__qualname__` 升序排列，
+        避免顺序随文件系统遍历结果抖动
+    """
+    discovered = ModuleHelper.load(
+        _BUILTIN_TOOL_IMPL_PACKAGE,
+        filter_func=_is_builtin_tool_class,
+    )
+    return tuple(
+        sorted(discovered, key=lambda tool_class: tool_class.__qualname__)
+    )
+
+
+def _split_fixed_and_conditional_tool_classes(
+    tool_classes: tuple[Type[MoviePilotTool], ...],
+) -> tuple[tuple[Type[MoviePilotTool], ...], dict[str, Type[MoviePilotTool]]]:
+    """将扫描结果拆分为固定内置工具集合与按条件追加的工具集合。
+
+    :param tool_classes: `_discover_builtin_tool_classes` 的扫描结果
+    :return: (固定工具类元组, 条件工具限定名到工具类的映射)；二者共享同一次扫描
+        得到的类对象，避免与后续独立 import 之间出现对象身份不一致
+    """
+    fixed_tool_classes = []
+    conditional_tool_classes_by_qualname: dict[str, Type[MoviePilotTool]] = {}
+    for tool_class in tool_classes:
+        qualname = _tool_class_qualname(tool_class)
+        if qualname in _CONDITIONAL_BUILTIN_TOOL_QUALNAMES:
+            conditional_tool_classes_by_qualname[qualname] = tool_class
+        else:
+            fixed_tool_classes.append(tool_class)
+    return tuple(fixed_tool_classes), conditional_tool_classes_by_qualname
+
+
+_DISCOVERED_BUILTIN_TOOL_CLASSES = _discover_builtin_tool_classes()
+_FIXED_BUILTIN_TOOL_CLASSES, _CONDITIONAL_BUILTIN_TOOL_CLASSES_BY_QUALNAME = (
+    _split_fixed_and_conditional_tool_classes(_DISCOVERED_BUILTIN_TOOL_CLASSES)
+)
+AskUserChoiceTool = _CONDITIONAL_BUILTIN_TOOL_CLASSES_BY_QUALNAME[
+    _ASK_USER_CHOICE_TOOL_QUALNAME
+]
+SendLocalFileTool = _CONDITIONAL_BUILTIN_TOOL_CLASSES_BY_QUALNAME[
+    _SEND_LOCAL_FILE_TOOL_QUALNAME
+]
+SendVoiceMessageTool = _CONDITIONAL_BUILTIN_TOOL_CLASSES_BY_QUALNAME[
+    _SEND_VOICE_MESSAGE_TOOL_QUALNAME
+]
+
 
 class MoviePilotToolFactory:
     """
     MoviePilot工具工厂
     """
 
-    BUILTIN_TOOL_CLASSES: tuple[Type[MoviePilotTool], ...] = (
-        SearchMediaTool,
-        SearchPersonTool,
-        SearchPersonCreditsTool,
-        RecognizeMediaTool,
-        ScrapeMetadataTool,
-        QueryEpisodeScheduleTool,
-        QueryMediaDetailTool,
-        AddSubscribeTool,
-        UpdateSubscribeTool,
-        SearchSubscribeTool,
-        SearchTorrentsTool,
-        GetSearchResultsTool,
-        SearchWebTool,
-        RecognizeCaptchaTool,
-        AddDownloadTasksTool,
-        QuerySubscribesTool,
-        QuerySubscribeSharesTool,
-        QueryPopularSubscribesTool,
-        QueryBuiltinFilterRulesTool,
-        QueryCustomFilterRulesTool,
-        QueryRuleGroupsTool,
-        AddCustomFilterRuleTool,
-        UpdateCustomFilterRuleTool,
-        DeleteCustomFilterRuleTool,
-        AddRuleGroupTool,
-        UpdateRuleGroupTool,
-        DeleteRuleGroupTool,
-        QuerySubscribeHistoryTool,
-        DeleteSubscribeTool,
-        QueryDownloadTasksTool,
-        DeleteDownloadTasksTool,
-        DeleteDownloadHistoryTool,
-        DeleteTransferHistoryTool,
-        UpdateDownloadTasksTool,
-        QueryDownloadersTool,
-        QuerySitesTool,
-        UpdateSiteTool,
-        QuerySiteUserdataTool,
-        TestSiteTool,
-        UpdateSiteCookieTool,
-        GetRecommendationsTool,
-        QueryLibraryExistsTool,
-        QueryLibraryLatestTool,
-        QueryDirectorySettingsTool,
-        ListDirectoryTool,
-        QueryTransferHistoryTool,
-        TransferFileTool,
-        SendMessageTool,
-        CreateAgentTaskTool,
-        QueryAgentTasksTool,
-        UpdateAgentTaskTool,
-        RunAgentTaskTool,
-        DeleteAgentTaskTool,
-        QuerySchedulersTool,
-        RunSchedulerTool,
-        QueryWorkflowsTool,
-        RunWorkflowTool,
-        QueryPersonasTool,
-        SwitchPersonaTool,
-        UpdatePersonaDefinitionTool,
-        ExecuteCommandTool,
-        EditFileTool,
-        ApplyPatchTool,
-        WriteFileTool,
-        ReadFileTool,
-        BrowseWebpageTool,
-        QueryInstalledPluginsTool,
-        QueryMarketPluginsTool,
-        QueryPluginCapabilitiesTool,
-        QueryPluginConfigTool,
-        UpdatePluginConfigTool,
-        ReloadPluginTool,
-        QueryPluginDataTool,
-        InstallPluginTool,
-        UninstallPluginTool,
-        RunSlashCommandTool,
-        ListSlashCommandsTool,
-        QueryDoctorReportTool,
-        QueryCustomIdentifiersTool,
-        UpdateCustomIdentifiersTool,
-        QuerySystemSettingsTool,
-        UpdateSystemSettingsTool,
-    )
+    BUILTIN_TOOL_CLASSES: tuple[Type[MoviePilotTool], ...] = _FIXED_BUILTIN_TOOL_CLASSES
 
     # 这些通用工具需要始终保留，避免大工具集裁剪后让 Agent 丢失基础的
     # 文件系统、命令执行、历史检索或交互确认能力。AskUserChoiceTool 仅在支持按钮

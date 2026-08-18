@@ -10,7 +10,7 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
 from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
-from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.library import MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome

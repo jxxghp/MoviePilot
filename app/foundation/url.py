@@ -1,9 +1,10 @@
 import mimetypes
 import re
+from hashlib import sha256
 from pathlib import Path
 from typing import Optional, Union, Tuple
 from urllib import parse
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse, urlunparse
 
 class UrlUtils:
     """提供不发起网络请求的 URL 解析与组合能力。"""
@@ -211,3 +212,29 @@ def is_link(value: str) -> bool:
     if re.match(r"^(http|https|ftp|ftps|sftp|ws|wss)://", value):
         return True
     return re.match(r"^[a-zA-Z0-9.-]+(\.[a-zA-Z]{2,})?$", value) is not None
+
+
+def sanitize_path(url: str, max_length: int = 120) -> str:
+    """
+    将 URL 的路径部分进行编码，确保合法字符，并对路径长度进行压缩处理（如果超出最大长度）
+
+    :param url: 需要处理的 URL
+    :param max_length: 路径允许的最大长度，超出时进行压缩
+    :return: 处理后的路径字符串
+    """
+    # 解析 URL，获取路径部分
+    parsed_url = urlparse(url)
+    path = parsed_url.path.lstrip("/")
+
+    # 对路径中的特殊字符进行编码
+    safe_path = quote(path)
+
+    # 如果路径过长，进行压缩处理
+    if len(safe_path) > max_length:
+        # 使用 SHA-256 对路径进行哈希，取前 16 位作为压缩后的路径
+        hash_value = sha256(safe_path.encode()).hexdigest()[:16]
+        # 使用哈希值代替过长的路径，同时保留文件扩展名
+        file_extension = Path(safe_path).suffix.lower() if Path(safe_path).suffix else ""
+        safe_path = f"compressed_{hash_value}{file_extension}"
+
+    return safe_path
