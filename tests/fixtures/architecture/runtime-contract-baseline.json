@@ -897,6 +897,13 @@
         "replacement": "app.sdk.logging",
         "target": "app.sdk.logging"
       },
+      "app.modules.filemanager": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "modules",
+        "replacement": "app.modules.medialibrary",
+        "target": "app.modules.medialibrary"
+      },
       "app.modules.filemanager.storages.alipan": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -1306,7 +1313,12 @@
           "target_name": "resolve_media_identity"
         }
       },
-      "app.modules.filemanager": {
+      "app.modules.medialibrary": {
+        "FileManagerModule": {
+          "replacement": "app.modules.medialibrary.MediaLibraryModule",
+          "target_module": "app.modules.medialibrary",
+          "target_name": "MediaLibraryModule"
+        },
         "TransHandler": {
           "replacement": "app.application.transferhandler.TransHandler",
           "target_module": "app.application.transferhandler",

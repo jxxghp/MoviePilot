@@ -121,6 +121,14 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="application",
     ),
+    # 媒体库文件系统模块的 canonical 位置是 app/modules/medialibrary
+    "app.modules.filemanager": ModuleAlias(
+        target="app.modules.medialibrary",
+        replacement="app.modules.medialibrary",
+        introduced="v3.0.0",
+        owner="modules",
+        is_package=True,
+    ),
     # 整理编排属于宿主固有业务规则，落在 app/application/transferhandler.py
     "app.modules.filemanager.transhandler": ModuleAlias(
         target="app.application.transferhandler",
@@ -910,8 +918,14 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             "build_media_key",
         )
     },
-    # 整理编排落在 app/application/transferhandler.py，文件整理模块不再持有该类
-    "app.modules.filemanager": {
+    # 媒体库文件系统模块的能力类名为 MediaLibraryModule；
+    # 整理编排落在 app/application/transferhandler.py，本模块不持有该类
+    "app.modules.medialibrary": {
+        "FileManagerModule": SymbolAlias(
+            target_module="app.modules.medialibrary",
+            target_name="MediaLibraryModule",
+            replacement="app.modules.medialibrary.MediaLibraryModule",
+        ),
         "TransHandler": SymbolAlias(
             target_module="app.application.transferhandler",
             target_name="TransHandler",

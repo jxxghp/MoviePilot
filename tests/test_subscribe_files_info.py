@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.application.orchestration.subscribe import SubscribeChain
-from app.modules.filemanager import FileManagerModule
+from app.modules.medialibrary import MediaLibraryModule
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaType
 
@@ -49,8 +49,8 @@ def _build_mediainfo():
     )
 
 
-def test_filemanager_media_exists_skips_local_when_server_specified():
-    module = FileManagerModule()
+def test_medialibrary_media_exists_skips_local_when_server_specified():
+    module = MediaLibraryModule()
     mediainfo = _build_mediainfo()
 
     with patch.object(module, "media_files", return_value=[SimpleNamespace(path="/media/test.mkv")]) as media_files:

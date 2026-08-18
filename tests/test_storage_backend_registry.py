@@ -12,7 +12,7 @@ from app.modules.alist import AlistModule
 from app.modules.alist.alist import Alist
 from app.modules.alistgo import AlistGoModule
 from app.modules.alistgo.alistgo import AlistGo
-from app.modules.filemanager import FileManagerModule
+from app.modules.medialibrary import MediaLibraryModule
 from app.modules.localstorage import LocalStorageModule
 from app.modules.localstorage.local import LocalStorage
 from app.modules.rclone import RcloneModule
@@ -43,7 +43,7 @@ BUILTIN_STORAGE_MODULES = (
     ("u115", U115Module, U115Pan),
 )
 
-# 已由各存储模块承担、文件整理模块不得再实现的存储能力方法
+# 已由各存储模块承担、媒体库文件系统模块不得再实现的存储能力方法
 STORAGE_CAPABILITY_METHODS = (
     "list_files",
     "any_files",
@@ -288,9 +288,9 @@ def test_registry_rejects_identity_that_cannot_prefix_a_path():
 
 
 def test_transfer_still_resolves_operators_by_identity(storage_modules):
-    """整理需要成对的源、目标操作对象，文件整理模块按标识直取。"""
-    file_manager = FileManagerModule()
-    select = file_manager._FileManagerModule__get_storage_oper  # noqa: SLF001
+    """整理需要成对的源、目标操作对象，媒体库文件系统模块按标识直取。"""
+    media_library = MediaLibraryModule()
+    select = media_library._MediaLibraryModule__get_storage_oper  # noqa: SLF001
 
     assert type(select("local")) is LocalStorage
     assert select("local", "list") is not None
@@ -298,10 +298,10 @@ def test_transfer_still_resolves_operators_by_identity(storage_modules):
     assert select("not-a-storage") is None
 
 
-def test_filemanager_no_longer_routes_storage_capabilities():
-    """存储能力方法已由各存储模块承担，文件整理模块不得再实现。"""
+def test_medialibrary_no_longer_routes_storage_capabilities():
+    """存储能力方法已由各存储模块承担，媒体库文件系统模块不得再实现。"""
     for method in STORAGE_CAPABILITY_METHODS:
-        assert not hasattr(FileManagerModule, method), method
+        assert not hasattr(MediaLibraryModule, method), method
 
 
 def test_registry_diagnose_reports_distribution(storage_modules):

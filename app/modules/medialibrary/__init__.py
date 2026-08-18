@@ -44,13 +44,13 @@ def get_media_root_path(
     return result.path
 
 
-class FileManagerModule(_ModuleBase):
+class MediaLibraryModule(_ModuleBase):
     """
-    文件整理模块
+    媒体库文件系统模块，负责把文件整理进媒体库并按标准媒体库结构反查媒体文件
     """
 
     def init_module(self) -> None:
-        """文件整理不持有自有连接资源，存储后端由各存储模块自行登记。"""
+        """媒体库文件系统不持有自有连接资源，存储后端由各存储模块自行登记。"""
         pass
 
     @property
@@ -85,7 +85,7 @@ class FileManagerModule(_ModuleBase):
         return 4
 
     def stop(self):
-        """停止文件整理模块"""
+        """停止媒体库文件系统模块"""
         pass
 
     def test(self) -> Tuple[bool, str]:

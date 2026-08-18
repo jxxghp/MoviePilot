@@ -19,9 +19,6 @@
       "FeishuModule": {
         "name": "飛書"
       },
-      "FileManagerModule": {
-        "name": "檔案整理"
-      },
       "FilterModule": {
         "name": "過濾器"
       },
@@ -30,6 +27,9 @@
       },
       "JellyfinModule": {
         "name": "Jellyfin"
+      },
+      "MediaLibraryModule": {
+        "name": "檔案整理"
       },
       "PlexModule": {
         "name": "Plex"

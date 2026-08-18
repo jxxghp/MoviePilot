@@ -1,4 +1,4 @@
-"""文件整理扩展经宿主服务端口取用目录配置、存储配置与命名上下文的行为。"""
+"""媒体库文件系统扩展经宿主服务端口取用目录配置、存储配置与命名上下文的行为。"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,8 +11,8 @@ from app.application.storage import StorageHelper
 from app.domain.mediapath import resolve_media_root_path
 from app.domain.meta.metavideo import MetaVideo
 from app.domain.context import MediaInfo
-from app.modules import filemanager
-from app.modules.filemanager import FileManagerModule, get_media_root_path
+from app.modules import medialibrary
+from app.modules.medialibrary import MediaLibraryModule, get_media_root_path
 from app.modules.localstorage.local import LocalStorage
 from app.application.transferhandler import TransHandler
 from app.runtime.directories import directory_config_port
@@ -62,7 +62,7 @@ def test_module_test_reads_directories_through_port(restore_host_ports):
     """模块连通性检查须读取端口提供的目录配置。"""
     directory_config_port.register(lambda: SimpleNamespace(get_dirs=lambda: []))
 
-    assert FileManagerModule().test() == (False, "未设置任何目录")
+    assert MediaLibraryModule().test() == (False, "未设置任何目录")
 
 
 def test_media_files_reads_library_dirs_through_port(restore_host_ports):
@@ -80,7 +80,7 @@ def test_media_files_reads_library_dirs_through_port(restore_host_ports):
     media = MediaInfo()
     media.type = MediaType.MOVIE
 
-    assert FileManagerModule().media_files(media) == []
+    assert MediaLibraryModule().media_files(media) == []
     assert calls == [True]
 
 
@@ -181,16 +181,16 @@ def test_media_root_resolution_reports_problems_without_logging():
 def test_media_root_helper_logs_reported_problems(monkeypatch):
     """整理侧取用媒体根路径时须把推导问题按级别写入日志。"""
     records = []
-    monkeypatch.setattr(filemanager, "logger", SimpleNamespace(
+    monkeypatch.setattr(medialibrary, "logger", SimpleNamespace(
         warn=lambda text: records.append(("warn", text)),
         error=lambda text: records.append(("error", text)),
     ))
 
-    assert filemanager.get_media_root_path("", Path("/library/file.mkv")) is None
+    assert medialibrary.get_media_root_path("", Path("/library/file.mkv")) is None
     assert records == [("error", "重命名格式不能为空")]
 
     records.clear()
-    assert filemanager.get_media_root_path(
+    assert medialibrary.get_media_root_path(
         "plain/{{fileExt}}", Path("/library/show/file.mkv")
     ) == Path("/library/show")
     assert records == [("warn", "重命名格式 plain/{{fileExt}} 缺少标题目录")]

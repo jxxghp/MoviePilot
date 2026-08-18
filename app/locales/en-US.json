@@ -19,9 +19,6 @@
       "FeishuModule": {
         "name": "Feishu"
       },
-      "FileManagerModule": {
-        "name": "File Organization"
-      },
       "FilterModule": {
         "name": "Filter"
       },
@@ -30,6 +27,9 @@
       },
       "JellyfinModule": {
         "name": "Jellyfin"
+      },
+      "MediaLibraryModule": {
+        "name": "File Organization"
       },
       "PlexModule": {
         "name": "Plex"

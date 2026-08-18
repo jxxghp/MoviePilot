@@ -8,7 +8,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.adapters.media.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
 from app.runtime.directories import directory_config_port
-from app.modules.filemanager import FileManagerModule
+from app.modules.medialibrary import MediaLibraryModule
 from app.application.transferhandler import TransHandler
 from app.schemas import FileItem, TransferDirectoryConf
 from app.schemas.types import MediaType
@@ -62,7 +62,7 @@ def test_music_media_root_uses_album_directory_with_or_without_disc_folder():
 
 def test_media_files_uses_music_template_root_and_only_returns_audio():
     """本地音乐查重应扫描目标专辑目录并排除同目录视频文件。"""
-    module = FileManagerModule()
+    module = MediaLibraryModule()
     storage = Mock()
     album_dir = Path("/library/Daft Punk/Random Access Memories (2013)")
     storage.get_item.return_value = FileItem(
@@ -80,7 +80,7 @@ def test_media_files_uses_music_template_root_and_only_returns_audio():
         type="file",
         extension="mkv",
     )
-    module._FileManagerModule__get_storage_oper = Mock(return_value=storage)
+    module._MediaLibraryModule__get_storage_oper = Mock(return_value=storage)
     storage.list.return_value = [audio, video]
     directory = TransferDirectoryConf(
         library_path="/library",
@@ -103,7 +103,7 @@ def test_media_files_uses_music_template_root_and_only_returns_audio():
 
 def test_local_music_recording_requires_matching_track_not_any_album_file():
     """单曲查重必须命中目标曲名，不能因同专辑存在其它音轨而误判完成。"""
-    module = FileManagerModule()
+    module = MediaLibraryModule()
     module.media_files = Mock(
         return_value=[
             _audio_file("01 - Give Life Back to Music.flac"),
@@ -111,7 +111,7 @@ def test_local_music_recording_requires_matching_track_not_any_album_file():
         ]
     )
 
-    with patch("app.modules.filemanager.settings.LOCAL_EXISTS_SEARCH", True):
+    with patch("app.modules.medialibrary.settings.LOCAL_EXISTS_SEARCH", True):
         exists = module.media_exists(_recording())
         missing = module.media_exists(
             _recording(title="Instant Crush", media_id="recording-2", track_number=5)
@@ -123,7 +123,7 @@ def test_local_music_recording_requires_matching_track_not_any_album_file():
 
 def test_local_music_album_requires_unique_complete_track_coverage():
     """专辑查重应按去重曲目数判定完整，重复格式不能冒充缺失音轨。"""
-    module = FileManagerModule()
+    module = MediaLibraryModule()
     duplicate = _audio_file("01 - Give Life Back to Music.mp3", extension="mp3")
     files = [
         _audio_file("01 - Give Life Back to Music.flac"),
@@ -139,7 +139,7 @@ def test_local_music_album_requires_unique_complete_track_coverage():
         total_tracks=3,
     )
 
-    with patch("app.modules.filemanager.settings.LOCAL_EXISTS_SEARCH", True):
+    with patch("app.modules.medialibrary.settings.LOCAL_EXISTS_SEARCH", True):
         assert module.media_exists(album) is None
         files.append(_audio_file("03 - Giorgio by Moroder.flac"))
         exists = module.media_exists(album)
@@ -149,7 +149,7 @@ def test_local_music_album_requires_unique_complete_track_coverage():
 
 def test_local_music_album_with_unknown_total_is_not_assumed_complete():
     """未知专辑总曲目数时不能仅凭目录中存在音频就判定订阅完成。"""
-    assert FileManagerModule._music_album_is_complete(
+    assert MediaLibraryModule._music_album_is_complete(
         [_audio_file("01 - Intro.flac")],
         total_tracks=None,
     ) is False
@@ -162,7 +162,7 @@ def test_local_music_album_counts_same_track_number_on_different_discs():
         _audio_file("Disc 2/01 - Finale.flac"),
     ]
 
-    assert FileManagerModule._music_album_is_complete(files, total_tracks=2) is True
+    assert MediaLibraryModule._music_album_is_complete(files, total_tracks=2) is True
 
 
 def test_music_size_overwrite_prefers_actual_audio_quality(tmp_path, monkeypatch):

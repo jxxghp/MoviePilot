@@ -283,12 +283,13 @@ exceptions and value domains used by both modules and upper layers live in
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
-`app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
-`FileManagerModule` implementation lives in `app.modules.filemanager.module`,
-while the historical capability path and class module identity remain
-`app.modules.filemanager:FileManagerModule`. Storage and transfer-handler
-submodules must not import the concrete module implementation through the
-package root.
+`app.modules.medialibrary` is the media library filesystem module: it organises
+files into the library and resolves library files back from the standard library
+layout. Its capability entrypoint is
+`app.modules.medialibrary:MediaLibraryModule`. Storage backends and the transfer
+handler live outside this package and must not be reached through it; the
+historical `app.modules.filemanager` path and the `FileManagerModule` class name
+stay resolvable through `app/runtime/compat/manifest.py`.
 
 `app/modules/_base/` hosts the shared template base classes for module families
 (`downloader.py`, `mediaserver.py`, `notification.py`), each combining the

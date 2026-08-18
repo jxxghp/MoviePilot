@@ -3,7 +3,7 @@ from pathlib import Path
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.modules.filemanager import FileManagerModule
+from app.modules.medialibrary import MediaLibraryModule
 from app.schemas import FileItem, TransferDirectoryConf
 from app.schemas.types import MediaType
 
@@ -78,7 +78,7 @@ def test_cloud_storage_preview_only_calculates_target_path():
     )
     guarded_storage = GuardedStorage()
 
-    transferinfo = FileManagerModule().transfer(
+    transferinfo = MediaLibraryModule().transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,
@@ -131,7 +131,7 @@ def test_local_storage_preview_skips_target_conflict_checks(tmp_path):
     )
     guarded_storage = GuardedStorage()
 
-    transferinfo = FileManagerModule().transfer(
+    transferinfo = MediaLibraryModule().transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,
@@ -188,7 +188,7 @@ def _build_bluray_dir_preview(
         notify=True,
     )
 
-    return FileManagerModule().transfer(
+    return MediaLibraryModule().transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,

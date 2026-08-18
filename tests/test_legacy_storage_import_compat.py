@@ -38,12 +38,36 @@ def test_legacy_storage_package_symbols_resolve_to_canonical(symbol):
     assert getattr(legacy, symbol) is getattr(canonical, symbol)
 
 
-def test_filemanager_package_still_exports_storage_base():
+def test_legacy_package_resolves_to_media_library_module_object():
+    """旧文件管理包路径与媒体库文件系统包必须是同一个模块对象。"""
+    legacy = importlib.import_module("app.modules.filemanager")
+    canonical = importlib.import_module("app.modules.medialibrary")
+
+    assert legacy is canonical
+
+
+def test_legacy_capability_class_name_resolves_to_canonical_class():
+    """插件按旧类名反射能力类时必须拿到 canonical 类本身。"""
+    legacy = importlib.import_module("app.modules.filemanager")
+    canonical = importlib.import_module("app.modules.medialibrary")
+
+    assert legacy.FileManagerModule is canonical.MediaLibraryModule
+
+
+def test_legacy_package_still_exports_storage_base():
     """插件历史上从文件管理包直接取用存储基类，该导出必须保持同一对象。"""
-    filemanager = importlib.import_module("app.modules.filemanager")
+    legacy = importlib.import_module("app.modules.filemanager")
     canonical = importlib.import_module("app.modules._base.storage")
 
-    assert filemanager.StorageBase is canonical.StorageBase
+    assert legacy.StorageBase is canonical.StorageBase
+
+
+def test_legacy_package_still_exports_transfer_handler():
+    """插件历史上从文件管理包直接取用整理编排类，该导出必须保持同一对象。"""
+    legacy = importlib.import_module("app.modules.filemanager")
+    canonical = importlib.import_module("app.application.transferhandler")
+
+    assert legacy.TransHandler is canonical.TransHandler
 
 
 def test_monkey_patching_legacy_path_reaches_canonical_class():
