@@ -25,6 +25,16 @@ from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryI
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
 from version import APP_VERSION
+from app.foundation.environment import (
+    is_aarch,
+    is_aarch64,
+    is_docker,
+    is_frozen,
+    is_macos,
+    is_windows,
+    is_x86_32,
+    is_x86_64,
+)
 
 
 # Linux amd64/arm64 UAPI: _IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
@@ -142,7 +152,7 @@ class SystemUtils:
         """
         判断是否为Docker环境
         """
-        return Path("/.dockerenv").exists()
+        return is_docker()
 
     @staticmethod
     def is_synology() -> bool:
@@ -158,50 +168,49 @@ class SystemUtils:
         """
         判断是否为Windows系统
         """
-        return os.name == "nt"
+        return is_windows()
 
     @staticmethod
     def is_frozen() -> bool:
         """
         判断是否为冻结的二进制文件
         """
-        return getattr(sys, 'frozen', False)
+        return is_frozen()
 
     @staticmethod
     def is_macos() -> bool:
         """
         判断是否为MacOS系统
         """
-        return platform.system() == 'Darwin'
+        return is_macos()
 
     @staticmethod
     def is_aarch64() -> bool:
         """
         判断是否为ARM64架构
         """
-        return platform.machine().lower() in ('aarch64', 'arm64')
+        return is_aarch64()
 
     @staticmethod
     def is_aarch() -> bool:
         """
         判断是否为ARM32架构
         """
-        arch_name = platform.machine().lower()
-        return arch_name.startswith(('arm', 'aarch')) and arch_name not in ('aarch64', 'arm64')
+        return is_aarch()
 
     @staticmethod
     def is_x86_64() -> bool:
         """
         判断是否为AMD64架构
         """
-        return platform.machine().lower() in ('amd64', 'x86_64')
+        return is_x86_64()
 
     @staticmethod
     def is_x86_32() -> bool:
         """
         判断是否为AMD32架构
         """
-        return platform.machine().lower() in ('i386', 'i686', 'x86', '386', 'x86_32')
+        return is_x86_32()
 
     @staticmethod
     def platform() -> str:
@@ -224,14 +233,13 @@ class SystemUtils:
         """
         if SystemUtils.is_x86_64():
             return "x86_64"
-        elif SystemUtils.is_x86_32():
+        if SystemUtils.is_x86_32():
             return "x86_32"
-        elif SystemUtils.is_aarch64():
+        if SystemUtils.is_aarch64():
             return "Arm64"
-        elif SystemUtils.is_aarch():
+        if SystemUtils.is_aarch():
             return "Arm32"
-        else:
-            return platform.machine()
+        return platform.machine()
 
     @staticmethod
     def copy(src: Path, dest: Path) -> Tuple[int, str]:
@@ -895,16 +903,14 @@ class SystemUtils:
         """
         获取配置路径
         """
-        if not config_dir:
-            config_dir = os.getenv("CONFIG_DIR")
-        if config_dir:
-            return Path(config_dir)
+        configured = config_dir or os.getenv("CONFIG_DIR")
+        if configured:
+            return Path(configured)
         if SystemUtils.is_docker():
             return Path("/config")
-        elif SystemUtils.is_frozen():
+        if SystemUtils.is_frozen():
             return Path(sys.executable).parent / "config"
-        else:
-            return Path(__file__).resolve().parents[3] / "config"
+        return Path(__file__).resolve().parents[3] / "config"
 
     @staticmethod
     def get_env_path() -> Path:

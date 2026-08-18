@@ -18,7 +18,10 @@ except ImportError as e:
 from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
 from app.runtime.config import settings
+from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.state import SystemHelper
 from app.runtime.thread import ThreadHelper
@@ -27,7 +30,36 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.application.messaging.message import MessageHelper, stop_message
+from app.application.messaging.message import (
+    MessageHelper,
+    MessageQueueManager,
+    stop_message,
+)
+from app.application.configuration import SystemConfigService, configure_system_config
+from app.application.database import DatabaseHealthService, configure_database_health
+from app.application.service import configure_service_directory
+from app.application.plugin.runtime import configure_plugin_runtime
+from app.application.module import configure_module_runtime
+from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
+from app.application.security.user import configure_user_lookups
+from app.application.security.auth import AuthService, configure_auth_service
+from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.userconfig import (
+    UserConfigurationService,
+    configure_user_configuration,
+)
+from app.application.history import configure_transfer_history_provider
+from app.application.site.query import SiteQueryService, configure_site_query_service
+from app.application.site.health import SiteHealthService, configure_site_health_service
+from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.application.agentdata import configure_agent_data_ports
+from app.api.data import configure_api_data_ports
+from app.application.subscribe import configure_subscribe_writer
+from app.application.maintenance import (
+    DataCleanupService,
+    configure_cleanup_service_factory,
+    read_cleanup_policy,
+)
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
@@ -35,7 +67,26 @@ from app.adapters.external.server import (
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
 from app.db import close_database
+from app.db.session import get_async_db, get_db
+from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.agentchat import AgentChatOper
+from app.db.oper.agenttask import AgentTaskOper
+from app.db.oper.user import UserOper
+from app.db.oper.passkey import PassKeyOper
+from app.db.oper.userconfig import UserConfigOper
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.transferpending import TransferPendingOper
+from app.db.oper.mediaserver import MediaServerOper
+from app.db.oper.downloadfailure import DownloadFailureOper
+from app.db.oper.site import SiteOper
+from app.db.oper.message import MessageOper
+from app.db.oper.subscribehistory import SubscribeHistoryOper
+from app.db.oper.plugindata import PluginDataOper
+from app.db.maintenance import DatabaseCleanupRepository
+from app.db.session import SessionFactory
+from app.db.health import probe_database
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.command import CommandChain
@@ -47,14 +98,18 @@ from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
 )
-from app.application.security.access import set_superuser_token_payload_provider
+from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
 from app.application.chain.context import (
-    build_default_chain_runtime_context,
+    ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
+from app.runtime.extensions.service_config import (
+    ServiceConfigHelper,
+    configure_service_config_reader,
+)
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -67,9 +122,35 @@ async def _async_get_workflow(workflow_id: int):
     return await WorkflowOper().async_get(workflow_id)
 
 
+def _build_chain_runtime_context() -> ChainRuntimeContext:
+    """在启动组合根创建 Chain 所需的运行时对象和数据端口。"""
+    return ChainRuntimeContext(
+        module_manager=ModuleManager(),
+        plugin_manager=PluginManager(),
+        event_manager=EventManager(),
+        message_oper=MessageOper(),
+        message_helper=MessageHelper(),
+        file_cache=FileCache(),
+        async_file_cache=AsyncFileCache(),
+        message_queue_factory=lambda callback: MessageQueueManager(
+            send_callback=callback
+        ),
+        module_dispatcher_factory=ModuleInvocationDispatcher,
+        data_ports=get_chain_data_ports(),
+    )
+
+
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+    configure_module_runtime(lambda: ModuleManager())
+    configure_plugin_runtime(lambda: PluginManager())
+    configure_service_directory(
+        configs=ServiceConfigHelper.get_configs,
+        modules=lambda module_type: ModuleManager().get_running_type_modules(
+            module_type
+        ),
+    )
     configure_server_application_services(
         report_service=ServerReportService(
             config_reader=lambda key: SystemConfigOper().get(key),
@@ -321,13 +402,90 @@ async def init_modules():
     启动模块
     """
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
+    configure_api_data_ports(
+        sync_session=get_db,
+        async_session=get_async_db,
+        repositories={
+            "agent_chat": AgentChatOper,
+            "download_history": DownloadHistoryOper,
+            "media_server": MediaServerOper,
+            "message": MessageOper,
+            "passkey": PassKeyOper,
+            "site": SiteOper,
+            "subscribe": SubscribeOper,
+            "subscribe_history": SubscribeHistoryOper,
+            "transfer_history": TransferHistoryOper,
+            "user": UserOper,
+            "workflow": WorkflowOper,
+        },
+        standalone={
+            "passkey": PassKeyOper,
+            "system_config": SystemConfigOper,
+            "user": UserOper,
+        },
+        unit_of_work={
+            "async": SqlAlchemyAsyncUnitOfWork,
+            "sync": SqlAlchemyUnitOfWork,
+        },
+    )
     configure_runtime_data_providers()
+    configure_chain_data_ports(
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        workflow=lambda: WorkflowOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        transfer_pending=lambda: TransferPendingOper(),
+        media_server=lambda: MediaServerOper(),
+        download_failure=lambda: DownloadFailureOper(),
+        user=lambda: UserOper(),
+    )
+    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_database_health(DatabaseHealthService(probe_database))
+    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
+    configure_user_lookups(
+        by_id=lambda user_id: UserOper().get_by_id(user_id),
+        by_name=lambda username: UserOper().get_by_name(username),
+        by_channel=lambda **bindings: UserOper().get_name(**bindings),
+    )
+    configure_auth_service(
+        AuthService(
+            users=UserOper(),
+            config=SystemConfigOper(),
+            passkeys=PassKeyOper(),
+        )
+    )
+    configure_passkey_service(PasskeyService(repository=PassKeyOper()))
+    configure_user_configuration(UserConfigurationService(repository=UserConfigOper()))
+    configure_transfer_history_provider(lambda: TransferHistoryOper())
+    configure_site_query_service(SiteQueryService(repository=SiteOper()))
+    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
+    configure_agent_data_ports(
+        agent_chat=lambda: AgentChatOper(),
+        agent_task=lambda: AgentTaskOper(),
+        user=lambda: UserOper(),
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        subscribe_history=lambda: SubscribeHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        workflow=lambda: WorkflowOper(),
+        plugin_data=lambda: PluginDataOper(),
+    )
+    configure_subscribe_writer(lambda: SubscribeOper())
+    configure_cleanup_service_factory(
+        lambda: DataCleanupService(
+            repository=DatabaseCleanupRepository(session_factory=SessionFactory),
+            policy_reader=read_cleanup_policy,
+        )
+    )
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
-    configure_chain_runtime_context_provider(build_default_chain_runtime_context)
+    configure_chain_runtime_context_provider(_build_chain_runtime_context)
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     set_superuser_token_payload_provider(build_superuser_token_payload)
     # DoH

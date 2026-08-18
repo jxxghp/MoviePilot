@@ -22,10 +22,12 @@ def _empty_service_config(_config_key: SystemConfigKey) -> Any:
 _service_config_reader: ServiceConfigReader = _empty_service_config
 
 
-def configure_service_config_reader(reader: ServiceConfigReader) -> None:
-    """由启动组合根注入服务配置读取能力。"""
+def configure_service_config_reader(reader: ServiceConfigReader) -> ServiceConfigReader:
+    """注入服务配置读取能力，并返回先前 reader 供隔离环境恢复。"""
     global _service_config_reader
+    previous = _service_config_reader
     _service_config_reader = reader
+    return previous
 
 
 class ServiceConfigHelper:

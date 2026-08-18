@@ -12,8 +12,8 @@ from app.domain.context import TorrentInfo, Context, MediaInfo
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.db.oper.site import SiteOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.chain.data import SitePortProxy as SiteOper
+from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
@@ -556,7 +556,7 @@ class TorrentsChain(ChainBase):
 
         # 刷新站点
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
 
         # 读取缓存，影视与音乐分别独立存储
         if stype == 'spider':

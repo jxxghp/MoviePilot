@@ -38,10 +38,10 @@ from app.chain.system import SystemChain
 from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
-from app.runtime.extensions.module_manager import ModuleManager
-from app.application.security.access import verify_apitoken, verify_resource_token, verify_token
-from app.db.models import User
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.module import ModuleManager
+from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async, get_current_active_user_async
 from app.application.image import ImageHelper
 from app.runtime.localization import LocaleHelper
@@ -57,7 +57,7 @@ from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
-from app.scheduler import Scheduler
+from app.application.scheduling import Scheduler
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
@@ -704,7 +704,7 @@ def get_global_setting(token: str):
     summary="查询用户相关系统设置",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
-async def get_user_global_setting(_: User = Depends(get_current_active_user_async)):
+async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_user_async)):
     """
     查询用户相关系统设置（登录后获取）
     包含业务功能相关的配置和用户权限信息
@@ -745,7 +745,7 @@ async def get_user_global_setting(_: User = Depends(get_current_active_user_asyn
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def get_env_setting(
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """
     查询系统环境变量，包括当前版本号（仅管理员）
@@ -769,7 +769,7 @@ async def get_env_setting(
     summary="查询安装版本统计报表",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
-async def usage_statistic(_: User = Depends(get_current_active_user_async)):
+async def usage_statistic(_: ApiPrincipal = Depends(get_current_active_user_async)):
     """
     查询安装版本统计报表
     """
@@ -777,7 +777,7 @@ async def usage_statistic(_: User = Depends(get_current_active_user_async)):
 
 
 @router.get("/ping", summary="服务存活检测", response_model=_SchemaResponse[None])
-async def ping(_: User = Depends(get_current_active_user_async)) -> _SchemaResponse:
+async def ping(_: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse:
     """
     检测服务是否可用
     """
@@ -790,7 +790,7 @@ async def ping(_: User = Depends(get_current_active_user_async)) -> _SchemaRespo
     response_model=_SchemaResponse[_SchemaSystemEnvironmentUpdateData],
 )
 async def set_env_setting(
-    env: dict, _: User = Depends(get_current_active_superuser_async)
+    env: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ):
     """
     更新系统环境变量（仅管理员）
@@ -870,7 +870,7 @@ async def get_progress(
     response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_public_setting(
-    key: str, _: User = Depends(get_current_active_user_async)
+    key: str, _: ApiPrincipal = Depends(get_current_active_user_async)
 ) -> _SchemaResponse:
     """
     查询普通用户可读取的非敏感系统设置
@@ -879,7 +879,7 @@ async def get_public_setting(
         return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
-    value = SystemConfigOper().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
+    value = get_configured_system_config().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
     return _SchemaResponse(success=True, data={"value": value})
 
 
@@ -890,7 +890,7 @@ async def get_public_setting(
 )
 async def sync_plugin_market_from_wiki(
     request: Optional[_SchemaPluginMarketSyncRequest] = Body(default=None),
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """
     从 Wiki 插件文档同步插件市场仓库地址。
@@ -956,7 +956,7 @@ async def sync_plugin_market_from_wiki(
     response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_setting(
-    key: str, _: User = Depends(get_current_active_superuser_async)
+    key: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> _SchemaResponse:
     """
     查询系统设置（仅管理员）
@@ -964,7 +964,7 @@ async def get_setting(
     if hasattr(settings, key):
         value = getattr(settings, key)
     else:
-        value = SystemConfigOper().get(key)
+        value = get_configured_system_config().get(key)
     return _SchemaResponse(success=True, data={"value": value})
 
 
@@ -972,7 +972,7 @@ async def get_setting(
 async def set_setting(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ):
     """
     更新系统设置（仅管理员）
@@ -992,7 +992,7 @@ async def set_setting(
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
-        success = await SystemConfigOper().async_set(key, value)
+        success = await get_configured_system_config().async_set(key, value)
         if success:
             # 发送配置变更事件
             await eventmanager.async_send_event(
@@ -1446,7 +1446,7 @@ def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
 
 
 @router.get("/restart", summary="重启系统", response_model=_SchemaResponse[None])
-def restart_system(_: User = Depends(get_current_active_superuser)):
+def restart_system(_: ApiPrincipal = Depends(get_current_active_superuser)):
     """
     重启系统（仅管理员）
     """
@@ -1459,7 +1459,7 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
 @router.post("/upgrade", summary="升级并重启系统", response_model=_SchemaResponse[None])
 def upgrade_system(
     mode: Annotated[str | None, Body()] = None,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ):
     """
     触发系统升级并重启（仅管理员）
@@ -1475,7 +1475,7 @@ def upgrade_system(
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=_SchemaResponse[None])
-def run_scheduler(jobid: str, _: User = Depends(get_current_active_superuser)):
+def run_scheduler(jobid: str, _: ApiPrincipal = Depends(get_current_active_superuser)):
     """
     执行命令（仅管理员）
     """

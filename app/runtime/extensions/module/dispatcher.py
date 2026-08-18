@@ -6,9 +6,8 @@ import inspect
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
-from fastapi.concurrency import run_in_threadpool
-
 from app.foundation.reflection import ObjectUtils
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.extensions.module.contracts import get_module_method_contract
 from app.schemas.exception import RateLimitExceededException

@@ -32,12 +32,18 @@ class TransferHistoryOper(DbOper):
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        wildcard: bool = False,
     ) -> List[TransferHistory]:
         """
         异步按标题分页查询转移记录。
         """
         return await TransferHistory.async_list_by_title(
-            self._db, title=title, page=page, count=count, status=status
+            self._db,
+            title=title,
+            page=page,
+            count=count,
+            status=status,
+            wildcard=wildcard,
         )
 
     async def async_list_by_page(
@@ -63,12 +69,16 @@ class TransferHistoryOper(DbOper):
         self,
         title: str,
         status: Optional[bool] = None,
+        wildcard: bool = False,
     ) -> Optional[int]:
         """
         异步按标题统计转移记录数量。
         """
         return await TransferHistory.async_count_by_title(
-            self._db, title=title, status=status
+            self._db,
+            title=title,
+            status=status,
+            wildcard=wildcard,
         )
 
     def get_by_title(self, title: str) -> List[TransferHistory]:
@@ -173,6 +183,14 @@ class TransferHistoryOper(DbOper):
         统计最近days天的下载历史数量
         """
         return TransferHistory.statistic(self._db, days)
+
+    async def async_statistic(self, days: int = 7) -> List[Any]:
+        """异步统计最近若干天的整理历史数量。"""
+        return await TransferHistory.async_statistic(self._db, days)
+
+    def monthly_media_statistics(self) -> tuple[int, int, int, int]:
+        """统计本月成功整理的电影、剧集、单集和音乐数量。"""
+        return TransferHistory.monthly_media_statistics(self._db)
 
     def get_by(self, title: Optional[str] = None, year: Optional[str] = None, mtype: Optional[str] = None,
                season: Optional[str] = None, episode: Optional[str] = None,

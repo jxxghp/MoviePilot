@@ -5,9 +5,9 @@ import shutil
 from typing import Any, Optional
 
 from app.runtime.config import settings
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.install import PluginInstallCommand
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
@@ -26,7 +26,7 @@ def get_plugin_snapshot(plugin_id: str) -> Optional[dict[str, Any]]:
     """
     获取已安装插件的基础信息快照。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     for plugin in plugin_manager.get_local_plugins():
         if plugin.id == plugin_id:
             return {
@@ -81,7 +81,7 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 def reload_plugin_runtime(plugin_id: str) -> None:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    PluginManager().reload_plugin(plugin_id)
+    get_plugin_manager().reload_plugin(plugin_id)
     refresh_plugin_registrations(plugin_id)
 
 
@@ -157,7 +157,7 @@ async def enrich_installed_plugin_sources(
     if not missing_source_plugins:
         return installed_plugins
 
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     local_repo_map = _map_plugins_by_id(plugin_manager.get_local_repo_plugins())
     for plugin in missing_source_plugins:
         source_plugin = local_repo_map.get(getattr(plugin, "id", None))
@@ -184,7 +184,7 @@ async def load_market_plugins(force_refresh: bool = False) -> list[Any]:
     """
     聚合插件市场与本地插件仓库中的候选插件。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     online_plugins = await plugin_manager.async_get_online_plugins(force=force_refresh)
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     if not online_plugins and not local_repo_plugins:
@@ -196,7 +196,7 @@ def list_installed_plugins() -> list[Any]:
     """
     返回当前已安装插件列表。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     return [plugin for plugin in plugin_manager.get_local_plugins() if plugin.installed]
 
 
@@ -300,7 +300,7 @@ async def install_plugin_runtime(
     """
     按现有插件接口的行为安装插件，并刷新运行态注册信息。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     plugin_helper = PluginHelper()
     package_manager = PluginPackageManager(plugin_helper)
 
@@ -395,7 +395,7 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     remove_plugin_api(plugin_id)
     remove_plugin_job(plugin_id)
 
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     plugin_class = plugin_manager.plugins.get(plugin_id)
     was_clone = bool(getattr(plugin_class, "is_clone", False))
     clone_files_removed = False

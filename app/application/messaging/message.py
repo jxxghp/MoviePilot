@@ -8,7 +8,7 @@ import re
 import threading
 import time
 from datetime import datetime
-from typing import Any, Literal, Optional, List, Dict, Union
+from typing import Any, Literal, Optional, List, Dict, Protocol, Union
 from typing import Callable
 
 from jinja2 import Template
@@ -18,7 +18,7 @@ from app.runtime.config import global_vars
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -27,6 +27,64 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
 from app.foundation.singleton import Singleton, SingletonClass
 from app.foundation import size as size_tools
 from app.foundation.crypto import HashUtils
+
+
+class AsyncMessageQueryRepository(Protocol):
+    """消息查询用例依赖的异步持久化端口。"""
+
+    async def async_list_by_page(
+            self, page: int = 1, count: int = 30
+    ) -> list[Any]:
+        """分页读取 Web 消息。"""
+        ...
+
+    async def async_list_sent_by_page(
+            self,
+            page: int = 1,
+            count: int = 30,
+            all_clear_before: Optional[str] = None,
+            system_clear_before: Optional[str] = None,
+            media_clear_before: Optional[str] = None,
+    ) -> list[Any]:
+        """分页读取清理水位之后的通知消息。"""
+        ...
+
+
+class MessageQueryService:
+    """封装消息历史读取与持久化对象投影。"""
+
+    def __init__(self, repository: AsyncMessageQueryRepository):
+        """使用显式消息查询端口初始化服务。"""
+        self._repository = repository
+
+    async def list_web(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
+        """分页返回可由 API schema 消费的 Web 消息字典。"""
+        messages = await self._repository.async_list_by_page(page=page, count=count)
+        result: list[dict[str, Any]] = []
+        for message in messages:
+            try:
+                result.append(message.to_dict())
+            except Exception as error:
+                logger.error(f"获取WEB消息列表失败: {str(error)}")
+        return result
+
+    async def list_notifications(
+            self,
+            page: int = 1,
+            count: int = 20,
+            all_clear_before: Optional[str] = None,
+            system_clear_before: Optional[str] = None,
+            media_clear_before: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """分页返回清理水位之后的通知消息字典。"""
+        messages = await self._repository.async_list_sent_by_page(
+            page=page,
+            count=count,
+            all_clear_before=all_clear_before,
+            system_clear_before=system_clear_before,
+            media_clear_before=media_clear_before,
+        )
+        return [message.to_dict() for message in messages]
 
 
 class TemplateContextBuilder:
@@ -722,7 +780,7 @@ class MessageTemplateHelper:
         获取消息模板
         """
         try:
-            template_dict = SystemConfigOper().get(SystemConfigKey.NotificationTemplates) or {}
+            template_dict = get_configured_system_config().get(SystemConfigKey.NotificationTemplates) or {}
             if isinstance(template_dict, dict):
                 configured = template_dict.get(message.ctype.value)
                 if str(configured or "").strip() not in {"", "{}", "{ }"}:
@@ -766,7 +824,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         初始化配置
         """
         self.schedule_periods = self._parse_schedule(
-            SystemConfigOper().get(SystemConfigKey.NotificationSendTime)
+            get_configured_system_config().get(SystemConfigKey.NotificationSendTime)
         )
 
     @staticmethod

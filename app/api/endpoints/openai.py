@@ -32,7 +32,7 @@ from app.agent.runtime_loader import (
 )
 from app.agent.contracts import ReplyMode
 from app.runtime.config import settings
-from app.application.security.access import openai_bearer_scheme
+from app.adapters.web.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
 
 OPENAI_ERROR_RESPONSES = {

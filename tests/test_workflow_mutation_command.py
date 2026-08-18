@@ -6,6 +6,7 @@ import pytest
 from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
+    WorkflowQueryService,
 )
 
 
@@ -41,6 +42,23 @@ def _command(workflow=None, commit_error=None):
         "delete_cache": Mock(),
     }
     return WorkflowMutationCommand(**dependencies), dependencies
+
+
+@pytest.mark.asyncio
+async def test_workflow_query_service_delegates_list_and_get_to_repository():
+    """工作流查询服务只调用读取端口，不持有数据库会话或事务。"""
+    repository = Mock()
+    repository.async_list = AsyncMock(return_value=[_workflow()])
+    repository.async_get = AsyncMock(return_value=_workflow())
+    service = WorkflowQueryService(repository)
+
+    listed = await service.list()
+    fetched = await service.get(7)
+
+    assert listed == repository.async_list.return_value
+    assert fetched == repository.async_get.return_value
+    repository.async_list.assert_awaited_once_with()
+    repository.async_get.assert_awaited_once_with(7)
 
 
 def test_start_timer_workflow_commits_before_registering_job():

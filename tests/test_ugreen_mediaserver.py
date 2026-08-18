@@ -162,17 +162,27 @@ class UgreenLibraryPathLimitTest(unittest.TestCase):
 
 
 class DashboardStatisticTest(unittest.TestCase):
+    class _Repository:
+        """Dashboard 汇总测试使用的零增量历史仓储。"""
+
+        @staticmethod
+        def monthly_media_statistics():
+            """返回全零月度统计，隔离媒体服务汇总断言。"""
+            return 0, 0, 0, 0
+
     @unittest.skipIf(dashboard_endpoint is None, "dashboard endpoint dependencies are missing")
     def test_statistic_all_episode_missing(self):
         mocked_stats = [
             schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
             schemas.Statistic(movie_count=1, tv_count=2, episode_count=None, user_count=1),
         ]
-        with patch(
-            "app.api.endpoints.dashboard.DashboardChain.media_statistic",
-            return_value=mocked_stats,
-        ):
-            ret = dashboard_endpoint.statistic(name="ugreen", _=None)
+        from app.application.dashboard import DashboardQueryService
+
+        service = DashboardQueryService(
+            repository=self._Repository(),
+            media_statistics=lambda _name: mocked_stats,
+        )
+        ret = dashboard_endpoint.statistic(name="ugreen", service=service, _=None)
 
         self.assertEqual(ret.movie_count, 11)
         self.assertEqual(ret.tv_count, 22)
@@ -185,11 +195,13 @@ class DashboardStatisticTest(unittest.TestCase):
             schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
             schemas.Statistic(movie_count=1, tv_count=2, episode_count=6, user_count=1),
         ]
-        with patch(
-            "app.api.endpoints.dashboard.DashboardChain.media_statistic",
-            return_value=mocked_stats,
-        ):
-            ret = dashboard_endpoint.statistic(name="all", _=None)
+        from app.application.dashboard import DashboardQueryService
+
+        service = DashboardQueryService(
+            repository=self._Repository(),
+            media_statistics=lambda _name: mocked_stats,
+        )
+        ret = dashboard_endpoint.statistic(name="all", service=service, _=None)
 
         self.assertEqual(ret.movie_count, 11)
         self.assertEqual(ret.tv_count, 22)

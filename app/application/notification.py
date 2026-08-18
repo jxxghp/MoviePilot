@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.runtime.extensions.service_registry import ServiceBaseHelper
+from app.application.service import ServiceBaseHelper
 from app.schemas.system import NotificationConf
 from app.schemas.system import ServiceInfo
 from app.schemas.types import ModuleType, SystemConfigKey

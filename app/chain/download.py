@@ -28,9 +28,11 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.db.oper.downloadfailure import DownloadFailureOper
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.oper.mediaserver import MediaServerOper
+from app.application.chain.data import (
+    DownloadFailurePortProxy as DownloadFailureOper,
+    DownloadHistoryPortProxy as DownloadHistoryOper,
+    MediaServerPortProxy as MediaServerOper,
+)
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download.tasks import DownloadTaskService
 from app.runtime.thread import ThreadHelper
@@ -53,7 +55,9 @@ from app.foundation import text as text_tools
 from app.adapters.system.host import SystemUtils
 
 if TYPE_CHECKING:
-    from app.db.models.downloadfailure import DownloadFailure
+    from typing import Any
+
+    DownloadFailure = Any
 
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60

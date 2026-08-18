@@ -41,6 +41,10 @@ class SiteMutationRepository(Protocol):
         """暂存一组站点优先级变更。"""
         ...
 
+    async def stage_reset(self) -> None:
+        """暂存清空全部站点。"""
+        ...
+
 
 SiteIndexerLoader = Callable[[str], Awaitable[Optional[dict]]]
 SiteEventPublisher = Callable[[dict], Awaitable[None]]
@@ -131,6 +135,13 @@ class SiteMutationCommand:
         await self._repository.stage_delete(site_id)
         await self._commit()
         await self._publish_deleted({"site_id": site_id})
+        return SiteMutationResult(True)
+
+    async def reset(self) -> SiteMutationResult:
+        """清空全部站点，并在提交后发布通配站点删除事件。"""
+        await self._repository.stage_reset()
+        await self._commit()
+        await self._publish_deleted({"site_id": "*"})
         return SiteMutationResult(True)
 
     async def _commit(self) -> None:

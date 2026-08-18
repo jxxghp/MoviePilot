@@ -11,9 +11,10 @@ from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.chain.user import MfaRequired, UserChain
-from app.application.security import access as security
+from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
+from app.application.security.token import create_access_token
 from app.runtime.config import settings
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
@@ -67,17 +68,17 @@ def login_access_token(
     level = SitesHelper().auth_level
     # 是否显示配置向导
     show_wizard = (
-        not SystemConfigOper().get(SystemConfigKey.SetupWizardState)
+        not get_configured_system_config().get(SystemConfigKey.SetupWizardState)
         and not settings.ADVANCED_MODE
     )
-    access_token = security.create_access_token(
+    access_token = create_access_token(
         userid=user_or_message.id,
         username=user_or_message.name,
         super_user=user_or_message.is_superuser,
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         level=level,
     )
-    security.set_or_refresh_resource_token_cookie(
+    set_or_refresh_resource_token_cookie(
         request,
         response,
         _SchemaTokenPayload(

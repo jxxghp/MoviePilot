@@ -2,9 +2,8 @@ from types import SimpleNamespace
 from typing import Any, Iterator
 
 import pytest
-from fastapi import HTTPException
-
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.contracts import PluginDashboardError
 from app.foundation.singleton import Singleton
 
 
@@ -58,8 +57,7 @@ def test_plugin_dashboard_rejects_invalid_dashboard_shape(plugin_manager: Plugin
         {"cols": {}, "attrs": {}, "elements": []}
     )
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(PluginDashboardError) as exc_info:
         plugin_manager.get_plugin_dashboard("DemoPlugin", "broken")
 
-    assert exc_info.value.status_code == 500
-    assert "仪表盘数据格式错误" in exc_info.value.detail
+    assert "仪表盘数据格式错误" in str(exc_info.value)

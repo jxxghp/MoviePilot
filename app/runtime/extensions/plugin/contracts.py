@@ -6,6 +6,18 @@ from typing import Any
 from app.foundation.reflection import ObjectUtils
 
 
+class PluginRuntimeError(Exception):
+    """插件运行时调用失败的基础异常。"""
+
+
+class PluginNotFoundError(PluginRuntimeError):
+    """目标插件未加载。"""
+
+
+class PluginDashboardError(PluginRuntimeError):
+    """插件仪表板返回值不符合宿主契约。"""
+
+
 @dataclass(frozen=True)
 class PluginHookContract:
     """描述宿主识别一个插件钩子时必须保持的运行语义。"""

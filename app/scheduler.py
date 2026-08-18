@@ -33,7 +33,7 @@ from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
 from app.schemas.message import Message

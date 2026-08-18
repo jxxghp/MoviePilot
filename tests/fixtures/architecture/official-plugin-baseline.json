@@ -4831,7 +4831,7 @@
   },
   "schema_version": 2,
   "source": {
-    "head": "68340c0884c3aff4ee027c9c94ce25d096871aa5",
+    "head": "aa107b44a49bcaaa9f87d078fbf88da1971f722c",
     "python_file_count": 231,
     "repository": "MoviePilot-Plugins",
     "roots": [

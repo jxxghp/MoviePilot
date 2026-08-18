@@ -21,7 +21,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.progress import ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.search.state import (
@@ -1039,7 +1039,7 @@ class SearchChain(ChainBase):
         # 记录过滤前的候选资源数，供前端在全部被过滤时给出友好提示
         candidate_count = 0
         if rule_groups is None:
-            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+            rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
         async for event in self.__async_search_all_sites_stream(
                 keyword=title, sites=sites, page=page, mtype=mtype):
             result = event.pop("items", []) or []
@@ -1104,7 +1104,7 @@ class SearchChain(ChainBase):
             return []
 
         if rule_groups is None:
-            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+            rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
         if not rule_groups:
             return torrents
 
@@ -1311,7 +1311,7 @@ class SearchChain(ChainBase):
         # 开始过滤规则过滤
         if rule_groups is None:
             # 取搜索过滤规则
-            rule_groups: List[str] = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups)
+            rule_groups: List[str] = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups)
         if rule_groups:
             logger.info(f'开始过滤规则/剧集过滤，使用规则组：{rule_groups} ...')
         torrents = __do_parallel_filter(torrents)
@@ -1439,7 +1439,7 @@ class SearchChain(ChainBase):
                 if torrenthelper.filter_torrent(torrent, filter_params)
             ]
         if rule_groups is None:
-            rule_groups = SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+            rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
         if rule_groups and torrents:
             torrents = self.filter_torrents(
                 rule_groups=rule_groups,
@@ -2272,7 +2272,7 @@ class SearchChain(ChainBase):
 
         # 配置的索引站点
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
         for indexer in SitesHelper().get_indexers():
             # 检查站点索引开关
@@ -2386,7 +2386,7 @@ class SearchChain(ChainBase):
 
         # 配置的索引站点
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
         for indexer in await SitesHelper().async_get_indexers():
             # 检查站点索引开关
@@ -2509,7 +2509,7 @@ class SearchChain(ChainBase):
         indexer_sites = []
 
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
         for indexer in await SitesHelper().async_get_indexers():
             if not sites or indexer.get("id") in sites:
@@ -2646,7 +2646,7 @@ class SearchChain(ChainBase):
         indexer_sites = []
 
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
         for indexer in await SitesHelper().async_get_indexers():
             if not indexer.get("subtitles"):
@@ -2742,7 +2742,7 @@ class SearchChain(ChainBase):
         indexer_sites = []
 
         if not sites:
-            sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+            sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
         for indexer in await SitesHelper().async_get_indexers():
             if not indexer.get("subtitles"):
@@ -2871,10 +2871,10 @@ class SearchChain(ChainBase):
             return
         if site_id == "*":
             # 清空搜索站点
-            SystemConfigOper().set(SystemConfigKey.IndexerSites, [])
+            get_configured_system_config().set(SystemConfigKey.IndexerSites, [])
             return
         # 从选中的rss站点中移除
-        selected_sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+        selected_sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
         if site_id in selected_sites:
             selected_sites.remove(site_id)
-            SystemConfigOper().set(SystemConfigKey.IndexerSites, selected_sites)
+            get_configured_system_config().set(SystemConfigKey.IndexerSites, selected_sites)

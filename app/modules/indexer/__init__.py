@@ -2,7 +2,8 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
-from app.db.oper.site import SiteOper
+from app.application.site.health import get_configured_site_health_service
+from app.application.site.query import get_configured_site_query_service
 from app.foundation.reflection import ModuleHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
@@ -103,7 +104,7 @@ class IndexerModule(_ModuleBase):
         torrent = context.torrent_info
         if torrent.site is None:
             return None
-        site = SiteOper().get(torrent.site)
+        site = get_configured_site_query_service().get_sync(torrent.site)
         if not site:
             return None
         indexer = SitesHelper().get_indexer(site.domain)
@@ -156,9 +157,12 @@ class IndexerModule(_ModuleBase):
         """
         domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
-            SiteOper().fail(domain)
+            get_configured_site_health_service().fail(domain)
         else:
-            SiteOper().success(domain=domain, seconds=seconds)
+            get_configured_site_health_service().success(
+                domain=domain,
+                seconds=seconds,
+            )
 
     @staticmethod
     async def __async_indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
@@ -167,9 +171,12 @@ class IndexerModule(_ModuleBase):
         """
         domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
-            await SiteOper().async_fail(domain)
+            await get_configured_site_health_service().async_fail(domain)
         else:
-            await SiteOper().async_success(domain=domain, seconds=seconds)
+            await get_configured_site_health_service().async_success(
+                domain=domain,
+                seconds=seconds,
+            )
 
     @staticmethod
     def __parse_result(site: dict, result_array: list, seconds: int) -> TorrentInfo:

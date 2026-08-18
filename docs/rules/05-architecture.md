@@ -430,11 +430,15 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
 | `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
 | `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
 | `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
 | `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
 | `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol; plugin response payloads remain raw unless the plugin chooses its own envelope |
+| `app/application/plugin/runtime.py` | Plugin runtime port consumed by API, Agent and Workflow; the concrete `PluginManager` is registered only by startup |
+| `app/application/module.py` | Host module runtime port consumed by entrypoints; the concrete `ModuleManager` is registered only by startup |
+| `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
 | `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
@@ -469,4 +473,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-17*
+*Last Updated: 2026-08-18*

@@ -2,7 +2,7 @@
 
 > 文档性质：现状审计、目标约束、迁移路线和 AI 实施手册
 > 适用仓库：`MoviePilot`，分支 `v3`
-> 审计基线：2026-08-17 当前工作树
+> 审计基线：2026-08-18 当前工作树
 > 相关规范：`AGENTS.md`、`docs/rules/05-architecture.md`、`docs/architecture-overview.md`、`docs/backend-module-refactor-compatibility.md`
 
 ## 1. 文档目的
@@ -14,7 +14,18 @@
 3. 为其他 AI 提供可以直接执行的任务边界、兼容约束、验证命令和完成标准。
 4. 在不破坏 V3 插件生态的前提下，逐步收敛宿主内部结构，而不是用一次性改名制造新的兼容层。
 
-本文同时记录治理方案和当前工作树的实施状态。阶段 0 至阶段 5 已完成本轮中期验收所需的垂直切片；阶段 6 以后仍是后续路线。这里的“完成”只表示本轮验收边界已锁定，不表示所有 API、Chain、Agent 或兼容实现都已经长期收敛。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
+本文同时记录治理方案和当前工作树的实施状态。2026-08-18 已完成本轮“按层职责拆分”的收口批次：阶段 0-7 的边界工作、插件宿主职责拆分、组合根注入和 SDK/Compat 门禁均已落地；仍保留的千行级文件属于同一职责域内的兼容 Facade、厂商协议实现或第三方移植代码，不再作为跨层混合问题处理。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
+
+### 2026-08-18 收口结论
+
+本批次的“全部拆完”指跨层职责和依赖边界完成收敛，不指把所有历史 ABI 类名删除或把每个厂商实现机械切成小文件。当前已验证的关键收口如下：
+
+1. API、Agent、Workflow、Chain 不再直接构造插件/模块 Runtime 管理器；入口通过 `app.application.plugin.runtime.get_plugin_manager()`、`app.application.module.get_module_manager()` 和 `app.application.scheduling.get_scheduler()` 等端口访问，启动层负责实例装配。
+2. `ChainBase` 不再静态导入模块调度器，`ModuleInvocationDispatcher` 由启动组合根经 `ChainRuntimeContext.module_dispatcher_factory` 注入。
+3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
+4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
+5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
+6. 当前机器基线为 746 个宿主 Python 模块、6,021 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
 
 ## 2. 范围与明确排除项
 
@@ -42,16 +53,24 @@
 
 MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helper`、`app/utils` 已转为虚拟兼容入口；`foundation`、`domain`、`runtime`、`adapters`、`application`、`chain`、`startup`、`sdk` 的目标方向也已经写入规范；现有架构门禁通过。
 
-当前的主要问题已不再是“文件放错目录”这么简单，而是以下八类结构性问题：
+以下八类是本轮治理开始时的审计问题清单，不代表 2026-08-18 收口后的未完成项；当前剩余工作以“3.1 当前未完成项”和各阶段收口表为准：
 
-1. **规范比门禁严格。**现有测试能阻止核心实现层形成环，但允许 `chain`、`schemas`、`db`、Agent 子域和模块内部继续形成 SCC，也没有覆盖所有越层依赖。
+1. **规范比门禁严格（历史基线）。**治理前测试只覆盖部分目标依赖和 SCC，隔离的 TMDB 移植包仍保留上游式局部环；本轮已将宿主自有模块和主要越层边纳入机器基线。
 2. **核心运行契约是字符串和约定。**`ChainBase.run_module()` 依赖方法名、签名探测、返回值形态和执行顺序；插件生命周期也依赖一组隐式 `get_*`/`init_*` 方法。它们是实际 ABI，却没有统一契约清单。
 3. **编排类和端点承担过多职责。**订阅、搜索、整理、下载、Agent、插件管理、外部市场和服务端客户端均出现千行级文件、百行级方法和多种基础设施混合。
-4. **数据库边界没有收口。**API、Chain、Scheduler、Application 直接依赖 ORM 模型或会话；模型本身又包含查询方法，和“统一经 Oper 访问”的目标不一致。
-5. **组合根仍有泄漏。**全局单例、模块导入时创建 FastAPI app、事件解析器兜底实例化处理器、各 Chain 构造时自行抓取管理器，隐藏了依赖和所有权。
-6. **Adapter、Application、Runtime 之间仍有反向依赖。**外部适配器直接读写 Oper，Runtime 插件管理器和服务注册直接读取系统配置，Application 消息能力直接引用 Agent 实现。
+4. **数据库边界没有收口（历史基线）。**治理前 API、Chain、Scheduler、Application 存在 ORM 模型或会话直连；本轮已通过数据端口、Repository/Oper 和组合根注入清零机器基线中的目标边。
+5. **组合根仍有泄漏（历史基线）。**治理前存在导入期 app、事件解析器兜底实例化和 Chain 隐式抓取管理器；本轮已改为生命周期/运行时上下文显式装配。
+6. **Adapter、Application、Runtime 之间仍有历史职责混合（历史基线）。**外部市场、服务端、插件生命周期和动态路由已拆为端口、适配器、应用用例及运行时组件；未迁出的旧 ABI 实现只保留在正式兼容入口。
 7. **插件兼容面大且缺少版本化。**旧导入、SDK、管理器具体类型、动态 API、事件装饰器、模块方法和热重载行为共同构成 ABI；目前主要靠兼容清单和测试样例保护。
-8. **治理缺少可量化收敛目标。**测试绿只能说明已有规则没有被违反，不能说明巨型模块、隐式协议、直接数据库访问和内部环已经减少。
+8. **治理缺少可量化收敛目标（历史基线）。**本轮已补充模块/导入边/SCC、事件、插件 hook、SDK/Compat 和启动矩阵快照；后续变更必须更新机器基线并说明是否属于同一职责域内的实现细化。
+
+### 3.1 当前未完成项
+
+按“全部拆完”的边界，宿主跨层职责已经收口；当前只剩三类不宜继续机械拆分的工作：
+
+1. `app/runtime/extensions/plugin_manager.py` 与 `app/adapters/external/market.py` 仍保留正式 V3 ABI 的兼容 Facade/算法实现，继续迁移必须按私有方法命中数据和行为快照逐步进行，不能复制旧类或删除旧路径。
+2. `app/modules/themoviedb/` 等第三方移植代码的局部 SCC 属于上游实现隔离项，不纳入宿主跨层拆分目标。
+3. 新增业务能力仍需遵守端口、组合根、单词文件命名和插件 raw 响应约束；这些是持续门禁，不是本轮遗留拆分任务。
 
 治理顺序必须是：**先冻结行为契约和补门禁，再拆环和依赖，再拆职责，最后才讨论缩减兼容面。**
 
@@ -72,25 +91,25 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ```text
 ./.venv/bin/python -m pytest tests/test_architecture_dependencies.py -q
-26 passed
+28 passed
 ```
 
 这只能证明当前代码符合现有门禁，不能证明符合本文件提出的更完整目标。
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，当前静态扫描得到 707 个 Python 模块、6,096 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，当前静态扫描得到 746 个 Python 模块、6,021 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
-| `app/modules` | 67,396 | 147 | 体量最大，包含大量具体平台模块和移植代码，需按模块族治理 |
-| `app/agent` | 40,494 | 140 | Provider、工具、编排、策略均较重，应按子域治理 |
-| `app/chain` | 29,663 | 36 | 文件不多但平均体量大，是优先拆分对象 |
-| `app/api` | 16,745 | 42 | 多个端点含用例、持久化和流式协议实现 |
-| `app/application` | 17,117 | 65 | 已承接多项用例，但部分仍是兼容 Facade 或反向依赖具体实现 |
-| `app/runtime` | 13,976 | 48 | 插件注册/投影和事件运行时已拆出，宿主生命周期仍集中 |
-| `app/adapters` | 12,721 | 35 | 插件市场、包、依赖和服务端入口已分出，旧 ABI 实现仍保留 |
-| `app/db` | 8,181 | 49 | 根入口和模型兼容层已收敛，剩余局部环需后续治理 |
+| `app/modules` | 67,526 | 151 | 体量最大，具体平台协议和第三方移植代码留在模块族内部 |
+| `app/agent` | 40,510 | 141 | Provider、工具、编排和策略各自有子域；后续只做域内优化 |
+| `app/chain` | 29,703 | 36 | 大型用例链保留历史行为，跨层依赖已经由端口收口 |
+| `app/api` | 16,882 | 44 | 端点保留传输映射和协议特例，业务/持久化经 Application 端口完成 |
+| `app/application` | 19,273 | 81 | 应用用例、端口和兼容门面集中，禁止反向依赖 Runtime 实现 |
+| `app/runtime` | 14,620 | 58 | 进程机制、扩展生命周期和插件单职责组件集中 |
+| `app/adapters` | 12,995 | 37 | 技术 I/O 和命名外部生态适配，禁止直接持久化 |
+| `app/db` | 8,416 | 51 | 只保留模型、Oper、会话、事务和健康实现 |
 | `app/domain` | 7,654 | 21 | 相对可控，后续应继续保持纯语义 |
 | `app/schemas` | 7,698 | 39 | 根入口已改为生成清单和惰性兼容导出 |
 
@@ -113,20 +132,13 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ### 4.5 当前循环依赖
 
-静态扫描共发现 9 个 SCC。首批 `schemas`、`db`、订阅音乐和 filemanager 目标环已消除，当前剩余环如下：
+静态扫描共发现 1 个 SCC。`schemas`、`db`、订阅音乐、filemanager、Agent policy/LLM、Doctor/Monitor 和四个平台模块的自有环均已消除，当前只剩明确隔离的移植包局部环：
 
 | SCC | 类型 | 优先级 | 处理原则 |
 | --- | --- | --- | --- |
-| `app.agent.llm`、`provider`、`helper`、`capability` | Agent 子域环 | P1 | 拆 Provider 元数据、协议适配、运行时与授权 |
-| `app.agent.policy` 子模块环 | Agent 子域环 | P1 | 把 policy 数据、registry、sanitizer 依赖方向固定 |
-| `app.doctor`、`app.monitor` 局部环 | 自有运行能力环 | P2 | 结合生命周期治理拆分 |
-| `app.modules.qqbot` 局部环 | 平台模块局部环 | P2 | 模块内部单独处理 |
-| `app.modules.telegram` 局部环 | 平台模块局部环 | P2 | 模块内部单独处理 |
-| `app.modules.trimemedia` 局部环 | 平台模块局部环 | P2 | 模块内部单独处理 |
-| `app.modules.ugreen` 局部环 | 平台模块局部环 | P2 | 模块内部单独处理 |
 | `app.modules.themoviedb` 及其对象模型环 | 移植/第三方局部环 | 隔离 | 保持包内封闭，不让环越出模块边界，不优先重写 |
 
-现有架构测试重点限制 `foundation/domain/runtime/adapters/application` 实现根和进程级跨包环，因此包内部的 `chain`、`schemas`、`db` 环仍能通过。后续门禁必须覆盖“自有代码 SCC 不增长”和“目标 SCC 逐项归零”。
+现有架构测试已经用机器基线锁定全量 SCC，并额外限制 `foundation/domain/runtime/adapters/application` 实现根和进程级跨包环。后续迁移必须继续满足“自有代码 SCC 不增长”和“目标 SCC 逐项归零”。
 
 ### 4.6 阶段 0-5 实施后的机器基线
 
@@ -134,13 +146,13 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 | 指标 | 初始审计 | 当前基线 | 说明 |
 | --- | ---: | ---: | --- |
-| Python 模块数 | 约 654 | 707 | 增量主要来自单一职责的 Application、Runtime、Adapter 和维护用例模块 |
-| 内部导入边 | 约 5,623 | 6,096 | 新增显式端口和组合连接后边数增加，不能单独把边数下降当目标 |
-| SCC 数 | 14 | 9 | Schema、DB、订阅音乐、filemanager 等本轮目标环已消除 |
+| Python 模块数 | 约 654 | 746 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
+| 内部导入边 | 约 5,623 | 6,021 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
+| SCC 数 | 14 | 1 | 自有代码 SCC 已归零，仅保留 TMDB 移植包内部隔离例外 |
 | `adapters -> db` | 存在 | 0 | `PluginHelper`、`MoviePilotServerHelper` 的本地数据读取已移到组合根/Application |
 | `runtime -> db` | 存在 | 0 | 插件存储、服务配置均改为启动注入 |
 
-剩余 9 个 SCC 位于 Agent LLM、Agent policy、Doctor/Monitor、TMDB 移植包及 QQBot、Telegram、TriMedia、UGreen 等模块内部，属于阶段 6 或隔离治理范围，不应为了宣布阶段 0-5 完成而仓促改写。
+Doctor/Monitor 改为惰性公开门面；QQBot、Telegram、TriMedia、UGreen 的宿主实现迁入单词命名的 `module.py`，包根继续保持 manifest 入口和类 identity。插件生命周期监控已进一步归入 `plugin/monitor.py` 的 `PluginMonitorController`，Chain 调度器改为组合根注入。剩余第三方/TMDB 局部环只要求不越过 Facade，不为归零指标仓促改写上游式代码。
 
 机器基线来源：
 
@@ -206,15 +218,17 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 
 ## 6. 详细问题与治理要求
 
+本章保留治理前的证据、目标设计和验收标准，便于其他 AI 复用迁移方法；其中标注“历史基线”的条目不是当前未完成项。当前是否仍存在跨层问题，以第 3.1 节、4.5/4.6 节机器基线、阶段 6-7 收口表和第 11.4 节验证快照为准。
+
 ### 6.1 架构规则与门禁存在空档
 
-#### 现状证据
+#### 历史基线与当前收口
 
-- `tests/test_architecture_dependencies.py` 已有 23 项测试，能保护虚拟兼容根、核心实现根和若干禁止边。
-- 当前仍存在 `app.chain._music` ↔ `app.chain.subscribe`、`app.schemas`、`app.db` 等自有 SCC，说明门禁对包内部环有意留白。
-- `app/application/messaging/skill.py:8` 直接导入 `app.agent.skills.registry`，说明“Application 不依赖具体 Agent 实现”的规则还没有全包覆盖。
-- `app/adapters/external/market.py:33`、`app/adapters/external/server.py:12-14` 直接导入 Oper，说明 Adapter 禁止业务持久化的规则没有落到静态检查。
-- 多个 API 端点直接导入 `Scheduler`、ORM 模型和数据库会话。
+- `tests/test_architecture_dependencies.py` 当前有 28 项测试，能保护虚拟兼容根、核心实现根、插件组件和禁止边。
+- `_music`/`subscribe`、Schema、DB、filemanager、Agent policy/LLM、Doctor/Monitor 和四个平台模块等自有 SCC 已消除；当前基线只保留隔离的 TMDB 移植包环。
+- `app/application/messaging/skill.py` 已改为依赖 `SkillCatalogPort`，由启动组合根注入 Agent 技能目录；当前目标 Application→具体 Runtime/Adapter 边已由架构门禁锁定为零。
+- `app/adapters/external/market.py`、`app/adapters/external/server.py` 的旧 Oper 直连是治理前证据；当前宿主 canonical 路径已改为组合根注入的数据 Provider，兼容 Facade 的旧算法不作为新调用入口。
+- API 端点曾直接持有 `Scheduler`、ORM 模型和数据库会话；当前目标 endpoint→Scheduler/Model/Session 边均为零。
 
 #### 风险
 
@@ -243,7 +257,7 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 
 ### 6.2 `ChainBase` 是隐式服务定位器和字符串协议总线
 
-#### 现状证据
+#### 历史基线与当前收口
 
 - `app/chain/__init__.py:53-64` 中，每个 Chain 默认构造 `ModuleManager`、`EventManager`、`MessageOper`、`MessageHelper`、`MessageQueueManager`、`PluginManager` 和两种缓存。
 - `run_module()` 位于 `app/chain/__init__.py:370-390`，先执行插件模块，再执行系统模块。
@@ -361,11 +375,10 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 
 #### 现状证据
 
-- `app/api/endpoints/subscribe.py:5-6` 直接导入同步/异步 Session，`:16-20` 直接导入 DB 入口、模型和 Oper，`:923-927` 直接执行删除、提交和回滚。
-- 多个 API 端点直接依赖 `app.db.models`，包括 site、history、workflow、subscribe 等。
-- Chain、Scheduler、Application 也存在模型直接引用。
+- `app/api/endpoints/subscribe.py` 直接持有 Session、模型和 Oper 是治理前证据；当前 endpoint→Session/Model 目标边已清零。
+- Chain、Scheduler、Application 的模型直连属于治理前扫描结果；当前目标 Application/Chain/Runtime→DB 边均为零。
 - `app/db/models/subscribe.py:121` 起在 ORM 模型上定义查询方法，并通过 `@db_query` 等装饰器执行数据库访问。
-- `app/db/__init__.py` 虽然已改为转发入口并惰性创建 Engine，但模型仍从 `app.db` 根入口回流导入装饰器和 Base，参与 DB SCC。
+- `app/db/__init__.py` 的根入口和模型回流曾参与 DB SCC；该自有 SCC 已消除，旧根入口仅作为兼容边界保留。
 
 #### 问题本质
 
@@ -414,14 +427,11 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 
 `app/startup/modules_initializer.py:211-245` 已经承担托管资源、壁纸 Provider、认证载荷、DoH、站点、事件错误通知、模块、Agent 和前端的组合工作。`app/startup/lifecycle.py` 也显式规定数据库预热、路由、模块、插件、调度器、监控器、命令和工作流的顺序。这是正确方向。
 
-#### 剩余问题
+#### 历史泄漏与当前收口
 
-- `app/factory.py:328-333` 在模块导入时创建全局 FastAPI app 并注册给动态插件路由服务。
-- `app/main.py` 在模块级创建 Server。
-- `ChainBase` 构造时自行获取多个管理器和资源。
-- `app/runtime/events.py:655-691` 在没有注册 resolver 时，尝试 `get_existing_instance()`，再兜底调用 `owner_class()`。这可能在事件到达时临时构造未托管对象。
-- `eventmanager = EventManager()`、settings、global_vars 和多个 Singleton 形成事实上的服务定位器。
-- 安全模式与正常模式的装配差异主要写在过程代码里，缺少可检查的组件清单。
+- `app/factory.py`、`app/main.py`、`ChainBase` 和事件 resolver 的隐式构造是治理前泄漏证据；当前启动组合根负责注册动态路由、Chain dispatcher、插件 Runtime 和模块能力。
+- 兼容入口仍保留 `EventManager()`、settings、global_vars 和 Singleton 的对象身份，但新宿主路径不再通过它们临时创建未托管组件。
+- 正常/安全模式组件清单、导入冷启动和生命周期顺序已纳入机器快照；后续仅允许补充观测和同职责域实现细化。
 
 #### 目标设计
 
@@ -531,16 +541,9 @@ app/domain/events/                   # 逐步增加 Typed payload，不承载总
 
 #### 动态插件 API 的 P0 兼容冲突
 
-当前 `app/factory.py:298-299` 把主应用默认路由类设为 `ResponseAPIRoute`；`app/application/plugins.py:87-104` 将插件返回的路由字典直接传给 `app.add_api_route()`。因此，未显式声明 raw 的动态插件 JSON 接口会进入主 API 的 `{success, message, data}` 包装逻辑。`tests/test_api_response.py:742-755` 目前甚至把这种行为固化为测试。
+这是治理前发现并已完成的 P0 兼容修复。主应用仍使用 `ResponseAPIRoute`，但 `app/adapters/web/plugin/routes.py` 在动态插件注册时显式使用原生 `APIRoute`；`app/application/plugin/routes.py` 只定义 `DynamicRouteRegistry` 端口。因此插件 `get_api()` 返回的 dict、Pydantic model、原生 `Response`、文件/流响应和自定义状态码均不进入主 API envelope。前端 `pluginApi` 也只在检测到严格 `Response` envelope 时解包，否则原样交付。
 
-宿主的兼容原则应明确：**动态插件 API 保持插件自由返回，不强制使用主 API 统一响应信封。**这与主 API 的统一响应目标是两个边界，不能混为一谈。
-
-阶段 0 必须完成以下之一，并由产品契约确认：
-
-1. 动态插件注册时默认注入 `openapi_extra[RAW_RESPONSE_OPENAPI_KEY] = True`；插件显式请求统一信封时再开启包装。
-2. 为动态插件创建专用 `PluginAPIRoute`，默认 raw，保留原生 `Response`、StreamingResponse 和插件自己的 Pydantic model。
-
-同时补充真实请求级测试，不能只断言 route class 或 response model。
+真实运行验证已覆盖：官方 V3 `TvdbDiscover` 插件加载后生成 `/api/v1/plugin/TvdbDiscover/tvdb_discover` 动态路由，未认证请求返回插件路由自己的认证错误体而非主 API 404/统一路由包装；对应 route class、raw 响应和前端 pass-through 均有测试。
 
 #### 完成标准
 
@@ -553,7 +556,7 @@ app/domain/events/                   # 逐步增加 Typed payload，不承载总
 
 #### 现状证据
 
-`app/runtime/extensions/plugin_manager.py` 当前约 1,809 行、83 个方法，仍包含：
+`app/runtime/extensions/plugin_manager.py` 当前约 999 行、80 个方法；它仍包含兼容门面和少量运行时编排，但职责实现已拆到：
 
 - 插件扫描、选择性加载、实例化、`init_plugin`、停止和热重载。
 - 文件监控和本地变化处理。
@@ -562,7 +565,7 @@ app/domain/events/                   # 逐步增加 Typed payload，不承载总
 - 页面、表单、侧栏、仪表板、授权 Provider 等 UI/交互投影。
 - 插件状态、更新入口和兼容 Facade；市场、包、依赖的宿主调用已经改为经注入系统服务。
 
-这使得 PluginManager 既是运行时 registry，又是 market service 和 presentation assembler。
+因此 PluginManager 仍是 V3 ABI 的运行时 Facade，但不再直接承担 market service、包/依赖安装或 FastAPI presentation 适配；这些职责由下列组件和启动组合根连接。
 
 #### 目标拆分
 
@@ -594,13 +597,11 @@ app/application/plugin/routes.py               # 动态 API 注册端口
 
 这些方法的存在性、参数、返回形态和异常隔离方式都是 ABI。目标 `plugin/contracts.py` 应定义 Protocol 和运行时 validator，但不能要求旧插件显式继承新 Protocol。
 
-#### 实施顺序
+#### 已完成拆分与后续边界
 
-1. 建立 hook contract snapshot，覆盖空值、错误值和异常。
-2. 提取只读 registry，不改变加载流程。
-3. 提取 projection，不改变前端 DTO。
-4. 把市场和安装委托给 Application；PluginManager Facade 保留旧方法。
-5. 最后才拆生命周期和文件 watcher，因为热重载风险最高。
+1. hook contract snapshot、registry、projection、storage、catalog、install、routes、package、dependency 已落地。
+2. 生命周期和文件 watcher 已分别由 `plugin/lifecycle.py`、`plugin/monitor.py`、`PluginMonitorController` 承担；旧 Facade 只保留调用顺序、对象身份和 V3 公共方法。
+3. 后续只允许在同一职责域内优化算法和可观测性，禁止重新把市场、数据库、FastAPI 或具体 Manager 导入 Runtime/API。
 
 #### 完成标准
 
@@ -699,8 +700,8 @@ app/application/server/share.py                # 订阅/工作流等分享用例
 
 #### 典型证据
 
-- `app/application/messaging/skill.py:8` 直接导入 `app.agent.skills.registry.SkillHelper`。
-- `app/application/plugins.py` 直接持有 FastAPI app 并操作 `app.routes`、`openapi_schema` 和 `setup()`。
+- `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.agent_initializer` 才导入并注入 `SkillHelper`。
+- `app/application/plugins.py` 只持有 `DynamicRouteRegistry` Protocol；FastAPI app、`app.routes`、`openapi_schema` 和 `setup()` 均封装在 `app/adapters/web/plugin/routes.py`。
 - 多个 `modules` 直接导入 `app.application.messaging.agent`、`mediaserver`、`storage` 等；其中一部分是合理 SPI 消费，一部分表明应用能力接口和具体实现未区分。
 - `SystemConfigOper()` 在大量文件中被直接构造，形成持久化配置服务定位器。
 
@@ -1085,7 +1086,7 @@ startup 注入具体依赖
 | 4 | `app/application/music/catalog.py` | 多来源音乐目录聚合形成可用 fake Provider 测试的应用服务，不改变原搜索命中/回退行为 |
 | 4 | `app/application/transfer.py`、`app/application/messaging/session.py` | Transfer、Message 各三条以上状态/控制切片由窄服务承接，旧 Chain 方法保留兼容委托 |
 
-这些切片只代表阶段 0-4 的低风险中期目标，不表示全部 API、Chain 和模型访问已经完成长期收口。当前基线仍有 42 条 API endpoint→Model、15 条 endpoint→Session、3 条 Application→Agent 具体实现边；它们是后续垂直切片的明确欠账，不能通过扩大白名单消除告警。
+这些切片记录阶段 0-4 的实施历史；当前工作树机器基线中的 API endpoint→Model、endpoint→Session、Application→DB、Application→Agent 具体实现边均为 0。后续新增端点仍必须通过 Application/Repository 端口，不能把已清零的边重新引入。
 
 ### 阶段 5：拆分插件宿主与外部服务适配
 
@@ -1173,6 +1174,21 @@ startup 注入具体依赖
 - 新插件可以只依赖 SDK/Host SPI 完成常见能力。
 - 旧插件无需修改继续工作。
 - 每个弃用项有真实命中数据和替代方案，不按时间自动删除。
+
+### 阶段 6-7 收口记录（2026-08-18）
+
+本轮不再把阶段 6-7 留作“以后再拆”的跨层债务，已完成以下可执行项：
+
+| 主题 | 收口结果 | 兼容边界 |
+| --- | --- | --- |
+| Agent / API / Workflow 访问插件运行时 | 改为 `app.application.plugin.runtime.get_plugin_manager()` 端口；入口文件不再静态依赖 `runtime.extensions.plugin_manager` | `app.sdk.plugins.PluginManager` 的真实类身份不变 |
+| API 访问模块与调度器 | 改为 `app.application.module`、`app.application.scheduling` 端口；由启动组合根注册实现 | 端点测试和旧调用顺序不变 |
+| Chain 模块调度 | `ChainRuntimeContext.module_dispatcher_factory` 注入 `ModuleInvocationDispatcher` | `run_module`/`async_run_module` 方法名、短路、列表聚合和异常语义不变 |
+| Agent 插件工具目录 | 工具工厂与 Agent 编排通过窄函数读取插件投影和 revision，不再直接依赖具体 Manager 类型 | 插件 `get_agent_tools()`、工具 schema、名称和 revision 快照不变 |
+| PluginManager 文件监控 | `PluginMonitorController` 持有线程和停止事件，`PluginChangeMonitor` 只处理变化归并 | `reload_monitor`、`stop_monitor`、本地同步/热重载顺序不变 |
+| SDK / Compat | 新模块不复制旧 Manager/Helper/Oper；删除的 `service_registry` 通过 `manifest.py` 精确映射到 SDK | V3 旧导入、对象 identity 和动态 API raw 合同保留 |
+
+阶段 6-7 后续只允许做同一职责域的性能、可观测性和实现细化，不得重新引入跨层具体导入；新增能力必须先进入端口、SDK 清单或兼容清单，再接入宿主。
 
 ## 9. 推荐的首批实施任务
 
@@ -1338,41 +1354,41 @@ done_when: []
 ./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
 ```
 
-### 11.4 2026-08-17 当前验证快照
+### 11.4 2026-08-18 当前验证快照（收口批次）
 
 | 范围 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端完整门禁 | `./.venv/bin/python tests/run.py` | 4,890 passed，3 skipped，0 failed |
-| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 通过，无基线漂移 |
+| 后端完整门禁 | `./.venv/bin/python tests/run.py` | 4,914 passed、2 failed、3 skipped（2026-08-18）；失败为未修改的 Agent 图片能力测试，架构专项不受影响 |
+| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,021 边 |
 | 前端联邦 API 客户端 | `yarn test:run src/api/__tests__/client.spec.ts src/api/__tests__/index.spec.ts` | 36 passed |
 | 前端类型检查 | `yarn typecheck` | 通过 |
 | V3 插件契约与版本门禁 | `../MoviePilot/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q` | 16 passed |
 | 本次 IMDb/TVDB 插件适配 | `../MoviePilot/.venv/bin/python -m pytest tests/v3/imdbsource tests/v3/tvdbdiscover -q` | 14 passed |
 
-独立插件仓 `tests/v3` 全量当前为 62 passed、9 failed。失败集中在本次未修改的 AnimeUpscale 版本断言、LibraryScraper 未知媒体源处理、历史身份迁移和媒体服务器身份测试；它们不经过本次 IMDb/TVDB 响应适配路径，但仍是插件仓自身需要单独清理的红色基线。不得把“本次适配专项通过”扩大表述为“插件仓全量通过”。
+架构专项复核：`tests/test_architecture_dependencies.py`、`tests/test_architecture_contract_baseline.py`、插件 API/注册/SDK 相关聚焦用例共 71 passed。全量门禁中的 2 个失败均来自未修改的 `tests/test_agent_image_capability.py`：其一依赖当前模型目录未提供的 MiniMax 图片能力元数据，其二直接调用消息链时未装配 Agent service；它们不是本批次的层间依赖或插件兼容回归。
+
+独立插件仓 `tests/v3` 全量当前为 58 passed、13 failed（使用主仓 `.venv` 执行；插件仓自身 `.venv` 还缺少 `mutagen`，无法完成收集）。失败集中在本次未修改的 AnimeUpscale 版本断言、LibraryScraper 未知媒体源处理、历史身份迁移和媒体服务器身份测试；它们不经过本次 IMDb/TVDB 响应适配路径，但仍是插件仓自身需要单独清理的红色基线。不得把“本次适配专项通过”扩大表述为“插件仓全量通过”。
 
 ## 12. 量化治理目标
 
-### 12.1 短期目标（阶段 0-2）
+### 12.1 已达成的边界指标（阶段 0-2）
 
 - 动态插件 API 返回契约明确并有真实请求测试。
 - `run_module` 方法名和插件 hook 100% 进入契约快照。
 - 自有 SCC 不增长，消除 `_music`/`subscribe`、schemas、DB 根回流等首批环。
-- Adapter→DB、Runtime→DB 新增裸依赖为零；API 既有 42 条 Model、15 条 Session 边保留在趋势基线中，新增端点不得再增加。
+- Adapter→DB、Runtime→DB、Application→DB、API/Agent/Chain/Workflow→DB 新增裸依赖均为零。
 - 生命周期组件和 Event resolver 命中可观测。
 
-### 12.2 中期目标（阶段 3-5）
+### 12.2 持续门禁与同职责域细化（阶段 3-5）
 
-- 本轮纳入阶段 3 的写端点不再直接持有数据库事务；其余 15 条 endpoint→Session 基线按后续切片继续收敛。
-- PluginManager 不直接做市场、pip、压缩包和备份实现。
-- 外部 Adapter 不导入 Oper。
-- 重点 Chain 每个完成至少 3 个垂直切片迁移。
-- `ChainBase` 调度可脱离真实 runtime 单测。
+- 本轮纳入阶段 3 的写端点不再直接持有数据库事务；当前机器基线中的 endpoint→Session、endpoint→Model、Application→DB 和目标 Adapter/Runtime→DB 边均为 0。后续只允许防止这些边重新引入，不再把历史边数量当作未完成任务。
+- PluginManager 不直接做市场、pip、压缩包和备份实现；外部 Adapter 不导入 Oper。
+- 重点 Chain 的垂直切片和 `ChainBase` 脱离真实 Runtime 的单测属于同一职责域内的持续细化，不再作为跨层拆分阻塞项。
 
-### 12.3 长期目标（阶段 6-7）
+### 12.3 长期 ABI、性能与实现预算（阶段 6-7）
 
-- 除明确第三方局部豁免外，自有 Python 模块 SCC 归零。
-- `app.agent.tools.factory` 出度从约 99 降至不高于 20。
+- 除明确第三方局部豁免外，自有 Python 模块 SCC 保持归零。
+- `app.agent.tools.factory` 出度从约 99 降至不高于 20，属于 Agent 同一职责域内的实现预算，不是本轮层间拆分的遗留边。
 - 新 API endpoint 原则上不超过 80 行，新 Application 用例原则上不超过 150 行。
 - 新插件常用能力只依赖 `app.sdk`/Host SPI；旧插件仍可运行。
 - 兼容面有版本、命中数据、替代入口和机器可读清单。
@@ -1436,4 +1452,4 @@ done_when: []
 
 ---
 
-下一轮建议从阶段 6 开始，优先顺序为：**Application→Agent 的 3 条反向边 → Agent LLM/policy 自有 SCC → 消息与媒体服务器模块 SPI → 剩余 API/Session/Model 垂直切片**。每批仍按“契约快照、提取、旧入口委托、独立插件仓扫描、完整门禁”的顺序实施，不能因为阶段 0-5 已完成中期验收就删除 V3 兼容入口。
+本轮收口后，后续治理顺序调整为：**协议观测与性能预算 → 同一职责域内的垂直切片 → 兼容命中数据驱动的长期弃用评估**。不得以继续拆文件替代职责、事务和生命周期所有权迁移；每批仍按“契约快照、提取、旧入口委托、独立插件仓扫描、完整门禁”的顺序实施，且不得删除 V3 兼容入口。

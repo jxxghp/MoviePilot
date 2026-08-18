@@ -11,7 +11,7 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper

@@ -482,7 +482,7 @@ def test_activity_log_provider_error_does_not_echo_secret(tmp_path):
 def test_factory_does_not_register_activity_log_tool():
     """活动日志查询工具应由中间件注册，不应进入全局工具工厂。"""
     with patch(
-        "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+            "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
     ):
         tools = MoviePilotToolFactory.create_tools(

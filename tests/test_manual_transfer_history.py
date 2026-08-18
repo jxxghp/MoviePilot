@@ -13,7 +13,7 @@ from app.application.history import (
     max_failed_retries,
     record_transfer_failure,
 )
-from app.schemas import FileItem, ManualTransferItem
+from app.schemas import ManualTransferItem
 from tests.test_transfer_sync_extra_files import (
     FakeMeta,
     make_fileitem,
@@ -79,10 +79,10 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             get_by_path=lambda path: None,
         ))
     monkeypatch.setattr(
-        "app.chain.transfer.SystemConfigOper",
+        "app.chain.transfer.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.chain._transfer.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr(
         "app.chain.transfer.StorageChain",
         lambda: SimpleNamespace(
@@ -126,7 +126,7 @@ def test_query_manual_transfer_history_returns_success_summary(monkeypatch):
 
     response = query_manual_transfer_history(
         transer_item=ManualTransferItem(fileitem=fileitem),
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -159,7 +159,7 @@ def test_manual_transfer_endpoint_passes_reorganize_confirmation(monkeypatch):
             reorganize=True,
         ),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -189,10 +189,6 @@ def test_history_endpoint_reorganize_uses_chain_cleanup(monkeypatch):
             return True, ""
 
     monkeypatch.setattr(
-        "app.api.endpoints.transfer.TransferHistory.get",
-        lambda db, logid: history,
-    )
-    monkeypatch.setattr(
         "app.api.endpoints.transfer.TransferChain",
         _FakeTransferChain,
     )
@@ -203,7 +199,7 @@ def test_history_endpoint_reorganize_uses_chain_cleanup(monkeypatch):
             reorganize=True,
         ),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: history),
         _="token",
     )
 

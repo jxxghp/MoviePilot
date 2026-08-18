@@ -1,10 +1,9 @@
 import asyncio
-import json
 import time
 from queue import Queue
 from threading import Event as ThreadEvent
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -35,6 +34,7 @@ from app.api.endpoints.agent import (
 from app.runtime.events import Event
 from app.db.oper.agentchat import AgentChatOper
 from app.db.models.agentchat import AgentChat
+from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.agent import build_web_agent_message_update_event
 from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
@@ -167,6 +167,7 @@ def test_build_web_agent_session_id_reuses_accessible_history():
         messages=[],
         title="Telegram 会话",
     )
+    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
 
     assert _build_web_agent_session_id(user, "telegram-session") == "telegram-session"
 
@@ -389,13 +390,15 @@ def test_web_agent_admin_context_uses_current_user_id():
         replay_mode=ReplyMode.CAPTURE_ONLY,
     )
 
-    with patch("app.api.endpoints.agent.UserOper") as user_oper:
-        user_oper.return_value.async_get_by_id = AsyncMock(
-            return_value=SimpleNamespace(is_superuser=True)
-        )
+    lookup_fn = Mock(return_value=SimpleNamespace(is_superuser=True))
+    with patch(
+        "app.api.endpoints.agent.get_configured_user_id_lookup",
+        return_value=lookup_fn,
+    ) as lookup:
 
         assert asyncio.run(agent._is_system_admin_context()) is True
-        user_oper.return_value.async_get_by_id.assert_awaited_once_with(7)
+        lookup.assert_called_once_with()
+        lookup_fn.assert_called_once_with(7)
 
 
 def test_web_agent_reused_for_background_task_disables_streaming():

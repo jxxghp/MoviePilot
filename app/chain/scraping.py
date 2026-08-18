@@ -23,7 +23,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.application.audio import AudioMetadataHelper
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
@@ -146,7 +146,7 @@ class ScrapingConfig:
 
         :return: MediaScrapingConfig 实例
         """
-        user_config = SystemConfigOper().get(SystemConfigKey.ScrapingSwitchs) or {}
+        user_config = get_configured_system_config().get(SystemConfigKey.ScrapingSwitchs) or {}
         return cls(user_config)
 
     @staticmethod

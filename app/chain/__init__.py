@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
+from app.application.chain.data import get_chain_data_ports
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.transfer import TransferInfo
@@ -52,7 +52,8 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.pluginmanager = context.plugin_manager
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
-        self._module_dispatcher = ModuleInvocationDispatcher(
+        self.data_ports = context.data_ports or get_chain_data_ports()
+        self._module_dispatcher = context.module_dispatcher_factory(
             module_catalog=self.modulemanager,
             plugin_catalog=self.pluginmanager,
             plugin_error_handler=self.__handle_plugin_error,

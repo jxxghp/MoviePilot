@@ -34,7 +34,7 @@ def _patch_search_filter_rule_groups(monkeypatch, rule_groups: list[str]) -> Non
     oper = SimpleNamespace(
         get=lambda key: rule_groups if key == SystemConfigKey.SearchFilterRuleGroups else None
     )
-    monkeypatch.setattr(search_module, "SystemConfigOper", lambda: oper)
+    monkeypatch.setattr(search_module, "get_configured_system_config", lambda: oper)
 
 
 def test_search_by_title_applies_default_search_filter_rule_groups(monkeypatch):

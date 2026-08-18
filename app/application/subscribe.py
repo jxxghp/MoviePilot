@@ -14,9 +14,9 @@ app/application/history.py 里整理历史的写入路径同构。
 张表。同步与异步是两份逐字复制的实现，改一条漏一条就是真实缺陷，故翻译与身份构造由
 下方 _translate 单点承担，两条链路只在「怎么查、怎么写」上分叉。
 """
-from typing import Optional, Tuple
+from collections.abc import Callable
+from typing import Optional, Protocol, Tuple
 
-from app.db.oper.subscribe import SubscribeOper
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
@@ -24,6 +24,39 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 # 身份不完整时的固定返回。身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，
 # 而后续按身份去重也会失效，所以必须在查询与建模之前短路
 INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
+
+
+class SubscribeWriter(Protocol):
+    """订阅写入应用服务使用的数据端口。"""
+
+    def add(self, identity: dict, payload: dict, username: Optional[str] = None) -> Tuple[int, str]:
+        """同步新增订阅。"""
+
+    async def async_add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> Tuple[int, str]:
+        """异步新增订阅。"""
+
+
+_configured_subscribe_writer: Callable[[], SubscribeWriter] | None = None
+
+
+def configure_subscribe_writer(provider: Callable[[], SubscribeWriter]) -> None:
+    """由启动组合根登记订阅写入端口提供器。"""
+    global _configured_subscribe_writer
+    _configured_subscribe_writer = provider
+
+
+def _get_subscribe_writer(writer: Optional[SubscribeWriter]) -> SubscribeWriter:
+    """获取显式传入或启动组合根登记的订阅写入端口。"""
+    if writer is not None:
+        return writer
+    if _configured_subscribe_writer is None:
+        raise RuntimeError("订阅写入端口尚未配置")
+    return _configured_subscribe_writer()
 
 
 def _music_entity(mediainfo: MediaInfo | MusicInfo) -> Optional[str]:
@@ -87,7 +120,7 @@ def _translate(mediainfo: MediaInfo | MusicInfo,
 
 
 def add_subscribe(mediainfo: MediaInfo | MusicInfo,
-                  subscribe_oper: Optional[SubscribeOper] = None,
+                  subscribe_oper: Optional[SubscribeWriter] = None,
                   **kwargs) -> Tuple[int, str]:
     """
     新增订阅。
@@ -100,12 +133,12 @@ def add_subscribe(mediainfo: MediaInfo | MusicInfo,
     if translated is None:
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
-    oper = subscribe_oper or SubscribeOper()
+    oper = _get_subscribe_writer(subscribe_oper)
     return oper.add(identity=identity, payload=payload, username=username)
 
 
 async def async_add_subscribe(mediainfo: MediaInfo | MusicInfo,
-                              subscribe_oper: Optional[SubscribeOper] = None,
+                              subscribe_oper: Optional[SubscribeWriter] = None,
                               **kwargs) -> Tuple[int, str]:
     """
     异步新增订阅。
@@ -118,5 +151,5 @@ async def async_add_subscribe(mediainfo: MediaInfo | MusicInfo,
     if translated is None:
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
-    oper = subscribe_oper or SubscribeOper()
+    oper = _get_subscribe_writer(subscribe_oper)
     return await oper.async_add(identity=identity, payload=payload, username=username)

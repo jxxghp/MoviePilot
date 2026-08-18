@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
 
-from app.db.maintenance import DatabaseCleanupRepository
-from app.db.session import SessionFactory
 from app.runtime.config import settings
 from app.runtime.log import logger
 
@@ -327,11 +325,21 @@ def read_cleanup_policy() -> CleanupPolicy:
 
 
 def build_cleanup_service() -> DataCleanupService:
-    """在应用边界组装默认数据库适配器，供兼容调度门面触发。"""
-    return DataCleanupService(
-        repository=DatabaseCleanupRepository(session_factory=SessionFactory),
-        policy_reader=read_cleanup_policy,
-    )
+    """返回启动组合根登记的清理服务。"""
+    if _configured_cleanup_service_factory is None:
+        raise RuntimeError("数据清理服务尚未配置")
+    return _configured_cleanup_service_factory()
+
+
+_configured_cleanup_service_factory: Callable[[], DataCleanupService] | None = None
+
+
+def configure_cleanup_service_factory(
+    factory: Callable[[], DataCleanupService],
+) -> None:
+    """由启动组合根登记数据清理服务工厂。"""
+    global _configured_cleanup_service_factory
+    _configured_cleanup_service_factory = factory
 
 
 def _normalize_days(retention_days: Any) -> int:

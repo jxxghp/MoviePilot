@@ -20,11 +20,14 @@ from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.security.access import verify_token
-from app.db.models.user import User
-from app.db.oper.site import SiteOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.api.deps import get_current_active_user
+from app.adapters.web.security.access import verify_token
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
+from app.application.site.query import (
+    SiteQueryService,
+    get_configured_site_query_service,
+)
+from app.api.deps import get_current_active_user, get_site_sync_query_service
 from app.application.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
@@ -39,7 +42,10 @@ from app.application.security.url import SecurityUtils
 router = ResponseAPIRouter()
 
 
-def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
+def _prepare_subtitle_download(
+    subtitle: SubtitleInfo,
+    query: SiteQueryService | None = None,
+) -> tuple[bool, str]:
     """
     校验字幕下载签名，并用服务端站点配置覆盖请求凭据。
     """
@@ -53,7 +59,8 @@ def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
     if not clean_url:
         return False, "字幕下载链接签名无效"
 
-    site = SiteOper().get(subtitle.site)
+    site_query = query or get_configured_site_query_service()
+    site = site_query.get_sync(subtitle.site)
     if not site:
         return False, "字幕站点信息不存在"
 
@@ -84,7 +91,7 @@ def download(
     torrent_in: _SchemaTorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
     添加下载任务（含媒体信息）
@@ -130,7 +137,7 @@ def add(
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
     添加下载任务（不含媒体信息）
@@ -213,14 +220,20 @@ def download_subtitle(
     media_source: Annotated[MediaSource, Body()],
     media_id: Annotated[str, Body()],
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    query: SiteQueryService = Depends(get_site_sync_query_service),
 ) -> Any:
     """
     下载字幕资源。
     """
     subtitle_info = SubtitleInfo()
     subtitle_info.from_dict(subtitle_in.model_dump())
-    valid, message = _prepare_subtitle_download(subtitle_info)
+    # 直接调用 endpoint 的旧测试/插件入口不会经过 FastAPI 依赖解析；此时让
+    # 应用查询端口自行提供服务，仍保留真实请求中的注入对象。
+    if not hasattr(query, "get_sync"):
+        valid, message = _prepare_subtitle_download(subtitle_info)
+    else:
+        valid, message = _prepare_subtitle_download(subtitle_info, query)
     if not valid:
         return _SchemaResponse(success=False, message=message)
 
@@ -273,7 +286,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
     """
-    downloaders: List[dict] = SystemConfigOper().get(SystemConfigKey.Downloaders)
+    downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
     if downloaders:
         return [
             {"name": d.get("name"), "type": d.get("type")}

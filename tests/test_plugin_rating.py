@@ -80,7 +80,7 @@ def test_plugin_rating_endpoints_return_center_results() -> None:
         system_config = MagicMock()
         system_config.get.return_value = ["DemoPlugin"]
         with (
-            patch("app.api.endpoints.plugin.SystemConfigOper", return_value=system_config),
+            patch("app.api.endpoints.plugin.get_configured_system_config", return_value=system_config),
             patch.object(
                 MoviePilotServerHelper,
                 "async_submit_plugin_rating",
@@ -107,7 +107,7 @@ def test_plugin_rating_rejects_uninstalled_plugin() -> None:
         system_config = MagicMock()
         system_config.get.return_value = []
         with (
-            patch("app.api.endpoints.plugin.SystemConfigOper", return_value=system_config),
+            patch("app.api.endpoints.plugin.get_configured_system_config", return_value=system_config),
             patch.object(
                 MoviePilotServerHelper,
                 "async_submit_plugin_rating",

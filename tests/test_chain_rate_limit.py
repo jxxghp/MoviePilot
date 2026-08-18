@@ -11,6 +11,7 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 
 from app.chain import ChainBase
 from app.application.chain.context import ChainRuntimeContext
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.schemas import RateLimitExceededException
 
 
@@ -66,6 +67,7 @@ class ChainRateLimitTest(unittest.TestCase):
                 file_cache=Mock(),
                 async_file_cache=Mock(),
                 message_queue_factory=lambda _callback: Mock(),
+                module_dispatcher_factory=ModuleInvocationDispatcher,
             )
         )
         return chain

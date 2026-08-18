@@ -33,6 +33,14 @@ def get_scheduler() -> Any:
     return _scheduler_class()
 
 
+class Scheduler:
+    """应用层调度器兼容门面，不直接导入顶层 Scheduler 实现。"""
+
+    def __new__(cls) -> Any:
+        """返回组合根注册的调度器实例。"""
+        return get_scheduler()
+
+
 def list_scheduler_jobs() -> List[Any]:
     """列出运行时调度器的全部任务。"""
     return get_scheduler().list()

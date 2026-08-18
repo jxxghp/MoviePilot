@@ -17,6 +17,50 @@ SUPPORTED_WORKFLOW_TRIGGERS = {
 }
 
 
+class AsyncWorkflowQueryRepository(Protocol):
+    """工作流查询用例需要的异步读取端口。"""
+
+    async def async_list(self) -> list[Any]:
+        """读取全部工作流。"""
+        ...
+
+    async def async_get(self, workflow_id: int) -> Optional[Any]:
+        """按 ID 读取工作流。"""
+        ...
+
+
+class WorkflowQueryService:
+    """提供工作流列表和详情查询，隔离 API 与数据库会话。"""
+
+    def __init__(self, repository: AsyncWorkflowQueryRepository) -> None:
+        """保存请求级异步查询端口。"""
+        self._repository = repository
+
+    async def list(self) -> list[Any]:
+        """返回全部工作流。"""
+        return await self._repository.async_list()
+
+    async def get(self, workflow_id: int) -> Optional[Any]:
+        """返回指定工作流。"""
+        return await self._repository.async_get(workflow_id)
+
+
+_configured_workflow_query: WorkflowQueryService | None = None
+
+
+def configure_workflow_query(service: WorkflowQueryService) -> None:
+    """由启动组合根登记工作流查询服务。"""
+    global _configured_workflow_query
+    _configured_workflow_query = service
+
+
+def get_configured_workflow_query() -> WorkflowQueryService:
+    """返回启动阶段登记的工作流查询服务。"""
+    if _configured_workflow_query is None:
+        raise RuntimeError("工作流查询服务尚未配置")
+    return _configured_workflow_query
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowMutationResult:
     """描述工作流写操作是否成功及兼容提示信息。"""

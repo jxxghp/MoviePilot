@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.domain.context import MediaInfo
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
 from app.adapters.system.host import SystemUtils
@@ -25,7 +25,7 @@ class DirectoryHelper:
         """
         获取所有下载目录
         """
-        dir_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Directories)
+        dir_confs: List[dict] = get_configured_system_config().get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
         return [_SchemaTransferDirectoryConf(**d) for d in dir_confs]

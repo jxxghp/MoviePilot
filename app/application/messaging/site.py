@@ -1,8 +1,6 @@
 import re
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
-from app.db.models.site import Site
-from app.db.oper.site import SiteOper
 from app.domain import site as site_rules
 from app.application.messaging.interaction import (
     MessageGateway,
@@ -22,6 +20,19 @@ from app.schemas.types import NotificationChannel
 site_interaction_manager = SlashInteractionManager()
 
 
+class SiteInteractionRepository(Protocol):
+    """站点消息交互所需的同步数据端口。"""
+
+    def list(self) -> List[Any]:
+        """返回站点列表。"""
+
+    def get(self, site_id: int) -> Optional[Any]:
+        """按 ID 返回站点。"""
+
+    def update(self, site_id: int, payload: dict) -> Optional[Any]:
+        """更新站点。"""
+
+
 class SiteInteractionHandler:
     """
     管理 /sites 交互会话、输入解析和站点列表渲染。
@@ -34,12 +45,14 @@ class SiteInteractionHandler:
             self,
             messenger: MessageGateway,
             cookie_updater: Callable[..., Tuple[bool, str]],
+            repository: SiteInteractionRepository,
     ):
         """
         注入消息投递接口和站点 Cookie 更新动作。
         """
         self._messenger = messenger
         self._cookie_updater = cookie_updater
+        self._repository = repository
 
     def remote_list(
             self,
@@ -400,7 +413,7 @@ class SiteInteractionHandler:
         """
         渲染 /sites 当前页面。
         """
-        site_list = SiteOper().list()
+        site_list = self._repository.list()
         page_size = self._button_page_size if supports_interaction_buttons(channel) else self._text_page_size
         page_sites, page, total_pages = page_items(site_list, request.page, page_size)
         request.page = page
@@ -463,7 +476,7 @@ class SiteInteractionHandler:
 
     @staticmethod
     def _format_site_list(
-            site_list: List[Site], channel: Optional[NotificationChannel]
+            site_list: List[Any], channel: Optional[NotificationChannel]
     ) -> str:
         """
         根据渠道能力格式化站点列表。
@@ -537,15 +550,14 @@ class SiteInteractionHandler:
         if not site_ids:
             return False, "请输入至少一个有效的站点 ID"
 
-        siteoper = SiteOper()
         changed = []
         missing = []
         for site_id in site_ids:
-            site = siteoper.get(site_id)
+            site = self._repository.get(site_id)
             if not site:
                 missing.append(str(site_id))
                 continue
-            siteoper.update(site_id, {"is_active": enabled})
+            self._repository.update(site_id, {"is_active": enabled})
             changed.append(site.name)
 
         action = "启用" if enabled else "禁用"
@@ -571,7 +583,7 @@ class SiteInteractionHandler:
             )
 
         site_id = int(args[0])
-        site_info = SiteOper().get(site_id)
+        site_info = self._repository.get(site_id)
         if not site_info:
             return False, f"站点编号 {site_id} 不存在"
 

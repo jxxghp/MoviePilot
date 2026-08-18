@@ -9,9 +9,8 @@ from app.application.subscription.contract import (
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.db.models.subscribe import Subscribe
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.chain.data import SubscribePortProxy as SubscribeOper
+from app.application.configuration import get_configured_system_config
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
@@ -22,6 +21,8 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
+
+Subscribe = Any
 
 
 def _normalize_music_total_tracks(value: Any) -> Optional[int]:
@@ -255,7 +256,7 @@ class MusicSubscribeMixin:
         sites = self.get_sub_sites(subscribe)
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
             if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
-        rule_groups = subscribe.filter_groups or SystemConfigOper().get(default_rule_key) or []
+        rule_groups = subscribe.filter_groups or get_configured_system_config().get(default_rule_key) or []
         torrent_helper = TorrentHelper()
         matched: List[Context] = []
         for source_context in contexts or []:
@@ -369,7 +370,7 @@ class MusicSubscribeMixin:
         sites = self.get_sub_sites(subscribe)
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
             if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
-        rule_groups = subscribe.filter_groups or SystemConfigOper().get(default_rule_key) or []
+        rule_groups = subscribe.filter_groups or get_configured_system_config().get(default_rule_key) or []
         keywords = [subscribe.keyword] if subscribe.keyword else SearchChain.music_site_keywords(mediainfo)
         if not keywords:
             keywords = [subscribe.name]

@@ -10,7 +10,7 @@ from app.db import AsyncSessionFactory, SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message as MessageModel
 from app.db.oper.systemconfig import SystemConfigOper
-from app.application.messaging.message import MessageHelper
+from app.application.messaging.message import MessageHelper, MessageQueryService
 from app.schemas import Message, MessageClearScope
 from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
@@ -107,7 +107,9 @@ def test_notification_clear_marker_filters_history_across_requests() -> None:
         通过异步接口读取通知标题。
         """
         async with AsyncSessionFactory() as db:
-            messages = await get_notification_message(db=db)
+            messages = await get_notification_message(
+                service=MessageQueryService(MessageOper(db))
+            )
         return [message.title for message in messages]
 
     assert asyncio.run(_load_titles()) == ["新媒体通知", "旧系统通知"]

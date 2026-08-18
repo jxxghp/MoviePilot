@@ -4,12 +4,9 @@ MFA (Multi-Factor Authentication) API 端点
 """
 
 import json
-from datetime import timedelta
 from typing import Any, Annotated, Optional
 
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from fastapi import Depends, HTTPException, Body, Request, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.mcp import BaseModel as _SchemaBaseModel
 from app.schemas.mcp import JsonData as _SchemaJsonData
@@ -21,13 +18,24 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.application.security import access as security
-from app.runtime.config import settings
-from app.db import get_async_db
-from app.db.models.passkey import PassKey
-from app.db.models.user import User
-from app.db.oper.systemconfig import SystemConfigOper
-from app.api.deps import get_current_active_user, get_current_active_user_async
+from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
+from app.application.security.token import verify_password
+from app.application.security.auth import get_configured_auth_service
+from app.application.security.user import UserService
+from app.application.security.user import (
+    get_configured_user_id_lookup,
+    get_configured_user_name_lookup,
+)
+from app.application.security.passkeys import (
+    PasskeyService,
+)
+from app.api.principal import ApiPrincipal
+from app.api.deps import (
+    get_current_active_user,
+    get_current_active_user_async,
+    get_user_service,
+    get_passkey_service,
+)
 from app.application.security.passkey import (
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,
@@ -35,7 +43,6 @@ from app.application.security.passkey import (
     PasskeyChallengeStore,
 )
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
 from app.application.security.otp import OtpUtils
 
 router = ResponseAPIRouter()
@@ -43,7 +50,7 @@ router = ResponseAPIRouter()
 # ==================== 辅助函数 ====================
 
 
-def _build_credential_list(passkeys: list[PassKey]) -> list[dict[str, Any]]:
+def _build_credential_list(passkeys: list[Any]) -> list[dict[str, Any]]:
     """
     构建凭证列表
 
@@ -75,7 +82,10 @@ def _extract_and_standardize_credential_id(credential: dict) -> str:
 
 
 def _verify_passkey_and_update(
-    credential: dict, challenge: str, passkey: PassKey
+    credential: dict,
+    challenge: str,
+    passkey: Any,
+    service: PasskeyService,
 ) -> tuple[bool, int]:
     """
     验证 PassKey 并更新使用时间和签名计数
@@ -93,7 +103,7 @@ def _verify_passkey_and_update(
     )
 
     if success:
-        passkey.update_last_used(db=None, sign_count=new_sign_count)
+        service.update_last_used(passkey, new_sign_count)
 
     return success, new_sign_count
 
@@ -129,11 +139,14 @@ class PassKeyDeleteRequest(_SchemaBaseModel):
     summary="判断用户是否开启二次验证",
     response_model=_SchemaResponse[_SchemaMfaStatusData],
 )
-async def mfa_status(username: str, db: AsyncSession = Depends(get_async_db)) -> Any:
+async def mfa_status(
+    username: str,
+    service: UserService = Depends(get_user_service),
+) -> Any:
     """
     检查指定用户是否启用了二次验证
     """
-    user: User = await User.async_get_by_name(db, username)
+    user = await service.get_by_name(username)
     if not user:
         return _SchemaResponse(success=False, message="用户不存在")
 
@@ -152,7 +165,7 @@ async def mfa_status(username: str, db: AsyncSession = Depends(get_async_db)) ->
     response_model=_SchemaResponse[_SchemaOtpGenerateData],
 )
 def otp_generate(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
 ) -> Any:
     """生成 OTP 密钥及对应的 URI"""
     secret, uri = OtpUtils.generate_secret_key(current_user.name)
@@ -162,14 +175,16 @@ def otp_generate(
 @router.post("/otp/verify", summary="绑定并验证 OTP", response_model=_SchemaResponse[None])
 async def otp_verify(
     data: OtpVerifyRequest,
-    db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_active_user_async),
+    service: UserService = Depends(get_user_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """验证用户输入的 OTP 码，验证通过后正式开启 OTP 验证"""
     if not OtpUtils.is_legal(data.uri, data.otpPassword):
         return _SchemaResponse(success=False, message="验证码错误")
-    await current_user.async_update_otp_by_name(
-        db, current_user.name, True, OtpUtils.get_secret(data.uri)
+    await service.update_otp(
+        current_user.name,
+        True,
+        OtpUtils.get_secret(data.uri),
     )
     return _SchemaResponse(success=True)
 
@@ -181,14 +196,14 @@ async def otp_verify(
 )
 async def otp_disable(
     data: OtpDisableRequest,
-    db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_active_user_async),
+    service: UserService = Depends(get_user_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """关闭当前用户的 OTP 验证功能"""
     # 验证密码
-    if not security.verify_password(data.password, str(current_user.hashed_password)):
+    if not verify_password(data.password, str(current_user.hashed_password)):
         return _SchemaResponse(success=False, message="密码错误")
-    await current_user.async_update_otp_by_name(db, current_user.name, False, "")
+    await service.update_otp(current_user.name, False, "")
     return _SchemaResponse(success=True)
 
 
@@ -228,12 +243,13 @@ class PassKeyAuthenticationFinish(_SchemaBaseModel):
     response_model=_SchemaResponse[_SchemaPasskeyStartData],
 )
 def passkey_register_start(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """开始注册 PassKey - 生成注册选项"""
     try:
         # 获取用户已有的PassKey
-        existing_passkeys = PassKey.get_by_user_id(db=None, user_id=current_user.id)
+        existing_passkeys = service.list_by_user_id(current_user.id)
         existing_credentials = (
             _build_credential_list(existing_passkeys) if existing_passkeys else None
         )
@@ -272,7 +288,8 @@ def passkey_register_start(
 )
 def passkey_register_finish(
     passkey_req: PassKeyRegistrationFinish,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """完成注册 PassKey - 验证并保存凭证"""
     try:
@@ -303,16 +320,15 @@ def passkey_register_finish(
             transports = ",".join(passkey_req.credential["response"]["transports"])
 
         # 保存到数据库
-        passkey = PassKey(
-            user_id=current_user.id,
-            credential_id=credential_id,
-            public_key=public_key,
-            sign_count=sign_count,
-            name=passkey_req.name or "通行密钥",
-            aaguid=aaguid,
-            transports=transports,
-        )
-        passkey.create()
+        service.create({
+            "user_id": current_user.id,
+            "credential_id": credential_id,
+            "public_key": public_key,
+            "sign_count": sign_count,
+            "name": passkey_req.name or "通行密钥",
+            "aaguid": aaguid,
+            "transports": transports,
+        })
 
         logger.info(f"用户 {current_user.name} 成功注册PassKey: {passkey_req.name}")
 
@@ -339,6 +355,7 @@ def passkey_register_finish(
 )
 def passkey_authenticate_start(
     passkey_req: PassKeyAuthenticationStart = Body(...),
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """开始 PassKey 认证 - 生成认证选项"""
     try:
@@ -347,9 +364,9 @@ def passkey_authenticate_start(
 
         # 如果指定了用户名，只允许该用户的PassKey
         if passkey_req.username:
-            user = User.get_by_name(db=None, name=passkey_req.username)
+            user = get_configured_user_name_lookup()(passkey_req.username)
             existing_passkeys = (
-                PassKey.get_by_user_id(db=None, user_id=user.id) if user else None
+                service.list_by_user_id(user.id) if user else None
             )
 
             if not user or not existing_passkeys:
@@ -387,7 +404,10 @@ def passkey_authenticate_start(
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
 def passkey_authenticate_finish(
-    request: Request, response: Response, passkey_req: PassKeyAuthenticationFinish
+    request: Request,
+    response: Response,
+    passkey_req: PassKeyAuthenticationFinish,
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """完成 PassKey 认证 - 验证凭证并返回 token"""
     try:
@@ -408,8 +428,8 @@ def passkey_authenticate_finish(
             raise HTTPException(status_code=401, detail="认证失败")
 
         # 查找PassKey并获取用户
-        passkey = PassKey.get_by_credential_id(db=None, credential_id=credential_id)
-        user = User.get_by_id(db=None, user_id=passkey.user_id) if passkey else None
+        passkey = service.get_by_credential_id(credential_id)
+        user = get_configured_user_id_lookup()(passkey.user_id) if passkey else None
         if not passkey or not user or not user.is_active:
             raise HTTPException(status_code=401, detail="认证失败")
         if challenge_state.user_id is not None and challenge_state.user_id != user.id:
@@ -420,6 +440,7 @@ def passkey_authenticate_finish(
             credential=passkey_req.credential,
             challenge=challenge_state.challenge,
             passkey=passkey,
+            service=service,
         )
 
         if not success:
@@ -428,42 +449,19 @@ def passkey_authenticate_finish(
         logger.info(f"用户 {user.name} 通过PassKey认证成功")
 
         # 生成token
-        level = SitesHelper().auth_level
-        show_wizard = (
-            not SystemConfigOper().get(SystemConfigKey.SetupWizardState)
-            and not settings.ADVANCED_MODE
-        )
-
-        access_token = security.create_access_token(
-            userid=user.id,
-            username=user.name,
-            super_user=user.is_superuser,
-            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-            level=level,
-        )
-        security.set_or_refresh_resource_token_cookie(
+        token = get_configured_auth_service().build_token_response(user)
+        set_or_refresh_resource_token_cookie(
             request,
             response,
             _SchemaTokenPayload(
                 sub=user.id,
                 username=user.name,
                 super_user=user.is_superuser,
-                level=level,
+                level=token.level,
                 purpose="authentication",
             ),
         )
-
-        return _SchemaToken(
-            access_token=access_token,
-            token_type="bearer",
-            super_user=user.is_superuser,
-            user_id=user.id,
-            user_name=user.name,
-            avatar=user.avatar,
-            level=level,
-            permissions=user.permissions or {},
-            wizard=show_wizard,
-        )
+        return token
     except HTTPException:
         raise
     except Exception as e:
@@ -477,11 +475,12 @@ def passkey_authenticate_finish(
     response_model=_SchemaResponse[list[_SchemaPasskeyInfo]],
 )
 def passkey_list(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """获取当前用户的所有 PassKey"""
     try:
-        passkeys = PassKey.get_by_user_id(db=None, user_id=current_user.id)
+        passkeys = service.list_by_user_id(current_user.id)
 
         key_list = (
             [
@@ -514,19 +513,18 @@ def passkey_list(
 )
 async def passkey_delete(
     data: PassKeyDeleteRequest,
-    current_user: User = Depends(get_current_active_user_async),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
     """删除指定的 PassKey"""
     try:
         # 验证密码
-        if not security.verify_password(
+        if not verify_password(
             data.password, str(current_user.hashed_password)
         ):
             return _SchemaResponse(success=False, message="密码错误")
 
-        success = PassKey.delete_by_id(
-            db=None, passkey_id=data.passkey_id, user_id=current_user.id
-        )
+        success = service.delete_by_id(data.passkey_id, current_user.id)
 
         if success:
             logger.info(f"用户 {current_user.name} 删除了PassKey: {data.passkey_id}")

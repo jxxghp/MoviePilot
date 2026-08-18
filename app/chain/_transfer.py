@@ -22,11 +22,11 @@ from app.application.transfer import TransferTask, job_lock
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
-from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
-from app.db.models.transferhistory import TransferHistory
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.transferhistory import TransferHistoryOper
+from app.application.chain.data import (
+    DownloadHistoryPortProxy as DownloadHistoryOper,
+    TransferHistoryPortProxy as TransferHistoryOper,
+)
+from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -47,6 +47,10 @@ from app.schemas.types import (
     ReplyMode,
     SystemConfigKey,
 )
+
+DownloadFiles = Any
+DownloadHistory = Any
+TransferHistory = Any
 
 # 字幕文件常见的语言/默认/强制标记，整理同名字幕时只允许剥离这些字幕专属尾缀。
 SUBTITLE_STEM_TAGS = {
@@ -725,7 +729,7 @@ class EpisodeFormatMixin:
         """
         获取启用的集数定位规则
         """
-        rule_items = SystemConfigOper().get(SystemConfigKey.EpisodeFormatRuleTable) or []
+        rule_items = get_configured_system_config().get(SystemConfigKey.EpisodeFormatRuleTable) or []
         rules: List[_SchemaEpisodeFormatRule] = []
         for item in rule_items:
             if not isinstance(item, dict):

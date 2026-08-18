@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import urljoin
 
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.agent import (
     AgentMcpServerConfig,

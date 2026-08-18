@@ -7,8 +7,29 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.endpoints.subscribe import create_subscribe
+from app.application.subscription.mutation import SubscriptionMutationService
+from app.application.subscription.query import SubscriptionQueryService
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.schemas.subscribe import Subscribe
 from app.schemas.types import EventType, MediaSource, MediaType
+
+
+def _subscription_query(db: object = None) -> SubscriptionQueryService:
+    """构造使用测试数据库对象的订阅查询服务。"""
+    return SubscriptionQueryService(
+        repository=SubscribeOper(db),
+        async_repository=SubscribeOper(db),
+        history_repository=SubscribeHistoryOper(db),
+    )
+
+
+def _subscription_mutation(db: object = None) -> SubscriptionMutationService:
+    """构造使用测试数据库对象的订阅写服务。"""
+    return SubscriptionMutationService(
+        repository=SubscribeOper(db),
+        history_repository=SubscribeHistoryOper(db),
+    )
 
 
 class SubscribeEndpointTest(TestCase):
@@ -28,18 +49,20 @@ class SubscribeEndpointTest(TestCase):
         all_subscribes = [own, other, legacy]
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list",
+            "app.db.oper.subscribe.Subscribe.async_list",
             new=AsyncMock(return_value=all_subscribes),
         ), patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_username",
+            "app.db.oper.subscribe.Subscribe.async_list_by_username",
             new=AsyncMock(return_value=[own]),
         ):
-            api_token_result = asyncio.run(list_subscribes(_="api-token"))
+            api_token_result = asyncio.run(
+                list_subscribes(query=_subscription_query(object()), _="api-token")
+            )
             self.assertEqual([sub.id for sub in api_token_result], [1, 2, 3])
 
             regular_result = asyncio.run(
                 read_subscribes(
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -47,7 +70,7 @@ class SubscribeEndpointTest(TestCase):
 
             superuser_result = asyncio.run(
                 read_subscribes(
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
@@ -68,13 +91,13 @@ class SubscribeEndpointTest(TestCase):
 
         for subscribe, expected_id in cases:
             with self.subTest(subscribe_id=subscribe.id), patch(
-                "app.api.endpoints.subscribe.Subscribe.async_get",
+                "app.db.oper.subscribe.Subscribe.async_get",
                 new=AsyncMock(return_value=subscribe),
             ):
                 result = asyncio.run(
                     read_subscribe(
                         subscribe_id=subscribe.id,
-                        db=object(),
+                        query=_subscription_query(object()),
                         current_user=current_user,
                     )
                 )
@@ -130,7 +153,7 @@ class SubscribeEndpointTest(TestCase):
             ),
         ]:
             with self.subTest(subscribe_id=subscribe.id), patch(
-                "app.api.endpoints.subscribe.Subscribe.async_get",
+                "app.db.oper.subscribe.SubscribeOper.async_get",
                 new=AsyncMock(return_value=subscribe),
             ), patch(
                 "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -144,7 +167,7 @@ class SubscribeEndpointTest(TestCase):
                             total_episode=8,
                             lack_episode=2,
                         ),
-                        db=object(),
+                        mutation=_subscription_mutation(object()),
                         current_user=manage_user,
                     )
                 )
@@ -173,7 +196,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -187,7 +210,7 @@ class SubscribeEndpointTest(TestCase):
                         total_episode=8,
                         lack_episode=2,
                     ),
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -222,7 +245,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -231,7 +254,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=subscribe_in,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -262,7 +285,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -271,7 +294,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=Subscribe(id=24, name="新标题"),
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -299,7 +322,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -313,7 +336,7 @@ class SubscribeEndpointTest(TestCase):
                         media_source="",
                         media_id="",
                     ),
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -355,7 +378,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -364,7 +387,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=subscribe_in,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -386,7 +409,7 @@ class SubscribeEndpointTest(TestCase):
             _EndpointSubscribe(id=6, username=None, state="R", name="旧订阅"),
         ]:
             with self.subTest(subscribe_id=subscribe.id), patch(
-                "app.api.endpoints.subscribe.Subscribe.async_get",
+                "app.db.oper.subscribe.SubscribeOper.async_get",
                 new=AsyncMock(side_effect=[subscribe, subscribe]),
             ), patch(
                 "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -396,7 +419,7 @@ class SubscribeEndpointTest(TestCase):
                     update_subscribe_status(
                         subid=subscribe.id,
                         state="S",
-                        db=object(),
+                        mutation=_subscription_mutation(object()),
                         current_user=current_user,
                     )
                 )
@@ -415,7 +438,7 @@ class SubscribeEndpointTest(TestCase):
         other = _EndpointSubscribe(id=7, username="bob", name="他人的订阅")
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(return_value=other),
         ), patch(
             "app.api.endpoints.subscribe.MoviePilotServerHelper.async_sub_share",
@@ -429,7 +452,7 @@ class SubscribeEndpointTest(TestCase):
                         share_comment="",
                         share_user="alice",
                     ),
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -452,7 +475,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
+            "app.db.oper.subscribe.SubscribeOper.async_list_by_media_identity",
             new=AsyncMock(return_value=[other, own]),
         ):
             result = asyncio.run(
@@ -460,7 +483,7 @@ class SubscribeEndpointTest(TestCase):
                     media_id="123",
                     media_source=MediaSource.TMDB,
                     season=1,
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -489,7 +512,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
+            "app.db.oper.subscribe.SubscribeOper.async_list_by_media_identity",
             new=AsyncMock(return_value=[recording, album]),
         ) as list_by_identity:
             result = asyncio.run(
@@ -497,7 +520,7 @@ class SubscribeEndpointTest(TestCase):
                     media_id="shared-id",
                     media_source=MediaSource.MusicBrainz,
                     music_type="album",
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -510,10 +533,10 @@ class SubscribeEndpointTest(TestCase):
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_media_identity",
+            "app.db.oper.subscribe.SubscribeOper.async_list_by_media_identity",
             new=AsyncMock(return_value=[]),
         ), patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_title",
+            "app.db.oper.subscribe.SubscribeOper.async_list_by_title",
             new=AsyncMock(),
         ) as title_lookup:
             result = asyncio.run(
@@ -522,7 +545,7 @@ class SubscribeEndpointTest(TestCase):
                     media_source=MediaSource.MusicBrainz,
                     title="周杰伦 - 晴天",
                     music_type="recording",
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -612,14 +635,14 @@ class SubscribeEndpointTest(TestCase):
         other = _EndpointSubscribe(id=19, username="bob", name="他人的订阅")
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.get",
+            "app.db.oper.subscribe.SubscribeOper.get",
             return_value=other,
         ), patch(
             "app.api.endpoints.subscribe.SubscribeChain"
         ) as subscribe_chain:
             result = subscribe_files(
                 subscribe_id=19,
-                db=object(),
+                mutation=_subscription_mutation(object()),
                 current_user=_EndpointUser(name="alice", is_superuser=False),
             )
 
@@ -633,13 +656,13 @@ class SubscribeEndpointTest(TestCase):
         from app.api.endpoints.subscribe import user_subscribes
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_list_by_username",
+            "app.db.oper.subscribe.SubscribeOper.async_list_by_username",
             new=AsyncMock(return_value=[_EndpointSubscribe(id=20, username="bob")]),
         ) as list_by_username:
             result = asyncio.run(
                 user_subscribes(
                     username="bob",
-                    db=object(),
+                    query=_subscription_query(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -710,10 +733,10 @@ class SubscribeEndpointTest(TestCase):
         global_query = AsyncMock(return_value=[other, legacy])
 
         with patch(
-            "app.api.endpoints.subscribe.SubscribeHistory.async_list_by_type",
+            "app.db.oper.subscribehistory.SubscribeHistoryOper.async_list_by_type",
             new=global_query,
         ), patch(
-            "app.api.endpoints.subscribe.SubscribeHistory.async_list_by_type_and_username",
+            "app.db.oper.subscribehistory.SubscribeHistoryOper.async_list_by_type_and_username",
             new=owner_query,
             create=True,
         ):
@@ -722,17 +745,16 @@ class SubscribeEndpointTest(TestCase):
                     mtype=MediaType.MOVIE.value,
                     page=1,
                     count=2,
-                    db=db,
+                    query=_subscription_query(db),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
             self.assertEqual([history.id for history in regular_result], [8])
             owner_query.assert_awaited_once_with(
-                db,
-                mtype=MediaType.MOVIE.value,
-                username="alice",
-                page=1,
-                count=2,
+                MediaType.MOVIE.value,
+                "alice",
+                1,
+                2,
             )
             global_query.assert_not_awaited()
 
@@ -745,16 +767,15 @@ class SubscribeEndpointTest(TestCase):
                     mtype=MediaType.MOVIE.value,
                     page=1,
                     count=3,
-                    db=db,
+                    query=_subscription_query(db),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
             self.assertEqual([history.id for history in superuser_result], [8, 9, 10])
             global_query.assert_awaited_once_with(
-                db,
-                mtype=MediaType.MOVIE.value,
-                page=1,
-                count=3,
+                MediaType.MOVIE.value,
+                1,
+                3,
             )
             owner_query.assert_not_awaited()
 
@@ -772,16 +793,16 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.SubscribeHistory.async_get",
+            "app.db.oper.subscribehistory.SubscribeHistoryOper.async_get",
             new=AsyncMock(return_value=other),
         ), patch(
-            "app.api.endpoints.subscribe.SubscribeHistory.async_delete",
+            "app.db.oper.subscribehistory.SubscribeHistoryOper.async_delete",
             new=AsyncMock(),
         ) as async_delete:
             response = asyncio.run(
                 delete_subscribe_history(
                     history_id=11,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="alice", is_superuser=False),
                 )
             )
@@ -970,7 +991,7 @@ class SubscribeEndpointTest(TestCase):
         subscribe = _EndpointSubscribe(id=5, state="R", name="测试订阅")
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -980,7 +1001,7 @@ class SubscribeEndpointTest(TestCase):
                 update_subscribe_status(
                     subid=5,
                     state="S",
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
@@ -1014,7 +1035,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -1023,7 +1044,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 reset_subscribes(
                     subid=6,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
@@ -1069,7 +1090,7 @@ class SubscribeEndpointTest(TestCase):
         subscribe_in = Subscribe(id=7, name="新标题", total_episode=8, lack_episode=2)
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -1078,7 +1099,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=subscribe_in,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
@@ -1130,7 +1151,7 @@ class SubscribeEndpointTest(TestCase):
         )
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -1139,7 +1160,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=subscribe_in,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )
@@ -1175,7 +1196,7 @@ class SubscribeEndpointTest(TestCase):
         subscribe_in = Subscribe(id=9, name="测试剧集", total_episode=12, lack_episode=0)
 
         with patch(
-            "app.api.endpoints.subscribe.Subscribe.async_get",
+            "app.db.oper.subscribe.SubscribeOper.async_get",
             new=AsyncMock(side_effect=[subscribe, subscribe]),
         ), patch(
             "app.api.endpoints.subscribe.eventmanager.async_send_event",
@@ -1184,7 +1205,7 @@ class SubscribeEndpointTest(TestCase):
             response = asyncio.run(
                 update_subscribe(
                     subscribe_in=subscribe_in,
-                    db=object(),
+                    mutation=_subscription_mutation(object()),
                     current_user=_EndpointUser(name="admin", is_superuser=True),
                 )
             )

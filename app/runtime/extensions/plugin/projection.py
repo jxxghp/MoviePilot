@@ -1,9 +1,15 @@
 """插件公开能力投影。"""
 
+import inspect
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
-from app.runtime.extensions.plugin.contracts import supports_plugin_hook
+from app.runtime.extensions.plugin.contracts import (
+    PluginDashboardError,
+    PluginNotFoundError,
+    supports_plugin_hook,
+)
 from app.runtime.log import logger as default_logger
+from app.schemas.plugin import PluginDashboard
 
 
 class PluginProjection:
@@ -260,3 +266,46 @@ class PluginProjection:
                     f"获取插件[{plugin_id}]仪表盘元数据出错：{str(error)}"
                 )
         return metadata
+
+    def dashboard(
+        self,
+        plugin_id: str,
+        key: str,
+        user_agent: Optional[str] = None,
+    ) -> Optional[PluginDashboard]:
+        """调用插件仪表板钩子并返回稳定投影，不依赖 HTTP 异常。"""
+        plugin = self._running_plugins.get(plugin_id)
+        if not plugin:
+            raise PluginNotFoundError(f"插件 {plugin_id} 不存在或未加载")
+        try:
+            render_mode, _ = plugin.get_render_mode()
+            method = plugin.get_dashboard
+            count = len(inspect.signature(method).parameters)
+            if count > 1:
+                dashboard = method(key=key, user_agent=user_agent)
+            elif count > 0:
+                dashboard = method(user_agent=user_agent)
+            else:
+                dashboard = method()
+        except Exception as error:  # noqa: BLE001
+            self._logger.error(f"插件 {plugin_id} 调用方法 get_dashboard 出错: {error}")
+            raise PluginDashboardError(
+                f"插件 {plugin_id} 调用方法 get_dashboard 出错: {error}"
+            ) from error
+        if dashboard is None:
+            return None
+        if not isinstance(dashboard, (tuple, list)) or len(dashboard) != 3:
+            self._logger.error(f"插件 {plugin_id} 返回的仪表盘数据格式错误")
+            raise PluginDashboardError(
+                f"插件 {plugin_id} 返回的仪表盘数据格式错误"
+            )
+        cols, attrs, elements = dashboard
+        return PluginDashboard(
+            id=plugin_id,
+            name=plugin.plugin_name,
+            key=key,
+            render_mode=render_mode,
+            cols=cols or {},
+            attrs=attrs or {},
+            elements=elements,
+        )

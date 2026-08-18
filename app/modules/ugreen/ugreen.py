@@ -12,7 +12,7 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules.ugreen.api import Api

@@ -1,4 +1,4 @@
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.schemas.system import MediaServerConf
 from app.schemas.types import SystemConfigKey
 

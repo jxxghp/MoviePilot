@@ -44,9 +44,15 @@ def _series(tmdb_id=None, seasons=None):
     )
 
 
-def _run_add(tv):
+def _run_add(tv, subscriptions):
     """直接调用新增剧集订阅处理函数。"""
-    return asyncio.run(arr_add_series(tv=tv, _="api-token", db=object()))
+    return asyncio.run(
+        arr_add_series(
+            tv=tv,
+            _="api-token",
+            subscriptions=subscriptions,
+        )
+    )
 
 
 def _patch_chains(mediainfo=None, exists=None, add_result=(123, "")):
@@ -60,26 +66,25 @@ def _patch_chains(mediainfo=None, exists=None, add_result=(123, "")):
     media_chain.recognize_by_meta.return_value = mediainfo
     subscribe_chain = MagicMock()
     subscribe_chain.async_add = AsyncMock(return_value=add_result)
+    subscriptions = MagicMock()
+    subscriptions.exists = AsyncMock(return_value=bool(exists))
     return patch(
         "app.api.servarr.MediaChain",
         return_value=media_chain,
     ), patch(
         "app.api.servarr.SubscribeChain",
         return_value=subscribe_chain,
-    ), patch(
-        "app.api.servarr.Subscribe.async_exists",
-        new=AsyncMock(return_value=exists),
-    ), subscribe_chain
+    ), subscriptions, subscribe_chain
 
 
 def test_add_series_without_tmdbid_resolves_identity_via_tvdbid():
     """Seerr 请求体不携带 tmdbId 时，应按 tvdbId 补全媒体身份并创建订阅。"""
     tv = _series(seasons=[SonarrSeason(seasonNumber=1, monitored=True)])
-    media_patch, chain_patch, exists_patch, subscribe_chain = _patch_chains(
+    media_patch, chain_patch, subscriptions, subscribe_chain = _patch_chains(
         mediainfo=_fake_mediainfo()
     )
-    with media_patch, chain_patch, exists_patch:
-        result = _run_add(tv)
+    with media_patch, chain_patch:
+        result = _run_add(tv, subscriptions)
 
     assert result.id == 123
     subscribe_chain.async_add.assert_awaited_once_with(
@@ -96,12 +101,12 @@ def test_add_series_without_tmdbid_resolves_identity_via_tvdbid():
 def test_add_series_with_empty_seasons_falls_back_to_all_seasons():
     """请求体季列表为空时不应静默成功，应兜底订阅已识别的全部季。"""
     tv = _series()
-    media_patch, chain_patch, exists_patch, subscribe_chain = _patch_chains(
+    media_patch, chain_patch, subscriptions, subscribe_chain = _patch_chains(
         mediainfo=_fake_mediainfo(seasons={1: [1, 2, 3], 2: [1]})
     )
     subscribe_chain.async_add = AsyncMock(side_effect=[(100, ""), (101, "")])
-    with media_patch, chain_patch, exists_patch:
-        result = _run_add(tv)
+    with media_patch, chain_patch:
+        result = _run_add(tv, subscriptions)
 
     assert result.id == 101
     assert subscribe_chain.async_add.await_count == 2
@@ -115,11 +120,11 @@ def test_add_series_already_subscribed_returns_existing():
         tmdb_id=_TMDB_ID,
         seasons=[SonarrSeason(seasonNumber=1, monitored=True)],
     )
-    media_patch, chain_patch, exists_patch, subscribe_chain = _patch_chains(
+    media_patch, chain_patch, subscriptions, subscribe_chain = _patch_chains(
         exists=SimpleNamespace(id=9)
     )
-    with media_patch, chain_patch, exists_patch:
-        result = _run_add(tv)
+    with media_patch, chain_patch:
+        result = _run_add(tv, subscriptions)
 
     assert result.id == 1
     subscribe_chain.async_add.assert_not_awaited()
@@ -128,10 +133,10 @@ def test_add_series_already_subscribed_returns_existing():
 def test_add_series_identity_resolution_failure_returns_500():
     """媒体身份补全失败时返回 500，避免 Seerr 误判请求已成功。"""
     tv = _series()
-    media_patch, chain_patch, exists_patch, _ = _patch_chains(mediainfo=None)
-    with media_patch, chain_patch, exists_patch:
+    media_patch, chain_patch, subscriptions, _ = _patch_chains(mediainfo=None)
+    with media_patch, chain_patch:
         with pytest.raises(HTTPException) as excinfo:
-            _run_add(tv)
+            _run_add(tv, subscriptions)
 
     assert excinfo.value.status_code == 500
 
@@ -148,17 +153,20 @@ def test_series_lookup_falls_back_to_tmdb_seasons():
         seasons={1: [1, 2, 3], 2: [1]}
     )
     media_chain.media_exists.return_value = False
+    subscriptions = MagicMock()
+    subscriptions.list_by_media_identity_sync.return_value = []
     with patch(
         "app.api.servarr.TvdbChain",
         return_value=MagicMock(get_tvdbid_by_name=MagicMock(return_value=[_TVDB_ID])),
     ), patch(
         "app.api.servarr.MediaChain",
         return_value=media_chain,
-    ), patch(
-        "app.api.servarr.Subscribe.list_by_media_identity",
-        return_value=[],
     ):
-        result = arr_series_lookup(term=f"tvdb:{_TVDB_ID}", _="api-token", db=object())
+        result = arr_series_lookup(
+            term=f"tvdb:{_TVDB_ID}",
+            _="api-token",
+            subscriptions=subscriptions,
+        )
 
     assert len(result) == 1
     assert [season.seasonNumber for season in result[0].seasons] == [1, 2]

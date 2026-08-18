@@ -21,6 +21,8 @@ from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions import module_manager as module_manager_extension
 from app.runtime.extensions.module_manager import ModuleManager
+
+from app.runtime.extensions.service_config import configure_service_config_reader
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -249,6 +251,9 @@ def module_manager_harness(
         return config_values.get(key_value)
 
     monkeypatch.setattr(SystemConfigOper, "get", get_config)
+    previous_config_reader = configure_service_config_reader(
+        lambda key: SystemConfigOper().get(key)
+    )
 
     singleton_key = (ModuleManager, (), frozenset())
     previous_manager = Singleton._instances.pop(singleton_key, None)
@@ -283,6 +288,7 @@ def module_manager_harness(
             subscribers.pop(EventType.ConfigChanged, None)
         for module_name in ("fixture_sample_module", "fixture_other_module"):
             sys.modules.pop(module_name, None)
+        configure_service_config_reader(previous_config_reader)
         restored = True
 
     try:
@@ -789,6 +795,9 @@ settings.ACOUSTID_API_KEY = None
 settings.FANART_API_KEY = None
 
 from app.runtime.extensions.module_manager import ModuleManager
+from app.application.module import configure_module_runtime
+
+configure_module_runtime(lambda: ModuleManager())
 
 manager = ModuleManager()
 assert len(manager.list_specs()) == 37

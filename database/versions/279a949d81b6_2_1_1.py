@@ -6,7 +6,8 @@ Create Date: 2025-02-14 19:02:24.989349
 
 """
 
-from app.chain.torrents import TorrentsChain
+from app.adapters.cache.backends import configure_platform_cache
+from app.application.torrent import clear_torrent_cache
 
 # revision identifiers, used by Alembic.
 revision = '279a949d81b6'
@@ -16,8 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 清理一次缓存
-    TorrentsChain().clear_torrents()
+    # 迁移执行时生命周期尚未装配，直接通过缓存端口清理一次缓存。
+    configure_platform_cache()
+    clear_torrent_cache()
 
 
 def downgrade() -> None:

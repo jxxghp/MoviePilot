@@ -194,10 +194,10 @@ def test_movie_collection_conflict_only_drops_automatic_media(
     monkeypatch.setattr("app.chain.transfer.DownloadHistoryOper", lambda: history_oper)
     monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: history_oper)
     monkeypatch.setattr(
-        "app.chain.transfer.SystemConfigOper",
+        "app.chain.transfer.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.chain._transfer.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr("app.chain.transfer.StorageChain", lambda: SimpleNamespace())
     monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace())
     monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)

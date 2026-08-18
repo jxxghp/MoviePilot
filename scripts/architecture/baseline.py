@@ -164,18 +164,39 @@ def collect_boundary_edges(
     """收集治理文档指定的当前越层边，供后续阶段逐项收缩。"""
     boundaries: dict[str, list[str]] = {
         "adapters_to_db": [],
+        "agent_to_db": [],
+        "api_to_db": [],
         "api_endpoints_to_db_models": [],
         "api_endpoints_to_sessions": [],
         "application_to_agent": [],
+        "application_to_db": [],
+        "chain_to_db": [],
+        "modules_to_db": [],
+        "monitor_to_db": [],
         "runtime_to_db": [],
+        "workflow_to_db": [],
     }
     for source, dependencies in graph.items():
         for target in dependencies:
             edge = f"{source} -> {target}"
             if source.startswith("app.adapters") and target.startswith("app.db"):
                 boundaries["adapters_to_db"].append(edge)
+            if source.startswith("app.agent") and target.startswith("app.db"):
+                boundaries["agent_to_db"].append(edge)
+            if source.startswith("app.api") and target.startswith("app.db"):
+                boundaries["api_to_db"].append(edge)
+            if source.startswith("app.application") and target.startswith("app.db"):
+                boundaries["application_to_db"].append(edge)
+            if source.startswith("app.chain") and target.startswith("app.db"):
+                boundaries["chain_to_db"].append(edge)
+            if source.startswith("app.modules") and target.startswith("app.db"):
+                boundaries["modules_to_db"].append(edge)
+            if source.startswith("app.monitor") and target.startswith("app.db"):
+                boundaries["monitor_to_db"].append(edge)
             if source.startswith("app.runtime") and target.startswith("app.db"):
                 boundaries["runtime_to_db"].append(edge)
+            if source.startswith("app.workflow") and target.startswith("app.db"):
+                boundaries["workflow_to_db"].append(edge)
             if source.startswith("app.api.endpoints") and target.startswith(
                 "app.db.models"
             ):

@@ -15,7 +15,7 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.config import settings
-from app.db.models import User
+from app.api.principal import ApiPrincipal
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_superuser,
@@ -31,7 +31,7 @@ router = ResponseAPIRouter()
     "/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]]
 )
 def manage(
-    request: _SchemaManageRequest, _: User = Depends(get_current_active_superuser)
+    request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_active_superuser)
 ) -> Any:
     """
     网盘存储统一管理入口
@@ -56,7 +56,7 @@ def list_files(
     fileitem: _SchemaFileItem,
     sort: Optional[str] = "updated_at",
     keyword: Optional[str] = None,
-    _: User = Depends(get_current_active_manage_user),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     查询当前目录下所有目录和文件
@@ -82,7 +82,7 @@ def list_files(
 def mkdir(
     fileitem: _SchemaFileItem,
     name: str,
-    _: User = Depends(get_current_active_manage_user),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     创建目录
@@ -100,7 +100,7 @@ def mkdir(
 
 @router.post("/delete", summary="删除文件或目录", response_model=_SchemaResponse[None])
 def delete(
-    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     删除文件或目录
@@ -131,7 +131,7 @@ def delete(
     },
 )
 def download(
-    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     下载文件或目录
@@ -160,7 +160,7 @@ def download(
     },
 )
 def image(
-    fileitem: _SchemaFileItem, _: User = Depends(get_current_active_manage_user)
+    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     下载文件或目录
@@ -179,7 +179,7 @@ def rename(
     fileitem: _SchemaFileItem,
     new_name: str,
     recursive: Optional[bool] = False,
-    _: User = Depends(get_current_active_manage_user),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     重命名文件或目录

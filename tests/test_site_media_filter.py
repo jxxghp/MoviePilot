@@ -52,14 +52,18 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
     ]
     list_sites = AsyncMock(return_value=sites)
     get_indexers = AsyncMock(return_value=indexers)
-    monkeypatch.setattr(site_endpoint.Site, "async_list_order_by_pri", list_sites)
     monkeypatch.setattr(
         site_endpoint,
         "SitesHelper",
         lambda: SimpleNamespace(async_get_indexers=get_indexers),
     )
 
-    result = asyncio.run(site_endpoint.read_sites_by_media_type(media_type, db=AsyncMock()))
+    result = asyncio.run(
+        site_endpoint.read_sites_by_media_type(
+            media_type,
+            query=SimpleNamespace(list_ordered=list_sites),
+        )
+    )
 
     assert [site.id for site in result] == expected_ids
     list_sites.assert_awaited_once()
@@ -69,7 +73,12 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
 def test_read_sites_by_media_type_rejects_unknown_type():
     """未知媒体类型应返回明确的客户端参数错误。"""
     with pytest.raises(HTTPException) as error:
-        asyncio.run(site_endpoint.read_sites_by_media_type("podcast", db=AsyncMock()))
+        asyncio.run(
+            site_endpoint.read_sites_by_media_type(
+                "podcast",
+                query=SimpleNamespace(list_ordered=AsyncMock()),
+            )
+        )
 
     assert error.value.status_code == 400
     assert error.value.detail == "不支持的媒体类型"

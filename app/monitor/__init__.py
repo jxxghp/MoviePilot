@@ -1,15 +1,28 @@
-"""
-目录监控包。
+"""目录监控公开门面，具体对象按需解析。"""
 
-- watcher.py     本地目录监控线程（watchfiles）
-- syslimits.py   系统限制探测与监控模式决策
-- snapshot.py    远程快照存取与比对
-- dispatcher.py  监控事件到整理链的分发
-- poller.py      远程目录轮询监控
-- recovery.py    触碰挂载的恢复动作的可放弃执行单元（block 型故障隔离）
-- monitor.py     Monitor 门面：装配、生命周期与健康检查
-"""
-from app.monitor.watcher import DirectoryChangeEvent, LocalDirectoryWatcher
-from app.monitor.monitor import Monitor
+from importlib import import_module
+from typing import Any
+
+
+_EXPORT_MODULES = {
+    "DirectoryChangeEvent": "app.monitor.watcher",
+    "LocalDirectoryWatcher": "app.monitor.watcher",
+    "Monitor": "app.monitor.monitor",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """首次访问公开监控对象时只加载其所属实现模块。"""
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module 'app.monitor' has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """让惰性公开对象继续支持交互式发现。"""
+    return sorted(set(globals()) | set(_EXPORT_MODULES))
 
 __all__ = ["DirectoryChangeEvent", "LocalDirectoryWatcher", "Monitor"]

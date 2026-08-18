@@ -66,15 +66,17 @@ def test_registration_uses_server_challenge():
         name="test",
     )
     passkey = Mock()
+    service = SimpleNamespace(create=Mock(return_value=passkey))
 
     with patch.object(
         mfa_endpoint.PassKeyHelper,
         "verify_registration_response",
         return_value=("credential-id", b"public-key", 0, "aaguid"),
-    ) as verify, patch.object(mfa_endpoint, "PassKey", return_value=passkey):
+    ) as verify:
         result = mfa_endpoint.passkey_register_finish(
             passkey_req=request,
             current_user=SimpleNamespace(id=1, name="user"),
+            service=service,
         )
 
     assert result.success
@@ -82,7 +84,7 @@ def test_registration_uses_server_challenge():
         credential=request.credential,
         expected_challenge="server-challenge",
     )
-    passkey.create.assert_called_once_with()
+    service.create.assert_called_once()
 
 
 def test_authentication_transaction_rejects_other_user_credential():
@@ -98,18 +100,16 @@ def test_authentication_transaction_rejects_other_user_credential():
     passkey = SimpleNamespace(user_id=2)
     user = SimpleNamespace(id=2, is_active=True)
 
+    service = SimpleNamespace(get_by_credential_id=Mock(return_value=passkey))
+    lookup = Mock(return_value=user)
     with patch.object(
         mfa_endpoint,
         "_extract_and_standardize_credential_id",
         return_value="credential-id",
     ), patch.object(
-        mfa_endpoint.PassKey,
-        "get_by_credential_id",
-        return_value=passkey,
-    ), patch.object(
-        mfa_endpoint.User,
-        "get_by_id",
-        return_value=user,
+        mfa_endpoint,
+        "get_configured_user_name_lookup",
+        return_value=lookup,
     ), patch.object(
         mfa_endpoint,
         "_verify_passkey_and_update",
@@ -119,6 +119,7 @@ def test_authentication_transaction_rejects_other_user_credential():
                 request=_request(),
                 response=Response(),
                 passkey_req=request,
+                service=service,
             )
 
     assert exc_info.value.status_code == 401
@@ -145,48 +146,41 @@ def test_authentication_finish_token_cannot_be_replayed():
         permissions={},
     )
 
+    service = SimpleNamespace(get_by_credential_id=Mock(return_value=passkey))
+    lookup = Mock(return_value=user)
+    token_response = SimpleNamespace(access_token="access-token", level=1)
     with patch.object(
         mfa_endpoint,
         "_extract_and_standardize_credential_id",
         return_value="credential-id",
     ), patch.object(
-        mfa_endpoint.PassKey,
-        "get_by_credential_id",
-        return_value=passkey,
-    ), patch.object(
-        mfa_endpoint.User,
-        "get_by_id",
-        return_value=user,
+        mfa_endpoint,
+        "get_configured_user_id_lookup",
+        return_value=lookup,
     ), patch.object(
         mfa_endpoint,
         "_verify_passkey_and_update",
         return_value=(True, 0),
     ), patch.object(
         mfa_endpoint,
-        "SitesHelper",
-        return_value=SimpleNamespace(auth_level=1),
+        "get_configured_auth_service",
+        return_value=SimpleNamespace(build_token_response=Mock(return_value=token_response)),
     ), patch.object(
         mfa_endpoint,
-        "SystemConfigOper",
-        return_value=SimpleNamespace(get=lambda _: True),
-    ), patch.object(
-        mfa_endpoint.security,
-        "create_access_token",
-        return_value="access-token",
-    ), patch.object(
-        mfa_endpoint.security,
         "set_or_refresh_resource_token_cookie",
     ):
         result = mfa_endpoint.passkey_authenticate_finish(
             request=_request(),
             response=Response(),
             passkey_req=request,
+            service=service,
         )
         with pytest.raises(HTTPException) as replay_error:
             mfa_endpoint.passkey_authenticate_finish(
                 request=_request(),
                 response=Response(),
                 passkey_req=request,
+                service=service,
             )
 
     assert result.access_token == "access-token"

@@ -118,7 +118,7 @@ def test_query_installed_plugins_fills_missing_repo_url_from_market() -> None:
             return_value=[installed_plugin],
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.PluginManager",
+            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
             return_value=plugin_manager,
         ),
     ):
@@ -147,7 +147,7 @@ def test_query_plugin_config_returns_saved_config_and_default_model() -> None:
             return_value=_plugin_snapshot(),
         ),
         patch(
-            "app.agent.tools.impl.query_plugin_config.PluginManager",
+            "app.agent.tools.impl.query_plugin_config.get_plugin_manager",
             return_value=plugin_manager,
         ),
     ):
@@ -178,7 +178,7 @@ def test_update_plugin_config_merges_and_removes_keys_without_reloading() -> Non
             return_value=_plugin_snapshot(),
         ),
         patch(
-            "app.agent.tools.impl.update_plugin_config.PluginManager",
+            "app.agent.tools.impl.update_plugin_config.get_plugin_manager",
             return_value=plugin_manager,
         ),
     ):
@@ -275,7 +275,7 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
             return_value=config_oper,
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.PluginManager",
+            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
             return_value=plugin_manager,
         ),
         patch(

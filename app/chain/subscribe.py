@@ -33,11 +33,12 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.words import WordsMatcher
 from app.domain.metainfo import MetaInfo
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.models.subscribe import Subscribe
-from app.db.oper.site import SiteOper
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.chain.data import (
+    DownloadHistoryPortProxy as DownloadHistoryOper,
+    SitePortProxy as SiteOper,
+    SubscribePortProxy as SubscribeOper,
+)
+from app.application.configuration import get_configured_system_config
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscribe import add_subscribe, async_add_subscribe
@@ -55,6 +56,43 @@ from app.schemas.event import SubscribeCompletionCheckEventData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, SystemConfigKey, NotificationChannel, MessageType, EventType, ChainEventType, \
     ContentType
 from app.schemas.media import normalize_media_source, resolve_media_identity
+
+if hasattr(_SchemaSubscribe, "model_fields"):
+    Subscribe = _SchemaSubscribe
+else:
+    class Subscribe(_SchemaSubscribe):
+        """隔离测试或旧插件缺少完整订阅模型时使用的轻量快照。"""
+
+        def __init__(self, **kwargs):
+            """初始化兼容快照并补齐链路必需的运行字段。"""
+            super().__init__(**kwargs)
+            for field, default in {
+                "best_version_full": 0,
+                "current_priority": None,
+                "episode_priority": None,
+                "total_episode": 0,
+                "start_episode": 0,
+                "lack_episode": 0,
+                "note": [],
+            }.items():
+                if not hasattr(self, field):
+                    setattr(self, field, default)
+
+        def to_dict(self) -> dict:
+            """返回快照字段，兼容整理链的响应转换。"""
+            return dict(self.__dict__)
+
+# 旧测试与第三方扩展可能替换该名字；它现在只是应用配置端口的本地别名，
+# 不再指向数据库 Oper。
+SystemConfigOper = get_configured_system_config
+_DEFAULT_SYSTEM_CONFIG_PROVIDER = get_configured_system_config
+
+
+def _system_config():
+    """返回配置端口，并兼容旧测试对本地别名的替换。"""
+    if SystemConfigOper is not _DEFAULT_SYSTEM_CONFIG_PROVIDER:
+        return SystemConfigOper()
+    return get_configured_system_config()
 
 
 def build_subscribe_meta(subscribe: Subscribe) -> MetaBase:
@@ -1345,10 +1383,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                         # 优先级过滤规则
                         if subscribe.best_version:
                             rule_groups = subscribe.filter_groups \
-                                          or SystemConfigOper().get(SystemConfigKey.BestVersionFilterRuleGroups) or []
+                                          or _system_config().get(SystemConfigKey.BestVersionFilterRuleGroups) or []
                         else:
                             rule_groups = subscribe.filter_groups \
-                                          or SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+                                          or _system_config().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
 
                         # 搜索，同时电视剧会过滤掉不需要的剧集
                         contexts = SearchChain().process(mediainfo=mediainfo,
@@ -1631,7 +1669,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :return: 涉及的站点清单
         """
         # 从系统配置获取默认订阅站点
-        default_sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
+        default_sites = _system_config().get(SystemConfigKey.RssSites) or []
         # 如果订阅未指定站点，直接返回默认站点
         if not subscribe.sites:
             return default_sites
@@ -1832,7 +1870,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     # 遍历预识别后的种子
                     _match_context = []
                     torrenthelper = TorrentHelper()
-                    systemconfig = SystemConfigOper()
+                    systemconfig = _system_config()
                     wordsmatcher = WordsMatcher()
                     for domain, contexts in processed_torrents.items():
                         if global_vars.is_system_stopped:
@@ -2231,7 +2269,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         :param progress_callback: 定时服务进度更新回调
         """
-        follow_users: List[str] = SystemConfigOper().get(SystemConfigKey.FollowSubscribers)
+        follow_users: List[str] = _system_config().get(SystemConfigKey.FollowSubscribers)
         if not follow_users:
             if progress_callback:
                 progress_callback(value=100, text="未配置 Follow 订阅用户，跳过刷新")
@@ -2835,7 +2873,12 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
     def _interaction_handler(self) -> "SubscribeInteractionHandler":
         """构造 /subscribes 交互处理器，业务动作由本链提供。"""
-        return SubscribeInteractionHandler(messenger=self, actions=self)
+        return SubscribeInteractionHandler(
+            messenger=self,
+            actions=self,
+            repository=SubscribeOper(),
+            report_deleted=MoviePilotServerHelper.sub_done_async,
+        )
 
     def remote_delete(self, arg_str: str, channel: NotificationChannel,
                       userid: Union[str, int] = None, source: Optional[str] = None):
@@ -3012,7 +3055,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         subscribeoper = SubscribeOper()
         if site_id == "*":
             # 站点被重置
-            SystemConfigOper().set(SystemConfigKey.RssSites, [])
+            _system_config().set(SystemConfigKey.RssSites, [])
             for subscribe in subscribeoper.list():
                 if not subscribe.sites:
                     continue
@@ -3021,10 +3064,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 })
             return
         # 从选中的rss站点中移除
-        selected_sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
+        selected_sites = _system_config().get(SystemConfigKey.RssSites) or []
         if site_id in selected_sites:
             selected_sites.remove(site_id)
-            SystemConfigOper().set(SystemConfigKey.RssSites, selected_sites)
+            _system_config().set(SystemConfigKey.RssSites, selected_sites)
         # 查询所有订阅
         for subscribe in subscribeoper.list():
             if not subscribe.sites:
@@ -3057,7 +3100,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if hasattr(settings, default_subscribe_key):
             value = getattr(settings, default_subscribe_key)
         else:
-            value = SystemConfigOper().get(default_subscribe_key)
+            value = _system_config().get(default_subscribe_key)
 
         if not value:
             return None
@@ -3069,7 +3112,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         获取订阅默认参数
         """
         # 默认过滤规则
-        default_rule = SystemConfigOper().get(SystemConfigKey.SubscribeDefaultParams) or {}
+        default_rule = _system_config().get(SystemConfigKey.SubscribeDefaultParams) or {}
         return {
             key: value for key, value in {
                 "include": subscribe.include or default_rule.get("include"),

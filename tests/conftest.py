@@ -22,6 +22,126 @@ from app.testing.network_guard import block_real_network  # noqa: E402,F401
 @pytest.fixture(autouse=True)
 def configure_plugin_system_services():
     """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""
+    from app.adapters.web.security.access import configure_token_codec
+    from app.application.security.token import (
+        create_access_token,
+        decode_access_token,
+    )
+    from app.api.data import configure_api_data_ports
+    from app.application.configuration import SystemConfigService, configure_system_config
+    from app.application.service import configure_service_directory
+    from app.db.session import get_async_db, get_db
+    from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+    from app.db.oper.systemconfig import SystemConfigOper
+
+    configure_token_codec(create_access_token, decode_access_token)
+    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    from app.application.chain.data import configure_chain_data_ports
+    from app.application.plugin.runtime import configure_plugin_runtime
+    from app.application.module import configure_module_runtime
+    from app.application.chain.context import (
+        ChainRuntimeContext,
+        configure_chain_runtime_context_provider,
+    )
+    from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.runtime.cache import AsyncFileCache, FileCache
+    from app.runtime.events import EventManager
+    from app.runtime.extensions.module_manager import ModuleManager
+    from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+    from app.runtime.extensions.plugin_manager import PluginManager
+    from app.runtime.extensions.service_config import ServiceConfigHelper
+    configure_service_directory(
+        configs=ServiceConfigHelper.get_configs,
+        modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
+    )
+    configure_plugin_runtime(lambda: PluginManager())
+    configure_module_runtime(lambda: ModuleManager())
+    from app.application.site.query import SiteQueryService, configure_site_query_service
+    from app.application.site.health import SiteHealthService, configure_site_health_service
+    from app.application.workflow import WorkflowQueryService, configure_workflow_query
+    from app.application.agentdata import configure_agent_data_ports
+    from app.db.oper.agentchat import AgentChatOper
+    from app.db.oper.downloadfailure import DownloadFailureOper
+    from app.db.oper.downloadhistory import DownloadHistoryOper
+    from app.db.oper.mediaserver import MediaServerOper
+    from app.db.oper.site import SiteOper
+    from app.db.oper.subscribe import SubscribeOper
+    from app.db.oper.subscribehistory import SubscribeHistoryOper
+    from app.db.oper.transferhistory import TransferHistoryOper
+    from app.db.oper.transferpending import TransferPendingOper
+    from app.db.oper.user import UserOper
+    from app.db.oper.workflow import WorkflowOper
+    from app.db.oper.message import MessageOper
+    from app.db.oper.passkey import PassKeyOper
+
+    configure_api_data_ports(
+        sync_session=get_db,
+        async_session=get_async_db,
+        repositories={
+            "agent_chat": AgentChatOper,
+            "download_history": DownloadHistoryOper,
+            "media_server": MediaServerOper,
+            "message": MessageOper,
+            "passkey": PassKeyOper,
+            "site": SiteOper,
+            "subscribe": SubscribeOper,
+            "subscribe_history": SubscribeHistoryOper,
+            "transfer_history": TransferHistoryOper,
+            "user": UserOper,
+            "workflow": WorkflowOper,
+        },
+        standalone={
+            "passkey": PassKeyOper,
+            "system_config": SystemConfigOper,
+            "user": UserOper,
+        },
+        unit_of_work={
+            "async": SqlAlchemyAsyncUnitOfWork,
+            "sync": SqlAlchemyUnitOfWork,
+        },
+    )
+
+    configure_chain_data_ports(
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        workflow=lambda: WorkflowOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        transfer_pending=lambda: TransferPendingOper(),
+        media_server=lambda: MediaServerOper(),
+        download_failure=lambda: DownloadFailureOper(),
+        user=lambda: UserOper(),
+    )
+    configure_chain_runtime_context_provider(lambda: ChainRuntimeContext(
+        module_manager=ModuleManager(),
+        plugin_manager=PluginManager(),
+        event_manager=EventManager(),
+        message_oper=MessageOper(),
+        message_helper=MessageHelper(),
+        file_cache=FileCache(),
+        async_file_cache=AsyncFileCache(),
+        message_queue_factory=lambda callback: MessageQueueManager(
+            send_callback=callback
+        ),
+        module_dispatcher_factory=ModuleInvocationDispatcher,
+    ))
+    configure_site_query_service(SiteQueryService(repository=SiteOper()))
+    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
+    from app.db.oper.agenttask import AgentTaskOper
+    from app.db.oper.plugindata import PluginDataOper
+    configure_agent_data_ports(
+        agent_chat=lambda: AgentChatOper(),
+        agent_task=lambda: AgentTaskOper(),
+        user=lambda: UserOper(),
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        subscribe_history=lambda: SubscribeHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        workflow=lambda: WorkflowOper(),
+        plugin_data=lambda: PluginDataOper(),
+    )
     from app.adapters.external.market import (
         PluginHelper,
         VERSION_BACKWARD_COMPATIBLE_FLAGS,
@@ -46,6 +166,13 @@ def configure_plugin_system_services():
         ),
         frozen=lambda: False,
     ))
+    from app.agent.skills.registry import SkillHelper
+    from app.agent.llm.gateway import register_llm_provider_runtime
+    from app.agent.llm.provider import LLMProviderManager
+    from app.application.messaging.skill import register_skill_catalog_provider
+
+    register_skill_catalog_provider(lambda: SkillHelper())
+    register_llm_provider_runtime(lambda: LLMProviderManager())
     yield
     reset_plugin_system()
 

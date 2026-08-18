@@ -853,7 +853,7 @@ def test_follow_preserves_album_entity_and_track_count():
     system_config.get.return_value = ["follow-user"]
 
     with patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
-            patch("app.chain.subscribe.SystemConfigOper", return_value=system_config), \
+            patch("app.chain.subscribe.get_configured_system_config", return_value=system_config), \
             patch(
                 "app.chain.subscribe.MoviePilotServerHelper.get_subscribe_shares",
                 return_value=[share],
@@ -879,7 +879,7 @@ def test_refresh_enables_music_entry_fetch_when_music_subscribe_exists():
     torrents_chain.refresh.return_value = {}
 
     with patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
-            patch("app.chain.subscribe.SystemConfigOper") as system_config, \
+            patch("app.chain.subscribe.get_configured_system_config") as system_config, \
             patch("app.chain.subscribe.TorrentsChain", return_value=torrents_chain):
         system_config.return_value.get.return_value = []
         chain.refresh()

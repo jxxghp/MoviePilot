@@ -39,6 +39,38 @@ class UserOper(DbOper):
         """
         return User.get_by_name(self._db, name)
 
+    def get_by_id(self, user_id: int) -> Optional[User]:
+        """按 ID 获取用户。"""
+        return User.get_by_id(self._db, user_id)
+
+    async def async_list(self) -> List[User]:
+        """异步获取用户列表。"""
+        return await User.async_list(self._db)
+
+    async def async_create(self, payload: dict) -> Optional[User]:
+        """异步创建用户。"""
+        return await User(**payload).async_create(self._db)
+
+    async def async_update(self, user_id: int, payload: dict) -> Optional[User]:
+        """异步更新用户。"""
+        user = await self.async_get_by_id(user_id)
+        if user:
+            await user.async_update(self._db, payload)
+        return user
+
+    async def async_delete(self, user_id: int) -> None:
+        """异步删除用户。"""
+        await User.async_delete_by_id(self._db, user_id)
+
+    async def async_update_otp_by_name(
+        self,
+        name: str,
+        otp: bool,
+        secret: str,
+    ) -> None:
+        """异步更新用户 OTP 状态。"""
+        await User.async_update_otp_by_name(self._db, name, otp, secret)
+
     async def async_get_by_name(self, name: str) -> Optional[User]:
         """
         异步根据用户名获取用户。

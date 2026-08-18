@@ -13,3 +13,7 @@ class DynamicRouteRegistry(Protocol):
     def remove(self, plugin_id: str) -> bool:
         """移除指定插件的全部动态路由。"""
         ...
+
+    def clean(self, existing_paths: dict) -> None:
+        """清理重建过程中可能重复的受保护路由。"""
+        ...

@@ -31,7 +31,7 @@ def _mock_counter(monkeypatch) -> Mock:
     increment = Mock()
     # 计数逻辑在识别 mixin 中，按 _recognition 模块命名空间解析 SystemConfigOper
     monkeypatch.setattr(
-        "app.chain._recognition.SystemConfigOper",
+        "app.chain._recognition.get_configured_system_config",
         lambda: SimpleNamespace(increment=increment),
     )
     return increment

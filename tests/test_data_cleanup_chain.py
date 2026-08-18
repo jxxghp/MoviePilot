@@ -14,6 +14,12 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.runtime.config import settings
 from app.scheduler import SchedulerChain
+from app.application.maintenance import (
+    DataCleanupService,
+    configure_cleanup_service_factory,
+    read_cleanup_policy,
+)
+from app.db.maintenance import DatabaseCleanupRepository
 
 
 class DataCleanupChainTest(unittest.TestCase):
@@ -43,6 +49,17 @@ class DataCleanupChainTest(unittest.TestCase):
         }
         defaults.update(overrides)
         return patch.multiple(settings, **defaults)
+
+    def _configure_cleanup_service(self):
+        """把当前测试数据库注入清理应用服务，替代旧的 SessionFactory 打桩。"""
+        configure_cleanup_service_factory(
+            lambda: DataCleanupService(
+                repository=DatabaseCleanupRepository(
+                    session_factory=self.SessionFactory,
+                ),
+                policy_reader=read_cleanup_policy,
+            )
+        )
 
     def test_cleanup_removes_expired_rows_in_batches(self):
         """
@@ -147,9 +164,8 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(), patch(
-            "app.application.maintenance.SessionFactory", self.SessionFactory
-        ):
+        with self._cleanup_settings():
+            self._configure_cleanup_service()
             report = SchedulerChain().cleanup(batch_size=1)
 
         self.assertEqual(report["tables"]["message"]["deleted"], 3)
@@ -186,9 +202,8 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(), patch(
-            "app.application.maintenance.SessionFactory", self.SessionFactory
-        ):
+        with self._cleanup_settings():
+            self._configure_cleanup_service()
             report = SchedulerChain().cleanup(batch_size=10)
 
         self.assertEqual(report["tables"]["transferhistory"]["deleted"], 0)
@@ -207,9 +222,8 @@ class DataCleanupChainTest(unittest.TestCase):
             db.add(Message(reg_time=old_message_time, title="old"))
             db.commit()
 
-        with self._cleanup_settings(DATA_CLEANUP_ENABLE=False), patch(
-            "app.application.maintenance.SessionFactory", self.SessionFactory
-        ):
+        with self._cleanup_settings(DATA_CLEANUP_ENABLE=False):
+            self._configure_cleanup_service()
             report = SchedulerChain().cleanup(batch_size=10)
 
         self.assertFalse(report["enabled"])
@@ -236,9 +250,8 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(DATA_CLEANUP_MESSAGE_DAYS=7), patch(
-            "app.application.maintenance.SessionFactory", self.SessionFactory
-        ):
+        with self._cleanup_settings(DATA_CLEANUP_MESSAGE_DAYS=7):
+            self._configure_cleanup_service()
             report = SchedulerChain().cleanup(batch_size=10)
 
         self.assertEqual(report["tables"]["message"]["retention_days"], 7)
@@ -274,9 +287,8 @@ class DataCleanupChainTest(unittest.TestCase):
             )
             db.commit()
 
-        with self._cleanup_settings(DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS=0), patch(
-            "app.application.maintenance.SessionFactory", self.SessionFactory
-        ):
+        with self._cleanup_settings(DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS=0):
+            self._configure_cleanup_service()
             report = SchedulerChain().cleanup(batch_size=10)
 
         self.assertTrue(report["tables"]["downloadhistory"]["skipped"])

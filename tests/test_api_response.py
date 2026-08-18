@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
+from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     ResponseAPIRoute,
@@ -721,8 +722,17 @@ def test_plugin_routes_only_register_v1(monkeypatch):
             ]
 
     fake_app = FakeApp()
-    monkeypatch.setattr(plugins, "_api_app", fake_app)
-    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
+    plugin_manager = FakePluginManager()
+    plugins.configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=fake_app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=plugin_manager.get_plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+    ))
 
     plugins._update_plugin_api_routes("DemoPlugin", action="add")
     assert [route.path for route in fake_app.routes] == [
@@ -840,8 +850,17 @@ def build_plugin_api_app(monkeypatch) -> FastAPI:
 
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
-    monkeypatch.setattr(plugins, "_api_app", app)
-    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
+    plugin_manager = FakePluginManager()
+    plugins.configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=plugin_manager.get_plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+    ))
     plugins._update_plugin_api_routes("DemoPlugin", action="add")
     return app
 

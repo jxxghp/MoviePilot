@@ -8,10 +8,9 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from fastapi.concurrency import run_in_threadpool
-
 from app.runtime.event.binding import EventBindingResolver
 from app.runtime.event.registry import EventRegistry
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.types import EventType
 

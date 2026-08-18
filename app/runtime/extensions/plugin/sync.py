@@ -1,0 +1,140 @@
+"""插件市场同步运行时用例。"""
+
+from __future__ import annotations
+
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from app.runtime.extensions.plugin.system import PluginSystemServices
+
+
+class PluginSyncService:
+    """根据已安装清单同步缺失或过期插件，不参与插件实例生命周期。"""
+
+    def __init__(
+        self,
+        *,
+        frozen: Callable[[], bool],
+        installed_plugins: Callable[[], list[str]],
+        online_plugins: Callable[[], list[Any]],
+        local_plugins: Callable[[], list[Any]],
+        merge_plugins: Callable[[list[Any], list[Any], list[Any]], list[Any]],
+        plugin_exists: Callable[[str, Optional[str]], bool],
+        install: Callable[[str, Optional[str], bool], tuple[bool, str]],
+        report: Callable[..., Any],
+        log: Any,
+    ) -> None:
+        """保存目录读取、包安装和持久化报告端口。"""
+        self._frozen = frozen
+        self._installed_plugins = installed_plugins
+        self._online_plugins = online_plugins
+        self._local_plugins = local_plugins
+        self._merge_plugins = merge_plugins
+        self._plugin_exists = plugin_exists
+        self._install = install
+        self._report = report
+        self._logger = log
+
+    def sync(self) -> list[str]:
+        """并发安装本地缺失或需要更新的已安装插件。"""
+        if self._frozen():
+            return []
+
+        installed = self._installed_plugins()
+        online = self._online_plugins()
+        local = self._local_plugins()
+        candidates = self._merge_plugins(online + local, [], []) if online or local else []
+        targets = [
+            plugin
+            for plugin in candidates
+            if plugin.id in installed
+            and plugin.system_version_compatible is not False
+            and not self._plugin_exists(plugin.id, plugin.plugin_version)
+        ]
+        if not targets:
+            return []
+
+        self._logger.info("开始安装第三方插件...")
+        synced: list[str] = []
+        failed: list[str] = []
+
+        def install_one(plugin: Any) -> None:
+            """安装一个插件并记录结果。"""
+            started = time.time()
+            state, message = self._install(plugin.id, plugin.repo_url, True)
+            elapsed = time.time() - started
+            if state:
+                self._report(plugin_id=plugin.id, repo_url=plugin.repo_url)
+                self._logger.info(
+                    f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}，"
+                    f"耗时：{elapsed:.2f} 秒"
+                )
+                synced.append(plugin.id)
+            else:
+                self._logger.error(
+                    f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败："
+                    f"{message}，耗时：{elapsed:.2f} 秒"
+                )
+                failed.append(plugin.id)
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(install_one, plugin): plugin for plugin in targets}
+            for future in as_completed(futures):
+                plugin = futures[future]
+                try:
+                    future.result()
+                except Exception as error:  # noqa: BLE001
+                    self._logger.error(
+                        f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
+                    )
+
+        self._logger.info(
+            f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
+        )
+        return synced
+
+
+class LocalPluginSyncService:
+    """同步本地插件仓源码到运行目录，并记录热重载抑制窗口。"""
+
+    def __init__(
+        self,
+        *,
+        installed_plugins: Callable[[], list[str]],
+        candidate: Callable[[str], Optional[dict]],
+        system: Callable[[], PluginSystemServices],
+        recent_sync: dict[str, float],
+        log: Any,
+    ) -> None:
+        """保存本地候选、包同步和运行态监控端口。"""
+        self._installed_plugins = installed_plugins
+        self._candidate = candidate
+        self._system = system
+        self._recent_sync = recent_sync
+        self._logger = log
+
+    def sync(self, plugin_id: str, candidate: Optional[dict] = None) -> bool:
+        """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
+        if plugin_id not in self._installed_plugins():
+            self._logger.info(f"本地插件 {plugin_id} 尚未安装，跳过自动同步和热重载")
+            return False
+        candidate = candidate or self._candidate(plugin_id)
+        if not candidate or candidate.get("compatible") is False:
+            if candidate:
+                self._logger.info(
+                    f"本地插件 {plugin_id} 不满足同步条件，跳过同步："
+                    f"{candidate.get('skip_reason')}"
+                )
+            return False
+        source_dir = Path(candidate.get("path"))
+        try:
+            if not self._system().package.sync_local(plugin_id, source_dir):
+                return False
+            self._recent_sync[plugin_id] = time.time()
+            self._logger.info(f"已同步本地插件 {plugin_id}：{source_dir}")
+            return True
+        except Exception as error:
+            self._logger.error(f"同步本地插件 {plugin_id} 失败：{error}")
+            return False

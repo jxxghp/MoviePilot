@@ -13,8 +13,8 @@ from app.domain.context import Context, TorrentInfo, MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import audio_quality_tier, normalize_audio_format, parse_audio_quality
 from app.domain.metainfo import MetaInfo
-from app.db.oper.site import SiteOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.site.query import get_configured_site_query_service
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
 from app.adapters.network.http import RequestUtils
@@ -25,6 +25,27 @@ from app.foundation.crypto import HashUtils
 
 
 _SIZE_UNIT = 1024 * 1024
+
+# 站点首页、RSS 与音乐独立缓存的稳定键名；迁移脚本也复用这一事实来源。
+_TORRENT_CACHE_KEYS = (
+    "__torrents_cache__",
+    "__rss_cache__",
+    "__torrents_music_cache__",
+    "__rss_music_cache__",
+)
+
+
+def clear_torrent_cache(cache_backend: Optional[Any] = None) -> None:
+    """清理站点首页、RSS 及音乐资源缓存，不依赖 Chain 运行上下文。
+
+    数据库迁移可能发生在生命周期组件装配之前，不能为了清理缓存构造
+    ``TorrentsChain`` 并隐式拉起插件、模块和消息依赖，因此这里直接使用缓存端口。
+
+    :param cache_backend: 可选缓存后端；未传入时使用当前宿主配置的文件缓存后端。
+    """
+    backend = cache_backend or FileCache()
+    for cache_key in _TORRENT_CACHE_KEYS:
+        backend.delete(cache_key)
 
 
 @lru_cache(maxsize=512)
@@ -291,11 +312,12 @@ class TorrentHelper:
             return []
 
         # 下载规则
-        priority_rule: List[str] = SystemConfigOper().get(
+        priority_rule: List[str] = get_configured_system_config().get(
             SystemConfigKey.TorrentsPriority) or ["torrent", "upload", "seeder"]
         # 站点上传量
         site_uploads = {
-            site.name: site.upload for site in SiteOper().get_userdata_latest()
+            site.name: site.upload
+            for site in get_configured_site_query_service().userdata_latest_sync()
         }
 
         def get_sort_str(_context):

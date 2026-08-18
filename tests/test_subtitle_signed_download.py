@@ -232,17 +232,24 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
     captured = {}
     signed_url = SecurityUtils.sign_url(SUBTITLE_URL, purpose=SUBTITLE_PURPOSE)
 
-    class FakeSiteOper:
+    class FakeSiteQuery:
         def get(self, site_id):
             assert site_id == SUBTITLE_SITE_ID
             return SimpleNamespace(cookie="server-cookie=1", ua="ServerUA", proxy=True)
+
+        def get_sync(self, site_id):
+            return self.get(site_id)
 
     class FakeDownloadChain:
         def download_subtitle(self, **kwargs):
             captured.update(kwargs)
             return True, "字幕下载成功", ["/downloads/Demo.Movie.2026.zh-cn.srt"]
 
-    monkeypatch.setattr(download_endpoint, "SiteOper", FakeSiteOper, raising=False)
+    monkeypatch.setattr(
+        download_endpoint,
+        "get_configured_site_query_service",
+        lambda: FakeSiteQuery(),
+    )
     monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
 
     response = download_endpoint.download_subtitle(

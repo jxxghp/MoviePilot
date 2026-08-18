@@ -25,8 +25,7 @@ from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.application.security.access import verify_token, verify_apitoken
-from app.db.models import User
+from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.api.deps import get_current_active_user, get_current_active_superuser
 from app.schemas.category import CategoryConfig
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
@@ -440,7 +439,7 @@ def scrape(
     summary="获取分类策略配置",
     response_model=_SchemaResponse[_SchemaCategoryConfig],
 )
-def get_category_config(_: User = Depends(get_current_active_user)):
+def get_category_config(_: object = Depends(get_current_active_user)):
     """
     获取分类策略配置
     """
@@ -452,7 +451,7 @@ def get_category_config(_: User = Depends(get_current_active_user)):
     "/category/config", summary="保存分类策略配置", response_model=_SchemaResponse[None]
 )
 def save_category_config(
-    config: CategoryConfig, _: User = Depends(get_current_active_superuser)
+    config: CategoryConfig, _: object = Depends(get_current_active_superuser)
 ):
     """
     保存分类策略配置

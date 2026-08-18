@@ -12,9 +12,8 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.tmdb import TmdbChain
 from app.runtime.config import settings
-from app.application.security.access import verify_token
-from app.db.models.user import User
-from app.db.oper.systemconfig import SystemConfigOper
+from app.adapters.web.security.access import verify_token
+from app.application.configuration import get_configured_system_config
 from app.api.deps import get_current_active_superuser_async
 from app.schemas.types import MediaType, SystemConfigKey
 
@@ -27,7 +26,7 @@ router = ResponseAPIRouter()
     response_model=_SchemaResponse[_SchemaTmdbRecognitionCacheData],
 )
 async def tmdb_recognition_cache(
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """查询可管理的 TheMovieDb 识别缓存。"""
     cache_items = TmdbChain().cache_items()
@@ -38,7 +37,7 @@ async def tmdb_recognition_cache(
             "count": len(cache_items),
             "recognized": recognized_count,
             "unrecognized": len(cache_items) - recognized_count,
-            "shared_recognized": SystemConfigOper().get(
+            "shared_recognized": get_configured_system_config().get(
                 SystemConfigKey.MediaRecognizeShareCount
             ) or 0,
             "shared_recognize_enabled": settings.MEDIA_RECOGNIZE_SHARE,
@@ -54,7 +53,7 @@ async def tmdb_recognition_cache(
 )
 async def delete_tmdb_recognition_cache(
     cache_key: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """按缓存键删除单条 TheMovieDb 识别缓存。"""
     deleted_item = TmdbChain().delete_cache(cache_key)
@@ -67,7 +66,7 @@ async def delete_tmdb_recognition_cache(
     "/cache", summary="清空 TheMovieDb 识别缓存", response_model=_SchemaResponse[None]
 )
 async def clear_tmdb_recognition_cache(
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """清空全部 TheMovieDb 识别缓存。"""
     TmdbChain().clear_cache()

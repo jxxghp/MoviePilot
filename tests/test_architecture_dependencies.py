@@ -2,9 +2,6 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
-import pytest
-
-
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
@@ -100,12 +97,32 @@ FORBIDDEN_IMPORT_PREFIXES = {
         "app.sdk",
     ),
     "app.runtime": (
+        "app.adapters",
         "app.application",
         "app.sdk",
     ),
     "app.application": (
+        "app.runtime.extensions",
         "app.runtime.compat",
         "app.sdk",
+    ),
+    "app.api": (
+        "app.runtime.extensions.plugin_manager",
+        "app.runtime.extensions.module_manager",
+        "app.scheduler",
+    ),
+    "app.agent": (
+        "app.runtime.extensions.plugin_manager",
+        "app.runtime.extensions.module_manager",
+    ),
+    "app.chain": (
+        "app.runtime.extensions.plugin_manager",
+        "app.runtime.extensions.module_manager",
+        "app.runtime.extensions.module.dispatcher",
+    ),
+    "app.workflow": (
+        "app.runtime.extensions.plugin_manager",
+        "app.runtime.extensions.module_manager",
     ),
 }
 
@@ -373,6 +390,33 @@ def test_database_internals_do_not_import_db_facades():
     assert violations == []
 
 
+def test_entry_layers_do_not_import_database_implementations():
+    """API、应用、编排、Agent、监控、模块和 Runtime 只能经端口访问持久化。"""
+    graph = _build_module_graph()
+    layer_roots = (
+        "app.api",
+        "app.application",
+        "app.agent",
+        "app.chain",
+        "app.monitor",
+        "app.modules",
+        "app.runtime",
+        "app.workflow",
+        "app.adapters",
+    )
+    violations = {
+        source: sorted(
+            dependency
+            for dependency in dependencies
+            if dependency.startswith("app.db")
+        )
+        for source, dependencies in graph.items()
+        if source.startswith(layer_roots)
+        and any(dependency.startswith("app.db") for dependency in dependencies)
+    }
+    assert violations == {}
+
+
 def test_migrated_modules_are_not_in_import_cycles():
     """任何 canonical 迁移模块都不得进入完整应用依赖图的环。"""
     modules = _discover_modules()
@@ -434,6 +478,30 @@ def test_capability_packages_do_not_import_forbidden_upper_layers():
         }
         if forbidden:
             violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_application_does_not_import_transport_frameworks():
+    """应用层不得依赖 FastAPI、Starlette 或宿主 HTTP 适配器。"""
+    violations: dict[str, set[str]] = {}
+    for path in (APP_ROOT / "application").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        forbidden: set[str] = set()
+        for node in ast.walk(tree):
+            candidates: list[str] = []
+            if isinstance(node, ast.Import):
+                candidates.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                candidates.append(node.module)
+            forbidden.update(
+                candidate
+                for candidate in candidates
+                if candidate.startswith(
+                    ("fastapi", "starlette", "app.api", "app.adapters.web")
+                )
+            )
+        if forbidden:
+            violations[str(path.relative_to(PROJECT_ROOT))] = forbidden
     assert violations == {}
 
 

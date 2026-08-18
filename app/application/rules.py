@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from pyparsing import Forward, Literal, Word, alphas, infix_notation, opAssoc, alphanums, Combine, nums, ParseResults
 
 from app.adapters.system import rust as rust_accel
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
@@ -22,7 +22,7 @@ class RuleHelper:
     @staticmethod
     def get_rule_groups() -> List[FilterRuleGroup]:
         """返回用户配置的全部过滤规则组。"""
-        rule_groups: List[dict] = SystemConfigOper().get(
+        rule_groups: List[dict] = get_configured_system_config().get(
             SystemConfigKey.UserFilterRuleGroups
         )
         if not rule_groups:
@@ -63,7 +63,7 @@ class RuleHelper:
     @staticmethod
     def get_custom_rules() -> List[CustomRule]:
         """返回用户配置的全部自定义过滤规则。"""
-        rules: List[dict] = SystemConfigOper().get(SystemConfigKey.CustomFilterRules)
+        rules: List[dict] = get_configured_system_config().get(SystemConfigKey.CustomFilterRules)
         if not rules:
             return []
         return [CustomRule(**rule) for rule in rules]

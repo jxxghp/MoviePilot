@@ -55,7 +55,7 @@ class TestAgentInteraction(unittest.TestCase):
 
     def test_factory_injects_choice_tool_only_for_button_channels(self):
         with patch(
-            "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+            "app.agent.tools.factory._get_plugin_agent_tools",
             return_value=[],
         ):
             telegram_tools = MoviePilotToolFactory.create_tools(

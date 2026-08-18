@@ -18,11 +18,13 @@ from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.models.downloadhistory import DownloadHistory
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.transferpending import TransferPendingOper
-from app.db.oper.transferhistory import TransferHistoryOper
+from app.application.chain.data import (
+    DownloadHistoryPortProxy as DownloadHistoryOper,
+    TransferPendingPortProxy as TransferPendingOper,
+    TransferHistoryPortProxy as TransferHistoryOper,
+)
+DownloadHistory = Any
+from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
 from app.runtime.progress import ProgressHelper
@@ -53,8 +55,14 @@ from app.schemas.types import (
     MediaSource,
 )
 from app.runtime.reload import ConfigReloadMixin
-from app.application.transfer import (FailedRetryScheduler, JobManager,
-                                      TransferQueueService, TransferTask, job_lock)
+from app.application.transfer import (
+    FailedRetryScheduler,
+    JobManager,
+    TransferQueue,
+    TransferQueueService,
+    TransferTask,
+    job_lock,
+)
 from app.chain._transfer import (EpisodeFormatMixin, FailedRetryMixin,
                                FileFilterMixin, FileKeyMixin,
                                HistoryMatchMixin, ManualHistoryMixin,
@@ -437,7 +445,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 tasks = self.jobview.success_tasks(
                     task.mediainfo, task.meta.begin_season
                 )
-                system_config_oper = SystemConfigOper()
+                system_config_oper = get_configured_system_config()
                 # 获取整理屏蔽词
                 transfer_exclude_words = system_config_oper.get(
                     SystemConfigKey.TransferExcludeWords
@@ -1579,7 +1587,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         )
 
         # 整理屏蔽词
-        transfer_exclude_words = SystemConfigOper().get(
+        transfer_exclude_words = get_configured_system_config().get(
             SystemConfigKey.TransferExcludeWords
         )
         # 汇总错误信息

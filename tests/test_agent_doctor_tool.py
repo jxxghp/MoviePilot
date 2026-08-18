@@ -43,7 +43,7 @@ def _doctor_report() -> DoctorReport:
 def test_factory_registers_doctor_report_tool():
     """工具工厂应注册 doctor 诊断报告工具。"""
     with patch(
-        "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+        "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
     ):
         tools = MoviePilotToolFactory.create_tools(

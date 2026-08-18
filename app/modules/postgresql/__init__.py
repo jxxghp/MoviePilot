@@ -1,10 +1,9 @@
 from typing import Tuple, Union
 
 from app.runtime.config import settings
-from app.db import SessionFactory
+from app.application.database import get_configured_database_health
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
-from sqlalchemy import text
 
 
 class PostgreSQLModule(_ModuleBase):
@@ -52,12 +51,7 @@ class PostgreSQLModule(_ModuleBase):
         """
         if settings.DB_TYPE != "postgresql":
             return None
-        # 测试数据库连接
-        db = SessionFactory()
-        try:
-            db.execute(text("SELECT 1"))
-        except Exception as e:
-            return False, f"PostgreSQL连接失败：{e}"
-        finally:
-            db.close()
+        error = get_configured_database_health().test()
+        if error:
+            return False, f"PostgreSQL连接失败：{error}"
         return True, ""

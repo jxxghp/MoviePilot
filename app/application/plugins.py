@@ -11,53 +11,25 @@ FastAPI 实例由组合根（factory 创建应用后）注入，端点与 Agent 
 
 from typing import Optional
 
-from fastapi import FastAPI
-
-from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
-from app.application.security.access import verify_apikey, verify_token
-from app.db.oper.systemconfig import SystemConfigOper
-from app.runtime.config import settings
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.routes import DynamicRouteRegistry
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
-PROTECTED_ROUTES = {
-    "/api/v1/openapi.json",
-    "/docs",
-    "/docs/oauth2-redirect",
-    "/redoc",
-}
-PLUGIN_PREFIX = f"{settings.API_V1_STR}/plugin"
-
-# FastAPI 应用实例：由 factory 在创建应用后调用 register_api_app 注入。
-_api_app: Optional[FastAPI] = None
+_route_registry: Optional[DynamicRouteRegistry] = None
 
 
-def register_api_app(api_app: FastAPI) -> None:
-    """注入 FastAPI 应用实例（组合根在创建应用后调用）。"""
-    global _api_app
-    _api_app = api_app
+def configure_plugin_routes(registry: DynamicRouteRegistry) -> None:
+    """由 HTTP 组合根注入动态插件路由适配器。"""
+    global _route_registry
+    _route_registry = registry
 
 
-def get_api_app() -> FastAPI:
-    """返回已注入的 FastAPI 应用实例。"""
-    if _api_app is None:
-        raise RuntimeError("插件路由服务未初始化：请先调用 register_api_app 注入应用实例")
-    return _api_app
-
-
-def _route_registry() -> FastAPIDynamicRouteRegistry:
-    """组装绑定当前 FastAPI 应用与插件管理器的动态路由适配器。"""
-    return FastAPIDynamicRouteRegistry(
-        app=get_api_app(),
-        plugin_ids=lambda: PluginManager().get_running_plugin_ids(),
-        plugin_apis=lambda plugin_id: PluginManager().get_plugin_apis(plugin_id),
-        verify_token=verify_token,
-        verify_apikey=verify_apikey,
-        prefix=PLUGIN_PREFIX,
-        protected_routes=PROTECTED_ROUTES,
-        log=logger,
-    )
+def _get_route_registry() -> DynamicRouteRegistry:
+    """返回已注入的动态插件路由端口。"""
+    if _route_registry is None:
+        raise RuntimeError("插件路由服务尚未由 HTTP 组合根配置")
+    return _route_registry
 
 
 def register_plugin_api(plugin_id: Optional[str] = None) -> None:
@@ -83,7 +55,7 @@ def _update_plugin_api_routes(plugin_id: Optional[str], action: str) -> None:
                       如果 action 为 "remove"，plugin_id 必须是有效的插件 ID
     :param action: "add" 或 "remove"，决定是添加还是移除路由
     """
-    _route_registry().update(plugin_id, action)
+    _get_route_registry().update(plugin_id, action)
 
 
 def _remove_routes(plugin_id: str) -> bool:
@@ -92,7 +64,7 @@ def _remove_routes(plugin_id: str) -> bool:
     :param plugin_id: 插件 ID
     :return: 是否有路由被移除
     """
-    return _route_registry().remove(plugin_id)
+    return _get_route_registry().remove(plugin_id)
 
 
 def _clean_protected_routes(existing_paths: dict) -> None:
@@ -100,7 +72,7 @@ def _clean_protected_routes(existing_paths: dict) -> None:
     清理受保护的路由，防止在插件操作中被删除或重复添加
     :param existing_paths: 当前应用的路由路径映射
     """
-    _route_registry().clean(existing_paths)
+    _get_route_registry().clean(existing_paths)
 
 
 def remove_plugin_from_folders(plugin_id: str):
@@ -109,7 +81,7 @@ def remove_plugin_from_folders(plugin_id: str):
     :param plugin_id: 要移除的插件ID
     """
     try:
-        config_oper = SystemConfigOper()
+        config_oper = get_configured_system_config()
         # 获取插件文件夹配置
         folders = config_oper.get(SystemConfigKey.PluginFolders) or {}
 

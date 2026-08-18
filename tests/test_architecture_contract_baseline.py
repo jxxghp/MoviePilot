@@ -140,6 +140,96 @@ assert len(app.schemas.__all__) >= 400
     assert result.returncode == 0, result.stderr
 
 
+def test_agent_policy_root_import_does_not_eagerly_load_policy_submodules():
+    """策略公共入口惰性导出，避免 orchestrator、registry 和 sanitizer 形成导入环。"""
+    script = """
+import sys
+import app.agent.policy
+
+assert not any(
+    name.startswith('app.agent.policy.')
+    for name in sys.modules
+)
+from app.agent.policy import ToolOrigin, sanitize_for_host
+
+assert ToolOrigin.AGENT_API.value == 'agent_api'
+assert sanitize_for_host({'token': 'secret'}) == {'token': '***'}
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_doctor_and_monitor_roots_are_lazy_identity_preserving_facades():
+    """诊断和监控包根不得预载实现，旧路径仍需返回同一公开对象。"""
+    script = """
+import sys
+import app.doctor
+import app.monitor
+
+assert not any(name.startswith('app.doctor.') for name in sys.modules)
+assert not any(name.startswith('app.monitor.') for name in sys.modules)
+
+from app.doctor import DoctorRunner, run_doctor
+from app.doctor.runner import DoctorRunner as DirectDoctorRunner
+from app.monitor import LocalDirectoryWatcher, Monitor
+from app.monitor.monitor import Monitor as DirectMonitor
+from app.monitor.watcher import LocalDirectoryWatcher as DirectWatcher
+
+assert DoctorRunner is DirectDoctorRunner
+assert Monitor is DirectMonitor
+assert LocalDirectoryWatcher is DirectWatcher
+assert callable(run_doctor)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_split_host_module_roots_keep_manifest_entrypoint_identity():
+    """迁入 module.py 的宿主模块须保持 manifest 包级入口和历史反射路径。"""
+    script = """
+from importlib import import_module
+import sys
+
+contracts = (
+    ('app.modules.qqbot', 'QQBotModule'),
+    ('app.modules.telegram', 'TelegramModule'),
+    ('app.modules.trimemedia', 'TrimeMediaModule'),
+    ('app.modules.ugreen', 'UgreenModule'),
+)
+for package_name, symbol_name in contracts:
+    package = import_module(package_name)
+    implementation_name = f'{package_name}.module'
+    assert implementation_name not in sys.modules
+    public_class = getattr(package, symbol_name)
+    direct_class = getattr(import_module(implementation_name), symbol_name)
+    assert public_class is direct_class
+    assert public_class.__module__ == package_name
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_event_contract_baseline_covers_every_public_event_enum() -> None:
     """事件生产者/消费者快照必须覆盖全部广播和链式事件枚举。"""
     baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"

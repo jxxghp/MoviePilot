@@ -88,12 +88,24 @@ from app.agent.tools.impl.update_custom_identifiers import UpdateCustomIdentifie
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.update_system_settings import UpdateSystemSettingsTool
 from app.agent.llm.capability import AgentCapabilityManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
 from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
+
+
+def _get_plugin_agent_tools() -> list[dict]:
+    """读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。"""
+    try:
+        return get_plugin_manager().get_plugin_agent_tools()
+    except RuntimeError as error:
+        # 纯工具目录探针可以在启动组合根之前运行；此时只跳过可选插件工具，
+        # 不隐式创建 PluginManager，避免冷导入重新引入 Runtime 定位器。
+        if "尚未由启动组合根装配" not in str(error):
+            raise
+        return []
 
 
 class MoviePilotToolFactory:
@@ -288,7 +300,7 @@ class MoviePilotToolFactory:
 
         # 加载插件提供的工具
         plugin_tools_count = 0
-        plugin_tools_info = PluginManager().get_plugin_agent_tools()
+        plugin_tools_info = _get_plugin_agent_tools()
         for plugin_info in plugin_tools_info:
             plugin_id = plugin_info.get("plugin_id")
             plugin_name = plugin_info.get("plugin_name")
@@ -337,7 +349,18 @@ class MoviePilotToolFactory:
     @classmethod
     def create_catalog(cls, **tool_kwargs) -> ToolCatalogSnapshot:
         """在插件目录稳定窗口内构造一份完整本地工具快照。"""
-        plugin_manager = PluginManager()
+        try:
+            plugin_manager = get_plugin_manager()
+        except RuntimeError as error:
+            # 没有启动上下文时仍允许构造内置工具目录；插件工具会在正式启动
+            # 后由组合根提供的 Runtime 中重新物化。
+            if "尚未由启动组合根装配" not in str(error):
+                raise
+            return ToolCatalogSnapshot.from_tools(
+                cls.create_tools(**tool_kwargs),
+                plugin_revision=0,
+                factory_revision=cls.catalog_factory_revision(),
+            )
         for _attempt in range(cls.CATALOG_BUILD_MAX_ATTEMPTS):
             before_revision = plugin_manager.get_plugin_agent_tools_revision()
             tools = cls.create_tools(**tool_kwargs)

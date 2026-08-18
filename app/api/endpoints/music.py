@@ -14,8 +14,7 @@ from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
-from app.application.security.access import verify_token
-from app.db.models.user import User
+from app.adapters.web.security.access import verify_token
 from app.api.deps import get_current_active_superuser_async
 from app.chain.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
@@ -114,7 +113,7 @@ async def recognize_music(
     response_model=_SchemaResponse[_SchemaMusicRecognitionCacheData],
 )
 async def music_recognition_cache(
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """查询可管理的 MusicBrainz 识别缓存。"""
     cache_items = MusicBrainzChain().cache_items()
@@ -137,7 +136,7 @@ async def music_recognition_cache(
 )
 async def delete_music_recognition_cache(
     cache_key: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """按缓存键删除单条 MusicBrainz 识别缓存。"""
     deleted_item = MusicBrainzChain().delete_cache(cache_key)
@@ -150,7 +149,7 @@ async def delete_music_recognition_cache(
     "/cache", summary="清空音乐识别缓存", response_model=_SchemaResponse[None]
 )
 async def clear_music_recognition_cache(
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """清空全部 MusicBrainz 识别缓存。"""
     MusicBrainzChain().clear_cache()

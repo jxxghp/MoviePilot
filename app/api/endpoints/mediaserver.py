@@ -1,7 +1,6 @@
 from typing import Any, List, Optional
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
@@ -19,12 +18,10 @@ from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.application.security.access import verify_token
-from app.db import get_async_db
-from app.db.oper.mediaserver import MediaServerOper
-from app.db.models import MediaServerItem
-from app.db.oper.systemconfig import SystemConfigOper
-from app.application.mediaserver import MediaServerHelper
+from app.adapters.web.security.access import verify_token
+from app.application.configuration import get_configured_system_config
+from app.application.mediaserver import MediaServerHelper, MediaServerQueryService
+from app.api.deps import get_mediaserver_query_service
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from app.schemas.media import build_media_key, resolve_media_identity
@@ -90,7 +87,7 @@ async def exists_local(
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     season: Optional[int] = None,
-    db: AsyncSession = Depends(get_async_db),
+    service: MediaServerQueryService = Depends(get_mediaserver_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -107,7 +104,7 @@ async def exists_local(
     # 返回对象
     ret_info = {}
     # 本地数据库是否存在
-    exist: MediaServerItem = await MediaServerOper(db).async_exists(
+    item_id = await service.find_item_id(
         title=meta.name if meta else None,
         year=year,
         mtype=mtype,
@@ -115,8 +112,8 @@ async def exists_local(
         media_id=media_id,
         season=season,
     )
-    if exist:
-        ret_info = {"id": exist.item_id}
+    if item_id:
+        ret_info = {"id": item_id}
     return _SchemaResponse(success=True, data={"item": ret_info})
 
 
@@ -251,7 +248,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用媒体服务器
     """
-    mediaservers: List[dict] = SystemConfigOper().get(SystemConfigKey.MediaServers)
+    mediaservers: List[dict] = get_configured_system_config().get(SystemConfigKey.MediaServers)
     if mediaservers:
         return [
             {"name": d.get("name"), "type": d.get("type")}

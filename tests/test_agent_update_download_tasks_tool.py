@@ -196,7 +196,7 @@ def test_factory_registers_update_download_tasks_without_old_modify_name():
     工具工厂应只暴露统一后的下载任务更新工具名。
     """
     with patch(
-        "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+        "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
     ):
         tools = MoviePilotToolFactory.create_tools(

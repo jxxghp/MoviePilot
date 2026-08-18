@@ -52,13 +52,22 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 
 from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo
-from app.db.oper.user import UserOper
+from app.application.security.user import get_configured_user_channel_lookup
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
+
+
+class UserOper:
+    """兼容飞书模块存量测试的渠道用户查询门面。"""
+
+    @staticmethod
+    def get_name(**bindings) -> Optional[str]:
+        """把渠道标识查询转发到启动组合根登记的用户端口。"""
+        return get_configured_user_channel_lookup()(**bindings)
 
 
 class Feishu:

@@ -13,7 +13,7 @@ from app.application.messaging.media import (
     media_interaction_manager,
 )
 from app.application.torrent import TorrentHelper
-from app.db.oper.user import UserOper
+from app.application.chain.data import UserPortProxy as UserOper
 from app.domain import episode as episode_rules
 from app.domain import title as title_rules
 from app.domain.context import Context, MediaInfo

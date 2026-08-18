@@ -15,7 +15,7 @@ from app.chain.search import SearchChain
 from app.runtime.config import settings
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
-from app.db.oper.site import SiteOper
+from app.application.agentdata import SitePort as SiteOper
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.runtime.log import logger
 from app.schemas.file import FileURI
