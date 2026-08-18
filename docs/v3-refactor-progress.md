@@ -100,6 +100,26 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 使插件导入到的类与模块选中的不是同一个类对象。未登记的路径前缀此前被当作
 本地存储并把路径糊成拼接结果，现按通用 URI 文法正确拆分。
 
+### 1.6.1 文件管理模块拆散
+
+原 `app/modules/filemanager/`（7600 行 / 12 文件）把三件不同性质的事捆在一起，现已拆净：
+
+| 成分 | 去处 |
+|---|---|
+| `transhandler.py`（1344 行整理编排） | `app/application/transferhandler.py`（服务层）；存储操作以 12 方法窄协议解耦 |
+| `storages/` 七个后端（约 5000 行） | 七个一级模块，见上表 |
+| 12 个存储路由方法 | 随后端迁出，改为按存储标识自筛 |
+| 剩余的媒体库职责 | `app/modules/medialibrary/`（2 文件）|
+
+剩余模块拥有"媒体库目录"这一概念：跨存储的整理落地（需成对的源与目标操作对象，
+任何单个存储后端都拿不到）、磁盘侧的存在性与文件查询（`media_exists` 与四个
+媒体服务器族并列参与单播仲裁，指名服务器时让出）、命名推荐与目录配置自检。
+它与媒体服务器"自己库里有什么"是并列的两种视角，`filemanager` 之名已名不副实，
+故按实际职责更名，`app/modules/filemanager/` 目录随之消失。
+
+能力清单的优先级与子类型未动，仲裁顺序不变；旧包路径与旧类名经兼容层
+解析到同一对象，插件反射与 Pickle 往返已实测。
+
 存储模块与下载器、媒体服务器同构，由能力清单发现与启停；
 `runtime/extensions/storage_registry.py` 只保留「按标识直取后端」这一项职责，
 登记由各存储模块的生命周期驱动，供整理编排取用成对的源、目标操作对象。
@@ -193,7 +213,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **5155 passed / 1 failed** |
+| 当前 | **5173 passed / 1 failed** |
 
 官方基线上那条失败是
 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`：
