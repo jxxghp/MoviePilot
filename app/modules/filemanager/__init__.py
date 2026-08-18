@@ -11,7 +11,7 @@ from typing import Any
 _EXPORTS = {
     "FileManagerModule": ("app.modules.filemanager.module", "FileManagerModule"),
     "StorageBase": ("app.modules.filemanager.storages", "StorageBase"),
-    "TransHandler": ("app.modules.filemanager.transhandler", "TransHandler"),
+    "TransHandler": ("app.application.transferhandler", "TransHandler"),
     "settings": ("app.modules.filemanager.module", "settings"),
 }
 

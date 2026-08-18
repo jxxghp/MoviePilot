@@ -13,8 +13,8 @@ from app.domain.metainfo import MetaInfoPath
 from app.adapters.media.audio import AudioMetadataHelper
 from app.runtime.log import logger
 from app.runtime.naming import naming_context_port
-from app.modules.filemanager.mediaroot import get_media_root_path
-from app.modules.filemanager.storages import StorageBase
+from app.runtime.storages import StorageOperations
+from app.application.directory import DirectoryHelper
 from app.schemas.transfer import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.system import TransferDirectoryConf
@@ -166,8 +166,8 @@ class TransHandler:
         target_storage: str,
         target_path: Path,
         transfer_type: str,
-        source_oper: StorageBase,
-        target_oper: StorageBase,
+        source_oper: StorageOperations,
+        target_oper: StorageOperations,
         need_scrape: Optional[bool] = False,
         need_rename: Optional[bool] = True,
         need_notify: Optional[bool] = True,
@@ -263,7 +263,7 @@ class TransHandler:
                             meta=in_meta,
                         )
                     else:
-                        new_path = get_media_root_path(
+                        new_path = DirectoryHelper.get_media_root_path(
                             rename_format,
                             rename_path=rendered_path,
                             media_type=mediainfo.type,
@@ -400,7 +400,7 @@ class TransHandler:
                         new_file = self.__rename_subtitles(fileitem, new_file)
 
                     # 文件目录
-                    folder_path = get_media_root_path(
+                    folder_path = DirectoryHelper.get_media_root_path(
                         rename_format,
                         rename_path=new_file,
                         media_type=mediainfo.type,
@@ -682,8 +682,8 @@ class TransHandler:
     def __transfer_command(
         fileitem: FileItem,
         target_storage: str,
-        source_oper: StorageBase,
-        target_oper: StorageBase,
+        source_oper: StorageOperations,
+        target_oper: StorageOperations,
         target_file: Path,
         transfer_type: str,
     ) -> Tuple[Optional[FileItem], str]:
@@ -952,8 +952,8 @@ class TransHandler:
         self,
         fileitem: FileItem,
         mediainfo: MediaInfo,
-        source_oper: StorageBase,
-        target_oper: StorageBase,
+        source_oper: StorageOperations,
+        target_oper: StorageOperations,
         transfer_type: str,
         target_storage: str,
         target_path: Path,
@@ -1009,8 +1009,8 @@ class TransHandler:
         self,
         fileitem: FileItem,
         target_storage: str,
-        source_oper: StorageBase,
-        target_oper: StorageBase,
+        source_oper: StorageOperations,
+        target_oper: StorageOperations,
         transfer_type: str,
         target_path: Path,
         result: TransferInfo,
@@ -1067,8 +1067,8 @@ class TransHandler:
         fileitem: FileItem,
         meta: Optional[MetaBase],
         mediainfo: MediaInfo,
-        source_oper: StorageBase,
-        target_oper: StorageBase,
+        source_oper: StorageOperations,
+        target_oper: StorageOperations,
         target_storage: str,
         target_file: Path,
         transfer_type: str,
@@ -1234,7 +1234,7 @@ class TransHandler:
         return naming_context
 
     @staticmethod
-    def __delete_version_files(storage_oper: StorageBase, path: Path) -> bool:
+    def __delete_version_files(storage_oper: StorageOperations, path: Path) -> bool:
         """
         删除目录下的所有版本文件
         :param storage_oper: 存储操作对象

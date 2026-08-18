@@ -897,6 +897,13 @@
         "replacement": "app.sdk.logging",
         "target": "app.sdk.logging"
       },
+      "app.modules.filemanager.transhandler": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.transferhandler",
+        "target": "app.application.transferhandler"
+      },
       "app.utils.coalesce": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -1498,31 +1505,35 @@
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 72
+        "line": 80
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 73
+        "line": 81
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 74
+        "line": 82
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 75
+        "line": 83
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 76
+        "line": 84
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 77
+        "line": 85
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 78
+        "line": 86
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 87
       },
       {
         "caller": "app.testing.bootstrap",
@@ -1778,11 +1789,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.modules.filemanager.transhandler",
+            "caller": "app.application.transferhandler",
             "line": 983
           },
           {
-            "caller": "app.modules.filemanager.transhandler",
+            "caller": "app.application.transferhandler",
             "line": 1105
           }
         ]
@@ -1791,7 +1802,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.modules.filemanager.transhandler",
+            "caller": "app.application.transferhandler",
             "line": 509
           }
         ]
@@ -1800,7 +1811,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.modules.filemanager.transhandler",
+            "caller": "app.application.transferhandler",
             "line": 1329
           }
         ]
@@ -1809,7 +1820,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.modules.filemanager.transhandler",
+            "caller": "app.application.transferhandler",
             "line": 1308
           }
         ]

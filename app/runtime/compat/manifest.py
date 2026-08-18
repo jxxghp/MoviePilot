@@ -121,6 +121,13 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="application",
     ),
+    # 整理编排属于宿主固有业务规则，落在 app/application/transferhandler.py
+    "app.modules.filemanager.transhandler": ModuleAlias(
+        target="app.application.transferhandler",
+        replacement="app.application.transferhandler",
+        introduced="v3.0.0",
+        owner="application",
+    ),
     "app.db.agentchat_oper": ModuleAlias(
         target="app.db.oper.agentchat",
         replacement="app.db.oper.agentchat",

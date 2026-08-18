@@ -17,7 +17,7 @@ import unittest
 from unittest.mock import patch
 
 from app.runtime.events import Event
-from app.modules.filemanager.transhandler import TransHandler
+from app.application.transferhandler import TransHandler
 from app.schemas.event import TransferRenameBuildEventData
 from app.schemas.types import ChainEventType
 
@@ -51,7 +51,7 @@ class TransferRenameBuildEventTest(unittest.TestCase):
             return self._make_event(event_type, data)
 
         with patch(
-            "app.modules.filemanager.transhandler.eventmanager.send_event",
+            "app.application.transferhandler.eventmanager.send_event",
             side_effect=fake_send_event,
         ):
             path = TransHandler.get_rename_path(
@@ -78,7 +78,7 @@ class TransferRenameBuildEventTest(unittest.TestCase):
             return self._make_event(event_type, data)
 
         with patch(
-            "app.modules.filemanager.transhandler.eventmanager.send_event",
+            "app.application.transferhandler.eventmanager.send_event",
             side_effect=fake_send_event,
         ):
             path = TransHandler.get_rename_path(
@@ -100,7 +100,7 @@ class TransferRenameBuildEventTest(unittest.TestCase):
             return None
 
         with patch(
-            "app.modules.filemanager.transhandler.eventmanager.send_event",
+            "app.application.transferhandler.eventmanager.send_event",
             side_effect=fake_send_event,
         ):
             path = TransHandler.get_rename_path(
@@ -125,7 +125,7 @@ class TransferRenameBuildEventTest(unittest.TestCase):
             return self._make_event(event_type, data)
 
         with patch(
-            "app.modules.filemanager.transhandler.eventmanager.send_event",
+            "app.application.transferhandler.eventmanager.send_event",
             side_effect=fake_send_event,
         ):
             TransHandler.get_rename_path(

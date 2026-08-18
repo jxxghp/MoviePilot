@@ -5,7 +5,7 @@ import pytest
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metavideo import MetaVideo
-from app.modules.filemanager.transhandler import TransHandler
+from app.application.transferhandler import TransHandler
 from app.schemas import FileItem, TransferInfo
 from app.schemas.types import MediaType
 

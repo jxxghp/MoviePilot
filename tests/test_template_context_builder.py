@@ -14,7 +14,7 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.application.messaging.message import TemplateContextBuilder
-from app.modules.filemanager.transhandler import TransHandler
+from app.application.transferhandler import TransHandler
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode
 

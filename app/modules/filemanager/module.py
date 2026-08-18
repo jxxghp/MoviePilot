@@ -9,11 +9,11 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.directories import directory_config_port
 from app.runtime.extensions.storage_registry import StorageBackendRegistry, storage_backend_registry
 from app.runtime.log import logger
+from app.runtime.mediatransfer import media_transfer_port
 from app.modules import _ModuleBase
 from app.modules.filemanager.mediaroot import get_media_root_path
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.storages.catalog import register_builtin_storage_backends
-from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.transfer import TransferInfo
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.tmdb import TmdbEpisode
@@ -183,7 +183,7 @@ class FileManagerModule(_ModuleBase):
         :param episodes_info: 集信息，由调用方链层预先获取
         :return: 重命名后的名称（含目录）
         """
-        handler = TransHandler()
+        handler = media_transfer_port.resolve()
         # 重命名格式
         rename_format = settings.RENAME_FORMAT(mediainfo.type)
         # 获取重命名后的名称
@@ -411,7 +411,7 @@ class FileManagerModule(_ModuleBase):
         :param target_oper: 目标存储操作对象
         :return: {path, target_path, message}
         """
-        handler = TransHandler()
+        handler = media_transfer_port.resolve()
         # 检查目录路径
         if fileitem.storage == "local" and not Path(fileitem.path).exists():
             return TransferInfo(success=False,
@@ -612,7 +612,7 @@ class FileManagerModule(_ModuleBase):
         获取对应媒体的媒体库文件列表
         :param mediainfo: 媒体信息
         """
-        handler = TransHandler()
+        handler = media_transfer_port.resolve()
         ret_fileitems = []
         # 检查本地媒体库
         dest_dirs = directory_config_port.resolve().get_library_dirs()

@@ -15,7 +15,7 @@ from app.modules.filemanager import FileManagerModule
 from app.modules.filemanager import mediaroot
 from app.modules.filemanager.mediaroot import get_media_root_path
 from app.modules.filemanager.storages.local import LocalStorage
-from app.modules.filemanager.transhandler import TransHandler
+from app.application.transferhandler import TransHandler
 from app.runtime.directories import directory_config_port
 from app.runtime.naming import naming_context_port
 from app.runtime.storages import storage_config_port

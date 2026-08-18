@@ -13,7 +13,7 @@ from app.application.history import (
     failed_retry_count,
     record_transfer_failure,
 )
-from app.modules.filemanager.transhandler import TransHandler
+from app.application.transferhandler import TransHandler
 from app.schemas import EpisodeFormat, FileItem, TransferInfo
 from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaSource, MediaType
@@ -286,13 +286,13 @@ class TransferJobManagerTest(unittest.TestCase):
         with patch.object(
                 TransHandler, "get_rename_path", return_value=target_file
         ), patch(
-                "app.modules.filemanager.transhandler.get_media_root_path",
+                "app.application.transferhandler.DirectoryHelper.get_media_root_path",
                 return_value=Path("/library"),
         ), patch.object(
                 TransHandler,
                 "_TransHandler__transfer_command",
                 return_value=(target_item, ""),
-        ), patch("app.modules.filemanager.transhandler.eventmanager") as eventmanager_mock:
+        ), patch("app.application.transferhandler.eventmanager") as eventmanager_mock:
             eventmanager_mock.send_event.return_value = None
             transferinfo = handler.transfer_media(
                 fileitem=source_item,
@@ -358,14 +358,14 @@ class TransferJobManagerTest(unittest.TestCase):
         with patch.object(
                 TransHandler, "get_rename_path", return_value=target_file
         ), patch(
-                "app.modules.filemanager.transhandler.get_media_root_path",
+                "app.application.transferhandler.DirectoryHelper.get_media_root_path",
                 return_value=Path("/library"),
         ), patch.object(
                 TransHandler,
                 "_TransHandler__transfer_command",
                 return_value=(target_item, ""),
         ), patch(
-                "app.modules.filemanager.transhandler.eventmanager.send_event",
+                "app.application.transferhandler.eventmanager.send_event",
                 return_value=None,
         ) as send_event:
             transferinfo = handler.transfer_media(

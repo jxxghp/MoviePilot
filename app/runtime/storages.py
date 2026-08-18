@@ -1,11 +1,14 @@
-"""存储配置的宿主服务端口。
+"""存储的宿主契约。
 
-扩展层按本协议读写各存储类型自己的配置项，实现由组合根注入。
+包含两类协议：存储配置的读写端口，实现由组合根注入；
+以及文件整理直接调用的存储读写能力，实例由调用方传入。
 """
 
-from typing import Optional, Protocol, runtime_checkable
+from pathlib import Path
+from typing import List, Optional, Protocol, runtime_checkable
 
 from app.runtime.hostport import HostPort
+from app.schemas.file import FileItem
 from app.schemas.system import StorageConf
 
 
@@ -41,3 +44,131 @@ class StorageConfigProvider(Protocol):
 
 
 storage_config_port: HostPort[StorageConfigProvider] = HostPort("存储配置")
+
+
+@runtime_checkable
+class StorageOperations(Protocol):
+    """文件整理直接调用的存储读写能力。
+
+    只列出整理过程实际使用的方法；``copy_item`` / ``move_item`` 等可选加速能力
+    由调用处按存在与否动态取用，不属于本协议。
+    """
+
+    def is_support_transtype(self, transtype: str) -> bool:
+        """
+        判断存储是否支持某种整理方式。
+
+        :param transtype: 整理方式
+        :return: 支持时为 True
+        """
+        ...
+
+    def list(self, fileitem: FileItem) -> List[FileItem]:
+        """
+        浏览目录下的文件项。
+
+        :param fileitem: 目录项
+        :return: 目录下的文件项列表
+        """
+        ...
+
+    def get_folder(self, path: Path) -> Optional[FileItem]:
+        """
+        获取目录，目录不存在时创建。
+
+        :param path: 目录路径
+        :return: 目录项；创建失败时为 None
+        """
+        ...
+
+    def get_item(self, path: Path) -> Optional[FileItem]:
+        """
+        获取文件或目录。
+
+        :param path: 文件或目录路径
+        :return: 文件项；不存在或查询失败时为 None
+        """
+        ...
+
+    def get_item_strict(self, path: Path) -> Optional[FileItem]:
+        """
+        获取文件或目录，确认不存在时才返回 None。
+
+        :param path: 文件或目录路径
+        :return: 文件项；确认不存在时为 None
+        :raises StorageQueryError: 无法确认目标状态
+        """
+        ...
+
+    def delete(self, fileitem: FileItem) -> bool:
+        """
+        删除文件或目录。
+
+        :param fileitem: 文件项
+        :return: 删除成功时为 True
+        """
+        ...
+
+    def download(self, fileitem: FileItem, path: Path = None) -> Path:
+        """
+        下载文件到本地。
+
+        :param fileitem: 文件项
+        :param path: 本地保存目录
+        :return: 本地临时文件路径
+        """
+        ...
+
+    def upload(self, fileitem: FileItem, path: Path,
+               new_name: Optional[str] = None) -> Optional[FileItem]:
+        """
+        上传本地文件。
+
+        :param fileitem: 上传目标目录项
+        :param path: 本地文件路径
+        :param new_name: 上传后的文件名
+        :return: 上传后的文件项；失败时为 None
+        """
+        ...
+
+    def copy(self, fileitem: FileItem, path: Path, new_name: str) -> bool:
+        """
+        复制文件到目标目录。
+
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        :return: 复制成功时为 True
+        """
+        ...
+
+    def move(self, fileitem: FileItem, path: Path, new_name: str) -> bool:
+        """
+        移动文件到目标目录。
+
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        :return: 移动成功时为 True
+        """
+        ...
+
+    def link(self, fileitem: FileItem, target_file: Path) -> bool:
+        """
+        为文件创建硬链接。
+
+        :param fileitem: 文件项
+        :param target_file: 硬链接路径
+        :return: 创建成功时为 True
+        """
+        ...
+
+    def softlink(self, fileitem: FileItem, target_file: Path) -> bool:
+        """
+        为文件创建软链接。
+
+        :param fileitem: 文件项
+        :param target_file: 软链接路径
+        :return: 创建成功时为 True
+        """
+        ...
