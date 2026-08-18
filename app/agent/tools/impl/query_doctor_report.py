@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.doctor import run_doctor
+from app.runtime.diagnostics import diagnostics_port
 from app.runtime.log import logger
 
 
@@ -85,7 +85,7 @@ class QueryDoctorReportTool(MoviePilotTool):
     @staticmethod
     def _run_doctor_report(deep: bool = False) -> dict[str, Any]:
         """在线程池中运行只读 Doctor 诊断。"""
-        return run_doctor(deep=bool(deep)).to_dict()
+        return diagnostics_port.resolve().run_doctor(deep=bool(deep)).to_dict()
 
     async def run(
         self,

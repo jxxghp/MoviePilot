@@ -3,6 +3,8 @@ import json
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
+
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
@@ -13,6 +15,27 @@ from app.doctor.models import (
     DoctorReport,
     DoctorSeverity,
 )
+from app.runtime.diagnostics import diagnostics_port
+from app.startup.hostport_initializer import configure_host_ports
+
+
+class _FakeDiagnosticsProvider:
+    """doctor 工具测试用的自检诊断替身，记录收到的 deep 参数。"""
+
+    def __init__(self, report: DoctorReport):
+        self._report = report
+        self.calls: list[bool] = []
+
+    def run_doctor(self, deep: bool = False) -> DoctorReport:
+        self.calls.append(deep)
+        return self._report
+
+
+@pytest.fixture(autouse=True)
+def _restore_diagnostics_port():
+    """用例结束后恢复组合根注册的实现，避免影响其它用例。"""
+    yield
+    configure_host_ports()
 
 
 def _doctor_report() -> DoctorReport:
@@ -58,12 +81,10 @@ def test_factory_registers_doctor_report_tool():
 def test_query_doctor_report_returns_readonly_report():
     """doctor 工具应以只读方式返回结构化诊断报告。"""
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
+    provider = _FakeDiagnosticsProvider(_doctor_report())
+    diagnostics_port.register(lambda: provider)
 
-    with patch(
-        "app.agent.tools.impl.query_doctor_report.run_doctor",
-        return_value=_doctor_report(),
-    ) as run_doctor:
-        result = asyncio.run(tool.run(deep=True))
+    result = asyncio.run(tool.run(deep=True))
 
     payload = json.loads(result)
     assert payload["success"] is True
@@ -73,18 +94,15 @@ def test_query_doctor_report_returns_readonly_report():
     assert payload["report"]["environment"]["runtime"] == "Docker"
     assert payload["report"]["findings"][0]["detail"] == "ERROR demo Cookie: <REDACTED>"
     assert payload["report"]["findings"][0]["affects_report_status"] is True
-    run_doctor.assert_called_once_with(deep=True)
+    assert provider.calls == [True]
 
 
 def test_query_doctor_report_compact_mode_omits_details():
     """紧凑模式应保留诊断项概要并省略 detail 和 context。"""
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
+    diagnostics_port.register(lambda: _FakeDiagnosticsProvider(_doctor_report()))
 
-    with patch(
-        "app.agent.tools.impl.query_doctor_report.run_doctor",
-        return_value=_doctor_report(),
-    ):
-        result = asyncio.run(tool.run(include_details=False))
+    result = asyncio.run(tool.run(include_details=False))
 
     payload = json.loads(result)
     finding = payload["report"]["findings"][0]

@@ -1,6 +1,6 @@
 """兼容旧 ``app.db.user_oper`` 中混合的数据访问与认证依赖。"""
 
-from app.api.deps import (
+from app.application.security.dependencies import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
     get_current_active_superuser,

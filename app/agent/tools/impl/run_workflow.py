@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.workflow.service import WorkflowChain
+from app.runtime.workflows import workflow_execution_port
 from app.db.oper.workflow import WorkflowOper
 from app.runtime.log import logger
 
@@ -52,7 +52,9 @@ class RunWorkflowTool(MoviePilotTool):
         workflow_id: int, from_begin: Optional[bool] = True
     ) -> tuple[bool, str]:
         """同步执行工作流，放到专用线程池避免长流程阻塞 API 响应。"""
-        return WorkflowChain().process(workflow_id, from_begin=from_begin)
+        return workflow_execution_port.resolve().process(
+            workflow_id, from_begin=from_begin
+        )
 
     async def run(
         self, workflow_id: int, from_begin: Optional[bool] = True, **kwargs

@@ -54,11 +54,7 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
 }
 # 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
 # 边消失后条目可直接删除，留着不会导致失败。
-DEPENDENCY_DEBT: dict[tuple[str, str], str] = {
-    ("agent", "doctor"): "Agent 工具直接调用自检入口，待经服务门面暴露",
-    ("agent", "workflow"): "Agent 工具直接触达工作流服务，待经服务门面暴露",
-    ("sdk", "api"): "认证依赖仍落在端点层，待下沉安全服务后由两侧共用",
-}
+DEPENDENCY_DEBT: dict[tuple[str, str], str] = {}
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (

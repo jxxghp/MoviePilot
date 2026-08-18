@@ -1185,27 +1185,35 @@
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 63
+        "line": 80
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 64
+        "line": 81
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 65
+        "line": 82
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 66
+        "line": 83
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 67
+        "line": 84
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 68
+        "line": 85
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 86
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 87
       },
       {
         "caller": "app.testing.bootstrap",
@@ -1387,7 +1395,7 @@
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 233
+            "line": 239
           }
         ]
       },
@@ -1596,7 +1604,7 @@
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 219
+            "line": 225
           }
         ]
       },
@@ -1697,7 +1705,7 @@
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 136
+            "line": 142
           },
           {
             "caller": "app.api.endpoints.site",
@@ -1740,7 +1748,7 @@
           },
           {
             "caller": "app.api.deps",
-            "line": 131
+            "line": 137
           },
           {
             "caller": "app.chain.site",
@@ -1779,7 +1787,7 @@
           },
           {
             "caller": "app.api.deps",
-            "line": 67
+            "line": 73
           }
         ]
       },
