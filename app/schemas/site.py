@@ -87,6 +87,8 @@ class SiteUserData(BaseModel):
 
     # 站点域名
     domain: Optional[str] = None
+    # 站点名称
+    name: Optional[str] = None
     # 用户名
     username: Optional[str] = None
     # 用户ID

@@ -11,6 +11,7 @@ def test_userdata_latest_sync_projects_orm_record_to_dto() -> None:
     """同步站点用户数据查询应支持 SQLAlchemy ORM 记录。"""
     record = SiteUserDataRecord(
         domain="site.example",
+        name="示例站点",
         username="tester",
         userid="42",
         user_level="Power User",
@@ -28,5 +29,6 @@ def test_userdata_latest_sync_projects_orm_record_to_dto() -> None:
 
     assert isinstance(result[0], SiteUserData)
     assert result[0].domain == "site.example"
+    assert result[0].name == "示例站点"
     assert result[0].userid == "42"
     assert result[0].upload == 1024
