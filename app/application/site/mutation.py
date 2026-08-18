@@ -21,7 +21,7 @@ class SiteMutationRepository(Protocol):
         """读取指定站点。"""
         ...
 
-    async def get_by_domain(self, domain: str) -> Optional[Any]:
+    async def async_get_by_domain(self, domain: str) -> Optional[Any]:
         """按域名读取站点。"""
         ...
 
@@ -90,7 +90,7 @@ class SiteMutationCommand:
         site_info = await self._indexer_loader(domain)
         if not site_info:
             return SiteMutationResult(False, "该站点不支持，请检查站点域名是否正确")
-        if await self._repository.get_by_domain(domain):
+        if await self._repository.async_get_by_domain(domain):
             return SiteMutationResult(False, f"{domain} 站点己存在")
 
         values.update({

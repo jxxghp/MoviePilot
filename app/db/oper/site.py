@@ -41,10 +41,6 @@ class SiteOper(DbOper):
         """读取站点写用例需要的目标站点。"""
         return await self.async_get(site_id)
 
-    async def get_by_domain(self, domain: str) -> Optional[Site]:
-        """按域名读取站点写用例的重复目标。"""
-        return await Site.async_get_by_domain(self._db, domain)
-
     async def stage_create(self, payload: Mapping[str, Any]) -> None:
         """暂存新增站点，不由仓储自行提交。"""
         values = dict(payload)
