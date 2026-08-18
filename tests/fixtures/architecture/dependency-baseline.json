@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6024,
-  "edge_sha256": "c0e243d720b7edbd3b842d8f9afd4ae5c7e0be6c8c745601986d2c938e4f23d8",
+  "edge_count": 6028,
+  "edge_sha256": "5d7edd263b74841b2b98cfdb032190e4a2dd2961733402eacbeba31b21ecf136",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1762,6 +1762,9 @@
     "app.api.endpoints.media -> app.api",
     "app.api.endpoints.media -> app.api.deps",
     "app.api.endpoints.media -> app.api.response",
+    "app.api.endpoints.media -> app.application",
+    "app.api.endpoints.media -> app.application.plugin",
+    "app.api.endpoints.media -> app.application.plugin.runtime",
     "app.api.endpoints.media -> app.chain",
     "app.api.endpoints.media -> app.chain.media",
     "app.api.endpoints.media -> app.chain.scraping",
@@ -1778,6 +1781,7 @@
     "app.api.endpoints.media -> app.schemas",
     "app.api.endpoints.media -> app.schemas.category",
     "app.api.endpoints.media -> app.schemas.context",
+    "app.api.endpoints.media -> app.schemas.event",
     "app.api.endpoints.media -> app.schemas.media",
     "app.api.endpoints.media -> app.schemas.response",
     "app.api.endpoints.media -> app.schemas.token",

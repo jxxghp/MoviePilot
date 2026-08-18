@@ -99,10 +99,15 @@ class ModuleInvocationDispatcher:
         """同步执行插件方法，保留插件顺序、短路和列表合并语义。"""
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
-            func = module_dict.get(method)
-            if not func:
-                continue
             try:
+                # 防御坏插件把方法表声明成非映射类型，避免击穿整个模块调度
+                if not isinstance(module_dict, Mapping):
+                    raise TypeError(
+                        f"插件 {plugin_id} 的模块声明必须是映射，实际是 {type(module_dict).__name__}"
+                    )
+                func = module_dict.get(method)
+                if not func:
+                    continue
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
@@ -140,10 +145,15 @@ class ModuleInvocationDispatcher:
         """异步执行插件方法，并把同步函数移入线程池。"""
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
-            func = module_dict.get(method)
-            if not func:
-                continue
             try:
+                # 防御坏插件把方法表声明成非映射类型，避免击穿整个模块调度
+                if not isinstance(module_dict, Mapping):
+                    raise TypeError(
+                        f"插件 {plugin_id} 的模块声明必须是映射，实际是 {type(module_dict).__name__}"
+                    )
+                func = module_dict.get(method)
+                if not func:
+                    continue
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)

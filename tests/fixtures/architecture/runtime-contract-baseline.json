@@ -1612,7 +1612,7 @@
         "consumers": [
           {
             "caller": "app.chain.scraping",
-            "line": 586
+            "line": 597
           }
         ],
         "producers": [
@@ -1871,7 +1871,7 @@
     "producer_count": 66
   },
   "run_module": {
-    "call_count": 259,
+    "call_count": 260,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 211,
@@ -3009,6 +3009,11 @@
         {
           "caller": "app.chain",
           "line": 1005,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.scraping",
+          "line": 573,
           "mode": "sync"
         }
       ],

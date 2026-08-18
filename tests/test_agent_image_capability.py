@@ -1,13 +1,39 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.llm.provider import LLMProviderManager
 from app.chain.message import MessageChain
 from app.runtime.config import settings
 from app.schemas.types import NotificationChannel
 
 
-def test_llm_supports_image_input_uses_model_catalog_text_only(monkeypatch):
+@pytest.fixture
+def stub_llm_model_catalog(monkeypatch):
+    """打桩 models.dev 目录查询边界，离线文件随仓库保持为空，不依赖真实目录数据。"""
+    catalog = {
+        ("minimax", "MiniMax-M2.7"): {
+            "modalities": {"input": ["text"], "output": ["text"]},
+        },
+        ("zhipuai", "glm-5v-turbo"): {
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
+        },
+    }
+
+    def fake_resolve(self, provider_id, model_id, base_url=None, base_url_preset_id=None):
+        """按 provider 与模型标识返回目录元数据，未知模型返回 None。"""
+        return catalog.get((provider_id, model_id))
+
+    monkeypatch.setattr(
+        LLMProviderManager, "resolve_cached_model_metadata", fake_resolve
+    )
+
+
+def test_llm_supports_image_input_uses_model_catalog_text_only(
+        monkeypatch, stub_llm_model_catalog
+):
     """内置目录明确为纯文本模型时，应自动关闭图片输入。"""
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
 
@@ -17,7 +43,9 @@ def test_llm_supports_image_input_uses_model_catalog_text_only(monkeypatch):
     )
 
 
-def test_llm_supports_image_input_keeps_known_vision_model(monkeypatch):
+def test_llm_supports_image_input_keeps_known_vision_model(
+        monkeypatch, stub_llm_model_catalog
+):
     """内置目录明确为视觉模型时，应允许图片输入。"""
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
 
@@ -45,13 +73,21 @@ def test_agent_capability_manager_delegates_image_support():
     supports.assert_called_once_with()
 
 
-def test_handle_ai_message_routes_text_only_model_images_to_files(monkeypatch):
+def test_handle_ai_message_routes_text_only_model_images_to_files(
+        monkeypatch, stub_llm_model_catalog
+):
     """纯文本模型收到图片消息时，应降级为文件附件而非 image_url 内容块。"""
     chain = MessageChain()
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
     monkeypatch.setattr(settings, "LLM_PROVIDER", "minimax")
     monkeypatch.setattr(settings, "LLM_MODEL", "MiniMax-M2.7")
+    # 测试绕过完整启动组合根，按需装配 llm_helper provider 以走真实能力判断
+    import app.application.agent as agent_facade
+
+    monkeypatch.setattr(
+        agent_facade, "_llm_helper_provider", lambda: LLMHelper
+    )
 
     with patch.object(
         chain, "_get_or_create_session_id", return_value="session-1"

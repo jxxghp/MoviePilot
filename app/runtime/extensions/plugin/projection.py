@@ -87,7 +87,16 @@ class PluginProjection:
                 continue
             try:
                 if plugin.get_state():
-                    modules[(plugin_id, plugin.get_name())] = plugin.get_module() or []
+                    declared = plugin.get_module()
+                    # 基类默认实现返回 None；只接受映射，防止把 list 当成方法表传入调度器
+                    if declared is None:
+                        continue
+                    if not isinstance(declared, Mapping):
+                        self._logger.error(
+                            f"插件 {plugin_id} 的 get_module() 返回值必须是字典，实际是 {type(declared).__name__}"
+                        )
+                        continue
+                    modules[(plugin_id, plugin.get_name())] = declared
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} 模块出错：{str(error)}")
         return modules

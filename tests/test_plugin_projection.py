@@ -80,6 +80,23 @@ def test_projection_preserves_services_modules_actions_and_pid_filter():
     }]
 
 
+def test_projection_modules_skips_none_and_non_mapping_declarations():
+    """get_module 未返回映射的插件被跳过并记日志，不污染整体模块投影。"""
+    errors = []
+    log = SimpleNamespace(error=lambda message: errors.append(message))
+    projection = PluginProjection(
+        {
+            "NoDecl": _Plugin(get_module=lambda: None),
+            "ListDecl": _Plugin(get_module=lambda: ["not-a-mapping"]),
+            "Healthy": _Plugin(get_module=lambda: {"recognize": "handler"}),
+        },
+        log=log,
+    )
+
+    assert projection.modules() == {("Healthy", "测试插件"): {"recognize": "handler"}}
+    assert any("ListDecl" in message for message in errors)
+
+
 def test_projection_collects_enabled_media_source_declarations():
     """只投影启用插件的媒体来源声明，并附带插件 ID 便于诊断。"""
     demo = _Plugin(

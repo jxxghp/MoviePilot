@@ -68,11 +68,11 @@ _BUILTIN_MEDIA_SOURCES = (
 
 def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
     """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
-    from app.runtime.extensions.plugin_manager import PluginManager
+    from app.application.plugin.runtime import get_plugin_manager
 
     result = list(_BUILTIN_MEDIA_SOURCES)
     seen = {source.media_source for source in result}
-    for raw_source in PluginManager().get_media_sources():
+    for raw_source in get_plugin_manager().get_media_sources():
         try:
             source = _SchemaMediaSourceInfo.model_validate(raw_source)
         except Exception:
