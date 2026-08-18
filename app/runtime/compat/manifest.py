@@ -910,6 +910,14 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             "build_media_key",
         )
     },
+    # 整理编排落在 app/application/transferhandler.py，文件整理模块不再持有该类
+    "app.modules.filemanager": {
+        "TransHandler": SymbolAlias(
+            target_module="app.application.transferhandler",
+            target_name="TransHandler",
+            replacement="app.application.transferhandler.TransHandler",
+        ),
+    },
     "app.schemas": {
         **{
             name: SymbolAlias(

@@ -11,9 +11,8 @@ from app.application.storage import StorageHelper
 from app.domain.mediapath import resolve_media_root_path
 from app.domain.meta.metavideo import MetaVideo
 from app.domain.context import MediaInfo
-from app.modules.filemanager import FileManagerModule
-from app.modules.filemanager import mediaroot
-from app.modules.filemanager.mediaroot import get_media_root_path
+from app.modules import filemanager
+from app.modules.filemanager import FileManagerModule, get_media_root_path
 from app.modules.localstorage.local import LocalStorage
 from app.application.transferhandler import TransHandler
 from app.runtime.directories import directory_config_port
@@ -182,16 +181,16 @@ def test_media_root_resolution_reports_problems_without_logging():
 def test_media_root_helper_logs_reported_problems(monkeypatch):
     """整理侧取用媒体根路径时须把推导问题按级别写入日志。"""
     records = []
-    monkeypatch.setattr(mediaroot, "logger", SimpleNamespace(
+    monkeypatch.setattr(filemanager, "logger", SimpleNamespace(
         warn=lambda text: records.append(("warn", text)),
         error=lambda text: records.append(("error", text)),
     ))
 
-    assert mediaroot.get_media_root_path("", Path("/library/file.mkv")) is None
+    assert filemanager.get_media_root_path("", Path("/library/file.mkv")) is None
     assert records == [("error", "重命名格式不能为空")]
 
     records.clear()
-    assert mediaroot.get_media_root_path(
+    assert filemanager.get_media_root_path(
         "plain/{{fileExt}}", Path("/library/show/file.mkv")
     ) == Path("/library/show")
     assert records == [("warn", "重命名格式 plain/{{fileExt}} 缺少标题目录")]

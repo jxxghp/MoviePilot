@@ -1306,6 +1306,13 @@
           "target_name": "resolve_media_identity"
         }
       },
+      "app.modules.filemanager": {
+        "TransHandler": {
+          "replacement": "app.application.transferhandler.TransHandler",
+          "target_module": "app.application.transferhandler",
+          "target_name": "TransHandler"
+        }
+      },
       "app.schemas": {
         "ChannelCapabilities": {
           "replacement": "app.schemas.notification.ChannelCapabilities",
