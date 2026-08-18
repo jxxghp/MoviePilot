@@ -1802,12 +1802,12 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain",
-            "line": 136
+            "caller": "app.chain.ports.dispatch",
+            "line": 68
           },
           {
-            "caller": "app.chain",
-            "line": 162
+            "caller": "app.chain.ports.dispatch",
+            "line": 94
           },
           {
             "caller": "app.runtime.events",
@@ -1851,7 +1851,7 @@
         "producers": [
           {
             "caller": "app.chain.webhook",
-            "line": 21
+            "line": 29
           }
         ]
       },
@@ -2162,8 +2162,8 @@
       ],
       "async_obtain_images": [
         {
-          "caller": "app.chain",
-          "line": 415,
+          "caller": "app.chain.ports.metadata",
+          "line": 125,
           "mode": "async"
         }
       ],
@@ -2924,8 +2924,8 @@
       ],
       "obtain_images": [
         {
-          "caller": "app.chain",
-          "line": 405,
+          "caller": "app.chain.ports.metadata",
+          "line": 115,
           "mode": "sync"
         }
       ],

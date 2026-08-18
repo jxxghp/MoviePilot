@@ -19,6 +19,7 @@ from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
 from app.runtime.capabilities.model import SelectorSchema
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.extensions import host_module_adapter
 from app.runtime.extensions import module_manager as module_manager_extension
 from app.runtime.extensions import service_config as service_config_extension
 from app.runtime.extensions.module_manager import ModuleManager
@@ -999,3 +1000,76 @@ manager.shutdown()
         f"模块 metadata 兼容检查失败：\nstdout:\n{result.stdout[-2000:]}\n"
         f"stderr:\n{result.stderr[-4000:]}"
     )
+
+
+def _write_single_module_manifest(
+    module_root: Path,
+    *,
+    package: str,
+    module_type: str,
+    subtype: str,
+) -> None:
+    """在合成模块根下写入一个只含单个包的 Host Module 声明，用于单独测试 subtype 校验。"""
+    package_dir = module_root / package
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "capability.toml").write_text(
+        f"""
+schema_version = 1
+id = "{package.title()}Module"
+kind = "host_module"
+entrypoint = "app.modules.{package}:{package.title()}Module"
+depends_on = []
+
+[metadata]
+name = "{package.title()}"
+type = "{module_type}"
+subtype = "{subtype}"
+priority = 1
+
+[activation]
+policy = "bootstrap"
+watch = []
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_manifest_accepts_unregistered_subtype_for_non_notification_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """非通知渠道模块声明未登记的 subtype 仍能通过 inventory 校验并被 Registry 收录。"""
+    module_root = tmp_path / "modules"
+    _write_single_module_manifest(
+        module_root,
+        package="newbackend",
+        module_type="downloader",
+        subtype="TotallyNewBackend",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    registry = host_module_adapter.build_host_module_registry()
+
+    specs = registry.list_specs()
+    assert len(specs) == 1
+    assert specs[0].metadata["subtype"] == "TotallyNewBackend"
+
+
+def test_manifest_rejects_unregistered_subtype_for_notification_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """通知渠道模块声明未登记的 subtype 时仍被拒绝，因为它驱动 Message.channel 枚举字段。"""
+    module_root = tmp_path / "modules"
+    _write_single_module_manifest(
+        module_root,
+        package="newchannel",
+        module_type="notification",
+        subtype="TotallyNewChannel",
+    )
+    monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
+
+    with pytest.raises(ValueError, match="NotificationChannel"):
+        host_module_adapter.build_host_module_registry()

@@ -54,12 +54,14 @@ def test_chain_base_does_not_import_concrete_chains() -> None:
     imports = _imported_modules(CHAIN_ROOT / "__init__.py")
 
     # 下划线前缀的内部模块（_messaging/_recognition 等）是 ChainBase 的
-    # 功能域 mixin，不是具体处理链，允许导入
+    # 功能域 mixin，app.chain.ports 是按业务域划分的能力端口客户端，
+    # 两者都不是具体处理链，允许导入
     assert not {
         module
         for module in imports
         if module.startswith("app.chain.")
         and not module.removeprefix("app.chain.").startswith("_")
+        and module.removeprefix("app.chain.").partition(".")[0] != "ports"
     }
 
 

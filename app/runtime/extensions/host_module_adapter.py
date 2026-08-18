@@ -16,13 +16,8 @@ from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.config import settings
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.schemas.types import (
-    DownloaderType,
-    MediaRecognizeType,
-    MediaServerType,
     NotificationChannel,
     ModuleType,
-    OtherModulesType,
-    StorageSchema,
     SystemConfigKey,
 )
 
@@ -36,18 +31,11 @@ _SERVICE_CONFIG_GETTERS = MappingProxyType({
     SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
     SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
 })
-_SUBTYPE_NAMES = frozenset(
-    item.name
-    for enum_type in (
-        DownloaderType,
-        MediaServerType,
-        NotificationChannel,
-        StorageSchema,
-        OtherModulesType,
-        MediaRecognizeType,
-    )
-    for item in enum_type
-)
+# 通知渠道的 subtype 会成为 Message.channel（Pydantic 枚举字段）与
+# ChannelCapabilityManager 按渠道能力表的查找键，未登记的取值会在消息分发
+# 路径上以枚举校验失败告终，因此仍要求必须是 NotificationChannel 已登记成员名。
+_NOTIFICATION_MODULE_TYPE = ModuleType.Notification.value
+_NOTIFICATION_SUBTYPE_NAMES = frozenset(item.name for item in NotificationChannel)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,11 +117,19 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
             raise ValueError(
                 f"{spec.source}: metadata 字段必须是 {sorted(allowed_metadata)}"
             )
-        if spec.metadata["type"] not in module_type_values:
-            raise ValueError(f"{spec.source}: 非法 metadata.type={spec.metadata['type']!r}")
-        if spec.metadata["subtype"] not in _SUBTYPE_NAMES:
+        module_type = spec.metadata["type"]
+        if module_type not in module_type_values:
+            raise ValueError(f"{spec.source}: 非法 metadata.type={module_type!r}")
+        subtype = spec.metadata["subtype"]
+        if not isinstance(subtype, str) or not subtype:
+            raise ValueError(f"{spec.source}: metadata.subtype 必须是非空字符串")
+        # 非通知渠道模块的 subtype 只是展示/追溯元数据（族内识别已经改走
+        # 运行期反射与 selector 的 match_value 字符串），未登记的取值不再
+        # 阻止能力加载，新增后端/存储/识别源不必先改内核枚举。
+        if module_type == _NOTIFICATION_MODULE_TYPE and subtype not in _NOTIFICATION_SUBTYPE_NAMES:
             raise ValueError(
-                f"{spec.source}: 非法 metadata.subtype={spec.metadata['subtype']!r}"
+                f"{spec.source}: 非法 metadata.subtype={subtype!r}，"
+                "通知渠道模块的 subtype 必须是 NotificationChannel 已登记的枚举成员名"
             )
         priority = spec.metadata["priority"]
         if isinstance(priority, bool) or not isinstance(priority, int):
