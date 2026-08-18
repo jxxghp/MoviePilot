@@ -6256,7 +6256,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 739,
+  "module_count": 738,
   "modules": [
     "app",
     "app.adapters",
@@ -6876,7 +6876,6 @@
     "app.runtime.extensions.module.dispatcher",
     "app.runtime.extensions.module_manager",
     "app.runtime.extensions.plugin",
-    "app.runtime.extensions.plugin.contracts",
     "app.runtime.extensions.plugin.projection",
     "app.runtime.extensions.plugin.registry",
     "app.runtime.extensions.plugin.storage",

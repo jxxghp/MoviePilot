@@ -119,15 +119,30 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 - 门禁的编排层专属断言（不得穿透模块内部、不得依赖 Agent 实现、
   不得引入下载器 SDK）意图保留，仅同步路径。
 
+### 1.9 单一 Extension 契约
+
+`runtime/extensions/contract.py` 声明扩展的共同面：发行方式（预装 / 市场）与
+失败归属、身份、生命周期、能力与钩子探测，以及分发用的提供者视图与来源协议。
+
+- **两个基类源码零改动**，经适配器投影成契约视图：模块侧映射
+  `init_module`/`stop`/`test`，插件侧映射 `init_plugin`/`stop_service`/`get_state`。
+  协议声明语义、名称映射留在适配层——两者的打包模型本就不同
+  （包级单例 + 配置开关 vs 多实例 + 安装清单），合并基类会破坏插件生态。
+- 分发内核只消费提供者视图，不再假设扩展的具体形状：错误按失败归属分流、
+  签名接力与逐调用日志按视图声明。六个成对方法合并为四个通用实现。
+- 能力索引、插件投影与插件生命周期改经契约探测；重复的钩子与能力探测合并为一份。
+- **验收自评**：新增一种发行方式无需改动分发内核、能力索引与投影，
+  已由一个只实现协议的第三方来源接入四级分发验证；组合根仍需一行装配。
+
+已知限制：插件生态没有连通性自检契约，故插件视图的自检恒为空
+（把它映射到启用态会把"已启用"误报成"可连通"）；能力索引仍返回模块实例
+而非视图，因为编排层与既有测试依赖实例身份。
+
 ---
 
 ## 二、待办
 
-按价值与风险排序：
-
-1. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
-   目标是"内建与三方只有发行方式之别"，是"一切皆扩展"的最后一块，改动面最大。
-2. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
+1. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
    （SDK 目前在宿主生产代码中仍是零消费者）。
 
 ---
@@ -137,11 +152,12 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **4964 passed / 1 failed** |
+| 当前 | **4979 passed / 0 failed** |
 
-唯一失败 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`
-在基线上同样失败：容器文件系统 `st_ctime_ns` 无纳秒级精度，
-扫描器缓存键无法区分"同尺寸且保留 mtime"的改动，与本重构无关。
+官方基线上那条失败是
+`test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`：
+容器文件系统 `st_ctime_ns` 无纳秒级精度，扫描器缓存键无法区分
+"同尺寸且保留 mtime"的改动，与本重构无关，在负载与时序变化下时通时不通。
 
 架构基线快照（`tests/fixtures/architecture/*.json`）与 `app/schemas/exports.py`
 在每轮改动后由 `scripts/architecture/baseline.py --write` 与
