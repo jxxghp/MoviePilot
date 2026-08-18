@@ -306,8 +306,8 @@ def test_browser_install_is_centralized_in_startup() -> None:
     assert "-m cloakbrowser install" not in entrypoint
     assert browser.count("-m cloakbrowser install") == 2
     assert "-m cloakbrowser install" not in updater
-    assert startup.index("source /usr/local/bin/mp_update.sh") < startup.index(
-        'source "/app/docker/browser.sh"'
+    assert startup.index('source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"') < startup.index(
+        'source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/browser.sh"'
     ) < startup.index("resolve_browser_cache_dir") < startup.index("ensure_browser_kernel")
 
 
@@ -330,6 +330,25 @@ def test_image_paths_force_chown_uses_recursive_repair(tmp_path: Path) -> None:
     assert log.startswith("-R moviepilot:moviepilot ")
     assert "/app" in log
     assert "/public" in log
+
+
+def test_force_chown_keeps_source_control_directory_root_owned(tmp_path: Path) -> None:
+    app_dir = tmp_path / "app"
+
+    log = _run_permission_case(
+        tmp_path,
+        """
+        mkdir -p "${APP_DIR}/docker"
+        printf '#!/bin/bash\\n' > "${APP_DIR}/docker/launcher.sh"
+        MOVIEPILOT_FORCE_CHOWN=true force_chown_image_paths_if_requested "${APP_DIR}" "${PUBLIC_DIR}"
+        """,
+    )
+
+    lines = log.splitlines()
+    assert f"root:root {app_dir} {app_dir}/docker" in lines
+    assert not any(line.startswith("-R ") and f"{app_dir}/docker" in line for line in lines)
+    assert f"-R moviepilot:moviepilot {app_dir}/app" in lines
+    assert f"-R moviepilot:moviepilot {tmp_path}/public" in lines
 
 
 def test_image_paths_force_chown_accepts_numeric_and_yes_values(tmp_path: Path) -> None:

@@ -380,8 +380,55 @@ function force_chown_image_paths_if_requested() {
     local path
     for path in "$@"; do
         [ -e "${path}" ] || continue
+        if [ -f "${path}/docker/launcher.sh" ]; then
+            # 控制脚本会在下一次启动时以 root 执行，源码目录必须保持不可由运行用户改写。
+            chown root:root "${path}" "${path}/docker"
+            chmod go-w "${path}" "${path}/docker"
+            while IFS= read -r -d '' app_child; do
+                chown -R moviepilot:moviepilot "${app_child}"
+            done < <(find "${path}" -mindepth 1 -maxdepth 1 ! -name docker -print0)
+            continue
+        fi
         chown -R moviepilot:moviepilot "${path}"
     done
+}
+
+function control_bundle_reexec_decision() {
+    local update_result="${1:-noop}"
+    local current_generation="${2:-}"
+    local next_generation="${3:-}"
+    local already_reexecuted="${4:-0}"
+
+    [ "${update_result}" = "updated" ] || return 1
+    [ "${next_generation}" != "${current_generation}" ] || return 1
+    [ "${already_reexecuted}" != "1" ] || return 2
+    return 0
+}
+
+function source_control_generation() {
+    /entrypoint.sh --source-generation 2>/dev/null
+}
+
+function maybe_reexec_control_bundle() {
+    [ "${MOVIEPILOT_UPDATE_RESULT:-noop}" = "updated" ] || return 0
+
+    local next_control_generation
+    if ! next_control_generation="$(source_control_generation)"; then
+        WARN "→ 更新后的容器控制脚本不可用，本次继续使用当前控制脚本快照启动。"
+        return 0
+    fi
+
+    if control_bundle_reexec_decision \
+        "${MOVIEPILOT_UPDATE_RESULT}" \
+        "${MP_CONTROL_GENERATION:-}" \
+        "${next_control_generation}" \
+        "${MOVIEPILOT_BOOTSTRAP_REEXECUTED:-0}"; then
+        INFO "→ 检测到容器控制脚本更新，使用新版本继续本次启动。"
+        exec /entrypoint.sh --post-update-reexec
+    elif [ "$?" -eq 2 ]; then
+        ERROR "→ 容器控制脚本在单次启动中重复变化，已终止以避免重启循环。"
+        exit 1
+    fi
 }
 
 function correct_home_permissions() {
@@ -480,21 +527,23 @@ fi
 # 使用env配置渲染 nginx 配置
 render_nginx_config
 
-# 自动更新
+# 自动更新，控制脚本由 launcher 固化到同一代运行目录，源码替换不会改变本轮执行内容。
 cd /
-if [ -f /app/docker/update.sh ] && ! cmp -s /app/docker/update.sh /usr/local/bin/mp_update.sh; then
-    # 后端源码可独立于镜像更新，启动前同步更新器，避免它长期保留过期目录约定。
-    cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh
-    chmod +x /usr/local/bin/mp_update.sh
-    INFO "→ 已同步后端内置更新脚本"
+if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]; then
+    source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"
+    run_moviepilot_update
+    export MOVIEPILOT_BOOTSTRAP_UPDATE_DONE=1
+else
+    MOVIEPILOT_UPDATE_RESULT="noop"
 fi
-source /usr/local/bin/mp_update.sh
 if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
     MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
 fi
+
+maybe_reexec_control_bundle
 cd /app || exit
 
-source "/app/docker/browser.sh"
+source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/browser.sh"
 
 # 更改 moviepilot userid 和 groupid
 groupmod -o -g "${PGID}" moviepilot
@@ -517,7 +566,7 @@ fi
 ensure_browser_kernel
 
 # 证书管理
-source /app/docker/cert.sh
+source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/cert.sh"
 
 # 启动前端nginx服务
 INFO "→ 启动前端nginx服务..."

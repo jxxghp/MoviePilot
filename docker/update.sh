@@ -37,6 +37,7 @@ function apply_package_cache_env() {
 apply_package_cache_env
 
 PIP_ENV=()
+MOVIEPILOT_UPDATE_RESULT="noop"
 
 function set_package_proxy_env() {
     PIP_ENV=()
@@ -145,14 +146,19 @@ function install_backend_and_download_resources() {
     INFO "前端程序下载成功"
     # 备份插件目录
     INFO "→ 正在备份插件目录..."
-    rm -rf /plugins
-    mkdir -p /plugins
-    cp -a /app/app/plugins/* /plugins/
+    if ! rm -rf /plugins \
+        || ! mkdir -p /plugins \
+        || ! cp -a /app/app/plugins/* /plugins/; then
+        ERROR "插件目录备份失败，终止更新"
+        return 1
+    fi
     rm -f /plugins/__init__.py
     # 备份站点资源
     INFO "→ 正在备份站点资源目录..."
-    rm -rf /resources_bakcup
-    mkdir /resources_bakcup
+    if ! rm -rf /resources_bakcup || ! mkdir /resources_bakcup; then
+        ERROR "站点资源备份目录准备失败，终止更新"
+        return 1
+    fi
     resource_source_dir=/app/app/application/site
     for legacy_resource_dir in /app/app/infrastructure /app/app/adapters/network /app/app/helper; do
         if [ ! -d "${resource_source_dir}" ] && [ -d "${legacy_resource_dir}" ]; then
@@ -167,17 +173,21 @@ function install_backend_and_download_resources() {
         [ -f "${resource_file}" ] && cp -a "${resource_file}" /resources_bakcup
     done
     # 清空程序目录
-    rm -rf /app
-    mkdir -p /app
-    # 复制新后端程序
-    cp -a ${TMP_PATH}/App/* /app/
-    # 复制新前端程序
-    rm -rf /public
-    mkdir -p /public
-    cp -a ${TMP_PATH}/dist/* /public/
+    if ! rm -rf /app \
+        || ! mkdir -p /app \
+        || ! cp -a ${TMP_PATH}/App/* /app/ \
+        || ! rm -rf /public \
+        || ! mkdir -p /public \
+        || ! cp -a ${TMP_PATH}/dist/* /public/; then
+        ERROR "程序文件替换失败，更新未完成"
+        return 1
+    fi
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     # 恢复插件目录
-    cp -a /plugins/* /app/app/plugins/
+    if ! cp -a /plugins/* /app/app/plugins/; then
+        ERROR "插件目录恢复失败，更新未完成"
+        return 1
+    fi
     # 更新站点资源
     INFO "→ 开始更新站点资源..."
     python_version=$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')
@@ -188,7 +198,10 @@ function install_backend_and_download_resources() {
         arch_suffix="x86_64-linux-gnu"
     fi
     INFO "当前 Python 版本：${python_version}，架构：${arch}"
-    mkdir -p /app/app/application/site
+    if ! mkdir -p /app/app/application/site; then
+        ERROR "站点资源目录创建失败，更新未完成"
+        return 1
+    fi
     # 下载 V3 站点索引
     if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/application/site/user.sites.v3.bin; then
         if [ -f /resources_bakcup/user.sites.v3.bin ]; then
@@ -207,6 +220,7 @@ function install_backend_and_download_resources() {
     INFO "站点资源更新成功"
     # 清理临时目录
     rm -rf "${TMP_PATH}"
+    MOVIEPILOT_UPDATE_RESULT="updated"
     return 0
 }
 
@@ -313,8 +327,11 @@ function compare_versions() {
                 return 1
             elif (( current_ver < release_ver )); then
                 INFO "发现新版本，开始自动升级..."
-                install_backend_and_download_resources "tags/$2.zip"
-                return 0
+                if install_backend_and_download_resources "tags/$2.zip"; then
+                    return 0
+                fi
+                MOVIEPILOT_UPDATE_RESULT="failed"
+                return 1
             else
                 continue
             fi
@@ -350,6 +367,8 @@ function get_priority() {
     fi
 }
 
+function run_moviepilot_update() {
+MOVIEPILOT_UPDATE_RESULT="noop"
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
     TMP_PATH=$(mktemp -d)
     if [ ! -d "${TMP_PATH}" ]; then
@@ -387,7 +406,9 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     fi
     if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
         INFO "Dev 更新模式"
-        install_backend_and_download_resources "heads/v3.zip"
+        if ! install_backend_and_download_resources "heads/v3.zip"; then
+            MOVIEPILOT_UPDATE_RESULT="failed"
+        fi
     else
         INFO "Release 更新模式"
         old_version=$(grep -m -1 "^\s*APP_VERSION\s*=\s*" /app/version.py | tr -d '\r\n' | awk -F'#' '{print $1}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
@@ -417,3 +438,4 @@ elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
 else
     INFO "MOVIEPILOT_AUTO_UPDATE 变量设置错误"
 fi
+}
