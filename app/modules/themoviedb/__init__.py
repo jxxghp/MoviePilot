@@ -1617,3 +1617,63 @@ class TheMovieDbModule(_ModuleBase):
         if normalize_media_source(source) is not MediaSource.TMDB:
             return None
         return await self.async_match_tmdbinfo(name=name, mtype=mtype, year=year, season=season)
+
+    def person_detail(self, source: Optional[MediaSource] = None,
+                       person_id: int = None,
+                       **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return self.tmdb_person_detail(person_id=person_id)
+
+    async def async_person_detail(self, source: Optional[MediaSource] = None,
+                                   person_id: int = None,
+                                   **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return await self.async_tmdb_person_detail(person_id=person_id)
+
+    def person_credits(self, source: Optional[MediaSource] = None,
+                        person_id: int = None,
+                        page: int = 1,
+                        count: Optional[int] = None,
+                        **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param person_id: 人物ID
+        :param page: 页码
+        :param count: 本源不支持
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return self.tmdb_person_credits(person_id=person_id, page=page)
+
+    async def async_person_credits(self, source: Optional[MediaSource] = None,
+                                    person_id: int = None,
+                                    page: int = 1,
+                                    count: Optional[int] = None,
+                                    **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param person_id: 人物ID
+        :param page: 页码
+        :param count: 本源不支持
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        return await self.async_tmdb_person_credits(person_id=person_id, page=page)

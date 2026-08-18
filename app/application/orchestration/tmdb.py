@@ -6,7 +6,7 @@ from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.application.orchestration import ChainBase
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 class TmdbChain(ChainBase):
@@ -135,7 +135,7 @@ class TmdbChain(ChainBase):
         根据TMDBID查询演职员详情
         :param person_id:  人物ID
         """
-        return self.unicast("tmdb_person_detail", person_id=person_id)
+        return self.unicast("person_detail", source=MediaSource.TMDB, person_id=person_id)
 
     def person_credits(self, person_id: int, page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
         """
@@ -143,7 +143,7 @@ class TmdbChain(ChainBase):
         :param person_id:  人物ID
         :param page:  页码
         """
-        return self.unicast("tmdb_person_credits", person_id=person_id, page=page)
+        return self.unicast("person_credits", source=MediaSource.TMDB, person_id=person_id, page=page)
 
     def get_random_wallpager(self) -> Optional[str]:
         """
@@ -296,7 +296,7 @@ class TmdbChain(ChainBase):
         根据TMDBID查询演职员详情（异步版本）
         :param person_id:  人物ID
         """
-        return await self.async_unicast("async_tmdb_person_detail", person_id=person_id)
+        return await self.async_unicast("async_person_detail", source=MediaSource.TMDB, person_id=person_id)
 
     async def async_person_credits(self, person_id: int, page: Optional[int] = 1) -> Optional[List[MediaInfo]]:
         """
@@ -304,7 +304,9 @@ class TmdbChain(ChainBase):
         :param person_id:  人物ID
         :param page:  页码
         """
-        return await self.async_unicast("async_tmdb_person_credits", person_id=person_id, page=page)
+        return await self.async_unicast(
+            "async_person_credits", source=MediaSource.TMDB, person_id=person_id, page=page
+        )
 
     async def async_get_random_wallpager(self) -> Optional[str]:
         """

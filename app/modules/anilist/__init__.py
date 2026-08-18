@@ -14,6 +14,7 @@ from app.schemas.types import (
     MediaType,
 )
 from app.domain.media import is_media_source_enabled
+from app.schemas.media import normalize_media_source
 
 
 class AniListModule(_ModuleBase):
@@ -582,3 +583,67 @@ class AniListModule(_ModuleBase):
     def clear_cache(self) -> None:
         """清理 AniList 接口缓存"""
         self.anilist_api.clear_cache()
+
+    def person_detail(self, source: Optional[MediaSource] = None,
+                       person_id: int = None,
+                       **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情
+        :param source: 媒体来源，非AniList来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        return self.anilist_person_detail(person_id=person_id)
+
+    async def async_person_detail(self, source: Optional[MediaSource] = None,
+                                   person_id: int = None,
+                                   **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情（异步版本）
+        :param source: 媒体来源，非AniList来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        return await self.async_anilist_person_detail(person_id=person_id)
+
+    def person_credits(self, source: Optional[MediaSource] = None,
+                        person_id: int = None,
+                        page: int = 1,
+                        count: Optional[int] = None,
+                        **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品
+        :param source: 媒体来源，非AniList来源返回 None
+        :param person_id: 人物ID
+        :param page: 页码
+        :param count: 每页数量，未指定时使用本源缺省值 20
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        return self.anilist_person_credits(
+            person_id=person_id, page=page, count=count if count is not None else 20
+        )
+
+    async def async_person_credits(self, source: Optional[MediaSource] = None,
+                                    person_id: int = None,
+                                    page: int = 1,
+                                    count: Optional[int] = None,
+                                    **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品（异步版本）
+        :param source: 媒体来源，非AniList来源返回 None
+        :param person_id: 人物ID
+        :param page: 页码
+        :param count: 每页数量，未指定时使用本源缺省值 20
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        return await self.async_anilist_person_credits(
+            person_id=person_id, page=page, count=count if count is not None else 20
+        )

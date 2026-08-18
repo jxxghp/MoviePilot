@@ -15,6 +15,7 @@ from app.schemas.types import (
 )
 from app.adapters.network.http import RequestUtils
 from app.domain.media import is_media_source_enabled
+from app.schemas.media import normalize_media_source
 
 
 class BangumiModule(_ModuleBase):
@@ -461,3 +462,63 @@ class BangumiModule(_ModuleBase):
         logger.info(f"开始清除{self.get_name()}缓存 ...")
         self.bangumiapi.clear_cache()
         logger.info(f"{self.get_name()}缓存清除完成")
+
+    def person_detail(self, source: Optional[MediaSource] = None,
+                       person_id: int = None,
+                       **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return self.bangumi_person_detail(person_id=person_id)
+
+    async def async_person_detail(self, source: Optional[MediaSource] = None,
+                                   person_id: int = None,
+                                   **kwargs) -> Optional[_SchemaMediaPerson]:
+        """
+        查询指定来源的人物详情（异步版本）
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param person_id: 人物ID
+        :return: 人物详情
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return await self.async_bangumi_person_detail(person_id=person_id)
+
+    def person_credits(self, source: Optional[MediaSource] = None,
+                        person_id: int = None,
+                        page: int = 1,
+                        count: Optional[int] = None,
+                        **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param person_id: 人物ID
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return self.bangumi_person_credits(person_id=person_id)
+
+    async def async_person_credits(self, source: Optional[MediaSource] = None,
+                                    person_id: int = None,
+                                    page: int = 1,
+                                    count: Optional[int] = None,
+                                    **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        查询指定来源的人物参演作品（异步版本）
+        :param source: 媒体来源，非Bangumi来源返回 None
+        :param person_id: 人物ID
+        :param page: 本源不支持
+        :param count: 本源不支持
+        :return: 参演作品列表
+        """
+        if normalize_media_source(source) is not MediaSource.Bangumi:
+            return None
+        return await self.async_bangumi_person_credits(person_id=person_id)

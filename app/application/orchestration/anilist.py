@@ -3,6 +3,7 @@ from typing import Optional
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.application.orchestration import ChainBase
 from app.domain.context import MediaInfo
+from app.schemas.types import MediaSource
 
 
 class AniListChain(ChainBase):
@@ -141,7 +142,7 @@ class AniListChain(ChainBase):
 
         :return: 媒体人物信息
         """
-        return self.unicast("anilist_person_detail", person_id=person_id)
+        return self.unicast("person_detail", source=MediaSource.AniList, person_id=person_id)
 
     async def async_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
@@ -150,7 +151,7 @@ class AniListChain(ChainBase):
         :return: 媒体人物信息
         """
         return await self.async_unicast(
-            "async_anilist_person_detail", person_id=person_id
+            "async_person_detail", source=MediaSource.AniList, person_id=person_id
         )
 
     def person_credits(
@@ -162,7 +163,7 @@ class AniListChain(ChainBase):
         :return: 统一媒体信息列表
         """
         return self.unicast(
-            "anilist_person_credits", person_id=person_id, page=page, count=count
+            "person_credits", source=MediaSource.AniList, person_id=person_id, page=page, count=count
         ) or []
 
     async def async_person_credits(
@@ -174,7 +175,8 @@ class AniListChain(ChainBase):
         :return: 统一媒体信息列表
         """
         return await self.async_unicast(
-            "async_anilist_person_credits",
+            "async_person_credits",
+            source=MediaSource.AniList,
             person_id=person_id,
             page=page,
             count=count,
