@@ -7,7 +7,7 @@ from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metavideo import MetaVideo
-from app.chain.transfer import JobManager, TransferChain
+from app.application.orchestration.transfer import JobManager, TransferChain
 from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,
@@ -426,9 +426,9 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.application.orchestration.transfer.TransferHistoryOper", return_value=SimpleNamespace()
         ), patch(
-            "app.chain.transfer.add_transfer_success",
+            "app.application.orchestration.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ):
             state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
@@ -472,10 +472,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
-        with patch("app.chain.transfer.TransferHistoryOper", return_value=transfer_history_oper), \
-                patch("app.chain.transfer.DownloadHistoryOper", return_value=download_history_oper), \
-                patch("app.chain.transfer.SystemConfigOper", return_value=system_config_oper), \
-                patch("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
+        with patch("app.application.orchestration.transfer.TransferHistoryOper", return_value=transfer_history_oper), \
+                patch("app.application.orchestration.transfer.DownloadHistoryOper", return_value=download_history_oper), \
+                patch("app.application.orchestration.transfer.SystemConfigOper", return_value=system_config_oper), \
+                patch("app.application.orchestration.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
             state, errmsg = chain.do_transfer(
                 fileitem=source_fileitem,
                 mediainfo=FakeMedia(),
@@ -647,10 +647,10 @@ class TransferJobManagerTest(unittest.TestCase):
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.SystemConfigOper",
             return_value=system_config_oper,
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -715,13 +715,13 @@ class TransferJobManagerTest(unittest.TestCase):
         _reset_failed_retries(fileitem.path, fileitem.storage)
         try:
             with patch(
-                "app.chain.transfer.TransferHistoryOper",
+                "app.application.orchestration.transfer.TransferHistoryOper",
                 return_value=transfer_history_oper,
             ), patch(
-                "app.chain.transfer.DownloadHistoryOper",
+                "app.application.orchestration.transfer.DownloadHistoryOper",
                 return_value=download_history_oper,
             ), patch(
-                "app.chain.transfer.SystemConfigOper",
+                "app.application.orchestration.transfer.SystemConfigOper",
                 return_value=system_config_oper,
             ):
                 state, errmsg = TransferChain.do_transfer(
@@ -794,13 +794,13 @@ class TransferJobManagerTest(unittest.TestCase):
             ):
                 record_transfer_failure(fileitem.path, fileitem.storage)
                 with patch(
-                    "app.chain.transfer.TransferHistoryOper",
+                    "app.application.orchestration.transfer.TransferHistoryOper",
                     return_value=transfer_history_oper,
                 ), patch(
-                    "app.chain.transfer.DownloadHistoryOper",
+                    "app.application.orchestration.transfer.DownloadHistoryOper",
                     return_value=download_history_oper,
                 ), patch(
-                    "app.chain.transfer.SystemConfigOper",
+                    "app.application.orchestration.transfer.SystemConfigOper",
                     return_value=system_config_oper,
                 ):
                     state, errmsg = TransferChain.do_transfer(
@@ -850,15 +850,15 @@ class TransferJobManagerTest(unittest.TestCase):
             )
             failed_history_oper = SimpleNamespace()
             with patch(
-                "app.chain.transfer.TransferHistoryOper",
+                "app.application.orchestration.transfer.TransferHistoryOper",
                 return_value=failed_history_oper,
             ), patch(
-                "app.chain.transfer.add_transfer_fail",
+                "app.application.orchestration.transfer.add_transfer_fail",
                 lambda **kwargs: SimpleNamespace(id=1),
             ), patch(
-                "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+                "app.application.orchestration.transfer.settings.AI_AGENT_ENABLE", False
             ), patch(
-                "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+                "app.application.orchestration.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
             ):
                 state, _ = chain._TransferChain__default_callback(task, failed_transferinfo)
 
@@ -890,9 +890,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             )
             with patch(
-                "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+                "app.application.orchestration.transfer.TransferHistoryOper", return_value=SimpleNamespace()
             ), patch(
-                "app.chain.transfer.add_transfer_success",
+                "app.application.orchestration.transfer.add_transfer_success",
                 lambda **kwargs: SimpleNamespace(id=2),
             ):
                 state, _ = chain._TransferChain__default_callback(task, success_transferinfo)
@@ -920,17 +920,17 @@ class TransferJobManagerTest(unittest.TestCase):
         transfer_history_oper = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.add_transfer_fail",
+            "app.application.orchestration.transfer.add_transfer_fail",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
-            "app.chain.transfer.MediaChain"
+            "app.application.orchestration.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
@@ -962,17 +962,17 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(chain.jobview.add_task(task))
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=SimpleNamespace(),
         ), patch(
-            "app.chain.transfer.add_transfer_fail",
+            "app.application.orchestration.transfer.add_transfer_fail",
             lambda **kwargs: None,
         ), patch(
-            "app.chain.transfer.MediaChain"
+            "app.application.orchestration.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
@@ -1005,17 +1005,17 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(chain.jobview.add_task(task))
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=SimpleNamespace(),
         ), patch(
-            "app.chain.transfer.add_transfer_fail",
+            "app.application.orchestration.transfer.add_transfer_fail",
             lambda **kwargs: SimpleNamespace(id=77),
         ), patch(
-            "app.chain.transfer.MediaChain"
+            "app.application.orchestration.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.application.orchestration.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             chain._TransferChain__handle_transfer(task)
@@ -1081,16 +1081,16 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.chain.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.SystemConfigOper",
             return_value=system_config_oper,
         ), patch(
-            "app.chain.transfer.StorageChain",
+            "app.application.orchestration.transfer.StorageChain",
             return_value=storage_chain,
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -1180,19 +1180,19 @@ class TransferJobManagerTest(unittest.TestCase):
         storage_chain = SimpleNamespace(get_item=lambda fileitem: subtitle_fileitem)
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.chain.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.SystemConfigOper",
             return_value=system_config_oper,
         ), patch(
-            "app.chain.transfer.StorageChain",
+            "app.application.orchestration.transfer.StorageChain",
             return_value=storage_chain,
         ), patch(
-            "app.chain.transfer.MetaInfoPath",
+            "app.application.orchestration.transfer.MetaInfoPath",
             side_effect=lambda path, custom_words=None, **kwargs: FakeMeta(1),
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -1261,19 +1261,19 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.chain.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.SystemConfigOper",
             return_value=system_config_oper,
         ), patch(
-            "app.chain.transfer.StorageChain",
+            "app.application.orchestration.transfer.StorageChain",
             return_value=storage_chain,
         ), patch(
-            "app.chain.transfer.MetaInfoPath",
+            "app.application.orchestration.transfer.MetaInfoPath",
             side_effect=lambda path, custom_words=None, **kwargs: FakeMeta(1),
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -1366,16 +1366,16 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.chain.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.SystemConfigOper",
             return_value=system_config_oper,
         ), patch(
-            "app.chain.transfer.StorageChain",
+            "app.application.orchestration.transfer.StorageChain",
             return_value=storage_chain,
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -1464,12 +1464,12 @@ class TransferJobManagerTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.application.orchestration.transfer.TransferHistoryOper", return_value=SimpleNamespace()
         ), patch(
-            "app.chain.transfer.add_transfer_success",
+            "app.application.orchestration.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
-            "app.chain.transfer.StorageChain"
+            "app.application.orchestration.transfer.StorageChain"
         ) as storage_chain_cls:
             storage_chain_cls.return_value.is_bluray_folder.return_value = False
             for task, transferinfo in zip(tasks, transferinfos):
@@ -1530,12 +1530,12 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.application.orchestration.transfer.TransferHistoryOper", return_value=SimpleNamespace()
         ), patch(
-            "app.chain.transfer.add_transfer_success",
+            "app.application.orchestration.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
-            "app.chain.transfer.StorageChain"
+            "app.application.orchestration.transfer.StorageChain"
         ) as storage_chain_cls:
             storage_chain_cls.return_value.is_bluray_folder.return_value = False
             chain._TransferChain__default_callback(task, transferinfo)

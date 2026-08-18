@@ -6,8 +6,8 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain import ChainBase
-from app.chain.media import MediaChain
+from app.application.orchestration import ChainBase
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.events import Event
 from app.domain.meta.metabase import MetaBase
@@ -66,7 +66,7 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
         "album": "叶惠美",
         "year": "2003",
     })
-    with patch("app.chain.media.eventmanager") as em:
+    with patch("app.application.orchestration.media.eventmanager") as em:
         em.check.return_value = True
         em.send_event.return_value = event
         result = chain.recognize_by_meta(meta, media_source="musicbrainz")
@@ -101,7 +101,7 @@ def test_music_recognize_keeps_fallback_without_plugin(monkeypatch):
     fallback = _fallback_music(title="未知曲目")
     monkeypatch.setattr(chain, "recognize_media", Mock(return_value=fallback))
 
-    with patch("app.chain.media.eventmanager") as em:
+    with patch("app.application.orchestration.media.eventmanager") as em:
         em.check.return_value = False
         result = chain.recognize_by_meta(meta)
 
@@ -122,7 +122,7 @@ def test_music_recognize_help_same_elements_keeps_fallback(monkeypatch):
         "name": "晴天",
         "artist": "周杰伦",
     })
-    with patch("app.chain.media.eventmanager") as em:
+    with patch("app.application.orchestration.media.eventmanager") as em:
         em.check.return_value = True
         em.send_event.return_value = event
         result = chain.recognize_by_meta(meta)
@@ -143,7 +143,7 @@ def test_music_recognize_help_keeps_fallback_when_rematch_fails(monkeypatch):
         "name": "另一个晴天",
         "artist": "未知艺术家",
     })
-    with patch("app.chain.media.eventmanager") as em:
+    with patch("app.application.orchestration.media.eventmanager") as em:
         em.check.return_value = True
         em.send_event.return_value = event
         result = chain.recognize_by_meta(meta)
@@ -169,7 +169,7 @@ def test_async_music_recognize_help(monkeypatch):
         "name": "晴天",
         "artist": "周杰伦",
     })
-    with patch("app.chain.media.eventmanager") as em:
+    with patch("app.application.orchestration.media.eventmanager") as em:
         em.check.return_value = True
         em.async_send_event = AsyncMock(return_value=event)
         result = asyncio.run(chain.async_recognize_by_meta(meta))
@@ -193,8 +193,8 @@ def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
         "title": "晴天",
         "name": "另一个晴天",
     })
-    with patch("app.chain.media.eventmanager") as em, \
-            patch("app.chain.media.settings") as settings_mock:
+    with patch("app.application.orchestration.media.eventmanager") as em, \
+            patch("app.application.orchestration.media.settings") as settings_mock:
         settings_mock.RECOGNIZE_PLUGIN_FIRST = True
         em.check.return_value = True
         em.send_event.return_value = event
@@ -369,7 +369,7 @@ def test_chain_recognize_media_music_plugin_supplement():
     with patch.object(chain, "recognize_music_from_source", return_value=fallback), \
             patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event), \
-            patch("app.chain._recognition.MoviePilotServerHelper.report_recognize_share") as report_mock:
+            patch("app.application.orchestration._recognition.MoviePilotServerHelper.report_recognize_share") as report_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is not fallback

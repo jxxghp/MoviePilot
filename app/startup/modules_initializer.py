@@ -3,8 +3,8 @@ import sys
 from typing import Callable
 
 from app.adapters.cache.redis import RedisHelper, AsyncRedisHelper
-from app.chain.mediaserver import MediaServerChain
-from app.chain.tmdb import TmdbChain
+from app.application.orchestration.mediaserver import MediaServerChain
+from app.application.orchestration.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -132,11 +132,11 @@ def notify_event_error(title: str, message: str) -> None:
 
 def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     """返回所有使用事件装饰器的宿主类及其明确实例工厂。"""
-    from app.chain.download import DownloadChain
-    from app.chain.scraping import ScrapingChain
-    from app.chain.search import SearchChain
-    from app.chain.site import SiteChain
-    from app.chain.subscribe import SubscribeChain
+    from app.application.orchestration.download import DownloadChain
+    from app.application.orchestration.scraping import ScrapingChain
+    from app.application.orchestration.search import SearchChain
+    from app.application.orchestration.site import SiteChain
+    from app.application.orchestration.subscribe import SubscribeChain
     from app.workflow.service import WorkflowChain
     from app.command import Command
     from app.scheduler import Scheduler

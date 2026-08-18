@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.endpoints.mediaserver import latest, library, playing
-from app.chain.mediaserver import MediaServerChain
+from app.application.orchestration.mediaserver import MediaServerChain
 
 
 @pytest.mark.parametrize(

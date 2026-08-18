@@ -69,7 +69,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 取证：34 个 `ChainBase` 子类中 **23 个不使用任何能力端口**，
 无一使用超过三个业务域——继承下发纯属负担。
 
-- 52 个端口按七域外迁 `app/chain/ports/`：元数据、搜索、下载器、
+- 52 个端口按七域外迁 `app/application/orchestration/ports/`：元数据、搜索、下载器、
   整理分类、媒体库、报文解析、系统钩子；实现只保留一份。
 - `ChainBase` 保留全部同名端口作一行转发（插件契约面零变动），
   端口方法内直接调用分发原语的地方由 64 处降为 0。
@@ -107,17 +107,27 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
   `Depends` 链、状态码与文案逐字保留；`api/deps.py` 再导出使端点侧零改动，
   插件兼容门面改从应用层取用，SDK 不再反向依赖入口层。
 
+### 1.8 服务层合并
+
+`app/application/` 成为唯一的服务层包，跨入口复用的用例编排收敛为其
+`orchestration/` 子包（44 个文件），两个顶级包并列且边界含糊的状态结束。
+
+- 896 处导入路径由脚本统一重写，覆盖 `app/` 与 `tests/` 共 207 个文件。
+- `app.chain.*` 登记为兼容层旧导入根（45 条别名 + 虚拟包），
+  存量插件直接 import 具体链类的写法不受影响，且旧路径与新路径解析为同一对象。
+- 未选用 `app/services/` 作为包名：它是上游退役并设有防复活断言的名字。
+- 门禁的编排层专属断言（不得穿透模块内部、不得依赖 Agent 实现、
+  不得引入下载器 SDK）意图保留，仅同步路径。
+
 ---
 
 ## 二、待办
 
 按价值与风险排序：
 
-1. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
-   合并主要是命名与目录收敛，收益中等而改动面极大，建议在其余项清偿后评估。
-2. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
+1. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
    目标是"内建与三方只有发行方式之别"，是"一切皆扩展"的最后一块，改动面最大。
-3. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
+2. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
    （SDK 目前在宿主生产代码中仍是零消费者）。
 
 ---
@@ -127,7 +137,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **4962 passed / 1 failed** |
+| 当前 | **4964 passed / 1 failed** |
 
 唯一失败 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`
 在基线上同样失败：容器文件系统 `st_ctime_ns` 无纳秒级精度，

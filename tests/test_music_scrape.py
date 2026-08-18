@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
+from app.application.orchestration.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
 from app.runtime.events import Event
 from app.domain.meta.metamusic import MetaMusic
@@ -81,7 +81,7 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     album = _album_info()
 
     with patch(
-        "app.chain.scraping.MediaChain.get_music_album",
+        "app.application.orchestration.scraping.MediaChain.get_music_album",
         return_value=None,
     ) as get_music_album:
         success, message = chain.scrape_music_metadata(
@@ -120,7 +120,7 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     request.get_res.return_value = response
     ScrapingChain._request_music_cover.cache_clear()
 
-    with patch("app.chain.scraping.RequestUtils", return_value=request):
+    with patch("app.application.orchestration.scraping.RequestUtils", return_value=request):
         first = ScrapingChain._download_music_cover("https://example.com/album.webp")
         second = ScrapingChain._download_music_cover("https://example.com/album.webp")
 
@@ -252,7 +252,7 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
     )
     music_chain = Mock()
 
-    with patch("app.chain.scraping.LrclibChain", return_value=music_chain):
+    with patch("app.application.orchestration.scraping.LrclibChain", return_value=music_chain):
         success, message = chain.scrape_music_metadata(
             FileItem(
                 storage="local",

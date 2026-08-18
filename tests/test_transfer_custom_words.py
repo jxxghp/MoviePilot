@@ -7,8 +7,8 @@
 """
 from types import SimpleNamespace
 
-import app.chain._transfer as mixins_module
-from app.chain.transfer import TransferChain
+import app.application.orchestration._transfer as mixins_module
+from app.application.orchestration.transfer import TransferChain
 
 
 def _fake_history(custom_words=None, note=None):

@@ -71,7 +71,7 @@ def isolate_config_dir() -> str:
     数据库引擎已改为惰性创建，``import app.db`` 本身不再连库；但 ``settings`` 是在
     ``import app.runtime.config`` 时构造的，那一刻就把 ``CONFIG_DIR`` 读进字段并建好配置子目录，
     之后再改环境变量对 ``settings.CONFIG_PATH`` 毫无影响——引擎晚点才建，连的仍是真实 ``user.db``。
-    故本函数必须早于首个牵入 ``app.runtime.config`` 的 import（``app.db`` / ``app.chain.*`` 都会牵入）。
+    故本函数必须早于首个牵入 ``app.runtime.config`` 的 import（``app.db`` / ``app.application.orchestration.*`` 都会牵入）。
     调用方已显式设置 ``CONFIG_DIR``（如 CI 指定隔离目录）时尊重之、不覆盖。
 
     :return: 实际生效的 CONFIG_DIR 绝对路径
@@ -122,7 +122,7 @@ def _prepend_sys_path(path: Path) -> None:
 def ensure_sites_stub() -> None:
     """为 ``app.application.site.sites`` 补最小垫片（仅在缺失时）。
 
-    ``app.application.site.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.chain.*`` /
+    ``app.application.site.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.application.orchestration.*`` /
     ``app.modules.*`` 在 import 期依赖它。统一补一个最小垫片，省去各测试文件各自打桩；若真实模块
     已存在（本地已拉取）则用真实模块、不覆盖，不影响真实行为。须在隔离 CONFIG_DIR 之后调用，
     以免试探性 ``import app.application.site.sites`` 牵入 ``app.runtime.config``、

@@ -32,7 +32,7 @@ def _load_subscribe_chain_class():
         stub_deps[name] = module
         return module
 
-    chain_module = ensure_module("app.chain", types.ModuleType("app.chain"))
+    chain_module = ensure_module("app.application.orchestration", types.ModuleType("app.application.orchestration"))
 
     class _ChainBase:
         def __init__(self):
@@ -50,9 +50,9 @@ def _load_subscribe_chain_class():
     chain_module.ChainBase = _ChainBase
 
     # 链内功能域 mixin：交互四件套委托与音乐订阅域，隔离加载以空 mixin 注入
-    interaction_mixin_module = ensure_module("app.chain._interaction", types.ModuleType("app.chain._interaction"))
+    interaction_mixin_module = ensure_module("app.application.orchestration._interaction", types.ModuleType("app.application.orchestration._interaction"))
     interaction_mixin_module.InteractionChainMixin = type("InteractionChainMixin", (), {})
-    music_mixin_module = ensure_module("app.chain._music", types.ModuleType("app.chain._music"))
+    music_mixin_module = ensure_module("app.application.orchestration._music", types.ModuleType("app.application.orchestration._music"))
     music_mixin_module.MusicSubscribeMixin = type("MusicSubscribeMixin", (), {})
 
     class _MediaChain:
@@ -414,20 +414,26 @@ def _load_subscribe_chain_class():
             setattr(module, class_name, type(class_name, (), {}))
 
     chain_dependencies = {
-        "app.chain.download": "DownloadChain",
-        "app.chain.mediaserver": "MediaServerChain",
-        "app.chain.search": "SearchChain",
-        "app.chain.tmdb": "TmdbChain",
-        "app.chain.torrents": "TorrentsChain",
+        "app.application.orchestration.download": "DownloadChain",
+        "app.application.orchestration.mediaserver": "MediaServerChain",
+        "app.application.orchestration.search": "SearchChain",
+        "app.application.orchestration.tmdb": "TmdbChain",
+        "app.application.orchestration.torrents": "TorrentsChain",
     }
     for module_name_key, class_name in chain_dependencies.items():
         module = ensure_module(module_name_key, types.ModuleType(module_name_key))
         setattr(module, class_name, type(class_name, (), {}))
 
-    media_chain_module = ensure_module("app.chain.media", types.ModuleType("app.chain.media"))
+    media_chain_module = ensure_module(
+        "app.application.orchestration.media",
+        types.ModuleType("app.application.orchestration.media"),
+    )
     media_chain_module.MediaChain = _MediaChain
 
-    subscribe_path = Path(__file__).resolve().parents[1] / "app" / "chain" / "subscribe.py"
+    subscribe_path = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "application" / "orchestration" / "subscribe.py"
+    )
     spec = importlib.util.spec_from_file_location(module_name, subscribe_path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader

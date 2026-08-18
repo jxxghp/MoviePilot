@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import (
     audio_quality_score,

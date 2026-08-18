@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.application.orchestration.download import DownloadChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.search import SearchChain
 from app.runtime.config import settings
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo

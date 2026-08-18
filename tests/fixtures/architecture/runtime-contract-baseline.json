@@ -15,12 +15,320 @@
         "replacement": "app.application.rules",
         "target": "app.application.rules"
       },
+      "app.chain": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "application",
+        "replacement": "app.application.orchestration",
+        "target": "app.application.orchestration"
+      },
+      "app.chain._interaction": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration._interaction",
+        "target": "app.application.orchestration._interaction"
+      },
+      "app.chain._messaging": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration._messaging",
+        "target": "app.application.orchestration._messaging"
+      },
+      "app.chain._music": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration._music",
+        "target": "app.application.orchestration._music"
+      },
+      "app.chain._recognition": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration._recognition",
+        "target": "app.application.orchestration._recognition"
+      },
+      "app.chain._transfer": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration._transfer",
+        "target": "app.application.orchestration._transfer"
+      },
+      "app.chain.acoustid": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.acoustid",
+        "target": "app.application.orchestration.acoustid"
+      },
+      "app.chain.agent": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.agent",
+        "target": "app.application.orchestration.agent"
+      },
+      "app.chain.anilist": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.anilist",
+        "target": "app.application.orchestration.anilist"
+      },
+      "app.chain.bangumi": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.bangumi",
+        "target": "app.application.orchestration.bangumi"
+      },
+      "app.chain.dashboard": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.dashboard",
+        "target": "app.application.orchestration.dashboard"
+      },
+      "app.chain.douban": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.douban",
+        "target": "app.application.orchestration.douban"
+      },
+      "app.chain.download": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.download",
+        "target": "app.application.orchestration.download"
+      },
+      "app.chain.interaction": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.interaction",
+        "target": "app.application.orchestration.interaction"
+      },
+      "app.chain.listenbrainz": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.listenbrainz",
+        "target": "app.application.orchestration.listenbrainz"
+      },
+      "app.chain.lrclib": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.lrclib",
+        "target": "app.application.orchestration.lrclib"
+      },
+      "app.chain.media": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.media",
+        "target": "app.application.orchestration.media"
+      },
       "app.chain.media_interaction": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "chain",
-        "replacement": "app.chain.interaction",
-        "target": "app.chain.interaction"
+        "owner": "application",
+        "replacement": "app.application.orchestration.interaction",
+        "target": "app.application.orchestration.interaction"
+      },
+      "app.chain.mediaserver": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.mediaserver",
+        "target": "app.application.orchestration.mediaserver"
+      },
+      "app.chain.message": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.message",
+        "target": "app.application.orchestration.message"
+      },
+      "app.chain.musicbrainz": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.musicbrainz",
+        "target": "app.application.orchestration.musicbrainz"
+      },
+      "app.chain.notification": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.notification",
+        "target": "app.application.orchestration.notification"
+      },
+      "app.chain.ports": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports",
+        "target": "app.application.orchestration.ports"
+      },
+      "app.chain.ports.dispatch": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.dispatch",
+        "target": "app.application.orchestration.ports.dispatch"
+      },
+      "app.chain.ports.download": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.download",
+        "target": "app.application.orchestration.ports.download"
+      },
+      "app.chain.ports.library": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.library",
+        "target": "app.application.orchestration.ports.library"
+      },
+      "app.chain.ports.metadata": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.metadata",
+        "target": "app.application.orchestration.ports.metadata"
+      },
+      "app.chain.ports.parsing": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.parsing",
+        "target": "app.application.orchestration.ports.parsing"
+      },
+      "app.chain.ports.search": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.search",
+        "target": "app.application.orchestration.ports.search"
+      },
+      "app.chain.ports.system": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.system",
+        "target": "app.application.orchestration.ports.system"
+      },
+      "app.chain.ports.transfer": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.ports.transfer",
+        "target": "app.application.orchestration.ports.transfer"
+      },
+      "app.chain.recommend": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.recommend",
+        "target": "app.application.orchestration.recommend"
+      },
+      "app.chain.scraping": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.scraping",
+        "target": "app.application.orchestration.scraping"
+      },
+      "app.chain.search": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.search",
+        "target": "app.application.orchestration.search"
+      },
+      "app.chain.site": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.site",
+        "target": "app.application.orchestration.site"
+      },
+      "app.chain.storage": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.storage",
+        "target": "app.application.orchestration.storage"
+      },
+      "app.chain.subscribe": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.subscribe",
+        "target": "app.application.orchestration.subscribe"
+      },
+      "app.chain.system": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.system",
+        "target": "app.application.orchestration.system"
+      },
+      "app.chain.theaudiodb": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.theaudiodb",
+        "target": "app.application.orchestration.theaudiodb"
+      },
+      "app.chain.tmdb": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.tmdb",
+        "target": "app.application.orchestration.tmdb"
+      },
+      "app.chain.torrents": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.torrents",
+        "target": "app.application.orchestration.torrents"
+      },
+      "app.chain.transfer": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.transfer",
+        "target": "app.application.orchestration.transfer"
+      },
+      "app.chain.tvdb": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.tvdb",
+        "target": "app.application.orchestration.tvdb"
+      },
+      "app.chain.user": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.user",
+        "target": "app.application.orchestration.user"
+      },
+      "app.chain.webhook": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.orchestration.webhook",
+        "target": "app.application.orchestration.webhook"
       },
       "app.core.auth": {
         "introduced": "v3.0.0",
@@ -852,8 +1160,8 @@
     "symbol_aliases": {
       "app.agent.orchestrator": {
         "AgentChain": {
-          "replacement": "app.chain.agent.AgentChain",
-          "target_module": "app.chain.agent",
+          "replacement": "app.application.orchestration.agent.AgentChain",
+          "target_module": "app.application.orchestration.agent",
           "target_name": "AgentChain"
         },
         "ReplyMode": {
@@ -862,27 +1170,27 @@
           "target_name": "ReplyMode"
         }
       },
-      "app.chain.media": {
+      "app.application.orchestration.media": {
         "ScrapingChain": {
-          "replacement": "app.chain.scraping.ScrapingChain",
-          "target_module": "app.chain.scraping",
+          "replacement": "app.application.orchestration.scraping.ScrapingChain",
+          "target_module": "app.application.orchestration.scraping",
           "target_name": "ScrapingChain"
         },
         "ScrapingConfig": {
-          "replacement": "app.chain.scraping.ScrapingConfig",
-          "target_module": "app.chain.scraping",
+          "replacement": "app.application.orchestration.scraping.ScrapingConfig",
+          "target_module": "app.application.orchestration.scraping",
           "target_name": "ScrapingConfig"
         },
         "ScrapingOption": {
-          "replacement": "app.chain.scraping.ScrapingOption",
-          "target_module": "app.chain.scraping",
+          "replacement": "app.application.orchestration.scraping.ScrapingOption",
+          "target_module": "app.application.orchestration.scraping",
           "target_name": "ScrapingOption"
         }
       },
-      "app.chain.message": {
+      "app.application.orchestration.message": {
         "MediaInteractionChain": {
-          "replacement": "app.chain.interaction.MediaInteractionChain",
-          "target_module": "app.chain.interaction",
+          "replacement": "app.application.orchestration.interaction.MediaInteractionChain",
+          "target_module": "app.application.orchestration.interaction",
           "target_name": "MediaInteractionChain"
         }
       },
@@ -1147,6 +1455,7 @@
       }
     },
     "virtual_packages": [
+      "app.chain",
       "app.core",
       "app.helper",
       "app.utils"
@@ -1164,7 +1473,7 @@
         "line": 2253
       },
       {
-        "caller": "app.chain.transfer",
+        "caller": "app.application.orchestration.transfer",
         "line": 608
       },
       {
@@ -1246,35 +1555,35 @@
         "line": 998
       },
       {
-        "caller": "app.chain._messaging",
+        "caller": "app.application.orchestration._messaging",
         "line": 217
       },
       {
-        "caller": "app.chain._messaging",
+        "caller": "app.application.orchestration._messaging",
         "line": 227
       },
       {
-        "caller": "app.chain._messaging",
+        "caller": "app.application.orchestration._messaging",
         "line": 333
       },
       {
-        "caller": "app.chain._messaging",
+        "caller": "app.application.orchestration._messaging",
         "line": 343
       },
       {
-        "caller": "app.chain._recognition",
+        "caller": "app.application.orchestration._recognition",
         "line": 460
       },
       {
-        "caller": "app.chain._recognition",
+        "caller": "app.application.orchestration._recognition",
         "line": 500
       },
       {
-        "caller": "app.chain.user",
+        "caller": "app.application.orchestration.user",
         "line": 160
       },
       {
-        "caller": "app.chain.user",
+        "caller": "app.application.orchestration.user",
         "line": 223
       },
       {
@@ -1347,11 +1656,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 1502
           },
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 2048
           }
         ]
@@ -1364,11 +1673,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 815
           },
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 1753
           }
         ]
@@ -1377,11 +1686,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 753
           },
           {
-            "caller": "app.chain.media",
+            "caller": "app.application.orchestration.media",
             "line": 1691
           }
         ]
@@ -1412,7 +1721,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.download",
+            "caller": "app.application.orchestration.download",
             "line": 1052
           }
         ]
@@ -1421,7 +1730,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.download",
+            "caller": "app.application.orchestration.download",
             "line": 1419
           }
         ]
@@ -1430,11 +1739,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 1094
           },
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 1110
           }
         ]
@@ -1443,7 +1752,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 2786
           }
         ]
@@ -1452,11 +1761,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 3524
           },
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 3546
           }
         ]
@@ -1523,7 +1832,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 388
           }
         ]
@@ -1532,7 +1841,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 267
           }
         ]
@@ -1550,7 +1859,7 @@
             "line": 90
           },
           {
-            "caller": "app.chain.message",
+            "caller": "app.application.orchestration.message",
             "line": 443
           }
         ]
@@ -1576,7 +1885,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.download",
+            "caller": "app.application.orchestration.download",
             "line": 1240
           }
         ]
@@ -1585,7 +1894,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.download",
+            "caller": "app.application.orchestration.download",
             "line": 2085
           }
         ]
@@ -1593,7 +1902,7 @@
       "EventType.DownloadFileDeleted": {
         "consumers": [
           {
-            "caller": "app.chain.download",
+            "caller": "app.application.orchestration.download",
             "line": 2069
           }
         ],
@@ -1624,7 +1933,7 @@
             "line": 475
           },
           {
-            "caller": "app.chain.message",
+            "caller": "app.application.orchestration.message",
             "line": 687
           }
         ]
@@ -1632,17 +1941,17 @@
       "EventType.MetadataScrape": {
         "consumers": [
           {
-            "caller": "app.chain.scraping",
+            "caller": "app.application.orchestration.scraping",
             "line": 586
           }
         ],
         "producers": [
           {
-            "caller": "app.chain._transfer",
+            "caller": "app.application.orchestration._transfer",
             "line": 460
           },
           {
-            "caller": "app.chain._transfer",
+            "caller": "app.application.orchestration._transfer",
             "line": 635
           }
         ]
@@ -1690,11 +1999,11 @@
       "EventType.SiteDeleted": {
         "consumers": [
           {
-            "caller": "app.chain.search",
+            "caller": "app.application.orchestration.search",
             "line": 2861
           },
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 3001
           }
         ],
@@ -1713,11 +2022,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 74
           },
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 163
           }
         ]
@@ -1725,15 +2034,15 @@
       "EventType.SiteUpdated": {
         "consumers": [
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 586
           },
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 628
           },
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 650
           }
         ],
@@ -1747,7 +2056,7 @@
             "line": 137
           },
           {
-            "caller": "app.chain.site",
+            "caller": "app.application.orchestration.site",
             "line": 566
           }
         ]
@@ -1756,11 +2065,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 996
           },
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 1200
           }
         ]
@@ -1769,7 +2078,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.subscribe",
+            "caller": "app.application.orchestration.subscribe",
             "line": 2824
           }
         ]
@@ -1812,7 +2121,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 374
           }
         ]
@@ -1821,7 +2130,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 253
           }
         ]
@@ -1830,11 +2139,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.ports.dispatch",
+            "caller": "app.application.orchestration.ports.dispatch",
             "line": 68
           },
           {
-            "caller": "app.chain.ports.dispatch",
+            "caller": "app.application.orchestration.ports.dispatch",
             "line": 94
           },
           {
@@ -1851,7 +2160,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 360
           }
         ]
@@ -1860,7 +2169,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.transfer",
+            "caller": "app.application.orchestration.transfer",
             "line": 239
           }
         ]
@@ -1869,7 +2178,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.message",
+            "caller": "app.application.orchestration.message",
             "line": 505
           }
         ]
@@ -1878,7 +2187,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.chain.webhook",
+            "caller": "app.application.orchestration.webhook",
             "line": 29
           }
         ]
@@ -1908,14 +2217,14 @@
     "methods": {
       "async_obtain_images": [
         {
-          "caller": "app.chain.ports.metadata",
+          "caller": "app.application.orchestration.ports.metadata",
           "line": 125,
           "mode": "async"
         }
       ],
       "obtain_images": [
         {
-          "caller": "app.chain.ports.metadata",
+          "caller": "app.application.orchestration.ports.metadata",
           "line": 115,
           "mode": "sync"
         }

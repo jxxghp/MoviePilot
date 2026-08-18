@@ -7,7 +7,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.recommend import RecommendChain
+from app.application.orchestration.recommend import RecommendChain
 from app.runtime.events import eventmanager
 from app.application.security.access import verify_token
 from app.schemas.exception import TMDbException

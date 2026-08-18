@@ -1,9 +1,9 @@
 import inspect
 
-from app.chain.download import DownloadChain
-from app.chain.search import SearchChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.download import DownloadChain
+from app.application.orchestration.search import SearchChain
+from app.application.orchestration.subscribe import SubscribeChain
+from app.application.orchestration.transfer import TransferChain
 
 
 LEGACY_MEDIA_ID_PARAMETERS = {

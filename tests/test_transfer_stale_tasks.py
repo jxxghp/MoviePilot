@@ -1,6 +1,6 @@
 """整理任务失活收敛行为测试。"""
 
-from app.chain.transfer import JobManager
+from app.application.orchestration.transfer import JobManager
 from app.domain.meta.metabase import MetaBase
 from app.schemas import FileItem
 from app.application.transfer import TransferTask

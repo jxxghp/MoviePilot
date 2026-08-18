@@ -15,7 +15,7 @@ from app.application.messaging.agent import (
     agent_interaction_manager,
 )
 from app.application.messaging.interaction import InteractionContext
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings
 from app.schemas.types import NotificationChannel
 
@@ -195,9 +195,9 @@ class TestAgentInteraction(unittest.TestCase):
         ) as message_add, patch.object(
             chain, "edit_message", return_value=True
         ) as edit_message, patch(
-            "app.chain.message.get_running_agent_manager"
+            "app.application.orchestration.message.get_running_agent_manager"
         ) as get_running_manager, patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe",
+            "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
             process_message = AsyncMock()
@@ -271,14 +271,14 @@ class TestAgentInteraction(unittest.TestCase):
                 manager = Mock()
                 manager.matches_secret_confirmation.return_value = True
                 with patch(
-                    "app.chain.message.get_running_agent_manager",
+                    "app.application.orchestration.message.get_running_agent_manager",
                     return_value=manager,
                 ), patch.object(
                     chain,
                     "_handle_ai_message",
                     return_value=True,
                 ) as handle_ai_message, patch(
-                    "app.chain.message.PluginInputInteractionHandler.handle_text",
+                    "app.application.orchestration.message.PluginInputInteractionHandler.handle_text",
                 ) as handle_plugin_interaction, patch.object(
                     chain,
                     "_mark_message_processing_started",

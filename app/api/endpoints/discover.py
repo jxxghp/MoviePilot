@@ -6,9 +6,9 @@ from app.schemas.event import DiscoverMediaSource as _SchemaDiscoverMediaSource
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.bangumi import BangumiChain
-from app.chain.douban import DoubanChain
-from app.chain.tmdb import TmdbChain
+from app.application.orchestration.bangumi import BangumiChain
+from app.application.orchestration.douban import DoubanChain
+from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.events import eventmanager
 from app.application.security.access import verify_token
 from app.schemas.event import DiscoverSourceEventData

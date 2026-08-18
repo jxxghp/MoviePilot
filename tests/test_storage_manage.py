@@ -12,7 +12,7 @@ from typing import Any, Dict
 import pytest
 
 from app import schemas
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 from app.modules.filemanager import FileManagerModule
 
 

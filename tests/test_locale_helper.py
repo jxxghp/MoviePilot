@@ -373,12 +373,12 @@ def test_scheduler_progress_texts_have_english_translations():
     untranslated = []
     progress_paths = [
         Path("app/scheduler.py"),
-        Path("app/chain/torrents.py"),
-        Path("app/chain/mediaserver.py"),
-        Path("app/chain/site.py"),
-        Path("app/chain/recommend.py"),
-        Path("app/chain/transfer.py"),
-        Path("app/chain/subscribe.py"),
+        Path("app/application/orchestration/torrents.py"),
+        Path("app/application/orchestration/mediaserver.py"),
+        Path("app/application/orchestration/site.py"),
+        Path("app/application/orchestration/recommend.py"),
+        Path("app/application/orchestration/transfer.py"),
+        Path("app/application/orchestration/subscribe.py"),
         Path("app/workflow/service.py"),
     ]
     for path in progress_paths:

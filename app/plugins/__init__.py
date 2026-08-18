@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, List, Dict, Tuple, Optional, Type
 
 from app.application.messaging.message import MessageHelper
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.config import settings

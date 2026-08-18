@@ -1,7 +1,7 @@
 import pytest
 
 from app.api.endpoints.search import _parse_media_type, _resolve_media_season
-from app.chain.search import SearchChain
+from app.application.orchestration.search import SearchChain
 from app.domain.context import MediaInfo, SubtitleInfo
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.spider import SiteSpider

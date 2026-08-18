@@ -9,7 +9,7 @@ from starlette.responses import Response
 from app import schemas
 from app.api.endpoints import login as login_endpoint
 from app.api.endpoints import mfa as mfa_endpoint
-from app.chain.user import MfaRequired, UserChain
+from app.application.orchestration.user import MfaRequired, UserChain
 
 
 def _request() -> Request:

@@ -14,8 +14,8 @@ from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.dashboard import Storage as _SchemaStorage
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
-from app.chain.dashboard import DashboardChain
-from app.chain.storage import StorageChain
+from app.application.orchestration.dashboard import DashboardChain
+from app.application.orchestration.storage import StorageChain
 from app.runtime.config import settings
 from app.application.security.access import verify_apitoken
 from app.db import get_db

@@ -13,7 +13,7 @@ ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil",
 
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent import ReplyMode
-from app.chain.search import SearchChain
+from app.application.orchestration.search import SearchChain
 from app.runtime.config import settings
 from app.modules.indexer import IndexerModule
 from app.schemas.types import MediaType
@@ -189,9 +189,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.SystemConfigOper") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.SitesHelper") as sites_helper,
+            patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
             sites_helper.return_value.get_indexers.return_value = [
@@ -235,9 +235,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.SystemConfigOper") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.SitesHelper") as sites_helper,
+            patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
             sites_helper.return_value.get_indexers.return_value = [
@@ -281,9 +281,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.SystemConfigOper") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.SitesHelper") as sites_helper,
+            patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
             sites_helper.return_value.get_indexers.return_value = [
@@ -346,9 +346,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.SystemConfigOper") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.SitesHelper") as sites_helper,
+            patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
             sites_helper.return_value.async_get_indexers = AsyncMock(
@@ -392,9 +392,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.SystemConfigOper") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.SitesHelper") as sites_helper,
+            patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
             sites_helper.return_value.async_get_indexers = AsyncMock(
@@ -427,7 +427,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         chain.process = lambda **_kwargs: [SimpleNamespace(title="Result")]
 
         with patch(
-                "app.chain.search.MediaChain",
+                "app.application.orchestration.search.MediaChain",
                 return_value=SimpleNamespace(
                     recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")
                 ),

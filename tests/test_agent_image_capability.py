@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings
 from app.schemas.types import NotificationChannel
 
@@ -69,9 +69,9 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(monkeypatch):
             }
         ],
     ) as prepare_files, patch(
-        "app.chain.message.get_running_agent_manager"
+        "app.application.orchestration.message.get_running_agent_manager"
     ) as get_running_manager, patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: coro.close(),
     ):
         process_message = AsyncMock()

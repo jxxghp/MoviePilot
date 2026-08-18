@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock
 
-from app.chain.mediaserver import MediaServerChain
+from app.application.orchestration.mediaserver import MediaServerChain
 from app.schemas import MediaServerLibrary, MediaServerPlayItem
 from app.adapters.network.urlsafety import SecurityUtils
 

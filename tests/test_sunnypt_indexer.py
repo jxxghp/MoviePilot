@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.chain.download import DownloadChain
-from app.chain.site import SiteChain
+from app.application.orchestration.download import DownloadChain
+from app.application.orchestration.site import SiteChain
 from app.runtime.config import settings
 from app.domain.context import TorrentInfo
 from app.db.oper.message import MessageOper
@@ -416,8 +416,8 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
             "data": {"download_allowed": True},
         })
 
-    monkeypatch.setattr("app.chain.site.SitesHelper", fake_sites_helper)
-    monkeypatch.setattr("app.chain.site.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.application.orchestration.site.SitesHelper", fake_sites_helper)
+    monkeypatch.setattr("app.application.orchestration.site.RequestUtils.get_res", fake_get_res)
     site = SimpleNamespace(
         domain="sunnypt.top",
         ua="MoviePilot-Test",
@@ -461,13 +461,13 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         """收集下载链日志以校验敏感地址不会泄露。"""
         log_messages.append(message)
 
-    monkeypatch.setattr("app.chain.download.RequestUtils.post_res", fake_post_res)
+    monkeypatch.setattr("app.application.orchestration.download.RequestUtils.post_res", fake_post_res)
     monkeypatch.setattr(
-        "app.chain.download.TorrentHelper.download_torrent",
+        "app.application.orchestration.download.TorrentHelper.download_torrent",
         fake_download_torrent,
     )
     monkeypatch.setattr(
-        "app.chain.download.logger",
+        "app.application.orchestration.download.logger",
         SimpleNamespace(info=capture_log, error=capture_log),
     )
     enclosure = SunnyPTSpider(_build_indexer())._build_download_url(123)

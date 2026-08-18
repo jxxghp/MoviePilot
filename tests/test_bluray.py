@@ -6,9 +6,9 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app import schemas
-from app.chain.scraping import ScrapingChain
-from app.chain.storage import StorageChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.scraping import ScrapingChain
+from app.application.orchestration.storage import StorageChain
+from app.application.orchestration.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.runtime.events import Event
 from app.domain.metainfo import MetaInfoPath
@@ -174,12 +174,12 @@ class BluRayTest(TestCase):
         # 刮削电影目录
         __test_scrape_metadata("/FOLDER", excepted_nfo_count=2)
 
-    @patch("app.chain.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
-    @patch("app.chain.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
+    @patch("app.application.orchestration.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
+    @patch("app.application.orchestration.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
     @patch("app.db.oper.transferhistory.TransferHistoryOper.get_by_src")
-    @patch("app.chain.storage.StorageChain.list_files")
-    @patch("app.chain.storage.StorageChain.get_parent_item")
-    @patch("app.chain.storage.StorageChain.get_file_item")
+    @patch("app.application.orchestration.storage.StorageChain.list_files")
+    @patch("app.application.orchestration.storage.StorageChain.get_parent_item")
+    @patch("app.application.orchestration.storage.StorageChain.get_file_item")
     def test(
         self,
         mock_get_file_item,
@@ -222,6 +222,6 @@ class BluRayTest(TestCase):
         self._test_do_transfer()
 
         with patch(
-            "app.chain.scraping.ScrapingChain.metadata_nfo", return_value=None
+            "app.application.orchestration.scraping.ScrapingChain.metadata_nfo", return_value=None
         ) as mock:
             self._test_scrape_metadata(mock_metadata_nfo=mock)

@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -104,12 +104,12 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         try_remove_job=lambda task: None,
     )
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.application.orchestration.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
+    monkeypatch.setattr("app.application.orchestration._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.application.orchestration.transfer.MediaChain",
         lambda: SimpleNamespace(
             recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
@@ -118,7 +118,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.application.orchestration._transfer.MediaChain", lambda: SimpleNamespace(
             recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
                 recognized_meta.append(meta) or fallback_media
@@ -187,20 +187,20 @@ def test_movie_collection_conflict_only_drops_automatic_media(
 
     chain._TransferChain__handle_transfer = fake_handle_transfer
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.application.orchestration.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
-    monkeypatch.setattr("app.chain.transfer.DownloadHistoryOper", lambda: history_oper)
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: history_oper)
+    monkeypatch.setattr("app.application.orchestration._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.application.orchestration.transfer.DownloadHistoryOper", lambda: history_oper)
+    monkeypatch.setattr("app.application.orchestration._transfer.DownloadHistoryOper", lambda: history_oper)
     monkeypatch.setattr(
-        "app.chain.transfer.SystemConfigOper",
+        "app.application.orchestration.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
-    monkeypatch.setattr("app.chain.transfer.StorageChain", lambda: SimpleNamespace())
-    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace())
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)
+    monkeypatch.setattr("app.application.orchestration._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.application.orchestration.transfer.StorageChain", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.application.orchestration._transfer.StorageChain", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.application.orchestration.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)
 
     # 用真 MediaInfo 而非 SimpleNamespace：它会被装进 TransferTask.mediainfo，
     # 那个字段已标注为 MusicInfo | MediaInfo，pydantic 会做 isinstance 校验

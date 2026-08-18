@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
@@ -149,7 +149,7 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
     source_chain = Mock()
     source_chain.match_music_album.side_effect = lambda *_args, **_kwargs: album
     monkeypatch.setattr(
-        "app.chain.media.MusicBrainzChain",
+        "app.application.orchestration.media.MusicBrainzChain",
         Mock(return_value=source_chain),
     )
 
@@ -202,9 +202,9 @@ def test_async_recognize_album_directory_calls_async_module(
     source_chain = Mock()
     source_chain.async_match_music_album = async_run_module
     source_chain.match_music_album = run_module
-    monkeypatch.setattr("app.chain.media.MusicBrainzChain", Mock(return_value=source_chain))
+    monkeypatch.setattr("app.application.orchestration.media.MusicBrainzChain", Mock(return_value=source_chain))
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_many",
+        "app.application.orchestration.media.AudioMetadataHelper.read_many",
         lambda _files: _local_tracks(),
     )
 

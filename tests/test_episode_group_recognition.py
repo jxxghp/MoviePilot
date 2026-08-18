@@ -8,7 +8,7 @@ sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType
@@ -34,9 +34,9 @@ def test_recognize_media_uses_meta_episode_group():
     )
 
     with patch.object(chain, "unicast", return_value=mediainfo) as unicast, patch(
-        "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
+        "app.application.orchestration._recognition.MoviePilotServerHelper.report_recognize_share",
         return_value=True,
-    ), patch("app.chain._recognition.MoviePilotServerHelper.query_recognize_share") as query_mock:
+    ), patch("app.application.orchestration._recognition.MoviePilotServerHelper.query_recognize_share") as query_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is mediainfo

@@ -65,7 +65,7 @@ from app.agent.tools.impl.mcp import (
     select_legacy_mcp_tools,
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-from app.chain.agent import AgentChain
+from app.application.orchestration.agent import AgentChain
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager

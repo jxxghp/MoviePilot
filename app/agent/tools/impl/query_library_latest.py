@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.mediaserver import MediaServerChain
+from app.application.orchestration.mediaserver import MediaServerChain
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.runtime.log import logger
 

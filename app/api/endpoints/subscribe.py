@@ -14,7 +14,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 from app.api.response import ResponseAPIRouter
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration.subscribe import SubscribeChain
 from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager

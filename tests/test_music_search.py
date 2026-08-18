@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import Mock, patch
 
-from app.chain.search import SearchChain
+from app.application.orchestration.search import SearchChain
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import MusicInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
@@ -74,7 +74,7 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
             chain,
             "_SearchChain__search_all_sites",
             side_effect=[[unrelated], [matched]],
-    ) as search_sites, patch("app.chain.search.time.sleep"):
+    ) as search_sites, patch("app.application.orchestration.search.time.sleep"):
         contexts = chain._process_music(music, rule_groups=[])
 
     assert search_sites.call_count == 2
@@ -103,7 +103,7 @@ def test_music_search_uses_simplified_keywords_before_original_traditional_keywo
             chain,
             "_SearchChain__search_all_sites",
             side_effect=[[], [matched]],
-    ) as search_sites, patch("app.chain.search.time.sleep"):
+    ) as search_sites, patch("app.application.orchestration.search.time.sleep"):
         contexts = chain._process_music(music, rule_groups=[])
 
     assert [call.kwargs["keyword"] for call in search_sites.call_args_list] == [
@@ -194,7 +194,7 @@ def test_music_stream_reports_site_progress_before_final_results(monkeypatch):
         Mock(side_effect=AssertionError("音乐流式搜索不应回退到非流式站点搜索")),
     )
 
-    with patch("app.chain.search.settings.SEARCH_MULTIPLE_NAME", False):
+    with patch("app.application.orchestration.search.settings.SEARCH_MULTIPLE_NAME", False):
         events = asyncio.run(collect_events())
 
     assert [event["value"] for event in events[:2]] == [50, 100]
@@ -219,7 +219,7 @@ def test_search_by_id_routes_music_identity_to_recognize_and_process():
     media_chain.recognize_media.return_value = music
 
     with (
-        patch("app.chain.search.MediaChain", return_value=media_chain),
+        patch("app.application.orchestration.search.MediaChain", return_value=media_chain),
         patch.object(chain, "process", return_value=expected) as process,
     ):
         result = chain.search_by_id(

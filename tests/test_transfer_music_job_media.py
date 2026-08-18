@@ -1,6 +1,6 @@
 from app import schemas
 from app.application.transfer import TransferTask
-from app.chain.transfer import JobManager
+from app.application.orchestration.transfer import JobManager
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas import FileItem
 

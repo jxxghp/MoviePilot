@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 from app.runtime.log import logger
 from app.schemas.file import FileItem
 from app.foundation import size as size_tools

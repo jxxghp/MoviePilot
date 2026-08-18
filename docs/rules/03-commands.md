@@ -68,7 +68,7 @@ pytest tests/test_xxx.py::test_function_name
 pylint app/
 
 # Run pylint on a specific module
-pylint app/chain/download.py
+pylint app/application/orchestration/download.py
 ```
 
 **Rules:**

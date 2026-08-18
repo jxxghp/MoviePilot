@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.douban import DoubanChain
-from app.chain.tmdb import TmdbChain
-from app.chain.bangumi import BangumiChain
+from app.application.orchestration.douban import DoubanChain
+from app.application.orchestration.tmdb import TmdbChain
+from app.application.orchestration.bangumi import BangumiChain
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 

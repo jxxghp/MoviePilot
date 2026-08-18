@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType

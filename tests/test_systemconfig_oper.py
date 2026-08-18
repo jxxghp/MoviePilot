@@ -130,7 +130,7 @@ def test_mounted_local_disk_delete_empty_dirs_off_is_persisted():
     # 模拟前端保存关闭：已有记录（开启）→ 关闭
     oper.set(key, True)
     oper.set(key, False)
-    # 复刻 app/chain/transfer.py 的读取语义：无记录视为默认开启
+    # 复刻 app/application/orchestration/transfer.py 的读取语义：无记录视为默认开启
     assert (oper.get(key) is not False) is False
 
     # 模拟全新安装首次保存关闭：无记录 → 创建关闭记录

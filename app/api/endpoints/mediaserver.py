@@ -15,8 +15,8 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.download import DownloadChain
-from app.chain.mediaserver import MediaServerChain
+from app.application.orchestration.download import DownloadChain
+from app.application.orchestration.mediaserver import MediaServerChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_token

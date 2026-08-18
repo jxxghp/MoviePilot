@@ -3,7 +3,7 @@ from typing import List, Optional
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.chain.recommend import RecommendChain
+from app.application.orchestration.recommend import RecommendChain
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
 from app.runtime.config import settings, global_vars

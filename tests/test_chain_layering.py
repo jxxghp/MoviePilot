@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHAIN_ROOT = PROJECT_ROOT / "app" / "chain"
+ORCHESTRATION_ROOT = PROJECT_ROOT / "app" / "application" / "orchestration"
 LEGACY_MUSIC_SCAN_ROOTS = (
     PROJECT_ROOT / "app",
     PROJECT_ROOT / "scripts",
@@ -51,31 +51,33 @@ def _inherited_recognize_calls(path: Path) -> list[tuple[int, str]]:
 
 def test_chain_base_does_not_import_concrete_chains() -> None:
     """基础链不得反向导入任何具体处理链。"""
-    imports = _imported_modules(CHAIN_ROOT / "__init__.py")
+    imports = _imported_modules(ORCHESTRATION_ROOT / "__init__.py")
 
     # 下划线前缀的内部模块（_messaging/_recognition 等）是 ChainBase 的
-    # 功能域 mixin，app.chain.ports 是按业务域划分的能力端口客户端，
+    # 功能域 mixin，app.application.orchestration.ports 是按业务域划分的能力端口客户端，
     # 两者都不是具体处理链，允许导入
+    prefix = "app.application.orchestration."
     assert not {
         module
         for module in imports
-        if module.startswith("app.chain.")
-        and not module.removeprefix("app.chain.").startswith("_")
-        and module.removeprefix("app.chain.").partition(".")[0] != "ports"
+        if module.startswith(prefix)
+        and not module.removeprefix(prefix).startswith("_")
+        and module.removeprefix(prefix).partition(".")[0] != "ports"
     }
 
 
 def test_legacy_music_chain_is_removed() -> None:
     """聚合全部音乐职责的旧 MusicChain 文件和导入不得重新出现。"""
-    assert not (CHAIN_ROOT / "music.py").exists()
+    legacy_module = "app.application.orchestration.music"
+    assert not (ORCHESTRATION_ROOT / "music.py").exists()
     violations = {
         str(path.relative_to(PROJECT_ROOT)): sorted(
-            module for module in _imported_modules(path) if module == "app.chain.music"
+            module for module in _imported_modules(path) if module == legacy_module
         )
         for root in LEGACY_MUSIC_SCAN_ROOTS
         for path in root.rglob("*.py")
         if "plugins" not in path.parts  # 插件目录由插件仓自治，跳过
-        if "app.chain.music" in _imported_modules(path)
+        if legacy_module in _imported_modules(path)
     }
     assert not violations
 
@@ -83,22 +85,26 @@ def test_legacy_music_chain_is_removed() -> None:
 def test_music_source_chains_do_not_depend_on_public_orchestration_chains() -> None:
     """音乐数据源链不得反向依赖识别、刮削、搜索或推荐编排链。"""
     forbidden = {
-        "app.chain.media",
-        "app.chain.recommend",
-        "app.chain.scraping",
-        "app.chain.search",
+        "app.application.orchestration.media",
+        "app.application.orchestration.recommend",
+        "app.application.orchestration.scraping",
+        "app.application.orchestration.search",
     }
     violations = {
-        filename: sorted(_imported_modules(CHAIN_ROOT / filename).intersection(forbidden))
+        filename: sorted(imported)
         for filename in MUSIC_SOURCE_CHAIN_FILES
-        if _imported_modules(CHAIN_ROOT / filename).intersection(forbidden)
+        if (
+            imported := _imported_modules(
+                ORCHESTRATION_ROOT / filename
+            ).intersection(forbidden)
+        )
     }
     assert not violations
 
 
 def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
     """MediaChain 只保留公共识别与详情路由，不得重新承接刮削或音乐探索职责。"""
-    path = CHAIN_ROOT / "media.py"
+    path = ORCHESTRATION_ROOT / "media.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     method_names = {
         node.name
@@ -127,7 +133,7 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
     }
 
     assert not method_names.intersection(forbidden_methods)
-    assert "app.chain.scraping" not in _imported_modules(path)
+    assert "app.application.orchestration.scraping" not in _imported_modules(path)
 
 
 def test_business_chains_delegate_recognition_to_media_chain() -> None:
@@ -135,7 +141,7 @@ def test_business_chains_delegate_recognition_to_media_chain() -> None:
     violations = {
         name: calls
         for name in ("search.py", "subscribe.py", "download.py", "transfer.py")
-        if (calls := _inherited_recognize_calls(CHAIN_ROOT / name))
+        if (calls := _inherited_recognize_calls(ORCHESTRATION_ROOT / name))
     }
 
     assert not violations

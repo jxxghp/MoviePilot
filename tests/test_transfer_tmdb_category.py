@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas import FileItem, TransferDirectoryConf
@@ -52,7 +52,7 @@ def test_transfer_resolves_complete_identity_before_building_tasks(monkeypatch) 
             calls.append(kwargs)
             return None
 
-    recognize("app.chain.transfer.MediaChain", FakeMediaChain)
+    recognize("app.application.orchestration.transfer.MediaChain", FakeMediaChain)
 
     state, message = chain.do_transfer(
         fileitem=fileitem,
@@ -76,17 +76,17 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     chain = object.__new__(TransferChain)
     chain.jobview = SimpleNamespace(try_remove_job=lambda _task: None)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.application.orchestration.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.application.orchestration._transfer.TransferHistoryOper", lambda: SimpleNamespace())
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.application.orchestration.transfer.MediaChain",
         lambda: SimpleNamespace(
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.application.orchestration._transfer.MediaChain", lambda: SimpleNamespace(
             supplement_tmdb_info=lambda media, _meta: media,
         ))
     task = TransferTask(

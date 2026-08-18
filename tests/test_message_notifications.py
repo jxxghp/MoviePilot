@@ -3,7 +3,7 @@ import json
 from unittest.mock import Mock
 
 from app.api.endpoints.message import clear_notification_message, get_notification_message
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.db import AsyncSessionFactory, SessionFactory

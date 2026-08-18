@@ -10,7 +10,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.tmdb import TmdbChain
+from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.config import settings
 from app.application.security.access import verify_token
 from app.db.models.user import User

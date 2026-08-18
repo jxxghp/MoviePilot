@@ -5,8 +5,8 @@ from typing import Optional, List
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.search import SearchChain
 from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.schemas.workflow import ActionParams

@@ -31,10 +31,10 @@ from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListDa
 from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain
-from app.chain.system import SystemChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.mediaserver import MediaServerChain
+from app.application.orchestration.search import SearchChain
+from app.application.orchestration.system import SystemChain
 from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo

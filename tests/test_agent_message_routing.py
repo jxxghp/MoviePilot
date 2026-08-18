@@ -7,7 +7,7 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings
 from app.db import SessionFactory
 from app.db.oper.message import MessageOper
@@ -41,7 +41,7 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
 
     try:
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
+            "app.application.orchestration.interaction.MediaInteractionChain.handle_text_interaction",
             return_value=True,
         ) as handle_media_interaction, patch.object(
             chain, "_handle_ai_message", return_value=True
@@ -68,9 +68,9 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
     ) as record_user_message, patch(
-        "app.chain.message.get_running_agent_manager", return_value=manager
+        "app.application.orchestration.message.get_running_agent_manager", return_value=manager
     ), patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
         chain.handle_message(
@@ -91,9 +91,9 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.get_running_agent_manager", return_value=manager
+        "app.application.orchestration.message.get_running_agent_manager", return_value=manager
     ), patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
         chain.handle_message(
@@ -114,9 +114,9 @@ def test_message_chain_does_not_trust_channel_display_username():
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.get_running_agent_manager", return_value=manager
+        "app.application.orchestration.message.get_running_agent_manager", return_value=manager
     ), patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
         chain.handle_message(
@@ -137,9 +137,9 @@ def test_message_chain_uses_same_admin_contract_for_slack():
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
-        "app.chain.message.get_running_agent_manager", return_value=manager
+        "app.application.orchestration.message.get_running_agent_manager", return_value=manager
     ), patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
         side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
     ):
         chain.handle_message(
@@ -260,9 +260,9 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         ) as record_user_message, patch.object(
             chain, "edit_message", return_value=True
         ), patch(
-            "app.chain.message.get_running_agent_manager", return_value=manager
+            "app.application.orchestration.message.get_running_agent_manager", return_value=manager
         ), patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe",
+            "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ):
             chain._handle_callback(

@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
 from app.schemas.workflow import ActionParams

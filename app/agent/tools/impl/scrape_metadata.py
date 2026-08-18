@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.media import MediaChain
-from app.chain.scraping import ScrapingChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.scraping import ScrapingChain
 from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem

@@ -24,7 +24,7 @@ def stub_modules(stubs: Dict[str, Any]) -> Iterator[None]:
     用例::
 
         with stub_modules({"app.application.site.sites": MagicMock()}):
-            from app.chain.media import MediaChain
+            from app.application.orchestration.media import MediaChain
         # 此处 app.application.site.sites 已还原为真实模块，MediaChain 已绑定可用
     """
     saved: Dict[str, Any] = {}

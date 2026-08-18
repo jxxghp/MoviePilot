@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.tmdb import TmdbChain
+from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.log import logger
 
 

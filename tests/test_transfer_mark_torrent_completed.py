@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from types import SimpleNamespace
 
-from app.chain.transfer import JobManager, TransferChain
+from app.application.orchestration.transfer import JobManager, TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas import FileItem

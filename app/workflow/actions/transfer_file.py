@@ -9,8 +9,8 @@ from app.runtime.config import global_vars
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
-from app.chain.storage import StorageChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.storage import StorageChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.log import logger
 
 

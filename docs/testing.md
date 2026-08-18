@@ -21,7 +21,7 @@ python tests/run.py                       # 等价于 pytest 全量（参数透�
 
 收集任何测试模块、`import app.*` **之前**，conftest 完成两件事：
 
-1. **临时库**：把 `CONFIG_DIR` 指向临时目录并 `init_db()` 建表。引擎本身已惰性创建（`import app.db` 不再连库），但 `settings` 在 `import app.runtime.config` 那一刻就把 `CONFIG_DIR` 读进字段并建好配置子目录，之后再改环境变量对 `settings.CONFIG_PATH` 毫无影响——引擎晚点才建，连的仍是真实 `user.db`。所以隔离必须早于首个牵入 `app.runtime.config` 的 import（`app.db` / `app.chain.*` 都会牵入）；空库会让运行期查表报 `no such table`，故必须建表。
+1. **临时库**：把 `CONFIG_DIR` 指向临时目录并 `init_db()` 建表。引擎本身已惰性创建（`import app.db` 不再连库），但 `settings` 在 `import app.runtime.config` 那一刻就把 `CONFIG_DIR` 读进字段并建好配置子目录，之后再改环境变量对 `settings.CONFIG_PATH` 毫无影响——引擎晚点才建，连的仍是真实 `user.db`。所以隔离必须早于首个牵入 `app.runtime.config` 的 import（`app.db` / `app.application.orchestration.*` 都会牵入）；空库会让运行期查表报 `no such table`，故必须建表。
 2. **`app.application.site.sites` 垫片**：该模块由独立仓库动态拉取、CI 无此文件，conftest 统一补最小垫片（本地存在真实模块时优先用真实模块）。兼容层会把旧插件的 `app.helper.sites` 导入路由到同一模块。
 
 由此推出两条**硬规范**：

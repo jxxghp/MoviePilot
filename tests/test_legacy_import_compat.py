@@ -232,6 +232,34 @@ def test_db_refactor_legacy_modules_are_all_registered():
     assert expected <= set(MODULE_ALIASES)
 
 
+def test_orchestration_legacy_root_serves_plugin_chain_imports():
+    """插件按 app.chain.* 直接导入具体链类，旧路径必须解析到同一 canonical 模块。"""
+    expected = {
+        "app.chain": "ChainBase",
+        "app.chain.download": "DownloadChain",
+        "app.chain.media": "MediaChain",
+        "app.chain.search": "SearchChain",
+        "app.chain.site": "SiteChain",
+        "app.chain.storage": "StorageChain",
+        "app.chain.subscribe": "SubscribeChain",
+        "app.chain.transfer": "TransferChain",
+    }
+
+    for legacy_name, symbol in expected.items():
+        legacy = importlib.import_module(legacy_name)
+        canonical = importlib.import_module(
+            legacy_name.replace("app.chain", "app.application.orchestration", 1)
+        )
+        assert legacy is canonical, legacy_name
+        assert getattr(legacy, symbol) is getattr(canonical, symbol), legacy_name
+
+
+def test_orchestration_legacy_root_blocks_unregistered_submodules():
+    """app.chain 已收敛为虚拟兼容包，未登记的旧子模块不得从物理路径泄漏。"""
+    with pytest.raises(ModuleNotFoundError, match="未在兼容映射中登记"):
+        importlib.import_module("app.chain.not_a_chain")
+
+
 def test_split_user_oper_facade_exports_data_and_auth_contracts():
     """旧 user_oper 同时提供 UserOper 与八个认证依赖。"""
     legacy = importlib.import_module("app.db.user_oper")
@@ -296,9 +324,9 @@ def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
 
 
 def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():
-    """刮削拆分后，旧 app.chain.media 路径应能继续取用刮削公开符号。"""
-    legacy_media = importlib.import_module("app.chain.media")
-    canonical_scraping = importlib.import_module("app.chain.scraping")
+    """刮削拆分后，旧 app.application.orchestration.media 路径应能继续取用刮削公开符号。"""
+    legacy_media = importlib.import_module("app.application.orchestration.media")
+    canonical_scraping = importlib.import_module("app.application.orchestration.scraping")
 
     assert legacy_media.ScrapingChain is canonical_scraping.ScrapingChain
     assert legacy_media.ScrapingOption is canonical_scraping.ScrapingOption
@@ -363,7 +391,7 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
         "normalize_media_identity_payload",
         "build_media_key",
     }
-    assert set(SYMBOL_ALIASES["app.chain.media"]) == {
+    assert set(SYMBOL_ALIASES["app.application.orchestration.media"]) == {
         "ScrapingChain",
         "ScrapingOption",
         "ScrapingConfig",

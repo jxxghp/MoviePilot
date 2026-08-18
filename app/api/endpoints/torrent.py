@@ -6,8 +6,8 @@ from app.schemas.cache import TorrentCacheData as _SchemaTorrentCacheData
 from app.schemas.cache import TorrentReidentifyData as _SchemaTorrentReidentifyData
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.torrents import TorrentsChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.torrents import TorrentsChain
 from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -165,7 +165,7 @@ def refresh_cache(_: User = Depends(get_current_active_superuser)):
     """
     刷新种子缓存
     """
-    from app.chain.torrents import TorrentsChain
+    from app.application.orchestration.torrents import TorrentsChain
 
     torrents_chain = TorrentsChain()
 

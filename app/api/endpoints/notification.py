@@ -5,7 +5,7 @@ from fastapi import Depends
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
-from app.chain.notification import NotificationChain
+from app.application.orchestration.notification import NotificationChain
 from app.db.models import User
 from app.api.deps import get_current_active_superuser
 

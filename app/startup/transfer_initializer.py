@@ -1,4 +1,4 @@
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 
 
 def replay_pending_transfers():

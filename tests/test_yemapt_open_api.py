@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 
-from app.chain.download import DownloadChain
+from app.application.orchestration.download import DownloadChain
 from app.domain.context import TorrentInfo
 from app.modules.indexer.parser.yema import YemaSiteUserInfo
 from app.modules.indexer.spider.yema import YemaSpider
@@ -327,9 +327,9 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         captured.update(kwargs)
         return None, b"torrent-content", "Movie", ["Movie.mkv"], ""
 
-    monkeypatch.setattr("app.chain.download.RequestUtils.post_res", fake_post_res)
+    monkeypatch.setattr("app.application.orchestration.download.RequestUtils.post_res", fake_post_res)
     monkeypatch.setattr(
-        "app.chain.download.TorrentHelper.download_torrent",
+        "app.application.orchestration.download.TorrentHelper.download_torrent",
         fake_download_torrent,
     )
     enclosure = YemaSpider(_build_indexer())._build_download_url(100)

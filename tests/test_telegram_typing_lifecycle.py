@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 
 from app.agent import AgentManager, _MessageTask, _async_start_processing_status
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
@@ -261,11 +261,11 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         with patch.object(chain, "_record_user_message"), patch.object(
                 chain, "_mark_message_processing_started"
         ) as start_status, patch(
-                "app.chain.message.settings.AI_AGENT_ENABLE", True
+                "app.application.orchestration.message.settings.AI_AGENT_ENABLE", True
         ), patch(
-                "app.chain.message.get_running_agent_manager",
+                "app.application.orchestration.message.get_running_agent_manager",
         ) as get_running_manager, patch(
-                "app.chain.message.asyncio.run_coroutine_threadsafe",
+                "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
                 side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
         ), patch.object(
                 chain, "_mark_message_processing_finished"

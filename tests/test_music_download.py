@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 from app.api.endpoints.download import add, download
-from app.chain.download import DownloadChain
+from app.application.orchestration.download import DownloadChain
 from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas import ExistMediaInfo
@@ -130,9 +130,9 @@ def test_download_single_stops_before_client_when_album_pack_is_incomplete():
         ["叶惠美/整轨.flac", "叶惠美/整轨.cue"],
     )
 
-    with patch("app.chain.download.MediaChain", return_value=media_chain), \
-            patch("app.chain.download.TorrentHelper", return_value=torrent_helper), \
-            patch("app.chain.download.eventmanager.send_event", return_value=None):
+    with patch("app.application.orchestration.download.MediaChain", return_value=media_chain), \
+            patch("app.application.orchestration.download.TorrentHelper", return_value=torrent_helper), \
+            patch("app.application.orchestration.download.eventmanager.send_event", return_value=None):
         task_id, error = chain.download_single(
             context,
             torrent_content=b"torrent",
@@ -217,7 +217,7 @@ def test_music_library_exists_uses_atomic_album_lookup():
     mediaserver = Mock()
     mediaserver.get_item_id.return_value = "album-item-1"
 
-    with patch("app.chain.download.MediaServerOper", return_value=mediaserver):
+    with patch("app.application.orchestration.download.MediaServerOper", return_value=mediaserver):
         exists, no_exists = chain.get_no_exists_info(
             meta=MetaMusic.from_music_info(album),
             mediainfo=album,

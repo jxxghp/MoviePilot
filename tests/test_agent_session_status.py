@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent import AgentManager
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.schemas.types import NotificationChannel
 
 
@@ -94,7 +94,7 @@ class TestAgentSessionStatus(unittest.TestCase):
 
         with (
             patch(
-                "app.chain.message.get_running_agent_manager",
+                "app.application.orchestration.message.get_running_agent_manager",
                 return_value=SimpleNamespace(get_session_status=lambda **_: status),
             ),
             patch.object(chain, "post_message") as post_message,

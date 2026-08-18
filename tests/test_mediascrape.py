@@ -13,8 +13,8 @@ with stub_modules({
     'app.db.oper.systemconfig': _systemconfig_stub,
 }):
     from app import schemas
-    from app.chain.media import MediaChain
-    from app.chain.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
+    from app.application.orchestration.media import MediaChain
+    from app.application.orchestration.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
     from app.domain.context import MediaInfo
     from app.runtime.events import Event
     from app.domain.metainfo import MetaInfo
@@ -411,10 +411,10 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(target_item, fileitem)
         self.assertEqual(target_path, Path("/tv/Show/Season 1/backdrop.jpg"))
 
-    @patch("app.chain.scraping.RequestUtils")
-    @patch("app.chain.scraping.NamedTemporaryFile")
-    @patch("app.chain.scraping.Path.chmod")
-    @patch("app.chain.scraping.settings")
+    @patch("app.application.orchestration.scraping.RequestUtils")
+    @patch("app.application.orchestration.scraping.NamedTemporaryFile")
+    @patch("app.application.orchestration.scraping.Path.chmod")
+    @patch("app.application.orchestration.scraping.settings")
     def test_download_and_save_image(self, mock_settings, mock_chmod, mock_temp_file, mock_request_utils):
         # We need to test _download_and_save_image directly so we remove mock
         self.media_chain = ScrapingChain()
@@ -453,8 +453,8 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(call_args["fileitem"], fileitem)
         self.assertEqual(call_args["new_name"], "poster.jpg")
 
-    @patch("app.chain.scraping.NamedTemporaryFile")
-    @patch("app.chain.media.Path.chmod")
+    @patch("app.application.orchestration.scraping.NamedTemporaryFile")
+    @patch("app.application.orchestration.media.Path.chmod")
     def test_save_file_uses_python310_compatible_tempfile(self, mock_chmod, mock_temp_file):
         """保存刮削文件时不应使用 Python 3.12 才支持的 delete_on_close 参数。"""
         self.media_chain = ScrapingChain()
@@ -489,7 +489,7 @@ class TestMediaScrapingTVDirectory(unittest.TestCase):
     def tearDown(self):
         reset_scraping_chain_singleton()
 
-    @patch("app.chain.media.settings")
+    @patch("app.application.orchestration.media.settings")
     def test_initialize_tv_directory_specials(self, mock_settings):
         # mock specials directory recognition
         mock_settings.RENAME_FORMAT_S0_NAMES = ["Specials", "SPs"]
@@ -525,7 +525,7 @@ class TestMediaScrapingTVDirectory(unittest.TestCase):
             season_number=0
         )
 
-    @patch("app.chain.media.settings")
+    @patch("app.application.orchestration.media.settings")
     def test_initialize_tv_directory_season(self, mock_settings):
         mock_settings.RENAME_FORMAT_S0_NAMES = ["Specials", "SPs"]
 
@@ -562,7 +562,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
     def tearDown(self):
         reset_scraping_chain_singleton()
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_file(
         self, mock_scrape_metadata
     ):
@@ -592,7 +592,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=True
         )
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_bluray(
         self, mock_scrape_metadata
     ):
@@ -622,7 +622,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=False
         )
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_filelist(
         self, mock_scrape_metadata
     ):
@@ -658,7 +658,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertIn("/tv/show/Season 1", paths)
         self.assertIn("/tv/show/Season 1/S01E01.mp4", paths)
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_full(
         self, mock_scrape_metadata
     ):
@@ -688,8 +688,8 @@ class TestMediaScrapeEvents(unittest.TestCase):
             overwrite=True
         )
 
-    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
-    @patch("app.chain.media.MediaChain.recognize_by_meta")
+    @patch("app.application.orchestration.scraping.ScrapingChain._handle_movie_scraping")
+    @patch("app.application.orchestration.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_movie(
         self, mock_recognize, mock_handle_movie
     ):
@@ -717,8 +717,8 @@ class TestMediaScrapeEvents(unittest.TestCase):
             recursive=True
         )
 
-    @patch("app.chain.scraping.ScrapingChain._handle_tv_scraping")
-    @patch("app.chain.media.MediaChain.recognize_by_meta")
+    @patch("app.application.orchestration.scraping.ScrapingChain._handle_tv_scraping")
+    @patch("app.application.orchestration.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_tv(
         self, mock_recognize, mock_handle_tv
     ):
@@ -745,8 +745,8 @@ class TestMediaScrapeEvents(unittest.TestCase):
             recursive=True
         )
 
-    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
-    @patch("app.chain.media.MediaChain.recognize_by_meta")
+    @patch("app.application.orchestration.scraping.ScrapingChain._handle_movie_scraping")
+    @patch("app.application.orchestration.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_recognize_fallback(
         self, mock_recognize, mock_handle_movie
     ):
@@ -767,8 +767,8 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertEqual(kwargs['mediainfo'], mediainfo)
         self.assertEqual(kwargs['meta'].name, "Movie")
 
-    @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")
-    @patch("app.chain.scraping.ScrapingChain._handle_tv_scraping")
+    @patch("app.application.orchestration.scraping.ScrapingChain._handle_movie_scraping")
+    @patch("app.application.orchestration.scraping.ScrapingChain._handle_tv_scraping")
     def test_scrape_metadata_invalid_extension(
         self, mock_handle_tv, mock_handle_movie
     ):
@@ -781,7 +781,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         mock_handle_movie.assert_not_called()
         mock_handle_tv.assert_not_called()
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_multiple_files(
         self, mock_scrape_metadata
     ):
@@ -823,7 +823,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertIn("/movies/collection/movie2.mkv", paths)
         self.assertIn("/movies/collection/movie3.avi", paths)
 
-    @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
+    @patch("app.application.orchestration.scraping.ScrapingChain.scrape_metadata")
     def test_scrape_metadata_event_dir_with_tv_multi_seasons_episodes(
         self, mock_scrape_metadata
     ):
@@ -872,14 +872,14 @@ class TestMediaScrapeEvents(unittest.TestCase):
         self.assertIn("/tv/MultiSeasonShow/Season 2/S02E02.mkv", paths)
         self.assertIn("/tv/MultiSeasonShow/Specials/S00E01.mp4", paths)
 
-    @patch("app.chain.media.MediaChain.recognize_by_meta")
+    @patch("app.application.orchestration.media.MediaChain.recognize_by_meta")
     def test_scrape_metadata_recognize_fail(
         self, mock_recognize
     ):
         fileitem = schemas.FileItem(path="/movies/movie.mkv", name="movie.mkv", type="file", storage="local")
         mock_recognize.return_value = None
 
-        with patch('app.chain.media.logger.warn') as mock_logger:
+        with patch('app.application.orchestration.media.logger.warn') as mock_logger:
             self.media_chain.scrape_metadata(
                 fileitem=fileitem
             )

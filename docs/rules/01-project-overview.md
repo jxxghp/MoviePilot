@@ -24,7 +24,7 @@ MoviePilot is a self-hosted media automation platform targeting Chinese-language
 | `app/` | FastAPI backend application |
 | `moviepilot` | Local CLI entrypoint (install, init, start, stop, update, agent) |
 | `app/api/endpoints/` | HTTP endpoint handlers |
-| `app/chain/` | Business orchestration layer |
+| `app/application/orchestration/` | Business orchestration layer (use-case chains) |
 | `app/modules/` | Pluggable backend integrations (downloaders, media servers, etc.) |
 | `app/db/` | SQLAlchemy models and data access wrappers |
 | `app/foundation/` | Stateless general-purpose primitives |

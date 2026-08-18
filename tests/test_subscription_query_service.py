@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.application.subscription.query import SubscriptionQueryService
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 

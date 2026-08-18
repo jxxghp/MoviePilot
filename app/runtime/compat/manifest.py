@@ -22,13 +22,78 @@ class SymbolAlias:
     replacement: str
 
 
+# 编排链的旧根 app.chain 的全部子模块；插件按具体链类直接导入，逐个精确登记。
+_ORCHESTRATION_MODULES = (
+    "acoustid",
+    "agent",
+    "anilist",
+    "bangumi",
+    "dashboard",
+    "douban",
+    "download",
+    "interaction",
+    "listenbrainz",
+    "lrclib",
+    "media",
+    "mediaserver",
+    "message",
+    "musicbrainz",
+    "notification",
+    "ports",
+    "ports.dispatch",
+    "ports.download",
+    "ports.library",
+    "ports.metadata",
+    "ports.parsing",
+    "ports.search",
+    "ports.system",
+    "ports.transfer",
+    "recommend",
+    "scraping",
+    "search",
+    "site",
+    "storage",
+    "subscribe",
+    "system",
+    "theaudiodb",
+    "tmdb",
+    "torrents",
+    "transfer",
+    "tvdb",
+    "user",
+    "webhook",
+    "_interaction",
+    "_messaging",
+    "_music",
+    "_recognition",
+    "_transfer",
+)
+_ORCHESTRATION_PACKAGES = {"ports"}
+
 # 只登记已经删除旧物理源码、并完成 canonical 路径验证的模块。
 MODULE_ALIASES: Dict[str, ModuleAlias] = {
-    "app.chain.media_interaction": ModuleAlias(
-        target="app.chain.interaction",
-        replacement="app.chain.interaction",
+    "app.chain": ModuleAlias(
+        target="app.application.orchestration",
+        replacement="app.application.orchestration",
         introduced="v3.0.0",
-        owner="chain",
+        owner="application",
+        is_package=True,
+    ),
+    **{
+        f"app.chain.{name}": ModuleAlias(
+            target=f"app.application.orchestration.{name}",
+            replacement=f"app.application.orchestration.{name}",
+            introduced="v3.0.0",
+            owner="application",
+            is_package=name in _ORCHESTRATION_PACKAGES,
+        )
+        for name in _ORCHESTRATION_MODULES
+    },
+    "app.chain.media_interaction": ModuleAlias(
+        target="app.application.orchestration.interaction",
+        replacement="app.application.orchestration.interaction",
+        introduced="v3.0.0",
+        owner="application",
     ),
     "app.log": ModuleAlias(
         target="app.sdk.logging",
@@ -633,7 +698,7 @@ PACKAGE_ALIASES: Dict[str, ModuleAlias] = {
 }
 
 # 旧父包完全迁空后才登记；迁移中的物理父包继续由 PathFinder 处理。
-VIRTUAL_PACKAGES: Set[str] = {"app.core", "app.helper", "app.utils"}
+VIRTUAL_PACKAGES: Set[str] = {"app.chain", "app.core", "app.helper", "app.utils"}
 
 # 旧包 __init__.py 曾公开的符号在这里显式声明，禁止模糊转发。
 PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
@@ -752,9 +817,9 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
     "app.agent.orchestrator": {
         "AgentChain": SymbolAlias(
-            target_module="app.chain.agent",
+            target_module="app.application.orchestration.agent",
             target_name="AgentChain",
-            replacement="app.chain.agent.AgentChain",
+            replacement="app.application.orchestration.agent.AgentChain",
         ),
         "ReplyMode": SymbolAlias(
             target_module="app.schemas.types",
@@ -763,20 +828,20 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         ),
     },
     # 刮削能力从 MediaChain 拆出为独立 ScrapingChain 后，
-    # 原 app.chain.media 模块级公开的刮削选项与策略配置随迁到 app.chain.scraping
-    "app.chain.media": {
+    # media 模块级公开的刮削选项与策略配置由 scraping 模块提供
+    "app.application.orchestration.media": {
         name: SymbolAlias(
-            target_module="app.chain.scraping",
+            target_module="app.application.orchestration.scraping",
             target_name=name,
-            replacement=f"app.chain.scraping.{name}",
+            replacement=f"app.application.orchestration.scraping.{name}",
         )
         for name in ("ScrapingChain", "ScrapingOption", "ScrapingConfig")
     },
-    "app.chain.message": {
+    "app.application.orchestration.message": {
         "MediaInteractionChain": SymbolAlias(
-            target_module="app.chain.interaction",
+            target_module="app.application.orchestration.interaction",
             target_name="MediaInteractionChain",
-            replacement="app.chain.interaction.MediaInteractionChain",
+            replacement="app.application.orchestration.interaction.MediaInteractionChain",
         ),
     },
     "app.domain.media": {

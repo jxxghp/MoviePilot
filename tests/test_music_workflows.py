@@ -2,12 +2,12 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain.acoustid import AcoustIdChain
-from app.chain.listenbrainz import ListenBrainzChain
-from app.chain.media import MediaChain
-from app.chain.musicbrainz import MusicBrainzChain
-from app.chain.recommend import RecommendChain
-from app.chain.search import SearchChain
+from app.application.orchestration.acoustid import AcoustIdChain
+from app.application.orchestration.listenbrainz import ListenBrainzChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.musicbrainz import MusicBrainzChain
+from app.application.orchestration.recommend import RecommendChain
+from app.application.orchestration.search import SearchChain
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
@@ -335,7 +335,7 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
 
     source_chain = Mock()
     source_chain.async_music_chart = AsyncMock(side_effect=fake_music_chart)
-    monkeypatch.setattr("app.chain.recommend.ListenBrainzChain", Mock(return_value=source_chain))
+    monkeypatch.setattr("app.application.orchestration.recommend.ListenBrainzChain", Mock(return_value=source_chain))
 
     results = asyncio.run(
         chain.async_music_chart(
@@ -392,7 +392,7 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
     recognize = AsyncMock(return_value=info)
     filename_meta = MetaMusic(title="02. 眼泪成诗")
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.application.orchestration.media.AudioMetadataHelper.read_evidence",
         Mock(return_value=(meta, meta, filename_meta)),
     )
     monkeypatch.setattr(
@@ -435,7 +435,7 @@ def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
     recognize_source = Mock(return_value=expected)
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    with patch("app.chain._recognition.MoviePilotServerHelper.report_recognize_share"):
+    with patch("app.application.orchestration._recognition.MoviePilotServerHelper.report_recognize_share"):
         result = chain.recognize_media(meta=meta)
 
     assert result is expected
@@ -484,7 +484,7 @@ def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatc
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.query_recognize_share",
+        "app.application.orchestration._recognition.MoviePilotServerHelper.query_recognize_share",
         return_value=None,
     ):
         assert chain.recognize_media(meta=meta) is None
@@ -506,7 +506,7 @@ def test_async_default_recognition_only_queries_musicbrainz(monkeypatch):
     monkeypatch.setattr(chain, "async_recognize_music_from_source", recognize_source)
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.async_report_recognize_share",
+        "app.application.orchestration._recognition.MoviePilotServerHelper.async_report_recognize_share",
         new=AsyncMock(),
     ):
         result = asyncio.run(chain.async_recognize_media(meta=meta))
@@ -606,7 +606,7 @@ def test_async_fresh_releases_keeps_official_order(monkeypatch):
 
     source_chain = Mock()
     source_chain.async_music_fresh_releases = AsyncMock(side_effect=fake_fresh_releases)
-    monkeypatch.setattr("app.chain.recommend.ListenBrainzChain", Mock(return_value=source_chain))
+    monkeypatch.setattr("app.application.orchestration.recommend.ListenBrainzChain", Mock(return_value=source_chain))
 
     results = asyncio.run(
         chain.async_music_fresh_releases(

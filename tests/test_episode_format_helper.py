@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.application.formatting import EpisodeFormatRuleHelper, FormatParser, _AutoRecommendSample
 from app.schemas import EpisodeFormatRule, FileItem
 
@@ -722,7 +722,7 @@ def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch)
         lambda item: [sample],
     )
     monkeypatch.setattr(
-        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
+        "app.application.orchestration._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", helper_data),
     )
 
@@ -777,7 +777,7 @@ def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeyp
         lambda: [],
     )
     monkeypatch.setattr(
-        "app.chain._transfer.EpisodeFormatRuleHelper.recommend",
+        "app.application.orchestration._transfer.EpisodeFormatRuleHelper.recommend",
         lambda self, rules, sample_files: (True, "", {
             **helper_data,
             "received_samples": [item.name for item in sample_files],
@@ -842,7 +842,7 @@ def test_transfer_chain_episode_format_samples_include_extra_files(monkeypatch):
     other_item = _make_file("Show - 01.txt")
 
     monkeypatch.setattr(
-        "app.chain.transfer.StorageChain.list_files",
+        "app.application.orchestration.transfer.StorageChain.list_files",
         lambda self, item, recursion=False: [
             media_item,
             subtitle_item,

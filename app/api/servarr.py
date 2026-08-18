@@ -14,9 +14,9 @@ from app.schemas.servarr import ServarrSystemStatus as _SchemaServarrSystemStatu
 from app.schemas.servarr import ServarrTag as _SchemaServarrTag
 from app.schemas.servarr import SonarrSeries as _SchemaSonarrSeries
 from app.api.response import ERROR_RESPONSES
-from app.chain.media import MediaChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.tvdb import TvdbChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.subscribe import SubscribeChain
+from app.application.orchestration.tvdb import TvdbChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.application.security.access import verify_apikey

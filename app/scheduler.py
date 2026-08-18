@@ -16,12 +16,12 @@ from apscheduler.triggers.cron import CronTrigger
 from app.schemas.dashboard import ScheduleInfo as _SchemaScheduleInfo
 from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
 from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
-from app.chain import ChainBase
-from app.chain.mediaserver import MediaServerChain
-from app.chain.recommend import RecommendChain
-from app.chain.site import SiteChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration import ChainBase
+from app.application.orchestration.mediaserver import MediaServerChain
+from app.application.orchestration.recommend import RecommendChain
+from app.application.orchestration.site import SiteChain
+from app.application.orchestration.subscribe import SubscribeChain
+from app.application.orchestration.transfer import TransferChain
 from app.workflow.service import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager

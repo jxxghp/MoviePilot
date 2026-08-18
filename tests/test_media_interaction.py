@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.chain.message import MessageChain
-from app.chain.interaction import MediaInteractionChain
+from app.application.orchestration.message import MessageChain
+from app.application.orchestration.interaction import MediaInteractionChain
 from app.runtime.events import EventManager
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
@@ -30,7 +30,7 @@ def clear_media_interactions():
 def mock_default_media_search():
     """未显式验证搜索结果的消息路由用例不访问真实媒体元数据服务"""
     with patch(
-        "app.chain.media.MediaChain.search",
+        "app.application.orchestration.media.MediaChain.search",
         side_effect=lambda title: (_build_meta(title), []),
     ):
         yield
@@ -181,7 +181,7 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     assert request is not None
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
+        "app.application.orchestration.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
@@ -277,7 +277,7 @@ def test_handle_message_keeps_legacy_positional_images_argument():
     images = [IncomingMessage.MessageImage(ref="tg://file_id/photo-1")]
 
     with patch(
-        "app.chain.message.PluginInputInteractionHandler.handle_text",
+        "app.application.orchestration.message.PluginInputInteractionHandler.handle_text",
         return_value=False,
     ), patch.object(
         chain, "_mark_message_processing_started", return_value=None
@@ -326,7 +326,7 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
     )
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
+        "app.application.orchestration.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_media, patch.object(chain.eventmanager, "send_event") as send_event:
         chain.handle_message(
@@ -1549,14 +1549,14 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     ]
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.settings.AI_AGENT_ENABLE", True
+        "app.application.orchestration.message.settings.AI_AGENT_ENABLE", True
     ), patch(
-        "app.chain.message.settings.AI_AGENT_GLOBAL", True
+        "app.application.orchestration.message.settings.AI_AGENT_GLOBAL", True
     ), patch(
-        "app.chain.media.MediaChain.search",
+        "app.application.orchestration.media.MediaChain.search",
         return_value=(meta, medias),
     ) as search_media, patch(
-        "app.chain.interaction.MediaInteractionChain.post_medias_message"
+        "app.application.orchestration.interaction.MediaInteractionChain.post_medias_message"
     ) as post_medias_message, patch.object(
         chain, "_handle_ai_message"
     ) as handle_ai:
@@ -1596,11 +1596,11 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     assert request is not None
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.settings.AI_AGENT_ENABLE", True
+        "app.application.orchestration.message.settings.AI_AGENT_ENABLE", True
     ), patch(
-        "app.chain.message.settings.AI_AGENT_GLOBAL", True
+        "app.application.orchestration.message.settings.AI_AGENT_GLOBAL", True
     ), patch(
-        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
+        "app.application.orchestration.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
         chain.handle_message(
@@ -1631,7 +1631,7 @@ def test_callback_routes_to_media_interaction_chain():
     )
 
     with patch(
-        "app.chain.interaction.MediaInteractionChain.handle_callback_interaction",
+        "app.application.orchestration.interaction.MediaInteractionChain.handle_callback_interaction",
         return_value=True,
     ) as handle_callback:
         chain._handle_callback(
@@ -1657,7 +1657,7 @@ def test_media_interaction_starts_search_and_posts_media_list():
     ]
 
     with patch(
-        "app.chain.media.MediaChain.search",
+        "app.application.orchestration.media.MediaChain.search",
         return_value=(meta, medias),
     ), patch.object(chain, "post_medias_message") as post_medias_message:
         handled = chain.handle_text_interaction(
@@ -1736,10 +1736,10 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
     request.phase = "torrent"
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch.object(chain, "post_message") as post_message, patch(
-            "app.chain.interaction.DownloadChain.download_single"
+            "app.application.orchestration.interaction.DownloadChain.download_single"
     ) as download_single:
         handled = chain.handle_text_interaction(
             channel=NotificationChannel.Telegram,
@@ -1781,10 +1781,10 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     request.phase = "torrent"
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_download_dirs(),
     ), patch.object(chain, "post_message") as post_message, patch(
-            "app.chain.interaction.DownloadChain.download_single",
+            "app.application.orchestration.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
@@ -1821,10 +1821,10 @@ def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
     request.phase = "torrent"
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_single_download_dir(),
     ), patch.object(chain, "post_message") as post_message, patch(
-            "app.chain.interaction.DownloadChain.download_single",
+            "app.application.orchestration.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         handled = chain.handle_text_interaction(
@@ -1861,7 +1861,7 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
     request.phase = "torrent"
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch.object(chain, "post_message") as post_message:
         handled = chain.handle_text_interaction(
@@ -1903,10 +1903,10 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
     request.pending_download_context = context
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-            "app.chain.interaction.DownloadChain.download_single",
+            "app.application.orchestration.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs(context.media_info)
@@ -1945,10 +1945,10 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
     request.pending_download_context = context
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-            "app.chain.interaction.DownloadChain.download_single",
+            "app.application.orchestration.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs(context.media_info)
@@ -1987,10 +1987,10 @@ def test_download_dir_text_reply_runs_pending_single_download_without_save_path(
     request.pending_download_context = context
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_multiple_movie_download_dirs(),
     ), patch(
-            "app.chain.interaction.DownloadChain.download_single",
+            "app.application.orchestration.interaction.DownloadChain.download_single",
         return_value="hash",
     ) as download_single:
         request.download_dirs = chain._get_download_dirs()
@@ -2015,7 +2015,7 @@ def test_get_download_dirs_keeps_matching_tv_category_dir():
     context = _build_tv_context()
 
     with patch(
-            "app.chain.interaction.DirectoryHelper.get_download_dirs",
+            "app.application.orchestration.interaction.DirectoryHelper.get_download_dirs",
         return_value=_build_download_dirs(),
     ):
         download_dirs = chain._get_download_dirs(context.media_info)

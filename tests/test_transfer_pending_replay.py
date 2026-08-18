@@ -10,7 +10,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.schemas import FileItem
 from app.application.transfer import TransferTask
 

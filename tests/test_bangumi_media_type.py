@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
@@ -108,7 +108,7 @@ def test_media_identity_conversion_rejects_invalid_pair_without_plugin_handler()
         media_source=MediaSource.Bangumi,
         media_id="0",
     ) is None
-    with patch("app.chain.media.eventmanager.send_event", return_value=None):
+    with patch("app.application.orchestration.media.eventmanager.send_event", return_value=None):
         assert MediaChain.convert_media_identity(
             chain,
             target_source=MediaSource.TheAudioDB,
@@ -129,7 +129,7 @@ def test_media_identity_conversion_dispatches_plugin_source() -> None:
         event_data.media_dict.update(result)
         return Mock(event_data=event_data)
 
-    with patch("app.chain.media.eventmanager.send_event", side_effect=handle_event):
+    with patch("app.application.orchestration.media.eventmanager.send_event", side_effect=handle_event):
         converted = MediaChain.convert_media_identity(
             chain,
             target_source=MediaSource.TMDB,
@@ -212,7 +212,7 @@ def test_async_media_identity_conversion_dispatches_plugin_source() -> None:
         return Mock(event_data=event_data)
 
     with patch(
-        "app.chain.media.eventmanager.async_send_event",
+        "app.application.orchestration.media.eventmanager.async_send_event",
         new=AsyncMock(side_effect=handle_event),
     ):
         converted = asyncio.run(MediaChain.async_convert_media_identity(

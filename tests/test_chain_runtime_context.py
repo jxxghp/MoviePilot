@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from app.application.chain.context import ChainRuntimeContext
 from app.application.chain import context as chain_context
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 
 
 def _context() -> ChainRuntimeContext:

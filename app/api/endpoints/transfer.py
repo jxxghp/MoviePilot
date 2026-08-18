@@ -16,8 +16,8 @@ from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectory
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings, global_vars
 from app.application.security.access import verify_token, verify_apitoken
 from app.db import get_db

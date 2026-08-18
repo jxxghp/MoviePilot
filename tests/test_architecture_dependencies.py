@@ -19,29 +19,26 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
     "application": frozenset(
         {"foundation", "schemas", "domain", "runtime", "db", "adapters"}
     ),
-    "chain": frozenset(
-        {"foundation", "schemas", "domain", "runtime", "db", "adapters", "application"}
-    ),
     "modules": frozenset(
         {"foundation", "schemas", "domain", "runtime", "db", "adapters"}
     ),
     "workflow": frozenset(
         {
             "foundation", "schemas", "domain", "runtime", "db", "adapters",
-            "application", "chain",
+            "application",
         }
     ),
     "monitor": frozenset(
         {
             "foundation", "schemas", "domain", "runtime", "db", "adapters",
-            "application", "chain",
+            "application",
         }
     ),
     "doctor": frozenset({"foundation", "schemas", "domain", "runtime", "adapters"}),
     "agent": frozenset(
         {
             "foundation", "schemas", "domain", "runtime", "db", "adapters",
-            "application", "chain",
+            "application",
         }
     ),
     "sdk": frozenset(
@@ -55,7 +52,7 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
 # 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
 # 边消失后条目可直接删除，留着不会导致失败。
 DEPENDENCY_DEBT: dict[tuple[str, str], str] = {}
-LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
+LEGACY_ROOTS = ("app.chain", "app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
     "app.agent.skills",
@@ -181,7 +178,12 @@ def _resolve_imports(
     path: Path,
     known_modules: set[str],
 ) -> set[str]:
-    """解析一个模块的静态导入，并计入 Python 必然初始化的父包。"""
+    """解析一个模块的静态导入，并计入 Python 必然初始化的父包。
+
+    模块自身的祖先包不计入依赖：Python 必然先初始化它们，这条边由包结构决定
+    而非模块的设计选择，计入只会把「父包 __init__ 导入子模块」记成环。
+    祖先包被源码显式导入时仍照常计入。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
     dependencies: set[str] = set()
@@ -212,6 +214,7 @@ def _resolve_imports(
                 parent
                 for index in range(2, len(parts))
                 if (parent := ".".join(parts[:index])) in known_modules
+                and not module_name.startswith(f"{parent}.")
             )
             if candidate in known_modules:
                 dependencies.add(candidate)
@@ -289,17 +292,17 @@ def test_legacy_roots_contain_no_python_sources():
     """旧目录只能作为运行时虚拟包存在，仓库中不得重新出现源码。"""
     leftovers = sorted(
         str(path.relative_to(PROJECT_ROOT))
-        for root_name in ("core", "helper", "utils")
+        for root_name in ("chain", "core", "helper", "utils")
         for path in (APP_ROOT / root_name).rglob("*.py")
     )
     assert leftovers == []
 
 
 def test_legacy_source_directories_do_not_exist():
-    """core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。"""
+    """chain/core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。"""
     leftovers = [
         root_name
-        for root_name in ("core", "helper", "utils")
+        for root_name in ("chain", "core", "helper", "utils")
         if (APP_ROOT / root_name).exists()
     ]
     assert leftovers == []
@@ -594,7 +597,7 @@ def test_modules_do_not_import_other_modules_or_chain():
         forbidden = {
             dependency
             for dependency in dependencies
-            if dependency.startswith("app.chain")
+            if dependency.startswith("app.application.orchestration")
             or (
                 dependency.startswith("app.modules.")
                 and dependency.split(".")[2] not in (own_package, "_base")
@@ -629,7 +632,7 @@ def test_chain_does_not_import_downloader_sdks():
     """链层不得引入下载器后端协议类型，避免后端细节泄漏到编排层。"""
     forbidden_sdks = {"qbittorrentapi", "transmission_rpc"}
     violations: list[str] = []
-    for path in (APP_ROOT / "chain").rglob("*.py"):
+    for path in (APP_ROOT / "application" / "orchestration").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             names: list[str] = []
@@ -653,7 +656,7 @@ def test_chain_does_not_import_module_internals():
     known_modules = set(modules)
     violations: dict[str, set[str]] = {}
     for module_name, path in modules.items():
-        if not module_name.startswith("app.chain"):
+        if not module_name.startswith("app.application.orchestration"):
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
@@ -684,7 +687,7 @@ def test_chain_does_not_import_agent_implementation():
     """编排层不得反向依赖 Agent 实现，跨域编排经 application 门面。"""
     violations: dict[str, set[str]] = {}
     for module_name, dependencies in _build_module_graph().items():
-        if not module_name.startswith("app.chain"):
+        if not module_name.startswith("app.application.orchestration"):
             continue
         forbidden = {
             dependency
@@ -744,7 +747,7 @@ def test_api_does_not_import_factory():
 
 PROCESS_LEVEL_ROOTS = (
     "app.api",
-    "app.chain",
+    "app.application",
     "app.agent",
     "app.scheduler",
     "app.command",

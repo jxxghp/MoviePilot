@@ -2,11 +2,12 @@
 
 ## Directory Model
 
-MoviePilot keeps the established product packages such as `app/chain`,
+MoviePilot keeps the established product packages such as `app/application`,
 `app/agent`, `app/modules`, `app/db`, `app/api`, `app/startup` and
-`app/workflow` in their original locations. The historical `app/core`,
+`app/workflow` in their canonical locations. The historical `app/core`,
 `app/helper` and `app/utils` roots are virtual compatibility packages only;
-physical Python sources must not be recreated there.
+physical Python sources must not be recreated there. Use-case orchestration is
+now part of `app/application/orchestration/`.
 
 The legacy roots have no physical directories in the source tree. Current
 images and update flows write site resources only to `app/application/site/`;
@@ -73,7 +74,7 @@ to make the directory tree look symmetrical.
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules, runtime contracts, Oper classes and
-adapters. Multi-domain workflows still belong in the existing `app/chain/`
+adapters. Multi-domain workflows belong to `app/application/orchestration/`
 package. `Chain`, `Service` and `Manager` remain class patterns; they do not
 create additional top-level directory categories.
 
@@ -177,7 +178,6 @@ part of migrated-capability cleanup:
 
 - `app/agent/`
 - `app/api/`
-- `app/chain/`
 - `app/db/`
 - `app/doctor/`
 - `app/modules/`
@@ -238,7 +238,7 @@ architecture snapshot, not through incidental module globals.
 
 ### Chain layer
 
-`app/chain/` implements use cases shared by API, CLI, Agent, scheduler and other
+`app/application/orchestration/` implements use cases shared by API, CLI, Agent, scheduler and other
 entrypoints. Chains may coordinate modules, application services, Oper classes,
 events and caches. New chain-to-chain dependencies are allowed only while the
 static graph remains acyclic. Backend protocol details and HTTP request objects
@@ -256,7 +256,7 @@ provider. High-frequency string methods are classified in
 legacy aggregation contract, while the architecture baseline records every
 literal method and call site.
 
-Underscore-prefixed files in `app/chain/` are feature-domain mixins for
+Underscore-prefixed files in `app/application/orchestration/` are feature-domain mixins for
 `ChainBase` and concrete chains, not chains themselves: `_recognition.py`
 (`RecognitionMixin`), `_messaging.py` (`MessageProcessingMixin` /
 `NotificationMixin`), `_interaction.py` (`InteractionChainMixin`, the shared
@@ -265,7 +265,7 @@ slash-command delegation for `remote_list` / `parse_callback` /
 (`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
 `SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). Shared
 subscription metadata and media-key construction belongs to
-`app.application.subscription.contract`; `app.chain.subscribe` keeps the old helper
+`app.application.subscription.contract`; `app.application.orchestration.subscribe` keeps the old helper
 names only as compatibility forwards and `_music` must not import its concrete
 chain owner. A concrete chain that exposes slash-command
 interaction inherits `InteractionChainMixin`, injects its handler class via
@@ -417,7 +417,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/plugins.py` | Plugin API dynamic route registration/removal; the FastAPI instance is injected by `app/factory.py` after creation |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
-| `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
+| `app/application/orchestration/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
 | `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
 | `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
@@ -467,6 +467,6 @@ component containing a migrated module, module-to-module or module-to-chain
 imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 `app.modules` internals, chain imports of `app.modules` internals (chains reach
 modules only through `run_module` dispatch), and downloader SDK
-(`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
+(`qbittorrentapi`, `transmission_rpc`) imports inside `app/application/orchestration`.
 
 *Last Updated: 2026-08-17*

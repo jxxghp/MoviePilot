@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.runtime.log import logger
 from app.schemas.types import MediaType, media_type_to_agent
 from app.schemas.media import resolve_media_identity

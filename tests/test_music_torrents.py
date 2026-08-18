@@ -3,7 +3,7 @@ import copy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain.torrents import TorrentsChain
+from app.application.orchestration.torrents import TorrentsChain
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import Context, MusicInfo, TorrentInfo
 from app.modules.indexer.spider import SiteSpider
@@ -19,7 +19,7 @@ def test_async_browse_passes_music_type_to_indexer():
         return_value={"id": 1, "domain": "example.com"}
     )
 
-    with patch("app.chain.torrents.SitesHelper", return_value=sites_helper):
+    with patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper):
         asyncio.run(
             chain.async_browse(
                 domain="example.com",
@@ -58,8 +58,8 @@ def test_music_cache_context_uses_music_models():
         patch.object(chain, "get_torrents", return_value={}),
         patch.object(chain, "browse", return_value=[torrent]),
         patch.object(chain, "save_cache"),
-        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
-        patch("app.chain.torrents.MediaChain") as media_chain,
+        patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.application.orchestration.torrents.MediaChain") as media_chain,
     ):
         result = chain.refresh(stype="spider", sites=[1])
 
@@ -96,8 +96,8 @@ def test_rss_sets_music_category_from_site_media_type():
     sites_helper.get_indexer.return_value = site
 
     with (
-        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
-        patch("app.chain.torrents.RssHelper") as rss_helper,
+        patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.application.orchestration.torrents.RssHelper") as rss_helper,
     ):
         rss_helper.return_value.parse.return_value = rss_items
         torrents = chain.rss("music.example.com")
@@ -245,8 +245,8 @@ def test_refresh_include_music_fetches_music_entry():
         patch.object(chain, "load_cache", return_value=None),
         patch.object(chain, "browse", side_effect=_fake_browse),
         patch.object(chain, "save_cache", save_cache),
-        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
-        patch("app.chain.torrents.MediaChain"),
+        patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.application.orchestration.torrents.MediaChain"),
     ):
         result = chain.refresh(stype="spider", sites=[1], include_music=True)
 
@@ -323,8 +323,8 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
             "save_cache",
             side_effect=lambda data, filename: saved.__setitem__(filename, copy.deepcopy(data)),
         ),
-        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
-        patch("app.chain.torrents.MediaChain"),
+        patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.application.orchestration.torrents.MediaChain"),
     ):
         result = chain.refresh(stype="rss", sites=[1], include_music=True)
 
@@ -387,12 +387,12 @@ def test_music_cache_not_evicted_by_video_torrents():
     fake_settings.NO_CACHE_SITE_KEY = "no-cache-site.invalid"
 
     with (
-        patch("app.chain.torrents.settings", fake_settings),
+        patch("app.application.orchestration.torrents.settings", fake_settings),
         patch.object(chain, "load_cache", side_effect=_fake_load),
         patch.object(chain, "browse", side_effect=_fake_browse),
         patch.object(chain, "save_cache", save_cache),
-        patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
-        patch("app.chain.torrents.MediaChain"),
+        patch("app.application.orchestration.torrents.SitesHelper", return_value=sites_helper),
+        patch("app.application.orchestration.torrents.MediaChain"),
     ):
         chain.refresh(stype="spider", sites=[1])
 

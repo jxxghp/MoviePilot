@@ -6,7 +6,7 @@ from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.douban import DoubanChain
+from app.application.orchestration.douban import DoubanChain
 from app.domain.context import MediaInfo
 from app.application.security.access import verify_token
 from app.schemas.types import MediaType

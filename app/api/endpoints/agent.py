@@ -41,7 +41,7 @@ from app.agent.runtime_loader import (
     get_moviepilot_agent_type,
     get_running_agent_manager,
 )
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.command import Command
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, EventManager

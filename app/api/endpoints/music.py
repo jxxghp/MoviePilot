@@ -10,19 +10,19 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.recommend import RecommendChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.application.security.access import verify_token
 from app.db.models.user import User
 from app.api.deps import get_current_active_superuser_async
-from app.chain.listenbrainz import (
+from app.application.orchestration.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
     LISTENBRAINZ_FRESH_SORTS,
 )
-from app.chain.musicbrainz import MusicBrainzChain
+from app.application.orchestration.musicbrainz import MusicBrainzChain
 
 router = ResponseAPIRouter()
 

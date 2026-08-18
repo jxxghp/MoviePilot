@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import app.chain.download as download_module
-from app.chain.download import DownloadChain
+import app.application.orchestration.download as download_module
+from app.application.orchestration.download import DownloadChain
 from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo

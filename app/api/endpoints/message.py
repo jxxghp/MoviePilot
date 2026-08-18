@@ -18,7 +18,7 @@ from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings, global_vars
 from app.application.security.access import verify_token, verify_apitoken
 from app.db import get_async_db

@@ -20,8 +20,8 @@ from app.schemas.workflow import Site as _SchemaSite
 from app.api.response import ResponseAPIRouter
 from app.application.site.mutation import SiteMutationCommand
 from app.api.endpoints.plugin import register_plugin_api
-from app.chain.site import SiteChain
-from app.chain.torrents import TorrentsChain
+from app.application.orchestration.site import SiteChain
+from app.application.orchestration.torrents import TorrentsChain
 from app.command import Command
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager

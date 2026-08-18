@@ -7,10 +7,10 @@ import pytest
 
 import app.agent.tools.impl.add_download_tasks as add_tasks_module
 import app.agent.tools.impl.update_download_tasks as update_tasks_module
-import app.chain.download as download_module
+import app.application.orchestration.download as download_module
 from app.agent.tools.impl.add_download_tasks import AddDownloadTasksTool
 from app.agent.tools.impl.update_download_tasks import UpdateDownloadTasksTool
-from app.chain.download import DownloadChain
+from app.application.orchestration.download import DownloadChain
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.application.directory import validate_download_save_path

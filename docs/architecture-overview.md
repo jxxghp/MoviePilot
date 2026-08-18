@@ -72,9 +72,8 @@ flowchart TB
         PluginPkg["app/plugins<br/>插件"]
     end
 
-    subgraph 编排层["编排层"]
-        Chain["app/chain<br/>Chain 用例编排"]
-        App["app/application<br/>聚焦应用服务"]
+    subgraph 编排层["应用服务层"]
+        App["app/application<br/>应用服务与编排链"]
     end
 
     subgraph 能力层["能力层"]
@@ -164,7 +163,7 @@ flowchart TB
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则等 | `recognition.py`、`filter.py`、`rss.py`、`site/` |
 | `app/application/messaging/` | 消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
-| `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
+| `app/application/orchestration/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
 | `app/db/` | SQLAlchemy 模型（`models/`）与一一对应的数据访问类（`oper/`） | `models/subscribe.py` ↔ `oper/subscribe.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
@@ -263,7 +262,7 @@ flowchart LR
 
 ### 5.2 Chain 模式：用例编排
 
-`app/chain/` 承载被 API、CLI、Agent、调度器、Webhook 等多入口共享的业务用例。
+`app/application/orchestration/` 承载被 API、CLI、Agent、调度器、Webhook 等多入口共享的业务用例。
 所有 Chain 继承 `ChainBase`，Chain 访问模块**只能通过方法名分发**：
 
 ```mermaid
@@ -285,7 +284,7 @@ flowchart TB
 
 - `run_module("method_name", **kwargs)` 会遍历所有实现了该方法的模块并聚合结果；
   插件若实现了同名方法可获得优先响应。
-- `app/chain/` 中下划线前缀文件（`_recognition.py`、`_messaging.py`、`_interaction.py`、
+- `app/application/orchestration/` 中下划线前缀文件（`_recognition.py`、`_messaging.py`、`_interaction.py`、
   `_music.py`、`_transfer.py`）是 `ChainBase` 的功能域 Mixin，不是独立 Chain。
 - 需要斜杠命令交互的 Chain 继承 `InteractionChainMixin`，只实现 `_interaction_handler`。
 
@@ -444,7 +443,7 @@ flowchart TB
 约束要点：
 
 - Chain 访问 Agent 运行时只能经 `app/application/agent.py`；
-  `app/chain/agent.py` 的 `AgentChain` 是链层入口，Agent 实现保持在 `app/agent/`。
+  `app/application/orchestration/agent.py` 的 `AgentChain` 是链层入口，Agent 实现保持在 `app/agent/`。
 - Agent 工具不直接 import API / 调度器 / 命令，统一使用
   `application/plugins.py`、`application/scheduling.py`、`application/commands.py` 三个门面。
 - 对外暴露 MCP 端点 `/api/v1/mcp` 与 OpenAI / Anthropic 兼容端点，
@@ -547,7 +546,7 @@ flowchart LR
 - `tests/test_architecture_dependencies.py` 构建完整 Python 模块图，拒绝：
   物理遗留源码、禁止的上向依赖、SDK/compat 反向引用、包含迁移模块的强连通分量、
   模块间/模块到 Chain 的 import、入口层对 `app.modules` 内部的 import、
-  Chain 直接 import 模块内部（必须走 `run_module` 分发）、`app/chain` 内的下载器 SDK 依赖。
+  Chain 直接 import 模块内部（必须走 `run_module` 分发）、`app/application/orchestration` 内的下载器 SDK 依赖。
 - 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。

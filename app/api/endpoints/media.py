@@ -17,9 +17,9 @@ from app.schemas.workflow import Context as _SchemaContext
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.scraping import ScrapingChain
-from app.chain.tmdb import TmdbChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.scraping import ScrapingChain
+from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.config import settings
 from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase

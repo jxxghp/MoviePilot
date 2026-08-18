@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.chain import subscribe as subscribe_module
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration import subscribe as subscribe_module
+from app.application.orchestration.subscribe import SubscribeChain
 from app.schemas.types import MediaType
 
 

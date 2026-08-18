@@ -4,12 +4,12 @@ import inspect
 
 import pytest
 
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
-from app.chain.message import MessageChain
-from app.chain.search import SearchChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.download import DownloadChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.message import MessageChain
+from app.application.orchestration.search import SearchChain
+from app.application.orchestration.subscribe import SubscribeChain
+from app.application.orchestration.transfer import TransferChain
 
 
 @pytest.mark.parametrize(

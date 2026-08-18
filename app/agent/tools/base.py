@@ -16,7 +16,7 @@ from app.agent.policy.sanitizer import (
     summarize_result,
 )
 from app.agent.tools.tags import ToolTag
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.runtime.config import settings
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.extensions.service_registry import ServiceConfigHelper

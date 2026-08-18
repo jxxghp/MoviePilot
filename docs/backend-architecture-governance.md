@@ -85,7 +85,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | --- | ---: | ---: | --- |
 | `app/modules` | 67,396 | 147 | 体量最大，包含大量具体平台模块和移植代码，需按模块族治理 |
 | `app/agent` | 40,494 | 140 | Provider、工具、编排、策略均较重，应按子域治理 |
-| `app/chain` | 29,663 | 36 | 文件不多但平均体量大，是优先拆分对象 |
+| `app/application/orchestration` | 29,663 | 36 | 文件不多但平均体量大，是优先拆分对象 |
 | `app/api` | 16,745 | 42 | 多个端点含用例、持久化和流式协议实现 |
 | `app/application` | 17,117 | 65 | 已承接多项用例，但部分仍是兼容 Facade 或反向依赖具体实现 |
 | `app/runtime` | 13,976 | 48 | 插件注册/投影和事件运行时已拆出，宿主生命周期仍集中 |
@@ -103,11 +103,11 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | `app.api.endpoints.system` | 54 | 系统设置、规则测试、日志、网络测试、运行控制混合 |
 | `app.api.deps` | 49 | 认证、插件配置和跨端点依赖装配集中 |
 | `app.agent.orchestrator` | 48 | Agent 构建、执行、工具、记忆、审计、用量混合 |
-| `app.chain.message` | 48 | 消息路由和多个业务域耦合 |
-| `app.chain.subscribe` | 48 | 写入、识别、搜索、匹配、完成、分享混合 |
-| `app.chain.download` | 45 | 下载选择、客户端调用、字幕和历史混合 |
+| `app.application.orchestration.message` | 48 | 消息路由和多个业务域耦合 |
+| `app.application.orchestration.subscribe` | 48 | 写入、识别、搜索、匹配、完成、分享混合 |
+| `app.application.orchestration.download` | 45 | 下载选择、客户端调用、字幕和历史混合 |
 | `app.scheduler` | 42 | 调度定义、业务调用和运行控制仍混合，清理已迁出 |
-| `app.chain.transfer` | 41 | 计划、执行、刮削、通知、回调、清理混合 |
+| `app.application.orchestration.transfer` | 41 | 计划、执行、刮削、通知、回调、清理混合 |
 
 `app.runtime`、`app.schemas`、`app.db` 等包入口具有很高入度。高入度本身不等于错误，但意味着它们是兼容和回归风险集中的枢纽，不能随意改变导出行为。
 
@@ -211,7 +211,7 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 #### 现状证据
 
 - `tests/test_architecture_dependencies.py` 已有 23 项测试，能保护虚拟兼容根、核心实现根和若干禁止边。
-- 当前仍存在 `app.chain._music` ↔ `app.chain.subscribe`、`app.schemas`、`app.db` 等自有 SCC，说明门禁对包内部环有意留白。
+- 当前仍存在 `app.application.orchestration._music` ↔ `app.application.orchestration.subscribe`、`app.schemas`、`app.db` 等自有 SCC，说明门禁对包内部环有意留白。
 - `app/application/messaging/skill.py:8` 直接导入 `app.agent.skills.registry`，说明“Application 不依赖具体 Agent 实现”的规则还没有全包覆盖。
 - `app/adapters/external/market.py:33`、`app/adapters/external/server.py:12-14` 直接导入 Oper，说明 Adapter 禁止业务持久化的规则没有落到静态检查。
 - 多个 API 端点直接导入 `Scheduler`、ORM 模型和数据库会话。
@@ -245,8 +245,8 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 
 #### 现状证据
 
-- `app/chain/__init__.py:53-64` 中，每个 Chain 默认构造 `ModuleManager`、`EventManager`、`MessageOper`、`MessageHelper`、`MessageQueueManager`、`PluginManager` 和两种缓存。
-- `run_module()` 位于 `app/chain/__init__.py:370-390`，先执行插件模块，再执行系统模块。
+- `app/application/orchestration/__init__.py:53-64` 中，每个 Chain 默认构造 `ModuleManager`、`EventManager`、`MessageOper`、`MessageHelper`、`MessageQueueManager`、`PluginManager` 和两种缓存。
+- `run_module()` 位于 `app/application/orchestration/__init__.py:370-390`，先执行插件模块，再执行系统模块。
 - 插件返回非空且不是列表时直接短路；列表结果继续合并。
 - 系统模块按优先级执行；可能根据 `ObjectUtils.check_signature()` 把前一结果作为下一处理器唯一参数。
 - AST 扫描发现约 211 个不同的字面量方法名、259 处调用。这已经是一套大型内部和插件协议，而不只是工具函数。
@@ -275,7 +275,7 @@ HTTP / CLI / Event / Scheduler / Plugin Hook
 app/runtime/extensions/module/contracts.py
 app/runtime/extensions/module/dispatcher.py
 app/application/chain/context.py
-app/chain/__init__.py                 # 保留 ChainBase 兼容门面
+app/application/orchestration/__init__.py                 # ChainBase 实现
 ```
 
 #### 完成标准
@@ -290,21 +290,21 @@ app/chain/__init__.py                 # 保留 ChainBase 兼容门面
 
 | 文件 | 规模/热点 | 当前混合职责 | 首批拆分方向 |
 | --- | --- | --- | --- |
-| `app/chain/subscribe.py` | 约 3,794 行，70 个方法；`match()` 约 417 行 | 订阅写入、识别、搜索、匹配、缺失判断、完成、分享、历史、通知 | 命令、查询、匹配策略、完成策略、对外 Facade |
-| `app/chain/search.py` | 约 2,901 行；结果解析约 195 行 | 搜索计划、站点并发、结果解析、规则过滤、流式回调 | 计划器、执行器、结果归一化、流式进度 |
-| `app/chain/transfer.py` | 约 2,685 行；`do_transfer()` 约 885 行 | 计划、文件操作、刮削、历史、消息、媒体库刷新、回调 | 传输计划、执行、后处理、结果提交 |
-| `app/chain/download.py` | 约 2,100 行；批量下载约 572 行 | 资源选择、客户端选择、提交、字幕、历史、通知 | 选择策略、提交服务、字幕流程、审计记录 |
-| `app/chain/media.py` | 约 2,097 行 | 识别、缓存、身份转换、同步/异步重复 | 识别用例、身份解析、Provider 网关、缓存策略 |
+| `app/application/orchestration/subscribe.py` | 约 3,794 行，70 个方法；`match()` 约 417 行 | 订阅写入、识别、搜索、匹配、缺失判断、完成、分享、历史、通知 | 命令、查询、匹配策略、完成策略、对外 Facade |
+| `app/application/orchestration/search.py` | 约 2,901 行；结果解析约 195 行 | 搜索计划、站点并发、结果解析、规则过滤、流式回调 | 计划器、执行器、结果归一化、流式进度 |
+| `app/application/orchestration/transfer.py` | 约 2,685 行；`do_transfer()` 约 885 行 | 计划、文件操作、刮削、历史、消息、媒体库刷新、回调 | 传输计划、执行、后处理、结果提交 |
+| `app/application/orchestration/download.py` | 约 2,100 行；批量下载约 572 行 | 资源选择、客户端选择、提交、字幕、历史、通知 | 选择策略、提交服务、字幕流程、审计记录 |
+| `app/application/orchestration/media.py` | 约 2,097 行 | 识别、缓存、身份转换、同步/异步重复 | 识别用例、身份解析、Provider 网关、缓存策略 |
 
 #### 当前真实循环
 
-`app/chain/_music.py:103-104`、`:134-135`、`:222-223` 通过延迟导入访问 `app.chain.subscribe` 的 `build_subscribe_meta`、`_subscribe_media_key`，而 `subscribe.py` 又导入 `MusicSubscribeMixin`。注释已经明确说明它是在回避模块级循环。
+`app/application/orchestration/_music.py:103-104`、`:134-135`、`:222-223` 通过延迟导入访问 `app.application.orchestration.subscribe` 的 `build_subscribe_meta`、`_subscribe_media_key`，而 `subscribe.py` 又导入 `MusicSubscribeMixin`。注释已经明确说明它是在回避模块级循环。
 
 延迟导入只改变出错时机，不会恢复正确依赖方向。
 
 #### 拆分原则
 
-1. 保持 `app.chain.subscribe.SubscribeChain` 等公开路径和类名。
+1. 保持 `app.application.orchestration.subscribe.SubscribeChain` 等公开路径和类名。
 2. 优先提取纯函数和只依赖 DTO 的策略，再提取有状态用例。
 3. 不在一次提交中同时改同步与异步全链路；先建立共享核心，再让两条入口委托。
 4. 原 Facade 的参数默认值、返回类型、事件时机和消息副作用必须保持。
@@ -325,7 +325,7 @@ app/application/subscription/
   search.py            # 搜索用例协调
   ports.py             # Repository、Search、Recognition、Event 等协议
 
-app/chain/subscribe.py # V3 Facade，继续暴露 SubscribeChain 与旧辅助符号
+app/application/orchestration/subscribe.py # Facade，继续暴露 SubscribeChain 与旧辅助符号
 ```
 
 `app/application/subscribe.py` 已经承担订阅写入翻译，可先作为新目录的入口门面，或保留并转发到新服务。不能同时出现同名文件和包；若最终改为包，必须在一个原子批次中完成，并验证 `app.application.subscribe` 的所有导入。
@@ -345,7 +345,7 @@ app/application/transfer_pipeline/
   commit.py
   ports.py
 
-app/chain/transfer.py  # 保持 TransferChain 兼容门面
+app/application/orchestration/transfer.py  # TransferChain 兼容门面
 ```
 
 `do_transfer()` 应先被改造成显式阶段流水线，每个阶段接受不可变上下文并返回新结果。不能在第一步就重写文件移动算法。
@@ -807,7 +807,7 @@ app/agent/execution/              # 执行、流事件、用量、恢复
 | `app.sdk.config` / `app.sdk.network` | 20 / 18 |
 | `app.core.context` | 17 |
 | `app.helper.downloader` / `app.helper.sites` | 14 / 13 |
-| `app.chain.download` / `subscribe` / `media` | 11 / 10 / 9 |
+| `app.application.orchestration.download` / `subscribe` / `media` | 11 / 10 / 9 |
 | `app.db.site_oper` | 10 |
 
 现有 SDK 也直接导出 settings/global_vars、具体 PluginManager/ModuleManager、具体 EventManager 和多个跨层 Helper。它能维持兼容，但不是新插件应无限扩张依赖的依据。
@@ -960,14 +960,14 @@ startup 注入具体依赖
 1. `app.schemas` 改为显式/惰性兼容导出；宿主内部使用精确子模块导入。
 2. 移除重复 `system` 导出，增加公开符号快照和冲突检查。
 3. DB 内部模块从具体 `app.db.base/decorators/session/engine` 导入，不经根入口回流。
-4. 消除 `app.chain._music` ↔ `subscribe`：把订阅媒体 key、meta 构造移到 Domain/Application 的单向依赖模块。
+4. 消除 `app.application.orchestration._music` ↔ `subscribe`：把订阅媒体 key、meta 构造移到 Domain/Application 的单向依赖模块。
 5. 消除 `filemanager` ↔ `transhandler`：提取共享 DTO/Protocol。
 6. 新门禁设为禁止新增 Adapter→DB、Runtime→DB、API→Session/Model、Application→Agent 具体实现。
 
 #### 兼容方式
 
 - `app.schemas.X` 和 `app.db` 旧导出继续工作。
-- `app.chain.subscribe` 的旧辅助函数保留转发，直到插件扫描证明可移除；V3 默认不移除。
+- `app.application.orchestration.subscribe` 的旧辅助函数保留转发，直到插件扫描证明可移除；V3 默认不移除。
 - 文件改包时保持完整导入路径和类名。
 
 #### 验收
@@ -1187,7 +1187,7 @@ startup 注入具体依赖
 
 ### 任务 B：`_music`/`subscribe` 环拆除
 
-**范围**：`app/chain/_music.py`、`app/chain/subscribe.py`、订阅身份相关 Domain/Application 文件和测试。
+**范围**：`app/application/orchestration/_music.py`、`app/application/orchestration/subscribe.py`、订阅身份相关 Domain/Application 文件和测试。
 **目标**：迁移 `build_subscribe_meta`、`_subscribe_media_key(s)` 的真正所有权，消除延迟导入。
 **禁止**：改变音乐搜索、订阅完成判定、媒体身份字段、旧辅助函数路径。
 **验证**：音乐单曲/专辑、缺少远端 ID、同步/异步识别、旧路径导入、SCC。
@@ -1201,7 +1201,7 @@ startup 注入具体依赖
 
 ### 任务 D：Chain 模块调度器提取
 
-**范围**：`app/chain/__init__.py`、`app/runtime/extensions` 新调度组件、契约测试。
+**范围**：`app/application/orchestration/__init__.py`、`app/runtime/extensions` 新调度组件、契约测试。
 **目标**：原样提取插件/系统模块调度算法。
 **禁止**：改变执行顺序、异常、限流、聚合、线程池策略。
 **验证**：参数化契约矩阵及 PluginManager/ModuleManager fake。

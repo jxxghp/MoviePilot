@@ -195,7 +195,7 @@ class TransferFileTool(MoviePilotTool):
             return "错误：单曲必须按一个音频文件整理，不能把目录作为一首单曲"
         target_path_obj = Path(target_path) if target_path else None
 
-        from app.chain.transfer import TransferChain
+        from app.application.orchestration.transfer import TransferChain
 
         state, errormsg = TransferChain().manual_transfer(
             fileitem=fileitem,

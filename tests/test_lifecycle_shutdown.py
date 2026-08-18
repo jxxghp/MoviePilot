@@ -479,14 +479,14 @@ def test_restart_endpoint_failure_preserves_stop_state(
 
 def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):
     """命令重启失败时进程仍在运行，不能提前发布停止请求"""
-    from app.chain.system import SystemChain
+    from app.application.orchestration.system import SystemChain
     from app.runtime.config import global_vars
 
     stop_event = threading.Event()
     monkeypatch.setattr(global_vars, "STOP_EVENT", stop_event)
     monkeypatch.setattr(SystemChain, "backup_plugins", MagicMock())
     restart = MagicMock(return_value=(False, "restart failed"))
-    monkeypatch.setattr("app.chain.system.SystemHelper.restart", restart)
+    monkeypatch.setattr("app.application.orchestration.system.SystemHelper.restart", restart)
 
     chain = object.__new__(SystemChain)
     chain.restart(channel=None, userid=None)

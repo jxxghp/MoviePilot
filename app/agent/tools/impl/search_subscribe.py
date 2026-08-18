@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration.subscribe import SubscribeChain
 from app.db.oper.subscribe import SubscribeOper
 from app.runtime.log import logger
 from app.schemas.types import media_type_to_agent

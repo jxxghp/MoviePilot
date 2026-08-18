@@ -13,7 +13,7 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.application.messaging.interaction import InteractionContext
 from app.application.messaging.skill import SkillInteractionHandler
 from app.application.messaging.skill import skill_interaction_manager
@@ -68,7 +68,7 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.message.SkillInteractionHandler.handle_text_interaction",
+            "app.application.orchestration.message.SkillInteractionHandler.handle_text_interaction",
             return_value=True,
         ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
             chain.handle_message(
@@ -116,7 +116,7 @@ class TestSkillsCommand(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.message.SkillInteractionHandler.handle_callback_interaction",
+            "app.application.orchestration.message.SkillInteractionHandler.handle_callback_interaction",
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(

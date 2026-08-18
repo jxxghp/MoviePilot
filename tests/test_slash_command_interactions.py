@@ -10,12 +10,12 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.application.messaging.interaction import InteractionContext
-from app.chain.site import SiteChain
+from app.application.orchestration.site import SiteChain
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration.subscribe import SubscribeChain
 from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.schemas.types import NotificationChannel
 
@@ -43,10 +43,10 @@ class TestSlashCommandInteractions(unittest.TestCase):
         )
 
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.message.SiteChain.handle_text_interaction",
+            "app.application.orchestration.message.SiteChain.handle_text_interaction",
             return_value=True,
         ) as handle_site, patch(
-            "app.chain.message.SkillInteractionHandler.handle_text_interaction"
+            "app.application.orchestration.message.SkillInteractionHandler.handle_text_interaction"
         ) as handle_skills:
             chain.handle_message(
                 channel=NotificationChannel.Wechat,
@@ -77,10 +77,10 @@ class TestSlashCommandInteractions(unittest.TestCase):
         )
 
         with patch.object(chain, "_record_user_message"), patch(
-            "app.chain.message.SubscribeChain.handle_text_interaction",
+            "app.application.orchestration.message.SubscribeChain.handle_text_interaction",
             return_value=True,
         ) as handle_subscribes, patch(
-            "app.chain.message.SiteChain.handle_text_interaction"
+            "app.application.orchestration.message.SiteChain.handle_text_interaction"
         ) as handle_sites:
             chain.handle_message(
                 channel=NotificationChannel.Wechat,
@@ -104,7 +104,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.message.SiteChain.handle_callback_interaction",
+            "app.application.orchestration.message.SiteChain.handle_callback_interaction",
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(
@@ -130,7 +130,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.message.SubscribeChain.handle_callback_interaction",
+            "app.application.orchestration.message.SubscribeChain.handle_callback_interaction",
             return_value=True,
         ) as handle_callback:
             chain._handle_callback(
@@ -209,7 +209,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
             )
         ]
 
-        with patch("app.chain.site.SiteOper.list", return_value=fake_sites), patch.object(
+        with patch("app.application.orchestration.site.SiteOper.list", return_value=fake_sites), patch.object(
             chain, "post_message"
         ) as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
@@ -234,7 +234,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         ]
 
         with patch(
-            "app.chain.subscribe.SubscribeOper.list", return_value=fake_subscribes
+            "app.application.orchestration.subscribe.SubscribeOper.list", return_value=fake_subscribes
         ), patch.object(chain, "post_message") as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 

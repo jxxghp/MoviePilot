@@ -9,7 +9,7 @@ setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
 sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.application.chain.context import ChainRuntimeContext
 from app.schemas import RateLimitExceededException
 

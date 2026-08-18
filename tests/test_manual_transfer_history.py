@@ -4,7 +4,7 @@ from app.api.endpoints.transfer import (
     manual_transfer as manual_transfer_endpoint,
     query_manual_transfer_history,
 )
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.application.history import (
@@ -59,12 +59,12 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         delete=lambda history_id: deleted.append(("history", history_id)),
     )
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.application.orchestration.transfer.TransferHistoryOper",
         lambda: history_oper,
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: history_oper)
+    monkeypatch.setattr("app.application.orchestration._transfer.TransferHistoryOper", lambda: history_oper)
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.application.orchestration.transfer.DownloadHistoryOper",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -72,19 +72,19 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.application.orchestration._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
             get_by_path=lambda path: None,
         ))
     monkeypatch.setattr(
-        "app.chain.transfer.SystemConfigOper",
+        "app.application.orchestration.transfer.SystemConfigOper",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.application.orchestration._transfer.SystemConfigOper", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr(
-        "app.chain.transfer.StorageChain",
+        "app.application.orchestration.transfer.StorageChain",
         lambda: SimpleNamespace(
             exists=lambda current_fileitem: True,
             delete_media_file=lambda current_fileitem: deleted.append(
@@ -93,7 +93,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             or True,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.application.orchestration._transfer.StorageChain", lambda: SimpleNamespace(
             exists=lambda current_fileitem: True,
             delete_media_file=lambda current_fileitem: deleted.append(
                 ("target", current_fileitem.path)
@@ -101,7 +101,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             or True,
         ))
     monkeypatch.setattr(
-        "app.chain.transfer.MetaInfoPath",
+        "app.application.orchestration.transfer.MetaInfoPath",
         lambda path, custom_words=None, **kwargs: FakeMeta(1),
     )
 

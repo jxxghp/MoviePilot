@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.chain.notification import NotificationChain
+from app.application.orchestration.notification import NotificationChain
 from app.modules.wechatclawbot import WechatClawBotModule
 from app.schemas.types import NotificationChannel, NotificationAction
 

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.chain.torrents import TorrentsChain
+from app.application.orchestration.torrents import TorrentsChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 

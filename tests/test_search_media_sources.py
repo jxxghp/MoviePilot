@@ -6,8 +6,8 @@ import pytest
 
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import search as search_endpoint
-from app.chain import subscribe as subscribe_module
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration import subscribe as subscribe_module
+from app.application.orchestration.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import normalize_media_source

@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from app.chain.subscribe import SubscribeChain
+from app.application.orchestration.subscribe import SubscribeChain
 from app.schemas.types import MediaType
 
 

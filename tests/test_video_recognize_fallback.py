@@ -3,8 +3,8 @@
 import asyncio
 from typing import Optional
 
-from app.chain import ChainBase
-from app.chain.media import MediaChain
+from app.application.orchestration import ChainBase
+from app.application.orchestration.media import MediaChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType

@@ -45,7 +45,7 @@ Order imports as follows, separated by blank lines:
 
 1. Standard library (`import os`, `import json`, etc.)
 2. Third-party packages (`from fastapi import ...`, `from pydantic import ...`)
-3. Local application packages (`from app.chain import ...`, `from app.schemas import ...`)
+3. Local application packages (`from app.application.orchestration import ...`, `from app.schemas import ...`)
 
 Within each group, sort alphabetically. Do not use wildcard imports (`from module import *`) in application code.
 

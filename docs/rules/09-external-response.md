@@ -167,7 +167,7 @@ When calling TMDB, TheTVDB, Douban, or Bangumi via the module layer:
 
 ## Webhook Handling
 
-Webhook payloads arrive at `app/api/endpoints/webhook.py` and are dispatched via `eventmanager.send_event(EventType.WebhookMessage, ...)`. Processing logic lives in the chain layer (`app/chain/webhook.py`).
+Webhook payloads arrive at `app/api/endpoints/webhook.py` and are dispatched via `eventmanager.send_event(EventType.WebhookMessage, ...)`. Processing logic lives in the chain layer (`app/application/orchestration/webhook.py`).
 
 Do not add webhook-specific business logic directly in the endpoint. The endpoint parses the payload and fires the event; the chain handles the response.
 

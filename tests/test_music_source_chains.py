@@ -2,12 +2,12 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
-from app.chain.acoustid import AcoustIdChain
-from app.chain.douban import DoubanChain
-from app.chain.listenbrainz import ListenBrainzChain
-from app.chain.lrclib import LrclibChain
-from app.chain.musicbrainz import MusicBrainzChain
-from app.chain.theaudiodb import TheAudioDbChain
+from app.application.orchestration.acoustid import AcoustIdChain
+from app.application.orchestration.douban import DoubanChain
+from app.application.orchestration.listenbrainz import ListenBrainzChain
+from app.application.orchestration.lrclib import LrclibChain
+from app.application.orchestration.musicbrainz import MusicBrainzChain
+from app.application.orchestration.theaudiodb import TheAudioDbChain
 from app.domain.context import MusicAlbumInfo, MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource

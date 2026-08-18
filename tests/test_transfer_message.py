@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas import TransferInfo

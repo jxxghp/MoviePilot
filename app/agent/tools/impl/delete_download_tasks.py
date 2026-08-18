@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.download import DownloadChain
+from app.application.orchestration.download import DownloadChain
 from app.runtime.log import logger
 
 

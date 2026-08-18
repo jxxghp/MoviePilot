@@ -61,7 +61,7 @@ from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.runtime.config import global_vars
 from app.workflow import WorkFlowManager
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
 

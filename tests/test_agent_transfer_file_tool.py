@@ -17,7 +17,7 @@ def test_transfer_file_local_directory_without_trailing_slash_uses_dir(tmp_path)
         return True, None
 
     with patch(
-        "app.chain.transfer.TransferChain.manual_transfer",
+        "app.application.orchestration.transfer.TransferChain.manual_transfer",
         new=_manual_transfer,
     ):
         result = TransferFileTool._transfer_file_sync(str(source_dir))
@@ -39,7 +39,7 @@ def test_transfer_file_local_file_uses_file(tmp_path):
         return True, None
 
     with patch(
-        "app.chain.transfer.TransferChain.manual_transfer",
+        "app.application.orchestration.transfer.TransferChain.manual_transfer",
         new=_manual_transfer,
     ):
         result = TransferFileTool._transfer_file_sync(str(source_file))
@@ -59,7 +59,7 @@ def test_transfer_file_remote_directory_still_uses_trailing_slash():
         return True, None
 
     with patch(
-        "app.chain.transfer.TransferChain.manual_transfer",
+        "app.application.orchestration.transfer.TransferChain.manual_transfer",
         new=_manual_transfer,
     ):
         result = TransferFileTool._transfer_file_sync(
@@ -82,7 +82,7 @@ def test_transfer_file_remote_album_uses_entity_type_without_trailing_slash():
         return True, None
 
     with patch(
-        "app.chain.transfer.TransferChain.manual_transfer",
+        "app.application.orchestration.transfer.TransferChain.manual_transfer",
         new=_manual_transfer,
     ):
         result = TransferFileTool._transfer_file_sync(
@@ -105,7 +105,7 @@ def test_transfer_file_rejects_recording_directory(tmp_path):
     source_dir = tmp_path / "Album"
     source_dir.mkdir()
 
-    with patch("app.chain.transfer.TransferChain.manual_transfer") as manual_transfer:
+    with patch("app.application.orchestration.transfer.TransferChain.manual_transfer") as manual_transfer:
         result = TransferFileTool._transfer_file_sync(
             str(source_dir),
             media_type="music",

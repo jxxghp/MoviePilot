@@ -11,9 +11,9 @@ from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.storage import StorageChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.storage import StorageChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
 from app.db.models import User
 from app.api.deps import (

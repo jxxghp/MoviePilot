@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.chain.transfer import TransferChain
+from app.application.orchestration.transfer import TransferChain
 from app.runtime.cache import TTLCache
 from app.runtime.config import settings
 from app.db.oper.transferhistory import TransferHistoryOper

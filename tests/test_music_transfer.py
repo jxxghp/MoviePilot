@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 from jinja2 import Template
 
-from app.chain.media import MediaChain
-from app.chain.transfer import JobManager, TransferChain
+from app.application.orchestration.media import MediaChain
+from app.application.orchestration.transfer import JobManager, TransferChain
 from app.runtime.config import settings
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import MusicInfo
@@ -67,8 +67,8 @@ def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
         music_type="album",
         title="叶惠美",
     )
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.application.orchestration.transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.application.orchestration._transfer.MediaChain", lambda: media_chain)
 
     result = TransferChain()._recognize_music_retry_media(
         history,
@@ -535,12 +535,12 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
         )
 
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.application.orchestration.transfer.TransferHistoryOper",
         lambda: SimpleNamespace(),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.application.orchestration._transfer.TransferHistoryOper", lambda: SimpleNamespace())
     monkeypatch.setattr(
-        "app.chain.transfer.add_transfer_success",
+        "app.application.orchestration.transfer.add_transfer_success",
         lambda **kwargs: SimpleNamespace(id=1),
     )
 
@@ -757,7 +757,7 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     media_chain.recognize_media.return_value = recognized
     run_module = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.DirectoryHelper.get_download_dirs",
+        "app.application.orchestration.transfer.DirectoryHelper.get_download_dirs",
         lambda _: [
             SimpleNamespace(
                 monitor_type="downloader",
@@ -767,7 +767,7 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper.get_by_hash",
+        "app.application.orchestration.transfer.DownloadHistoryOper.get_by_hash",
         lambda _, download_hash: history,
     )
     monkeypatch.setattr(
@@ -783,8 +783,8 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
             ]
         ),
     )
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.application.orchestration.transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.application.orchestration._transfer.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
 

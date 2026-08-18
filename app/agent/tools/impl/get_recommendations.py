@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.recommend import RecommendChain
+from app.application.orchestration.recommend import RecommendChain
 from app.runtime.log import logger
-from app.chain.listenbrainz import (
+from app.application.orchestration.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
     LISTENBRAINZ_FRESH_SORTS,

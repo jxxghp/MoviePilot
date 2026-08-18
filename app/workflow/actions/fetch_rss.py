@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import Field
 
 from app.workflow.actions import BaseAction
-from app.chain.media import MediaChain
+from app.application.orchestration.media import MediaChain
 from app.runtime.config import settings, global_vars
 from app.domain.context import Context, TorrentInfo
 from app.domain.metainfo import MetaInfo

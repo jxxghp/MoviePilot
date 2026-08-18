@@ -81,7 +81,7 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | --- | --- | --- |
 | `app.foundation` | 不读取 MoviePilot 业务或运行配置、也不执行 I/O 的反射/动态加载、DOM、通用结构、加密、URL、版本和文本基础能力 | 标准库、第三方库、同层代码 |
 | `app.domain` | 媒体、识别、媒体服务器身份、站点和种子业务语义 | `foundation` 和 schemas；不得依赖 DB、settings、基础设施、扩展、消息、安全或应用服务 |
-| `app.chain`、`app.application` | 用例编排、跨模块业务流程和聚焦应用服务 | 领域、平台能力和适配器；不得形成模块级依赖环 |
+| `app.application` | 用例编排、跨模块业务流程和聚焦应用服务（含 `orchestration/` 子包承载编排链） | 领域、平台能力和适配器；不得形成模块级依赖环 |
 | `app.adapters` | 按 cache/network/system/external 分类的 Redis、HTTP、浏览器、DNS、资源、包、OS、Rust 和命名外部生态适配 | `foundation`、`domain`、schemas 和必要 runtime 契约；不得依赖 application、runtime extensions/compat 或 SDK |
 | `app.runtime` | 配置、事件总线、缓存契约/内存策略、并发、GC 和进程级协调 | `foundation` 及少量明确的 OS 适配器 |
 | `app.runtime.extensions` | 模块、插件和服务的运行时发现及生命周期 | 领域、平台及适配器；依赖由 startup 注入 |
@@ -132,7 +132,7 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | `helper.rss` | `app.application.rss` | RSS 同时负责 Feed/种子语义、站点规则和浏览器回退，不把它简化为网络传输适配器 |
 | `helper.sites` 与二进制资源 | `app.application.site.sites` + `app/application/site/` 资源目录 | 站点目录、认证和索引属于应用能力；完成 Build、Resources、Docker、本地安装及 CI 的跨仓同步迁移 |
 
-`app.chain` 已经承担 application orchestration，可继续保留，不必仅为追求目录命名整齐而整体改名。`app.modules` 继续作为可插拔 adapter 集合，但模块间编排仍由 chain/application 完成。
+`app.application.orchestration` 承担 application orchestration。`app.modules` 继续作为可插拔 adapter 集合，但模块间编排由 `app.application` 完成。
 
 ## 4. 兼容层总体方案
 

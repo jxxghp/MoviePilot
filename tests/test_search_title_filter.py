@@ -8,8 +8,8 @@ ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
 ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
-from app.chain import search as search_module
-from app.chain.search import SearchChain
+from app.application.orchestration import search as search_module
+from app.application.orchestration.search import SearchChain
 from app.domain.context import TorrentInfo
 from app.schemas.types import SystemConfigKey
 

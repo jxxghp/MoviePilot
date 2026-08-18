@@ -38,7 +38,7 @@ from app.db.models.agentchat import AgentChat
 from app.application.messaging.agent import build_web_agent_message_update_event
 from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, NotificationChannel, MessageType
 
@@ -54,7 +54,7 @@ def _running_agent_service():
             "app.api.endpoints.agent.get_running_agent_manager",
             return_value=agent_manager,
         ), patch(
-            "app.chain.message.get_running_agent_manager",
+            "app.application.orchestration.message.get_running_agent_manager",
             return_value=agent_manager,
         ):
             yield

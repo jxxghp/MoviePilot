@@ -11,8 +11,8 @@ sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
-from app.chain.message import MessageChain
-from app.chain.transfer import TransferChain
+from app.application.orchestration.message import MessageChain
+from app.application.orchestration.transfer import TransferChain
 from app.application.messaging.interaction import InteractionContext
 from app.runtime.config import settings
 from app.schemas.types import NotificationChannel
@@ -54,7 +54,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         """MessageChain 收到整理失败按钮回调时委托 TransferChain 处理。"""
         chain = MessageChain()
 
-        with patch("app.chain.message.TransferChain") as transfer_cls:
+        with patch("app.application.orchestration.message.TransferChain") as transfer_cls:
             transfer_cls.return_value.handle_failed_transfer_callback.return_value = True
             chain._handle_callback(
                 callback_data="transfer_retry_12",
@@ -132,12 +132,12 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
 
         with patch.object(settings, "AI_AGENT_ENABLE", True):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.application.orchestration._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain._transfer.build_manual_redo_prompt",
+                "app.application.orchestration._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
             ), patch(
-                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
+                "app.application.orchestration._transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_close_pending_coro,
             ) as run_task:
                 history_oper_cls.return_value.get.return_value = history
@@ -208,15 +208,15 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         manager = SimpleNamespace(run_background_prompt=fake_run_background_prompt)
         with patch.object(settings, "AI_AGENT_ENABLE", True):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.application.orchestration._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
-                "app.chain._transfer.build_manual_redo_prompt",
+                "app.application.orchestration._transfer.build_manual_redo_prompt",
                 side_effect=build_manual_redo_prompt,
             ), patch(
-                "app.chain._transfer.get_running_agent_manager",
+                "app.application.orchestration._transfer.get_running_agent_manager",
                 return_value=manager,
             ), patch(
-                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
+                "app.application.orchestration._transfer.asyncio.run_coroutine_threadsafe",
                 side_effect=_run_pending_coro,
             ):
                 history_oper_cls.return_value.get.return_value = history

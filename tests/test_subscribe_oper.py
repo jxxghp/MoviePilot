@@ -512,11 +512,11 @@ def test_subscribe_exists_distinguishes_music_entities_with_same_source_id():
 
 def test_subscribe_chain_exists_forwards_episode_group():
     """订阅前置存在性检查必须查询当前剧集组，不能退回主季范围。"""
-    from app.chain.subscribe import SubscribeChain
+    from app.application.orchestration.subscribe import SubscribeChain
 
     media = _media("eg-1")
     meta = SimpleNamespace(begin_season=1)
-    with patch("app.chain.subscribe.SubscribeOper") as subscribe_oper_cls:
+    with patch("app.application.orchestration.subscribe.SubscribeOper") as subscribe_oper_cls:
         subscribe_oper_cls.return_value.exists.return_value = True
 
         assert SubscribeChain.exists(media, meta) is True

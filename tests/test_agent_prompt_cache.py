@@ -5,7 +5,7 @@ from app.agent import MoviePilotAgent
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
 from app.agent.middleware.usage import UsageMiddleware
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 
 
 def test_usage_extracts_normalized_cache_details() -> None:

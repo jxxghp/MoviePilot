@@ -7,7 +7,7 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType
@@ -39,7 +39,7 @@ def test_recognize_media_with_source_only_uses_name_search():
 
     with patch.object(chain, "_run_native_media_recognize", side_effect=fake_native), \
             patch.object(chain, "_supplement_media_recognize", side_effect=lambda **kw: kw["mediainfo"]), \
-            patch("app.chain._recognition.MoviePilotServerHelper"):
+            patch("app.application.orchestration._recognition.MoviePilotServerHelper"):
         result = chain.recognize_media(meta=meta, media_source=MediaSource.TMDB, cache=False)
 
     assert result is not None
@@ -70,7 +70,7 @@ def test_async_recognize_media_with_source_only_uses_name_search():
 
     with patch.object(chain, "_async_run_native_media_recognize", side_effect=fake_native), \
             patch.object(chain, "_async_supplement_media_recognize", side_effect=fake_supplement), \
-            patch("app.chain._recognition.MoviePilotServerHelper", helper):
+            patch("app.application.orchestration._recognition.MoviePilotServerHelper", helper):
         result = asyncio.run(
             chain.async_recognize_media(meta=meta, media_source=MediaSource.TMDB, cache=False)
         )
@@ -93,7 +93,7 @@ def test_recognize_media_accepts_string_source_only():
 
     with patch.object(chain, "_run_native_media_recognize", side_effect=fake_native), \
             patch.object(chain, "_supplement_media_recognize", side_effect=lambda **kw: kw["mediainfo"]), \
-            patch("app.chain._recognition.MoviePilotServerHelper"):
+            patch("app.application.orchestration._recognition.MoviePilotServerHelper"):
         result = chain.recognize_media(meta=meta, media_source="themoviedb", cache=False)
 
     assert result is not None
@@ -112,7 +112,7 @@ def test_recognize_media_meta_identity_same_source_uses_id():
 
     with patch.object(chain, "_run_native_media_recognize", side_effect=fake_native), \
             patch.object(chain, "_supplement_media_recognize", side_effect=lambda **kw: kw["mediainfo"]), \
-            patch("app.chain._recognition.MoviePilotServerHelper"):
+            patch("app.application.orchestration._recognition.MoviePilotServerHelper"):
         result = chain.recognize_media(meta=meta, media_source=MediaSource.TMDB, cache=False)
 
     assert result is not None

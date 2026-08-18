@@ -929,7 +929,7 @@ def loaded_provider_modules():
 
 assert loaded_provider_modules() == []
 
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.api.endpoints.message import WebPushError, is_webpush_subscription_gone
 
 assert get_type_hints(ChainBase.torrent_files)["return"] == Optional[Any]

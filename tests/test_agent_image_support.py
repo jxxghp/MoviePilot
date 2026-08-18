@@ -14,7 +14,7 @@ from app.agent.tools.impl.send_message import SendMessageInput, SendMessageTool
 from app.agent.tools.impl.send_local_file import SendLocalFileInput
 from app.agent import MoviePilotAgent, AgentChain
 from app.agent.llm import AgentCapabilityManager
-from app.chain.message import MessageChain
+from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings
 from app.agent.llm import LLMHelper
 from app.modules.discord import DiscordModule
@@ -287,13 +287,13 @@ class AgentImageSupportTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.chain.message.is_audio_input_available", return_value=True
+            "app.application.orchestration.message.is_audio_input_available", return_value=True
         ), patch.object(
             chain,
             "unicast",
             side_effect=[b"slack", b"discord", b"qq", b"vocechat", b"synology", b"feishu"],
         ) as unicast, patch(
-            "app.chain.message.transcribe_audio",
+            "app.application.orchestration.message.transcribe_audio",
             side_effect=[
                 "slack text",
                 "discord text",
@@ -450,9 +450,9 @@ class AgentImageSupportTest(unittest.TestCase):
                 }
             ],
         ) as prepare_files, patch(
-            "app.chain.message.get_running_agent_manager"
+            "app.application.orchestration.message.get_running_agent_manager"
         ) as get_running_manager, patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe",
+            "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
         ) as run_coroutine_threadsafe:
             process_message = AsyncMock()
@@ -485,9 +485,9 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             chain, "_get_or_create_session_id", return_value="session-1"
         ), patch(
-            "app.chain.message.get_running_agent_manager"
+            "app.application.orchestration.message.get_running_agent_manager"
         ) as get_running_manager, patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe",
+            "app.application.orchestration.message.asyncio.run_coroutine_threadsafe",
             side_effect=lambda coro, _loop: coro.close(),
         ):
             process_message = AsyncMock()
@@ -1329,7 +1329,7 @@ class AgentImageSupportTest(unittest.TestCase):
     def test_prepare_agent_files_saves_local_file(self):
         chain = MessageChain()
         with tempfile.TemporaryDirectory() as tempdir, patch(
-            "app.chain.message.settings",
+            "app.application.orchestration.message.settings",
             SimpleNamespace(TEMP_PATH=Path(tempdir)),
         ), patch.object(
             chain,

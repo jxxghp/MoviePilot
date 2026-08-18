@@ -24,7 +24,7 @@ try:
 except Exception:
     pass
 
-from app.chain.system import SystemChain
+from app.application.orchestration.system import SystemChain
 from app.runtime.config import global_vars, settings
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper

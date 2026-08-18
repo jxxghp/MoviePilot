@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Union
 
-from app.chain import ChainBase
+from app.application.orchestration import ChainBase
 from app.db.oper.systemconfig import SystemConfigOper
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import ActionParams

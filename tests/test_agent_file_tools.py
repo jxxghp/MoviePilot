@@ -10,7 +10,7 @@ from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.read_file import MAX_READ_SIZE, ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 
 
 def _make_admin_tool(tool_class):
