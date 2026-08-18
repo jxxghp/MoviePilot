@@ -641,8 +641,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         # 获取主域名中间那段
         domain_host = url_tools.host_label(domain)
         # 查询以"site.domain_host"开头的配置项，并清除
+        # SystemConfigService 未提供 all()，无参 get() 经仓库返回全部配置字典
         systemconfig = get_configured_system_config()
-        site_keys = systemconfig.all().keys()
+        site_keys = systemconfig.get().keys()
         for key in site_keys:
             if key.startswith(f"site.{domain_host}"):
                 logger.info(f"清理站点配置：{key}")
