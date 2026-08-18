@@ -1,4 +1,4 @@
-from app.modules.filemanager.storages.alist import Alist
+from app.modules.alist.alist import Alist
 from app.schemas.types import StorageSchema
 
 

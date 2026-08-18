@@ -10,7 +10,7 @@ from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.cache import cached
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
-from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, transfer_process
 from app.schemas.exception import OperationInterrupted, StorageQueryError
 from app.schemas.types import StorageSchema
 from app.adapters.network.http import RequestUtils

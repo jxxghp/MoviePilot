@@ -52,6 +52,12 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
 # 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
 # 边消失后条目可直接删除，留着不会导致失败。
 DEPENDENCY_DEBT: dict[tuple[str, str], str] = {}
+# 同一产品线变体模块允许依赖的兄弟模块包：变体只改存储/服务标识，
+# 共用一份客户端实现，属于继承而非跨模块编排。
+MODULE_VARIANT_DEPENDENCIES: dict[str, frozenset[str]] = {
+    # AListGo 是 AList 的 Go 重写版，只有存储标识不同
+    "alistgo": frozenset({"alist"}),
+}
 LEGACY_ROOTS = ("app.chain", "app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
@@ -585,6 +591,8 @@ def test_modules_do_not_import_other_modules_or_chain():
     """模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。
 
     `app.modules._base` 是模块共享样板基类包（模块发现会跳过），不视为业务模块。
+    `MODULE_VARIANT_DEPENDENCIES` 声明同一产品线变体共用一份客户端实现的继承边，
+    它不是跨模块编排，仍不允许出现在该表之外。
     """
     modules = _discover_modules()
     known_modules = set(modules)
@@ -593,6 +601,7 @@ def test_modules_do_not_import_other_modules_or_chain():
         if not module_name.startswith("app.modules."):
             continue
         own_package = module_name.split(".")[2]
+        allowed = {own_package, "_base", *MODULE_VARIANT_DEPENDENCIES.get(own_package, ())}
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
             dependency
@@ -600,7 +609,7 @@ def test_modules_do_not_import_other_modules_or_chain():
             if dependency.startswith("app.application.orchestration")
             or (
                 dependency.startswith("app.modules.")
-                and dependency.split(".")[2] not in (own_package, "_base")
+                and dependency.split(".")[2] not in allowed
             )
         }
         if forbidden:

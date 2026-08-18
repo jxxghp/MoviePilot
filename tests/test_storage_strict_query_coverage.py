@@ -4,11 +4,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.filemanager.storages import StorageBase
+from app.modules._base.storage import StorageBase
 from app.schemas.exception import StorageQueryError
 
-# 在树存储模块，全部必须实现严格查询
-BUILTIN_STORAGE_MODULES = ["alipan", "alist", "local", "rclone", "smb", "u115"]
+# 在树存储实现模块，全部必须实现严格查询
+BUILTIN_STORAGE_MODULES = [
+    "app.modules.alipan.alipan",
+    "app.modules.alist.alist",
+    "app.modules.localstorage.local",
+    "app.modules.rclone.rclone",
+    "app.modules.smb.smb",
+    "app.modules.u115.u115",
+]
 
 
 def test_base_get_item_strict_fails_conservatively():
@@ -22,7 +29,7 @@ def test_base_get_item_strict_fails_conservatively():
 @pytest.mark.parametrize("module_name", BUILTIN_STORAGE_MODULES)
 def test_builtin_storage_overrides_strict_query(module_name):
     """每个在树存储都必须覆写严格查询，否则整理会被基类保守拒绝。"""
-    module = importlib.import_module(f"app.modules.filemanager.storages.{module_name}")
+    module = importlib.import_module(module_name)
     storage_classes = [
         obj for obj in vars(module).values()
         if isinstance(obj, type)

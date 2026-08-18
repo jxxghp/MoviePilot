@@ -897,6 +897,55 @@
         "replacement": "app.sdk.logging",
         "target": "app.sdk.logging"
       },
+      "app.modules.filemanager.storages.alipan": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.alipan.alipan",
+        "target": "app.modules.alipan.alipan"
+      },
+      "app.modules.filemanager.storages.alist": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.alist.alist",
+        "target": "app.modules.alist.alist"
+      },
+      "app.modules.filemanager.storages.alistgo": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.alistgo.alistgo",
+        "target": "app.modules.alistgo.alistgo"
+      },
+      "app.modules.filemanager.storages.local": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.localstorage.local",
+        "target": "app.modules.localstorage.local"
+      },
+      "app.modules.filemanager.storages.rclone": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.rclone.rclone",
+        "target": "app.modules.rclone.rclone"
+      },
+      "app.modules.filemanager.storages.smb": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.smb.smb",
+        "target": "app.modules.smb.smb"
+      },
+      "app.modules.filemanager.storages.u115": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "modules",
+        "replacement": "app.modules.u115.u115",
+        "target": "app.modules.u115.u115"
+      },
       "app.modules.filemanager.transhandler": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -1108,6 +1157,13 @@
         "owner": "domain",
         "replacement": "app.sdk.media",
         "target": "app.domain.meta"
+      },
+      "app.modules.filemanager.storages": {
+        "introduced": "v3.0.0",
+        "is_package": true,
+        "owner": "modules",
+        "replacement": "app.modules._base.storage",
+        "target": "app.modules._base.storage"
       }
     },
     "package_exports": {
@@ -1161,6 +1217,18 @@
           "replacement": "app.sdk.media.MusicNameRegistry",
           "target_module": "app.domain.meta.metamusic",
           "target_name": "MusicNameRegistry"
+        }
+      },
+      "app.modules.filemanager.storages": {
+        "StorageBase": {
+          "replacement": "app.modules._base.storage.StorageBase",
+          "target_module": "app.modules._base.storage",
+          "target_name": "StorageBase"
+        },
+        "transfer_process": {
+          "replacement": "app.modules._base.storage.transfer_process",
+          "target_module": "app.modules._base.storage",
+          "target_name": "transfer_process"
         }
       }
     },
@@ -1465,6 +1533,7 @@
       "app.chain",
       "app.core",
       "app.helper",
+      "app.modules.filemanager.storages",
       "app.utils"
     ]
   },
@@ -1488,8 +1557,8 @@
         "line": 23
       },
       {
-        "caller": "app.modules.filemanager.storages.catalog",
-        "line": 28
+        "caller": "app.modules._base.storage",
+        "line": 464
       },
       {
         "caller": "app.runtime.events",
@@ -2003,7 +2072,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 765
+            "line": 755
           }
         ]
       },

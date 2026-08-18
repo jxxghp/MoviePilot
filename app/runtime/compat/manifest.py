@@ -128,6 +128,24 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="application",
     ),
+    # 存储后端升为一级模块，各自独立成包；存储基类与传输进度回调并入模块样板基类包
+    **{
+        f"app.modules.filemanager.storages.{name}": ModuleAlias(
+            target=f"app.modules.{package}.{name}",
+            replacement=f"app.modules.{package}.{name}",
+            introduced="v3.0.0",
+            owner="modules",
+        )
+        for name, package in (
+            ("alipan", "alipan"),
+            ("alist", "alist"),
+            ("alistgo", "alistgo"),
+            ("local", "localstorage"),
+            ("rclone", "rclone"),
+            ("smb", "smb"),
+            ("u115", "u115"),
+        )
+    },
     "app.db.agentchat_oper": ModuleAlias(
         target="app.db.oper.agentchat",
         replacement="app.db.oper.agentchat",
@@ -702,10 +720,23 @@ PACKAGE_ALIASES: Dict[str, ModuleAlias] = {
         owner="domain",
         is_package=True,
     ),
+    "app.modules.filemanager.storages": ModuleAlias(
+        target="app.modules._base.storage",
+        replacement="app.modules._base.storage",
+        introduced="v3.0.0",
+        owner="modules",
+        is_package=True,
+    ),
 }
 
 # 旧父包完全迁空后才登记；迁移中的物理父包继续由 PathFinder 处理。
-VIRTUAL_PACKAGES: Set[str] = {"app.chain", "app.core", "app.helper", "app.utils"}
+VIRTUAL_PACKAGES: Set[str] = {
+    "app.chain",
+    "app.core",
+    "app.helper",
+    "app.modules.filemanager.storages",
+    "app.utils",
+}
 
 # 旧包 __init__.py 曾公开的符号在这里显式声明，禁止模糊转发。
 PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
@@ -759,6 +790,18 @@ PACKAGE_EXPORTS: Dict[str, Dict[str, SymbolAlias]] = {
             target_module="app.domain.meta.metamusic",
             target_name="MusicNameRegistry",
             replacement="app.sdk.media.MusicNameRegistry",
+        ),
+    },
+    "app.modules.filemanager.storages": {
+        "StorageBase": SymbolAlias(
+            target_module="app.modules._base.storage",
+            target_name="StorageBase",
+            replacement="app.modules._base.storage.StorageBase",
+        ),
+        "transfer_process": SymbolAlias(
+            target_module="app.modules._base.storage",
+            target_name="transfer_process",
+            replacement="app.modules._base.storage.transfer_process",
         ),
     },
 }

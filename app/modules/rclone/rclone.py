@@ -10,7 +10,7 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings
 from app.runtime.log import logger
-from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.foundation import temporal as time_tools

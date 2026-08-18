@@ -1,0 +1,15 @@
+schema_version = 1
+id = "LocalStorageModule"
+kind = "host_module"
+entrypoint = "app.modules.localstorage:LocalStorageModule"
+depends_on = []
+
+[metadata]
+name = "本地存储"
+type = "storage"
+subtype = "Local"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = []

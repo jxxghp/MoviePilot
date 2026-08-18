@@ -554,7 +554,7 @@ from app.runtime.extensions.host_module_adapter import (
 
 registry = build_host_module_registry()
 specs = registry.list_specs()
-assert len(specs) == 37
+assert len(specs) == 44
 
 adapter = HostModuleAdapter()
 lifecycle_events = []
@@ -601,7 +601,7 @@ from app.schemas.types import EventType
 
 registry = build_host_module_registry()
 specs = registry.list_specs()
-assert len(specs) == 37
+assert len(specs) == 44
 spec_by_id = {spec.id: spec for spec in specs}
 
 events = {spec.id: [] for spec in specs}
@@ -768,7 +768,7 @@ from app.runtime.extensions.host_module_adapter import (
 
 registry = build_host_module_registry()
 specs = registry.list_specs()
-assert len(specs) == 37
+assert len(specs) == 44
 configured_specs = tuple(
     spec for spec in specs
     if spec.activation is ActivationPolicy.WHEN_CONFIGURED
@@ -861,12 +861,12 @@ settings.FANART_API_KEY = None
 from app.runtime.extensions.module_manager import ModuleManager
 
 manager = ModuleManager()
-assert len(manager.list_specs()) == 37
+assert len(manager.list_specs()) == 44
 assert manager.get_specs() == manager.list_specs()
 
 from app.api.endpoints.system import modulelist
 response = modulelist(None)
-assert len(response.data["modules"]) == 37
+assert len(response.data["modules"]) == 44
 
 heavy_prefixes = (
     "lark_oapi",
@@ -974,7 +974,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 
 manager = ModuleManager()
 modules = manager.get_modules()
-assert len(modules) == len(manager.list_specs()) == 37
+assert len(modules) == len(manager.list_specs()) == 44
 for spec in manager.list_specs():
     implementation = modules[spec.id]
     assert implementation.get_name() == spec.metadata["name"]

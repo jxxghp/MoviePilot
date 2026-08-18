@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import schemas
-from app.modules.filemanager.storages import local as local_storage_module
+from app.modules.localstorage import local as local_storage_module
 
 
 SOURCE_MTIME_NS = 1_000_000_000_000_000_000

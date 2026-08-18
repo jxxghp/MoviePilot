@@ -3,8 +3,9 @@
 
 验证与通知渠道一致的通用模式：
 1. 链层 manage_storage 只透明转发存储标识、动作与参数，不做任何存储特定处理
-2. 模块按存储标识路由，动作语义与参数解释封闭在模块内
-3. 端点层的 ManageRequest 通用请求结构：target + action + params
+2. 存储模块按存储标识自筛，不属于本存储的请求返回 None 让给下一个模块
+3. 动作语义与参数解释封闭在存储实现内
+4. 端点层的 ManageRequest 通用请求结构：target + action + params
 """
 from types import SimpleNamespace
 from typing import Any, Dict
@@ -13,8 +14,7 @@ import pytest
 
 from app import schemas
 from app.application.orchestration.storage import StorageChain
-from app.modules.filemanager import FileManagerModule
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.modules._base.storage import _StorageModuleBase
 
 
 class _FakeStorageOper:
@@ -40,14 +40,29 @@ class _FakeStorageOper:
         return {"status": True}, None
 
 
+class _FakeStorageModule(_StorageModuleBase):
+    """承载假存储实现的存储模块"""
+
+    storage_class = _FakeStorageOper
+
+    @staticmethod
+    def get_name() -> str:
+        """获取模块名称。"""
+        return "假存储"
+
+    @staticmethod
+    def get_priority() -> int:
+        """获取模块优先级。"""
+        return 9
+
+
 @pytest.fixture
 def module():
     _FakeStorageOper.calls.clear()
-    module = FileManagerModule()
+    module = _FakeStorageModule()
     module.init_module()
-    storage_backend_registry.register(_FakeStorageOper)
     yield module
-    storage_backend_registry.unregister("fakestore")
+    module.stop()
 
 
 def test_manage_request_schema():
@@ -91,11 +106,9 @@ def test_storage_manage_rejects_unknown_action(module):
     assert "不支持" in result["message"]
 
 
-def test_storage_manage_rejects_unknown_storage(module):
-    """未注册的存储标识直接返回错误，不进入动作分发。"""
-    result = module.storage_manage(storage="unknown_store", action="usage")
-    assert result["success"] is False
-    assert "不支持的存储类型" in result["message"]
+def test_storage_manage_yields_unknown_storage(module):
+    """不属于本存储的标识返回 None 让给下一个模块，不进入动作分发。"""
+    assert module.storage_manage(storage="unknown_store", action="usage") is None
 
 
 def test_storage_manage_save_config_passes_conf_through(module):

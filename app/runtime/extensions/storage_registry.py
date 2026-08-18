@@ -1,9 +1,13 @@
-"""存储后端注册表：宿主与插件在同一份目录里登记可用的存储实现。"""
+"""存储后端注册表：按存储标识查得可用的存储实现。
+
+登记由各存储模块的生命周期驱动：模块启动时把自己承载的后端登记进来，
+模块停止时注销。整理编排需要成对的源、目标存储操作对象，无法经分发取得，
+本表即为这类按标识直取的唯一入口。
+"""
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -82,13 +86,12 @@ def build_storage_entry(backend: Any,
 
 
 class StorageBackendRegistry:
-    """按存储标识登记存储后端，并把插件提供的后端并入同一份视图。"""
+    """按存储标识登记存储后端。"""
 
     def __init__(self) -> None:
-        """创建登记表与插件目录来源表。"""
+        """创建登记表。"""
         self._lock = threading.RLock()
         self._entries: dict[str, StorageBackendEntry] = {}
-        self._sources: dict[str, Callable[[], Iterable[StorageBackendEntry]]] = {}
 
     def register(self, backend: Any,
                  distribution: ExtensionDistribution = ExtensionDistribution.BUILTIN,
@@ -118,37 +121,14 @@ class StorageBackendRegistry:
         with self._lock:
             return self._entries.pop(storage_id, None) is not None
 
-    def register_source(self, name: str,
-                        source: Callable[[], Iterable[StorageBackendEntry]]) -> None:
-        """
-        登记一个按需读取的后端目录来源，同名来源以最新一次为准
-
-        :param name: 来源名称
-        :param source: 返回登记项的可调用对象，每次取用时实时读取
-        """
-        with self._lock:
-            self._sources[name] = source
-
-    def remove_source(self, name: str) -> None:
-        """
-        移除指定名称的后端目录来源
-
-        :param name: 来源名称
-        """
-        with self._lock:
-            self._sources.pop(name, None)
-
     def entries(self) -> tuple[StorageBackendEntry, ...]:
         """
-        列出当前可用的全部登记项，来源提供的同标识后端优先
+        列出当前可用的全部登记项
 
-        :return: 登记项元组，内建后端按登记顺序在前
+        :return: 登记项元组，按登记顺序排列
         """
         with self._lock:
-            merged = dict(self._entries)
-        for entry in self._iterate_source_entries():
-            merged[entry.storage_id] = entry
-        return tuple(merged.values())
+            return tuple(self._entries.values())
 
     def storage_ids(self) -> tuple[str, ...]:
         """
@@ -169,9 +149,6 @@ class StorageBackendRegistry:
         """
         if not storage_id:
             return None
-        for entry in self._iterate_source_entries():
-            if entry.storage_id == storage_id:
-                return entry if entry.supports(method) else None
         with self._lock:
             entry = self._entries.get(storage_id)
         if not entry or not entry.supports(method):
@@ -203,24 +180,6 @@ class StorageBackendRegistry:
             }
             for entry in self.entries()
         ]
-
-    def _iterate_source_entries(self) -> Iterator[StorageBackendEntry]:
-        """
-        遍历各来源实时提供的登记项，单个来源出错不影响其余来源
-
-        :return: 登记项迭代器
-        """
-        with self._lock:
-            sources = list(self._sources.items())
-        for name, source in sources:
-            try:
-                provided = source() or ()
-            except Exception as err:
-                logger.error(f"【存储】读取 {name} 提供的存储后端出错：{str(err)}")
-                continue
-            for entry in provided:
-                if isinstance(entry, StorageBackendEntry):
-                    yield entry
 
 
 storage_backend_registry = StorageBackendRegistry()

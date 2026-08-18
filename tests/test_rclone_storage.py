@@ -6,8 +6,8 @@ from typing import Union
 from unittest.mock import patch
 
 from app import schemas
-from app.modules.filemanager.storages import rclone as rclone_module
-from app.modules.filemanager.storages.rclone import Rclone
+from app.modules.rclone import rclone as rclone_module
+from app.modules.rclone.rclone import Rclone
 
 
 class RcloneStorageTest(unittest.TestCase):
@@ -74,7 +74,7 @@ class RcloneStorageTest(unittest.TestCase):
 
         with patch.object(Rclone, "get_item", autospec=True, side_effect=fake_get_item):
             with patch(
-                "app.modules.filemanager.storages.rclone.subprocess.run",
+                "app.modules.rclone.rclone.subprocess.run",
                 side_effect=fake_run,
             ):
                 for thread in threads:
@@ -140,7 +140,7 @@ class RcloneStorageTest(unittest.TestCase):
 
         with patch.object(Rclone, "get_item", autospec=True, side_effect=fake_get_item):
             with patch(
-                "app.modules.filemanager.storages.rclone.subprocess.run",
+                "app.modules.rclone.rclone.subprocess.run",
                 side_effect=fake_run,
             ):
                 for thread in threads:
@@ -166,10 +166,10 @@ class RcloneStorageTest(unittest.TestCase):
 
         with patch.object(Rclone, "get_item", autospec=True, side_effect=fake_get_item):
             with patch(
-                "app.modules.filemanager.storages.rclone.subprocess.run",
+                "app.modules.rclone.rclone.subprocess.run",
                 return_value=SimpleNamespace(returncode=0),
             ) as run_mock:
-                with patch("app.modules.filemanager.storages.rclone.time.sleep", return_value=None):
+                with patch("app.modules.rclone.rclone.time.sleep", return_value=None):
                     folder = storage.create_folder(
                         schemas.FileItem(storage="rclone", type="dir", path="/"),
                         "Show",
@@ -188,10 +188,10 @@ class RcloneStorageTest(unittest.TestCase):
 
         with patch.object(Rclone, "get_item", autospec=True, side_effect=fake_get_item):
             with patch(
-                "app.modules.filemanager.storages.rclone.subprocess.run",
+                "app.modules.rclone.rclone.subprocess.run",
                 return_value=SimpleNamespace(returncode=1),
             ) as run_mock:
-                with patch("app.modules.filemanager.storages.rclone.time.sleep", return_value=None):
+                with patch("app.modules.rclone.rclone.time.sleep", return_value=None):
                     folder = storage.create_folder(
                         schemas.FileItem(storage="rclone", type="dir", path="/"),
                         "Show",

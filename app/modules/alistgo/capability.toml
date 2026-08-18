@@ -1,0 +1,15 @@
+schema_version = 1
+id = "AlistGoModule"
+kind = "host_module"
+entrypoint = "app.modules.alistgo:AlistGoModule"
+depends_on = []
+
+[metadata]
+name = "AListGo"
+type = "storage"
+subtype = "AlistGo"
+priority = 3
+
+[activation]
+policy = "bootstrap"
+watch = []

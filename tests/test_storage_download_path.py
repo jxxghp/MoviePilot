@@ -5,9 +5,9 @@ from unittest.mock import PropertyMock, patch
 import pytest
 
 from app import schemas
-from app.modules.filemanager.storages.alipan import AliPan
-from app.modules.filemanager.storages.rclone import Rclone
-from app.modules.filemanager.storages.u115 import U115Pan
+from app.modules.alipan.alipan import AliPan
+from app.modules.rclone.rclone import Rclone
+from app.modules.u115.u115 import U115Pan
 
 
 PAYLOAD = b"safe-download\n"
@@ -143,14 +143,14 @@ def test_alipan_download_writes_sanitized_filename(tmp_path: Path) -> None:
         ),
         patch.object(AliPan, "access_token", new_callable=PropertyMock, return_value=None),
         patch(
-            "app.modules.filemanager.storages.alipan.transfer_process",
+            "app.modules.alipan.alipan.transfer_process",
             return_value=_noop_progress,
         ),
         patch(
-            "app.modules.filemanager.storages.alipan.global_vars.is_transfer_stopped",
+            "app.modules.alipan.alipan.global_vars.is_transfer_stopped",
             return_value=False,
         ),
-        patch("app.modules.filemanager.storages.alipan.RequestUtils") as request_utils,
+        patch("app.modules.alipan.alipan.RequestUtils") as request_utils,
     ):
         request_utils.return_value.get_stream.return_value = _FakeAliPanStream(PAYLOAD)
         result = alipan.download(fileitem, path=tmp_path)
@@ -183,11 +183,11 @@ def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
             return_value={"file-id": {"url": {"url": "https://example.invalid/proof.txt"}}},
         ),
         patch(
-            "app.modules.filemanager.storages.u115.transfer_process",
+            "app.modules.u115.u115.transfer_process",
             return_value=_noop_progress,
         ),
         patch(
-            "app.modules.filemanager.storages.u115.global_vars.is_transfer_stopped",
+            "app.modules.u115.u115.global_vars.is_transfer_stopped",
             return_value=False,
         ),
     ):
@@ -217,10 +217,10 @@ def test_rclone_download_uses_sanitized_target_path(tmp_path: Path) -> None:
 
     with (
         patch(
-            "app.modules.filemanager.storages.rclone.transfer_process",
+            "app.modules.rclone.rclone.transfer_process",
             return_value=_noop_progress,
         ),
-        patch("app.modules.filemanager.storages.rclone.subprocess.Popen", side_effect=fake_popen),
+        patch("app.modules.rclone.rclone.subprocess.Popen", side_effect=fake_popen),
     ):
         result = storage.download(fileitem, path=tmp_path)
 

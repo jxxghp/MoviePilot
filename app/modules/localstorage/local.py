@@ -10,7 +10,7 @@ from app.runtime.config import global_vars, settings
 from app.runtime.directories import directory_config_port
 from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy
-from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.adapters.system.host import SystemUtils

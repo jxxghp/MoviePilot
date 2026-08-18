@@ -639,6 +639,8 @@ class ModuleType(Enum):
     MediaRecognize = "mediarecognize"
     # 站点索引
     Indexer = "indexer"
+    # 存储
+    Storage = "storage"
     # 其它
     Other = "other"
 

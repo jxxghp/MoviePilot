@@ -1,7 +1,7 @@
 """文件管理模块的惰性兼容入口。
 
 宿主能力清单和历史调用方继续使用 ``app.modules.filemanager:FileManagerModule``；
-实现移入 ``module`` 后，包初始化不再反向加载传输处理器和存储实现。
+实现移入 ``module`` 后，包初始化不再反向加载传输处理器和存储基类。
 """
 
 from importlib import import_module
@@ -10,7 +10,7 @@ from typing import Any
 
 _EXPORTS = {
     "FileManagerModule": ("app.modules.filemanager.module", "FileManagerModule"),
-    "StorageBase": ("app.modules.filemanager.storages", "StorageBase"),
+    "StorageBase": ("app.modules._base.storage", "StorageBase"),
     "TransHandler": ("app.application.transferhandler", "TransHandler"),
     "settings": ("app.modules.filemanager.module", "settings"),
 }

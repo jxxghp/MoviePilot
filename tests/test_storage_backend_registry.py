@@ -1,40 +1,62 @@
-"""存储后端注册表：自由标识后端、插件贡献与内建后端选中结果的守护测试。"""
+"""存储一级模块：发现、自筛、登记与整理编排选中结果的守护测试。"""
 
 from pathlib import Path
 from typing import List, Optional
 
 import pytest
 
+from app.modules._base.storage import StorageBase, _StorageModuleBase
+from app.modules.alipan import AliPanModule
+from app.modules.alipan.alipan import AliPan
+from app.modules.alist import AlistModule
+from app.modules.alist.alist import Alist
+from app.modules.alistgo import AlistGoModule
+from app.modules.alistgo.alistgo import AlistGo
 from app.modules.filemanager import FileManagerModule
-from app.modules.filemanager.storages import StorageBase
-from app.modules.filemanager.storages.alipan import AliPan
-from app.modules.filemanager.storages.alist import Alist
-from app.modules.filemanager.storages.alistgo import AlistGo
-from app.modules.filemanager.storages.local import LocalStorage
-from app.modules.filemanager.storages.rclone import Rclone
-from app.modules.filemanager.storages.smb import SMB
-from app.modules.filemanager.storages.u115 import U115Pan
+from app.modules.localstorage import LocalStorageModule
+from app.modules.localstorage.local import LocalStorage
+from app.modules.rclone import RcloneModule
+from app.modules.rclone.rclone import Rclone
+from app.modules.smb import SmbModule
+from app.modules.smb.smb import SMB
+from app.modules.u115 import U115Module
+from app.modules.u115.u115 import U115Pan
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.storage_registry import (
     storage_backend_identity,
     storage_backend_registry,
 )
 from app.runtime.storages import storage_config_port
 from app.schemas.file import FileURI
-from app.schemas.types import StorageSchema
+from app.schemas.types import ModuleType, StorageSchema
 from app.schemas.workflow import FileItem
 from app.startup.hostport_initializer import configure_host_ports
 
-# 内建存储后端的标识与实现类
-BUILTIN_BACKENDS = (
-    ("alipan", AliPan),
-    ("alist", Alist),
-    ("alistgo", AlistGo),
-    ("local", LocalStorage),
-    ("rclone", Rclone),
-    ("smb", SMB),
-    ("u115", U115Pan),
+# 内建存储的标识、承载模块与后端实现类，顺序即模块优先级顺序
+BUILTIN_STORAGE_MODULES = (
+    ("alipan", AliPanModule, AliPan),
+    ("alist", AlistModule, Alist),
+    ("alistgo", AlistGoModule, AlistGo),
+    ("local", LocalStorageModule, LocalStorage),
+    ("rclone", RcloneModule, Rclone),
+    ("smb", SmbModule, SMB),
+    ("u115", U115Module, U115Pan),
+)
+
+# 已由各存储模块承担、文件整理模块不得再实现的存储能力方法
+STORAGE_CAPABILITY_METHODS = (
+    "list_files",
+    "any_files",
+    "create_folder",
+    "get_folder",
+    "delete_file",
+    "rename_file",
+    "download_file",
+    "upload_file",
+    "get_file_item",
+    "get_parent_item",
+    "snapshot_storage",
+    "storage_manage",
 )
 
 
@@ -109,51 +131,42 @@ class _MemoryStorage(StorageBase):
         return None
 
 
-class _PluginStorage(_MemoryStorage):
-    """由插件提供的存储后端。"""
+class _MemoryStorageModule(_StorageModuleBase):
+    """承载自由标识存储后端的一级模块。"""
 
-    schema = "pluginfs"
+    storage_class = _MemoryStorage
 
+    @staticmethod
+    def get_name() -> str:
+        """获取模块名称。"""
+        return "内存存储"
 
-class _LocalOverrideStorage(_MemoryStorage):
-    """与内建存储同标识的存储后端。"""
-
-    schema = "local"
-
-
-class _FakeStoragePlugin:
-    """声明存储后端的插件桩。"""
-
-    plugin_name = "存储插件"
-
-    def __init__(self, backends: List[type], enabled: bool = True):
-        """记录插件提供的后端与启用状态。"""
-        self._backends = backends
-        self._enabled = enabled
-
-    def get_state(self) -> bool:
-        """返回插件启用状态。"""
-        return self._enabled
-
-    def provides_storages(self) -> List[type]:
-        """返回插件提供的存储后端。"""
-        return self._backends
+    @staticmethod
+    def get_priority() -> int:
+        """获取模块优先级。"""
+        return 9
 
 
 @pytest.fixture
-def module():
-    """提供已接入存储后端注册表的文件整理模块。"""
-    file_manager = FileManagerModule()
-    file_manager.init_module()
-    return file_manager
+def storage_modules():
+    """启动七个内建存储模块，用例结束后停止。"""
+    modules = []
+    for _, module_class, _ in BUILTIN_STORAGE_MODULES:
+        module = module_class()
+        module.init_module()
+        modules.append(module)
+    yield modules
+    for module in modules:
+        module.stop()
 
 
 @pytest.fixture
-def memory_storage():
-    """登记自由标识存储后端，用例结束后注销。"""
-    storage_backend_registry.register(_MemoryStorage)
-    yield _MemoryStorage
-    storage_backend_registry.unregister("memfs")
+def memory_module():
+    """启动自由标识存储模块，用例结束后停止。"""
+    module = _MemoryStorageModule()
+    module.init_module()
+    yield module
+    module.stop()
 
 
 @pytest.fixture
@@ -163,64 +176,81 @@ def restore_host_ports():
     configure_host_ports()
 
 
-def _select(file_manager: FileManagerModule, storage: str, method: Optional[str] = None):
-    """按存储标识取用模块内部的存储操作对象。"""
-    return file_manager._FileManagerModule__get_storage_oper(storage, method)  # noqa: SLF001
+def test_each_backend_is_an_independent_first_class_module():
+    """七个存储后端各自成包，模块类与后端实现类一一对应。"""
+    for storage_id, module_class, backend in BUILTIN_STORAGE_MODULES:
+        assert module_class.storage_class is backend
+        assert module_class.storage_id() == storage_id
+        assert module_class.get_type() is ModuleType.Storage
+        assert module_class.get_subtype() is backend.schema
 
 
-def test_builtin_backends_keep_identities_and_order(module):
+def test_running_modules_register_their_backend(storage_modules):
     """七个内建存储后端的标识与相对顺序保持不变。"""
-    builtin_ids = [storage_id for storage_id, _ in BUILTIN_BACKENDS]
-    listed = [storage_id for storage_id in module._support_storages if storage_id in builtin_ids]
+    builtin_ids = [storage_id for storage_id, _, _ in BUILTIN_STORAGE_MODULES]
 
-    assert listed == builtin_ids
-
-
-def test_builtin_backends_keep_selection_results(module):
-    """按存储标识选中的内建实现与登记的实现类一致。"""
-    for storage_id, backend in BUILTIN_BACKENDS:
-        assert type(_select(module, storage_id)) is backend
+    assert list(storage_backend_registry.storage_ids()) == builtin_ids
 
 
-def test_selection_still_requires_the_requested_method(module):
-    """限定操作时，未提供该操作的后端不被选中。"""
-    assert _select(module, "local", "list") is not None
-    assert _select(module, "local", "generate_qrcode_not_exists") is None
+def test_selection_by_identity_matches_registered_class(storage_modules):
+    """按存储标识选中的内建实现与模块承载的实现类一致。"""
+    for storage_id, _, backend in BUILTIN_STORAGE_MODULES:
+        assert type(storage_backend_registry.resolve(storage_id)) is backend
 
 
-def test_uninitialized_module_selects_nothing():
-    """未初始化的模块不接入注册表，任何存储标识都选不出实现。"""
-    file_manager = FileManagerModule()
+def test_stopped_module_unregisters_its_backend(storage_modules):
+    """模块停止后其存储标识不再可选中。"""
+    module = storage_modules[0]
+    storage_id = module.storage_id()
 
-    assert file_manager._support_storages == []
-    assert _select(file_manager, "local") is None
+    module.stop()
+
+    assert storage_id not in storage_backend_registry.storage_ids()
+    assert storage_backend_registry.resolve(storage_id) is None
 
 
-def test_free_identity_backend_is_registered_and_selected(module, memory_storage):
-    """未登记进 StorageSchema 的自由标识后端可被注册、发现并选中。"""
+@pytest.mark.parametrize("storage_id,module_class,_backend", BUILTIN_STORAGE_MODULES)
+def test_capabilities_only_claim_their_own_storage(storage_id, module_class, _backend):
+    """不属于本存储的请求一律返回 None，让给下一个模块。"""
+    module = module_class()
+    module.init_module()
+    try:
+        other = FileItem(storage="not-this-storage", path="/media", type="dir", name="media")
+
+        assert module.list_files(other) is None
+        assert module.any_files(other) is None
+        assert module.create_folder(other, "sub") is None
+        assert module.delete_file(other) is None
+        assert module.rename_file(other, "new") is None
+        assert module.download_file(other) is None
+        assert module.upload_file(other, Path("/tmp/x")) is None
+        assert module.get_parent_item(other) is None
+        assert module.get_folder("not-this-storage", Path("/media")) is None
+        assert module.get_file_item("not-this-storage", Path("/media")) is None
+        assert module.snapshot_storage("not-this-storage", Path("/media")) is None
+        assert module.storage_manage(storage="not-this-storage", action="usage") is None
+        # 属于本存储的请求必须被认领，自筛不能把所有请求都让出去
+        assert module.storage_manage(storage=storage_id, action="support_transtype") is not None
+    finally:
+        module.stop()
+
+
+def test_free_identity_backend_works_as_its_own_module(memory_module):
+    """未登记进 StorageSchema 的自由标识后端可被登记、发现并经能力方法工作。"""
     assert "memfs" not in {item.value for item in StorageSchema}
-    assert "memfs" in module._support_storages
+    assert "memfs" in storage_backend_registry.storage_ids()
 
-    oper = _select(module, "memfs")
-
-    assert type(oper) is memory_storage
-    assert oper.check() is True
-    assert oper.list(FileItem(storage="memfs", path="/media"))[0].name == "demo.mkv"
-
-
-def test_free_identity_backend_works_through_module_capabilities(module, memory_storage):
-    """自由标识后端可经模块能力方法正常工作。"""
     fileitem = FileItem(storage="memfs", path="/media", type="dir", name="media")
 
-    assert module.list_files(fileitem)[0].name == "demo.mkv"
-    assert module.get_file_item("memfs", Path("/media/demo.mkv")).name == "demo.mkv"
-    assert module.storage_manage(storage="memfs", action="support_transtype") == {
+    assert memory_module.list_files(fileitem)[0].name == "demo.mkv"
+    assert memory_module.get_file_item("memfs", Path("/media/demo.mkv")).name == "demo.mkv"
+    assert memory_module.storage_manage(storage="memfs", action="support_transtype") == {
         "success": True,
         "data": {"transtype": {"copy": "复制"}},
     }
 
 
-def test_free_identity_backend_reads_and_writes_config(memory_storage, restore_host_ports):
+def test_free_identity_backend_reads_and_writes_config(restore_host_ports):
     """自由标识后端按其标识读写存储配置。"""
     written = {}
     reset = []
@@ -257,104 +287,32 @@ def test_registry_rejects_identity_that_cannot_prefix_a_path():
     assert "z" not in storage_backend_registry.storage_ids()
 
 
-def test_plugin_provided_backend_joins_registry(module, monkeypatch):
-    """插件提供的存储后端可接入注册表并被选中。"""
-    plugin_manager = PluginManager()
-    monkeypatch.setattr(
-        plugin_manager,
-        "_running_plugins",
-        {"FakeStoragePlugin": _FakeStoragePlugin([_PluginStorage])},
-    )
+def test_transfer_still_resolves_operators_by_identity(storage_modules):
+    """整理需要成对的源、目标操作对象，文件整理模块按标识直取。"""
+    file_manager = FileManagerModule()
+    select = file_manager._FileManagerModule__get_storage_oper  # noqa: SLF001
 
-    assert "pluginfs" in module._support_storages
-    assert type(_select(module, "pluginfs")) is _PluginStorage
-
-    entry = storage_backend_registry.find("pluginfs")
-
-    assert entry.distribution is ExtensionDistribution.MARKET
-    assert entry.owner == "FakeStoragePlugin"
+    assert type(select("local")) is LocalStorage
+    assert select("local", "list") is not None
+    assert select("local", "generate_qrcode_not_exists") is None
+    assert select("not-a-storage") is None
 
 
-def test_plugin_backend_disappears_after_plugin_stops(module, monkeypatch):
-    """插件卸载后其存储后端从注册表消失。"""
-    plugin_manager = PluginManager()
-    monkeypatch.setattr(
-        plugin_manager,
-        "_running_plugins",
-        {"FakeStoragePlugin": _FakeStoragePlugin([_PluginStorage])},
-    )
-    assert "pluginfs" in module._support_storages
-
-    monkeypatch.setattr(plugin_manager, "_running_plugins", {})
-
-    assert "pluginfs" not in module._support_storages
-    assert _select(module, "pluginfs") is None
-    assert storage_backend_registry.find("pluginfs") is None
+def test_filemanager_no_longer_routes_storage_capabilities():
+    """存储能力方法已由各存储模块承担，文件整理模块不得再实现。"""
+    for method in STORAGE_CAPABILITY_METHODS:
+        assert not hasattr(FileManagerModule, method), method
 
 
-def test_disabled_plugin_does_not_contribute_backends(module, monkeypatch):
-    """未启用的插件不向注册表贡献存储后端。"""
-    plugin_manager = PluginManager()
-    monkeypatch.setattr(
-        plugin_manager,
-        "_running_plugins",
-        {"FakeStoragePlugin": _FakeStoragePlugin([_PluginStorage], enabled=False)},
-    )
-
-    assert "pluginfs" not in module._support_storages
-
-
-def test_plugin_backend_overrides_builtin_identity(module, monkeypatch):
-    """同标识时以插件提供的存储后端为准，插件停止后回到内建实现。"""
-    plugin_manager = PluginManager()
-    monkeypatch.setattr(
-        plugin_manager,
-        "_running_plugins",
-        {"FakeStoragePlugin": _FakeStoragePlugin([_LocalOverrideStorage])},
-    )
-
-    assert type(_select(module, "local")) is _LocalOverrideStorage
-
-    monkeypatch.setattr(plugin_manager, "_running_plugins", {})
-
-    assert type(_select(module, "local")) is LocalStorage
-
-
-def test_failing_plugin_hook_does_not_break_registry(module, monkeypatch):
-    """插件声明出错只记录日志，不影响内建存储后端可用。"""
-
-    class _BrokenPlugin:
-        """声明存储后端时抛错的插件桩。"""
-
-        plugin_name = "异常插件"
-
-        @staticmethod
-        def get_state() -> bool:
-            """插件处于启用状态。"""
-            return True
-
-        @staticmethod
-        def provides_storages():
-            """声明过程抛出异常。"""
-            raise RuntimeError("声明失败")
-
-    plugin_manager = PluginManager()
-    monkeypatch.setattr(plugin_manager, "_running_plugins", {"BrokenPlugin": _BrokenPlugin()})
-
-    assert "local" in module._support_storages
-    assert type(_select(module, "local")) is LocalStorage
-
-
-def test_registry_diagnose_reports_distribution(module, memory_storage):
+def test_registry_diagnose_reports_distribution(storage_modules):
     """诊断信息按存储标识给出发行方式与提供方。"""
     diagnosed = {item["storage"]: item for item in storage_backend_registry.diagnose()}
 
     assert diagnosed["local"]["distribution"] == ExtensionDistribution.BUILTIN.value
-    assert diagnosed["local"]["owner"] is None
-    assert diagnosed["memfs"]["distribution"] == ExtensionDistribution.BUILTIN.value
+    assert diagnosed["local"]["owner"] == "LocalStorageModule"
 
 
-def test_file_uri_round_trips_free_identity_storage(memory_storage):
+def test_file_uri_round_trips_free_identity_storage(memory_module):
     """自由标识存储的文件 URI 可正常解析与还原。"""
     file_uri = FileURI.from_uri("memfs:/media/anime")
 

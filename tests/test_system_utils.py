@@ -573,7 +573,7 @@ def test_space_usage_keeps_windows_drive_behavior_without_fsid_lookup():
 
 
 def test_local_storage_usage_forwards_btrfs_fsid_setting():
-    from app.modules.filemanager.storages import local as local_storage_module
+    from app.modules.localstorage import local as local_storage_module
 
     download_dir = MagicMock(download_path="/downloads")
     library_dir = MagicMock(library_path="/library")

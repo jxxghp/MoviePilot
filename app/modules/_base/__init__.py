@@ -7,9 +7,11 @@
 from app.modules._base.downloader import _DownloaderModuleBase
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules._base.notification import _MessageChannelModuleBase
+from app.modules._base.storage import _StorageModuleBase
 
 __all__ = [
     "_DownloaderModuleBase",
     "_MessageChannelModuleBase",
     "_MediaServerModuleBase",
+    "_StorageModuleBase",
 ]

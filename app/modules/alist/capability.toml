@@ -1,0 +1,15 @@
+schema_version = 1
+id = "AlistModule"
+kind = "host_module"
+entrypoint = "app.modules.alist:AlistModule"
+depends_on = []
+
+[metadata]
+name = "Alist"
+type = "storage"
+subtype = "Alist"
+priority = 2
+
+[activation]
+policy = "bootstrap"
+watch = []

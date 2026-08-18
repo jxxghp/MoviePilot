@@ -1,0 +1,15 @@
+schema_version = 1
+id = "SmbModule"
+kind = "host_module"
+entrypoint = "app.modules.smb:SmbModule"
+depends_on = []
+
+[metadata]
+name = "SMB"
+type = "storage"
+subtype = "SMB"
+priority = 6
+
+[activation]
+policy = "bootstrap"
+watch = []

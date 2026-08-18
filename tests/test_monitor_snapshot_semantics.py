@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from app import schemas
-from app.modules.filemanager.storages import StorageBase
+from app.modules._base.storage import StorageBase
 from app.monitor.poller import RemotePoller
 from app.monitor.snapshot import SnapshotStore
 from app.monitor.watcher import LocalDirectoryWatcher

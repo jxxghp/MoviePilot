@@ -230,20 +230,6 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def provides_storages(self) -> List[Type]:
-        """
-        获取插件提供的存储后端
-        返回存储后端类列表，每个类必须继承自 StorageBase
-        [StorageClass1, StorageClass2, ...]
-
-        对存储后端类的要求：
-        1、存储后端类必须继承自 app.modules.filemanager.storages.StorageBase
-        2、存储后端类需要声明 schema 存储标识，可以是字符串，也可以是 StorageSchema 枚举成员
-        3、存储标识须以字母开头且长度不小于 2，用于文件 URI 的存储前缀
-        4、存储标识与内建存储相同时，以插件提供的存储后端为准
-        """
-        pass
-
     @abstractmethod
     def stop_service(self):
         """

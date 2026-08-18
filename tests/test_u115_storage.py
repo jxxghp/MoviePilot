@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.modules.filemanager.storages.u115 import U115Pan
+from app.modules.u115.u115 import U115Pan
 from app.schemas import FileItem
 
 
@@ -102,13 +102,13 @@ def _upload_with_fakes(storage: U115Pan, target_dir: FileItem, local_file):
     """
 
     with patch(
-        "app.modules.filemanager.storages.u115.oss2.StsAuth",
+        "app.modules.u115.u115.oss2.StsAuth",
         return_value=object(),
     ), patch(
-        "app.modules.filemanager.storages.u115.oss2.Bucket",
+        "app.modules.u115.u115.oss2.Bucket",
         _FakeBucket,
     ), patch(
-        "app.modules.filemanager.storages.u115.transfer_process",
+        "app.modules.u115.u115.transfer_process",
         return_value=lambda _progress: None,
     ):
         return storage.upload(target_dir, local_file)
@@ -158,7 +158,7 @@ def test_upload_uses_dynamic_part_size(tmp_path):
 
     storage = _build_storage()
     with patch(
-        "app.modules.filemanager.storages.u115.determine_part_size",
+        "app.modules.u115.u115.determine_part_size",
         return_value=local_file.stat().st_size,
     ) as determine_part_size_mock:
         uploaded_item = _upload_with_fakes(storage, _target_dir(), local_file)
