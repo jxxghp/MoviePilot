@@ -1336,7 +1336,13 @@ done_when: []
 ```bash
 ./.venv/bin/python scripts/startup/performance.py --repeat 3
 ./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
+./.venv/bin/python scripts/sdk/exports.py --check
 ```
+
+`scripts/sdk/exports.py` 维护"兼容清单要求 SDK 提供什么"这张表：清单里
+`replacement` 指向 `app.sdk.*` 的每条弃用建议，都必须在 SDK 的对应位置
+兑现同一个对象。清单新增条目时 `--check` 变红，`--write` 只更新要求表，
+是否把符号加进 SDK 仍需人工决定——SDK 的公开导出一旦加入即不可撤销。
 
 ### 11.4 2026-08-17 当前验证快照
 

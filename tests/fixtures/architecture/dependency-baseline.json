@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6188,
-  "edge_sha256": "fb8c21d1c74f3a1ded489148b233c7ed5a0e3f1a129fa78ba31d7e4317a41691",
+  "edge_count": 6192,
+  "edge_sha256": "55999cdb1a0afd785f7e24237785b2237c889ee7505da1f75731521d6b21ec24",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5779,10 +5779,14 @@
     "app.sdk.media -> app.domain.context",
     "app.sdk.media -> app.domain.media",
     "app.sdk.media -> app.domain.meta",
+    "app.sdk.media -> app.domain.meta.customization",
+    "app.sdk.media -> app.domain.meta.infopath",
     "app.sdk.media -> app.domain.meta.metaanime",
     "app.sdk.media -> app.domain.meta.metabase",
     "app.sdk.media -> app.domain.meta.metamusic",
     "app.sdk.media -> app.domain.meta.metavideo",
+    "app.sdk.media -> app.domain.meta.releasegroup",
+    "app.sdk.media -> app.domain.meta.streamingplatform",
     "app.sdk.media -> app.domain.meta.words",
     "app.sdk.media -> app.domain.metainfo",
     "app.sdk.media -> app.domain.scraper",
@@ -6256,7 +6260,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 738,
+  "module_count": 739,
   "modules": [
     "app",
     "app.adapters",
@@ -6941,6 +6945,7 @@
     "app.schemas.user",
     "app.schemas.workflow",
     "app.sdk",
+    "app.sdk._exports",
     "app.sdk._legacy",
     "app.sdk._legacy.history",
     "app.sdk._legacy.subscribe",

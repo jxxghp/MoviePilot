@@ -2234,6 +2234,7 @@
   "schema_version": 1,
   "sdk_exports": {
     "app.sdk": [],
+    "app.sdk._exports": [],
     "app.sdk.browser": [
       {
         "kind": "import",
@@ -2351,6 +2352,26 @@
     "app.sdk.config": [
       {
         "kind": "import",
+        "name": "ConfigModel",
+        "target": "app.runtime.config.ConfigModel"
+      },
+      {
+        "kind": "import",
+        "name": "GlobalVar",
+        "target": "app.runtime.config.GlobalVar"
+      },
+      {
+        "kind": "import",
+        "name": "Settings",
+        "target": "app.runtime.config.Settings"
+      },
+      {
+        "kind": "import",
+        "name": "SystemConfModel",
+        "target": "app.runtime.config.SystemConfModel"
+      },
+      {
+        "kind": "import",
         "name": "global_vars",
         "target": "app.runtime.config.global_vars"
       },
@@ -2389,6 +2410,11 @@
         "kind": "import",
         "name": "Context",
         "target": "app.domain.context.Context"
+      },
+      {
+        "kind": "import",
+        "name": "CustomizationMatcher",
+        "target": "app.domain.meta.customization.CustomizationMatcher"
       },
       {
         "kind": "import",
@@ -2447,6 +2473,26 @@
       },
       {
         "kind": "import",
+        "name": "MusicAlbumInfo",
+        "target": "app.domain.context.MusicAlbumInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicArtistInfo",
+        "target": "app.domain.context.MusicArtistInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicInfo",
+        "target": "app.domain.context.MusicInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicLyrics",
+        "target": "app.domain.context.MusicLyrics"
+      },
+      {
+        "kind": "import",
         "name": "MusicNameContext",
         "target": "app.domain.meta.metamusic.MusicNameContext"
       },
@@ -2477,8 +2523,28 @@
       },
       {
         "kind": "import",
+        "name": "MusicRelease",
+        "target": "app.domain.context.MusicRelease"
+      },
+      {
+        "kind": "import",
         "name": "NfoReader",
         "target": "app.domain.scraper.NfoReader"
+      },
+      {
+        "kind": "import",
+        "name": "ReleaseGroupsMatcher",
+        "target": "app.domain.meta.releasegroup.ReleaseGroupsMatcher"
+      },
+      {
+        "kind": "import",
+        "name": "StreamingPlatforms",
+        "target": "app.domain.meta.streamingplatform.StreamingPlatforms"
+      },
+      {
+        "kind": "import",
+        "name": "SubtitleInfo",
+        "target": "app.domain.context.SubtitleInfo"
       },
       {
         "kind": "import",
@@ -2497,13 +2563,63 @@
       },
       {
         "kind": "import",
+        "name": "audio_quality_score",
+        "target": "app.domain.meta.metamusic.audio_quality_score"
+      },
+      {
+        "kind": "import",
+        "name": "audio_quality_tier",
+        "target": "app.domain.meta.metamusic.audio_quality_tier"
+      },
+      {
+        "kind": "import",
         "name": "build_media_key",
         "target": "app.schemas.media.build_media_key"
       },
       {
         "kind": "import",
+        "name": "clear_parsed_title_for_parent_merge",
+        "target": "app.domain.meta.infopath.clear_parsed_title_for_parent_merge"
+      },
+      {
+        "kind": "import",
         "name": "configure_search_source_provider",
         "target": "app.domain.media.configure_search_source_provider"
+      },
+      {
+        "kind": "import",
+        "name": "find_metainfo",
+        "target": "app.domain.metainfo.find_metainfo"
+      },
+      {
+        "kind": "import",
+        "name": "format_audio_quality",
+        "target": "app.domain.meta.metamusic.format_audio_quality"
+      },
+      {
+        "kind": "import",
+        "name": "get_custom_release_groups",
+        "target": "app.domain.meta.releasegroup.get_custom_release_groups"
+      },
+      {
+        "kind": "import",
+        "name": "get_custom_words",
+        "target": "app.domain.meta.words.get_custom_words"
+      },
+      {
+        "kind": "import",
+        "name": "get_customization",
+        "target": "app.domain.meta.customization.get_customization"
+      },
+      {
+        "kind": "import",
+        "name": "infer_audio_lossless",
+        "target": "app.domain.meta.metamusic.infer_audio_lossless"
+      },
+      {
+        "kind": "import",
+        "name": "is_anime",
+        "target": "app.domain.metainfo.is_anime"
       },
       {
         "kind": "import",
@@ -2522,6 +2638,11 @@
       },
       {
         "kind": "import",
+        "name": "normalize_audio_format",
+        "target": "app.domain.meta.metamusic.normalize_audio_format"
+      },
+      {
+        "kind": "import",
         "name": "normalize_media_identity_payload",
         "target": "app.schemas.media.normalize_media_identity_payload"
       },
@@ -2537,6 +2658,11 @@
       },
       {
         "kind": "import",
+        "name": "parse_audio_quality",
+        "target": "app.domain.meta.metamusic.parse_audio_quality"
+      },
+      {
+        "kind": "import",
         "name": "parse_media_key",
         "target": "app.schemas.media.parse_media_key"
       },
@@ -2549,6 +2675,11 @@
         "kind": "import",
         "name": "resolve_media_identity",
         "target": "app.schemas.media.resolve_media_identity"
+      },
+      {
+        "kind": "import",
+        "name": "should_use_parent_title_for_file_stem",
+        "target": "app.domain.meta.infopath.should_use_parent_title_for_file_stem"
       }
     ],
     "app.sdk.network": [
@@ -2596,6 +2727,56 @@
         "kind": "import",
         "name": "WebUtils",
         "target": "app.adapters.external.location.WebUtils"
+      },
+      {
+        "kind": "import",
+        "name": "base_url",
+        "target": "app.foundation.url.base_url"
+      },
+      {
+        "kind": "import",
+        "name": "cookie_parse",
+        "target": "app.adapters.network.http.cookie_parse"
+      },
+      {
+        "kind": "import",
+        "name": "extract_domain",
+        "target": "app.domain.site.extract_domain"
+      },
+      {
+        "kind": "import",
+        "name": "host_label",
+        "target": "app.foundation.url.host_label"
+      },
+      {
+        "kind": "import",
+        "name": "is_link",
+        "target": "app.foundation.url.is_link"
+      },
+      {
+        "kind": "import",
+        "name": "parse_address",
+        "target": "app.foundation.url.parse_address"
+      },
+      {
+        "kind": "import",
+        "name": "sanitize_path",
+        "target": "app.foundation.url.sanitize_path"
+      },
+      {
+        "kind": "import",
+        "name": "second_level_label",
+        "target": "app.foundation.url.second_level_label"
+      },
+      {
+        "kind": "import",
+        "name": "split_netloc",
+        "target": "app.foundation.url.split_netloc"
+      },
+      {
+        "kind": "import",
+        "name": "urls_match",
+        "target": "app.domain.site.urls_match"
       }
     ],
     "app.sdk.plugins": [
@@ -2937,6 +3118,16 @@
     "app.sdk.utilities": [
       {
         "kind": "import",
+        "name": "AbstractSingleton",
+        "target": "app.foundation.singleton.AbstractSingleton"
+      },
+      {
+        "kind": "import",
+        "name": "AbstractSingletonClass",
+        "target": "app.foundation.singleton.AbstractSingletonClass"
+      },
+      {
+        "kind": "import",
         "name": "CryptoJsUtils",
         "target": "app.foundation.crypto.CryptoJsUtils"
       },
@@ -2947,8 +3138,18 @@
       },
       {
         "kind": "import",
+        "name": "HashUtils",
+        "target": "app.foundation.crypto.HashUtils"
+      },
+      {
+        "kind": "import",
         "name": "LocaleHelper",
         "target": "app.runtime.localization.LocaleHelper"
+      },
+      {
+        "kind": "import",
+        "name": "ModuleHelper",
+        "target": "app.foundation.reflection.ModuleHelper"
       },
       {
         "kind": "import",
@@ -2962,8 +3163,18 @@
       },
       {
         "kind": "import",
+        "name": "RSAUtils",
+        "target": "app.foundation.crypto.RSAUtils"
+      },
+      {
+        "kind": "import",
         "name": "Singleton",
         "target": "app.foundation.singleton.Singleton"
+      },
+      {
+        "kind": "import",
+        "name": "SingletonClass",
+        "target": "app.foundation.singleton.SingletonClass"
       },
       {
         "kind": "import",
@@ -2982,8 +3193,73 @@
       },
       {
         "kind": "import",
+        "name": "WeakSingleton",
+        "target": "app.foundation.singleton.WeakSingleton"
+      },
+      {
+        "kind": "import",
+        "name": "common_prefix",
+        "target": "app.foundation.text.common_prefix"
+      },
+      {
+        "kind": "import",
+        "name": "contains_chinese",
+        "target": "app.foundation.text.contains_chinese"
+      },
+      {
+        "kind": "import",
+        "name": "contains_japanese",
+        "target": "app.foundation.text.contains_japanese"
+      },
+      {
+        "kind": "import",
+        "name": "contains_korean",
+        "target": "app.foundation.text.contains_korean"
+      },
+      {
+        "kind": "import",
+        "name": "cookiejar_to_string",
+        "target": "app.foundation.text.cookiejar_to_string"
+      },
+      {
+        "kind": "import",
+        "name": "count_words",
+        "target": "app.foundation.text.count_words"
+      },
+      {
+        "kind": "import",
         "name": "cut",
         "target": "app.foundation.text.cut"
+      },
+      {
+        "kind": "import",
+        "name": "escape_markdown",
+        "target": "app.foundation.text.escape_markdown"
+      },
+      {
+        "kind": "import",
+        "name": "extract_named_ids",
+        "target": "app.foundation.text.extract_named_ids"
+      },
+      {
+        "kind": "import",
+        "name": "format_amount",
+        "target": "app.foundation.text.format_amount"
+      },
+      {
+        "kind": "import",
+        "name": "is_all_chinese",
+        "target": "app.foundation.text.is_all_chinese"
+      },
+      {
+        "kind": "import",
+        "name": "is_english_word",
+        "target": "app.foundation.text.is_english_word"
+      },
+      {
+        "kind": "import",
+        "name": "is_number",
+        "target": "app.foundation.text.is_number"
       },
       {
         "kind": "import",
@@ -2992,8 +3268,63 @@
       },
       {
         "kind": "import",
+        "name": "natural_sort_key",
+        "target": "app.foundation.text.natural_sort_key"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_upper",
+        "target": "app.foundation.text.normalize_upper"
+      },
+      {
+        "kind": "import",
+        "name": "parse_bool",
+        "target": "app.foundation.text.parse_bool"
+      },
+      {
+        "kind": "import",
+        "name": "parse_float",
+        "target": "app.foundation.text.parse_float"
+      },
+      {
+        "kind": "import",
+        "name": "parse_int",
+        "target": "app.foundation.text.parse_int"
+      },
+      {
+        "kind": "import",
+        "name": "random_string",
+        "target": "app.foundation.text.random_string"
+      },
+      {
+        "kind": "import",
+        "name": "remove_punctuation",
+        "target": "app.foundation.text.remove_punctuation"
+      },
+      {
+        "kind": "import",
         "name": "retry",
         "target": "app.runtime.execution.retry"
+      },
+      {
+        "kind": "import",
+        "name": "sanitize_filename",
+        "target": "app.foundation.text.sanitize_filename"
+      },
+      {
+        "kind": "import",
+        "name": "split_by_bytes",
+        "target": "app.foundation.text.split_by_bytes"
+      },
+      {
+        "kind": "import",
+        "name": "strip_optional",
+        "target": "app.foundation.text.strip_optional"
+      },
+      {
+        "kind": "import",
+        "name": "title_case",
+        "target": "app.foundation.text.title_case"
       }
     ]
   }
