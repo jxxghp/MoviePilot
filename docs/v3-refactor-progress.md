@@ -31,6 +31,9 @@
   日志级别交回各层调用侧决定（domain 不依赖 runtime）。
 - URL 与路径安全原语迁入 `adapters/network/urlsafety.py`，
   原位置再导出以承接兼容层映射与 SDK 导出。
+- 规则解析器与内置规则集下沉 `domain/filterrule.py`：领域层声明加速后端协议、
+  未注入时回落纯 Python 解析，rust 实现由组合根注入（与识别加速同一装配点）。
+  下沉后模块可直接依赖领域层，为绕开该阻碍而建的端口脚手架随之删除。
 
 ### 1.2 分发内核：v2 聚合 → v3 能力索引三级分发
 
@@ -110,14 +113,11 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 
 按价值与风险排序：
 
-1. **`RuleParser` / `BUILTIN_RULE_SET` 下沉 domain**：当前以窄协议端口消除了反向边，
-   但规则解析器与内置规则集在语义上属领域层。下沉的阻碍是 `RuleParser.parse`
-   依赖 rust 加速（domain 不得依赖 adapters），需先把加速收敛为可注入的解析后端。
-2. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
+1. **`chain` 与 `application` 合并为统一服务层**：端口外迁后两者职责已不重叠，
    合并主要是命名与目录收敛，收益中等而改动面极大，建议在其余项清偿后评估。
-3. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
+2. **`_ModuleBase` 与 `_PluginBase` 统一为单一 Extension 契约**：
    目标是"内建与三方只有发行方式之别"，是"一切皆扩展"的最后一块，改动面最大。
-4. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
+3. **SDK 由 compat manifest 生成**：消除"文档推 SDK、运行时绕过 SDK"的矛盾
    （SDK 目前在宿主生产代码中仍是零消费者）。
 
 ---
@@ -127,7 +127,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 | 阶段 | 结果 |
 |---|---|
 | 官方 v3 基线 | 4904 passed / 1 failed |
-| 当前 | **4959 passed / 1 failed** |
+| 当前 | **4962 passed / 1 failed** |
 
 唯一失败 `test_legacy_plugin_resource_imports.py::test_scanner_invalidates_equal_size_source_with_preserved_mtime`
 在基线上同样失败：容器文件系统 `st_ctime_ns` 无纳秒级精度，
