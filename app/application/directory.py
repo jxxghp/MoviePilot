@@ -193,11 +193,8 @@ def _split_file_uri(value: str) -> Tuple[str, str]:
     """
     拆分 FileURI 字符串，保留原始路径用于安全校验。
     """
-    for storage in StorageSchema:
-        protocol = f"{storage.value}:"
-        if value.startswith(protocol):
-            return storage.value, value[len(protocol):]
-    return "local", value
+    storage, raw_path = _SchemaFileURI.split_uri(value)
+    return storage or StorageSchema.Local.value, raw_path
 
 
 def _normalize_safe_posix_path(raw_path: str) -> PurePosixPath:
@@ -286,8 +283,9 @@ def validate_download_save_path(save_path: str) -> str:
     :return: 可直接传给下载接口的规范化保存目录
     """
     value = str(save_path or "").strip()
-    has_storage_prefix = any(value.startswith(f"{item.value}:") for item in StorageSchema)
-    storage, raw_path = _split_file_uri(value)
+    storage_prefix, raw_path = _SchemaFileURI.split_uri(value)
+    has_storage_prefix = storage_prefix is not None
+    storage = storage_prefix or StorageSchema.Local.value
     target_style, target_path = _normalize_download_path(raw_path, storage)
 
     download_roots = []

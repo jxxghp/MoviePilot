@@ -6,12 +6,13 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.foundation.reflection import ModuleHelper
 from app.runtime.directories import directory_config_port
+from app.runtime.extensions.storage_registry import StorageBackendRegistry, storage_backend_registry
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.mediaroot import get_media_root_path
 from app.modules.filemanager.storages import StorageBase
+from app.modules.filemanager.storages.catalog import register_builtin_storage_backends
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.transfer import TransferInfo
 from app.schemas.mediaserver import ExistMediaInfo
@@ -29,16 +30,19 @@ class FileManagerModule(_ModuleBase):
     文件整理模块
     """
 
-    _storage_schemas = []
-    _support_storages = []
+    _storage_registry: Optional[StorageBackendRegistry] = None
 
     def init_module(self) -> None:
-        """初始化文件整理模块支持的存储实现"""
-        # 加载模块
-        self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
-                                                  filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
-        # 获取存储类型
-        self._support_storages = [storage.schema.value for storage in self._storage_schemas if storage.schema]
+        """登记内建存储后端并接入存储后端注册表"""
+        register_builtin_storage_backends()
+        self._storage_registry = storage_backend_registry
+
+    @property
+    def _support_storages(self) -> List[str]:
+        """当前可用的存储标识，包含插件提供的存储后端"""
+        if not self._storage_registry:
+            return []
+        return list(self._storage_registry.storage_ids())
 
     @staticmethod
     def get_name() -> str:
@@ -112,12 +116,9 @@ class FileManagerModule(_ModuleBase):
         """
         获取存储操作对象
         """
-        for storage_schema in self._storage_schemas:
-            if storage_schema.schema \
-                    and storage_schema.schema.value == _storage \
-                    and (not _func or hasattr(storage_schema, _func)):
-                return storage_schema()
-        return None
+        if not self._storage_registry:
+            return None
+        return self._storage_registry.resolve(_storage, _func)
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass

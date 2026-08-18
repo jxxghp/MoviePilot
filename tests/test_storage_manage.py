@@ -14,6 +14,7 @@ import pytest
 from app import schemas
 from app.application.orchestration.storage import StorageChain
 from app.modules.filemanager import FileManagerModule
+from app.runtime.extensions.storage_registry import storage_backend_registry
 
 
 class _FakeStorageOper:
@@ -40,12 +41,13 @@ class _FakeStorageOper:
 
 
 @pytest.fixture
-def module(monkeypatch):
+def module():
     _FakeStorageOper.calls.clear()
     module = FileManagerModule()
-    monkeypatch.setattr(module, "_support_storages", ["fakestore"])
-    monkeypatch.setattr(module, "_storage_schemas", [_FakeStorageOper])
-    return module
+    module.init_module()
+    storage_backend_registry.register(_FakeStorageOper)
+    yield module
+    storage_backend_registry.unregister("fakestore")
 
 
 def test_manage_request_schema():

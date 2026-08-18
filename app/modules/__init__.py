@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
+from app.schemas.file import FileURI
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.system import MediaServerConf
@@ -345,11 +346,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         """
         去掉存储协议前缀 if any，下载器无法识别本地存储协议。
         """
-        for s in StorageSchema:
-            prefix = f"{s.value}:"
-            if path.startswith(prefix):
-                return path[len(prefix):]
-        return path
+        return FileURI.split_uri(path)[1]
 
     def normalize_path(self, path: Path, downloader: Optional[str]) -> str:
         """

@@ -9,6 +9,7 @@ from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.progress import ProgressHelper
 from app.runtime.storages import storage_config_port
+from app.runtime.extensions.storage_registry import storage_backend_identity
 from app.runtime.log import logger
 from app.schemas.exception import StorageQueryError
 from app.foundation.crypto import HashUtils
@@ -72,7 +73,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         获取配置
         """
-        return storage_config_port.resolve().get_storage(self.schema.value)
+        return storage_config_port.resolve().get_storage(storage_backend_identity(self))
 
     def get_conf(self) -> dict:
         """
@@ -85,7 +86,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         设置配置
         """
-        storage_config_port.resolve().set_storage(self.schema.value, conf)
+        storage_config_port.resolve().set_storage(storage_backend_identity(self), conf)
         self.init_storage()
 
     def support_transtype(self) -> dict:
@@ -104,7 +105,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         重置置配置
         """
-        storage_config_port.resolve().reset_storage(self.schema.value)
+        storage_config_port.resolve().reset_storage(storage_backend_identity(self))
         self.init_storage()
 
     @staticmethod

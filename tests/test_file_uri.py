@@ -48,3 +48,34 @@ def test_from_uri_storage_prefix_with_relative_path() -> None:
 
     assert file_uri.storage == "rclone"
     assert file_uri.path == "/media/anime"
+
+
+def test_from_uri_keeps_path_of_unknown_storage_prefix() -> None:
+    """未登记进 StorageSchema 的存储前缀同样拆分，路径不被吞进存储标识。"""
+    file_uri = FileURI.from_uri("myfs:/media/anime")
+
+    assert file_uri.storage == "myfs"
+    assert file_uri.path == "/media/anime"
+    assert file_uri.uri == "myfs:/media/anime"
+
+
+def test_split_uri_reports_absent_storage_prefix() -> None:
+    """无存储前缀时不臆造存储标识，路径原样返回。"""
+    assert FileURI.split_uri("/downloads/movies") == (None, "/downloads/movies")
+    assert FileURI.split_uri("downloads/movies") == (None, "downloads/movies")
+
+
+def test_split_uri_does_not_take_windows_drive_as_storage() -> None:
+    """单字母的 Windows 盘符不会被当成存储前缀。"""
+    assert FileURI.split_uri("Z:/Downloads") == (None, "Z:/Downloads")
+    assert FileURI.split_uri("Z:\\Downloads") == (None, "Z:\\Downloads")
+
+
+def test_is_storage_scheme_requires_usable_identity() -> None:
+    """存储标识须以字母开头且长度不小于 2，才能作为路径前缀。"""
+    assert FileURI.is_storage_scheme("u115") is True
+    assert FileURI.is_storage_scheme("my-fs.v2") is True
+    assert FileURI.is_storage_scheme("z") is False
+    assert FileURI.is_storage_scheme("1fs") is False
+    assert FileURI.is_storage_scheme("my fs") is False
+    assert FileURI.is_storage_scheme("") is False

@@ -1481,6 +1481,10 @@
         "line": 23
       },
       {
+        "caller": "app.modules.filemanager.storages.catalog",
+        "line": 28
+      },
+      {
         "caller": "app.runtime.events",
         "line": 138
       },
@@ -1988,7 +1992,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 755
+            "line": 765
           }
         ]
       },

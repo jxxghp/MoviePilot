@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import traceback
+import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
@@ -25,11 +26,16 @@ from app.runtime.log import logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
-from app.runtime.extensions.contract import supports_extension_hook
+from app.runtime.extensions.contract import ExtensionDistribution, supports_extension_hook
 from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.storage_registry import (
+    StorageBackendEntry,
+    build_storage_entry,
+    storage_backend_registry,
+)
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -130,11 +136,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_agent_tools_cache: Dict[str, List[Dict[str, Any]]] = {}
         self._plugin_agent_tools_cache_lock = threading.Lock()
         self._plugin_agent_tools_revision: int = 0
+        # 存储后端声明按插件类缓存探测结果，避免每次取用存储都重新解析插件源码。
+        self._plugin_storage_hook_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
             self.resolve_event_handler_instance,
         )
+        # 存储后端注册表按需读取插件目录，插件停止后其存储后端随即不再可见。
+        storage_backend_registry.register_source("plugins", self.iter_plugin_storage_entries)
         # 开发者模式监测插件修改
         if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()
@@ -1088,6 +1098,73 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 )
                 return ret_tools
         raise RuntimeError("插件工具注册表持续变化，无法建立当前快照")
+
+    def _declares_storages(self, plugin: Any) -> bool:
+        """
+        判断插件是否声明了存储后端，探测结果按插件类缓存
+
+        :param plugin: 插件运行实例
+        :return: 插件实现了存储后端声明时为 True
+        """
+        plugin_class = type(plugin)
+        declared = self._plugin_storage_hook_cache.get(plugin_class)
+        if declared is None:
+            declared = supports_extension_hook(plugin_class, "provides_storages")
+            self._plugin_storage_hook_cache[plugin_class] = declared
+        return declared
+
+    def get_plugin_storages(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取插件提供的存储后端
+        [{
+            "plugin_id": "插件ID",
+            "plugin_name": "插件名称",
+            "storages": [StorageClass1, StorageClass2, ...]
+        }]
+
+        :param pid: 插件 ID，为空返回全部插件的存储后端
+        :return: 按插件归组的存储后端列表
+        """
+        ret_storages = []
+        # 创建字典快照避免并发修改
+        running_plugins_snapshot = dict(self._running_plugins)
+        for plugin_id, plugin in running_plugins_snapshot.items():
+            if pid and pid != plugin_id:
+                continue
+            if not self._declares_storages(plugin):
+                continue
+            try:
+                if not plugin.get_state():
+                    continue
+                storages = plugin.provides_storages()
+                if storages:
+                    ret_storages.append({
+                        "plugin_id": plugin_id,
+                        "plugin_name": plugin.plugin_name,
+                        "storages": list(storages)
+                    })
+            except Exception as e:
+                logger.error(f"获取插件 {plugin_id} 存储后端出错：{str(e)}")
+        return ret_storages
+
+    def iter_plugin_storage_entries(self) -> List[StorageBackendEntry]:
+        """
+        把插件提供的存储后端投影为存储后端注册表的登记项
+
+        :return: 登记项列表，声明无效的后端不参与登记
+        """
+        entries = []
+        for plugin_info in self.get_plugin_storages():
+            plugin_id = plugin_info["plugin_id"]
+            for backend in plugin_info["storages"]:
+                entry = build_storage_entry(
+                    backend,
+                    ExtensionDistribution.MARKET,
+                    owner=plugin_id,
+                )
+                if entry:
+                    entries.append(entry)
+        return entries
 
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
