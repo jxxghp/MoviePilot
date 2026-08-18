@@ -7,9 +7,10 @@ from enum import StrEnum
 
 
 class ModuleResultAggregation(StrEnum):
-    """描述多模块结果沿调用链的兼容聚合方式。"""
+    """描述多模块结果沿调用链的聚合方式。"""
 
     LEGACY = "legacy"
+    PIPELINE = "pipeline"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,7 +239,12 @@ _MULTI_SOURCE_CONTRACTS = {
 _METHOD_CONTRACTS = {
     "recognize_media": ModuleMethodContract(family="media-recognition"),
     "search_medias": ModuleMethodContract(family="media-recognition"),
-    "obtain_images": ModuleMethodContract(family="media-recognition"),
+    "obtain_images": ModuleMethodContract(
+        family="media-recognition", aggregation=ModuleResultAggregation.PIPELINE
+    ),
+    "async_obtain_images": ModuleMethodContract(
+        family="media-recognition", aggregation=ModuleResultAggregation.PIPELINE
+    ),
     "media_category": ModuleMethodContract(family="media-recognition"),
     "media_exists": ModuleMethodContract(family="media-library"),
     "match_media": ModuleMethodContract(family="media-metadata"),

@@ -114,7 +114,7 @@ class MetadataPorts(CapabilityPorts):
         """
         if mediainfo and mediainfo.type == MediaType.MUSIC:
             return mediainfo
-        return self._dispatch.run_module("obtain_images", mediainfo=mediainfo)
+        return self._dispatch.pipeline("obtain_images", mediainfo)
 
     async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
@@ -124,9 +124,7 @@ class MetadataPorts(CapabilityPorts):
         """
         if mediainfo and mediainfo.type == MediaType.MUSIC:
             return mediainfo
-        return await self._dispatch.async_run_module(
-            "async_obtain_images", mediainfo=mediainfo
-        )
+        return await self._dispatch.async_pipeline("async_obtain_images", mediainfo)
 
     def obtain_specific_image(
             self,

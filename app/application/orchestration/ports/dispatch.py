@@ -39,6 +39,12 @@ class CapabilityDispatch(Protocol):
     async def async_unicast(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """异步在实现该方法的能力族内仲裁单一答案。"""
 
+    def pipeline(self, method: str, initial: Any, *args: Any, **kwargs: Any) -> Any:
+        """在实现该方法的能力族内按提供者顺序接力增强同一产出。"""
+
+    async def async_pipeline(self, method: str, initial: Any, *args: Any, **kwargs: Any) -> Any:
+        """异步在实现该方法的能力族内按提供者顺序接力增强同一产出。"""
+
 
 class ModuleErrorReporter:
     """模块与插件执行异常的告警策略。"""

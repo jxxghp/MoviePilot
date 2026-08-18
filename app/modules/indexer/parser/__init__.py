@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABCMeta, abstractmethod
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 from urllib.parse import urljoin, urlsplit
 
 from requests import Session
@@ -18,7 +18,12 @@ from app.foundation import size as size_tools
 
 # 站点框架
 class SiteSchema(Enum):
-    """站点用户数据解析框架类型"""
+    """
+    已知站点解析框架标识目录。
+
+    供存量站点配置与内建解析器声明使用；新增解析器登记标识不要求在此枚举新增成员，
+    见 app.modules.indexer.parser.registry。
+    """
 
     DiscuzX = "DiscuzX"
     Gazelle = "Gazelle"
@@ -42,13 +47,43 @@ class SiteSchema(Enum):
     SunnyPT = "SunnyPT"
 
 
+# 站点标识到解析器类的登记表，随 SiteParserBase 子类定义自动登记
+PARSER_REGISTRY: Dict[str, Any] = {}
+
+
+def site_parser_identity(parser: Any) -> Optional[str]:
+    """
+    读取站点解析器类声明的站点标识
+
+    :param parser: 站点解析器类，标识取自其 schema 声明
+    :return: 站点标识；未声明标识时为 None
+    """
+    schema = getattr(parser, "schema", None)
+    if not schema:
+        return None
+    identity = getattr(schema, "value", schema)
+    identity = str(identity).strip() if identity is not None else ""
+    return identity or None
+
+
 class SiteParserBase(metaclass=ABCMeta):
     """站点用户数据解析器基类"""
 
-    # 站点模版
+    # 站点模版，取值为 SiteSchema 成员或自由字符串，声明了此标识的子类才会被登记
     schema = None
     # 请求模式 cookie/apikey
     request_mode = "cookie"
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        """
+        子类定义完成后按其声明的 schema 标识登记到站点解析器注册表
+
+        :param kwargs: 转发给父类 __init_subclass__ 的其余参数
+        """
+        super().__init_subclass__(**kwargs)
+        identity = site_parser_identity(cls)
+        if identity:
+            PARSER_REGISTRY[identity] = cls
 
     def __init__(self, site_name: str,
                  url: str,
@@ -171,7 +206,7 @@ class SiteParserBase(metaclass=ABCMeta):
         # 错误信息
         self.err_msg = None
 
-    def site_schema(self) -> SiteSchema:
+    def site_schema(self) -> Optional[Union[SiteSchema, str]]:
         """
         站点解析模型
         :return: 站点解析模型

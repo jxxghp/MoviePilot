@@ -143,6 +143,8 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         """
         运行包含该方法的所有模块，然后返回结果
         当kwargs包含命名参数raise_exception时，如模块方法抛出异常且raise_exception为True，则同步抛出异常
+        该方法是 _PluginBase 冻结契约的一部分，插件经 self.chain 调用；宿主自身按语义改走
+        broadcast/multicast/unicast/pipeline 四个显式原语
 
         :param method: 模块方法名称
         """
@@ -158,6 +160,8 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         异步运行包含该方法的所有模块，然后返回结果
         当kwargs包含命名参数raise_exception时，如模块方法抛出异常且raise_exception为True，则同步抛出异常
         支持异步和同步方法的混合调用
+        该方法是 _PluginBase 冻结契约的一部分，插件经 self.chain 调用；宿主自身按语义改走
+        broadcast/multicast/unicast/pipeline 四个显式原语
 
         :param method: 模块方法名称
         """
@@ -252,6 +256,41 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         :return: 首个非空结果；无人认领时返回 None
         """
         return await self._module_dispatcher.async_unicast(method, *args, **kwargs)
+
+    def pipeline(
+            self,
+            method: str,
+            initial: Any,
+            *args,
+            **kwargs,
+    ) -> Any:
+        """
+        在实现该方法的能力族内按提供者顺序接力，每个提供者在上一个的产出上继续增强
+
+        :param method: 模块方法名称
+        :param initial: 交给第一个提供者的初始产出
+        :return: 全部提供者接力增强后的最终产出；提供者返回空结果时保留上一轮产出
+            继续传给下一个；无提供者时原样返回 initial
+        """
+        return self._module_dispatcher.pipeline(method, initial, *args, **kwargs)
+
+    async def async_pipeline(
+            self,
+            method: str,
+            initial: Any,
+            *args,
+            **kwargs,
+    ) -> Any:
+        """
+        异步在实现该方法的能力族内按提供者顺序接力，逐个增强同一个产出
+        支持异步和同步方法的混合调用
+
+        :param method: 模块方法名称
+        :param initial: 交给第一个提供者的初始产出
+        :return: 全部提供者接力增强后的最终产出；提供者返回空结果时保留上一轮产出
+            继续传给下一个；无提供者时原样返回 initial
+        """
+        return await self._module_dispatcher.async_pipeline(method, initial, *args, **kwargs)
 
     def match_doubaninfo(
             self,

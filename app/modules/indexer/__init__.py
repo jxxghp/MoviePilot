@@ -3,11 +3,11 @@ from typing import List, Optional, Tuple, Union
 
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.db.oper.site import SiteOper
-from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
 from app.runtime.siteresource import site_resource_port
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
+from app.modules.indexer.parser.registry import load_builtin_parsers, resolve_parser_class
 from app.modules.indexer.spider import SiteSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.registry import build_search_kwargs, resolve_spider_class
@@ -24,15 +24,9 @@ class IndexerModule(_ModuleBase):
     索引模块
     """
 
-    _site_schemas = []
-
     def init_module(self) -> None:
-        """加载站点用户数据解析器"""
-        # 加载模块
-        self._site_schemas = ModuleHelper.load(
-            'app.modules.indexer.parser',
-            filter_func=lambda _, obj: hasattr(obj, 'schema') and getattr(obj, 'schema') is not None)
-        pass
+        """导入内建站点解析器，使其按声明的 schema 标识完成登记"""
+        load_builtin_parsers()
 
     @staticmethod
     def get_name() -> str:
@@ -516,18 +510,18 @@ class IndexerModule(_ModuleBase):
             """
             获取站点解析器
             """
-            for site_schema in self._site_schemas:
-                if site_schema.schema and site_schema.schema.value == site.get("schema"):
-                    return site_schema(
-                        site_name=site.get("name"),
-                        url=site.get("url"),
-                        site_cookie=site.get("cookie"),
-                        apikey=site.get("apikey"),
-                        token=site.get("token"),
-                        ua=site.get("ua"),
-                        proxy=site.get("proxy"),
-                        api_url=site.get("api_url"))
-            return None
+            parser_cls = resolve_parser_class(site.get("schema"))
+            if not parser_cls:
+                return None
+            return parser_cls(
+                site_name=site.get("name"),
+                url=site.get("url"),
+                site_cookie=site.get("cookie"),
+                apikey=site.get("apikey"),
+                token=site.get("token"),
+                ua=site.get("ua"),
+                proxy=site.get("proxy"),
+                api_url=site.get("api_url"))
 
         site_obj = __get_site_obj()
         if not site_obj:

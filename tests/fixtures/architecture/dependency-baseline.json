@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6231,
-  "edge_sha256": "ea5d75570d07358d5166d023fe5f12ee572a3157274dc517f9ec3249d464f918",
+  "edge_count": 6234,
+  "edge_sha256": "dd18345cef41a577884d39689d8ee9503527ae9855896fb3cd8f8b2416c68495",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -4194,10 +4194,10 @@
     "app.modules.indexer -> app.domain.context",
     "app.modules.indexer -> app.domain.site",
     "app.modules.indexer -> app.foundation",
-    "app.modules.indexer -> app.foundation.reflection",
     "app.modules.indexer -> app.foundation.text",
     "app.modules.indexer -> app.modules",
     "app.modules.indexer -> app.modules.indexer.parser",
+    "app.modules.indexer -> app.modules.indexer.parser.registry",
     "app.modules.indexer -> app.modules.indexer.spider",
     "app.modules.indexer -> app.modules.indexer.spider.mtorrent",
     "app.modules.indexer -> app.modules.indexer.spider.registry",
@@ -4314,6 +4314,9 @@
     "app.modules.indexer.parser.nexus_rabbit -> app.modules.indexer.parser",
     "app.modules.indexer.parser.nexus_rabbit -> app.runtime",
     "app.modules.indexer.parser.nexus_rabbit -> app.runtime.log",
+    "app.modules.indexer.parser.registry -> app.modules",
+    "app.modules.indexer.parser.registry -> app.modules.indexer",
+    "app.modules.indexer.parser.registry -> app.modules.indexer.parser",
     "app.modules.indexer.parser.rousi -> app.adapters",
     "app.modules.indexer.parser.rousi -> app.adapters.network",
     "app.modules.indexer.parser.rousi -> app.adapters.network.http",
@@ -6299,7 +6302,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 749,
+  "module_count": 750,
   "modules": [
     "app",
     "app.adapters",
@@ -6771,6 +6774,7 @@
     "app.modules.indexer.parser.nexus_php",
     "app.modules.indexer.parser.nexus_project",
     "app.modules.indexer.parser.nexus_rabbit",
+    "app.modules.indexer.parser.registry",
     "app.modules.indexer.parser.rousi",
     "app.modules.indexer.parser.small_horse",
     "app.modules.indexer.parser.sunnypt",
@@ -7084,6 +7088,7 @@
     ],
     [
       "app.modules.indexer",
+      "app.modules.indexer.parser.registry",
       "app.modules.indexer.spider.registry"
     ],
     [

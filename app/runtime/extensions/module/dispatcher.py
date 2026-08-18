@@ -205,6 +205,42 @@ class ModuleInvocationDispatcher:
                 return result
         return None
 
+    def pipeline(self, method: str, initial: Any, *args: Any, **kwargs: Any) -> Any:
+        """在能力族内按提供者顺序接力，每个提供者在上一个的产出上继续增强。
+
+        :param method: 模块方法名称
+        :param initial: 交给第一个提供者的初始产出
+        :param args: 每次调用都附加在产出之后透传给提供者的位置参数
+        :param kwargs: 每次调用都透传给提供者的命名参数
+        :return: 全部提供者接力增强后的最终产出；提供者返回空结果时保留上一轮产出
+            继续传给下一个；无提供者时原样返回 ``initial``
+        """
+        result = initial
+        for provider in self._answer_providers(method):
+            enhanced = self._invoke(provider, method, result, *args, **kwargs)
+            if not self.is_valid_empty(enhanced):
+                result = enhanced
+        return result
+
+    async def async_pipeline(
+        self, method: str, initial: Any, *args: Any, **kwargs: Any
+    ) -> Any:
+        """以管道语义接力执行同步或异步提供者，逐个增强同一个产出。
+
+        :param method: 模块方法名称
+        :param initial: 交给第一个提供者的初始产出
+        :param args: 每次调用都附加在产出之后透传给提供者的位置参数
+        :param kwargs: 每次调用都透传给提供者的命名参数
+        :return: 全部提供者接力增强后的最终产出；提供者返回空结果时保留上一轮产出
+            继续传给下一个；无提供者时原样返回 ``initial``
+        """
+        result = initial
+        for provider in self._answer_providers(method):
+            enhanced = await self._async_invoke(provider, method, result, *args, **kwargs)
+            if not self.is_valid_empty(enhanced):
+                result = enhanced
+        return result
+
     @staticmethod
     def _log_contract(method: str) -> None:
         """记录方法命中的能力族契约。

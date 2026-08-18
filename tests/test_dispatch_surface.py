@@ -22,6 +22,7 @@ _DISPATCH_METHOD_NAMES = frozenset({
     "unicast", "async_unicast",
     "multicast", "async_multicast",
     "broadcast", "async_broadcast",
+    "pipeline", "async_pipeline",
     "run_module", "async_run_module",
 })
 

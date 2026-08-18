@@ -15,16 +15,26 @@ RUNTIME_BASELINE = (
     Path(__file__).parent / "fixtures" / "architecture" / "runtime-contract-baseline.json"
 )
 
+# 图片获取是累积管道：Fanart、TheMovieDb、Douban 按优先级依次在同一个产出上继续富化。
+_PIPELINE_METHODS = frozenset({"obtain_images", "async_obtain_images"})
 
-def test_all_scanned_module_methods_resolve_a_contract() -> None:
-    """架构快照中的所有字符串方法都必须能解析到稳定聚合规则。"""
+
+def test_host_no_longer_dispatches_through_aggregation() -> None:
+    """宿主的四个显式分发原语覆盖全部语义，聚合分发只服务插件生态。
+
+    聚合分发用一套歧义协议兼顾通知、收集、仲裁与管道四种需求，调用方无法表达意图。
+    宿主一旦出现新的聚合调用，快照即记录在案，此处随之变红。
+    """
     payload = json.loads(RUNTIME_BASELINE.read_text(encoding="utf-8"))
-    methods = payload["run_module"]["methods"]
 
-    assert methods
-    for method in methods:
+    assert payload["run_module"]["methods"] == {}
+
+
+def test_pipeline_methods_declare_pipeline_aggregation() -> None:
+    """累积管道方法必须声明管道语义，不能退回未分类聚合。"""
+    for method in _PIPELINE_METHODS:
         contract = get_module_method_contract(method)
-        assert contract.aggregation is ModuleResultAggregation.LEGACY
+        assert contract.aggregation is ModuleResultAggregation.PIPELINE
         assert contract.plugin_short_circuit is True
 
 

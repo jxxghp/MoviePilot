@@ -2247,11 +2247,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.ports.dispatch",
-            "line": 68
+            "line": 74
           },
           {
             "caller": "app.application.orchestration.ports.dispatch",
-            "line": 94
+            "line": 100
           },
           {
             "caller": "app.runtime.events",
@@ -2317,26 +2317,11 @@
     "producer_count": 68
   },
   "run_module": {
-    "call_count": 2,
+    "call_count": 0,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 2,
-    "methods": {
-      "async_obtain_images": [
-        {
-          "caller": "app.application.orchestration.ports.metadata",
-          "line": 127,
-          "mode": "async"
-        }
-      ],
-      "obtain_images": [
-        {
-          "caller": "app.application.orchestration.ports.metadata",
-          "line": 117,
-          "mode": "sync"
-        }
-      ]
-    }
+    "method_count": 0,
+    "methods": {}
   },
   "schema_version": 1,
   "sdk_exports": {
