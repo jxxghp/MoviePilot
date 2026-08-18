@@ -7,6 +7,7 @@ from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.adapters.media.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
+from app.runtime.directories import directory_config_port
 from app.modules.filemanager import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import FileItem, TransferDirectoryConf
@@ -86,9 +87,10 @@ def test_media_files_uses_music_template_root_and_only_returns_audio():
         library_storage="local",
     )
 
-    with patch(
-        "app.modules.filemanager.DirectoryHelper.get_library_dirs",
-        return_value=[directory],
+    with patch.object(
+        directory_config_port,
+        "resolve",
+        return_value=SimpleNamespace(get_library_dirs=lambda: [directory]),
     ), patch(
         "app.modules.filemanager.transhandler.eventmanager.send_event",
         return_value=None,

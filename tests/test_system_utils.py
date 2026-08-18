@@ -5,6 +5,7 @@ import struct
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
@@ -576,11 +577,13 @@ def test_local_storage_usage_forwards_btrfs_fsid_setting():
 
     download_dir = MagicMock(download_path="/downloads")
     library_dir = MagicMock(library_path="/library")
+    directory_config = SimpleNamespace(
+        get_local_download_dirs=lambda: [download_dir],
+        get_local_library_dirs=lambda: [library_dir],
+    )
     with patch.object(local_storage_module.settings, "BTRFS_FSID_DEDUP", True), \
-            patch.object(local_storage_module.DirectoryHelper, "get_local_download_dirs",
-                         return_value=[download_dir]), \
-            patch.object(local_storage_module.DirectoryHelper, "get_local_library_dirs",
-                         return_value=[library_dir]), \
+            patch.object(local_storage_module.directory_config_port, "resolve",
+                         return_value=directory_config), \
             patch.object(SystemUtils, "space_usage", return_value=(4.0, 2.0)) as usage_mock:
         usage = object.__new__(local_storage_module.LocalStorage).usage()
 

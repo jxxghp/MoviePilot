@@ -155,7 +155,7 @@ class NettestSecurityTest(unittest.TestCase):
             "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
             ["198.18.0.0/15"],
         ), patch(
-            "app.application.security.url.logger.debug",
+            "app.adapters.network.urlsafety.logger.debug",
         ):
             resp = asyncio.run(
                 system_endpoint.fetch_image(

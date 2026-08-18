@@ -22,7 +22,7 @@ from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
 from app.domain.media import normalize_music_type
 from app.schemas.media import resolve_media_identity
-from app.application.security.url import SecurityUtils
+from app.adapters.network.urlsafety import SecurityUtils
 
 router = ResponseAPIRouter()
 

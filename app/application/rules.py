@@ -4,7 +4,7 @@
 """
 
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from pyparsing import Forward, Literal, Word, alphas, infix_notation, opAssoc, alphanums, Combine, nums, ParseResults
 
@@ -294,6 +294,33 @@ class _RustParseResults(list):
         返回兼容 pyparsing.ParseResults.asList 的列表结构。
         """
         return self.as_list()
+
+
+class RuleExpressionService:
+    """内置规则集查询与规则表达式解析，供扩展模块经端口注入消费。"""
+
+    @staticmethod
+    def get_builtin_rule_set() -> Dict[str, dict]:
+        """
+        返回内置过滤规则定义。
+
+        返回:
+        内置规则名称到规则定义的映射
+        """
+        return BUILTIN_RULE_SET
+
+    @staticmethod
+    def parse_rule_group(rule_group: str) -> Union[list, str]:
+        """
+        解析单个优先级层级表达式。
+
+        参数:
+        rule_group -- 单层规则表达式
+
+        返回:
+        布尔组合结构（列表）或单条规则名称（字符串）
+        """
+        return RuleParser().parse(rule_group).as_list()[0]
 
 
 if __name__ == '__main__':

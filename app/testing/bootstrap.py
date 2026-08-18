@@ -188,6 +188,10 @@ def prepare_backend() -> None:
     # 导入即向 application.agent 门面注册惰性 provider，不物化 Agent 实现；
     # 直接构造 SkillInteractionHandler 等门面消费方的单测依赖该注册先完成。
     import app.startup.agent_initializer  # noqa: F401
+    # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于扩展被 import 完成注入
+    # （测试直接 import 扩展模块，不经过 ModuleManager，注册须在此显式补齐）。
+    from app.startup.hostport_initializer import configure_host_ports
+    configure_host_ports()
 
 
 def prepare_v2_backend(plugins_repo: Path) -> None:

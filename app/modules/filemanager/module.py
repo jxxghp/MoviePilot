@@ -6,11 +6,11 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.directory import DirectoryHelper
-from app.application.messaging.message import MessageHelper
 from app.foundation.reflection import ModuleHelper
+from app.runtime.directories import directory_config_port
 from app.runtime.log import logger
 from app.modules import _ModuleBase
+from app.modules.filemanager.mediaroot import get_media_root_path
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.transfer import TransferInfo
@@ -31,11 +31,6 @@ class FileManagerModule(_ModuleBase):
 
     _storage_schemas = []
     _support_storages = []
-
-    def __init__(self):
-        super().__init__()
-        self.directoryhelper = DirectoryHelper()
-        self.messagehelper = MessageHelper()
 
     def init_module(self) -> None:
         """初始化文件整理模块支持的存储实现"""
@@ -80,7 +75,7 @@ class FileManagerModule(_ModuleBase):
         测试模块连接性
         """
         # 检查目录
-        dirs = self.directoryhelper.get_dirs()
+        dirs = directory_config_port.resolve().get_dirs()
         if not dirs:
             return False, "未设置任何目录"
         for d in dirs:
@@ -619,7 +614,7 @@ class FileManagerModule(_ModuleBase):
         handler = TransHandler()
         ret_fileitems = []
         # 检查本地媒体库
-        dest_dirs = DirectoryHelper().get_library_dirs()
+        dest_dirs = directory_config_port.resolve().get_library_dirs()
         # 检查每一个媒体库目录
         for dest_dir in dest_dirs:
             # 存储
@@ -640,7 +635,7 @@ class FileManagerModule(_ModuleBase):
                                                     mediainfo=mediainfo)
             )
             # 获取重命名后的媒体文件根路径
-            media_path = DirectoryHelper.get_media_root_path(
+            media_path = get_media_root_path(
                 rename_format,
                 rename_path=target_path,
                 media_type=mediainfo.type,

@@ -2,7 +2,7 @@ import socket
 from unittest import TestCase
 from unittest.mock import patch
 
-from app.application.security.url import (
+from app.adapters.network.urlsafety import (
     SecurityUtils,
     UrlSafetyDiagnosis,
     UrlSafetyReason,
@@ -69,14 +69,14 @@ class SecurityUtilsTest(TestCase):
         url = "http://192.168.1.50:8096/Items/abc/Images/Primary"
 
         with patch(
-            "app.application.security.url.settings.RESOURCE_SECRET_KEY",
+            "app.adapters.network.urlsafety.settings.RESOURCE_SECRET_KEY",
             "old-secret-value-aaaaaaaaaaaaaaaaaaaaaaaa",
         ):
             signed_url = SecurityUtils.sign_url(url)
             self.assertEqual(SecurityUtils.verify_signed_url(signed_url), url)
 
         with patch(
-            "app.application.security.url.settings.RESOURCE_SECRET_KEY",
+            "app.adapters.network.urlsafety.settings.RESOURCE_SECRET_KEY",
             "new-secret-value-bbbbbbbbbbbbbbbbbbbbbbbb",
         ):
             self.assertIsNone(SecurityUtils.verify_signed_url(signed_url))
@@ -120,7 +120,7 @@ class SecurityUtilsTest(TestCase):
         主机名解析到回环地址时必须拒绝，防止通过域名绕过内网地址拦截。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -144,7 +144,7 @@ class SecurityUtilsTest(TestCase):
         同一域名只要存在任一非公网解析结果，就不能作为图片代理目标。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -175,7 +175,7 @@ class SecurityUtilsTest(TestCase):
         域名解析结果全部为公网地址且命中 allowlist 时继续允许访问。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -199,7 +199,7 @@ class SecurityUtilsTest(TestCase):
         SSRF 防护无法确认目标地址时按失败处理，避免解析异常时继续请求。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             side_effect=socket.gaierror,
         ):
             self.assertFalse(
@@ -215,7 +215,7 @@ class SecurityUtilsTest(TestCase):
         图片域名命中 allowlist 后，可通过配置允许 TUN fake-ip 等特定非公网网段。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -225,7 +225,7 @@ class SecurityUtilsTest(TestCase):
                     ("198.18.16.96", 0),
                 )
             ],
-        ), patch("app.application.security.url.logger.debug") as debug_log:
+        ), patch("app.adapters.network.urlsafety.logger.debug") as debug_log:
             self.assertTrue(
                 SecurityUtils.is_safe_url(
                     "https://img1.doubanio.com/poster.webp",
@@ -243,7 +243,7 @@ class SecurityUtilsTest(TestCase):
         非公网网段例外必须依附域名白名单，不能单独放行任意用户 URL。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -268,7 +268,7 @@ class SecurityUtilsTest(TestCase):
         仅允许显式配置的非公网网段，其它内网解析结果仍按 SSRF 风险拦截。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -293,7 +293,7 @@ class SecurityUtilsTest(TestCase):
         同一域名的解析结果必须全部落在允许网段内，避免部分安全结果掩盖风险地址。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -358,7 +358,7 @@ class SecurityUtilsTest(TestCase):
 
         # 先用同步路径预热缓存
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -425,10 +425,10 @@ class SecurityUtilsTest(TestCase):
         """
         DNS 解析失败应回填负向缓存，避免短期内对同一目标反复触发 `getaddrinfo`。
         """
-        from app.application.security.url import _dns_negative_cache as neg_cache
+        from app.adapters.network.urlsafety import _dns_negative_cache as neg_cache
 
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             side_effect=socket.gaierror,
         ) as mock_resolve:
             self.assertFalse(
@@ -458,13 +458,13 @@ class SecurityUtilsTest(TestCase):
         """
         URL 中的字面量 IP 走快路径，不应进入 DNS 缓存或触发 `getaddrinfo`。
         """
-        from app.application.security.url import (
+        from app.adapters.network.urlsafety import (
             _dns_negative_cache as neg_cache,
             _dns_positive_cache as pos_cache,
         )
 
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             side_effect=AssertionError("字面量 IP 不应触发 getaddrinfo"),
         ):
             self.assertFalse(
@@ -548,7 +548,7 @@ class SecurityUtilsTest(TestCase):
         import threading
 
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (
                     socket.AF_INET,
@@ -718,7 +718,7 @@ class UrlSafetyDiagnosisTest(TestCase):
         未启用 block_private 时直接放行，不发起 DNS 解析，ips 保持为空。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             side_effect=AssertionError("不应触发 DNS 解析"),
         ):
             diag = SecurityUtils.evaluate_url_safety(
@@ -737,7 +737,7 @@ class UrlSafetyDiagnosisTest(TestCase):
         附带 host 便于排查但不携带 ips。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             side_effect=socket.gaierror,
         ):
             diag = SecurityUtils.evaluate_url_safety(
@@ -757,7 +757,7 @@ class UrlSafetyDiagnosisTest(TestCase):
         NON_GLOBAL_DNS_RESULT 并把解析到的 IP 列出来，供日志附带 fake-ip 提示。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
             ],
@@ -781,7 +781,7 @@ class UrlSafetyDiagnosisTest(TestCase):
         允许网段"场景混淆。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.8", 0)),
@@ -806,7 +806,7 @@ class UrlSafetyDiagnosisTest(TestCase):
         网段填入诊断对象，便于排查日志确认放行依据。
         """
         with patch(
-            "app.application.security.url.socket.getaddrinfo",
+            "app.adapters.network.urlsafety.socket.getaddrinfo",
             return_value=[
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.16.96", 0)),
             ],

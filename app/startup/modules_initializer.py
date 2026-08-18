@@ -55,6 +55,7 @@ from app.application.chain.context import (
     configure_chain_runtime_context_provider,
 )
 from app.runtime.extensions.service_config import configure_service_config_reader
+from app.startup.hostport_initializer import configure_host_ports
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -320,6 +321,8 @@ async def init_modules():
     """
     启动模块
     """
+    # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于模块加载完成注入。
+    configure_host_ports()
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     configure_runtime_data_providers()
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。

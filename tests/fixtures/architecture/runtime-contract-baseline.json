@@ -1184,6 +1184,30 @@
         "line": 465
       },
       {
+        "caller": "app.startup.hostport_initializer",
+        "line": 63
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 64
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 65
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 66
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 67
+      },
+      {
+        "caller": "app.startup.hostport_initializer",
+        "line": 68
+      },
+      {
         "caller": "app.testing.bootstrap",
         "line": 111
       },
@@ -3529,7 +3553,7 @@
       {
         "kind": "import",
         "name": "SecurityUtils",
-        "target": "app.application.security.url.SecurityUtils"
+        "target": "app.adapters.network.urlsafety.SecurityUtils"
       },
       {
         "kind": "import",

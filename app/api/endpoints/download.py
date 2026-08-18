@@ -34,7 +34,7 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 from app.domain.media import is_music_media_source, normalize_music_type
-from app.application.security.url import SecurityUtils
+from app.adapters.network.urlsafety import SecurityUtils
 
 router = ResponseAPIRouter()
 

@@ -12,7 +12,7 @@ from app.schemas.mediaserver import MediaServerItem
 from app.schemas.mediaserver import MediaServerSeasonInfo
 from app.schemas.mediaserver import MediaServerPlayItem
 from app.schemas.types import MediaType
-from app.application.security.url import SecurityUtils
+from app.adapters.network.urlsafety import SecurityUtils
 
 lock = threading.Lock()
 

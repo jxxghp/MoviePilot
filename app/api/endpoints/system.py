@@ -63,7 +63,7 @@ from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
-from app.application.security.url import SecurityUtils
+from app.adapters.network.urlsafety import SecurityUtils
 from app.foundation.url import UrlUtils
 from version import APP_VERSION
 

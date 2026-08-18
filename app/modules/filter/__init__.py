@@ -5,11 +5,10 @@ from typing import List, Tuple, Union, Dict, Optional
 
 from app.domain.context import TorrentInfo, MediaInfo
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
-from app.application.rules import RuleHelper
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.application.rules import RuleParser
-from app.application.rules import BUILTIN_RULE_SET
+from app.runtime.filterrules import filter_rule_group_port
+from app.runtime.ruleexpression import RuleExpressionProvider, rule_expression_port
 from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
 from app.foundation import size as size_tools
@@ -72,8 +71,8 @@ class FilterModule(_ModuleBase):
         SystemConfigKey.Customization.value,
     }
 
-    # 保留一份只读内置规则定义，方便查询工具准确区分“内置规则”和“自定义规则”。
-    builtin_rule_set: Dict[str, dict] = deepcopy(BUILTIN_RULE_SET)
+    # 内置规则的只读快照，由 init_module 写入，方便查询工具区分内置规则与自定义规则。
+    builtin_rule_set: Dict[str, dict] = {}
     # 运行期规则集 = 内置规则 + 自定义规则覆盖。
     rule_set: Dict[str, dict] = {}
 
@@ -82,13 +81,14 @@ class FilterModule(_ModuleBase):
         初始化过滤器模块依赖的规则仓库。
         """
         super().__init__()
-        self.rulehelper = RuleHelper()
+        self.rulehelper = filter_rule_group_port.resolve()
 
     def init_module(self) -> None:
         """
         初始化过滤规则集，合并内置规则和用户自定义规则。
         """
         # 每次重载都先恢复为纯内置规则，避免旧的自定义规则残留在内存里。
+        self.builtin_rule_set = deepcopy(rule_expression_port.resolve().get_builtin_rule_set())
         self.rule_set = deepcopy(self.builtin_rule_set)
         self.__init_custom_rules()
 
@@ -212,7 +212,7 @@ class FilterModule(_ModuleBase):
         使用 Python 旧路径过滤种子，供 Rust 加速关闭或不可用时兜底。
         """
         ret_torrents = torrent_list
-        parser = RuleParser()
+        parser = rule_expression_port.resolve()
         parsed_rule_cache = {}
         for group in groups:
             rule_string = group.get("rule_string")
@@ -245,7 +245,7 @@ class FilterModule(_ModuleBase):
     def __filter_torrents(self, rule_string: str, rule_name: str,
                           torrent_list: List[TorrentInfo],
                           mediainfo: MediaInfo,
-                          parser: RuleParser,
+                          parser: RuleExpressionProvider,
                           parsed_rule_cache: Dict[str, Union[list, str]]) -> List[TorrentInfo]:
         """
         过滤种子
@@ -267,7 +267,7 @@ class FilterModule(_ModuleBase):
         return ret_torrents
 
     def __get_order(self, torrent: TorrentInfo, rule_groups: List[str],
-                    mediainfo: MediaInfo, parser: RuleParser,
+                    mediainfo: MediaInfo, parser: RuleExpressionProvider,
                     parsed_rule_cache: Dict[str, Union[list, str]]) -> Optional[TorrentInfo]:
         """
         获取种子匹配的规则优先级，值越大越优先，未匹配时返回None
@@ -292,14 +292,14 @@ class FilterModule(_ModuleBase):
         return None if not matched else torrent
 
     @staticmethod
-    def __parse_rule_group(rule_group: str, parser: RuleParser,
+    def __parse_rule_group(rule_group: str, parser: RuleExpressionProvider,
                            parsed_rule_cache: Dict[str, Union[list, str]]) -> Union[list, str]:
         """
         解析单个优先级层级。
         缓存粒度放在层级表达式上，兼容多个规则组复用相同表达式的情况。
         """
         if rule_group not in parsed_rule_cache:
-            parsed_rule_cache[rule_group] = parser.parse(rule_group).as_list()[0]
+            parsed_rule_cache[rule_group] = parser.parse_rule_group(rule_group)
         return parsed_rule_cache[rule_group]
 
     def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str],

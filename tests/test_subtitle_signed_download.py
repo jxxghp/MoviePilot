@@ -6,7 +6,7 @@ import app.api.endpoints.download as download_endpoint
 import app.api.endpoints.search as search_endpoint
 from app import schemas
 from app.domain.context import SubtitleInfo
-from app.application.security.url import SecurityUtils
+from app.adapters.network.urlsafety import SecurityUtils
 
 
 SUBTITLE_SITE_ID = 1001

@@ -4,8 +4,8 @@ from typing import List, Optional, Tuple, Union
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.db.oper.site import SiteOper
 from app.foundation.reflection import ModuleHelper
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.runtime.log import logger
+from app.runtime.siteresource import site_resource_port
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider import SiteSpider
@@ -68,7 +68,7 @@ class IndexerModule(_ModuleBase):
         """
         测试模块连接性
         """
-        sites = SitesHelper().get_indexers()
+        sites = site_resource_port.resolve().get_indexers()
         if not sites:
             return False, "未配置站点或未通过用户认证"
         return True, ""
@@ -89,7 +89,7 @@ class IndexerModule(_ModuleBase):
         site = SiteOper().get(torrent.site)
         if not site:
             return None
-        indexer = SitesHelper().get_indexer(site.domain)
+        indexer = site_resource_port.resolve().get_indexer(site.domain)
         if not indexer:
             return None
         if indexer.get("parser") == "mTorrent":
@@ -113,7 +113,7 @@ class IndexerModule(_ModuleBase):
             return False
 
         # 站点流控
-        state, msg = SitesHelper().check(site_rules.extract_domain(site.get("domain")))
+        state, msg = site_resource_port.resolve().check(site_rules.extract_domain(site.get("domain")))
         if state:
             logger.warn(msg)
             return False

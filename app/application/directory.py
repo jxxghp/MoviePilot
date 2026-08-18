@@ -5,12 +5,12 @@ from typing import List, Optional, Tuple
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.domain.context import MediaInfo
+from app.domain.mediapath import resolve_media_root_path
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
 from app.adapters.system.host import SystemUtils
 
-JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
 WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
 
@@ -181,50 +181,12 @@ class DirectoryHelper:
         :param media_type: 媒体类型；音乐需要避开可选碟片目录并返回专辑目录
         :return: 媒体文件根路径
         """
-        if not rename_format:
-            logger.error("重命名格式不能为空")
-            return None
-        if media_type == MediaType.MUSIC:
-            # 音乐模板允许按多碟动态增加 Disc 子目录，不能按静态模板层数反推。
-            # 文件的直接父目录通常就是专辑目录；命中碟片目录时再上移一级。
-            media_root = rename_path.parent
-            if re.fullmatch(
-                    r"(?:cd|disc|disk)\s*0*\d+",
-                    media_root.name,
-                    re.IGNORECASE,
-            ):
-                media_root = media_root.parent
-            return media_root
-        # 计算重命名中的文件夹层数
-        rename_list = rename_format.split("/")
-        rename_format_level = len(rename_list) - 1
-        # 反向查找标题参数所在层
-        for level, name in enumerate(reversed(rename_list)):
-            if level == 0:
-                # 跳过文件名的标题参数
-                continue
-            matchs = JINJA2_VAR_PATTERN.findall(name)
-            if not matchs:
-                continue
-            # 处理特例，有的人重命名的第一层是年份、分辨率
-            if (any("title" in m for m in matchs)
-                and not any("season" in m for m in matchs)):
-                # 找出最后一层含有标题且不含季参数的目录作为媒体根目录
-                rename_format_level = level
-                break
-        else:
-            # 假定第一层目录是媒体根目录
-            logger.warn(f"重命名格式 {rename_format} 缺少标题目录")
-        if rename_format_level > len(rename_path.parents):
-            # 通常因为路径以/结尾，被Path规范化删除了
-            logger.error(f"路径 {rename_path} 不匹配重命名格式 {rename_format}")
-            return None
-        if rename_format_level <= 0:
-            # 所有媒体文件都存在一个目录内的特殊需求
-            rename_format_level = 1
-        # 媒体根路径
-        media_root = rename_path.parents[rename_format_level - 1]
-        return media_root
+        result = resolve_media_root_path(rename_format, rename_path, media_type)
+        if result.warning:
+            logger.warn(result.warning)
+        if result.error:
+            logger.error(result.error)
+        return result.path
 
 
 def _split_file_uri(value: str) -> Tuple[str, str]:

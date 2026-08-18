@@ -14,8 +14,8 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from app.runtime.coalesce import EventCoalescer
-from app.application.security import url as security_module
-from app.application.security.url import (
+from app.adapters.network import urlsafety as security_module
+from app.adapters.network.urlsafety import (
     SecurityUtils,
     UrlSafetyDiagnosis,
     UrlSafetyReason,

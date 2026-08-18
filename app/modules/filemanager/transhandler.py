@@ -11,9 +11,9 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
 from app.adapters.media.audio import AudioMetadataHelper
-from app.application.directory import DirectoryHelper
-from app.application.messaging.message import TemplateHelper
 from app.runtime.log import logger
+from app.runtime.naming import naming_context_port
+from app.modules.filemanager.mediaroot import get_media_root_path
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.transfer import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
@@ -263,7 +263,7 @@ class TransHandler:
                             meta=in_meta,
                         )
                     else:
-                        new_path = DirectoryHelper.get_media_root_path(
+                        new_path = get_media_root_path(
                             rename_format,
                             rename_path=rendered_path,
                             media_type=mediainfo.type,
@@ -400,7 +400,7 @@ class TransHandler:
                         new_file = self.__rename_subtitles(fileitem, new_file)
 
                     # 文件目录
-                    folder_path = DirectoryHelper.get_media_root_path(
+                    folder_path = get_media_root_path(
                         rename_format,
                         rename_path=new_file,
                         media_type=mediainfo.type,
@@ -1222,7 +1222,7 @@ class TransHandler:
         :param file_ext: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         """
-        naming_context = TemplateHelper().builder.build(
+        naming_context = naming_context_port.resolve().build_naming_context(
             meta=meta,
             mediainfo=mediainfo,
             file_extension=file_ext,

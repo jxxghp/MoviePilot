@@ -651,6 +651,35 @@ class TemplateHelper(metaclass=SingletonClass):
             self.cache.close()
 
 
+class NamingContextService:
+    """
+    媒体命名变量上下文构建服务
+    """
+
+    @staticmethod
+    def build_naming_context(
+            meta: Optional[MetaBase] = None,
+            mediainfo: Optional[MediaInfo] = None,
+            file_extension: Optional[str] = None,
+            episodes_info: Optional[List[TmdbEpisode]] = None,
+    ) -> Dict[str, Any]:
+        """
+        构建重命名可用的命名变量上下文。
+
+        :param meta: 文件元数据
+        :param mediainfo: 识别的媒体信息
+        :param file_extension: 文件扩展名
+        :param episodes_info: 当前季的全部集信息
+        :return: 命名变量上下文字典
+        """
+        return TemplateHelper().builder.build(
+            meta=meta,
+            mediainfo=mediainfo,
+            file_extension=file_extension,
+            episodes_info=episodes_info,
+        )
+
+
 class MessageTemplateHelper:
     """
     消息模板渲染器

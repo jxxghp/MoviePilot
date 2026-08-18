@@ -286,7 +286,7 @@ class TransferJobManagerTest(unittest.TestCase):
         with patch.object(
                 TransHandler, "get_rename_path", return_value=target_file
         ), patch(
-                "app.modules.filemanager.transhandler.DirectoryHelper.get_media_root_path",
+                "app.modules.filemanager.transhandler.get_media_root_path",
                 return_value=Path("/library"),
         ), patch.object(
                 TransHandler,
@@ -358,7 +358,7 @@ class TransferJobManagerTest(unittest.TestCase):
         with patch.object(
                 TransHandler, "get_rename_path", return_value=target_file
         ), patch(
-                "app.modules.filemanager.transhandler.DirectoryHelper.get_media_root_path",
+                "app.modules.filemanager.transhandler.get_media_root_path",
                 return_value=Path("/library"),
         ), patch.object(
                 TransHandler,
