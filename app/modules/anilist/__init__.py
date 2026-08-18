@@ -825,3 +825,53 @@ class AniListModule(_ModuleBase):
         if method_name is None:
             return None
         return await getattr(self, f"async_{method_name}")(page=page, count=count)
+
+    def media_detail(self, source: Optional[MediaSource] = None,
+                      media_id: Any = None,
+                      mtype: Optional[MediaType] = None,
+                      season: Optional[int] = None,
+                      raise_exception: bool = False,
+                      **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情
+        :param source: 媒体来源，非AniList来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持
+        :param season: 本源不支持
+        :param raise_exception: 本源不支持
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        if media_id is None:
+            return None
+        try:
+            anilist_id = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return self.anilist_info(anilist_id=anilist_id)
+
+    async def async_media_detail(self, source: Optional[MediaSource] = None,
+                                  media_id: Any = None,
+                                  mtype: Optional[MediaType] = None,
+                                  season: Optional[int] = None,
+                                  raise_exception: bool = False,
+                                  **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情（异步版本）
+        :param source: 媒体来源，非AniList来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 本源不支持
+        :param season: 本源不支持
+        :param raise_exception: 本源不支持
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.AniList:
+            return None
+        if media_id is None:
+            return None
+        try:
+            anilist_id = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return await self.async_anilist_info(anilist_id=anilist_id)

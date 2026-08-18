@@ -170,8 +170,9 @@ class MetadataPorts(CapabilityPorts):
         :param raise_exception: 触发速率限制时是否抛出异常
         """
         return self._dispatch.unicast(
-            "douban_info",
-            doubanid=doubanid,
+            "media_detail",
+            source=MediaSource.Douban,
+            media_id=doubanid,
             mtype=mtype,
             raise_exception=raise_exception,
         )
@@ -190,8 +191,9 @@ class MetadataPorts(CapabilityPorts):
         :param raise_exception: 触发速率限制时是否抛出异常
         """
         return await self._dispatch.async_unicast(
-            "async_douban_info",
-            doubanid=doubanid,
+            "async_media_detail",
+            source=MediaSource.Douban,
+            media_id=doubanid,
             mtype=mtype,
             raise_exception=raise_exception,
         )
@@ -202,7 +204,7 @@ class MetadataPorts(CapabilityPorts):
         :param tvdbid: int
         :return: TVDB信息
         """
-        return self._dispatch.unicast("tvdb_info", tvdbid=tvdbid)
+        return self._dispatch.unicast("media_detail", source=MediaSource.TVDB, media_id=tvdbid)
 
     def tvdb_slug(self, tvdbid: int) -> Optional[str]:
         """
@@ -223,7 +225,7 @@ class MetadataPorts(CapabilityPorts):
         :return: TVDB信息
         """
         return self._dispatch.unicast(
-            "tmdb_info", tmdbid=tmdbid, mtype=mtype, season=season
+            "media_detail", source=MediaSource.TMDB, media_id=tmdbid, mtype=mtype, season=season
         )
 
     async def async_tmdb_info(
@@ -237,7 +239,7 @@ class MetadataPorts(CapabilityPorts):
         :return: TVDB信息
         """
         return await self._dispatch.async_unicast(
-            "async_tmdb_info", tmdbid=tmdbid, mtype=mtype, season=season
+            "async_media_detail", source=MediaSource.TMDB, media_id=tmdbid, mtype=mtype, season=season
         )
 
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
@@ -246,7 +248,7 @@ class MetadataPorts(CapabilityPorts):
         :param bangumiid: int
         :return: Bangumi信息
         """
-        return self._dispatch.unicast("bangumi_info", bangumiid=bangumiid)
+        return self._dispatch.unicast("media_detail", source=MediaSource.Bangumi, media_id=bangumiid)
 
     async def async_bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
@@ -255,7 +257,7 @@ class MetadataPorts(CapabilityPorts):
         :return: Bangumi信息
         """
         return await self._dispatch.async_unicast(
-            "async_bangumi_info", bangumiid=bangumiid
+            "async_media_detail", source=MediaSource.Bangumi, media_id=bangumiid
         )
 
     def metadata_img(

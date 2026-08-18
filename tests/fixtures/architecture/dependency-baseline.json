@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6228,
-  "edge_sha256": "45b02ad0ebfb8b262599d38f0127aa5faaaca1eb9654166ba8678c6de23c04c7",
+  "edge_count": 6231,
+  "edge_sha256": "ea5d75570d07358d5166d023fe5f12ee572a3157274dc517f9ec3249d464f918",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5122,6 +5122,9 @@
     "app.modules.thetvdb -> app.runtime",
     "app.modules.thetvdb -> app.runtime.config",
     "app.modules.thetvdb -> app.runtime.log",
+    "app.modules.thetvdb -> app.schemas",
+    "app.modules.thetvdb -> app.schemas.media",
+    "app.modules.thetvdb -> app.schemas.types",
     "app.modules.thetvdb.tvdb_v4_official -> app.adapters",
     "app.modules.thetvdb.tvdb_v4_official -> app.adapters.network",
     "app.modules.thetvdb.tvdb_v4_official -> app.adapters.network.http",

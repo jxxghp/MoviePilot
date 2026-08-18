@@ -1907,3 +1907,53 @@ class TheMovieDbModule(_ModuleBase):
         return await getattr(self, f"async_{method_name}")(
             page=page, raise_exception=kwargs.get("raise_exception", False)
         )
+
+    def media_detail(self, source: Optional[MediaSource] = None,
+                      media_id: Any = None,
+                      mtype: Optional[MediaType] = None,
+                      season: Optional[int] = None,
+                      raise_exception: bool = False,
+                      **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型
+        :param season: 季号；TV 的显式值（含 0）读取季详情，None 或电影的 0 读取媒体详情
+        :param raise_exception: 本源不支持
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return self.tmdb_info(tmdbid=tmdbid, mtype=mtype, season=season)
+
+    async def async_media_detail(self, source: Optional[MediaSource] = None,
+                                  media_id: Any = None,
+                                  mtype: Optional[MediaType] = None,
+                                  season: Optional[int] = None,
+                                  raise_exception: bool = False,
+                                  **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情（异步版本）
+        :param source: 媒体来源，非TMDB来源返回 None
+        :param media_id: 媒体来源原生ID，须可转换为int，转换失败或为空返回 None
+        :param mtype: 媒体类型
+        :param season: 季号；TV 的显式值（含 0）读取季详情，None 或电影的 0 读取媒体详情
+        :param raise_exception: 本源不支持
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.TMDB:
+            return None
+        if media_id is None:
+            return None
+        try:
+            tmdbid = int(media_id)
+        except (TypeError, ValueError):
+            return None
+        return await self.async_tmdb_info(tmdbid=tmdbid, mtype=mtype, season=season)

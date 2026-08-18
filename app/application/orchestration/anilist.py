@@ -18,7 +18,7 @@ class AniListChain(ChainBase):
         :param anilist_id: AniList 媒体 ID
         :return: AniList 媒体详情
         """
-        return self.unicast("anilist_info", anilist_id=anilist_id)
+        return self.unicast("media_detail", source=MediaSource.AniList, media_id=anilist_id)
 
     async def async_info(self, anilist_id: int) -> Optional[dict]:
         """
@@ -27,7 +27,9 @@ class AniListChain(ChainBase):
         :param anilist_id: AniList 媒体 ID
         :return: AniList 媒体详情
         """
-        return await self.async_unicast("async_anilist_info", anilist_id=anilist_id)
+        return await self.async_unicast(
+            "async_media_detail", source=MediaSource.AniList, media_id=anilist_id
+        )
 
     def trending(self, page: int = 1, count: int = 20) -> list[MediaInfo]:
         """

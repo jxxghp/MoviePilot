@@ -29,7 +29,7 @@ class BangumiChain(ChainBase):
         :param bangumiid: BangumiID
         :return: Bangumi信息
         """
-        return self.unicast("bangumi_info", bangumiid=bangumiid)
+        return self.unicast("media_detail", source=MediaSource.Bangumi, media_id=bangumiid)
 
     def bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
@@ -77,7 +77,9 @@ class BangumiChain(ChainBase):
         :param bangumiid: BangumiID
         :return: Bangumi信息
         """
-        return await self.async_unicast("async_bangumi_info", bangumiid=bangumiid)
+        return await self.async_unicast(
+            "async_media_detail", source=MediaSource.Bangumi, media_id=bangumiid
+        )
 
     async def async_bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """

@@ -167,6 +167,26 @@ _MULTI_SOURCE_CONTRACTS = {
         ),
         arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
     ),
+    "media_detail": MultiSourceCapabilityContract(
+        method="media_detail",
+        sources=(
+            "TMDB：TheMovieDbModule 按 source=TMDB 应答，接受 mtype 与 season",
+            "豆瓣：DoubanModule 按 source=Douban 应答，接受 mtype，不支持 season",
+            "Bangumi：BangumiModule 按 source=Bangumi 应答，不支持 mtype、season",
+            "AniList：AniListModule 按 source=AniList 应答，不支持 mtype、season",
+            "TVDB：TheTvDbModule 按 source=TVDB 应答，不支持 mtype、season；本模块只有同步原生"
+            "实现，async_media_detail 经 run_in_threadpool 包装同步方法",
+            "插件：模块自带 media_detail 实现按 source 自认领应答",
+        ),
+        abstain=(
+            "返回 None 表示本来源不认领，既涵盖 source 非本来源，也涵盖 media_id 为空或无法转换为"
+            "本来源要求的ID类型；调度据此继续询问下一来源"
+        ),
+        narrowing=(
+            ("source", "唯一收窄键：非本来源一律让出，其余不支持的参数各来源就地丢弃"),
+        ),
+        arbitration="首个非空答案即为最终答案；插件提供者先于内建模块被询问",
+    ),
     "discover": MultiSourceCapabilityContract(
         method="discover",
         sources=(
@@ -233,6 +253,8 @@ _METHOD_CONTRACTS = {
     "async_media_recommend": ModuleMethodContract(family="media-metadata"),
     "media_similar": ModuleMethodContract(family="media-metadata"),
     "async_media_similar": ModuleMethodContract(family="media-metadata"),
+    "media_detail": ModuleMethodContract(family="media-metadata"),
+    "async_media_detail": ModuleMethodContract(family="media-metadata"),
     "discover": ModuleMethodContract(family="media-discovery"),
     "async_discover": ModuleMethodContract(family="media-discovery"),
     "discover_board": ModuleMethodContract(family="media-discovery"),

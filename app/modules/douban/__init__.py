@@ -2223,3 +2223,45 @@ class DoubanModule(_ModuleBase):
         if method_name is None:
             return None
         return await getattr(self, f"async_{method_name}")(page=page, count=count)
+
+    def media_detail(self, source: Optional[MediaSource] = None,
+                      media_id: Any = None,
+                      mtype: Optional[MediaType] = None,
+                      season: Optional[int] = None,
+                      raise_exception: bool = False,
+                      **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param media_id: 媒体来源原生ID，为空返回 None
+        :param mtype: 媒体类型
+        :param season: 本源不支持
+        :param raise_exception: 触发速率限制时是否抛出异常
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        if media_id is None:
+            return None
+        return self.douban_info(doubanid=str(media_id), mtype=mtype, raise_exception=raise_exception)
+
+    async def async_media_detail(self, source: Optional[MediaSource] = None,
+                                  media_id: Any = None,
+                                  mtype: Optional[MediaType] = None,
+                                  season: Optional[int] = None,
+                                  raise_exception: bool = False,
+                                  **kwargs) -> Optional[dict]:
+        """
+        查询指定来源的媒体详情（异步版本）
+        :param source: 媒体来源，非豆瓣来源返回 None
+        :param media_id: 媒体来源原生ID，为空返回 None
+        :param mtype: 媒体类型
+        :param season: 本源不支持
+        :param raise_exception: 触发速率限制时是否抛出异常
+        :return: 媒体详情
+        """
+        if normalize_media_source(source) is not MediaSource.Douban:
+            return None
+        if media_id is None:
+            return None
+        return await self.async_douban_info(doubanid=str(media_id), mtype=mtype, raise_exception=raise_exception)
