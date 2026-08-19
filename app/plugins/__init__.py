@@ -16,6 +16,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
+from app.runtime.extensions.declaration import StorageDeclaration
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
     instance_key,
@@ -402,6 +403,28 @@ class _PluginBase(metaclass=ABCMeta):
         声明本插件承载的消息渠道能力
 
         :return: `ChannelCapabilities` 列表；插件不作为消息渠道时无需实现
+        """
+        pass
+
+    def provides_storages(self) -> Optional[List[StorageDeclaration]]:
+        """
+        声明本插件提供的存储后端
+
+        返回示例：
+        [StorageDeclaration(
+            schema="u115",                      # 存储标识，同一标识重复登记以最新一次
+                                                  # 为准，与内建标识相同即构成覆盖
+            capabilities=["list", "upload"],     # 承诺提供的能力方法名
+            impl=U115Storage,                    # 存储后端实现类，须继承
+                                                  # app.modules._base.storage.StorageBase
+                                                  # 并落地全部抽象方法；不合契约的声明
+                                                  # 会被拒绝登记，不留到调用时才失败
+        )]
+
+        也可直接返回实现类本身（不包 `StorageDeclaration`），宿主按类自身的 schema
+        属性取用标识，兼容早期写法。
+
+        :return: `StorageDeclaration` 列表；插件不作为存储提供方时无需实现
         """
         pass
 

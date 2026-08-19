@@ -60,16 +60,22 @@ class StorageBackendEntry:
 
 def build_storage_entry(backend: Any,
                         distribution: ExtensionDistribution,
-                        owner: Optional[str] = None) -> Optional[StorageBackendEntry]:
+                        owner: Optional[str] = None,
+                        storage_id: Optional[str] = None) -> Optional[StorageBackendEntry]:
     """
-    按后端声明的标识构造登记项
+    构造登记项，标识优先取调用方显式给定的值，否则从后端声明推导
+
+    显式标识用于登记方持有自己一套声明数据、不依赖内省后端类取得标识的场景——
+    例如按 ``StorageDeclaration.schema`` 登记的扩展存储，其标识来自声明字段而非
+    ``impl.schema``，两者允许不同。
 
     :param backend: 存储后端类
     :param distribution: 后端的发行方式
     :param owner: 提供该后端的扩展标识
+    :param storage_id: 显式指定的存储标识，为空时从后端的 schema 属性推导
     :return: 登记项；标识缺失或无法作为路径前缀时为 None
     """
-    identity = storage_backend_identity(backend)
+    identity = (storage_id or "").strip() or storage_backend_identity(backend)
     source = owner or getattr(backend, "__name__", backend)
     if not identity:
         logger.error(f"【存储】{source} 未声明存储标识，无法登记")
@@ -92,34 +98,80 @@ class StorageBackendRegistry:
         """创建登记表。"""
         self._lock = threading.RLock()
         self._entries: dict[str, StorageBackendEntry] = {}
+        # 内建后端最近一次登记的快照，覆盖登记被撤销时据此还原内建取值
+        self._builtin_entries: dict[str, StorageBackendEntry] = {}
 
     def register(self, backend: Any,
                  distribution: ExtensionDistribution = ExtensionDistribution.BUILTIN,
-                 owner: Optional[str] = None) -> Optional[str]:
+                 owner: Optional[str] = None,
+                 storage_id: Optional[str] = None) -> Optional[str]:
         """
         登记一个存储后端，同标识重复登记以最新一次为准
 
         :param backend: 存储后端类
         :param distribution: 后端的发行方式
         :param owner: 提供该后端的扩展标识
+        :param storage_id: 显式指定的存储标识，为空时从后端的 schema 属性推导
         :return: 登记成功的存储标识；登记失败时为 None
         """
-        entry = build_storage_entry(backend, distribution, owner)
+        entry = build_storage_entry(backend, distribution, owner, storage_id)
         if not entry:
             return None
         with self._lock:
             self._entries[entry.storage_id] = entry
+            if distribution == ExtensionDistribution.BUILTIN:
+                self._builtin_entries[entry.storage_id] = entry
         return entry.storage_id
 
     def unregister(self, storage_id: str) -> bool:
         """
         注销指定存储标识的后端
 
+        内建后端注销即真正腾空标识；覆盖了内建后端的登记被注销后，该标识按其
+        最近一次内建登记的快照还原，不会因扩展停用而让内建后端整体消失。
+
         :param storage_id: 存储标识
         :return: 该标识原本已登记时为 True
         """
         with self._lock:
-            return self._entries.pop(storage_id, None) is not None
+            return self._unregister_locked(storage_id)
+
+    def _unregister_locked(self, storage_id: str) -> bool:
+        """
+        在已持有锁的前提下注销一个存储标识，供内部批量操作复用
+
+        :param storage_id: 存储标识
+        :return: 该标识原本已登记时为 True
+        """
+        removed = self._entries.pop(storage_id, None)
+        if removed is None:
+            return False
+        if removed.distribution == ExtensionDistribution.BUILTIN:
+            self._builtin_entries.pop(storage_id, None)
+        else:
+            builtin_entry = self._builtin_entries.get(storage_id)
+            if builtin_entry is not None:
+                self._entries[storage_id] = builtin_entry
+        return True
+
+    def unregister_owner(self, owner: str) -> tuple[str, ...]:
+        """
+        注销指定登记方当前仍生效的全部存储标识
+
+        条目一旦被更晚的登记覆盖，owner 随之更新为新的登记方，因此本方法只回收
+        标识当前仍归属该登记方的条目，不会波及后来居上、已接管同一标识的登记方。
+
+        :param owner: 登记方标识
+        :return: 被注销的存储标识元组
+        """
+        with self._lock:
+            owned = tuple(
+                storage_id for storage_id, entry in self._entries.items()
+                if entry.owner == owner
+            )
+            for storage_id in owned:
+                self._unregister_locked(storage_id)
+            return owned
 
     def entries(self) -> tuple[StorageBackendEntry, ...]:
         """

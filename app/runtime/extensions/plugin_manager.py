@@ -27,7 +27,8 @@ from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
-from app.runtime.extensions.contract import supports_extension_hook
+from app.runtime.extensions.contract import ExtensionDistribution, supports_extension_hook
+from app.runtime.extensions.declaration import declaration_impl, declaration_schema
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
     extension_id_of,
@@ -50,6 +51,7 @@ from app.runtime.extensions.plugin.projection import PluginExtension, PluginProj
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, SystemConfigKey
 
@@ -743,6 +745,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"加载插件：{key} 版本：{plugin_obj.plugin_version}")
             # 同步插件声明的渠道能力
             self._sync_channel_capabilities(key)
+            # 同步插件声明的存储后端
+            self._sync_plugin_storages(key)
             # 启用的实例才设置事件注册状态可用
             if extension.is_enabled():
                 eventmanager.enable_event_handler(plugin_class, key)
@@ -845,6 +849,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._sync_family_event_state(extension_id_of(key), type(plugin))
         # 配置变更可能启用或停用实例，重新同步渠道能力登记
         self._sync_channel_capabilities(key)
+        # 配置变更同样可能影响存储声明，重新同步存储登记
+        self._sync_plugin_storages(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -892,6 +898,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self.__stop_plugin(plugin)
             # 实例停止后撤销其渠道能力登记，不留残留
             self._revoke_channel_capabilities(key)
+            # 实例停止后撤销其存储登记，不留残留
+            self._revoke_plugin_storages(key)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -2131,6 +2139,46 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             ChannelCapabilityManager.register_extension_capabilities(plugin_id, [])
         except Exception as error:
             logger.error(f"撤销插件 {plugin_id} 渠道能力登记出错：{str(error)}")
+
+    def _sync_plugin_storages(self, key: str) -> None:
+        """按插件实例当前声明重建其在存储后端注册表中的登记。
+
+        先回收该实例此前登记过的存储标识，避免声明缩减后残留旧登记；再按当前
+        声明逐条登记，单条声明的注册失败不影响同一实例其余声明的登记。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            storage_backend_registry.unregister_owner(key)
+            declared = self._plugin_projection().provided_storages(key)
+            for item in declared.get(key, []):
+                try:
+                    storage_backend_registry.register(
+                        declaration_impl(item),
+                        distribution=ExtensionDistribution.MARKET,
+                        owner=key,
+                        storage_id=declaration_schema(item),
+                    )
+                except Exception as error:
+                    logger.error(f"登记插件实例 {key} 的存储声明出错：{str(error)}")
+        except Exception as error:
+            logger.error(f"同步插件实例 {key} 存储登记出错：{str(error)}")
+
+    @staticmethod
+    def _revoke_plugin_storages(key: str) -> None:
+        """撤销插件实例登记的存储标识。
+
+        只回收标识当前仍归属该实例的登记，覆盖了内建后端的登记被回收后，
+        对应标识按其最近一次内建登记的快照还原。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            storage_backend_registry.unregister_owner(key)
+        except Exception as error:
+            logger.error(f"撤销插件实例 {key} 存储登记出错：{str(error)}")
 
     def _plugin_catalog(self) -> Any:
         """构造绑定当前市场客户端和插件 DTO 映射器的目录应用服务。"""
