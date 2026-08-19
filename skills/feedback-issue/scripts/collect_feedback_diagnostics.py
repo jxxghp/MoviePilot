@@ -22,6 +22,8 @@ from feedback_issue_common import (
     write_json_file,
 )
 
+from app.runtime.log import PLUGIN_LOG_FILENAME  # noqa: E402
+
 
 _MAX_READ_BYTES = 512 * 1024
 _DEFAULT_TIME_WINDOW_MINUTES = 30
@@ -117,11 +119,20 @@ def read_tail(path: Path) -> str:
 
 
 def candidate_log_files() -> list[Path]:
-    """返回反馈诊断可读取的主日志和插件日志文件。"""
+    """返回反馈诊断可读取的主日志和插件日志文件。
+
+    插件日志同时扫描旧版扁平布局（`settings.LOG_PATH/plugins/<插件id>.log*`，
+    不迁移、仍留在磁盘上）和新版按实例分目录的布局
+    （`settings.PLUGIN_DATA_PATH/<插件id>/<实例id>/logs/plugin.log*`），
+    避免仅适配新位置导致看不到新写入的插件日志。
+    """
     files = [settings.LOG_PATH / "moviepilot.log"]
-    plugin_log_dir = settings.LOG_PATH / "plugins"
-    if plugin_log_dir.exists():
-        files.extend(sorted(plugin_log_dir.rglob("*.log")))
+    legacy_plugin_log_dir = settings.LOG_PATH / "plugins"
+    if legacy_plugin_log_dir.exists():
+        files.extend(sorted(legacy_plugin_log_dir.rglob("*.log")))
+    new_plugin_log_root = settings.PLUGIN_DATA_PATH
+    if new_plugin_log_root.exists():
+        files.extend(sorted(new_plugin_log_root.rglob(f"{PLUGIN_LOG_FILENAME}*")))
     return [path for path in files if path.exists() and path.is_file()]
 
 

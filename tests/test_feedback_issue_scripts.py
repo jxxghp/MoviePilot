@@ -390,3 +390,25 @@ class TestPrepareAndSubmitScripts(FeedbackIssueScriptTestCase):
 
         self.assertEqual(result["reason"], "rate_limited_user")
         self.assertIn("30 分钟", result["message"])
+
+
+def test_candidate_log_files_scans_legacy_and_new_layout_plugin_logs(tmp_path, monkeypatch):
+    """诊断日志收集应同时看到旧版扁平布局和新版实例目录布局的插件日志。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    (settings.LOG_PATH).mkdir(parents=True, exist_ok=True)
+    main_log = settings.LOG_PATH / "moviepilot.log"
+    main_log.write_text("main", encoding="utf-8")
+
+    legacy_log = settings.LOG_PATH / "plugins" / "legacy.log"
+    legacy_log.parent.mkdir(parents=True, exist_ok=True)
+    legacy_log.write_text("legacy plugin log", encoding="utf-8")
+
+    new_log = settings.PLUGIN_DATA_PATH / "DemoPlugin" / "second" / "logs" / "plugin.log"
+    new_log.parent.mkdir(parents=True, exist_ok=True)
+    new_log.write_text("new layout plugin log", encoding="utf-8")
+
+    files = collect_script.candidate_log_files()
+
+    assert main_log in files
+    assert legacy_log in files
+    assert new_log in files

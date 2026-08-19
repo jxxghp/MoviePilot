@@ -9,11 +9,15 @@ from packaging.version import Version
 from watchfiles import Change
 
 from app.runtime.events import Event, eventmanager
+from app.runtime.extensions.plugin.layout import read_plugin_versions_manifest
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.adapters.external.market import PluginHelper
 from app.scheduler import Scheduler
 from app.schemas.types import EventType, SystemConfigKey
 from app.foundation.singleton import Singleton
+
+# 本地插件仓库清单声明的版本 1.0.0 对应的运行副本版本目录名
+_LOCAL_PLUGIN_VERSION_DIR = "v1_0_0"
 
 
 @pytest.fixture
@@ -132,7 +136,8 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
 ) -> None:
     """DEV 本地源码候选保留热同步资格，系统版本差异只作为兼容性提示。"""
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
-    runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    plugin_root = tmp_path / "app" / "plugins" / "demoplugin"
+    runtime_dir = plugin_root / _LOCAL_PLUGIN_VERSION_DIR
 
     settings_stub = SimpleNamespace(
         DEV=True,
@@ -153,6 +158,8 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
     assert (runtime_dir / "__init__.py").read_text(encoding="utf-8") == source_file.read_text(encoding="utf-8")
     assert (runtime_dir / "dist" / "assets" / "remoteEntry.js").is_file()
     assert not (runtime_dir / "node_modules").exists()
+    # 本地源码同步落到版本目录，并登记为该插件的当前版本
+    assert read_plugin_versions_manifest(plugin_root)["current"] == "1.0.0"
 
 
 def test_local_plugin_candidate_keeps_system_version_gate_outside_dev(
@@ -229,7 +236,8 @@ def test_local_federated_asset_batch_syncs_once_without_python_reload(
 
     assert sync_spy.call_count == 1
     assert sync_spy.call_args.args[0] == "DemoPlugin"
-    assert (tmp_path / "app" / "plugins" / "demoplugin" / "dist" / "assets" / "chunk.js").is_file()
+    runtime_dir = tmp_path / "app" / "plugins" / "demoplugin" / _LOCAL_PLUGIN_VERSION_DIR
+    assert (runtime_dir / "dist" / "assets" / "chunk.js").is_file()
     reload_spy.assert_not_called()
 
 
@@ -588,7 +596,11 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
 
     assert set(scheduler._jobs) == {"DemoPlugin_new"}
     service = scheduler._jobs["DemoPlugin_new"]
-    assert service["func"] is current_func
+    # 登记的回调按归属实例键包了一层日志上下文绑定，不再是原始对象本身；
+    # 调用包装后的回调仍应透传参数并原样调用到 current_func
+    assert service["func"] is not current_func
+    service["func"](marker="new")
+    current_func.assert_called_once_with(marker="new")
     assert service["kwargs"] == {"marker": "new"}
     assert set(backend.jobs) == {"DemoPlugin_new"}
     registered_job = backend.jobs["DemoPlugin_new"]

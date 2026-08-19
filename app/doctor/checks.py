@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 import psutil
 
 from app.runtime.config import settings
+from app.runtime.log import PLUGIN_LOG_FILENAME
 from app.runtime.compat.plugin_version_readiness import (
     PluginVersionReadiness,
     scan_plugin_version_readiness,
@@ -824,19 +825,67 @@ def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:
     )
 
 
+def _legacy_plugin_log_files() -> list[Path]:
+    """列出旧版扁平布局下的插件日志文件：`settings.LOG_PATH/plugins/<插件id>.log*`。
+
+    旧文件不迁移，仍可能保留排障价值，因此继续扫描；新日志改按实例目录存放，
+    见 `_new_layout_plugin_log_files`。
+    """
+    plugin_log_dir = settings.LOG_PATH / "plugins"
+    if not plugin_log_dir.exists():
+        return []
+    return sorted(plugin_log_dir.rglob("*.log"))
+
+
+def _new_layout_plugin_log_files() -> list[Path]:
+    """列出新版插件实例日志目录下的日志文件：
+    `settings.PLUGIN_DATA_PATH/<插件id>/<实例id>/logs/plugin.log*`。
+    """
+    plugin_data_root = settings.PLUGIN_DATA_PATH
+    if not plugin_data_root.exists():
+        return []
+    return sorted(plugin_data_root.rglob(f"{PLUGIN_LOG_FILENAME}*"))
+
+
+def _plugin_logger_name_for(path: Path, legacy_root: Path, new_layout_root: Path) -> Optional[str]:
+    """从日志文件路径推断其所属插件标识，供核心日志中的插件线索识别使用。
+
+    :param path: 日志文件路径
+    :param legacy_root: 旧版扁平布局的插件日志目录
+    :param new_layout_root: 新版插件持久化根目录
+    :return: 插件标识（小写）；无法归属任何一种布局时为 None
+    """
+    if legacy_root in path.parents:
+        return path.stem.lower()
+    if new_layout_root in path.parents:
+        try:
+            return path.relative_to(new_layout_root).parts[0].lower()
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
 def _check_logs(runner: DoctorRunnerProtocol) -> None:
-    """扫描近期日志，并区分核心运行异常与插件扩展异常。"""
+    """扫描近期日志，并区分核心运行异常与插件扩展异常。
+
+    插件日志同时扫描旧版扁平布局（不迁移，仍留在磁盘上）和新版按实例分目录的
+    布局，避免仅适配新位置导致读取端看不到新写入的日志。
+    """
     log_files = [
         _backend_app_log_file(),
         _backend_stdio_log_file(),
         _frontend_stdio_log_file(),
     ]
-    plugin_log_dir = settings.LOG_PATH / "plugins"
-    plugin_logger_names: set[str] = set()
-    if plugin_log_dir.exists():
-        plugin_log_files = sorted(plugin_log_dir.rglob("*.log"))
-        plugin_logger_names = {path.stem.lower() for path in plugin_log_files}
-        log_files.extend(plugin_log_files[:20])
+    legacy_plugin_log_dir = settings.LOG_PATH / "plugins"
+    new_plugin_log_root = settings.PLUGIN_DATA_PATH
+    legacy_plugin_log_files = _legacy_plugin_log_files()
+    new_plugin_log_files = _new_layout_plugin_log_files()
+    plugin_logger_names: set[str] = {
+        name
+        for path in (*legacy_plugin_log_files, *new_plugin_log_files)
+        if (name := _plugin_logger_name_for(path, legacy_plugin_log_dir, new_plugin_log_root))
+    }
+    log_files.extend((*legacy_plugin_log_files, *new_plugin_log_files)[:20])
 
     found_any = False
     entries: dict[str, list[tuple[Path, str]]] = {
@@ -848,7 +897,9 @@ def _check_logs(runner: DoctorRunnerProtocol) -> None:
             continue
         found_any = True
         lines = _recent_log_lines(_tail_lines(path))
-        is_plugin_log = plugin_log_dir in path.parents
+        is_plugin_log = (
+            legacy_plugin_log_dir in path.parents or new_plugin_log_root in path.parents
+        )
         if is_plugin_log:
             scoped_errors = [(True, _find_error_lines(lines))]
         else:

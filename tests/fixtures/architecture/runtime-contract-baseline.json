@@ -1647,19 +1647,19 @@
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 816
+        "line": 908
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 930
+        "line": 1022
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 984
+        "line": 1076
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 998
+        "line": 1090
       },
       {
         "caller": "app.application.orchestration._messaging",
@@ -2095,7 +2095,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1064
+            "line": 1118
           }
         ]
       },

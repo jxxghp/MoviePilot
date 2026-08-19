@@ -10,10 +10,28 @@ from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
 
-from app.runtime.event.binding import EventBindingResolver
+from app.runtime.event.binding import EventBindingResolver, EventHandlerBinding
 from app.runtime.event.registry import EventRegistry
-from app.runtime.log import logger
+from app.runtime.extensions.instance import split_instance_key
+from app.runtime.log import logger, wrap_for_plugin_instance
 from app.schemas.types import EventType
+
+
+def _bind_instance_context(method: Callable, binding: EventHandlerBinding) -> Callable:
+    """
+    按处理器绑定的实例键把方法包装到对应插件实例的日志上下文中。
+
+    `instance_key` 由事件总线的实例解析器（目前只有插件管理器登记了这个 resolver）
+    提供，因此非空时可放心拆成 (插件标识, 实例标识)；未登记 resolver 的处理器
+    没有 instance_key，原样返回，按插件级栈回溯路由，不归入具体实例。
+    :param method: 待调用的处理器绑定方法
+    :param binding: 该方法的实例绑定信息
+    :return: 包装后（或原样）的可调用对象
+    """
+    if not binding.instance_key:
+        return method
+    plugin_id, instance_id = split_instance_key(binding.instance_key)
+    return wrap_for_plugin_instance(method, plugin_id, instance_id)
 
 
 class EventDispatcher:
@@ -144,7 +162,7 @@ class EventDispatcher:
             handler
         ):
             try:
-                method(event)
+                _bind_instance_context(method, binding)(event)
             except Exception as err:
                 self._error_handler(
                     event=event,
@@ -160,12 +178,13 @@ class EventDispatcher:
             handler
         ):
             try:
-                if inspect.iscoroutinefunction(method):
-                    await method(event)
+                bound_method = _bind_instance_context(method, binding)
+                if inspect.iscoroutinefunction(bound_method):
+                    await bound_method(event)
                 elif binding.run_sync_in_threadpool or not class_name:
-                    await run_in_threadpool(method, event)
+                    await run_in_threadpool(bound_method, event)
                 else:
-                    method(event)
+                    bound_method(event)
             except Exception as err:
                 self._error_handler(
                     event=event,

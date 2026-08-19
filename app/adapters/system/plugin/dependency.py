@@ -111,6 +111,23 @@ class PluginDependencyInstaller:
             merged[package_name] = str(spec_set) if spec_set else ""
         return merged
 
+    @staticmethod
+    def _source_dirs(plugin_dir: Path) -> list[Path]:
+        """列出一个插件目录下承载源码的目录。
+
+        插件源码按版本分目录后，requirements.txt 与 wheels 随源码下沉一层；
+        存量平铺布局尚未迁移时它们仍在插件目录本身，两处都纳入扫描。
+
+        :param plugin_dir: 插件目录
+        :return: 插件目录及其一级子目录
+        """
+        result = [plugin_dir]
+        try:
+            result.extend(entry for entry in sorted(plugin_dir.iterdir()) if entry.is_dir())
+        except (FileNotFoundError, OSError):
+            pass
+        return result
+
     def _plugin_dependencies(self) -> dict[str, str]:
         """扫描已安装插件的 requirements 并合并版本约束。"""
         dependencies: dict[str, set[str]] = {}
@@ -125,16 +142,17 @@ class PluginDependencyInstaller:
         for plugin_dir in plugin_dirs:
             if not plugin_dir.is_dir():
                 continue
-            requirements_file = plugin_dir / "requirements.txt"
-            if not requirements_file.is_file():
-                continue
             if plugin_dir.name not in installed_plugins:
                 logger.debug(f"忽略插件 {plugin_dir.name} 的依赖")
                 continue
-            for package_name, specifiers in self._parse_requirements(
-                requirements_file
-            ).items():
-                dependencies.setdefault(package_name, set()).update(specifiers)
+            for source_dir in self._source_dirs(plugin_dir):
+                requirements_file = source_dir / "requirements.txt"
+                if not requirements_file.is_file():
+                    continue
+                for package_name, specifiers in self._parse_requirements(
+                    requirements_file
+                ).items():
+                    dependencies.setdefault(package_name, set()).update(specifiers)
         return self._merge(dependencies)
 
     def find_missing(self) -> list[str]:
@@ -167,9 +185,10 @@ class PluginDependencyInstaller:
             for plugin_id in self._installed_plugins_provider() or []
         }
         for plugin_id in installed_plugins:
-            wheels_dir = self._plugin_dir / plugin_id / "wheels"
-            if wheels_dir.is_dir():
-                result.append(wheels_dir)
+            for source_dir in self._source_dirs(self._plugin_dir / plugin_id):
+                wheels_dir = source_dir / "wheels"
+                if wheels_dir.is_dir():
+                    result.append(wheels_dir)
         return list(dict.fromkeys(result))
 
     def install(self, dependencies: list[str]) -> tuple[bool, str]:

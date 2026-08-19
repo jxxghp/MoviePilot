@@ -41,7 +41,11 @@ from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
-from app.runtime.log import logger
+from app.runtime.log import (
+    configure_plugin_log_dir_resolver,
+    logger,
+    set_plugin_instance_log_level,
+)
 from app.foundation.version import compare_version
 from app.schemas.types import SystemConfigKey
 
@@ -114,6 +118,44 @@ def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
         )
 
 
+def _resolve_plugin_instance_log_dir(plugin_id: str, instance_id: str) -> Path:
+    """
+    按插件实例持久化目录推导其日志目录：与业务数据目录同级的 logs 子目录。
+
+    `app.runtime.log` 是依赖叶节点，不直接导入 `app.plugins`；这里是组合根，
+    由它经 `plugin_instance_path` 完成插件标识与实例标识的路径分段校验。
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识
+    :return: 该实例的日志目录
+    """
+    from app.plugins import plugin_instance_path
+    return plugin_instance_path(plugin_id, instance_id, "data").parent / "logs"
+
+
+def _seed_plugin_instance_log_levels() -> None:
+    """
+    把数据库中已配置的实例日志等级预热进日志模块的进程内缓存。
+
+    日志模块的等级缓存只在进程内存里，进程重启后为空；这里在插件加载完成后
+    按已知插件逐一读取实例配置行，把非空的 log_level 覆盖重新注入缓存，
+    避免重启后临时调高的排障等级静默丢失、回落成全局等级。
+    """
+    manager = PluginManager()
+    for plugin_id in list(manager.plugins):
+        for row in PluginConfigOper().list_by_plugin(plugin_id):
+            if not row.log_level:
+                continue
+            try:
+                set_plugin_instance_log_level(
+                    plugin_id, row.instance_id, row.log_level, row.log_expires_at
+                )
+            except ValueError:
+                logger.warning(
+                    f"插件 {plugin_id} 实例 {row.instance_id} 的日志等级配置非法，"
+                    f"已跳过预热：{row.log_level}"
+                )
+
+
 def _configure_plugin_services() -> None:
     """把兼容诊断、远程上报和站点认证等级装配到插件管理器。"""
     plugin_helper = PluginHelper()
@@ -162,6 +204,7 @@ def _configure_plugin_services() -> None:
         delete_config=_delete_plugin_instance_config_row,
         delete_data=_delete_plugin_instance_data_rows,
     )
+    configure_plugin_log_dir_resolver(_resolve_plugin_instance_log_dir)
 
 
 def _build_plugin_catalog(manager: PluginManager) -> PluginCatalogService:
@@ -202,6 +245,8 @@ async def sync_plugins() -> bool:
         logger.info("正在重新初始化插件")
         # 重新初始化插件
         plugin_manager.init_config()
+        # 预热已配置的实例日志等级覆盖
+        _seed_plugin_instance_log_levels()
         # 重新注册插件API
         register_plugin_api()
         logger.info("所有插件初始化完成")
@@ -241,6 +286,8 @@ def init_plugins():
     """
     _configure_plugin_services()
     PluginManager().start()
+    # 预热已配置的实例日志等级覆盖，避免进程重启后临时调高的排障等级静默丢失
+    _seed_plugin_instance_log_levels()
     register_plugin_api()
 
 

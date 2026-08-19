@@ -1,5 +1,6 @@
 import asyncio
 import mimetypes
+from datetime import datetime
 from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
@@ -16,6 +17,9 @@ from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboard
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
 from app.schemas.plugin import PluginInstanceCreate as _SchemaPluginInstanceCreate
 from app.schemas.plugin import PluginInstanceInfo as _SchemaPluginInstanceInfo
+from app.schemas.plugin import PluginInstanceLogFileInfo as _SchemaPluginInstanceLogFileInfo
+from app.schemas.plugin import PluginInstanceLogLevelInfo as _SchemaPluginInstanceLogLevelInfo
+from app.schemas.plugin import PluginInstanceLogLevelSet as _SchemaPluginInstanceLogLevelSet
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
@@ -44,6 +48,8 @@ from app.application.security.access import (
     verify_token,
 )
 from app.db.models import User
+from app.db.models.pluginconfig import LOG_LEVELS
+from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.api.deps import (
     get_current_active_superuser,
@@ -53,7 +59,14 @@ from app.api.deps import (
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
-from app.runtime.log import logger
+from app.runtime.log import (
+    clear_plugin_instance_log_level,
+    get_effective_plugin_instance_log_level,
+    get_plugin_instance_log_dir,
+    get_plugin_instance_log_level_override,
+    logger,
+    set_plugin_instance_log_level,
+)
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()
@@ -964,6 +977,136 @@ def delete_plugin_instance(
     # 删除后必须整体重建，避免残留登记指向已停止的实例，兄弟实例的登记原样恢复
     register_plugin(plugin_id)
     return _SchemaResponse(success=True)
+
+
+def _require_known_plugin_instance(plugin_id: str, instance_id: str) -> None:
+    """
+    校验插件与实例均存在。
+    :raises HTTPException: 插件未登记或实例标识未登记，均返回 404
+    """
+    try:
+        instance_ids = {
+            item["instance_id"] for item in PluginManager().list_plugin_instances(plugin_id)
+        }
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    if instance_id not in instance_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"插件实例 {plugin_id}@{instance_id} 不存在",
+        )
+
+
+@router.get(
+    "/loglevel/{plugin_id}",
+    summary="获取插件各实例的日志等级设置",
+    response_model=List[_SchemaPluginInstanceLogLevelInfo],
+)
+def plugin_instance_log_levels(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    列出插件各实例的日志等级配置（覆盖值，跟随全局时为空）与当前生效等级
+    """
+    try:
+        instances = PluginManager().list_plugin_instances(plugin_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    result = []
+    for info in instances:
+        instance_id = info["instance_id"]
+        override = get_plugin_instance_log_level_override(plugin_id, instance_id)
+        result.append(
+            _SchemaPluginInstanceLogLevelInfo(
+                instance_id=instance_id,
+                configured_level=override[0] if override else None,
+                expires_at=override[1] if override else None,
+                effective_level=get_effective_plugin_instance_log_level(plugin_id, instance_id),
+            )
+        )
+    return result
+
+
+@router.put(
+    "/loglevel/{plugin_id}/{instance_id}",
+    summary="设置插件实例的日志等级",
+    response_model=_SchemaResponse[None],
+)
+def set_plugin_instance_log_level_api(
+    plugin_id: str,
+    instance_id: str,
+    log_level_data: _SchemaPluginInstanceLogLevelSet,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    设置插件实例的日志等级覆盖，可选携带失效时间；写入配置表并立即在日志模块生效
+    """
+    _require_known_plugin_instance(plugin_id, instance_id)
+    normalized_level = (log_level_data.level or "").strip().upper()
+    if normalized_level not in LOG_LEVELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的日志等级：{log_level_data.level}",
+        )
+    PluginConfigOper().upsert(
+        plugin_id,
+        instance_id,
+        {"log_level": normalized_level, "log_expires_at": log_level_data.expires_at},
+    )
+    set_plugin_instance_log_level(
+        plugin_id, instance_id, normalized_level, log_level_data.expires_at
+    )
+    return _SchemaResponse(success=True)
+
+
+@router.delete(
+    "/loglevel/{plugin_id}/{instance_id}",
+    summary="清除插件实例的日志等级覆盖",
+    response_model=_SchemaResponse[None],
+)
+def clear_plugin_instance_log_level_api(
+    plugin_id: str,
+    instance_id: str,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    清除插件实例的日志等级覆盖，运行期立即回落全局等级，配置表同步清空
+    """
+    _require_known_plugin_instance(plugin_id, instance_id)
+    PluginConfigOper().upsert(
+        plugin_id, instance_id, {"log_level": None, "log_expires_at": None}
+    )
+    clear_plugin_instance_log_level(plugin_id, instance_id)
+    return _SchemaResponse(success=True)
+
+
+@router.get(
+    "/logfiles/{plugin_id}/{instance_id}",
+    summary="列出插件实例的日志文件",
+    response_model=List[_SchemaPluginInstanceLogFileInfo],
+)
+def plugin_instance_log_files(
+    plugin_id: str,
+    instance_id: str,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    列出插件实例日志目录下的全部日志文件（含滚动备份），按修改时间倒序排列
+    """
+    _require_known_plugin_instance(plugin_id, instance_id)
+    log_dir = get_plugin_instance_log_dir(plugin_id, instance_id)
+    if log_dir is None or not log_dir.exists():
+        return []
+    files = [item for item in log_dir.iterdir() if item.is_file()]
+    files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    return [
+        _SchemaPluginInstanceLogFileInfo(
+            name=item.name,
+            size=item.stat().st_size,
+            modified_at=datetime.fromtimestamp(item.stat().st_mtime),
+        )
+        for item in files
+    ]
 
 
 @router.get(

@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 from apscheduler.jobstores.base import JobLookupError
 
+from app.runtime import log as log_module
 from app.scheduler import Scheduler
 
 
@@ -127,3 +128,47 @@ def test_removing_whole_plugin_removes_every_instance_service(monkeypatch):
 
     assert scheduler._jobs == {}
     assert scheduler._scheduler._job_ids == []
+
+
+def test_registered_job_func_binds_plugin_instance_log_context(monkeypatch):
+    """注册到调度器的任务回调触发时应绑定其归属实例的日志上下文。
+
+    定时任务的实际调用发生在宿主稍后触发的调度线程/事件循环里，这里验证
+    `update_plugin_job` 在登记阶段把 `service["func"]` 包上的上下文绑定确实生效：
+    执行期间 ContextVar 能读到正确的 (插件标识, 实例标识)，执行完毕后复原。
+    """
+    scheduler = _build_scheduler()
+    observed = {}
+
+    def default_instance_probe(**_kwargs):
+        observed["default"] = log_module.LoggerManager._resolve_plugin_instance(None)
+
+    def second_instance_probe(**_kwargs):
+        observed["second"] = log_module.LoggerManager._resolve_plugin_instance(None)
+
+    services = [
+        {
+            "id": "sync",
+            "name": "服务-sync",
+            "trigger": "interval",
+            "func": default_instance_probe,
+            "pid": "DemoPlugin",
+        },
+        {
+            "id": "sync",
+            "name": "服务-sync",
+            "trigger": "interval",
+            "func": second_instance_probe,
+            "pid": "DemoPlugin@second",
+        },
+    ]
+    _patch_plugin_manager(monkeypatch, services)
+
+    scheduler.update_plugin_job("DemoPlugin")
+    scheduler._jobs["DemoPlugin_sync"]["func"]()
+    scheduler._jobs["DemoPlugin@second_sync"]["func"]()
+
+    assert observed["default"] == ("DemoPlugin", "default")
+    assert observed["second"] == ("DemoPlugin", "second")
+    # 任务执行完毕后绑定应已复原，不残留到后续无关调用
+    assert log_module.LoggerManager._resolve_plugin_instance(None) == (None, None)

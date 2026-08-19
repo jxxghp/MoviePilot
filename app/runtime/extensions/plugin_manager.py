@@ -36,6 +36,13 @@ from app.runtime.extensions.instance import (
     normalize_instance_id,
     split_instance_key,
 )
+from app.runtime.extensions.plugin.layout import (
+    ensure_plugin_version_dir_available,
+    plugin_module_name,
+    plugin_version_from_dir_name,
+    register_plugin_version,
+    resolve_plugin_version_dir,
+)
 from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
@@ -639,27 +646,33 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 logger.debug(f"跳过插件目录：{plugin_dir.name}（不在加载列表中）")
                 continue
 
+            # 定位本次要加载的版本目录，存量平铺布局在此顺带完成一次迁移
+            source_dir = resolve_plugin_version_dir(plugin_dir)
+            if source_dir is None:
+                logger.debug(f"跳过插件目录：{plugin_dir.name}（没有可加载的版本目录）")
+                continue
+
             # 检查__init__.py是否存在
-            init_file = plugin_dir / "__init__.py"
+            init_file = source_dir / "__init__.py"
             if not init_file.exists():
                 logger.debug(f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）")
                 continue
 
             try:
                 # 构建模块名
-                module_name = f"app.plugins.{plugin_dir.name}"
+                module_name = plugin_module_name(plugin_dir, source_dir)
                 logger.debug(f"正在导入插件模块：{module_name}")
 
                 # 旧插件可能直接导入带宿主资源前置条件的第三方包。资源必须在
                 # Python 执行插件模块顶层代码前就绪，否则导入副作用无法安全回滚。
                 _legacy_plugin_import_preparer(
                     plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
+                    plugin_dir=source_dir,
                 )
 
                 _legacy_import_scanner(
                     plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
+                    plugin_dir=source_dir,
                 )
 
                 # 导入模块
@@ -810,14 +823,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 if not event_path.name.endswith(".py"):
                     continue
 
-                # 解析插件ID
-                runtime_pid = self._get_plugin_id_from_path(event_path)
+                # 解析插件ID与所属版本目录
+                runtime_target = self._get_plugin_target_from_path(event_path)
+                runtime_pid = runtime_target[0] if runtime_target else None
                 local_candidate = self._get_local_plugin_candidate_from_path(event_path) if not runtime_pid else None
                 if runtime_pid:
                     last_sync_time = self._recent_local_sync.get(runtime_pid)
                     if last_sync_time and time.time() - last_sync_time < 2:
                         continue
                     # 运行目录变化只重载，不能反向触发本地同步。
+                    logger.debug(
+                        f"插件 {runtime_pid} 版本目录 {runtime_target[1] or '存量布局'} 源码变化"
+                    )
                     plugins_to_reload.add(runtime_pid)
                 elif local_candidate:
                     if local_candidate.get("compatible") is False:
@@ -870,6 +887,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 if not relative_parts:
                     return None
                 plugin_dir = runtime_root / relative_parts[0]
+                # 联邦构建产物随版本目录走，dist 路径相对版本目录解析
+                if len(relative_parts) >= 2 and plugin_version_from_dir_name(relative_parts[1]):
+                    plugin_dir = plugin_dir / relative_parts[1]
                 pid = next(
                     (
                         extension_id_of(key)
@@ -917,11 +937,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return None
 
     @staticmethod
-    def _get_plugin_id_from_path(event_path: Path) -> Optional[str]:
+    def _get_plugin_target_from_path(event_path: Path) -> Optional[Tuple[str, Optional[str]]]:
         """
-        根据文件路径解析出插件的ID。
+        根据文件路径解析出插件的ID与所属版本目录。
+
+        版本化布局下插件源码位于 app/plugins/<插件ID>/<版本目录>/，因此取相对
+        路径的前两段；第二段不是版本目录时按存量平铺布局回落到插件目录本身。
         :param event_path: 被修改文件的 Path 对象。
-        :return: 插件ID字符串，如果不是有效插件文件则返回 None。
+        :return: (插件ID, 版本目录名) 元组，存量布局时版本目录名为 None；
+            不是有效插件文件时返回 None。
         """
         try:
             event_path = event_path.resolve()
@@ -931,12 +955,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 return None
 
             try:
-                plugin_dir_name = event_path.relative_to(plugins_root).parts[0]
-                plugin_dir = plugins_root / plugin_dir_name
+                relative_parts = event_path.relative_to(plugins_root).parts
+                plugin_dir = plugins_root / relative_parts[0]
             except (ValueError, IndexError):
                 return None
 
-            init_file = plugin_dir / "__init__.py"
+            version_dir_name = None
+            source_dir = plugin_dir
+            if len(relative_parts) >= 2 and plugin_version_from_dir_name(relative_parts[1]):
+                version_dir_name = relative_parts[1]
+                source_dir = plugin_dir / version_dir_name
+
+            init_file = source_dir / "__init__.py"
             if not init_file.exists():
                 return None
 
@@ -956,9 +986,23 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         # ast.Name 用于处理简单的基类名
                         if isinstance(base, ast.Name) and base.id == '_PluginBase':
                             # 返回这个类的名字
-                            return node.name
+                            return node.name, version_dir_name
 
             return None
+        except Exception as e:
+            logger.error(f"从路径解析插件ID时出错: {e}")
+            return None
+
+    @classmethod
+    def _get_plugin_id_from_path(cls, event_path: Path) -> Optional[str]:
+        """
+        根据文件路径解析出插件的ID。
+        :param event_path: 被修改文件的 Path 对象。
+        :return: 插件ID字符串，如果不是有效插件文件则返回 None。
+        """
+        try:
+            target = cls._get_plugin_target_from_path(event_path)
+            return target[0] if target else None
         except Exception as e:
             logger.error(f"从路径解析插件ID时出错: {e}")
             return None
@@ -1021,9 +1065,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         source_dir = Path(candidate.get("path"))
         dest_dir = settings.ROOT_PATH / "app" / "plugins" / pid.lower()
-        try:
-            if not get_plugin_system().package.sync_local(pid, source_dir):
+        candidate_version = str(candidate.get("version") or "").strip()
+        version_dir = None
+        if candidate_version:
+            try:
+                version_dir = ensure_plugin_version_dir_available(dest_dir, candidate_version)
+            except ValueError as err:
+                logger.error(f"本地插件 {pid} 的版本号不可用于版本目录，跳过同步：{err}")
                 return False
+        try:
+            if not get_plugin_system().package.sync_local(pid, source_dir, version_dir=version_dir):
+                return False
+            if version_dir:
+                register_plugin_version(dest_dir, candidate_version, version_dir, source="local")
             PluginManager()._recent_local_sync[pid] = time.time()
             logger.info(f"已同步本地插件 {pid}：{source_dir} -> {dest_dir}")
             return True
@@ -1064,14 +1118,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
 
     @staticmethod
-    def _clear_plugin_modules(plugin_id: Optional[str] = None):
+    def _clear_plugin_modules(plugin_id: Optional[str] = None, version_dir: Optional[str] = None):
         """
         清除插件及其所有子模块的缓存
         :param plugin_id: 插件ID
+        :param version_dir: 版本目录名，给定时只清该版本，兄弟版本的模块对象保留；
+            插件命名空间包条目本身也保留，否则兄弟版本的父包会与之脱节
         """
 
         # 构建插件模块前缀
-        if plugin_id:
+        if plugin_id and version_dir:
+            plugin_module_prefix = f"app.plugins.{plugin_id.lower()}.{version_dir}"
+        elif plugin_id:
             plugin_module_prefix = f"app.plugins.{plugin_id.lower()}"
         else:
             plugin_module_prefix = "app.plugins"
@@ -1107,13 +1165,27 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         def install_plugin(plugin):
             start_time = time.time()
+            plugin_root = settings.ROOT_PATH / "app" / "plugins" / plugin.id.lower()
+            # 仓库未给出版本号时按存量布局落盘，加载时再由布局迁移补上兜底版本目录
+            declared_version = (plugin.plugin_version or "").strip()
+            version_dir = None
+            if declared_version:
+                try:
+                    version_dir = ensure_plugin_version_dir_available(plugin_root, declared_version)
+                except ValueError as err:
+                    logger.error(f"插件 {plugin.plugin_name} 的版本号不可用于版本目录，拒绝安装：{err}")
+                    failed_plugins.append(plugin.id)
+                    return
             state, msg = get_plugin_system().package.install(
                 plugin_id=plugin.id,
                 repo_url=plugin.repo_url,
                 force_install=True,
+                version_dir=version_dir,
             )
             elapsed_time = time.time() - start_time
             if state:
+                if version_dir:
+                    register_plugin_version(plugin_root, declared_version, version_dir, source="market")
                 _plugin_install_reporter(
                     plugin_id=plugin.id,
                     repo_url=plugin.repo_url,
@@ -1592,12 +1664,22 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             的目录
         :param dist_path: 插件的分发路径
         :return: 远程入口地址
+
+        联邦构建产物随版本目录走，版本段作为 dist 路径的第一段插入。静态资源
+        路由的基目录仍是插件目录，因此现有的 ".." 与 is_relative_to 校验不变。
         """
         dist_path = dist_path.strip("/")
+        normalized_id = extension_id_of(plugin_id).lower()
+        plugin_root = settings.ROOT_PATH / "app" / "plugins" / normalized_id
+        source_dir = resolve_plugin_version_dir(plugin_root, migrate=False)
+        version_segment = (
+            source_dir.name if source_dir is not None and source_dir != plugin_root else ""
+        )
         path = posixpath.join(
             "plugin",
             "file",
-            extension_id_of(plugin_id).lower(),
+            normalized_id,
+            *([version_segment] if version_segment else []),
             dist_path,
             "remoteEntry.js",
         )
@@ -1889,8 +1971,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not pid:
             return False
         try:
+            # 版本化布局下插件源码在版本目录里，包名需带上版本段
+            plugin_root = settings.ROOT_PATH / "app" / "plugins" / pid.lower()
+            source_dir = resolve_plugin_version_dir(plugin_root, migrate=False)
+            if source_dir is None:
+                logger.debug(f"{pid} exists: False")
+                return False
             # 构建包名
-            package_name = f"app.plugins.{pid.lower()}"
+            package_name = plugin_module_name(plugin_root, source_dir)
             # 检查包是否存在
             spec = importlib.util.find_spec(package_name)
             package_exists = spec is not None and spec.origin is not None

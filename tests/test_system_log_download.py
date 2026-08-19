@@ -87,29 +87,122 @@ def test_download_moviepilot_logs_packages_latest_ten_log_files(isolated_log_pat
     assert "moviepilot.txt" not in names
 
 
-def test_download_plugin_logs_packages_plugin_files_only(isolated_log_path):
-    """传入插件 ID 时只下载该插件滚动日志，最多打包 10 个文件。"""
+def test_download_logging_rejects_non_moviepilot_name(isolated_log_path):
+    """`name` 只接受 "moviepilot"；插件日志改走实例专属下载端点，旧的单参数入口
+    不再兼容以插件 ID 命名的扁平文件，避免中文实例名无法通过 ASCII 正则。
+    """
     plugin_dir = isolated_log_path / "plugins"
     plugin_dir.mkdir()
-    for index in range(11):
-        (plugin_dir / f"demoplugin.log.{index}").write_text(f"plugin-{index}", encoding="utf-8")
     (plugin_dir / "demoplugin.log").write_text("current", encoding="utf-8")
-    (plugin_dir / "other.log").write_text("other", encoding="utf-8")
-    (isolated_log_path / "moviepilot.log").write_text("main", encoding="utf-8")
 
-    response = asyncio.run(system_endpoint.download_logging(name="DemoPlugin", _=SimpleNamespace()))
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(system_endpoint.download_logging(name="DemoPlugin", _=SimpleNamespace()))
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.fixture(name="plugin_instance_log_dir_resolver")
+def fixture_plugin_instance_log_dir_resolver(monkeypatch, isolated_log_path):
+    """把插件实例日志目录解析器指向隔离目录下的 plugins/<id>/<instance>/logs。
+
+    直接替换 `app.runtime.log` 的私有解析器和目录缓存，借助 monkeypatch 在测试
+    结束后自动还原，避免污染同一进程内的其它测试。
+    """
+    from app.runtime import log as log_module
+
+    plugin_root = isolated_log_path.parent / "plugins"
+
+    def resolver(plugin_id: str, instance_id: str) -> Path:
+        return plugin_root / plugin_id / instance_id / "logs"
+
+    monkeypatch.setattr(log_module, "_plugin_log_dir_resolver", resolver)
+    monkeypatch.setattr(log_module, "_plugin_log_dir_cache", {})
+    return resolver
+
+
+def test_download_plugin_instance_logs_packages_instance_files_only(
+    plugin_instance_log_dir_resolver,
+):
+    """按插件标识与实例标识下载时只打包该实例的滚动日志，最多 10 个文件。"""
+    log_dir = plugin_instance_log_dir_resolver("DemoPlugin", "second")
+    log_dir.mkdir(parents=True)
+    for index in range(11):
+        (log_dir / f"plugin.log.{index}").write_text(f"plugin-{index}", encoding="utf-8")
+    (log_dir / "plugin.log").write_text("current", encoding="utf-8")
+    other_instance_dir = plugin_instance_log_dir_resolver("DemoPlugin", "default")
+    other_instance_dir.mkdir(parents=True)
+    (other_instance_dir / "plugin.log").write_text("other instance", encoding="utf-8")
+
+    response = asyncio.run(
+        system_endpoint.download_plugin_instance_logging(
+            plugin_id="DemoPlugin", instance_id="second", _=SimpleNamespace()
+        )
+    )
     body = asyncio.run(_read_streaming_body(response))
 
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = archive.namelist()
 
-    plugin_zip_root = response.headers["Content-Disposition"].split('filename="', 1)[1].removesuffix('.zip"')
     assert len(names) == 10
-    assert f"{plugin_zip_root}/demoplugin.log" in names
-    assert "demoplugin.log" not in names
-    assert "plugins/demoplugin.log" not in names
-    assert "plugins/other.log" not in names
-    assert "moviepilot.log" not in names
+    assert any(name.endswith("/plugin.log") for name in names)
+    assert not any("default" in name for name in names)
+
+
+def test_download_plugin_instance_logs_supports_chinese_instance_id(
+    plugin_instance_log_dir_resolver,
+):
+    """中文实例名的日志必须可以下载，不受下载端点字符集限制影响。"""
+    instance_id = "中文实例"
+    log_dir = plugin_instance_log_dir_resolver("DemoPlugin", instance_id)
+    log_dir.mkdir(parents=True)
+    (log_dir / "plugin.log").write_text("current", encoding="utf-8")
+
+    response = asyncio.run(
+        system_endpoint.download_plugin_instance_logging(
+            plugin_id="DemoPlugin", instance_id=instance_id, _=SimpleNamespace()
+        )
+    )
+    body = asyncio.run(_read_streaming_body(response))
+
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        names = archive.namelist()
+
+    assert any(name.endswith("/plugin.log") for name in names)
+    assert "filename*=UTF-8''" in response.headers["Content-Disposition"]
+
+
+def test_download_plugin_instance_logs_rejects_unknown_instance(
+    plugin_instance_log_dir_resolver,
+):
+    """实例目录不存在时返回 404，而不是打包空文件。"""
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            system_endpoint.download_plugin_instance_logging(
+                plugin_id="DemoPlugin", instance_id="ghost", _=SimpleNamespace()
+            )
+        )
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_logging_streams_plugin_instance_log(plugin_instance_log_dir_resolver):
+    """流式日志接口给出 plugin_id 时改读该实例目录下的 plugin.log。"""
+    log_dir = plugin_instance_log_dir_resolver("DemoPlugin", "second")
+    log_dir.mkdir(parents=True)
+    (log_dir / "plugin.log").write_text("instance log line\n", encoding="utf-8")
+
+    response = asyncio.run(
+        system_endpoint.get_logging(
+            request=SimpleNamespace(is_disconnected=lambda: False),
+            length=-1,
+            plugin_id="DemoPlugin",
+            instance_id="second",
+            _=SimpleNamespace(id=1, name="admin", is_superuser=True),
+        )
+    )
+
+    assert isinstance(response, Response)
+    assert "instance log line" in response.body.decode("utf-8")
 
 
 def test_download_log_zip_generation_runs_outside_event_loop_thread(monkeypatch, isolated_log_path):

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Dict, Union
 
 from pydantic import BaseModel, Field, RootModel
@@ -224,3 +225,33 @@ class PluginInstanceCreate(BaseModel):
     config: Optional[Dict[str, JsonData]] = Field(
         default=None, description="实例初始配置，为空时使用空字典"
     )
+
+
+class PluginInstanceLogLevelInfo(BaseModel):
+    """插件实例的日志等级设置与当前生效值。"""
+
+    instance_id: str = Field(description="实例标识，默认实例取值为 default")
+    configured_level: Optional[str] = Field(
+        default=None, description="配置的等级覆盖；为空表示跟随全局等级"
+    )
+    expires_at: Optional[datetime] = Field(
+        default=None, description="覆盖失效时间；为空表示不过期或未设置覆盖"
+    )
+    effective_level: str = Field(description="当前生效的等级，已按失效时间做过回落判定")
+
+
+class PluginInstanceLogLevelSet(BaseModel):
+    """设置插件实例日志等级请求体。"""
+
+    level: str = Field(description="目标等级，取值须在 LOG_LEVELS 内：DEBUG/INFO/WARN/ERROR")
+    expires_at: Optional[datetime] = Field(
+        default=None, description="覆盖失效时间；为空表示不过期"
+    )
+
+
+class PluginInstanceLogFileInfo(BaseModel):
+    """插件实例日志目录下的单个日志文件信息。"""
+
+    name: str = Field(description="文件名，如 plugin.log 或滚动备份 plugin.log.1")
+    size: int = Field(description="文件大小，单位字节")
+    modified_at: datetime = Field(description="文件最后修改时间")

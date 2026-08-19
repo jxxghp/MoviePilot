@@ -723,6 +723,10 @@
       "target": "不支援的整理方式：{transfer_type}"
     },
     {
+      "source": "不支持的日志等级：{level}",
+      "target": "不支援的日誌等級：{level}"
+    },
+    {
       "source": "{path} {transfer_type} 失败",
       "target": "{path} {transfer_type} 失敗"
     },

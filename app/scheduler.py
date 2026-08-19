@@ -25,7 +25,7 @@ from app.application.orchestration.transfer import TransferChain
 from app.workflow.service import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
-from app.runtime.extensions.instance import matches_extension
+from app.runtime.extensions.instance import matches_extension, split_instance_key
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -36,7 +36,7 @@ from app.runtime.progress import ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_registry import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
-from app.runtime.log import logger
+from app.runtime.log import logger, wrap_for_plugin_instance
 from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.workflow import Workflow
@@ -1236,8 +1236,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     sid = f"{owner}_{service['id']}"
                     job_id = sid.split("|")[0]
                     self.remove_plugin_job(owner, job_id)
+                    # 定时任务的实际调用发生在宿主稍后触发的调度线程/事件循环里，
+                    # 这里把回调按其归属实例键包一层，使触发时的日志落到该实例目录
+                    owner_plugin_id, owner_instance_id = split_instance_key(owner)
                     self._jobs[job_id] = {
-                        "func": service["func"],
+                        "func": wrap_for_plugin_instance(
+                            service["func"], owner_plugin_id, owner_instance_id
+                        ),
                         "name": service["name"],
                         "pid": owner,
                         "provider_name": plugin_name,

@@ -727,6 +727,10 @@
       "target": "Unsupported organization method: {transfer_type}"
     },
     {
+      "source": "不支持的日志等级：{level}",
+      "target": "Unsupported log level: {level}"
+    },
+    {
       "source": "{path} {transfer_type} 失败",
       "target": "{path} {transfer_type} failed"
     },

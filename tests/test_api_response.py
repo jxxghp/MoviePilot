@@ -373,6 +373,10 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
         ("/system/logging", "get_logging"),
         ("/system/logging/download/{name}", "download_logging"),
         (
+            "/system/logging/download/plugin/{plugin_id}/{instance_id}",
+            "download_plugin_instance_logging",
+        ),
+        (
             "/llm/provider-auth/callback/{provider_id}",
             "llm_provider_auth_callback",
         ),

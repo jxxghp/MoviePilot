@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union, Annotated
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import aiofiles
 import anyio
@@ -38,6 +38,7 @@ from app.application.orchestration.system import SystemChain
 from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
+from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.module_manager import ModuleManager
 from app.application.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
@@ -56,7 +57,7 @@ from app.runtime.progress import ProgressHelper
 from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
-from app.runtime.log import logger
+from app.runtime.log import PLUGIN_LOG_FILENAME, get_plugin_instance_log_dir, logger
 from app.scheduler import Scheduler
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
@@ -369,23 +370,21 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
 
 def _collect_named_log_files(name: str) -> list[Path]:
     """
-    根据前端传入的日志标识收集可下载日志文件。
+    根据前端传入的日志标识收集可下载的主程序滚动日志文件。
 
-    `moviepilot` 固定表示主程序日志，其余标识按插件 ID 处理并映射到
-    `plugins/<plugin_id>.log*`。这里不接收路径或后缀，避免下载入口变成任意
-    日志文件选择器；滚动日志按当前文件优先、备份文件按修改时间倒序补足。
+    `name` 只接受 "moviepilot"，固定表示主程序日志。插件日志改由
+    `_collect_plugin_instance_log_files` 按插件标识与实例标识两个独立参数下载
+    ——插件日志现在按实例分目录存放，不再是单个 `plugins/<plugin_id>.log` 文件，
+    合并成一个标识再套用本函数的 ASCII 正则会让中文实例名无法下载。这里不接收
+    路径或后缀，避免下载入口变成任意日志文件选择器；滚动日志按当前文件优先、
+    备份文件按修改时间倒序补足。
     """
     normalized_name = (name or "").strip().lower()
-    if not normalized_name or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized_name):
+    if normalized_name != "moviepilot" or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized_name):
         raise HTTPException(status_code=404, detail="Not Found")
 
-    log_root = settings.LOG_PATH
-    if normalized_name == "moviepilot":
-        log_dir = log_root
-        log_prefix = "moviepilot.log"
-    else:
-        log_dir = log_root / "plugins"
-        log_prefix = f"{normalized_name}.log"
+    log_dir = settings.LOG_PATH
+    log_prefix = "moviepilot.log"
 
     if not log_dir.exists() or not log_dir.is_dir():
         raise HTTPException(status_code=404, detail="Not Found")
@@ -403,6 +402,44 @@ def _collect_named_log_files(name: str) -> list[Path]:
         log_files.append(current_log)
     log_files.extend(backup_logs)
     return log_files[:_LOG_DOWNLOAD_LIMIT]
+
+
+def _collect_plugin_instance_log_files(plugin_id: str, instance_id: str) -> tuple[list[Path], Optional[Path]]:
+    """
+    收集插件某个实例可下载的滚动日志文件。
+
+    `plugin_id` 沿用主程序日志同款的 ASCII 标识正则——插件标识本身就是 Python
+    类名，天然满足该字符集。`instance_id` 不套用这个正则：允许中文等更宽字符集，
+    安全性改由 `get_plugin_instance_log_dir` 内部经 `plugin_instance_path` 的路径
+    分段校验兜底，不能通过收紧字符集实现，否则中文实例名的日志会变得无法下载。
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识
+    :return: `(可下载文件列表, 日志目录)`；插件或实例无法定位时目录为 None
+    """
+    normalized_plugin_id = (plugin_id or "").strip()
+    if not normalized_plugin_id or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized_plugin_id):
+        raise HTTPException(status_code=404, detail="Not Found")
+    normalized_instance_id = (instance_id or "").strip()
+    if not normalized_instance_id:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    log_dir = get_plugin_instance_log_dir(normalized_plugin_id, normalized_instance_id)
+    if log_dir is None or not log_dir.exists() or not log_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    current_log = log_dir / PLUGIN_LOG_FILENAME
+    backup_logs = [
+        item
+        for item in log_dir.iterdir()
+        if item.is_file() and item.name.startswith(f"{PLUGIN_LOG_FILENAME}.")
+    ]
+    backup_logs.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+
+    log_files = []
+    if current_log.exists() and current_log.is_file():
+        log_files.append(current_log)
+    log_files.extend(backup_logs)
+    return log_files[:_LOG_DOWNLOAD_LIMIT], log_dir
 
 
 def _verify_log_resource_superuser(
@@ -459,6 +496,61 @@ def _build_log_zip_data(name: str) -> tuple[bytes, str]:
         for log_file in log_files:
             if not SecurityUtils.is_safe_path(
                 base_path=log_root,
+                user_path=log_file,
+            ):
+                raise HTTPException(status_code=404, detail="Not Found")
+            arcname = f"{zip_stem}/{log_file.name}"
+            archive.write(log_file, arcname)
+
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue(), zip_stem
+
+
+async def _build_plugin_instance_log_zip_response(
+    plugin_id: str, instance_id: str
+) -> StreamingResponse:
+    """
+    将指定插件实例的日志文件打包为 zip 响应。
+
+    实例标识可能含中文等非 ASCII 字符，不能直接放进 `Content-Disposition` 的
+    普通 `filename` 参数（HTTP 头只能是 latin-1），因此同时提供 ASCII 兜底名和
+    RFC 5987 的 `filename*` 扩展参数。
+    """
+    zip_data, zip_stem = await anyio.to_thread.run_sync(
+        _build_plugin_instance_log_zip_data, plugin_id, instance_id
+    )
+    ascii_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", zip_stem).strip("_") or "plugin-logs"
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_stem}.zip"; '
+            f"filename*=UTF-8''{quote(zip_stem + '.zip', safe='')}"
+        )
+    }
+    return StreamingResponse(
+        iter([zip_data]),
+        media_type="application/zip",
+        headers=headers,
+    )
+
+
+def _build_plugin_instance_log_zip_data(plugin_id: str, instance_id: str) -> tuple[bytes, str]:
+    """
+    同步生成插件实例日志 zip 内容和文件名前缀。
+
+    日志收集、路径解析、文件读取和压缩都属于可能阻塞的本地 I/O；调用方需要
+    将本函数放到 worker thread 中执行，避免日志下载占用 ASGI 事件循环。
+    """
+    log_files, log_dir = _collect_plugin_instance_log_files(plugin_id, instance_id)
+    if not log_files or log_dir is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    zip_buffer = io.BytesIO()
+    filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_stem = f"{plugin_id}-{instance_id}-logs-{filename_time}"
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for log_file in log_files:
+            if not SecurityUtils.is_safe_path(
+                base_path=log_dir,
                 user_path=log_file,
             ):
                 raise HTTPException(status_code=404, detail="Not Found")
@@ -1059,15 +1151,28 @@ async def get_logging(
     request: Request,
     length: Optional[int] = 50,
     logfile: Optional[str] = "moviepilot.log",
+    plugin_id: Optional[str] = None,
+    instance_id: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
 ):
     """
     实时获取系统日志
     length = -1 时, 返回text/plain
     否则 返回格式SSE
+
+    给出 plugin_id 时改为读取该插件实例的日志：实例日志目录位于插件持久化根目录
+    （settings.PLUGIN_DATA_PATH）之下，与 logfile 所在的 settings.LOG_PATH 不是
+    同一棵树，因此这里改按实例目录重新定位安全边界，此时忽略 logfile 参数。
     """
-    base_path = AsyncPath(settings.LOG_PATH)
-    log_path = base_path / logfile
+    if plugin_id:
+        log_dir = get_plugin_instance_log_dir(plugin_id, instance_id or DEFAULT_INSTANCE_ID)
+        if log_dir is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+        base_path = AsyncPath(log_dir)
+        log_path = base_path / PLUGIN_LOG_FILENAME
+    else:
+        base_path = AsyncPath(settings.LOG_PATH)
+        log_path = base_path / logfile
 
     if not await SecurityUtils.async_is_safe_path(
         base_path=base_path, user_path=log_path, allowed_suffixes={".log"}
@@ -1189,9 +1294,41 @@ async def download_logging(
     _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
 ):
     """
-    按日志标识下载主程序或插件滚动日志，返回 zip 文件。
+    按日志标识下载主程序滚动日志，返回 zip 文件；`name` 固定为 "moviepilot"。
+
+    插件日志改由 `/logging/download/plugin/{plugin_id}/{instance_id}` 下载。
     """
     return await _build_log_zip_response(name)
+
+
+@router.get(
+    "/logging/download/plugin/{plugin_id}/{instance_id}",
+    summary="下载插件实例日志",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "日志 ZIP 文件",
+            "content": {
+                "application/zip": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        }
+    },
+)
+async def download_plugin_instance_logging(
+    plugin_id: str,
+    instance_id: str,
+    _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
+):
+    """
+    按插件标识与实例标识下载该实例的滚动日志，返回 zip 文件。
+
+    插件标识与实例标识分开传参并各自校验，避免合并成一个标识后收紧的字符集
+    正则连带把实例标识允许的字符集也收窄——实例标识允许中文等更宽字符集。
+    """
+    return await _build_plugin_instance_log_zip_response(plugin_id, instance_id)
 
 
 @router.get(

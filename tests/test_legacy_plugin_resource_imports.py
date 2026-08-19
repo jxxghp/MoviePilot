@@ -21,6 +21,9 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.startup import plugins_initializer
 
 
+# 版本化布局下用例插件的版本目录名
+_FIXTURE_VERSION_DIR = "v1_0_0"
+
 _HEADED_CLOAKBROWSER_ENTRYPOINTS = (
     "launch",
     "launch_async",
@@ -301,11 +304,34 @@ def test_scanner_honors_python_source_encoding_cookie(tmp_path: Path) -> None:
     )
 
 
+def _write_versioned_plugin(root: Path, plugin_id: str, source: str) -> Path:
+    """按版本化布局写入一个仅用于 AST 扫描的最小插件源码目录。
+
+    :param root: 插件根目录
+    :param plugin_id: 插件ID
+    :param source: 主模块源码
+    :return: 版本目录
+    """
+    version_dir = root / plugin_id.lower() / _FIXTURE_VERSION_DIR
+    version_dir.mkdir(parents=True)
+    (version_dir / "__init__.py").write_text(source, encoding="utf-8")
+    return version_dir
+
+
+def _plugin_id_of(module_name: str) -> str:
+    """从版本化模块名中取出插件目录名。
+
+    :param module_name: 形如 app.plugins.<插件ID>.<版本目录> 的模块名
+    :return: 插件目录名
+    """
+    return module_name.split(".")[-2]
+
+
 def _fake_plugin_module(module_name: str) -> ModuleType:
     """构造满足 PluginManager 类发现合同的内存模块。"""
     module = ModuleType(module_name)
     plugin_type = type(
-        module_name.rsplit(".", maxsplit=1)[-1].title(),
+        _plugin_id_of(module_name).title(),
         (),
         {
             "init_plugin": lambda self, _config: None,
@@ -323,12 +349,14 @@ def test_plugin_preparer_runs_before_import_in_non_debug_and_isolates_failures(
     """扫描或资源失败只阻止对应插件，后续插件仍按准备后导入的顺序加载。"""
     plugins_root = tmp_path / "app" / "plugins"
     for plugin_id in ("scanfailed", "resourcefailed", "healthy"):
-        _write_plugin(plugins_root, plugin_id, "plugin_name = 'Fixture'\n")
+        _write_versioned_plugin(plugins_root, plugin_id, "plugin_name = 'Fixture'\n")
 
     events: list[tuple[str, str]] = []
 
     def prepare(*, plugin_id: str, plugin_dir: Path) -> None:
-        assert plugin_dir.name == plugin_id
+        # 扫描范围是本次将被导入的那份源码，即版本目录
+        assert plugin_dir.name == _FIXTURE_VERSION_DIR
+        assert plugin_dir.parent.name == plugin_id
         events.append(("prepare", plugin_id))
         if plugin_id == "scanfailed":
             raise PluginResourceImportScanError("fixture scan failure")
@@ -336,7 +364,7 @@ def test_plugin_preparer_runs_before_import_in_non_debug_and_isolates_failures(
             raise RuntimeError("fixture resource activation failure")
 
     def import_plugin(module_name: str) -> ModuleType:
-        plugin_id = module_name.rsplit(".", maxsplit=1)[-1]
+        plugin_id = _plugin_id_of(module_name)
         assert events[-1] == ("prepare", plugin_id)
         events.append(("import", plugin_id))
         return _fake_plugin_module(module_name)

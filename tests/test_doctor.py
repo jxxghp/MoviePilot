@@ -255,6 +255,62 @@ def test_doctor_deduplicates_mirrored_plugin_errors(tmp_path, monkeypatch):
     assert runner.report.find("logs.recent") is not None
 
 
+def test_doctor_new_layout_plugin_log_error_does_not_degrade_report(tmp_path, monkeypatch):
+    """新版按实例分目录的插件日志中的错误也应保留告警，但不降低系统整体状态。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    plugin_log = settings.PLUGIN_DATA_PATH / "DemoPlugin" / "second" / "logs" / "plugin.log"
+    plugin_log.parent.mkdir(parents=True, exist_ok=True)
+    plugin_log.write_text(
+        f"【ERROR】{_current_log_timestamp()} - demo.py - 插件任务执行异常\n",
+        encoding="utf-8",
+    )
+
+    runner = DoctorRunner()
+    checks._check_logs(runner)
+
+    finding = runner.report.find("logs.plugin.recent_errors")
+    assert finding is not None
+    assert finding.status == DoctorFindingStatus.Degraded
+    assert finding.severity == DoctorSeverity.Warn
+    assert finding.affects_report_status is False
+    assert finding.context["component"] == "plugin"
+    assert runner.report.status.value == "healthy"
+
+
+def test_doctor_scans_both_legacy_and_new_layout_plugin_logs(tmp_path, monkeypatch):
+    """同一次巡检应同时扫到旧版扁平布局和新版实例目录布局的插件日志。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    timestamp = _current_log_timestamp()
+    legacy_log = settings.LOG_PATH / "plugins" / "legacy.log"
+    legacy_log.parent.mkdir(parents=True, exist_ok=True)
+    legacy_log.write_text(
+        f"【ERROR】{timestamp} - demo.py - 旧版插件任务异常\n", encoding="utf-8"
+    )
+    new_log = settings.PLUGIN_DATA_PATH / "NewPlugin" / "default" / "logs" / "plugin.log"
+    new_log.parent.mkdir(parents=True, exist_ok=True)
+    new_log.write_text(
+        f"【ERROR】{timestamp} - demo.py - 新版插件任务异常\n", encoding="utf-8"
+    )
+
+    runner = DoctorRunner()
+    checks._check_logs(runner)
+
+    # 插件组件按 component 聚合成一条告警，不按文件拆分；断言两个布局的错误行
+    # 都进了这条告警的详情和来源文件列表，确认新位置没有被漏扫
+    plugin_findings = [
+        finding
+        for finding in runner.report.findings
+        if finding.title == "最近日志存在插件异常"
+    ]
+    assert len(plugin_findings) == 1
+    finding = plugin_findings[0]
+    assert "旧版插件任务异常" in finding.detail
+    assert "新版插件任务异常" in finding.detail
+    assert str(settings.LOG_PATH / "plugins" / "legacy.log") in finding.context["log_files"]
+    assert str(new_log) in finding.context["log_files"]
+    assert runner.report.status.value == "healthy"
+
+
 def test_doctor_ignores_errors_outside_log_window(tmp_path, monkeypatch):
     """超出日志诊断时间窗的历史错误不应污染当前 Doctor 结果。"""
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
