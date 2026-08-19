@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from app import schemas
 from app.api.endpoints import download as download_endpoint
@@ -59,6 +60,53 @@ def test_download_add_rejects_source_without_media_id() -> None:
 
     assert response.success is False
     assert response.message == "媒体来源和媒体 ID 必须同时提供"
+
+
+def test_download_add_requires_confirmation_when_recognition_fails(monkeypatch) -> None:
+    """未识别的影视资源必须先由用户确认，不能直接提交下载。"""
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = None
+    download_chain = Mock()
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="Harry Potter Complete Collection",
+            category=MediaType.MOVIE.value,
+        ),
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is False
+    assert response.message == "无法识别媒体信息"
+    assert response.data.requires_confirmation is True
+    download_chain.download_single.assert_not_called()
+
+
+def test_download_add_allows_confirmed_unrecognized_video(monkeypatch) -> None:
+    """用户确认后应使用种子元数据提交未识别的影视合集。"""
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = None
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-collection"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="Harry Potter Complete Collection",
+            category="movie",
+        ),
+        allow_unrecognized=True,
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.type == MediaType.MOVIE
+    assert context.media_info.title == "Harry Potter Complete Collection"
+    assert context.media_info.media_id is None
 
 
 def test_subtitle_download_passes_generic_media_source(monkeypatch) -> None:

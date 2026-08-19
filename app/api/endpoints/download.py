@@ -71,6 +71,28 @@ def _prepare_subtitle_download(
     return True, ""
 
 
+def _build_unrecognized_media_info(
+    torrent: _SchemaTorrentInfo,
+    metainfo: MetaInfo,
+) -> MediaInfo:
+    """为用户确认的未识别影视资源构造最小下载上下文。"""
+    try:
+        media_type = MediaType(torrent.category)
+    except (TypeError, ValueError):
+        media_type = MediaType.from_agent(torrent.category)
+    if media_type == MediaType.COLLECTION:
+        media_type = MediaType.MOVIE
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = metainfo.type
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = MediaType.UNKNOWN
+    return MediaInfo(
+        type=media_type,
+        title=metainfo.name or torrent.title,
+        year=metainfo.year,
+    )
+
+
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
 def current(
     name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
@@ -134,6 +156,7 @@ def add(
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
+    allow_unrecognized: Annotated[bool, Body()] = False,
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
@@ -189,7 +212,15 @@ def add(
             music_type=normalized_music_type,
         )
     if not mediainfo:
-        return _SchemaResponse(success=False, message="无法识别媒体信息")
+        if is_music:
+            return _SchemaResponse(success=False, message="无法识别媒体信息")
+        if not allow_unrecognized:
+            return _SchemaResponse(
+                success=False,
+                message="无法识别媒体信息",
+                data=_SchemaDownloadAddedData(requires_confirmation=True),
+            )
+        mediainfo = _build_unrecognized_media_info(torrent_in, metainfo)
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
