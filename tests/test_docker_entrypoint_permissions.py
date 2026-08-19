@@ -428,6 +428,52 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
     assert not any(f"{tmp_path}/public" in line for line in lines)
 
 
+def test_external_package_cache_is_repaired_without_chowning_parent(
+    tmp_path: Path,
+) -> None:
+    external_cache = tmp_path / "package-cache" / "uv"
+    log = _run_permission_case(
+        tmp_path,
+        """
+        gosu() { shift; "$@"; }
+        UV_CACHE_DIR="${EXTERNAL_CACHE}" HOME="${HOME_DIR}" correct_file_permissions
+        """,
+        env={"EXTERNAL_CACHE": str(external_cache)},
+    )
+
+    assert f"-R moviepilot:moviepilot {external_cache}" in log.splitlines()
+    assert not any(
+        line.endswith(str(external_cache.parent)) for line in log.splitlines()
+    )
+
+
+def test_external_package_cache_write_probe_failure_is_fatal(tmp_path: Path) -> None:
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        ERROR() { printf '%s\n' "$1"; }
+        chown() { :; }
+        gosu() { return 1; }
+        CONFIG_DIR="${CASE_CONFIG_DIR}"
+        VENV_PATH="${CASE_VENV_PATH}"
+        UV_CACHE_DIR="${CASE_CACHE_DIR}"
+        if correct_package_cache_permissions; then
+          printf 'unexpected-success\n'
+        else
+          printf 'rejected\n'
+        fi
+        """,
+        env={
+            "CASE_CONFIG_DIR": str(tmp_path / "config"),
+            "CASE_VENV_PATH": str(tmp_path / "venv"),
+            "CASE_CACHE_DIR": str(tmp_path / "external-cache"),
+        },
+    )
+
+    assert "uv 缓存目录不可写" in output
+    assert output.endswith("rejected\n")
+
+
 def test_explicit_browser_cache_subtree_is_not_scanned_by_permission_repair(
     tmp_path: Path,
 ) -> None:

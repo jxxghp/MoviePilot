@@ -104,7 +104,7 @@ Usage:
 
 Options:
   deps:
-    --python PYTHON   用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.11+ 版本
+    --python PYTHON   用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本
     --venv PATH       虚拟环境目录，默认 ./venv
     --recreate        删除并重建虚拟环境
     --config-dir PATH 指定配置目录
@@ -144,7 +144,7 @@ show_setup_help() {
 Usage: moviepilot setup [OPTIONS]
 
 Options:
-  --python PYTHON           用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.11+ 版本
+  --python PYTHON           用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
   --recreate                删除并重建虚拟环境
   --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
@@ -190,7 +190,7 @@ Options:
   --ref REF                 后端 Git 版本，默认 latest
   --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
-  --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.11+ 版本
+  --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.12+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
   --recreate                删除并重建虚拟环境
   --skip-resources          更新 all 时跳过资源同步
@@ -258,7 +258,7 @@ python_version_ok() {
   local python_bin="$1"
   "$python_bin" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
 PY
 }
 
@@ -279,7 +279,7 @@ find_system_python() {
   local uv_bin
   local uv_python
 
-  for minor in 20 19 18 17 16 15 14 13 12 11; do
+  for minor in 20 19 18 17 16 15 14 13 12; do
     if try_python_candidate "python3.$minor"; then
       return 0
     fi
@@ -292,7 +292,7 @@ find_system_python() {
   fi
   for uv_bin in "$(command -v uv 2>/dev/null || true)" "$HOME/.local/bin/uv"; do
     if [ -n "$uv_bin" ] && [ -x "$uv_bin" ]; then
-      for minor in 20 19 18 17 16 15 14 13 12 11; do
+      for minor in 20 19 18 17 16 15 14 13 12; do
         uv_python="$("$uv_bin" python find "3.$minor" 2>/dev/null || true)"
         if [ -n "$uv_python" ] && python_version_ok "$uv_python"; then
           printf '%s\n' "$uv_python"
@@ -304,11 +304,24 @@ find_system_python() {
   return 1
 }
 
+find_external_python() {
+  local candidate
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case "$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" in
+      "$ROOT/venv"/*) continue ;;
+    esac
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(find_system_python)
+  return 1
+}
+
 require_bootstrap_python() {
   if [ -n "$BOOTSTRAP_PYTHON" ]; then
     return 0
   fi
-  echo "未找到可用的 Python 3.11+ 解释器，请先安装 Python 3.11 或更高版本" >&2
+  echo "未找到可用的 Python 3.12+ 解释器，请先安装 Python 3.12 或更高版本" >&2
   exit 1
 }
 
@@ -431,10 +444,11 @@ fi
 export CONFIG_DIR
 
 BOOTSTRAP_PYTHON=""
+EXTERNAL_BOOTSTRAP_PYTHON="$(find_external_python || true)"
 if [ -x "$VENV_PYTHON" ]; then
   BOOTSTRAP_PYTHON="$VENV_PYTHON"
 else
-  BOOTSTRAP_PYTHON="$(find_system_python || true)"
+  BOOTSTRAP_PYTHON="$EXTERNAL_BOOTSTRAP_PYTHON"
 fi
 
 cd "$ROOT"
@@ -458,7 +472,18 @@ case "${1:-}" in
     case "${1:-}" in
       deps)
         shift
-        exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-deps "$@"
+        INSTALL_DEPS_PYTHON="$BOOTSTRAP_PYTHON"
+        for option in "$@"; do
+          if [ "$option" = "--recreate" ]; then
+            if [ -z "$EXTERNAL_BOOTSTRAP_PYTHON" ]; then
+              echo "重建虚拟环境需要 venv 外部的 Python 3.12+ 解释器" >&2
+              exit 1
+            fi
+            INSTALL_DEPS_PYTHON="$EXTERNAL_BOOTSTRAP_PYTHON"
+            break
+          fi
+        done
+        exec "$INSTALL_DEPS_PYTHON" "$SETUP_SCRIPT" install-deps "$@"
         ;;
       frontend)
         shift

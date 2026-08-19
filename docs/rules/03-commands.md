@@ -7,16 +7,11 @@ This document is the project command reference, not an exhaustive shell allowlis
 ## Development Environment Setup
 
 ```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate          # macOS / Linux
-.\venv\Scripts\activate           # Windows
+# Create the locked development/test environment
+uv sync --locked
 
-# Install runtime dependencies
-pip install -r requirements.txt
-
-# Install development/test/lint/build dependencies
-pip install -r requirements-dev.in
+# Create a runtime-only environment
+uv sync --locked --no-dev --no-install-project
 ```
 
 ---
@@ -24,17 +19,21 @@ pip install -r requirements-dev.in
 ## Dependency Management
 
 ```bash
-# Install runtime dependencies
-pip install -r requirements.txt
+# Verify that project metadata and lock agree
+uv lock --check
 
-# Install test/lint/build dependencies
-pip install -r requirements-dev.in
+# Update the lock after editing pyproject.toml
+uv lock
+
+# Verify installed dependency consistency
+uv pip check
 ```
 
 **Rules:**
-- Runtime dependencies belong in `requirements.in`.
-- Test, coverage, lint, and explicit build tooling belong in `requirements-dev.in`.
-- `requirements.txt` is a compatibility entry that delegates to `requirements.in`; do not replace it with a local cross-platform lock file.
+- Runtime dependencies belong in `[project].dependencies` in `pyproject.toml`.
+- Test, coverage, lint, and explicit build tooling belong in `[dependency-groups].dev`.
+- Commit the updated `uv.lock`; do not maintain or generate main-program requirements files.
+- Use uv 0.12.5 and Python 3.12+.
 
 ---
 
@@ -42,16 +41,16 @@ pip install -r requirements-dev.in
 
 ```bash
 # Run a specific test file
-pytest tests/test_xxx.py
+uv run --locked --no-sync pytest tests/test_xxx.py
 
 # Run all tests
-pytest
+uv run --locked --no-sync pytest
 
 # Run tests with verbose output
-pytest -v tests/test_xxx.py
+uv run --locked --no-sync pytest -v tests/test_xxx.py
 
 # Run a specific test function
-pytest tests/test_xxx.py::test_function_name
+uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
 ```
 
 **Rules:**
@@ -65,10 +64,10 @@ pytest tests/test_xxx.py::test_function_name
 
 ```bash
 # Run pylint on the application package
-pylint app/
+uv run --locked --no-sync pylint app/
 
 # Run pylint on a specific module
-pylint app/chain/download.py
+uv run --locked --no-sync pylint app/chain/download.py
 ```
 
 **Rules:**
@@ -80,15 +79,12 @@ pylint app/chain/download.py
 ## Security Scan
 
 ```bash
-# Run safety check against the runtime compatibility entry
-safety check -r requirements.txt --policy-file=safety.policy.yml
-
-# Save report to file
-safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report.txt
+# Scan pyproject.toml and uv.lock
+uvx safety scan --target . --policy-file=safety.policy.yml
 ```
 
 **Rules:**
-- Run after runtime dependency changes; include `requirements-dev.in` when development/test/lint/build dependencies change.
+- Run manually after runtime or development dependency changes; this is not currently an automated CI job.
 - No new high-severity vulnerabilities may be introduced.
 
 ---
@@ -132,7 +128,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 
 # Install backend dependencies
 moviepilot install deps
-moviepilot install deps --python python3.11
+moviepilot install deps --python python3.12
 moviepilot install deps --venv /path/to/venv
 moviepilot install deps --recreate
 
@@ -307,4 +303,4 @@ python -m scripts.generate_plugin_market_default \
 - The marked list must be nonempty and include `jxxghp/MoviePilot-Plugins`.
 - This command rewrites only `ConfigModel.PLUGIN_MARKET`; inspect the resulting diff before committing or packaging.
 
-*Last Updated: 2026-08-06*
+*Last Updated: 2026-08-19*

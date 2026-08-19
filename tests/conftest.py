@@ -148,6 +148,7 @@ def configure_plugin_system_services():
     )
     from app.adapters.external.plugin.client import PluginMarketClient
     from app.adapters.system.plugin.dependency import PluginDependencyInstaller
+    from app.adapters.system.plugin.manifest import dependency_manifest_status
     from app.adapters.system.plugin.package import PluginPackageManager
     from app.runtime.extensions.plugin.system import (
         PluginSystemServices,
@@ -160,6 +161,7 @@ def configure_plugin_system_services():
         market=PluginMarketClient(helper),
         package=PluginPackageManager(helper),
         dependency=PluginDependencyInstaller(helper),
+        dependency_manifest_status=dependency_manifest_status,
         compatible_flags=lambda flag: (
             [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
             if flag else []

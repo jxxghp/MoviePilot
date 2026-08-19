@@ -33,10 +33,9 @@ PUBLIC_DIR = ROOT / "public"
 RUNTIME_DIR = ROOT / ".runtime"
 NODE_DIR = RUNTIME_DIR / "node"
 INSTALL_ENV_FILE = ROOT / ".moviepilot.env"
-MIN_PYTHON_VERSION = (3, 11)
-SUPPORTED_PYTHON_TEXT = (
-    f"Python {MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]} 或更高版本"
-)
+MIN_PYTHON_VERSION = (3, 12)
+SUPPORTED_PYTHON_TEXT = "Python 3.12+"
+UV_VERSION = "0.12.5"
 
 CONFIG_DIR = LEGACY_CONFIG_DIR
 LOG_DIR = CONFIG_DIR / "logs"
@@ -525,12 +524,10 @@ def build_package_install_env() -> dict[str, str]:
     env = os.environ.copy()
     package_cache_root = env.get("PACKAGE_CACHE_ROOT", "").strip() or str(CONFIG_DIR / ".cache")
     env.setdefault("PACKAGE_CACHE_ROOT", package_cache_root)
-    env.setdefault("PIP_CACHE_DIR", os.path.join(package_cache_root, "pip"))
     env.setdefault("UV_CACHE_DIR", os.path.join(package_cache_root, "uv"))
 
     index_url = env.get("PIP_PROXY", "").strip()
     if index_url:
-        env["PIP_INDEX_URL"] = index_url
         env["UV_DEFAULT_INDEX"] = index_url
 
     proxy = env.get("PROXY_HOST", "").strip()
@@ -620,67 +617,36 @@ def get_venv_bin_dir(venv_dir: Path) -> Path:
     return venv_dir / "bin"
 
 
-def get_venv_pip(venv_dir: Path) -> Path:
-    if os.name == "nt":
-        return get_venv_bin_dir(venv_dir) / "pip.exe"
-    return get_venv_bin_dir(venv_dir) / "pip"
+def require_uv() -> Path:
+    """返回仓库要求版本的 uv，避免不同安装入口使用不同解析器。"""
+    uv_command = shutil.which("uv")
+    if not uv_command:
+        raise RuntimeError(
+            f"未找到 uv {UV_VERSION}，请先安装后重新执行。"
+        )
+    uv_bin = Path(uv_command).expanduser().resolve()
+    version = capture([str(uv_bin), "--version"])
+    if version.split()[:2] != ["uv", UV_VERSION]:
+        raise RuntimeError(
+            f"MoviePilot 需要 uv {UV_VERSION}，当前为 {version or '未知版本'}。"
+        )
+    return uv_bin
 
 
-def _ensure_uv_available_for_venv(venv_dir: Path, venv_python: Path) -> Optional[Path]:
-    if os.name == "nt":
-        return None
-
+def expose_uv_to_venv(uv_bin: Path, venv_dir: Path) -> Path:
+    """让运行时能从虚拟环境旁定位同一 uv 二进制。"""
     venv_bin = get_venv_bin_dir(venv_dir)
-    uv_bin = venv_bin / "uv"
-    if uv_bin.exists():
-        return uv_bin
-
-    system_uv = shutil.which("uv")
-    if system_uv:
-        uv_target = Path(system_uv).expanduser().resolve()
-        print_step(f"复用系统 uv：{uv_target}")
-        if uv_bin.exists() or uv_bin.is_symlink():
-            uv_bin.unlink()
-        uv_bin.symlink_to(uv_target)
-        return uv_bin
-
-    print_step("当前未检测到 uv，先在虚拟环境内安装 uv")
-    command = [str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "uv"]
-    run(command, env=build_package_install_env(), safe_command=redact_command(command))
-    if uv_bin.exists():
-        return uv_bin
-    raise RuntimeError("uv 安装完成，但虚拟环境中未找到 uv 可执行文件")
-
-
-def configure_venv_pip_compat(venv_dir: Path, venv_python: Path) -> Path:
-    """
-    在虚拟环境中安装 uv 并保持 pip 命令兼容，供现有安装流程复用。
-    """
+    runtime_uv = venv_bin / ("uv.exe" if os.name == "nt" else "uv")
+    venv_bin.mkdir(parents=True, exist_ok=True)
+    if runtime_uv.resolve() == uv_bin.resolve():
+        return runtime_uv
+    if runtime_uv.exists() or runtime_uv.is_symlink():
+        runtime_uv.unlink()
     if os.name == "nt":
-        return get_venv_pip(venv_dir)
-
-    _ensure_uv_available_for_venv(venv_dir, venv_python)
-    venv_bin = get_venv_bin_dir(venv_dir)
-    wrapper_src = ROOT / "scripts" / "uv-pip-compat.sh"
-    wrapper_dst = venv_bin / "uv-pip-compat"
-    shutil.copy2(wrapper_src, wrapper_dst)
-    wrapper_dst.chmod(0o755)
-
-    python_version = get_python_version(str(venv_python))
-    compat_links = {
-        "pip",
-        "pip3",
-        f"pip{python_version[0]}",
-        f"pip{python_version[0]}.{python_version[1]}",
-        "pip-compile",
-        "pip-sync",
-    }
-    for link_name in compat_links:
-        link_path = venv_bin / link_name
-        if link_path.exists() or link_path.is_symlink():
-            link_path.unlink()
-        link_path.symlink_to(wrapper_dst.name)
-    return get_venv_pip(venv_dir)
+        shutil.copy2(uv_bin, runtime_uv)
+    else:
+        runtime_uv.symlink_to(uv_bin)
+    return runtime_uv
 
 
 def ensure_supported_python(python_bin: str) -> None:
@@ -2743,33 +2709,59 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
     """
     ensure_supported_python(python_bin)
     venv_dir = venv_dir.expanduser().resolve()
+    if recreate:
+        resolved_python = Path(python_bin).expanduser().resolve()
+        if resolved_python.is_relative_to(venv_dir):
+            raise RuntimeError(
+                "重建虚拟环境需要使用 venv 外部的 Python 3.12+ 解释器。"
+            )
+    uv_bin = require_uv()
+    temporary_uv_dir: Optional[TemporaryDirectory[str]] = None
+    if recreate and venv_dir.exists() and uv_bin.is_relative_to(venv_dir):
+        temporary_uv_dir = TemporaryDirectory(prefix="moviepilot-uv-")
+        temporary_uv = Path(temporary_uv_dir.name) / uv_bin.name
+        shutil.copy2(uv_bin, temporary_uv)
+        uv_bin = temporary_uv
     venv_python = get_venv_python(venv_dir)
-    venv_pip = get_venv_pip(venv_dir)
     print_step(f"使用 Python 解释器：{python_bin}")
+    try:
+        if recreate and venv_dir.exists():
+            print_step(f"删除已有虚拟环境：{venv_dir}")
+            shutil.rmtree(venv_dir)
 
-    if recreate and venv_dir.exists():
-        print_step(f"删除已有虚拟环境：{venv_dir}")
-        shutil.rmtree(venv_dir)
+        if venv_python.exists():
+            print_step(f"复用已有虚拟环境：{venv_dir}")
+        else:
+            print_step(f"创建虚拟环境：{venv_dir}")
 
-    if not venv_python.exists():
-        print_step(f"创建虚拟环境：{venv_dir}")
-        run([python_bin, "-m", "venv", str(venv_dir)])
-    else:
-        print_step(f"复用已有虚拟环境：{venv_dir}")
-
-    if os.name == "nt":
-        print_step("升级 pip")
-        command = [str(venv_python), "-m", "pip", "install", "--upgrade", "pip"]
-        run(command, env=build_package_install_env(), safe_command=redact_command(command))
-    else:
-        print_step("为虚拟环境配置 uv 兼容 pip 命令")
-        venv_pip = configure_venv_pip_compat(venv_dir, venv_python)
-
-    print_step("安装项目依赖")
-    command = [str(venv_pip), "install", "-r", str(ROOT / "requirements.txt")]
-    run(command, env=build_package_install_env(), safe_command=redact_command(command))
-    install_browser_runtime(venv_python)
-    return venv_python
+        print_step("同步项目锁定依赖")
+        command = [
+            str(uv_bin),
+            "sync",
+            "--project",
+            str(ROOT),
+            "--locked",
+            "--no-dev",
+            "--no-install-project",
+            "--python",
+            python_bin,
+        ]
+        env = build_package_install_env()
+        env["UV_PROJECT_ENVIRONMENT"] = str(venv_dir)
+        run(command, env=env, safe_command=redact_command(command))
+        if temporary_uv_dir is not None:
+            runtime_uv = get_venv_bin_dir(venv_dir) / (
+                "uv.exe" if os.name == "nt" else "uv"
+            )
+            runtime_uv.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(uv_bin, runtime_uv)
+        else:
+            expose_uv_to_venv(uv_bin, venv_dir)
+        install_browser_runtime(venv_python)
+        return venv_python
+    finally:
+        if temporary_uv_dir is not None:
+            temporary_uv_dir.cleanup()
 
 
 def install_browser_runtime(venv_python: Path) -> None:
@@ -3718,7 +3710,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.11+ 版本",
+        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本",
     )
     install_parser.add_argument(
         "--venv", default=str(ROOT / "venv"), help="虚拟环境目录"
@@ -3780,7 +3772,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.11+ 版本",
+        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本",
     )
     setup_parser.add_argument("--venv", default=str(ROOT / "venv"), help="虚拟环境目录")
     setup_parser.add_argument(
@@ -3852,7 +3844,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于安装后端依赖的 Python 解释器，默认自动选择本地 3.11+ 版本",
+        help="用于安装后端依赖的 Python 解释器，默认自动选择本地 3.12+ 版本",
     )
     update_parser.add_argument(
         "--venv", default=str(ROOT / "venv"), help="虚拟环境目录"

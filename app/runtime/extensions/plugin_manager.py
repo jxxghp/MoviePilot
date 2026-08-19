@@ -421,6 +421,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             local_candidate=self._get_local_plugin_candidate_from_path,
             sync_local=self._sync_local_plugin_if_installed,
             reload_plugin=self.reload_plugin,
+            dependency_manifest_status=(
+                get_plugin_system().dependency_manifest_status
+            ),
             watch=watch,
             log=logger,
         ).run()

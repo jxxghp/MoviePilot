@@ -63,7 +63,7 @@ class PluginSyncService:
         def install_one(plugin: Any) -> None:
             """安装一个插件并记录结果。"""
             started = time.time()
-            state, message = self._install(plugin.id, plugin.repo_url, True)
+            state, message = self._install(plugin.id, plugin.repo_url, False)
             elapsed = time.time() - started
             if state:
                 self._report(plugin_id=plugin.id, repo_url=plugin.repo_url)

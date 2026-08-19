@@ -608,7 +608,7 @@ app/application/plugin/folders.py              # 插件文件夹清理用例
 
 - `PluginManager()` 仍返回同一实例，`app.sdk.plugins.PluginManager` 身份测试保持。
 - 启停、更新、热重载、配置更新、动态路由刷新顺序不变。
-- PluginManager 本身不再直接导入 DB、市场 client、pip、压缩包和备份实现；具体安装阶段由 Application command 和注入的包/依赖端口完成。
+- PluginManager 本身不再直接导入 DB、市场 client、包管理器、压缩包和备份实现；具体安装阶段由 Application command 和注入的包/依赖端口完成。
 - 所有旧公共方法在 V3 保留，内部只做委托。
 
 ### 6.9 外部 Adapter 直接持久化并承载业务用例
@@ -619,7 +619,7 @@ app/application/plugin/folders.py              # 插件文件夹清理用例
 
 - 市场索引和发布信息请求。
 - 插件包下载、解压、校验、备份和恢复。
-- requirements 解析、冲突判断、pip 安装与降级策略。
+- 插件 `pyproject.toml` / `requirements.txt` 选择、约束判断、uv 安装与降级策略。
 - 同步/异步重复实现。
 - 市场缓存、旧同步/异步安装入口和旧私有方法兼容。
 
@@ -1384,7 +1384,7 @@ done_when: []
 ### 12.2 持续门禁与同职责域细化（阶段 3-5）
 
 - 本轮纳入阶段 3 的写端点不再直接持有数据库事务；当前机器基线中的 endpoint→Session、endpoint→Model、Application→DB 和目标 Adapter/Runtime→DB 边均为 0。后续只允许防止这些边重新引入，不再把历史边数量当作未完成任务。
-- PluginManager 不直接做市场、pip、压缩包和备份实现；外部 Adapter 不导入 Oper。
+- PluginManager 不直接做市场、包管理、压缩包和备份实现；外部 Adapter 不导入 Oper。
 - 重点 Chain 的垂直切片和 `ChainBase` 脱离真实 Runtime 的单测属于同一职责域内的持续细化，不再作为跨层拆分阻塞项。
 
 ### 12.3 长期 ABI、性能与实现预算（阶段 6-7）

@@ -59,20 +59,31 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         self.assertIsNone(result)
         prompt_mock.assert_not_called()
 
+    def test_supported_python_accepts_versions_newer_than_current_ci(self):
+        module = load_local_setup_module()
+
+        with patch.object(module, "get_python_version", return_value=(3, 15, 0)):
+            module.ensure_supported_python("python3.15")
+
+    def test_supported_python_rejects_versions_below_3_12(self):
+        module = load_local_setup_module()
+
+        with patch.object(module, "get_python_version", return_value=(3, 11, 9)):
+            with self.assertRaisesRegex(RuntimeError, r"Python 3\.12\+"):
+                module.ensure_supported_python("python3.11")
+
     def test_install_deps_installs_browser_runtime(self):
         module = load_local_setup_module()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            venv_dir = (Path(temp_dir) / "venv").resolve()
+            root = Path(temp_dir)
+            venv_dir = (root / "venv").resolve()
             venv_python = venv_dir / "bin" / "python"
-            venv_pip = venv_dir / "bin" / "pip"
+            uv_bin = root / "tools" / "uv"
 
             with patch.object(module, "ensure_supported_python"), \
-                    patch.object(
-                        module,
-                        "configure_venv_pip_compat",
-                        return_value=venv_pip,
-                    ), \
+                    patch.object(module, "require_uv", return_value=uv_bin), \
+                    patch.object(module, "expose_uv_to_venv") as expose_uv, \
                     patch.object(module, "run") as run_mock, \
                     patch.object(module, "install_browser_runtime") as install_browser:
                 result = module.install_deps(
@@ -82,13 +93,23 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                 )
 
         self.assertEqual(result, venv_python)
-        run_mock.assert_any_call(["python3", "-m", "venv", str(venv_dir)])
-        self.assertTrue(
-            any(
-                call.args[0] == [str(venv_pip), "install", "-r", str(module.ROOT / "requirements.txt")]
-                for call in run_mock.call_args_list
-            )
+        command = run_mock.call_args.args[0]
+        self.assertEqual(
+            command,
+            [
+                str(uv_bin),
+                "sync",
+                "--project",
+                str(module.ROOT),
+                "--locked",
+                "--no-dev",
+                "--no-install-project",
+                "--python",
+                "python3",
+            ],
         )
+        self.assertEqual(run_mock.call_args.kwargs["env"]["UV_PROJECT_ENVIRONMENT"], str(venv_dir))
+        expose_uv.assert_called_once_with(uv_bin, venv_dir)
         install_browser.assert_called_once_with(venv_python)
 
     def test_package_install_env_maps_proxy_cache_and_index(self):
@@ -101,17 +122,17 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                     "PIP_PROXY": "https://user:pass@mirror.example/simple",
                     "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
                 },
-                clear=False,
+                clear=True,
         ):
             module.CONFIG_DIR = Path(temp_dir)
             env = module.build_package_install_env()
 
         self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
         self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
         self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
-        self.assertEqual(env["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
         self.assertEqual(env["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
+        self.assertNotIn("PIP_CACHE_DIR", env)
+        self.assertNotIn("PIP_INDEX_URL", env)
 
     def test_package_install_env_defaults_cache_to_config_dir(self):
         module = load_local_setup_module()
@@ -125,26 +146,24 @@ class LocalSetupConfigDirTests(unittest.TestCase):
             env = module.build_package_install_env()
 
         self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / ".cache"))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "pip"))
         self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / ".cache" / "uv"))
+        self.assertNotIn("PIP_CACHE_DIR", env)
 
-    def test_package_install_env_preserves_explicit_cache_dirs(self):
+    def test_package_install_env_preserves_explicit_uv_cache_dir(self):
         module = load_local_setup_module()
 
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
                 module.os.environ,
                 {
-                    "PIP_CACHE_DIR": "/custom/pip-cache",
                     "UV_CACHE_DIR": "/custom/uv-cache",
                     "PACKAGE_CACHE_ROOT": "/custom/custom-package-cache",
                 },
-                clear=False,
+                clear=True,
         ):
             module.CONFIG_DIR = Path(temp_dir)
             env = module.build_package_install_env()
 
         self.assertEqual(env["PACKAGE_CACHE_ROOT"], "/custom/custom-package-cache")
-        self.assertEqual(env["PIP_CACHE_DIR"], "/custom/pip-cache")
         self.assertEqual(env["UV_CACHE_DIR"], "/custom/uv-cache")
 
     def test_run_redacts_safe_command(self):
@@ -153,19 +172,15 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         with patch.object(module.subprocess, "run"), patch("builtins.print") as print_mock:
             module.run(
                 [
-                    "python",
-                    "-m",
-                    "pip",
-                    "install",
-                    "-i",
+                    "uv",
+                    "sync",
+                    "--default-index",
                     "https://user:pass@mirror.example/simple",
                 ],
                 safe_command=[
-                    "python",
-                    "-m",
-                    "pip",
-                    "install",
-                    "-i",
+                    "uv",
+                    "sync",
+                    "--default-index",
                     "https://mirror.example/simple",
                 ],
             )
@@ -178,22 +193,22 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         module = load_local_setup_module()
 
         command = [
-            "pip",
-            "install",
-            "--index-url=https://user:pass@mirror.example/simple",
+            "uv",
+            "sync",
+            "--default-index=https://user:pass@mirror.example/simple",
         ]
 
         redacted = module.redact_command(command)
 
-        self.assertIn("--index-url=https://mirror.example/simple", redacted)
+        self.assertIn("--default-index=https://mirror.example/simple", redacted)
         self.assertNotIn("user:pass", " ".join(redacted))
 
     def test_redact_command_handles_url_query_equals(self):
         module = load_local_setup_module()
 
         command = [
-            "pip",
-            "install",
+            "uv",
+            "sync",
             "https://user:pass@mirror.example/simple?token=abc",
         ]
 
@@ -202,45 +217,79 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         self.assertIn("https://mirror.example/simple?token=abc", redacted)
         self.assertNotIn("user:pass", " ".join(redacted))
 
-    def test_uv_bootstrap_uses_package_env_and_index_without_visible_secret(self):
+    def test_require_uv_accepts_repository_version(self):
         module = load_local_setup_module()
-        calls = []
+        uv_bin = Path("/opt/moviepilot/bin/uv")
 
-        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
-                module.os.environ,
-                {
-                    "PROXY_HOST": "http://proxy.example:7890",
-                    "PIP_PROXY": "https://user:pass@mirror.example/simple",
-                    "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
-                },
-                clear=False,
+        with patch.object(module.shutil, "which", return_value=str(uv_bin)), patch.object(
+            module, "capture", return_value=f"uv {module.UV_VERSION} (test-target)"
         ):
+            result = module.require_uv()
+
+        self.assertEqual(result, uv_bin.resolve())
+
+    def test_windows_expose_uv_keeps_existing_source_when_target_is_same(self):
+        module = load_local_setup_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
             venv_dir = Path(temp_dir) / "venv"
-            venv_python = venv_dir / "bin" / "python"
+            uv_bin = venv_dir / "Scripts" / "uv.exe"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_bytes(b"uv-binary")
+
+            with patch.object(module.os, "name", "nt"):
+                result = module.expose_uv_to_venv(uv_bin, venv_dir)
+
+            self.assertEqual(result, uv_bin)
+            self.assertEqual(uv_bin.read_bytes(), b"uv-binary")
+
+    def test_recreate_preserves_uv_located_inside_old_venv(self):
+        module = load_local_setup_module()
+        commands = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv_dir = (Path(temp_dir) / "venv").resolve()
             uv_bin = venv_dir / "bin" / "uv"
-            venv_python.parent.mkdir(parents=True)
-            venv_python.write_text("", encoding="utf-8")
-            module.CONFIG_DIR = Path(temp_dir) / "config"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_bytes(b"uv-binary")
 
-            def fake_run(command, cwd=None, env=None, safe_command=None):
-                calls.append((command, env, safe_command))
-                uv_bin.write_text("", encoding="utf-8")
+            def fake_run(command, **_kwargs):
+                self.assertTrue(Path(command[0]).is_file())
+                commands.append(command)
 
-            with patch.object(module.shutil, "which", return_value=None), \
+            with patch.object(module, "ensure_supported_python"), \
+                    patch.object(module, "require_uv", return_value=uv_bin), \
+                    patch.object(module, "install_browser_runtime"), \
                     patch.object(module, "run", side_effect=fake_run):
-                module._ensure_uv_available_for_venv(venv_dir, venv_python)
+                module.install_deps(
+                    python_bin="python.exe",
+                    venv_dir=venv_dir,
+                    recreate=True,
+                )
 
-        command, env, safe_command = calls[0]
-        self.assertEqual(command, [str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "uv"])
-        self.assertEqual(env["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
-        self.assertEqual(env["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
-        self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
-        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
-        self.assertNotIn("user:pass", " ".join(safe_command or command))
+            self.assertEqual(len(commands), 1)
+            self.assertNotEqual(Path(commands[0][0]), uv_bin)
+            self.assertNotIn("--inexact", commands[0])
+            self.assertEqual(uv_bin.read_bytes(), b"uv-binary")
 
-    def test_windows_pip_upgrade_uses_package_env(self):
+    def test_recreate_rejects_python_from_target_venv(self):
+        module = load_local_setup_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv_dir = (Path(temp_dir) / "venv").resolve()
+            python_bin = venv_dir / "bin" / "python"
+            python_bin.parent.mkdir(parents=True)
+            python_bin.touch()
+
+            with patch.object(module, "ensure_supported_python"), \
+                    self.assertRaisesRegex(RuntimeError, "venv 外部"):
+                module.install_deps(
+                    python_bin=str(python_bin),
+                    venv_dir=venv_dir,
+                    recreate=True,
+                )
+
+    def test_windows_install_deps_uses_uv_without_pip_bootstrap(self):
         module = load_local_setup_module()
         calls = []
 
@@ -256,10 +305,7 @@ class LocalSetupConfigDirTests(unittest.TestCase):
             root = Path(temp_dir)
             venv_dir = root / "venv"
             venv_python = venv_dir / "Scripts" / "python.exe"
-            venv_pip = venv_dir / "Scripts" / "pip.exe"
-            venv_pip.parent.mkdir(parents=True)
-            venv_python.write_text("", encoding="utf-8")
-            venv_pip.write_text("", encoding="utf-8")
+            uv_bin = root / "tools" / "uv.exe"
             module.CONFIG_DIR = root / "config"
 
             def fake_run(command, cwd=None, env=None, safe_command=None):
@@ -267,23 +313,24 @@ class LocalSetupConfigDirTests(unittest.TestCase):
 
             with patch.object(module.os, "name", "nt"), \
                     patch.object(module, "ensure_supported_python"), \
+                    patch.object(module, "require_uv", return_value=uv_bin), \
+                    patch.object(module, "expose_uv_to_venv"), \
                     patch.object(module, "install_browser_runtime"), \
                     patch.object(module, "run", side_effect=fake_run):
                 module.install_deps(python_bin="python", venv_dir=venv_dir, recreate=False)
 
-        pip_upgrade = [
-            item for item in calls
-            if item[0][1:] == ["-m", "pip", "install", "--upgrade", "pip"]
-        ][0]
-        self.assertEqual(pip_upgrade[1]["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
-        self.assertEqual(pip_upgrade[1]["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
-        self.assertEqual(pip_upgrade[1]["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertEqual(pip_upgrade[1]["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
-        self.assertEqual(pip_upgrade[1]["PIP_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "pip"))
-        self.assertEqual(pip_upgrade[1]["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
-        self.assertNotIn("user:pass", " ".join(pip_upgrade[2] or pip_upgrade[0]))
+        self.assertEqual(len(calls), 1)
+        command, env, safe_command = calls[0]
+        self.assertEqual(command[:2], [str(uv_bin), "sync"])
+        self.assertNotIn("pip", command)
+        self.assertEqual(env["UV_PROJECT_ENVIRONMENT"], str(venv_dir.resolve()))
+        self.assertEqual(env["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
+        self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
+        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(Path(temp_dir) / "custom-package-cache"))
+        self.assertEqual(env["UV_CACHE_DIR"], str(Path(temp_dir) / "custom-package-cache" / "uv"))
+        self.assertNotIn("user:pass", " ".join(safe_command or command))
 
-    def test_install_deps_uses_package_env_for_project_requirements(self):
+    def test_install_deps_uses_package_env_for_project_lock(self):
         module = load_local_setup_module()
         calls = []
 
@@ -294,26 +341,21 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         ):
             root = Path(temp_dir)
             venv_dir = root / "venv"
-            venv_python = venv_dir / "bin" / "python"
-            venv_pip = venv_dir / "bin" / "pip"
-            venv_pip.parent.mkdir(parents=True)
-            venv_python.write_text("", encoding="utf-8")
-            venv_pip.write_text("", encoding="utf-8")
+            uv_bin = root / "tools" / "uv"
             module.CONFIG_DIR = root / "config"
 
             def fake_run(command, cwd=None, env=None, safe_command=None):
                 calls.append((command, env, safe_command))
 
             with patch.object(module, "ensure_supported_python"), \
-                    patch.object(module, "configure_venv_pip_compat", return_value=venv_pip), \
+                    patch.object(module, "require_uv", return_value=uv_bin), \
+                    patch.object(module, "expose_uv_to_venv"), \
                     patch.object(module, "install_browser_runtime"), \
                     patch.object(module, "run", side_effect=fake_run):
                 module.install_deps(python_bin="python3", venv_dir=venv_dir, recreate=False)
 
-        project_install = [
-            item for item in calls
-            if item[0][:2] == [str(venv_pip), "install"] and "-r" in item[0]
-        ][0]
-        self.assertEqual(project_install[1]["PIP_INDEX_URL"], "https://user:pass@mirror.example/simple")
-        self.assertEqual(project_install[1]["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
-        self.assertNotIn("user:pass", " ".join(project_install[2] or project_install[0]))
+        project_sync = calls[0]
+        self.assertEqual(project_sync[0][:2], [str(uv_bin), "sync"])
+        self.assertIn("--locked", project_sync[0])
+        self.assertEqual(project_sync[1]["UV_DEFAULT_INDEX"], "https://user:pass@mirror.example/simple")
+        self.assertNotIn("user:pass", " ".join(project_sync[2] or project_sync[0]))

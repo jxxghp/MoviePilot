@@ -132,7 +132,6 @@ class CliAutoUpdateTests(unittest.TestCase):
         self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
         self.assertEqual(env["PIP_PROXY"], "https://mirror.example/simple")
         self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(module.settings.PACKAGE_CACHE_PATH))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "pip"))
         self.assertEqual(env["UV_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "uv"))
 
     def test_best_effort_auto_update_derives_tool_cache_from_existing_root(self):
@@ -155,5 +154,4 @@ class CliAutoUpdateTests(unittest.TestCase):
 
         env = run_mock.call_args.kwargs["env"]
         self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(package_cache_root))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(package_cache_root / "pip"))
         self.assertEqual(env["UV_CACHE_DIR"], str(package_cache_root / "uv"))

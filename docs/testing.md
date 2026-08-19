@@ -7,15 +7,16 @@
 pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引导，因此任何方式启动 pytest 都会自动隔离。
 
 ```bash
-pytest tests                              # 全量
-pytest tests/test_xxx.py                  # 单文件
-pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
-python tests/run.py                       # 等价于 pytest 全量（参数透传）
+uv run --locked --no-sync pytest tests                              # 全量
+uv run --locked --no-sync pytest tests/test_xxx.py                  # 单文件
+uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
+uv run --locked --no-sync python tests/run.py                       # 等价于 pytest 全量（参数透传）
 ```
 
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
 - 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
-- **复现 CI 用干净环境**：建议用一个仅 `pip install -r requirements-dev.in` 的虚拟环境运行，避免本地额外包或编译产物掩盖问题。
+- **复现 CI 用干净环境**：使用 `uv sync --locked` 从 `uv.lock` 创建环境，再以
+  `uv run --locked --no-sync` 运行测试，避免本地额外包、未锁定解析结果或编译产物掩盖问题。
 
 ## 隔离模型（`tests/conftest.py`）
 
@@ -138,6 +139,6 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，用 `python tests/run.py` 跑全量单测。
-- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `python tests/run.py`，确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
-- 复现 CI 用仅安装 `requirements-dev.in` 的干净环境；`requirements.in` 只承载运行时依赖，pytest 与覆盖率插件由开发依赖入口提供。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境并用 `tests/run.py` 跑全量单测。
+- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `uv run --locked --no-sync python tests/run.py`，确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
+- 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。

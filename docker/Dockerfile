@@ -1,3 +1,6 @@
+FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
+
+
 FROM python:3.12.13-slim-bookworm AS base
 
 
@@ -92,21 +95,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     wget
 
-# 安装 Python 构建依赖并创建虚拟环境
+# 按锁文件创建主程序虚拟环境
 WORKDIR /app
-COPY requirements.in requirements.in
-COPY scripts/uv-pip-compat.sh /usr/local/bin/uv-pip-compat
-RUN python3 -m venv ${VENV_PATH} \
-    && env UV_INSTALL_DIR=/usr/local/bin sh -c "$(curl -LsSf https://astral.sh/uv/install.sh)" \
-    && chmod +x /usr/local/bin/uv-pip-compat \
-    && ln -sf /usr/local/bin/uv ${VENV_PATH}/bin/uv \
-    && ln -sf /usr/local/bin/uv-pip-compat ${VENV_PATH}/bin/pip \
-    && ln -sf /usr/local/bin/uv-pip-compat ${VENV_PATH}/bin/pip3 \
-    && ln -sf /usr/local/bin/uv-pip-compat ${VENV_PATH}/bin/pip3.12 \
-    && ln -sf /usr/local/bin/uv-pip-compat ${VENV_PATH}/bin/pip-compile \
-    && ln -sf /usr/local/bin/uv-pip-compat ${VENV_PATH}/bin/pip-sync \
-    && pip-compile requirements.in -o requirements.txt \
-    && pip install -r requirements.txt
+COPY --from=uv /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock ./
+RUN python3 -m venv --without-pip ${VENV_PATH} \
+    && UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync \
+    --locked \
+    --no-dev \
+    --no-install-project
 
 # 下载准备代码
 FROM prepare_package AS prepare_code
@@ -145,8 +142,7 @@ COPY --from=mwader/static-ffmpeg:8.1.1 /ffprobe /usr/local/bin/
 
 # python 环境
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
-COPY --from=prepare_venv /usr/local/bin/uv /usr/local/bin/uv
-COPY --from=prepare_venv /usr/local/bin/uv-pip-compat /usr/local/bin/uv-pip-compat
+COPY --from=uv /uv /usr/local/bin/uv
 
 # 浏览器运行依赖
 RUN playwright install-deps chromium \

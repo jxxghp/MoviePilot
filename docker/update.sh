@@ -23,26 +23,27 @@ function WARN() {
 # 设置虚拟环境路径（兼容群晖等系统必须这样配置）
 VENV_PATH="${VENV_PATH:-/opt/venv}"
 export PATH="${VENV_PATH}/bin:$PATH"
+UV_BIN="${UV_BIN:-/usr/local/bin/uv}"
 
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
     export PACKAGE_CACHE_ROOT
-    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/pip}"
     export UV_CACHE_DIR="${UV_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/uv}"
-    mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+    mkdir -p "${UV_CACHE_DIR}"
 }
 
 apply_package_cache_env
 
-PIP_ENV=()
+PACKAGE_ENV=()
+UV_OPTIONS=()
 MOVIEPILOT_UPDATE_RESULT="noop"
 
 function set_package_proxy_env() {
-    PIP_ENV=()
+    PACKAGE_ENV=()
     if [[ -n "${PROXY_HOST}" ]]; then
-        PIP_ENV=(
+        PACKAGE_ENV=(
             "HTTP_PROXY=${PROXY_HOST}"
             "HTTPS_PROXY=${PROXY_HOST}"
             "http_proxy=${PROXY_HOST}"
@@ -77,6 +78,34 @@ function download_and_unzip() {
     fi
 }
 
+function sync_project_dependencies() {
+    INFO "检测到依赖变化，正在更新虚拟环境..."
+    configure_package_route || return 1
+    INFO "依赖源：${PACKAGE_LOG}"
+    local -a uv_cmd=(
+        "${UV_BIN}" sync
+        --project "${TMP_PATH}/App"
+        --locked
+        --inexact
+        --no-dev
+        --no-install-project
+        --python "${VENV_PATH}/bin/python3"
+    )
+    uv_cmd+=("${UV_OPTIONS[@]}")
+    if ! env "${PACKAGE_ENV[@]}" \
+        "UV_PROJECT_ENVIRONMENT=${VENV_PATH}" \
+        "UV_LINK_MODE=copy" "${uv_cmd[@]}"; then
+        ERROR "依赖同步失败，当前程序依赖未完成更新"
+        return 1
+    fi
+    INFO "依赖更新成功"
+}
+
+function dependency_manifests_changed() {
+    ! cmp -s /app/pyproject.toml "${TMP_PATH}/App/pyproject.toml" \
+        || ! cmp -s /app/uv.lock "${TMP_PATH}/App/uv.lock"
+}
+
 # 下载程序资源，$1: 后端版本路径
 function install_backend_and_download_resources() {
     # 更新后端程序
@@ -88,28 +117,15 @@ function install_backend_and_download_resources() {
     
     # 检查依赖是否有变化
     INFO "→ 检查依赖变化..."
-    if [ -f "${TMP_PATH}/App/requirements.in" ]; then
-        if ! cmp -s /app/requirements.in "${TMP_PATH}/App/requirements.in"; then
-            INFO "检测到依赖变化，正在更新虚拟环境..."
-            configure_pip_route
-            INFO "PIP：${PIP_LOG}"
-            local compiled_requirements="${TMP_PATH}/requirements.txt"
-            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip-compile \
-                "${TMP_PATH}/App/requirements.in" -o "${compiled_requirements}"; then
-                ERROR "依赖编译失败，当前程序依赖未变更"
-                return 1
-            fi
-            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} \
-                -r "${compiled_requirements}"; then
-                ERROR "依赖安装失败，当前程序依赖清单未变更"
-                return 1
-            fi
-            INFO "依赖更新成功"
+    if [ -f "${TMP_PATH}/App/pyproject.toml" ] && [ -f "${TMP_PATH}/App/uv.lock" ]; then
+        if dependency_manifests_changed; then
+            sync_project_dependencies || return 1
         else
             INFO "依赖无变化，跳过依赖更新"
         fi
     else
-        WARN "未找到requirements.in文件，跳过依赖检查"
+        ERROR "更新包缺少 pyproject.toml 或 uv.lock，拒绝替换当前程序"
+        return 1
     fi
     
     # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
@@ -159,7 +175,6 @@ function install_backend_and_download_resources() {
     resource_source_dir=/app/app/application/site
     for legacy_resource_dir in /app/app/infrastructure /app/app/adapters/network /app/app/helper; do
         if [ ! -d "${resource_source_dir}" ] && [ -d "${legacy_resource_dir}" ]; then
-            # 升级时允许读取历史目录，恢复目标始终使用 canonical 站点应用目录。
             resource_source_dir="${legacy_resource_dir}"
         fi
     done
@@ -221,19 +236,16 @@ function install_backend_and_download_resources() {
     return 0
 }
 
-function probe_pip_package() {
+function probe_package_index() {
     local probe_env=(
         "UV_NO_CACHE=1"
-        "PIP_NO_CACHE_DIR=1"
         "UV_HTTP_TIMEOUT=5"
-        "PIP_DEFAULT_TIMEOUT=5"
         "UV_HTTP_RETRIES=0"
-        "PIP_RETRIES=0"
     )
     local package_index="${1:-}"
     local use_proxy="${2:-false}"
     local probe_dir
-    local -a probe_args=(install)
+    local -a probe_args=(pip install)
 
     if [[ "${use_proxy}" = "true" ]]; then
         probe_env+=(
@@ -247,7 +259,7 @@ function probe_pip_package() {
     # 包源探针必须使用独立目标目录，避免修改主程序与插件共享的虚拟环境。
     probe_args+=(--target "${probe_dir}" --no-deps)
     if [[ -n "${package_index}" ]]; then
-        probe_args+=(-i "${package_index}")
+        probe_args+=(--default-index "${package_index}")
     fi
     probe_args+=(pip-hello-world)
 
@@ -257,22 +269,22 @@ function probe_pip_package() {
         trap 'exit 130' INT
         trap 'exit 143' TERM
         timeout --kill-after=2s 10s env "${probe_env[@]}" \
-            "${VENV_PATH}/bin/pip" "${probe_args[@]}" > /dev/null 2>&1
+            "${UV_BIN}" "${probe_args[@]}" > /dev/null 2>&1
     )
 }
 
-function test_connectivity_pip() {
+function test_connectivity_package() {
     case "$1" in
     0)
         if [[ -n "${PIP_PROXY}" ]]; then
             if [[ -n "${PROXY_HOST}" ]]; then
-                probe_pip_package "${PIP_PROXY}" true
+                probe_package_index "${PIP_PROXY}" true
             else
-                probe_pip_package "${PIP_PROXY}" false
+                probe_package_index "${PIP_PROXY}" false
             fi
             if [[ $? -eq 0 ]]; then
-                PIP_OPTIONS="-i ${PIP_PROXY}"
-                PIP_LOG="镜像代理模式"
+                UV_OPTIONS=(--default-index "${PIP_PROXY}")
+                PACKAGE_LOG="镜像代理模式"
                 set_package_proxy_env
                 return 0
             fi
@@ -281,9 +293,9 @@ function test_connectivity_pip() {
         ;;
     1)
         if [[ -n "${PROXY_HOST}" ]]; then
-            if probe_pip_package "" true; then
-                PIP_OPTIONS=""
-                PIP_LOG="全局代理模式"
+            if probe_package_index "" true; then
+                UV_OPTIONS=()
+                PACKAGE_LOG="全局代理模式"
                 set_package_proxy_env
                 return 0
             fi
@@ -291,9 +303,9 @@ function test_connectivity_pip() {
         return 1
         ;;
     2)
-        PIP_ENV=()
-        PIP_OPTIONS=""
-        PIP_LOG="不使用代理"
+        PACKAGE_ENV=()
+        UV_OPTIONS=()
+        PACKAGE_LOG="不使用代理"
         return 0
         ;;
     esac
@@ -329,10 +341,10 @@ function test_connectivity_github() {
     esac
 }
 
-function configure_pip_route() {
+function configure_package_route() {
     local retries=0
     while true; do
-        if test_connectivity_pip "${retries}"; then
+        if test_connectivity_package "${retries}"; then
             return 0
         fi
         retries=$((retries + 1))
