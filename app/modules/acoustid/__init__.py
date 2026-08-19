@@ -20,6 +20,8 @@ class AcoustIdModule(_ModuleBase):
     """通过 Chromaprint 本地指纹和 AcoustID API 识别 MusicBrainz Recording ID。"""
 
     _base_url = "https://api.acoustid.org/v2/lookup"
+    # 退出码 3 表示解码期间出现非致命错误，结果仍须通过 JSON 内容校验。
+    _usable_fpcalc_returncodes = frozenset({0, 3})
     _minimum_score = 0.9
     _request_interval = 0.34
     _fingerprint_timeout = 60
@@ -196,7 +198,7 @@ class AcoustIdModule(_ModuleBase):
         except (OSError, subprocess.TimeoutExpired) as err:
             logger.warning(f"生成音频指纹失败：{path} - {err}")
             return None
-        if result.returncode != 0:
+        if result.returncode not in self._usable_fpcalc_returncodes:
             logger.warning(
                 f"生成音频指纹失败：{path} - fpcalc 退出码 {result.returncode}"
             )
@@ -235,7 +237,7 @@ class AcoustIdModule(_ModuleBase):
         except OSError as err:
             logger.warning(f"生成音频指纹失败：{path} - {err}")
             return None
-        if process.returncode != 0:
+        if process.returncode not in self._usable_fpcalc_returncodes:
             logger.warning(
                 f"生成音频指纹失败：{path} - fpcalc 退出码 {process.returncode}"
             )
