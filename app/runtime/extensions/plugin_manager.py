@@ -159,8 +159,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 旧属性继续引用注册表拥有的可变字典，保持插件和测试的访问身份。
         self._plugins = self._plugin_registry.classes
         self._running_plugins = self._plugin_registry.running
-        # 配置Key
-        self._config_key: str = "plugin.%s"
         # 监控线程
         self._monitor_thread: Optional[threading.Thread] = None
         # 监控停止事件
@@ -944,7 +942,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         if not self._plugins.get(pid):
             return {}
-        conf = get_plugin_storage().read(self._config_key % pid)
+        conf = get_plugin_storage().read_config(pid)
         if conf:
             # 去掉空Key
             return {k: v for k, v in conf.items() if k}
@@ -959,7 +957,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         if not force and not self._plugins.get(pid):
             return False
-        get_plugin_storage().write(self._config_key % pid, conf)
+        get_plugin_storage().write_config(pid, conf)
         return True
 
     async def async_save_plugin_config(
@@ -973,7 +971,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         if not force and not self._plugins.get(pid):
             return False
-        await get_plugin_storage().async_write(self._config_key % pid, conf)
+        await get_plugin_storage().async_write_config(pid, conf)
         return True
 
     def delete_plugin_config(self, pid: str, force: bool = False) -> bool:
@@ -984,7 +982,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         if not force and not self._plugins.get(pid):
             return False
-        return get_plugin_storage().delete(self._config_key % pid)
+        return get_plugin_storage().delete_config(pid)
 
     def delete_plugin_data(self, pid: str, force: bool = False) -> bool:
         """

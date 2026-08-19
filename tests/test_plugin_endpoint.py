@@ -476,11 +476,11 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
     manager = PluginManager()
 
     storage = MagicMock()
-    storage.delete.return_value = True
+    storage.delete_config.return_value = True
     with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
         assert manager.delete_plugin_config("DemoPlugin", force=True) is True
 
-    storage.delete.assert_called_once_with("plugin.DemoPlugin")
+    storage.delete_config.assert_called_once_with("DemoPlugin")
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
 
 

@@ -37,7 +37,9 @@ from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
 from app.runtime.log import logger
 from app.foundation.version import compare_version
 from app.schemas.types import SystemConfigKey
@@ -46,6 +48,27 @@ from app.schemas.types import SystemConfigKey
 async def _async_write_plugin_config(key, value):
     """通过数据库操作器异步保存插件运行时配置。"""
     return await SystemConfigOper().async_set(key, value)
+
+
+def _read_plugin_instance_config(plugin_id: str):
+    """读取插件默认实例配置行的业务配置。"""
+    row = PluginConfigOper().get(plugin_id, DEFAULT_INSTANCE_ID)
+    return row.config_data if row else None
+
+
+def _write_plugin_instance_config(plugin_id: str, value) -> None:
+    """写入插件默认实例配置行的业务配置。"""
+    PluginConfigOper().upsert(plugin_id, DEFAULT_INSTANCE_ID, {"config_data": value})
+
+
+async def _async_write_plugin_instance_config(plugin_id: str, value) -> None:
+    """异步写入插件默认实例配置行的业务配置。"""
+    await PluginConfigOper().async_upsert(plugin_id, DEFAULT_INSTANCE_ID, {"config_data": value})
+
+
+def _delete_plugin_instance_config(plugin_id: str) -> bool:
+    """删除插件默认实例配置行。"""
+    return PluginConfigOper().delete_instance(plugin_id, DEFAULT_INSTANCE_ID)
 
 
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
@@ -94,6 +117,10 @@ def _configure_plugin_services() -> None:
         async_write=_async_write_plugin_config,
         delete=lambda key: SystemConfigOper().delete(key),
         delete_data=lambda plugin_id: PluginDataOper().del_data(plugin_id),
+        read_config=_read_plugin_instance_config,
+        write_config=_write_plugin_instance_config,
+        async_write_config=_async_write_plugin_instance_config,
+        delete_config=_delete_plugin_instance_config,
     ))
 
 

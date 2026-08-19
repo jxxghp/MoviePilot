@@ -11,6 +11,7 @@ from sqlalchemy.orm import DeclarativeBase
 from app.application.messaging.message import MessageHelper
 from app.application.orchestration import ChainBase
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
@@ -423,7 +424,8 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return self.systemconfig.set(f"plugin.{plugin_id}", config)
+        PluginConfigOper().upsert(plugin_id, DEFAULT_INSTANCE_ID, {"config_data": config})
+        return True
 
     def get_config(self, plugin_id: Optional[str] = None) -> Any:
         """
@@ -432,7 +434,8 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return self.systemconfig.get(f"plugin.{plugin_id}")
+        row = PluginConfigOper().get(plugin_id, DEFAULT_INSTANCE_ID)
+        return row.config_data if row else None
 
     def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
         """
