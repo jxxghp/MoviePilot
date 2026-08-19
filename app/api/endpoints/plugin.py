@@ -23,6 +23,7 @@ from app.schemas.plugin import PluginInstanceLogLevelSet as _SchemaPluginInstanc
 from app.schemas.plugin import PluginInstanceVersionBinding as _SchemaPluginInstanceVersionBinding
 from app.schemas.plugin import PluginInstanceVersionSet as _SchemaPluginInstanceVersionSet
 from app.schemas.plugin import PluginVersionOverview as _SchemaPluginVersionOverview
+from app.schemas.plugin import PluginVersionRecycleResult as _SchemaPluginVersionRecycleResult
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
@@ -1029,6 +1030,27 @@ def set_plugin_instance_version(
     # 切换后实例对象已换新，定时服务、命令与接口需要整体重建才会指向新实例
     register_plugin(plugin_id)
     return binding
+
+
+@router.post(
+    "/versions/{plugin_id}/recycle",
+    summary="立即回收插件未被引用的旧版本目录",
+    response_model=_SchemaPluginVersionRecycleResult,
+)
+def recycle_plugin_versions(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    立即回收该插件没有实例引用、不在保留窗口内的旧版本目录，无需等待下次启动；
+    磁盘紧张等场景下用于主动清理，日常回收已经挂在启动流程里自动完成
+    """
+    plugin_manager = PluginManager()
+    try:
+        results = plugin_manager.recycle_plugin_versions(plugin_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    outcome = results.get(plugin_id, {"removed": [], "kept": {}})
+    return {"plugin_id": plugin_id, **outcome}
 
 
 def _require_known_plugin_instance(plugin_id: str, instance_id: str) -> None:

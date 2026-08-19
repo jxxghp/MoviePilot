@@ -148,6 +148,12 @@ class PluginRemoteInfo(BaseModel):
     id: str
     url: str
     name: str
+    # 该远程入口所属实例运行的插件版本号，插件未声明 plugin_version 时为空
+    version: Optional[str] = Field(default=None, description="插件版本号")
+    # 按版本区分的联邦远程标识，格式为 `{id}#{version}`；无版本信息时与 id 相同。
+    # Module Federation 的远程名是浏览器端全局单一键空间，同一插件的两个版本
+    # 若都用 id 注册会互相覆盖，前端改用该字段注册可让不同版本天然不同名
+    remote_key: Optional[str] = Field(default=None, description="按版本区分的联邦远程标识")
 
 
 class PluginReleaseItem(BaseModel):
@@ -279,6 +285,16 @@ class PluginInstanceVersionSet(BaseModel):
     plugin_version: Optional[str] = Field(
         default=None,
         description="目标版本号；不跟随默认实例时必填，且必须是该插件已安装的版本",
+    )
+
+
+class PluginVersionRecycleResult(BaseModel):
+    """插件版本目录回收结果。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    removed: List[str] = Field(default_factory=list, description="本次删除的版本号列表")
+    kept: Dict[str, str] = Field(
+        default_factory=dict, description="保留下来的版本号到保留理由的映射"
     )
 
 

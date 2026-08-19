@@ -14,6 +14,7 @@ from app.runtime.extensions.instance import (
     split_instance_key,
 )
 from app.runtime.log import logger as default_logger
+from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.notification import ChannelCapabilities, channel_identity
 
 # 数据源前缀分发名归一为契约名前，插件若挂载下列旧名，从此不会被任何分发调用触达。
@@ -299,7 +300,7 @@ class PluginProjection:
         self,
         running_plugins: Mapping[str, Any],
         log: Any = default_logger,
-        remote_entry_factory: Optional[Callable[[str, str], str]] = None,
+        remote_entry_factory: Optional[Callable[[str, str, Optional[str]], str]] = None,
     ) -> None:
         """保存运行态插件映射和错误日志端口。"""
         self._running_plugins = running_plugins
@@ -336,17 +337,29 @@ class PluginProjection:
         return commands
 
     def apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件 API 并补充宿主路径和默认认证方式。"""
+        """聚合插件 API 并补充宿主路径、默认认证方式，并把路由处理函数绑定到声明它的实例。
+
+        HTTP 路由的 endpoint 由 FastAPI 在注册时捕获、请求到达时才被调用，宿主既不
+        介入这次调用也无法在调用现场获知它归属哪个实例；本方法是路由注册前的唯一
+        必经点，在这里按实例包一层，使请求执行期间的插件日志归入声明该路由的实例，
+        而不是退化成按栈回溯只能定位到插件、定位不到具体实例，落入插件兜底目录。
+        """
         apis: list[dict] = []
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_api"):
                 continue
             try:
+                plugin_id, instance_id = split_instance_key(extension_id)
                 for api in plugin.get_api() or []:
                     api["path"] = f"/{extension_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"
+                    endpoint = api.get("endpoint")
+                    if callable(endpoint):
+                        api["endpoint"] = wrap_for_plugin_instance(
+                            endpoint, plugin_id, instance_id
+                        )
                     apis.append(api)
             except Exception as error:
                 self._logger.error(f"获取插件 {extension_id} API出错：{str(error)}")
@@ -480,6 +493,33 @@ class PluginProjection:
                 self._logger.error(f"获取插件 {extension_id} 动作出错：{str(error)}")
         return actions
 
+    def _remote_descriptor(
+        self, extension_id: str, plugin: Any, dist_path: str
+    ) -> Dict[str, Any]:
+        """构造联邦远程入口描述，附带按版本区分的标识，避免同插件不同版本撞名。
+
+        Module Federation 的远程名是浏览器端的全局单一键空间，同一插件的两个版本
+        若共用同一标识会互相覆盖或复用对方注册的入口。``remote_key`` 在实例键后
+        拼接插件版本号，使不同版本天然得到不同标识；插件未声明 ``plugin_version``
+        时没有版本信息可拼，回落为与 ``id`` 相同的取值。``id``/``url``/``name`` 三个
+        既有字段保持原语义与格式不变，供未接入版本标识的前端继续按旧约定使用。
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param dist_path: 插件声明的联邦构建产物相对路径
+        :return: 含 id、url、name、version、remote_key 的远程入口描述
+        :raises RuntimeError: 联邦入口生成器尚未配置
+        """
+        if not self._remote_entry_factory:
+            raise RuntimeError("插件联邦入口生成器尚未配置")
+        version = getattr(plugin, "plugin_version", None) or None
+        return {
+            "id": extension_id,
+            "url": self._remote_entry_factory(extension_id, dist_path, version),
+            "name": plugin.plugin_name,
+            "version": version,
+            "remote_key": f"{extension_id}#{version}" if version else extension_id,
+        }
+
     def remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """投影插件联邦远程入口，并保持旧渲染模式筛选语义。"""
         remotes = []
@@ -490,13 +530,7 @@ class PluginProjection:
             render_mode, dist_path = plugin.get_render_mode()
             if render_mode != "vue":
                 continue
-            if not self._remote_entry_factory:
-                raise RuntimeError("插件联邦入口生成器尚未配置")
-            remotes.append({
-                "id": extension_id,
-                "url": self._remote_entry_factory(extension_id, dist_path),
-                "name": plugin.plugin_name,
-            })
+            remotes.append(self._remote_descriptor(extension_id, plugin, dist_path))
         return remotes
 
     def auth_providers(self) -> List[Dict[str, Any]]:
@@ -533,14 +567,10 @@ class PluginProjection:
                 provider["instance_id"] = split_instance_key(extension_id)[1]
                 provider["instance_key"] = extension_id
                 if render_mode == "vue" and dist_path:
-                    if not self._remote_entry_factory:
-                        raise RuntimeError("插件联邦入口生成器尚未配置")
                     provider.setdefault("component", "AuthPage")
-                    provider["remote"] = {
-                        "id": extension_id,
-                        "url": self._remote_entry_factory(extension_id, dist_path),
-                        "name": plugin.plugin_name,
-                    }
+                    provider["remote"] = self._remote_descriptor(
+                        extension_id, plugin, dist_path
+                    )
                 providers.append(provider)
         return providers
 

@@ -315,6 +315,26 @@ def test_clear_plugin_modules_without_version_clears_the_whole_family(plugins_ro
     assert not [name for name in sys.modules if name.startswith("app.plugins.family")]
 
 
+def test_clear_all_plugin_modules_keeps_the_host_package(plugins_root: Path) -> None:
+    """不传插件时清光全部插件模块，但宿主包 app.plugins 自身留在缓存里。
+
+    宿主包是插件的容器而非插件。把它一并逐出，后续 ``from app.plugins import ...``
+    会重新导入出另一个模块对象，命名空间包已扩展的搜索路径与模块级状态都跟着旧
+    对象一起失联，持有旧对象的调用方与新导入方会各看各的。
+    """
+    _write_version(plugins_root, "hosted", "1.0.0", class_name="HostedPlugin", register=False)
+    plugin_root = plugins_root / "hosted"
+    importlib.import_module(
+        plugin_module_name(plugin_root, resolve_plugin_version_dir(plugin_root, "1.0.0"))
+    )
+    host_package = sys.modules["app.plugins"]
+
+    PluginManager._clear_plugin_modules()
+
+    assert not [name for name in sys.modules if name.startswith("app.plugins.")]
+    assert sys.modules["app.plugins"] is host_package
+
+
 # 五、热重载路径解析
 
 

@@ -422,6 +422,13 @@ def init_plugins():
     # 预热已配置的实例日志等级覆盖，避免进程重启后临时调高的排障等级静默丢失
     _seed_plugin_instance_log_levels()
     register_plugin_api()
+    # 回收没有实例引用、不在保留窗口内的旧版本目录。只有插件加载完成后才能读到
+    # 全部实例的版本绑定，因此固定放在启动流程末尾；安装流程不做这件事，避免
+    # 与用户正打算回退到旧版本的意图冲突。失败不阻断启动，只记错误日志
+    try:
+        PluginManager().recycle_plugin_versions()
+    except Exception as err:
+        logger.error(f"插件版本回收出错：{err}")
 
 
 def stop_plugins():

@@ -11,7 +11,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
+from typing import Any, Dict, List, Optional, Set, Type, Union, Callable, Tuple
 
 from fastapi import HTTPException
 from starlette import status
@@ -23,7 +23,7 @@ from app.foundation.crypto import RSAUtils
 from app.foundation.paths import ensure_path_segment
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
-from app.runtime.log import logger
+from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
@@ -42,6 +42,7 @@ from app.runtime.extensions.plugin.layout import (
     plugin_version_dirs,
     plugin_version_from_dir_name,
     read_plugin_versions_manifest,
+    recycle_plugin_version_directories,
     register_plugin_version,
     resolve_plugin_version_dir,
 )
@@ -425,20 +426,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self.start(pid, instance_id)
 
     @staticmethod
-    def _plugin_instance_ids(plugin_id: str) -> List[str]:
+    def _read_plugin_instance_ids(plugin_id: str) -> List[str]:
         """
-        读取插件已登记的实例清单
+        直读插件已登记的实例清单，读取出错直接上抛
         :param plugin_id: 插件ID
         :return: 实例标识列表；一条实例配置都没有时回落到单个默认实例
         """
-        try:
-            instance_ids = get_plugin_storage().list_instances(plugin_id)
-        except Exception as err:
-            logger.error(f"读取插件 {plugin_id} 实例清单出错：{str(err)}")
-            instance_ids = []
         normalized = [
             normalize_instance_id(item)
-            for item in instance_ids
+            for item in get_plugin_storage().list_instances(plugin_id)
             if isinstance(item, str)
         ]
         ordered = list(dict.fromkeys(normalized)) or [DEFAULT_INSTANCE_ID]
@@ -447,6 +443,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             ordered.remove(DEFAULT_INSTANCE_ID)
             ordered.insert(0, DEFAULT_INSTANCE_ID)
         return ordered
+
+    @staticmethod
+    def _plugin_instance_ids(plugin_id: str) -> List[str]:
+        """
+        读取插件已登记的实例清单，读取出错时回落到单个默认实例
+        :param plugin_id: 插件ID
+        :return: 实例标识列表；一条实例配置都没有时回落到单个默认实例
+        """
+        try:
+            return PluginManager._read_plugin_instance_ids(plugin_id)
+        except Exception as err:
+            logger.error(f"读取插件 {plugin_id} 实例清单出错：{str(err)}")
+            return [DEFAULT_INSTANCE_ID]
 
     @staticmethod
     def _instantiate_plugin(plugin_class: Type[Any], plugin_id: str, instance_id: str) -> Any:
@@ -719,13 +728,16 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         key = instance_key(plugin_id, instance_id)
         try:
-            # 生成实例
-            plugin_obj = self._instantiate_plugin(plugin_class, plugin_id, instance_id)
-            extension = PluginExtension(plugin_obj, key)
-            # 生效插件配置
-            extension.initialize(self.get_plugin_config(key))
-            # 按插件声明建立其数据库，未声明模型或迁移目录时不做任何事
-            _plugin_database_ensure(plugin_id, instance_id)
+            # 构造、生效配置与建库期间执行的都是插件自己的代码（含插件自带的迁移
+            # 脚本），其日志按实例归档，而不是落入插件兜底目录
+            with bind_plugin_instance(plugin_id, instance_id):
+                # 生成实例
+                plugin_obj = self._instantiate_plugin(plugin_class, plugin_id, instance_id)
+                extension = PluginExtension(plugin_obj, key)
+                # 生效插件配置
+                extension.initialize(self.get_plugin_config(key))
+                # 按插件声明建立其数据库，未声明模型或迁移目录时不做任何事
+                _plugin_database_ensure(plugin_id, instance_id)
             # 存储运行实例
             self._running_plugins[key] = plugin_obj
             logger.info(f"加载插件：{key} 版本：{plugin_obj.plugin_version}")
@@ -820,8 +832,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not plugin:
             return
         extension = PluginExtension(plugin, key)
-        # 初始化插件
-        extension.initialize(conf)
+        owner_plugin_id, owner_instance_id = split_instance_key(key)
+        # 初始化插件，期间产生的日志按实例归档，而不是落入插件兜底目录
+        with bind_plugin_instance(owner_plugin_id, owner_instance_id):
+            extension.initialize(conf)
         # 检查实例状态并启用/禁用其事件处理器
         if extension.is_enabled():
             eventmanager.enable_event_handler(type(plugin), key)
@@ -1453,7 +1467,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def _clear_plugin_modules(plugin_id: Optional[str] = None, version_dir: Optional[str] = None):
         """
         清除插件及其所有子模块的缓存
-        :param plugin_id: 插件ID
+        :param plugin_id: 插件ID，为空时清除全部插件模块，宿主包 ``app.plugins``
+            本身保留：它是插件的宿主而非插件，把它一并逐出会让后续导入拿到另一个
+            模块对象，命名空间包已扩展的搜索路径与模块级状态随之与旧对象脱节
         :param version_dir: 版本目录名，给定时只清该版本，兄弟版本的模块对象保留；
             插件命名空间包条目本身也保留，否则兄弟版本的父包会与之脱节
         """
@@ -1467,9 +1483,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin_module_prefix = "app.plugins"
 
         # 收集需要删除的模块名（创建模块名列表的副本以避免迭代时修改字典）
+        # 未指定插件时前缀即宿主包，只取其子孙模块，不含前缀自身
+        include_prefix_itself = bool(plugin_id)
         modules_to_remove = []
         for module_name in list(sys.modules.keys()):
-            if module_name == plugin_module_prefix or module_name.startswith(plugin_module_prefix + "."):
+            if module_name == plugin_module_prefix and include_prefix_itself:
+                modules_to_remove.append(module_name)
+            elif module_name.startswith(plugin_module_prefix + "."):
                 modules_to_remove.append(module_name)
 
         # 删除模块
@@ -1877,6 +1897,76 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self.clear_plugin_agent_tools_cache()
         return switched
 
+    def _plugin_referenced_versions(self, plugin_id: str) -> Set[str]:
+        """
+        收集插件全部实例当前占用的版本号，供版本回收判断某版本是否仍在用
+
+        覆盖两类引用：实例自己那一行的已生效版本，以及按跟随开关解析出的期望
+        版本。跟随默认实例的实例在切换前那一行仍记着旧版本——它此刻仍在用那个
+        旧版本运行，因此已生效版本必须无条件纳入；期望版本则覆盖它下一次启动
+        就会切到的版本。两者但凡漏一个，回收都可能删掉正在用或即将用的版本。
+
+        实例清单与版本绑定在此处直读、读取出错直接上抛，不走会把出错吞成空值的
+        那两个读取口：读不到就凑不出完整的引用集合，此时按空集合回收会删掉仍在
+        用的版本且无从恢复，让调用方跳过本次回收才是安全的失效方向。
+        :param plugin_id: 插件ID
+        :return: 被引用的版本号集合
+        :raises Exception: 实例清单或版本绑定读取失败
+        """
+        bindings = {
+            target: (_plugin_instance_version_read(plugin_id, target) or (None, True))
+            for target in self._read_plugin_instance_ids(plugin_id)
+        }
+        default_version = (bindings.get(DEFAULT_INSTANCE_ID) or (None, True))[0] or None
+        referenced: Set[str] = set()
+        for target, (effective_version, follow) in bindings.items():
+            effective_version = effective_version or None
+            if effective_version:
+                referenced.add(effective_version)
+            if target == DEFAULT_INSTANCE_ID:
+                # 默认实例跟随的是插件当前安装版本，当前版本另有保留判据兜住
+                continue
+            desired_version = (default_version or effective_version) if follow else effective_version
+            if desired_version:
+                referenced.add(desired_version)
+        return referenced
+
+    def recycle_plugin_versions(self, plugin_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+        """
+        回收插件源码目录下没有实例引用、不在保留窗口内的旧版本目录
+
+        判据的三个取值都读实测的运行态与配置：已生效版本与期望版本来自
+        ``_plugin_referenced_versions``，当前安装版本与保留窗口来自版本元信息，
+        具体判定落在 ``layout.recycle_plugin_version_directories``。只有插件加载
+        之后才能读到全部实例的版本绑定，因此调用方须固定放在启动流程里、插件
+        加载完成之后；不要放在安装流程里删，安装期用户可能正打算回退到旧版本。
+        单个插件回收出错不影响其余插件，也不向上抛出，失败不阻断启动。
+        :param plugin_id: 插件ID，为空处理全部已加载插件；显式指定但插件不存在时报错
+        :return: 插件ID到本次回收结果（含 removed 与 kept）的映射
+        :raises LookupError: 显式指定的插件不存在
+        """
+        if plugin_id is not None and plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        targets = [plugin_id] if plugin_id else list(self._plugins)
+        results: Dict[str, Dict[str, Any]] = {}
+        for target in targets:
+            try:
+                plugin_root = settings.ROOT_PATH / "app" / "plugins" / target.lower()
+                referenced = self._plugin_referenced_versions(target)
+                outcome = recycle_plugin_version_directories(plugin_root, referenced)
+            except Exception as err:
+                logger.error(f"插件 {target} 版本回收出错：{str(err)}")
+                continue
+            results[target] = outcome
+            if outcome["removed"]:
+                logger.info(
+                    f"插件 {target} 版本回收：删除版本 {outcome['removed']}；"
+                    f"保留版本及理由 {outcome['kept']}"
+                )
+            else:
+                logger.debug(f"插件 {target} 版本回收：无可删除版本，保留 {outcome['kept']}")
+        return results
+
     def create_plugin_instance(
         self, plugin_id: str, instance_id: str, config: Optional[dict] = None
     ) -> Dict[str, Any]:
@@ -2168,22 +2258,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         raise RuntimeError("插件工具注册表持续变化，无法建立当前快照")
 
     @staticmethod
-    def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
+    def get_plugin_remote_entry(
+        plugin_id: str, dist_path: str, version: Optional[str] = None
+    ) -> str:
         """
         获取插件的远程入口地址
         :param plugin_id: 插件 ID 或实例键，联邦构建产物属于插件本身而非某个
             实例，先降级到插件标识再拼目录，避免实例键的 @ 分隔符指向不存在
             的目录
         :param dist_path: 插件的分发路径
+        :param version: 发起本次查询的实例实际绑定并运行的插件版本号；为空时
+            回落到插件当前安装版本，兼容不区分实例版本的旧调用方
         :return: 远程入口地址
 
-        联邦构建产物随版本目录走，版本段作为 dist 路径的第一段插入。静态资源
-        路由的基目录仍是插件目录，因此现有的 ".." 与 is_relative_to 校验不变。
+        联邦构建产物随版本目录走，版本段作为 dist 路径的第一段插入，按传入版本号
+        定位对应版本目录，使不同实例各自绑定的版本各自解析到自己的构建产物，不会
+        因为都取插件当前安装版本而拿到同一份代码。指定版本的目录不在磁盘上（已被
+        回收或从未落地）时回落到插件当前安装版本。静态资源路由的基目录仍是插件
+        目录，因此现有的 ".." 与 is_relative_to 校验不变。
         """
         dist_path = dist_path.strip("/")
         normalized_id = extension_id_of(plugin_id).lower()
         plugin_root = settings.ROOT_PATH / "app" / "plugins" / normalized_id
-        source_dir = resolve_plugin_version_dir(plugin_root, migrate=False)
+        source_dir = resolve_plugin_version_dir(plugin_root, version=version, migrate=False)
+        if source_dir is None and version:
+            source_dir = resolve_plugin_version_dir(plugin_root, migrate=False)
         version_segment = (
             source_dir.name if source_dir is not None and source_dir != plugin_root else ""
         )

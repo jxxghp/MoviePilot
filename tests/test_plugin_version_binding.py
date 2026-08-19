@@ -28,7 +28,9 @@ from app.runtime.extensions.plugin.layout import (
     plugin_version_dir_name,
     plugin_version_dirs,
     plugin_version_from_dir_name,
+    read_plugin_versions_manifest,
     register_plugin_version,
+    write_plugin_versions_manifest,
 )
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
@@ -669,3 +671,191 @@ def test_conflicts_only_cover_packages_declared_by_both_versions():
     assert [conflict.package for conflict in conflicts] == ["requests"]
     assert conflicts[0].existing_specifier == ">=2.30"
     assert conflicts[0].new_specifier == "<2.0"
+
+
+# 六、版本回收（依赖实例绑定的判据，纯目录层面的判据见 test_plugin_version_recycle.py）
+
+
+def _stamp_installed_at(plugin_root: Path, stamps: Dict[str, str]) -> None:
+    """把已装版本清单里各版本的登记时间改写为指定值，消除真实时钟带来的顺序不确定性。
+
+    :param plugin_root: 插件源码根目录
+    :param stamps: 版本号到 ISO8601 时间字符串的映射
+    """
+    manifest = read_plugin_versions_manifest(plugin_root)
+    for entry in manifest["versions"]:
+        if entry["version"] in stamps:
+            entry["installed_at"] = stamps[entry["version"]]
+    write_plugin_versions_manifest(plugin_root, manifest["versions"], manifest["current"])
+
+
+@pytest.mark.parametrize("instance_ids", [[DEFAULT_INSTANCE_ID, SECOND_INSTANCE]])
+def test_follow_instance_effective_version_is_protected_even_when_stale(
+    plugins_root, plugin_manager, version_store
+):
+    """跟随实例还没来得及切换时，它自己那一行记的旧版本仍受保护，不被回收。
+
+    跟随开关为真只决定「期望版本」读默认实例的已生效版本，不代表该实例当下就在
+    跑那个版本；引用集合必须同时纳入该实例自己的已生效版本，否则会把它正在
+    实际运行的旧版本删掉。这里复现真实的「默认实例单独升级、跟随实例还没重启」
+    时序（与 test_following_instance_switches_after_default_upgrade 同款）：只重启
+    默认实例，SECOND 保持不动，自己那一行仍记着旧版本。登记时间显式错开，让
+    保留窗口（默认最近 2 个）覆盖不到最旧的 1.0.0，这样 1.0.0 能留下就只能是
+    「被实例引用」这条判据在起作用。
+    """
+    _write_version(plugins_root, "1.0.0", register=True)
+    plugin_manager.start(pid=PLUGIN_ID)
+    assert version_store[(PLUGIN_ID, SECOND_INSTANCE)] == ("1.0.0", True)
+
+    # 装入两个新版本并只重启默认实例；SECOND 尚未跟着切换，自己那一行还记着 1.0.0
+    _write_version(plugins_root, "2.0.0", register=True)
+    _write_version(plugins_root, "3.0.0", register=True)
+    plugin_root = plugins_root / PLUGIN_DIR
+    _stamp_installed_at(
+        plugin_root,
+        {
+            "1.0.0": "2020-01-01T00:00:00+00:00",
+            "2.0.0": "2020-06-01T00:00:00+00:00",
+            "3.0.0": "2021-01-01T00:00:00+00:00",
+        },
+    )
+    plugin_manager.stop(PLUGIN_ID, DEFAULT_INSTANCE_ID)
+    plugin_manager.start(PLUGIN_ID, DEFAULT_INSTANCE_ID)
+    assert version_store[(PLUGIN_ID, DEFAULT_INSTANCE_ID)] == ("3.0.0", True)
+    assert version_store[(PLUGIN_ID, SECOND_INSTANCE)] == ("1.0.0", True)
+
+    results = plugin_manager.recycle_plugin_versions(PLUGIN_ID)
+
+    outcome = results[PLUGIN_ID]
+    assert "1.0.0" not in outcome["removed"]
+    assert (plugin_root / "v1_0_0").is_dir()
+    assert "被实例引用" in outcome["kept"]["1.0.0"]
+
+
+def test_recycle_removes_unreferenced_out_of_window_version(
+    plugins_root, plugin_manager, version_store
+):
+    """没有实例引用、超出保留窗口的旧版本经管理器统一回收接口被删除。"""
+    _write_version(plugins_root, "1.0.0", register=True)
+    _write_version(plugins_root, "2.0.0", register=True)
+    _write_version(plugins_root, "3.0.0", register=True)
+    plugin_root = plugins_root / PLUGIN_DIR
+    _stamp_installed_at(
+        plugin_root,
+        {
+            "1.0.0": "2020-01-01T00:00:00+00:00",
+            "2.0.0": "2020-06-01T00:00:00+00:00",
+            "3.0.0": "2021-01-01T00:00:00+00:00",
+        },
+    )
+    plugin_manager.start(pid=PLUGIN_ID)
+
+    results = plugin_manager.recycle_plugin_versions(PLUGIN_ID)
+
+    assert results[PLUGIN_ID]["removed"] == ["1.0.0"]
+    assert not (plugin_root / "v1_0_0").exists()
+    assert (plugin_root / "v2_0_0").is_dir()
+    assert (plugin_root / "v3_0_0").is_dir()
+
+
+def test_recycle_unknown_plugin_raises(plugins_root, plugin_manager):
+    """显式指定不存在的插件时抛出 LookupError。"""
+    _write_version(plugins_root, "1.0.0", register=True)
+    plugin_manager.start(pid=PLUGIN_ID)
+
+    with pytest.raises(LookupError):
+        plugin_manager.recycle_plugin_versions("_NoSuchPlugin")
+
+
+def test_recycle_bulk_mode_survives_a_single_plugin_failure(
+    plugins_root, plugin_manager, version_store, monkeypatch
+):
+    """批量回收（供启动流程调用）时单个插件出错不影响调用方，只记错误日志。"""
+    _write_version(plugins_root, "1.0.0", register=True)
+    plugin_manager.start(pid=PLUGIN_ID)
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(plugin_manager_module, "logger", recorder)
+
+    def _boom(*_args, **_kwargs):
+        """模拟单个插件回收过程中抛出的意外异常。"""
+        raise RuntimeError("disk gone")
+
+    monkeypatch.setattr(plugin_manager_module, "recycle_plugin_version_directories", _boom)
+
+    results = plugin_manager.recycle_plugin_versions()
+
+    assert results == {}
+    assert "版本回收出错" in recorder.text("error")
+
+
+def _stage_three_versions_with_stale_first(plugins_root: Path, plugin_manager: PluginManager) -> Path:
+    """装三个版本并把登记时间错开，使最旧的 1.0.0 落在保留窗口之外。
+
+    :param plugins_root: 插件根目录
+    :param plugin_manager: 已接线的插件管理器
+    :return: 插件源码根目录
+    """
+    _write_version(plugins_root, "1.0.0", register=True)
+    _write_version(plugins_root, "2.0.0", register=True)
+    _write_version(plugins_root, "3.0.0", register=True)
+    plugin_root = plugins_root / PLUGIN_DIR
+    _stamp_installed_at(
+        plugin_root,
+        {
+            "1.0.0": "2020-01-01T00:00:00+00:00",
+            "2.0.0": "2020-06-01T00:00:00+00:00",
+            "3.0.0": "2021-01-01T00:00:00+00:00",
+        },
+    )
+    plugin_manager.start(pid=PLUGIN_ID)
+    return plugin_root
+
+
+def test_recycle_skips_when_version_bindings_cannot_be_read(
+    plugins_root, plugin_manager, version_store, monkeypatch
+):
+    """版本绑定读不出来时整体跳过回收，不拿空引用集合去删。
+
+    「读失败」与「确实没有实例引用」在结果上无从区分。若把读失败吞成空集合，
+    一次瞬时的数据库读错就会删掉实例钉住的旧版本，而版本目录删掉即无从恢复，
+    因此失效方向必须是不删。断言本该被删的 1.0.0 仍在。
+    """
+    plugin_root = _stage_three_versions_with_stale_first(plugins_root, plugin_manager)
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(plugin_manager_module, "logger", recorder)
+
+    def _boom(*_args, **_kwargs):
+        """模拟版本绑定读取时的数据库异常。"""
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(plugin_manager_module, "_plugin_instance_version_read", _boom)
+
+    results = plugin_manager.recycle_plugin_versions(PLUGIN_ID)
+
+    assert results == {}
+    assert (plugin_root / "v1_0_0").is_dir()
+    assert "版本回收出错" in recorder.text("error")
+
+
+def test_recycle_skips_when_instance_list_cannot_be_read(
+    plugins_root, plugin_manager, version_store, monkeypatch
+):
+    """实例清单读不出来时同样跳过回收，理由与版本绑定读失败一致。"""
+    plugin_root = _stage_three_versions_with_stale_first(plugins_root, plugin_manager)
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(plugin_manager_module, "logger", recorder)
+
+    def _boom(_plugin_id):
+        """模拟实例清单读取时的数据库异常。"""
+        raise RuntimeError("database is locked")
+
+    configure_plugin_storage(PluginStorage(
+        read_config=lambda plugin_id, instance_id=None: {},
+        list_instances=_boom,
+    ))
+
+    results = plugin_manager.recycle_plugin_versions(PLUGIN_ID)
+
+    assert results == {}
+    assert (plugin_root / "v1_0_0").is_dir()
+    assert "版本回收出错" in recorder.text("error")

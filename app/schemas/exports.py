@@ -270,6 +270,7 @@ SCHEMA_EXPORTS = {
     'PluginRemoteInfo': ('app.schemas.plugin', 'PluginRemoteInfo'),
     'PluginSidebarNavItem': ('app.schemas.plugin', 'PluginSidebarNavItem'),
     'PluginVersionOverview': ('app.schemas.plugin', 'PluginVersionOverview'),
+    'PluginVersionRecycleResult': ('app.schemas.plugin', 'PluginVersionRecycleResult'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),
     'ProgressKeyData': ('app.schemas.common', 'ProgressKeyData'),

@@ -109,13 +109,15 @@ def test_projection_builds_federation_and_auth_provider_entries():
     )
     projection = PluginProjection(
         {"Demo": plugin},
-        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        remote_entry_factory=lambda plugin_id, path, version: f"/{plugin_id}/{path}",
     )
 
     assert projection.remotes() == [{
         "id": "Demo",
         "url": "/Demo/dist/assets",
         "name": "测试插件",
+        "version": None,
+        "remote_key": "Demo",
     }]
     assert projection.auth_providers() == [{
         "id": "demo-login",
@@ -130,8 +132,47 @@ def test_projection_builds_federation_and_auth_provider_entries():
             "id": "Demo",
             "url": "/Demo/dist/assets",
             "name": "测试插件",
+            "version": None,
+            "remote_key": "Demo",
         },
     }]
+
+
+def test_projection_remote_key_falls_back_to_id_without_a_declared_version():
+    """插件未声明 plugin_version 时，remote_key 与 id 取值相同，等价于旧格式。"""
+    plugin = _Plugin(get_render_mode=lambda: ("vue", "dist/assets"))
+    projection = PluginProjection(
+        {"Demo": plugin},
+        remote_entry_factory=lambda plugin_id, path, version: f"/{plugin_id}/{path}",
+    )
+
+    remote = projection.remotes()[0]
+    assert remote["version"] is None
+    assert remote["remote_key"] == remote["id"] == "Demo"
+
+
+def test_projection_remote_key_differs_across_versions_of_the_same_plugin():
+    """两个实例绑不同版本时，remote_key 各不相同，联邦远程注册不会撞名。"""
+    first = _Plugin(plugin_version="1.0.0", get_render_mode=lambda: ("vue", "dist/assets"))
+    second = _Plugin(plugin_version="2.0.0", get_render_mode=lambda: ("vue", "dist/assets"))
+    captured_versions = []
+
+    def factory(plugin_id, path, version):
+        """记录调用方传入的版本号，并回显一个可辨识的 URL。"""
+        captured_versions.append(version)
+        return f"/{plugin_id}/{version}/{path}"
+
+    projection = PluginProjection(
+        {"Demo": first, "Demo@second": second},
+        remote_entry_factory=factory,
+    )
+
+    remotes = {item["id"]: item for item in projection.remotes()}
+    assert remotes["Demo"]["remote_key"] == "Demo#1.0.0"
+    assert remotes["Demo@second"]["remote_key"] == "Demo@second#2.0.0"
+    assert remotes["Demo"]["remote_key"] != remotes["Demo@second"]["remote_key"]
+    assert remotes["Demo"]["url"] != remotes["Demo@second"]["url"]
+    assert captured_versions == ["1.0.0", "2.0.0"]
 
 
 def test_projection_normalizes_sidebar_and_dashboard_metadata():
@@ -190,7 +231,7 @@ def test_projection_adds_instance_fields_to_sidebar_dashboard_and_auth_providers
     )
     projection = PluginProjection(
         {"Demo@second": second_plugin},
-        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        remote_entry_factory=lambda plugin_id, path, version: f"/{plugin_id}/{path}",
     )
 
     sidebar_item = projection.sidebar()[0]
@@ -207,3 +248,4 @@ def test_projection_adds_instance_fields_to_sidebar_dashboard_and_auth_providers
     assert provider["plugin_id"] == "Demo@second"
     assert provider["instance_id"] == "second"
     assert provider["instance_key"] == "Demo@second"
+    assert provider["remote"]["remote_key"] == "Demo@second"

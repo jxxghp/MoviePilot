@@ -15,6 +15,7 @@ from app.api.endpoints.plugin import (
     delete_plugin_instance,
     list_plugin_instances,
     list_plugin_versions,
+    recycle_plugin_versions,
     set_plugin_instance_version,
 )
 from app.schemas.plugin import PluginInstanceCreate, PluginInstanceVersionSet
@@ -248,3 +249,33 @@ def test_set_plugin_instance_version_maps_uninstalled_version_to_400_without_reb
 
     assert exc_info.value.status_code == 400
     assert registered == []
+
+
+def test_recycle_plugin_versions_returns_the_manager_outcome():
+    """回收端点把管理器返回的删除与保留结果拼上插件 ID 透传给调用方。"""
+    plugin_manager = MagicMock()
+    plugin_manager.recycle_plugin_versions.return_value = {
+        "DemoPlugin": {"removed": ["1.0.0"], "kept": {"2.0.0": "当前安装版本"}}
+    }
+
+    with patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager):
+        result = recycle_plugin_versions("DemoPlugin", None)
+
+    assert result == {
+        "plugin_id": "DemoPlugin",
+        "removed": ["1.0.0"],
+        "kept": {"2.0.0": "当前安装版本"},
+    }
+    plugin_manager.recycle_plugin_versions.assert_called_once_with("DemoPlugin")
+
+
+def test_recycle_plugin_versions_maps_unknown_plugin_to_404():
+    """插件不存在时回收端点返回 404。"""
+    plugin_manager = MagicMock()
+    plugin_manager.recycle_plugin_versions.side_effect = LookupError("插件 DemoPlugin 不存在")
+
+    with patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager):
+        with pytest.raises(HTTPException) as exc_info:
+            recycle_plugin_versions("DemoPlugin", None)
+
+    assert exc_info.value.status_code == 404
