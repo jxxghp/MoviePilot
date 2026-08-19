@@ -18,10 +18,11 @@ class EventHandlerBinding:
     instance: Optional[Any]
     owner_name: str
     run_sync_in_threadpool: bool = False
+    instance_key: Optional[str] = None
 
 
 HandlerInstanceResolver = Callable[
-    [Type[Any]], Optional[EventHandlerBinding]
+    [Type[Any]], Optional[list[EventHandlerBinding]]
 ]
 
 
@@ -78,10 +79,10 @@ class EventBindingResolver:
     def resolve(
         self,
         handler: Callable,
-    ) -> Optional[tuple[Callable, EventHandlerBinding, str, str]]:
-        """通过显式 resolver 解析当前实例方法；自由函数直接返回。"""
+    ) -> list[tuple[Callable, EventHandlerBinding, str, str]]:
+        """通过显式 resolver 解析当前全部实例绑定；自由函数返回单元素列表。"""
         owner_class = self.owner_class(handler)
-        method_name = getattr(
+        declared_method_name = getattr(
             handler,
             "__name__",
             self.parse_handler_names(handler)[1],
@@ -92,19 +93,19 @@ class EventBindingResolver:
                 owner_name=EventRegistry.handler_identifier(handler),
                 run_sync_in_threadpool=True,
             )
-            return handler, binding, "", method_name
+            return [(handler, binding, "", declared_method_name)]
 
         with self._lock:
             resolvers = tuple(self._resolvers().items())
-        binding = None
+        bindings = None
         resolver_name = ""
         for name, resolver in resolvers:
             candidate = resolver(owner_class)
             if candidate is not None:
-                binding = candidate
+                bindings = candidate
                 resolver_name = name
                 break
-        if binding is None:
+        if bindings is None:
             identifier = EventRegistry.handler_identifier(handler)
             with self._lock:
                 first_miss = identifier not in self._unresolved
@@ -114,25 +115,29 @@ class EventBindingResolver:
                     "事件处理器未绑定显式 resolver，已跳过：%s",
                     identifier,
                 )
-            return None
+            return []
         logger.debug(
             "事件处理器绑定：%s -> %s",
             EventRegistry.handler_identifier(handler),
             resolver_name,
         )
-        if binding.instance is None:
-            return None
-        method = getattr(binding.instance, method_name, None)
-        if not callable(method):
-            fallback_name = self.parse_handler_names(handler)[1]
-            method = getattr(binding.instance, fallback_name, None)
-            if fallback_name == method_name or not callable(method):
-                logger.warning(
-                    "事件处理器 %s 无法解析为实例方法 %s.%s，跳过执行",
-                    EventRegistry.handler_identifier(handler),
-                    owner_class.__name__,
-                    method_name,
-                )
-                return None
-            method_name = fallback_name
-        return method, binding, owner_class.__name__, method_name
+        resolved: list[tuple[Callable, EventHandlerBinding, str, str]] = []
+        for binding in bindings:
+            if binding.instance is None:
+                continue
+            method_name = declared_method_name
+            method = getattr(binding.instance, method_name, None)
+            if not callable(method):
+                fallback_name = self.parse_handler_names(handler)[1]
+                method = getattr(binding.instance, fallback_name, None)
+                if fallback_name == method_name or not callable(method):
+                    logger.warning(
+                        "事件处理器 %s 无法解析为实例方法 %s.%s，跳过执行",
+                        EventRegistry.handler_identifier(handler),
+                        owner_class.__name__,
+                        method_name,
+                    )
+                    continue
+                method_name = fallback_name
+            resolved.append((method, binding, owner_class.__name__, method_name))
+        return resolved

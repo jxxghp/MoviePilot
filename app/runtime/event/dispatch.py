@@ -139,43 +139,41 @@ class EventDispatcher:
             await self.invoke_async(handler, event)
 
     def invoke_sync(self, handler: Callable, event: Any) -> None:
-        """解析实例绑定并同步调用处理器。"""
-        resolved = self._binding_resolver.resolve(handler)
-        if not resolved:
-            return
-        method, binding, class_name, method_name = resolved
-        try:
-            method(event)
-        except Exception as err:
-            self._error_handler(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=err,
-            )
+        """解析实例绑定列表并逐个同步调用处理器。"""
+        for method, binding, class_name, method_name in self._binding_resolver.resolve(
+            handler
+        ):
+            try:
+                method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
 
     async def invoke_async(self, handler: Callable, event: Any) -> None:
-        """解析实例绑定，并按处理器类型选择协程、线程池或同步调用。"""
-        resolved = self._binding_resolver.resolve(handler)
-        if not resolved:
-            return
-        method, binding, class_name, method_name = resolved
-        try:
-            if inspect.iscoroutinefunction(method):
-                await method(event)
-            elif binding.run_sync_in_threadpool or not class_name:
-                await run_in_threadpool(method, event)
-            else:
-                method(event)
-        except Exception as err:
-            self._error_handler(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=err,
-            )
+        """解析实例绑定列表，逐个按处理器类型选择协程、线程池或同步调用。"""
+        for method, binding, class_name, method_name in self._binding_resolver.resolve(
+            handler
+        ):
+            try:
+                if inspect.iscoroutinefunction(method):
+                    await method(event)
+                elif binding.run_sync_in_threadpool or not class_name:
+                    await run_in_threadpool(method, event)
+                else:
+                    method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
 
     @staticmethod
     def should_dispatch_to_target_plugin(

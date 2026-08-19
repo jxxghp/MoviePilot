@@ -392,8 +392,8 @@ class EventManager(metaclass=Singleton):
     def __resolve_handler(
             self,
             handler: Callable,
-    ) -> Optional[Tuple[Callable, EventHandlerBinding, str, str]]:
-        """将装饰阶段保存的函数解析为当前运行实例上的可调用方法。"""
+    ) -> List[Tuple[Callable, EventHandlerBinding, str, str]]:
+        """将装饰阶段保存的函数解析为当前运行实例上的可调用方法列表。"""
         return self.__binding_resolver.resolve(handler)
 
     def __broadcast_consumer_loop(self):

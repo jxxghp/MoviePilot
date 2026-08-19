@@ -46,7 +46,7 @@ def recorder(request, monkeypatch):
 
     def resolver(owner_class):
         if owner_class is recorder_cls:
-            return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
+            return [EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)]
         return None
 
     # 隔离真实解析器，仅绑定测试实例
@@ -111,7 +111,7 @@ async def test_resolve_falls_back_to_qualname_when_name_mismatched(monkeypatch):
 
     def resolver(owner_class):
         if owner_class is _ReloadRecorder:
-            return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
+            return [EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)]
         return None
 
     monkeypatch.setattr(

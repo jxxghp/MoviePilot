@@ -160,8 +160,8 @@ def configure_host_event_handler_resolver() -> None:
     """显式登记宿主内置类处理器，禁止事件总线按类名临时构造未知对象。"""
     factories = get_host_event_handler_factories()
 
-    def resolve(owner_class: type) -> EventHandlerBinding | None:
-        """按明确白名单复用单例或构造与旧路径等价的 Chain 实例。"""
+    def resolve(owner_class: type) -> list[EventHandlerBinding] | None:
+        """按明确白名单复用单例或构造与旧路径等价的 Chain 实例绑定列表。"""
         factory = factories.get(owner_class)
         if factory is None:
             return None
@@ -169,10 +169,12 @@ def configure_host_event_handler_resolver() -> None:
         instance = get_existing() if callable(get_existing) else None
         if instance is None:
             instance = factory()
-        return EventHandlerBinding(
-            instance=instance,
-            owner_name=owner_class.__name__,
-        )
+        return [
+            EventHandlerBinding(
+                instance=instance,
+                owner_name=owner_class.__name__,
+            )
+        ]
 
     EventManager().register_handler_instance_resolver("host", resolve)
 

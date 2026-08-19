@@ -143,8 +143,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def resolve_event_handler_instance(
             self,
             owner_class: Type[Any],
-    ) -> Optional[EventHandlerBinding]:
-        """为插件声明的事件方法解析当前运行实例。"""
+    ) -> Optional[List[EventHandlerBinding]]:
+        """为插件声明的事件方法解析当前运行实例绑定列表。"""
         plugin_id = owner_class.__name__
         # 旧测试与部分扩展会替换私有映射来构造隔离运行态，解析器继续尊重该接缝。
         if plugin_id not in self._plugins:
@@ -153,11 +153,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         owner_name = plugin_id
         if plugin and callable(getattr(plugin, "get_name", None)):
             owner_name = plugin.get_name()
-        return EventHandlerBinding(
-            instance=plugin,
-            owner_name=owner_name,
-            run_sync_in_threadpool=True,
-        )
+        return [
+            EventHandlerBinding(
+                instance=plugin,
+                owner_name=owner_name,
+                run_sync_in_threadpool=True,
+            )
+        ]
 
     def init_config(self):
         """按最新系统配置完整重启插件。"""

@@ -853,10 +853,12 @@ def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
     running = manager.get_running_module("SampleModule")
 
     active_binding = manager.resolve_event_handler_instance(module_class)
-    assert active_binding == EventHandlerBinding(
-        instance=running,
-        owner_name="Sample",
-    )
+    assert active_binding == [
+        EventHandlerBinding(
+            instance=running,
+            owner_name="Sample",
+        )
+    ]
 
     impostor = type("SampleModule", (), {})
     impostor.__module__ = module_class.__module__
@@ -864,10 +866,12 @@ def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
 
     manager.stop()
     stopped_binding = manager.resolve_event_handler_instance(module_class)
-    assert stopped_binding == EventHandlerBinding(
-        instance=None,
-        owner_name="Sample",
-    )
+    assert stopped_binding == [
+        EventHandlerBinding(
+            instance=None,
+            owner_name="Sample",
+        )
+    ]
 
 
 def test_default_modulelist_does_not_import_unconfigured_provider_sdks(

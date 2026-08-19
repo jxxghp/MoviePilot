@@ -60,6 +60,8 @@ def plugin_data_root(
         "Sample_Plugin",
         "Sample-Plugin",
         "Sample.Plugin",
+        # 插件ID只做目录名安全校验，"@" 不做实例含义解析；实例隔离体现在插件ID
+        # 之下的实例层（本用例落到 <plugin_id>/default/data）。
         "SamplePlugin@livingroom",
         "插件分身",
         "a" * 200,
@@ -69,19 +71,19 @@ def test_normal_plugin_id_is_accepted(
     plugin_data_root: Path,
     plugin_id: str,
 ) -> None:
-    """存量插件的正常标识仍能建立数据目录。"""
+    """存量插件的正常标识仍能建立默认实例的数据目录。"""
     data_path = _SamplePlugin().get_data_path(plugin_id)
 
-    assert data_path == plugin_data_root / plugin_id
+    assert data_path == plugin_data_root / plugin_id / "default" / "data"
     assert data_path.is_dir()
-    assert data_path.parent == plugin_data_root
+    assert data_path.parent.parent == plugin_data_root / plugin_id
 
 
 def test_default_plugin_id_uses_class_name(plugin_data_root: Path) -> None:
-    """未传插件标识时按插件类名建立数据目录。"""
+    """未传插件标识时按插件类名建立默认实例的数据目录。"""
     data_path = _SamplePlugin().get_data_path()
 
-    assert data_path == plugin_data_root / "_SamplePlugin"
+    assert data_path == plugin_data_root / "_SamplePlugin" / "default" / "data"
     assert data_path.is_dir()
 
 

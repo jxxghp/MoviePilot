@@ -124,7 +124,7 @@ class ModuleManager(metaclass=Singleton):
     def resolve_event_handler_instance(
         self,
         owner_class: type,
-    ) -> Optional[EventHandlerBinding]:
+    ) -> Optional[list[EventHandlerBinding]]:
         """按 canonical class identity 绑定当前 generation，停止态阻断 fallback 构造。"""
         for spec in self._specs:
             with self._lock:
@@ -137,10 +137,12 @@ class ModuleManager(metaclass=Singleton):
                     self._runtime.snapshot(spec.id)
             if implementation is not owner_class:
                 continue
-            return EventHandlerBinding(
-                instance=self._runtime.get_running(spec.id),
-                owner_name=str(spec.metadata["name"]),
-            )
+            return [
+                EventHandlerBinding(
+                    instance=self._runtime.get_running(spec.id),
+                    owner_name=str(spec.metadata["name"]),
+                )
+            ]
         return None
 
     def _reconcile(

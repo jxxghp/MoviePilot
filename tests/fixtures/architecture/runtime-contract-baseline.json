@@ -1711,7 +1711,7 @@
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 228
+        "line": 230
       }
     ],
     "event_count": 53,
@@ -2095,7 +2095,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 762
+            "line": 764
           }
         ]
       },
