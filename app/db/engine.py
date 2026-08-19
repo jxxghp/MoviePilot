@@ -48,11 +48,12 @@ def _get_database_engine(is_async: bool = False, pooled: bool = False):
         return _get_sqlite_engine(is_async, pooled=pooled)
 
 
-def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
+def _sqlite_connect_args() -> dict:
     """
-    获取SQLite数据库引擎
+    SQLite 连接参数：驱动超时、部署侧注入的驱动级参数，以及 WAL 模式下需要放开的
+    跨线程限制。
+    :return: 传给 create_engine / create_async_engine 的 connect_args
     """
-    # 连接参数
     _connect_args = {
         "timeout": settings.DB_TIMEOUT,
     }
@@ -61,45 +62,62 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
     # 启用 WAL 模式时的额外配置
     if settings.DB_WAL_ENABLE:
         _connect_args["check_same_thread"] = False
+    return _connect_args
 
+
+def build_sqlite_engine(url: str) -> SyncEngine:
+    """
+    按 URL 构造同步 SQLite 引擎：连接池、错误分类日志挂载、journal_mode 设定
+    一次性完成，供核心库与插件自管理库共用同一套连接语义。
+    :param url: SQLite 连接 URL
+    :return: 同步引擎
+    """
+    _connect_args = _sqlite_connect_args()
+
+    # 根据池类型设置 poolclass 和相关参数
+    _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
+
+    # 数据库参数
+    _db_kwargs = {
+        "url": url,
+        "pool_pre_ping": settings.DB_POOL_PRE_PING,
+        "echo": settings.DB_ECHO,
+        "poolclass": _pool_class,
+        "pool_recycle": settings.DB_POOL_RECYCLE,
+        "connect_args": _connect_args
+    }
+
+    # 当使用 QueuePool 时，添加 QueuePool 特有的参数
+    if _pool_class == QueuePool:
+        _db_kwargs.update({
+            "pool_size": settings.DB_SQLITE_POOL_SIZE,
+            "pool_timeout": settings.DB_POOL_TIMEOUT,
+            "max_overflow": settings.DB_SQLITE_MAX_OVERFLOW
+        })
+
+    # 创建数据库引擎
+    engine = create_engine(**_db_kwargs)
+    _register_database_error_logging(engine)
+
+    # 设置WAL模式。
+    # 这是引擎构建里唯一的阻塞 I/O。调用方若在创建锁内构建引擎（如 get_engine()
+    # 的双重检查锁），journal_mode 必须有人设置一次，而阻塞的也只是本地 SQLite
+    # 的一次 PRAGMA，不会有大量线程等在锁上的场面。
+    _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
+    with engine.connect() as connection:
+        current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
+        print(f"SQLite database journal mode set to: {current_mode}")
+
+    return engine
+
+
+def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
+    """
+    获取SQLite数据库引擎
+    """
     # 创建同步引擎
     if not is_async:
-        # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
-
-        # 数据库参数
-        _db_kwargs = {
-            "url": settings.DB_SQLITE_URL(),
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "poolclass": _pool_class,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args
-        }
-
-        # 当使用 QueuePool 时，添加 QueuePool 特有的参数
-        if _pool_class == QueuePool:
-            _db_kwargs.update({
-                "pool_size": settings.DB_SQLITE_POOL_SIZE,
-                "pool_timeout": settings.DB_POOL_TIMEOUT,
-                "max_overflow": settings.DB_SQLITE_MAX_OVERFLOW
-            })
-
-        # 创建数据库引擎
-        engine = create_engine(**_db_kwargs)
-        _register_database_error_logging(engine)
-
-        # 设置WAL模式。
-        # 这是引擎构建里唯一的阻塞 I/O，且发生在 get_engine() 的创建锁内——异步侧因此
-        # 移除了对称的那一段（见下方 else 分支）。同步侧保留是因为 journal_mode 必须有人
-        # 设置一次，而同步引擎的首次创建由 init_db() 在启动期单线程完成，不存在一群线程
-        # 等在锁上的场面；即便退化到运行期首次访问，阻塞的也只是本地 SQLite 的一次 PRAGMA。
-        _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
-        with engine.connect() as connection:
-            current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
-            print(f"SQLite database journal mode set to: {current_mode}")
-
-        return engine
+        return build_sqlite_engine(settings.DB_SQLITE_URL())
     else:
         # 数据库参数，只能使用 NullPool
         _db_kwargs = {
@@ -107,7 +125,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
             "pool_pre_ping": settings.DB_POOL_PRE_PING,
             "echo": settings.DB_ECHO,
             "pool_recycle": settings.DB_POOL_RECYCLE,
-            "connect_args": _connect_args,
+            "connect_args": _sqlite_connect_args(),
             **_async_pool_kwargs(pooled),
         }
         # 创建异步数据库引擎
