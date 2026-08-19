@@ -11,6 +11,109 @@ from app.runtime.extensions.contract import (
 from app.runtime.log import logger as default_logger
 from app.schemas.notification import ChannelCapabilities, channel_identity
 
+# 数据源前缀分发名归一为契约名前，插件若挂载下列旧名，从此不会被任何分发调用触达。
+# 键为废弃名，值为应改用的新契约名；async_ 前缀的旧名对应 async_ 前缀的新契约名。
+DEPRECATED_PLUGIN_METHOD_NAMES: dict[str, str] = {
+    "anilist_credits": "media_credits",
+    "anilist_discover": "discover",
+    "anilist_info": "media_detail",
+    "anilist_person_credits": "person_credits",
+    "anilist_person_detail": "person_detail",
+    "anilist_popular_this_season": "discover_board",
+    "anilist_recommendations": "media_recommend",
+    "anilist_trending": "discover_board",
+    "async_anilist_credits": "async_media_credits",
+    "async_anilist_discover": "async_discover",
+    "async_anilist_info": "async_media_detail",
+    "async_anilist_person_credits": "async_person_credits",
+    "async_anilist_person_detail": "async_person_detail",
+    "async_anilist_popular_this_season": "async_discover_board",
+    "async_anilist_recommendations": "async_media_recommend",
+    "async_anilist_trending": "async_discover_board",
+    "async_bangumi_calendar": "async_discover_board",
+    "async_bangumi_credits": "async_media_credits",
+    "async_bangumi_discover": "async_discover",
+    "async_bangumi_info": "async_media_detail",
+    "async_bangumi_person_credits": "async_person_credits",
+    "async_bangumi_person_detail": "async_person_detail",
+    "async_bangumi_recommend": "async_media_recommend",
+    "async_douban_discover": "async_discover",
+    "async_douban_info": "async_media_detail",
+    "async_douban_movie_credits": "async_media_credits",
+    "async_douban_movie_recommend": "async_media_recommend",
+    "async_douban_person_credits": "async_person_credits",
+    "async_douban_person_detail": "async_person_detail",
+    "async_douban_tv_credits": "async_media_credits",
+    "async_douban_tv_recommend": "async_media_recommend",
+    "async_match_doubaninfo": "async_match_media",
+    "async_match_tmdbinfo": "async_match_media",
+    "async_movie_hot": "async_discover_board",
+    "async_movie_showing": "async_discover_board",
+    "async_movie_top250": "async_discover_board",
+    "async_tmdb_discover": "async_discover",
+    "async_tmdb_info": "async_media_detail",
+    "async_tmdb_movie_credits": "async_media_credits",
+    "async_tmdb_movie_recommend": "async_media_recommend",
+    "async_tmdb_movie_similar": "async_media_similar",
+    "async_tmdb_person_credits": "async_person_credits",
+    "async_tmdb_person_detail": "async_person_detail",
+    "async_tmdb_trending": "async_discover_board",
+    "async_tmdb_tv_credits": "async_media_credits",
+    "async_tmdb_tv_recommend": "async_media_recommend",
+    "async_tmdb_tv_similar": "async_media_similar",
+    "async_tv_animation": "async_discover_board",
+    "async_tv_hot": "async_discover_board",
+    "async_tv_weekly_chinese": "async_discover_board",
+    "async_tv_weekly_global": "async_discover_board",
+    "bangumi_calendar": "discover_board",
+    "bangumi_credits": "media_credits",
+    "bangumi_discover": "discover",
+    "bangumi_info": "media_detail",
+    "bangumi_person_credits": "person_credits",
+    "bangumi_person_detail": "person_detail",
+    "bangumi_recommend": "media_recommend",
+    "douban_discover": "discover",
+    "douban_info": "media_detail",
+    "douban_movie_credits": "media_credits",
+    "douban_movie_recommend": "media_recommend",
+    "douban_person_credits": "person_credits",
+    "douban_person_detail": "person_detail",
+    "douban_tv_credits": "media_credits",
+    "douban_tv_recommend": "media_recommend",
+    "match_doubaninfo": "match_media",
+    "match_tmdbinfo": "match_media",
+    "movie_hot": "discover_board",
+    "movie_showing": "discover_board",
+    "movie_top250": "discover_board",
+    "tmdb_discover": "discover",
+    "tmdb_info": "media_detail",
+    "tmdb_movie_credits": "media_credits",
+    "tmdb_movie_recommend": "media_recommend",
+    "tmdb_movie_similar": "media_similar",
+    "tmdb_person_credits": "person_credits",
+    "tmdb_person_detail": "person_detail",
+    "tmdb_trending": "discover_board",
+    "tmdb_tv_credits": "media_credits",
+    "tmdb_tv_recommend": "media_recommend",
+    "tmdb_tv_similar": "media_similar",
+    "tv_animation": "discover_board",
+    "tv_hot": "discover_board",
+    "tv_weekly_chinese": "discover_board",
+    "tv_weekly_global": "discover_board",
+    "tvdb_info": "media_detail",
+}
+
+# 本轮归一新引入、取代废弃名的多来源契约名，衍生自上表的取值集合而非单独维护。
+# 挂载这些方法名的插件实现覆盖全部数据源，须按 source 参数自认领，非本来源
+# 必须返回 None 而非空列表，否则会拦截该契约下的全部来源。
+_NEW_MULTI_SOURCE_CONTRACT_NAMES = frozenset(DEPRECATED_PLUGIN_METHOD_NAMES.values())
+
+# 已就废弃分发名/新多来源契约名告警过的 (插件ID, 方法名) 组合，避免 modules() 被
+# 高频调用（每次分发都会取用插件模块表）时同一提示反复刷屏。跨 PluginProjection
+# 实例共享：该类每次调用都会重新构造，去重状态不能挂在实例上。
+_deprecated_method_warnings_seen: set[tuple[str, str]] = set()
+_new_contract_hints_seen: set[tuple[str, str]] = set()
+
 
 class PluginExtension:
     """把运行态插件实例投影为扩展视图。"""
@@ -267,12 +370,42 @@ class PluginProjection:
                 continue
             try:
                 if extension.is_enabled():
-                    modules[(plugin_id, extension.display_name)] = (
-                        plugin.get_module() or []
-                    )
+                    table = plugin.get_module() or []
+                    modules[(plugin_id, extension.display_name)] = table
+                    self._warn_dispatch_migration(plugin_id, table)
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} 模块出错：{str(error)}")
         return modules
+
+    def _warn_dispatch_migration(self, plugin_id: str, table: Any) -> None:
+        """就插件挂载的废弃分发名和新多来源契约名各打一次提示，不改写方法表。
+
+        :param plugin_id: 插件 ID
+        :param table: 插件 `get_module()` 声明的方法表
+        :return: 无返回值
+        """
+        if not isinstance(table, Mapping):
+            return
+        for method in table:
+            replacement = DEPRECATED_PLUGIN_METHOD_NAMES.get(method)
+            if replacement:
+                key = (plugin_id, method)
+                if key not in _deprecated_method_warnings_seen:
+                    _deprecated_method_warnings_seen.add(key)
+                    self._logger.warning(
+                        f"插件[{plugin_id}]挂载的模块方法名 {method!r} 已随分发面归一废弃，"
+                        f"不会再被任何分发调用触达；请改用新契约名 {replacement!r}"
+                    )
+                continue
+            if method in _NEW_MULTI_SOURCE_CONTRACT_NAMES:
+                key = (plugin_id, method)
+                if key not in _new_contract_hints_seen:
+                    _new_contract_hints_seen.add(key)
+                    self._logger.info(
+                        f"插件[{plugin_id}]挂载的模块方法名 {method!r} 是多来源契约，"
+                        f"由多个数据源共用同一分发名；实现须按 source 参数自认领，"
+                        f"非本插件负责的来源须返回 None 让出，否则会拦截该契约下的全部来源"
+                    )
 
     def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件的工作流动作。"""

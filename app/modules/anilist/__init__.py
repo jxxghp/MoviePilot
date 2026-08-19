@@ -789,7 +789,7 @@ class AniListModule(_ModuleBase):
     def discover_board(self, source: Optional[MediaSource] = None,
                         board: str = None,
                         page: int = 1,
-                        count: int = 30,
+                        count: int = 20,
                         **kwargs) -> Optional[List[MediaInfo]]:
         """
         查询指定来源的榜单
@@ -809,7 +809,7 @@ class AniListModule(_ModuleBase):
     async def async_discover_board(self, source: Optional[MediaSource] = None,
                                     board: str = None,
                                     page: int = 1,
-                                    count: int = 30,
+                                    count: int = 20,
                                     **kwargs) -> Optional[List[MediaInfo]]:
         """
         查询指定来源的榜单（异步版本）

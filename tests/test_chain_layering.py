@@ -143,15 +143,17 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
     assert "app.application.orchestration.scraping" not in _imported_modules(path)
 
 
-def test_business_chains_delegate_recognition_to_media_chain() -> None:
-    """搜索、订阅、下载、转移和媒体服务器链必须显式委托媒体识别编排层。"""
+def test_only_media_chain_owns_recognition_entry_points() -> None:
+    """识别入口归媒体编排链所有，其余处理链不得经继承隐式调用。
+
+    识别能力由基类下发给全部处理链，任何一条链都能写出 self.recognize_media(...)
+    而不留下任何显式依赖痕迹。此处按「除真实归属者外全扫」判定，不维护白名单。
+    """
     violations = {
-        name: calls
-        for name in (
-            "search.py", "subscribe.py", "download.py", "transfer.py",
-            "mediaserver.py",
-        )
-        if (calls := _inherited_recognize_calls(ORCHESTRATION_ROOT / name))
+        str(path.relative_to(ORCHESTRATION_ROOT)): calls
+        for path in sorted(ORCHESTRATION_ROOT.rglob("*.py"))
+        if path.name != "media.py"
+        if (calls := _inherited_recognize_calls(path))
     }
 
     assert not violations

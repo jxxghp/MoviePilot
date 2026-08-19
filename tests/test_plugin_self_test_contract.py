@@ -116,6 +116,9 @@ def test_self_test_swallows_exception_and_reports_failure(monkeypatch):
         (True, "ok", "extra"),
         "connected",
         (True,),
+        # 长度与第二元素都合契约，只有首元素不是布尔：真值也不得被当作可连通
+        (1, "ok"),
+        ("yes", ""),
     ],
 )
 def test_self_test_rejects_results_with_invalid_shape(monkeypatch, invalid_value):

@@ -199,6 +199,13 @@ class _PluginBase(metaclass=ABCMeta):
             "id1": self.xxx1,
             "id2": self.xxx2,
         }
+
+        多来源契约（media_detail、media_credits、media_recommend、media_similar、
+        person_detail、person_credits、discover、discover_board、match_media，
+        及其 async_ 变体）由多个数据源共用同一方法名，按调用方传入的 source 参数区分
+        来源。挂载这些方法名时，非本插件负责的 source 必须返回 None 让出；返回空列表
+        会被判定为已认领而短路，因此非本来源也不能返回空列表，否则会拦截该契约下的
+        全部数据源，而不只是插件本意接管的那一个
         """
         pass
 
