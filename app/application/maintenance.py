@@ -324,24 +324,6 @@ def read_cleanup_policy() -> CleanupPolicy:
     )
 
 
-def build_cleanup_service() -> DataCleanupService:
-    """返回启动组合根登记的清理服务。"""
-    if _configured_cleanup_service_factory is None:
-        raise RuntimeError("数据清理服务尚未配置")
-    return _configured_cleanup_service_factory()
-
-
-_configured_cleanup_service_factory: Callable[[], DataCleanupService] | None = None
-
-
-def configure_cleanup_service_factory(
-    factory: Callable[[], DataCleanupService],
-) -> None:
-    """由启动组合根登记数据清理服务工厂。"""
-    global _configured_cleanup_service_factory
-    _configured_cleanup_service_factory = factory
-
-
 def _normalize_days(retention_days: Any) -> int:
     """把配置保留期规范为非负整数，非法值按关闭单表清理处理。"""
     try:

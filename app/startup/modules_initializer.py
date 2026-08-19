@@ -36,7 +36,7 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.configuration import SystemConfigService, configure_system_config
-from app.application.database import DatabaseHealthService, configure_database_health
+from app.application.database import configure_database_governance
 from app.application.service import configure_service_directory
 from app.application.plugin.runtime import configure_plugin_runtime
 from app.application.module import configure_module_runtime
@@ -55,19 +55,13 @@ from app.application.workflow import WorkflowQueryService, configure_workflow_qu
 from app.application.agentdata import configure_agent_data_ports
 from app.api.data import configure_api_data_ports
 from app.application.subscription.write import configure_subscribe_writer
-from app.application.maintenance import (
-    DataCleanupService,
-    configure_cleanup_service_factory,
-    read_cleanup_policy,
-)
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
-from app.db import close_database
-from app.db.session import get_async_db, get_db
+from app.db.session import close_database, get_async_db, get_db
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.agentchat import AgentChatOper
@@ -84,9 +78,6 @@ from app.db.oper.site import SiteOper
 from app.db.oper.message import MessageOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.plugindata import PluginDataOper
-from app.db.maintenance import DatabaseCleanupRepository
-from app.db.session import SessionFactory
-from app.db.health import probe_database
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.command import CommandChain
@@ -94,6 +85,7 @@ from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
+from app.startup.database import build_database_governance
 from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
@@ -441,7 +433,7 @@ async def init_modules():
         user=lambda: UserOper(),
     )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
-    configure_database_health(DatabaseHealthService(probe_database))
+    configure_database_governance(build_database_governance())
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
     configure_user_lookups(
         by_id=lambda user_id: UserOper().get_by_id(user_id),
@@ -474,12 +466,6 @@ async def init_modules():
         plugin_data=lambda: PluginDataOper(),
     )
     configure_subscribe_writer(lambda: SubscribeOper())
-    configure_cleanup_service_factory(
-        lambda: DataCleanupService(
-            repository=DatabaseCleanupRepository(session_factory=SessionFactory),
-            policy_reader=read_cleanup_policy,
-        )
-    )
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。

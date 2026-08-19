@@ -53,6 +53,7 @@ from app.adapters.external.market import (
 )
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper
+from app.runtime.scheduling import TimerUtils
 from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
@@ -86,6 +87,13 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 _LOG_DOWNLOAD_LIMIT = 10
 _LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_DATABASE_BACKUP_SETTING_KEYS = {
+    "DB_BACKUP_ENABLE",
+    "DB_BACKUP_CRON",
+    "DB_BACKUP_PATH",
+    "DB_BACKUP_RETENTION_DAYS",
+    "DB_BACKUP_MAX_COUNT",
+}
 
 
 def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
@@ -127,6 +135,38 @@ def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
             tool_id="web_search",
         )
     )
+
+
+def _validate_database_backup_config(env: dict) -> Optional[str]:
+    """在批量写入前校验数据库备份策略，避免只保存部分字段。"""
+    if not _DATABASE_BACKUP_SETTING_KEYS.intersection(env):
+        return None
+
+    cron = str(env.get("DB_BACKUP_CRON", settings.DB_BACKUP_CRON) or "").strip()
+    if cron:
+        try:
+            TimerUtils.normalize_schedule_trigger("cron", cron, settings.TZ)
+        except (TypeError, ValueError):
+            return "数据库备份周期格式不正确"
+
+    backup_path = env.get("DB_BACKUP_PATH", settings.DB_BACKUP_PATH)
+    if backup_path is not None and not isinstance(backup_path, str):
+        return "数据库备份目录必须是路径字符串"
+
+    for key, label in (
+        ("DB_BACKUP_RETENTION_DAYS", "数据库备份过期天数"),
+        ("DB_BACKUP_MAX_COUNT", "数据库备份最大保留份数"),
+    ):
+        value = env.get(key, getattr(settings, key))
+        if isinstance(value, bool):
+            return f"{label}必须是大于等于 0 的整数"
+        try:
+            converted = int(value)
+        except (TypeError, ValueError):
+            return f"{label}必须是大于等于 0 的整数"
+        if converted < 0 or str(value).strip() != str(converted):
+            return f"{label}必须是大于等于 0 的整数"
+    return None
 
 
 def _is_allowed_plugin_market_wiki_url(wiki_url: str) -> bool:
@@ -796,6 +836,9 @@ async def set_env_setting(
     更新系统环境变量（仅管理员）
     """
     validation_error = _validate_llm_server_tool_config(env)
+    if validation_error:
+        return _SchemaResponse(success=False, message=validation_error)
+    validation_error = _validate_database_backup_config(env)
     if validation_error:
         return _SchemaResponse(success=False, message=validation_error)
 

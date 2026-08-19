@@ -1,7 +1,7 @@
 from typing import Tuple, Union
 
 from app.runtime.config import settings
-from app.application.database import get_configured_database_health
+from app.application.database import get_database_governance
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
 
@@ -51,7 +51,7 @@ class PostgreSQLModule(_ModuleBase):
         """
         if settings.DB_TYPE != "postgresql":
             return None
-        error = get_configured_database_health().test()
+        error = get_database_governance().test()
         if error:
             return False, f"PostgreSQL连接失败：{error}"
         return True, ""

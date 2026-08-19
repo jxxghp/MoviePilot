@@ -17,6 +17,8 @@ import psutil
 
 from app.runtime.config import Settings, settings
 from app.runtime.state import SystemHelper
+from app.application.backup import BackupArtifact
+from app.startup.database import build_database_governance
 from version import APP_VERSION
 
 BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"
@@ -839,6 +841,84 @@ def cli() -> None:
     """MoviePilot 本地 CLI"""
 
 
+def _format_backup_artifact(artifact: BackupArtifact) -> str:
+    """将制品信息格式化为不含数据库凭据的单行 CLI 输出。"""
+    return "\t".join(
+        (
+            artifact.name,
+            artifact.db_type,
+            artifact.created_at.isoformat(),
+            str(artifact.size),
+            str(artifact.path),
+        )
+    )
+
+
+@cli.group(context_settings=CONTEXT_SETTINGS)
+def database() -> None:
+    """创建、列举、校验和离线还原本地数据库备份"""
+
+
+@database.command("backup", context_settings=CONTEXT_SETTINGS)
+def database_backup() -> None:
+    """创建并验证一个在线数据库备份"""
+    try:
+        artifact = build_database_governance().create_backup()
+    except Exception as error:
+        raise click.ClickException(f"数据库备份失败：{error}") from error
+    click.echo("name\tdb_type\tcreated_at\tsize\tpath")
+    click.echo(_format_backup_artifact(artifact))
+
+
+@database.command("list", context_settings=CONTEXT_SETTINGS)
+def database_list() -> None:
+    """列出当前受管目录中的正式数据库备份文件"""
+    try:
+        artifacts = build_database_governance().list_backups()
+    except Exception as error:
+        raise click.ClickException(f"数据库备份列表读取失败：{error}") from error
+    if not artifacts:
+        click.echo("暂无数据库备份")
+        return
+    click.echo("name\tdb_type\tcreated_at\tsize\tpath")
+    for artifact in artifacts:
+        click.echo(_format_backup_artifact(artifact))
+
+
+@database.command("verify", context_settings=CONTEXT_SETTINGS)
+@click.argument("name")
+def database_verify(name: str) -> None:
+    """按文件名重新校验一个数据库备份"""
+    try:
+        result = build_database_governance().verify_backup(name)
+    except Exception as error:
+        raise click.ClickException(f"数据库备份校验失败：{error}") from error
+    if not result.valid:
+        detail = f"：{result.detail}" if result.detail else ""
+        raise click.ClickException(f"数据库备份校验未通过（{result.method}）{detail}")
+    click.echo(
+        f"数据库备份校验通过：name={name} method={result.method}"
+    )
+
+
+@database.command("restore", context_settings=CONTEXT_SETTINGS)
+@click.argument("name")
+@click.option(
+    "--confirm",
+    is_flag=True,
+    help="确认 MoviePilot 已停止，并允许覆盖当前数据库",
+)
+def database_restore(name: str, confirm: bool) -> None:
+    """在 MoviePilot 停止运行时还原一个数据库备份"""
+    if not confirm:
+        raise click.ClickException("离线还原必须使用 --confirm 明确确认")
+    try:
+        artifact = build_database_governance().restore_backup(name)
+    except Exception as error:
+        raise click.ClickException(f"数据库还原失败：{error}") from error
+    click.echo(f"数据库还原完成：{artifact.name}")
+
+
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option("--timeout", default=60, show_default=True, help="等待后端与前端就绪的秒数")
 @click.option("--safe", is_flag=True, help="安全模式启动，仅保留核心 API，跳过插件和后台任务")
@@ -989,7 +1069,7 @@ def logs(lines: int, follow: bool, stdio: bool, frontend_log: bool) -> None:
 @click.option("--deep", is_flag=True, help="执行可能较慢的深度检查")
 def doctor(json_output: bool, fix: bool, deep: bool) -> None:
     """离线诊断本地 MoviePilot 运行环境，插件日志告警不影响整体状态"""
-    from app.doctor import run_doctor
+    from app.doctor import run_doctor  # pylint: disable=no-name-in-module
     from app.doctor.formatters import format_json_report, format_text_report
 
     report = run_doctor(fix=fix, deep=deep)
