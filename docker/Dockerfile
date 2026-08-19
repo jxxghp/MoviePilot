@@ -17,15 +17,30 @@ ENV LANG="C.UTF-8" \
 
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d -m 0755 /usr/share/postgresql-common/pgdg \
+    && curl -fsSL \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 3 \
+    --retry-all-errors \
+    --retry-delay 2 \
+    --retry-max-time 90 \
+    "https://www.postgresql.org/media/keys/ACCC4CF8.asc" \
+    -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && chmod 0644 /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && printf '%s\n' \
+    'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+    > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     nginx \
     gettext-base \
     locales \
     procps \
     gosu \
     bash \
-    ca-certificates \
-    curl \
     wget \
     git \
     gh \
@@ -45,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsof \
     nano \
     unar \
+    postgresql-client-18 \
     libchromaprint-tools \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \

@@ -117,15 +117,15 @@ def test_cleanup_service_finishes_other_tables_before_raising_partial_failure() 
 
 def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
     """旧 SchedulerChain 入口应原样转发参数和返回值。"""
-    service = MagicMock()
-    service.execute.return_value = {"enabled": True}
+    governance = MagicMock()
+    governance.cleanup.return_value = {"enabled": True}
     progress = MagicMock()
 
-    with patch("app.scheduler.build_cleanup_service", return_value=service):
+    with patch("app.scheduler.get_database_governance", return_value=governance):
         result = SchedulerChain().cleanup(batch_size=7, progress_callback=progress)
 
     assert result == {"enabled": True}
-    service.execute.assert_called_once_with(
+    governance.cleanup.assert_called_once_with(
         batch_size=7,
         progress_callback=progress,
     )

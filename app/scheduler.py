@@ -28,7 +28,7 @@ from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.application.maintenance import build_cleanup_service
+from app.application.database import get_database_governance
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
@@ -66,7 +66,7 @@ class SchedulerChain(ChainBase):
         """
         按配置保留期执行分批清理。
         """
-        return build_cleanup_service().execute(
+        return get_database_governance().cleanup(
             batch_size=batch_size,
             progress_callback=progress_callback,
         )
@@ -94,6 +94,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         "DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS",
         "DATA_CLEANUP_SITE_USERDATA_DAYS",
         "DATA_CLEANUP_TRANSFER_HISTORY_DAYS",
+        "DB_BACKUP_ENABLE",
+        "DB_BACKUP_CRON",
         "USAGE_STATISTIC_SHARE",
     }
 
@@ -191,6 +193,35 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         格式化进度事件时间。
         """
         return (value or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def database_backup():
+        """按当前宿主策略创建一次定时数据库备份。"""
+        return get_database_governance().create_backup()
+
+    def _register_database_backup_job(self) -> None:
+        """在共享调度器中按当前配置维护唯一的数据库备份作业。"""
+        if not settings.DB_BACKUP_ENABLE or not settings.DB_BACKUP_CRON.strip():
+            return
+
+        job_id = "database_backup"
+        self._jobs[job_id] = {
+            "name": "数据库备份",
+            "func": self.database_backup,
+            "running": False,
+        }
+        self._scheduler.add_job(
+            self.start,
+            trigger=TimerUtils.build_schedule_trigger(
+                trigger_type="cron",
+                trigger_value=settings.DB_BACKUP_CRON,
+                timezone_name=settings.TZ,
+            ),
+            id=job_id,
+            name="数据库备份",
+            kwargs={"job_id": job_id},
+            replace_existing=True,
+        )
 
     def init(self) -> None:
         """
@@ -322,6 +353,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 timezone=settings.TZ,
                 executors={"default": ThreadPoolExecutor(settings.CONF.scheduler)},
             )
+
+            # 数据库备份复用宿主调度器，不创建独立定时线程。
+            self._register_database_backup_job()
 
             # CookieCloud定时同步
             if (

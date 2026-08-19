@@ -1210,19 +1210,19 @@
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 816
+        "line": 859
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 930
+        "line": 973
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 984
+        "line": 1027
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 998
+        "line": 1041
       },
       {
         "caller": "app.chain._messaging",
@@ -1652,7 +1652,7 @@
         "consumers": [
           {
             "caller": "app.scheduler",
-            "line": 1116
+            "line": 1150
           }
         ],
         "producers": []
@@ -1813,7 +1813,7 @@
           },
           {
             "caller": "app.scheduler",
-            "line": 736
+            "line": 770
           }
         ]
       },
@@ -3727,6 +3727,33 @@
         "kind": "import",
         "name": "settings",
         "target": "app.runtime.config.settings"
+      }
+    ],
+    "app.sdk.database": [
+      {
+        "kind": "import",
+        "name": "BackupArtifact",
+        "target": "app.application.backup.BackupArtifact"
+      },
+      {
+        "kind": "import",
+        "name": "BackupVerification",
+        "target": "app.application.backup.BackupVerification"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "create_backup",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_backups",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "verify_backup",
+        "target": ""
       }
     ],
     "app.sdk.events": [
