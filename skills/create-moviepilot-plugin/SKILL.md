@@ -116,8 +116,8 @@ a local plugin source and installed into the running MoviePilot instance.
    - Directory name is the class name lowercased, for example `mynotifier`.
    - Avoid collisions with installed or market plugins unless the user is
      explicitly modifying that plugin.
-   - Do not hardcode the original plugin ID for data/config namespaces when the
-     plugin may support clones; use `self.__class__.__name__`.
+   - Do not hardcode this plugin's own ID in its self-referential data/config
+     calls; leave `plugin_id` unset so it resolves to `self.plugin_id`.
 
 ## UI Mode Selection Gate
 

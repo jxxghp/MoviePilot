@@ -160,7 +160,6 @@
     "通行密钥不存在或无权删除": "The passkey does not exist or you do not have permission to delete it",
     "验证失败": "Verification failed",
     "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
-    "插件分身创建成功": "Plugin clone created successfully",
     "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",
     "未识别到TMDB媒体信息": "Unable to recognize TMDB media information",
     "未知的媒体ID": "Unknown media ID",
@@ -834,10 +833,6 @@
     {
       "source": "文件夹 '{folder}' 中的插件已更新",
       "target": "Plugins in folder '{folder}' have been updated"
-    },
-    {
-      "source": "创建插件分身失败：{reason}",
-      "target": "Failed to create plugin clone: {reason}"
     },
     {
       "source": "{domain} 站点己存在",

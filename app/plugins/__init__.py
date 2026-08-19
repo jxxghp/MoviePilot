@@ -195,8 +195,6 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_desc: Optional[str] = ""
     # 插件顺序
     plugin_order: Optional[int] = 9999
-    # 是否为插件分身
-    is_clone: bool = False
     # 插件标识，缺省取插件主类名
     plugin_id: Optional[str] = None
     # 运行实例标识，同一插件类的多个实例各自持有独立的配置、数据与数据目录

@@ -1,9 +1,8 @@
-"""插件包文件安装、快照恢复和分身处理适配器。"""
+"""插件包文件安装、快照恢复和目录删除适配器。"""
 
 from __future__ import annotations
 
 import asyncio
-import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ class PluginPackageCheckpoint:
 
 
 class PluginPackageManager:
-    """隔离插件包安装、本地同步、分身改写和文件补偿能力。"""
+    """隔离插件包安装、本地同步、目录删除和文件补偿能力。"""
 
     _COPY_IGNORE = ("__pycache__", "*.pyc", ".DS_Store", "node_modules")
 
@@ -159,216 +158,21 @@ class PluginPackageManager:
                 )
             return False
 
-    def clone(
-        self,
-        *,
-        plugin_id: str,
-        clone_id: str,
-        original_class_name: str,
-        suffix: str,
-        name: str,
-        description: str,
-        version: Optional[str] = None,
-        icon: Optional[str] = None,
-    ) -> tuple[bool, str]:
-        """复制并改写插件分身文件，任一步失败都删除不完整目标。"""
-        original_dir = self._plugin_dir(plugin_id)
-        clone_dir = self._plugin_dir(clone_id)
-        if not original_dir.is_dir():
-            return False, f"原插件目录 {original_dir} 不存在"
-        if clone_dir.exists():
-            return False, f"分身插件 {clone_id} 已存在"
+    def remove(self, plugin_id: str) -> tuple[bool, str]:
+        """删除插件源码目录，不可逆操作。
 
-        checkpoint = self.checkpoint(clone_id)
+        :param plugin_id: 插件ID
+        :return: (是否成功, 说明信息)
+        """
         try:
-            shutil.copytree(original_dir, clone_dir)
-            success, message = self._modify_plugin_files(
-                plugin_dir=clone_dir,
-                original_class_name=original_class_name,
-                suffix=suffix,
-                name=name,
-                description=description,
-                version=version,
-                icon=icon,
-            )
-            if not success:
-                self.rollback(checkpoint)
-                return False, message
-            self.commit(checkpoint)
-            logger.info(f"已复制插件目录：{original_dir} -> {clone_dir}")
-            return True, "文件修改成功"
-        except Exception as err:
-            try:
-                self.rollback(checkpoint)
-            except Exception as rollback_err:
-                logger.error(
-                    f"清理插件分身 {clone_id} 失败：{rollback_err}",
-                    exc_info=True,
-                )
-            return False, f"创建插件分身文件失败：{err}"
-
-    def _modify_plugin_files(
-        self,
-        *,
-        plugin_dir: Path,
-        original_class_name: str,
-        suffix: str,
-        name: str,
-        description: str,
-        version: Optional[str],
-        icon: Optional[str],
-    ) -> tuple[bool, str]:
-        """改写分身的 Python 元数据和联邦前端资源。"""
-        clone_class_name = f"{original_class_name}{suffix}"
-        init_file = plugin_dir / "__init__.py"
-        if init_file.exists():
-            success, message = self._modify_python_file(
-                file_path=init_file,
-                original_class_name=original_class_name,
-                clone_class_name=clone_class_name,
-                name=name,
-                description=description,
-                version=version,
-                icon=icon,
-            )
-            if not success:
-                return False, message
-
-        dist_dir = plugin_dir / "dist"
-        if dist_dir.exists():
-            success, message = self._modify_federation_files(
-                dist_dir=dist_dir,
-                original_class_name=original_class_name,
-                clone_class_name=clone_class_name,
-            )
-            if not success:
-                return False, message
-        return True, "文件修改成功"
-
-    @staticmethod
-    def _modify_python_file(
-        *,
-        file_path: Path,
-        original_class_name: str,
-        clone_class_name: str,
-        name: str,
-        description: str,
-        version: Optional[str],
-        icon: Optional[str],
-    ) -> tuple[bool, str]:
-        """改写插件主类名称、展示元数据和独立配置前缀。"""
+            plugin_dir = self._plugin_dir(plugin_id)
+        except ValueError as err:
+            return False, str(err)
+        if not plugin_dir.exists():
+            return True, f"插件目录 {plugin_dir} 不存在，无需删除"
         try:
-            content = file_path.read_text(encoding="utf-8", errors="replace")
-            content = content.replace(
-                f"class {original_class_name}",
-                f"class {clone_class_name}",
-            )
-            if name:
-                content = re.sub(
-                    r'plugin_name\s*=\s*["\'][^"\']*["\']',
-                    f'plugin_name = "{name}"',
-                    content,
-                )
-            if description:
-                content = re.sub(
-                    r'plugin_desc\s*=\s*["\'][^"\']*["\']',
-                    f'plugin_desc = "{description}"',
-                    content,
-                )
-            content = re.sub(
-                r'plugin_config_prefix\s*=\s*["\'][^"\']*["\']',
-                f'plugin_config_prefix = "{clone_class_name.lower()}_"',
-                content,
-            )
-            if version:
-                content = re.sub(
-                    r'plugin_version\s*=\s*["\'][^"\']*["\']',
-                    f'plugin_version = "{version}"',
-                    content,
-                )
-            if icon and icon.strip():
-                content = re.sub(
-                    r'plugin_icon\s*=\s*["\'][^"\']*["\']',
-                    f'plugin_icon = "{icon}"',
-                    content,
-                )
-            if "def init_plugin(self" in content:
-                init_index = content.index("def init_plugin(self")
-                content = (
-                    content[:init_index]
-                    + "is_clone = True\n\n    "
-                    + content[init_index:]
-                )
-            file_path.write_text(content, encoding="utf-8")
-            return True, "Python文件修改成功"
+            shutil.rmtree(plugin_dir)
+            return True, "插件目录删除成功"
         except Exception as err:
-            logger.error(f"修改Python文件失败：{err}")
-            return False, f"修改Python文件失败：{err}"
-
-    def _modify_federation_files(
-        self,
-        *,
-        dist_dir: Path,
-        original_class_name: str,
-        clone_class_name: str,
-    ) -> tuple[bool, str]:
-        """改写联邦构建产物中的插件类名和样式命名空间。"""
-        try:
-            for file_path in dist_dir.rglob("*"):
-                if not file_path.is_file() or file_path.suffix not in {".js", ".css"}:
-                    continue
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="replace")
-                    if file_path.suffix == ".js":
-                        content = content.replace(original_class_name, clone_class_name)
-                        content = content.replace(
-                            f'"{original_class_name}"',
-                            f'"{clone_class_name}"',
-                        )
-                        content = content.replace(
-                            f"'{original_class_name}'",
-                            f"'{clone_class_name}'",
-                        )
-                        content = content.replace(
-                            f"css__{original_class_name}__",
-                            f"css__{clone_class_name}__",
-                        )
-                    content = content.replace(
-                        original_class_name.lower(),
-                        clone_class_name.lower(),
-                    )
-                    file_path.write_text(content, encoding="utf-8")
-                except Exception as err:
-                    logger.warning(f"修改联邦插件文件 {file_path} 失败：{err}")
-            self._rename_federation_assets(
-                dist_dir,
-                original_class_name,
-                clone_class_name,
-            )
-            return True, "联邦插件文件修改完成"
-        except Exception as err:
-            logger.error(f"修改联邦插件文件失败：{err}")
-            return False, f"修改联邦插件文件失败：{err}"
-
-    @staticmethod
-    def _rename_federation_assets(
-        dist_dir: Path,
-        original_class_name: str,
-        clone_class_name: str,
-    ) -> None:
-        """重命名包含原类名的顶层联邦资源，避免分身资源冲突。"""
-        try:
-            for file_path in dist_dir.glob("*"):
-                if not file_path.is_file():
-                    continue
-                if original_class_name.lower() not in file_path.name.lower():
-                    continue
-                new_name = file_path.name.replace(
-                    original_class_name.lower(),
-                    clone_class_name.lower(),
-                )
-                new_path = file_path.parent / new_name
-                if not new_path.exists():
-                    file_path.rename(new_path)
-        except Exception as err:
-            logger.warning(f"重命名联邦插件资源文件失败：{err}")
+            logger.error(f"删除插件目录 {plugin_dir} 失败：{err}")
+            return False, f"删除插件目录失败：{err}"

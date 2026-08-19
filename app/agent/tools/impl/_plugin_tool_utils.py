@@ -1,10 +1,8 @@
 """插件 Agent 工具共享辅助方法"""
 
 import json
-import shutil
 from typing import Any, Optional
 
-from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.application.plugin.install import PluginInstallCommand
 from app.db.oper.systemconfig import SystemConfigOper
@@ -378,7 +376,12 @@ async def install_plugin_runtime(
 
 async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     """
-    按现有卸载逻辑移除插件，并清理运行态注册与分组信息。
+    卸载插件：停止运行态、清理配置数据与源码目录，并注销已安装登记、动态 API、
+    定时任务与文件夹归属
+
+    :param plugin_id: 插件ID
+    :return: 预留的清理结果字段，当前为空字典
+    :raises LookupError: 插件不存在
     """
     from app.application.plugins import (
         remove_plugin_api,
@@ -386,36 +389,17 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     )
     from app.application.scheduling import remove_plugin_job
 
+    plugin_manager = PluginManager()
+    plugin_manager.uninstall_plugin(plugin_id)
+
     config_oper = SystemConfigOper()
     install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
     if plugin_id in install_plugins:
-        install_plugins = [plugin for plugin in install_plugins if plugin != plugin_id]
+        install_plugins = [pid for pid in install_plugins if pid != plugin_id]
         await config_oper.async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
 
     remove_plugin_api(plugin_id)
     remove_plugin_job(plugin_id)
-
-    plugin_manager = PluginManager()
-    plugin_class = plugin_manager.plugins.get(plugin_id)
-    was_clone = bool(getattr(plugin_class, "is_clone", False))
-    clone_files_removed = False
-
-    if was_clone:
-        plugin_manager.delete_plugin_config(plugin_id)
-        plugin_manager.delete_plugin_data(plugin_id)
-        plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
-        if plugin_base_dir.exists():
-            try:
-                shutil.rmtree(plugin_base_dir)
-                plugin_manager.plugins.pop(plugin_id, None)
-                clone_files_removed = True
-            except Exception:
-                clone_files_removed = False
-
     remove_plugin_from_folders(plugin_id)
-    plugin_manager.remove_plugin(plugin_id)
 
-    return {
-        "was_clone": was_clone,
-        "clone_files_removed": clone_files_removed,
-    }
+    return {}

@@ -60,45 +60,39 @@ def test_local_sync_failure_restores_previous_runtime_copy(monkeypatch, tmp_path
     assert source_file.read_text(encoding="utf-8") == "stable"
 
 
-def test_clone_rewrites_python_and_federation_assets(monkeypatch, tmp_path):
-    """插件分身文件处理应由包适配器完成并隔离配置命名空间。"""
+def test_remove_deletes_existing_plugin_directory(monkeypatch, tmp_path):
+    """删除存在的插件目录应成功并清空磁盘内容。"""
     manager = _manager(monkeypatch, tmp_path)
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
-    dist_dir = plugin_dir / "dist"
-    dist_dir.mkdir(parents=True)
-    (plugin_dir / "__init__.py").write_text(
-        "class DemoPlugin:\n"
-        "    plugin_name = 'Demo'\n"
-        "    plugin_desc = 'Description'\n"
-        "    plugin_config_prefix = 'demo_'\n"
-        "    plugin_version = '1.0.0'\n"
-        "    plugin_icon = 'old.png'\n"
-        "    def init_plugin(self, config=None):\n"
-        "        pass\n",
-        encoding="utf-8",
-    )
-    (dist_dir / "demoplugin.js").write_text(
-        "const name = 'DemoPlugin'; const css = 'css__DemoPlugin__root';",
-        encoding="utf-8",
-    )
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("class DemoPlugin:\n    pass\n", encoding="utf-8")
 
-    success, message = manager.clone(
-        plugin_id="DemoPlugin",
-        clone_id="DemoPluginBlue",
-        original_class_name="DemoPlugin",
-        suffix="blue",
-        name="Demo Blue",
-        description="Blue clone",
-        version="2.0.0",
-        icon="blue.png",
-    )
+    success, message = manager.remove("DemoPlugin")
 
-    clone_dir = tmp_path / "app" / "plugins" / "demopluginblue"
-    clone_source = (clone_dir / "__init__.py").read_text(encoding="utf-8")
     assert success is True
-    assert message == "文件修改成功"
-    assert "class DemoPluginblue" in clone_source
-    assert 'plugin_name = "Demo Blue"' in clone_source
-    assert 'plugin_config_prefix = "demopluginblue_"' in clone_source
-    assert "is_clone = True" in clone_source
-    assert (clone_dir / "dist" / "demopluginblue.js").is_file()
+    assert message == "插件目录删除成功"
+    assert not plugin_dir.exists()
+
+
+def test_remove_missing_plugin_directory_is_a_noop(monkeypatch, tmp_path):
+    """删除不存在的插件目录应视为已达成目标，不报错。"""
+    manager = _manager(monkeypatch, tmp_path)
+
+    success, message = manager.remove("DemoPlugin")
+
+    assert success is True
+    assert "不存在" in message
+
+
+def test_remove_rejects_path_traversal_plugin_id(monkeypatch, tmp_path):
+    """越出插件根目录的标识必须被拒绝，不得删到插件目录之外。"""
+    manager = _manager(monkeypatch, tmp_path)
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "marker.txt").write_text("keep", encoding="utf-8")
+
+    success, message = manager.remove("../../outside")
+
+    assert success is False
+    assert "非法插件ID" in message
+    assert (outside_dir / "marker.txt").exists()

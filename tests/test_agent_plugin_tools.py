@@ -336,9 +336,7 @@ def test_uninstall_plugin_uninstalls_installed_candidate() -> None:
         ),
         patch(
             "app.agent.tools.impl.uninstall_plugin.uninstall_plugin_runtime",
-            new=AsyncMock(
-                return_value={"was_clone": False, "clone_files_removed": False}
-            ),
+            new=AsyncMock(return_value={}),
         ) as uninstall_runtime,
     ):
         result = asyncio.run(tool.run(plugin_id="DemoPlugin"))

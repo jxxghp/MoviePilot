@@ -1391,6 +1391,26 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 删除持久化数据目录，三重校验后执行，不可逆操作
         self._remove_instance_directory(plugin_id, normalized_instance_id)
 
+    def uninstall_plugin(self, plugin_id: str) -> None:
+        """
+        卸载插件
+
+        停止其运行态、回收注册表中的类，并清除其模块缓存，避免同名插件重装后
+        复用旧模块。配置、业务数据、持久化数据目录与源码目录均不删除——用户
+        重新安装同一插件时可以读回原有配置，这是本方法刻意保留的软卸载语义。
+        已安装清单登记、动态 API/定时任务/命令的注销、文件夹归属清理由调用方
+        负责，不属于插件包和运行态本身的清理范围。
+        :param plugin_id: 插件ID
+        :raises LookupError: 插件不存在
+        """
+        if plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        # 停止运行态：撤销事件与渠道能力登记
+        self.remove_plugin(plugin_id)
+        # 确保内存中不再持有该插件类，并清除模块缓存，避免同名插件重装后复用旧模块
+        self._plugins.pop(plugin_id, None)
+        self._clear_plugin_modules(plugin_id)
+
     def get_plugin_state(self, pid: str) -> bool:
         """
         获取插件状态
@@ -2133,154 +2153,3 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
             return None
 
-    def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
-                     version: str = None, icon: str = None) -> Tuple[bool, str]:
-        """
-        创建插件分身
-        :param plugin_id: 原插件ID
-        :param suffix: 分身后缀
-        :param name: 分身名称
-        :param description: 分身描述
-        :param version: 自定义版本号
-        :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
-        """
-        try:
-            # 验证参数
-            if not plugin_id or not suffix:
-                return False, "插件ID和分身后缀不能为空"
-
-            # 检查原插件是否存在
-            if plugin_id not in self._plugins:
-                return False, f"原插件 {plugin_id} 不存在"
-
-            # 生成分身插件ID
-            clone_id = f"{plugin_id}{suffix.lower()}"
-
-            # 检查分身插件是否已存在
-            if self.is_plugin_exists(clone_id):
-                return False, f"分身插件 {clone_id} 已存在"
-
-            original_plugin_class = self._plugins.get(plugin_id)
-            if not original_plugin_class:
-                return False, f"无法获取原插件类 {plugin_id}"
-
-            success, msg = get_plugin_system().package.clone(
-                plugin_id=plugin_id,
-                clone_id=clone_id,
-                original_class_name=original_plugin_class.__name__,
-                suffix=suffix.lower(),
-                name=name,
-                description=description,
-                version=version,
-                icon=icon,
-            )
-            if not success:
-                return False, msg
-
-            # 将分身插件添加到已安装列表
-            storage = get_plugin_storage()
-            installed_plugins = storage.read(SystemConfigKey.UserInstalledPlugins) or []
-            if clone_id not in installed_plugins:
-                installed_plugins.append(clone_id)
-                storage.write(SystemConfigKey.UserInstalledPlugins, installed_plugins)
-
-            # 为分身插件创建初始配置（从原插件复制配置）
-            logger.info(f"正在为分身插件 {clone_id} 创建初始配置...")
-            original_config = self.get_plugin_config(plugin_id)
-            if original_config:
-                # 复制原插件配置作为分身插件的初始配置
-                clone_config = original_config.copy()
-                # 可以在这里修改一些默认值，比如禁用分身插件
-                # 默认禁用分身插件，让用户手动配置
-                clone_config['enable'] = False
-                clone_config['enabled'] = False
-                self.save_plugin_config(clone_id, clone_config, force=True)
-                logger.info(f"已为分身插件 {clone_id} 设置初始配置")
-            else:
-                logger.info(f"原插件 {plugin_id} 没有配置，分身插件 {clone_id} 将使用默认配置")
-
-            # 注册分身插件的API和服务
-            logger.info(f"正在注册分身插件 {clone_id} ...")
-            PluginManager().reload_plugin(clone_id)
-            # 确保分身插件正确初始化配置
-            clone_instance = self._plugin_registry.instance(clone_id)
-            if clone_instance is not None:
-                clone_config = self.get_plugin_config(clone_id)
-                if clone_config:
-                    logger.info(f"正在为分身插件 {clone_id} 重新初始化配置...")
-                    clone_instance.init_plugin(clone_config)
-                    logger.info(f"分身插件 {clone_id} 配置重新初始化完成")
-
-            logger.info(f"插件分身 {clone_id} 创建成功")
-            return True, clone_id
-
-        except Exception as e:
-            logger.error(f"创建插件分身失败：{str(e)}")
-            return False, f"创建插件分身失败：{str(e)}"
-
-    def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
-                             name: str, description: str, version: str = None,
-                             icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将分身文件改写委托给包适配器。
-        :param plugin_dir: 插件目录
-        :param original_id: 原插件ID
-        :param suffix: 分身后缀
-        :param name: 分身名称
-        :param description: 分身描述
-        :param version: 自定义版本号
-        :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
-        """
-        original_plugin_class = self._plugins.get(original_id)
-        if not original_plugin_class:
-            return False, f"无法获取原插件类 {original_id}"
-        return get_plugin_system().package._modify_plugin_files(
-            plugin_dir=plugin_dir,
-            original_class_name=original_plugin_class.__name__,
-            suffix=suffix,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
-
-    @staticmethod
-    def _modify_python_file(file_path: Path, original_class_name: str,
-                            clone_class_name: str, name: str, description: str,
-                            version: str = None, icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将 Python 文件改写委托给包适配器。
-        """
-        return get_plugin_system().package._modify_python_file(
-            file_path=file_path,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
-
-    def _modify_federation_files(self, dist_dir: Path, original_class_name: str,
-                                 clone_class_name: str) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将联邦文件改写委托给包适配器。
-        """
-        return get_plugin_system().package._modify_federation_files(
-            dist_dir=dist_dir,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-        )
-
-    @staticmethod
-    def _rename_federation_assets(dist_dir: Path, original_class_name: str, clone_class_name: str):
-        """
-        兼容旧内部调用，将资源重命名委托给包适配器。
-        """
-        get_plugin_system().package._rename_federation_assets(
-            dist_dir,
-            original_class_name,
-            clone_class_name,
-        )

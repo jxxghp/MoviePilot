@@ -383,7 +383,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/dashboard/network` | Network traffic |
 | GET | `/api/v1/dashboard/network2` | Network traffic (API_TOKEN) |
 
-### Plugin (25 endpoints)
+### Plugin (24 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -399,7 +399,6 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/plugin/{plugin_id}` | Get plugin config |
 | PUT | `/api/v1/plugin/{plugin_id}` | Update plugin config. Body: JSON object |
 | DELETE | `/api/v1/plugin/{plugin_id}` | Uninstall plugin |
-| POST | `/api/v1/plugin/clone/{plugin_id}` | Clone plugin. Body: JSON object |
 | GET | `/api/v1/plugin/form/{plugin_id}` | Plugin form page |
 | GET | `/api/v1/plugin/page/{plugin_id}` | Plugin data page |
 | GET | `/api/v1/plugin/remotes` | Plugin federation list. Params: `token` (required) |
