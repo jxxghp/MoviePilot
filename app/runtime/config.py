@@ -194,6 +194,8 @@ class ConfigModel(BaseModel):
     DB_BACKUP_ENABLE: bool = False
     # 定时备份的 Cron 表达式，留空时不注册定时任务
     DB_BACKUP_CRON: str = "0 3 * * *"
+    # 检测到现有数据库需要迁移时，在结构变更前创建恢复点
+    DB_BACKUP_ON_UPGRADE: bool = True
     # 备份根目录；未配置时使用 CONFIG_PATH/database_backup
     DB_BACKUP_PATH: Optional[str] = None
     # 本地备份的保留天数，0 表示不按时间清理

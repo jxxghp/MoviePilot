@@ -38,7 +38,6 @@ from uvicorn import Config
 from app.adapters.system.stdio import configure_rotating_stdio
 from app.adapters.system.host import SystemUtils
 
-# 禁用输出
 stdio_log_file = os.getenv("MOVIEPILOT_STDIO_LOG_FILE")
 if stdio_log_file:
     # 本地 CLI 会把 stdout/stderr 切到滚动日志，避免无限追加单独的大文件。
@@ -56,9 +55,8 @@ elif SystemUtils.is_frozen():
 
 from app.factory import app
 from app.runtime.config import global_vars, settings
-from app.startup.database_initializer import init_db, update_db
+from app.startup.database_initializer import prepare_database
 
-# 设置进程名
 setproctitle.setproctitle(settings.PROJECT_NAME)
 
 
@@ -70,7 +68,6 @@ class MoviePilotServer(uvicorn.Server):
         super().handle_exit(sig, frame)
 
 
-# uvicorn服务
 Server = MoviePilotServer(Config(app, host=settings.HOST, port=settings.PORT,
                                  reload=settings.DEV, workers=settings.API_WORKERS,
                                  timeout_graceful_shutdown=60))
@@ -109,7 +106,6 @@ def start_tray():
 
     import pystray
 
-    # 托盘图标
     TrayIcon = pystray.Icon(
         settings.PROJECT_NAME,
         icon=Image.open(settings.ROOT_PATH / 'app.ico'),
@@ -124,7 +120,6 @@ def start_tray():
             )
         )
     )
-    # 启动托盘图标
     threading.Thread(target=TrayIcon.run, daemon=True).start()
 
 
@@ -138,17 +133,11 @@ def signal_handler(signum, frame):
 
 def run_application() -> None:
     """初始化进程并启动 API 服务"""
-    # 注册信号处理器
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # 启动托盘
     start_tray()
-    # 初始化数据库
-    init_db()
-    # 更新数据库
-    update_db()
-    # 启动API服务
+    prepare_database()
     Server.run()
 
 

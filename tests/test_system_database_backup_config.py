@@ -33,6 +33,8 @@ def test_database_backup_policy_rejects_invalid_values(
     [
         {"DB_BACKUP_CRON": ""},
         {"DB_BACKUP_CRON": "0 3 * * *"},
+        {"DB_BACKUP_ON_UPGRADE": True},
+        {"DB_BACKUP_ON_UPGRADE": False},
         {"DB_BACKUP_PATH": None},
         {"DB_BACKUP_PATH": ""},
         {"DB_BACKUP_PATH": "database_backup"},

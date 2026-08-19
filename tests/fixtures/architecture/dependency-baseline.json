@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6059,
-  "edge_sha256": "85ab4dd2f01f48bae417f0401f272763f15ba7256b58ca0ab5a8256f4946c2f9",
+  "edge_count": 6061,
+  "edge_sha256": "022ba984b711776539b4dc120d0f2e92645f61b28b59dd6be3c32a64499d08ce",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5705,6 +5705,8 @@
     "app.startup.database_initializer -> app.runtime",
     "app.startup.database_initializer -> app.runtime.config",
     "app.startup.database_initializer -> app.runtime.log",
+    "app.startup.database_initializer -> app.startup",
+    "app.startup.database_initializer -> app.startup.database",
     "app.startup.domain_initializer -> app.adapters",
     "app.startup.domain_initializer -> app.adapters.system",
     "app.startup.domain_initializer -> app.adapters.system.rust",

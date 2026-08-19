@@ -2408,7 +2408,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.startup.database_initializer import init_db, update_db
+        from app.startup.database_initializer import prepare_database
         from app.db.oper.systemconfig import SystemConfigOper
         from app.schemas.types import SystemConfigKey
     except ModuleNotFoundError as exc:
@@ -2416,9 +2416,13 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
         ) from exc
 
-    init_db()
-    generated_password = _prepare_superuser_password_for_bootstrap()
-    update_db()
+    generated_password = None
+
+    def prepare_superuser_password() -> None:
+        nonlocal generated_password
+        generated_password = _prepare_superuser_password_for_bootstrap()
+
+    prepare_database(before_alembic=prepare_superuser_password)
     _ensure_superuser_account_inner()
     if generated_password:
         print_step(f"超级管理员初始密码：{generated_password}")
@@ -2571,15 +2575,19 @@ def _sync_superuser_account_inner() -> None:
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.startup.database_initializer import init_db, update_db
+        from app.startup.database_initializer import prepare_database
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
         ) from exc
 
-    init_db()
-    generated_password = _prepare_superuser_password_for_bootstrap()
-    update_db()
+    generated_password = None
+
+    def prepare_superuser_password() -> None:
+        nonlocal generated_password
+        generated_password = _prepare_superuser_password_for_bootstrap()
+
+    prepare_database(before_alembic=prepare_superuser_password)
     _ensure_superuser_account_inner()
     if generated_password:
         print_step(f"超级管理员初始密码：{generated_password}")
@@ -3671,7 +3679,7 @@ def run_agent_request(
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.startup.database_initializer import init_db, update_db
+        from app.startup.database_initializer import prepare_database
         from app.agent import MoviePilotAgent
         from app.runtime.config import settings
     except ModuleNotFoundError as exc:
@@ -3682,8 +3690,7 @@ def run_agent_request(
     if not settings.AI_AGENT_ENABLE:
         raise RuntimeError("MoviePilot 智能体未启用，请先在配置中打开 AI_AGENT_ENABLE")
 
-    init_db()
-    update_db()
+    prepare_database()
 
     session = (session_id or "").strip()
     if new_session or not session:
