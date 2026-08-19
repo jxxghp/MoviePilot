@@ -19,9 +19,7 @@ from app.runtime.capabilities.model import (
 
 
 _SCHEMA_VERSION = 1
-# 能力声明文件名，调用方据此判断某个目录是否是可用的声明根
-CAPABILITY_MANIFEST_NAME = "capability.toml"
-_MANIFEST_NAME = CAPABILITY_MANIFEST_NAME
+_MANIFEST_NAME = "capability.toml"
 _TOP_LEVEL_FIELDS = frozenset({
     "schema_version",
     "id",

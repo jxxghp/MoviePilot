@@ -1711,7 +1711,7 @@
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 304
+        "line": 230
       }
     ],
     "event_count": 53,
@@ -1975,7 +1975,7 @@
         "consumers": [
           {
             "caller": "app.runtime.extensions.module_manager",
-            "line": 82
+            "line": 56
           },
           {
             "caller": "app.runtime.reload",

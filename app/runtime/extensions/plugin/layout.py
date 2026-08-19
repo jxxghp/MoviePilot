@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from app.foundation.version import compare_version
-from app.runtime.capabilities.registry import CAPABILITY_MANIFEST_NAME
 from app.runtime.log import logger
 
 # 插件源码版本目录名的前缀，用于把版本目录与插件目录下的其它条目区分开
@@ -355,34 +354,6 @@ def register_plugin_version(
         }
     )
     write_plugin_versions_manifest(plugin_root, versions, version)
-
-
-def plugin_capability_roots(plugins_root: Path) -> tuple:
-    """收集各插件当前生效版本目录中带能力声明的那些，作为能力发现根。
-
-    只认当前生效版本：同一插件的多个版本若同时进入发现流程，它们声明的
-    capability id 必然重名，整份注册表会因此建不起来。只读磁盘，不判断插件是否
-    启用——启用与否属于运行态策略，不影响声明面的发现。
-
-    :param plugins_root: 插件源码根目录
-    :return: 含能力声明的版本目录元组，按插件目录名排序
-    """
-    if not plugins_root.is_dir():
-        return ()
-    roots = []
-    for plugin_dir in sorted(plugins_root.iterdir()):
-        if not plugin_dir.is_dir() or plugin_dir.name.startswith((".", "_")):
-            continue
-        try:
-            source_dir = resolve_plugin_version_dir(plugin_dir, migrate=False)
-        except Exception as error:
-            logger.error(f"解析插件 {plugin_dir.name} 版本目录出错：{error}")
-            continue
-        if source_dir is None:
-            continue
-        if (source_dir / CAPABILITY_MANIFEST_NAME).is_file():
-            roots.append(source_dir)
-    return tuple(roots)
 
 
 def resolve_plugin_version_dir(

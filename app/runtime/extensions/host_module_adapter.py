@@ -4,7 +4,7 @@ import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Mapping, Optional
 
 from app.runtime.capabilities.model import (
     ActivationPolicy,
@@ -28,10 +28,6 @@ from app.schemas.types import SystemConfigKey
 
 
 HOST_MODULE_KIND = "host_module"
-# 扩展提供的模块与宿主模块共用声明格式、适配器与分发路径，只以 kind 区分来源：
-# 宿主模块受「一级模块包与清单一一对应」的库存合同约束，扩展的声明根在插件源码
-# 目录下，不适用该合同。
-PLUGIN_MODULE_KIND = "plugin_module"
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
 _MODULE_ROOT = Path(__file__).resolve().parents[2] / "modules"
@@ -97,12 +93,7 @@ HOST_MODULE_SELECTOR_SCHEMAS = MappingProxyType({
 
 
 def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
-    """校验一级模块包与 manifest 一一对应，并固定宿主声明合同。
-
-    库存合同只约束宿主模块：宿主模块的声明根固定为 ``app/modules``，包与清单必须
-    一一对应；扩展提供的模块声明在各自插件源码目录下，数量与目录结构由扩展自己
-    决定，因此按 kind 分流校验。
-    """
+    """校验一级模块包与 manifest 一一对应，并固定宿主声明合同。"""
     module_packages = {
         child.name
         for child in _MODULE_ROOT.iterdir()
@@ -110,9 +101,7 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
         and not child.name.startswith("_")
         and (child / "__init__.py").is_file()
     }
-    specs = tuple(
-        spec for spec in registry.list_specs() if spec.kind == HOST_MODULE_KIND
-    )
+    specs = registry.list_specs()
     manifest_packages = {spec.source.parent.name for spec in specs}
     if module_packages != manifest_packages:
         missing = sorted(module_packages - manifest_packages)
@@ -170,20 +159,11 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
                 )
 
 
-def build_host_module_registry(
-    extra_roots: Iterable[Path] = (),
-) -> CapabilityRegistry:
-    """从现有物理模块包与扩展声明根构建 import-free 模块注册表。
-
-    扩展声明根由调用方给出，通常是各扩展当前生效版本的源码目录。声明格式、适配器
-    与分发路径都与宿主模块一致，扩展据此获得与内置模块同级的能力注册面；不传扩展
-    根时结果与只扫描宿主模块包完全一致。
-    :param extra_roots: 追加的能力声明根，目录不存在或没有清单时由发现流程报错
-    :return: 含宿主模块与扩展模块声明的注册表
-    """
+def build_host_module_registry() -> CapabilityRegistry:
+    """从现有物理模块包构建 import-free Host Module Registry。"""
     registry = CapabilityRegistry.discover(
-        (_MODULE_ROOT, *extra_roots),
-        kinds={HOST_MODULE_KIND, PLUGIN_MODULE_KIND},
+        (_MODULE_ROOT,),
+        kinds={HOST_MODULE_KIND},
         selector_schemas=HOST_MODULE_SELECTOR_SCHEMAS,
     )
     _validate_manifest_inventory(registry)

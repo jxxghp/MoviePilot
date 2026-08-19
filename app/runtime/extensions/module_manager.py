@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import threading
-from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
@@ -11,14 +10,12 @@ from app.runtime.capabilities.model import (
     CapabilityObservation,
     CapabilitySpec,
 )
-from app.runtime.capabilities.registry import CAPABILITY_MANIFEST_NAME
 from app.runtime.capabilities.runtime import CapabilityRuntime
 from app.runtime.config import settings
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions.contract import supports_extension_hook
 from app.runtime.extensions.host_module_adapter import (
     HOST_MODULE_KIND,
-    PLUGIN_MODULE_KIND,
     HostModuleAdapter,
     HostModuleExtension,
     build_host_module_registry,
@@ -29,31 +26,11 @@ from app.runtime.log import logger
 from app.schemas.types import EventType
 
 
-def _no_plugin_capability_roots() -> tuple:
-    """未接入扩展声明根时不追加任何发现根。"""
-    return ()
-
-
-_plugin_capability_roots = _no_plugin_capability_roots
-
-
-def configure_plugin_capability_roots(provider) -> None:
-    """
-    由启动组合根注入扩展能力声明根的来源
-
-    扩展的声明根取自各扩展当前生效版本的源码目录，判定哪些扩展已安装、生效在哪个
-    版本需要读持久化配置，运行时层不得反向依赖数据库，因此只声明可注入的提供者。
-    :param provider: 无参可调用对象，返回声明根的可迭代集合；传空恢复为不追加
-    """
-    global _plugin_capability_roots
-    _plugin_capability_roots = provider or _no_plugin_capability_roots
-
-
 class ModuleManager(metaclass=Singleton):
-    """以 Capability Runtime 管理宿主模块与扩展模块，并保留旧插件同步查询合同。"""
+    """以 Capability Runtime 管理宿主模块，并保留旧插件同步查询合同。"""
 
     def __init__(self) -> None:
-        """发现 data-only manifest，并按当前配置激活所需模块。"""
+        """发现 data-only manifest，并按当前配置激活所需宿主模块。"""
         self._lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
         self._modules: dict[str, type] = {}
@@ -62,13 +39,10 @@ class ModuleManager(metaclass=Singleton):
         self._running_generation = 0
         self._capability_index: Optional[dict[str, tuple[Any, ...]]] = None
         self._capability_index_generation = -1
-        registry = self._build_registry(self._discover_plugin_capability_roots())
-        # 扩展模块与宿主模块共用适配器：物化走标准 import 与属性取值，对扩展源码
-        # 目录下的入口同样成立，两者的创建、启动、停止语义因此完全一致。
-        adapter = HostModuleAdapter()
+        registry = build_host_module_registry()
         self._runtime = CapabilityRuntime(
             registry,
-            adapters={HOST_MODULE_KIND: adapter, PLUGIN_MODULE_KIND: adapter},
+            adapters={HOST_MODULE_KIND: HostModuleAdapter()},
             observer=self._observe_transition,
         )
         # pkgutil 的既有发现顺序按一级包名稳定排列，兼容视图继续保持该顺序。
@@ -84,54 +58,6 @@ class ModuleManager(metaclass=Singleton):
             self.handle_config_changed,
         )
         self.load_modules()
-
-    @staticmethod
-    def _discover_plugin_capability_roots() -> tuple:
-        """
-        取扩展提供的能力声明根，来源出错时按无扩展处理
-
-        只保留确实存在且带能力清单的目录：绝大多数扩展只注册事件或提供业务钩子，
-        目录下没有清单，把它们当成声明根会让发现流程因「声明根没有清单」直接失败，
-        一个传统扩展就能让宿主模块整体装不起来。
-        :return: 声明根元组，取不到时为空元组
-        """
-        try:
-            roots = tuple(_plugin_capability_roots() or ())
-        except Exception as err:
-            logger.error(f"读取扩展能力声明根出错，本次按无扩展处理：{str(err)}")
-            return ()
-        return tuple(
-            root
-            for root in roots
-            if root and Path(root).is_dir() and any(Path(root).rglob(CAPABILITY_MANIFEST_NAME))
-        )
-
-    @staticmethod
-    def _build_registry(plugin_roots: tuple):
-        """
-        构建模块注册表，坏的扩展声明只连累它自己
-
-        先逐个声明根单独试建：清单非法、入口不可解析等问题出在哪个扩展就跳过哪个，
-        其余扩展照常装载。全部合并时仍可能因跨扩展的 capability id 重名失败，此时
-        退回只含宿主模块的注册表——宿主不能因为扩展之间的冲突起不来。
-        :param plugin_roots: 扩展能力声明根
-        :return: 能力注册表
-        """
-        if not plugin_roots:
-            return build_host_module_registry()
-        usable = []
-        for root in plugin_roots:
-            try:
-                build_host_module_registry((root,))
-            except Exception as err:
-                logger.error(f"扩展能力声明有误，已跳过 {root}：{str(err)}")
-                continue
-            usable.append(root)
-        try:
-            return build_host_module_registry(tuple(usable))
-        except Exception as err:
-            logger.error(f"扩展能力声明相互冲突，本次只装载宿主模块：{str(err)}")
-            return build_host_module_registry()
 
     @staticmethod
     def _observe_transition(observation: CapabilityObservation) -> None:

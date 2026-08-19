@@ -1,6 +1,5 @@
 import inspect
 import sys
-from pathlib import Path
 from typing import Callable
 
 from app.adapters.cache.redis import RedisHelper, AsyncRedisHelper
@@ -19,11 +18,7 @@ except ImportError as e:
 from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
 from app.runtime.config import settings
-from app.runtime.extensions.module_manager import (
-    ModuleManager,
-    configure_plugin_capability_roots,
-)
-from app.runtime.extensions.plugin.layout import plugin_capability_roots
+from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.state import SystemHelper
@@ -366,11 +361,6 @@ async def init_modules():
     """
     # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于模块加载完成注入。
     configure_host_ports()
-    # 扩展声明的能力模块与内置模块同源装载；模块管理器在首次构造时一次性建立注册表，
-    # 声明根必须在那之前注入，否则本次运行发现不到任何扩展声明。
-    configure_plugin_capability_roots(
-        lambda: plugin_capability_roots(Path(settings.ROOT_PATH) / "app" / "plugins")
-    )
     # 入口层经应用端口取用模块目录与插件目录，不直接构造运行时单例。
     configure_module_runtime(lambda: ModuleManager())
     configure_plugin_runtime(lambda: PluginManager())
