@@ -18,6 +18,7 @@ from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
@@ -69,6 +70,44 @@ def _prepare_subtitle_download(
     subtitle.site_ua = site.ua
     subtitle.site_proxy = bool(site.proxy)
     return True, ""
+
+
+def _build_unrecognized_media_info(
+    torrent: _SchemaTorrentInfo,
+    metainfo: MetaBase,
+    is_music: bool = False,
+    music_type: Optional[str] = None,
+) -> MediaInfo | MusicInfo:
+    """
+    为用户确认的未识别资源构造最小下载上下文，影视与音乐统一处理。
+
+    影视以种子分类兜底媒体类型并保留标题年份，音乐按解析标题构造音乐信息，
+    两者都不再要求识别出统一媒体信息即可继续下载。
+    """
+    if is_music:
+        return MusicInfo(
+            title=metainfo.title or torrent.title,
+            year=metainfo.year,
+            music_type=music_type or MUSIC_ENTITY_RECORDING,
+        )
+    try:
+        media_type = MediaType(torrent.category)
+    except (TypeError, ValueError):
+        media_type = MediaType.from_agent(torrent.category)
+    if media_type == MediaType.COLLECTION:
+        media_type = MediaType.MOVIE
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = metainfo.type
+        # 合集类型在回退到元数据后同样归一为电影，避免落到 UNKNOWN
+        if media_type == MediaType.COLLECTION:
+            media_type = MediaType.MOVIE
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = MediaType.UNKNOWN
+    return MediaInfo(
+        type=media_type,
+        title=metainfo.name or torrent.title,
+        year=metainfo.year,
+    )
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
@@ -134,6 +173,7 @@ def add(
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
+    allow_unrecognized: Annotated[bool, Body()] = False,
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
@@ -189,7 +229,19 @@ def add(
             music_type=normalized_music_type,
         )
     if not mediainfo:
-        return _SchemaResponse(success=False, message="无法识别媒体信息")
+        if not allow_unrecognized:
+            return _SchemaResponse(
+                success=False,
+                message="无法识别媒体信息",
+                data=_SchemaDownloadAddedData(requires_confirmation=True),
+            )
+        # 用户已确认：影视与音乐统一按种子元信息构造最小上下文继续下载
+        mediainfo = _build_unrecognized_media_info(
+            torrent_in,
+            metainfo,
+            is_music=is_music,
+            music_type=normalized_music_type,
+        )
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())

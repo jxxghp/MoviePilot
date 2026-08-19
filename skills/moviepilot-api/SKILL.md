@@ -235,7 +235,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 |--------|------|-------------|
 | GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name); linked history adds media type and source `site_name` |
 | POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
-| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional paired `media_source` + `media_id`, `music_type`, `downloader`, `save_path` |
+| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional paired `media_source` + `media_id`, `music_type`, `downloader`, `save_path`; an unrecognized video or music resource returns `data.requires_confirmation=true`, and the same request may be retried with `allow_unrecognized=true` after explicit user confirmation |
 | POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, required `media_source` + `media_id`, optional `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | Resume download task |
 | GET | `/api/v1/download/stop/{hashString}` | Pause download task |
