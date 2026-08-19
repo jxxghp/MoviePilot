@@ -106,9 +106,11 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
         and settings.DB_BACKUP_ENABLE
         and settings.DB_BACKUP_ON_UPGRADE
     ):
+        current_version = current_heads[0] if current_heads else "未标记"
+        target_version = target_heads[0]
         logger.info(
-            "检测到数据库需要迁移，将先创建备份："
-            f"当前版本={current_heads or ('未标记',)}，目标版本={target_heads}"
+            f"数据库需要从版本 {current_version} 升级到 {target_version}，"
+            "正在创建迁移前备份"
         )
         build_database_governance().create_backup()
 
@@ -139,6 +141,6 @@ def update_db(alembic_cfg: Config | None = None):
         upgrade(alembic_cfg, 'head')
     except Exception as error:
         logger.error(
-            f'数据库更新失败：{str(error)} - {traceback.format_exc()}'
+            f"数据库更新失败：{error}\n{traceback.format_exc()}"
         )
         raise

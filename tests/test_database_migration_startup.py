@@ -52,6 +52,7 @@ def test_update_db_preserves_migration_error_and_traceback(monkeypatch) -> None:
 def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> None:
     """既有数据库待迁移时，恢复点必须早于所有结构写入。"""
     calls: list[str] = []
+    logged_messages: list[str] = []
     governance = Mock()
     governance.create_backup.side_effect = lambda: calls.append("backup")
     monkeypatch.setattr(db_init, "get_engine", lambda: object())
@@ -68,6 +69,7 @@ def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> N
         "build_database_governance",
         lambda: governance,
     )
+    monkeypatch.setattr(db_init.logger, "info", logged_messages.append)
     monkeypatch.setattr(db_init, "init_db", lambda: calls.append("create_all"))
     monkeypatch.setattr(
         db_init,
@@ -78,6 +80,9 @@ def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> N
     db_init.prepare_database(before_alembic=lambda: calls.append("before_alembic"))
 
     assert calls == ["backup", "create_all", "before_alembic", "alembic"]
+    assert logged_messages == [
+        "数据库需要从版本 old 升级到 head，正在创建迁移前备份"
+    ]
 
 
 @pytest.mark.parametrize(
