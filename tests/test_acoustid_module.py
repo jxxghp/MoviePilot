@@ -93,6 +93,46 @@ def test_identify_music_by_fingerprint_queries_acoustid_and_caches_result(
     assert response.closed is True
 
 
+def test_generate_fingerprint_accepts_valid_output_on_nonfatal_exit(
+        tmp_path,
+        monkeypatch,
+):
+    """fpcalc 报告非致命解码错误时仍应使用通过校验的指纹。"""
+    audio_path = tmp_path / "track.mp3"
+    audio_path.write_bytes(b"audio")
+    module = AcoustIdModule()
+    module._fpcalc_path = "/usr/bin/fpcalc"
+    monkeypatch.setattr(
+        "app.modules.acoustid.subprocess.run",
+        Mock(return_value=SimpleNamespace(
+            returncode=3,
+            stdout=json.dumps({
+                "duration": 243.4,
+                "fingerprint": "AQADtM...",
+            }),
+        )),
+    )
+
+    assert module._generate_fingerprint(audio_path) == (243, "AQADtM...")
+
+
+def test_generate_fingerprint_rejects_invalid_output_on_nonfatal_exit(
+        tmp_path,
+        monkeypatch,
+):
+    """非致命退出码不能绕过时长和指纹内容校验。"""
+    audio_path = tmp_path / "track.mp3"
+    audio_path.write_bytes(b"audio")
+    module = AcoustIdModule()
+    module._fpcalc_path = "/usr/bin/fpcalc"
+    monkeypatch.setattr(
+        "app.modules.acoustid.subprocess.run",
+        Mock(return_value=SimpleNamespace(returncode=3, stdout="{}")),
+    )
+
+    assert module._generate_fingerprint(audio_path) is None
+
+
 def test_select_recording_id_requires_high_score_and_valid_uuid():
     """低置信结果和异常外部 ID 不得进入 MusicBrainz 详情查询。"""
     payload = {
@@ -190,9 +230,9 @@ def test_async_identify_music_by_fingerprint_uses_async_process_and_http(
     module._fpcalc_path = "/usr/bin/fpcalc"
 
     class FakeProcess:
-        """模拟已成功执行的异步 fpcalc 子进程。"""
+        """模拟返回有效指纹并报告非致命解码错误的 fpcalc 子进程。"""
 
-        returncode = 0
+        returncode = 3
 
         async def communicate(self):
             """返回 fpcalc JSON 标准输出和空错误输出。"""
