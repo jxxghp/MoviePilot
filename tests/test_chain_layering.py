@@ -2,6 +2,7 @@
 
 import ast
 from pathlib import Path
+from typing import Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,11 @@ LEGACY_MUSIC_SCAN_ROOTS = (
     PROJECT_ROOT / "app",
     PROJECT_ROOT / "scripts",
 )
+CHAIN_RECOGNIZE_SCAN_ROOTS = (
+    PROJECT_ROOT / "app",
+    PROJECT_ROOT / "scripts",
+)
+CHAIN_RECOGNIZE_METHODS = {"recognize_media", "async_recognize_media"}
 MUSIC_SOURCE_CHAIN_FILES = (
     "acoustid.py",
     "douban.py",
@@ -138,11 +144,71 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
 
 
 def test_business_chains_delegate_recognition_to_media_chain() -> None:
-    """搜索、订阅、下载和转移链必须显式委托媒体识别编排层。"""
+    """搜索、订阅、下载、转移和媒体服务器链必须显式委托媒体识别编排层。"""
     violations = {
         name: calls
-        for name in ("search.py", "subscribe.py", "download.py", "transfer.py")
+        for name in (
+            "search.py", "subscribe.py", "download.py", "transfer.py",
+            "mediaserver.py",
+        )
         if (calls := _inherited_recognize_calls(ORCHESTRATION_ROOT / name))
+    }
+
+    assert not violations
+
+
+def _chain_constructor_class(call: ast.Call) -> Optional[str]:
+    """从形如 XxxChain(...) 的构造调用中取出链类名，非 Chain 命名返回 None。"""
+    func = call.func
+    if isinstance(func, ast.Name) and func.id.endswith("Chain"):
+        return func.id
+    return None
+
+
+def _non_media_chain_recognize_calls(path: Path) -> list[tuple[int, str]]:
+    """
+    查找对非 MediaChain 处理链发起媒体识别调用的位置。
+
+    覆盖直接构造（XxxChain().recognize_media(...)）和局部变量
+    （chain = XxxChain(); chain.recognize_media(...)）两种写法；变量到链类名的
+    映射按整个文件收集，不区分函数作用域。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+    chain_vars: dict[str, str] = {}
+    violations: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call)
+        ):
+            class_name = _chain_constructor_class(node.value)
+            if class_name:
+                chain_vars[node.targets[0].id] = class_name
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in CHAIN_RECOGNIZE_METHODS:
+            continue
+        owner = node.func.value
+        class_name = None
+        if isinstance(owner, ast.Call):
+            class_name = _chain_constructor_class(owner)
+        elif isinstance(owner, ast.Name):
+            class_name = chain_vars.get(owner.id)
+        if class_name and class_name != "MediaChain":
+            violations.append((node.lineno, f"{class_name}().{node.func.attr}"))
+    return violations
+
+
+def test_host_recognize_calls_only_use_media_chain() -> None:
+    """宿主任意位置发起媒体识别都必须经 MediaChain，不得绕道其它处理链。"""
+    violations = {
+        str(path.relative_to(PROJECT_ROOT)): calls
+        for root in CHAIN_RECOGNIZE_SCAN_ROOTS
+        for path in root.rglob("*.py")
+        if "plugins" not in path.parts  # 插件目录由插件仓自治，跳过
+        if (calls := _non_media_chain_recognize_calls(path))
     }
 
     assert not violations

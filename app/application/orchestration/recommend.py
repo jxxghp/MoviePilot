@@ -2,7 +2,6 @@ from typing import Callable, List, Optional
 
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 
-from app.application.orchestration import ChainBase
 from app.application.orchestration.bangumi import BangumiChain
 from app.application.orchestration.douban import DoubanChain
 from app.application.orchestration.listenbrainz import ListenBrainzChain
@@ -23,7 +22,7 @@ from app.schemas.media import normalize_media_source
 from app.foundation.singleton import Singleton
 
 
-class RecommendChain(ChainBase, metaclass=Singleton):
+class RecommendChain(metaclass=Singleton):
     """
     推荐处理链，单例运行
     """

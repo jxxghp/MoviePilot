@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.application.orchestration.media import MediaChain
 from app.application.orchestration.mediaserver import MediaServerChain
 from app.application.mediaserver import MediaServerHelper
 from app.runtime.log import logger
@@ -162,8 +163,7 @@ class QueryLibraryExistsTool(MoviePilotTool):
             if media_type_enum == MediaType.MUSIC and (not media_source or not media_id):
                 return "错误：音乐媒体库查询必须同时提供 media_source 和 media_id"
 
-            media_chain = MediaServerChain()
-            mediainfo = await media_chain.async_recognize_media(
+            mediainfo = await MediaChain().async_recognize_media(
                 media_source=media_source,
                 media_id=media_id,
                 mtype=media_type_enum,

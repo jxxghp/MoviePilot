@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6234,
-  "edge_sha256": "dd18345cef41a577884d39689d8ee9503527ae9855896fb3cd8f8b2416c68495",
+  "edge_count": 6235,
+  "edge_sha256": "6d8e1bd975a61c7fd215912a77215ae17cf0c5f3bd826493acb28819c5529c66",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -924,6 +924,7 @@
     "app.agent.tools.impl.query_library_exists -> app.application",
     "app.agent.tools.impl.query_library_exists -> app.application.mediaserver",
     "app.agent.tools.impl.query_library_exists -> app.application.orchestration",
+    "app.agent.tools.impl.query_library_exists -> app.application.orchestration.media",
     "app.agent.tools.impl.query_library_exists -> app.application.orchestration.mediaserver",
     "app.agent.tools.impl.query_library_exists -> app.domain",
     "app.agent.tools.impl.query_library_exists -> app.domain.media",

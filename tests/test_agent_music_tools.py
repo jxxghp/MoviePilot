@@ -532,7 +532,7 @@ def test_query_library_exists_treats_album_as_atomic_complete_entity():
 
     with patch(
         "app.agent.tools.impl.query_library_exists."
-        "MediaServerChain.async_recognize_media",
+        "MediaChain.async_recognize_media",
         new=async_recognize,
     ), patch.object(
         QueryLibraryExistsTool,

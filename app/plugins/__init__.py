@@ -210,6 +210,14 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def test(self) -> Optional[Tuple[bool, str]]:
+        """
+        检测插件依赖的外部服务是否可连通
+
+        :return: `(是否可连通, 失败原因)`；插件不提供自检时无需实现
+        """
+        pass
+
     def get_actions(self) -> List[Dict[str, Any]]:
         """
         获取插件工作流动作

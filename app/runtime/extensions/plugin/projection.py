@@ -61,12 +61,33 @@ class PluginExtension:
         if hasattr(self.instance, "stop_service"):
             self.instance.stop_service()
 
-    @staticmethod
-    def self_test() -> None:
-        """插件不声明连通性自检，其可用性由启用状态表达。
+    def self_test(self) -> Optional[tuple]:
+        """执行插件声明的连通性自检。
 
-        :return: 固定为 ``None``
+        :return: `(是否可连通, 失败原因)`；插件未声明自检钩子或自检返回值不合契约时
+            为 ``None``；自检抛出异常时返回 `(False, 异常信息)`
         """
+        if not self.supports_hook("test"):
+            return None
+        try:
+            result = self.instance.test()
+        except Exception as error:
+            default_logger.error(
+                f"插件[{self._extension_id}]自检出错：{str(error)}"
+            )
+            return False, str(error)
+        if result is None:
+            return None
+        if (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and isinstance(result[0], bool)
+            and isinstance(result[1], str)
+        ):
+            return result
+        default_logger.warning(
+            f"插件[{self._extension_id}]自检返回值不合契约，已忽略：{result!r}"
+        )
         return None
 
     def supports_hook(self, name: str) -> bool:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from typing import Any, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.model import (
@@ -366,6 +366,48 @@ class ModuleManager(metaclass=Singleton):
     def get_module_ids(self) -> List[str]:
         """从 manifest 返回全部模块 ID，不物化实现。"""
         return [spec.id for spec in self._specs]
+
+    def get_capability_index(self) -> Dict[str, List[str]]:
+        """取能力方法名到提供者模块标识的倒排索引。
+
+        用于诊断系统里有哪些能力、分别由哪些模块提供。单个模块推导能力出错时记
+        debug 日志后跳过该模块，不中断整张表。
+
+        :return: {能力方法名: [模块标识, ...]}, 键与值均排序
+        """
+        with self._lock:
+            running = dict(self._running_modules)
+        index: Dict[str, List[str]] = {}
+        for module_id, module in running.items():
+            try:
+                extension = HostModuleExtension(module)
+                capabilities = extension.capability_names()
+            except Exception as err:
+                logger.debug("推导模块 %s 能力出错：%s", module_id, str(err))
+                continue
+            for capability in capabilities:
+                index.setdefault(capability, []).append(module_id)
+        return {name: sorted(owners) for name, owners in sorted(index.items())}
+
+    def get_module_capabilities(self, module_id: str) -> List[str]:
+        """取一个运行态模块提供的能力方法名列表。
+
+        判定复用 `HostModuleExtension.capability_names()` 的实现，与 `providers_for`
+        同一份定义，不重新判定「什么算能力」。
+
+        :param module_id: 模块标识
+        :return: 能力方法名列表，排序后；模块未运行时为空列表
+        """
+        with self._lock:
+            module = self._running_modules.get(module_id)
+        if module is None:
+            return []
+        try:
+            extension = HostModuleExtension(module)
+            return sorted(extension.capability_names())
+        except Exception as err:
+            logger.debug("推导模块 %s 能力出错：%s", module_id, str(err))
+            return []
 
     def list_specs(self) -> tuple[CapabilitySpec, ...]:
         """返回全部轻量模块声明，包含物化或启动失败的能力。"""
