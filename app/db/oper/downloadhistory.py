@@ -140,6 +140,14 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadHistory.list_by_page(self._db, page, count)
 
+    async def async_list_by_page(
+        self,
+        page: int = 1,
+        count: int = 30,
+    ) -> List[DownloadHistory]:
+        """异步分页查询下载历史。"""
+        return await DownloadHistory.async_list_by_page(self._db, page, count)
+
     async def async_delete_history(self, historyid: int):
         """
         异步删除下载记录。

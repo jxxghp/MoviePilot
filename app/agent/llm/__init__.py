@@ -1,24 +1,7 @@
 """Agent 内部使用的 LLM 适配层，公开对象按需解析。"""
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from app.agent.llm.capability import (
-        AgentCapabilityManager,
-        AgentCapabilityProvider,
-        AudioCapabilityProvider,
-        MiMoAudioProvider,
-        OpenAIAudioProvider,
-        OpenAIChatAudioProvider,
-    )
-    from app.agent.llm.helper import LLMHelper, LLMTestError, LLMTestTimeout
-    from app.agent.llm.provider import (
-        LLMProviderAuthError,
-        LLMProviderError,
-        LLMProviderManager,
-        render_auth_result_html,
-    )
+from typing import Any
 
 
 _EXPORT_MODULES = {

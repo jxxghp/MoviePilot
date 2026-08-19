@@ -75,7 +75,7 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
         "_agent_bundle_signature",
         new=AsyncMock(return_value=("sig",)),
     ), patch(
-        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator._get_plugin_tools_revision",
         return_value=0,
     ), patch(
         "app.agent.orchestrator.agent_mcp_manager.config_signature",
@@ -117,7 +117,7 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
         "_initialize_local_tool_catalogs",
         side_effect=AssertionError("tool catalog rebuilt"),
     ), patch(
-        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator._get_plugin_tools_revision",
         return_value=0,
     ), patch(
         "app.agent.orchestrator.agent_mcp_manager.config_signature",
@@ -197,7 +197,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         "app.agent.orchestrator.create_subagent_middlewares",
         return_value=([], []),
     ), patch(
-        "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
+        "app.agent.orchestrator._get_plugin_tools_revision",
         return_value=0,
     ), patch(
         "app.agent.orchestrator.agent_mcp_manager.config_signature",
@@ -412,7 +412,7 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
         ),
         patch.object(agent, "_sync_model_profile"),
         patch(
-            "app.agent.orchestrator.PluginManager.get_plugin_agent_tools_revision",
+            "app.agent.orchestrator._get_plugin_tools_revision",
             return_value=0,
         ),
         patch(

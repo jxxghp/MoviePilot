@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Annotated
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
@@ -17,51 +17,15 @@ from app.api.response import ResponseAPIRouter
 from app.application.orchestration.dashboard import DashboardChain
 from app.application.orchestration.storage import StorageChain
 from app.runtime.config import settings
-from app.application.security.access import verify_apitoken
-from app.db import get_db
-from app.db.models.transferhistory import TransferHistory
-from app.api.deps import get_current_active_superuser
+from app.adapters.web.security.access import verify_apitoken
+from app.api.deps import get_current_active_superuser, get_dashboard_query_service
+from app.application.dashboard import DashboardQueryService
 from app.schemas.types import StorageAction
 from app.application.directory import DirectoryHelper
-from app.scheduler import Scheduler
+from app.application.scheduling import Scheduler
 from app.adapters.system.host import SystemUtils
 
 router = ResponseAPIRouter()
-
-
-def _build_statistic(db: Session, name: Optional[str] = None) -> _SchemaStatistic:
-    """
-    构建媒体数量统计信息。
-    """
-    media_statistics: Optional[List[_SchemaStatistic]] = (
-        DashboardChain().media_statistic(name)
-    )
-    if media_statistics:
-        # 汇总各媒体库统计信息
-        ret_statistic = _SchemaStatistic()
-        has_episode_count = False
-        for media_statistic in media_statistics:
-            ret_statistic.movie_count += media_statistic.movie_count or 0
-            ret_statistic.tv_count += media_statistic.tv_count or 0
-            ret_statistic.music_count += media_statistic.music_count or 0
-            ret_statistic.user_count += media_statistic.user_count or 0
-            if media_statistic.episode_count is not None:
-                ret_statistic.episode_count += media_statistic.episode_count or 0
-                has_episode_count = True
-        if not has_episode_count:
-            # 所有媒体服务都未提供剧集统计时，返回 None 供前端展示“未获取”。
-            ret_statistic.episode_count = None
-    else:
-        ret_statistic = _SchemaStatistic()
-
-    movie_count_month, tv_count_month, episode_count_month, music_count_month = (
-        TransferHistory.monthly_media_statistics(db)
-    )
-    ret_statistic.movie_count_month = movie_count_month
-    ret_statistic.tv_count_month = tv_count_month
-    ret_statistic.episode_count_month = episode_count_month
-    ret_statistic.music_count_month = music_count_month
-    return ret_statistic
 
 
 def _build_storage() -> _SchemaStorage:
@@ -114,13 +78,13 @@ def _build_downloader(name: Optional[str] = None) -> _SchemaDownloaderInfo:
 @router.get("/statistic", summary="媒体数量统计", response_model=_SchemaStatistic)
 def statistic(
     name: Optional[str] = None,
-    db: Session = Depends(get_db),
+    service: DashboardQueryService = Depends(get_dashboard_query_service),
     _: Any = Depends(get_current_active_superuser),
 ) -> Any:
     """
     查询媒体数量统计信息
     """
-    return _build_statistic(db, name)
+    return service.statistic(name)
 
 
 @router.get(
@@ -128,12 +92,12 @@ def statistic(
 )
 def statistic2(
     _: Annotated[str, Depends(verify_apitoken)],
-    db: Session = Depends(get_db),
+    service: DashboardQueryService = Depends(get_dashboard_query_service),
 ) -> Any:
     """
     查询媒体数量统计信息 API_TOKEN认证（?token=xxx）
     """
-    return _build_statistic(db)
+    return service.statistic()
 
 
 @router.get("/storage", summary="本地存储空间", response_model=_SchemaStorage)
@@ -197,7 +161,8 @@ async def schedule(_: Any = Depends(get_current_active_superuser)) -> Any:
     """
     查询后台服务信息
     """
-    return Scheduler().list()
+    # 同步 list() 内含同步进度读取，放到线程池执行避免阻塞事件循环
+    return await run_in_threadpool(Scheduler().list)
 
 
 @router.get(
@@ -211,7 +176,8 @@ async def schedule_progress(
     """
     查询指定后台服务的执行进度。
     """
-    progress = Scheduler().get_progress(job_id)
+    # 异步进度后端读取，避免同步 Redis 调用阻塞事件循环
+    progress = await Scheduler().aget_progress(job_id)
     if not progress:
         return _SchemaResponse(success=False, message="后台服务不存在")
     return _SchemaResponse(success=True, data=progress.model_dump())
@@ -226,7 +192,8 @@ async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
-    return Scheduler().list()
+    # 同步 list() 内含同步进度读取，放到线程池执行避免阻塞事件循环
+    return await run_in_threadpool(Scheduler().list)
 
 
 @router.get(
@@ -240,7 +207,8 @@ async def schedule_progress2(
     """
     查询指定后台服务的执行进度 API_TOKEN认证（?token=xxx）
     """
-    progress = Scheduler().get_progress(job_id)
+    # 异步进度后端读取，避免同步 Redis 调用阻塞事件循环
+    progress = await Scheduler().aget_progress(job_id)
     if not progress:
         return _SchemaResponse(success=False, message="后台服务不存在")
     return _SchemaResponse(success=True, data=progress.model_dump())
@@ -249,14 +217,13 @@ async def schedule_progress2(
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])
 async def transfer(
     days: Optional[int] = 7,
-    db: Session = Depends(get_db),
+    service: DashboardQueryService = Depends(get_dashboard_query_service),
     _: Any = Depends(get_current_active_superuser),
 ) -> Any:
     """
     查询文件整理统计信息
     """
-    transfer_stat = await TransferHistory.async_statistic(db, days)
-    return [stat[1] for stat in transfer_stat]
+    return await service.transfer(days)
 
 
 @router.get("/cpu", summary="获取当前CPU使用率", response_model=float)

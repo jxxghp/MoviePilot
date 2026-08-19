@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._plugin_tool_utils import get_plugin_snapshot
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
 
 
@@ -88,7 +88,7 @@ class UpdatePluginConfigTool(MoviePilotTool):
                 ensure_ascii=False,
             )
 
-        plugin_manager = PluginManager()
+        plugin_manager = get_plugin_manager()
         current_config = dict(plugin_manager.get_plugin_config(plugin_id) or {})
 
         # merge 模式以当前保存值为基准，replace 模式则从空配置开始重建。

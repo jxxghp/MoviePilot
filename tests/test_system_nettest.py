@@ -42,7 +42,7 @@ _STUB_MODULES = dict([
     _stub("app.runtime.events", eventmanager=_Dummy(), Event=_Dummy, EventManager=_Dummy),
     _stub("app.domain.metainfo", MetaInfo=_Dummy),
     _stub("app.runtime.extensions.module_manager", ModuleManager=_Dummy),
-    _stub("app.application.security.access", verify_apitoken=_Dummy, verify_resource_token=_Dummy, verify_token=_Dummy),
+    _stub("app.adapters.web.security.access", verify_apitoken=_Dummy, verify_resource_token=_Dummy, verify_token=_Dummy),
     _stub("app.db.models", User=_Dummy),
     _stub("app.db.oper.systemconfig", SystemConfigOper=_Dummy),
     _stub("app.api.deps", get_current_active_superuser=_Dummy,

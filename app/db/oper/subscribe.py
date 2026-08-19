@@ -2,7 +2,7 @@
 订阅数据访问。
 
 本模块只收敛针对订阅表的读写。把 MediaInfo / MusicInfo 翻译成一行订阅是订阅业务的
-规则，住在 app/application/subscribe.py；这里收到的 payload 已经是纯粹的持久化字段，
+规则，住在 app/application/subscription/write.py；这里收到的 payload 已经是纯粹的持久化字段，
 因此不 import 任何领域对象。
 
 留在这一层的只有列类型强转与建库时间戳——它们跟着订阅表的列走，换谁来调都一样。
@@ -120,7 +120,7 @@ class SubscribeOper(DbOper):
         回读不是多余的一次查询——写入可能被唯一约束或事务回滚吞掉，此时若报成功，
         调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
-        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """
@@ -138,7 +138,7 @@ class SubscribeOper(DbOper):
         """
         异步新增订阅，语义与 add 完全一致。
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
-        :param payload: 订阅表的写入字段，媒体翻译由 app/application/subscribe.py 完成
+        :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """
@@ -168,6 +168,21 @@ class SubscribeOper(DbOper):
         }
         return bool(Subscribe.exists(self._db, **identity_params))
 
+    async def async_exists(
+            self, media_source: MediaSource, media_id: str,
+            season: Optional[int] = None, episode_group: Optional[str] = None,
+            music_type: Optional[str] = None,
+    ) -> Optional[Subscribe]:
+        """异步按媒体身份、季号及可选剧集组读取命中的订阅。"""
+        return await Subscribe.async_exists(
+            self._db,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
+            season=season,
+            episode_group=episode_group,
+        )
+
     def get(self, sid: int) -> Optional[Subscribe]:
         """
         获取订阅
@@ -179,6 +194,34 @@ class SubscribeOper(DbOper):
         获取订阅
         """
         return await Subscribe.async_get(self._db, rid=sid)
+
+    async def async_list_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: Optional[str] = None,
+    ) -> List[Subscribe]:
+        """异步按规范媒体身份读取订阅。"""
+        return await Subscribe.async_list_by_media_identity(
+            self._db,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
+        )
+
+    def list_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: Optional[str] = None,
+    ) -> List[Subscribe]:
+        """同步按规范媒体身份读取订阅。"""
+        return Subscribe.list_by_media_identity(
+            self._db,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
+        )
 
     async def get_candidate(
             self,
@@ -282,6 +325,32 @@ class SubscribeOper(DbOper):
         if state:
             return await Subscribe.async_get_by_state(self._db, state)
         return await Subscribe.async_list(self._db)
+
+    async def async_list_by_username(
+        self,
+        username: str,
+        state: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> List[Subscribe]:
+        """异步按用户获取订阅。"""
+        return await Subscribe.async_list_by_username(
+            self._db,
+            username=username,
+            state=state,
+            mtype=mtype,
+        )
+
+    async def async_list_by_title(
+        self,
+        title: str,
+        season: Optional[int] = None,
+    ) -> List[Subscribe]:
+        """异步按标题获取订阅，供旧查询测试和迁移调用兼容。"""
+        return await Subscribe.async_list_by_title(
+            self._db,
+            title=title,
+            season=season,
+        )
 
     def delete(self, sid: int):
         """

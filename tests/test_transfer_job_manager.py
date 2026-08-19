@@ -474,7 +474,7 @@ class TransferJobManagerTest(unittest.TestCase):
 
         with patch("app.application.orchestration.transfer.TransferHistoryOper", return_value=transfer_history_oper), \
                 patch("app.application.orchestration.transfer.DownloadHistoryOper", return_value=download_history_oper), \
-                patch("app.application.orchestration.transfer.SystemConfigOper", return_value=system_config_oper), \
+                patch("app.application.orchestration.transfer.get_configured_system_config", return_value=system_config_oper), \
                 patch("app.application.orchestration.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
             state, errmsg = chain.do_transfer(
                 fileitem=source_fileitem,
@@ -650,7 +650,7 @@ class TransferJobManagerTest(unittest.TestCase):
             "app.application.orchestration.transfer.TransferHistoryOper",
             return_value=transfer_history_oper,
         ), patch(
-            "app.application.orchestration.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ):
             state, errmsg = TransferChain.do_transfer(
@@ -721,7 +721,7 @@ class TransferJobManagerTest(unittest.TestCase):
                 "app.application.orchestration.transfer.DownloadHistoryOper",
                 return_value=download_history_oper,
             ), patch(
-                "app.application.orchestration.transfer.SystemConfigOper",
+                "app.application.orchestration.transfer.get_configured_system_config",
                 return_value=system_config_oper,
             ):
                 state, errmsg = TransferChain.do_transfer(
@@ -800,7 +800,7 @@ class TransferJobManagerTest(unittest.TestCase):
                     "app.application.orchestration.transfer.DownloadHistoryOper",
                     return_value=download_history_oper,
                 ), patch(
-                    "app.application.orchestration.transfer.SystemConfigOper",
+                    "app.application.orchestration.transfer.get_configured_system_config",
                     return_value=system_config_oper,
                 ):
                     state, errmsg = TransferChain.do_transfer(
@@ -1087,7 +1087,7 @@ class TransferJobManagerTest(unittest.TestCase):
             "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.application.orchestration.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
             "app.application.orchestration.transfer.StorageChain",
@@ -1186,7 +1186,7 @@ class TransferJobManagerTest(unittest.TestCase):
             "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.application.orchestration.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
             "app.application.orchestration.transfer.StorageChain",
@@ -1267,7 +1267,7 @@ class TransferJobManagerTest(unittest.TestCase):
             "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.application.orchestration.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
             "app.application.orchestration.transfer.StorageChain",
@@ -1372,7 +1372,7 @@ class TransferJobManagerTest(unittest.TestCase):
             "app.application.orchestration.transfer.DownloadHistoryOper",
             return_value=download_history_oper,
         ), patch(
-            "app.application.orchestration.transfer.SystemConfigOper",
+            "app.application.orchestration.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
             "app.application.orchestration.transfer.StorageChain",

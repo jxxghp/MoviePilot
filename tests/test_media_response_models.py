@@ -127,21 +127,15 @@ async def test_media_response_accepts_legacy_source_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_media_exists_not_found_is_a_successful_query(monkeypatch) -> None:
+async def test_media_exists_not_found_is_a_successful_query() -> None:
     """媒体库未命中是查询结果，不应被统一客户端识别为接口失败。"""
 
-    class EmptyMediaServerOper:
+    class EmptyMediaServerQueryService:
         """返回未命中的媒体库查询桩。"""
 
-        async def async_exists(self, **_kwargs):
+        async def find_item_id(self, **_kwargs):
             """模拟媒体库中不存在目标媒体。"""
             return None
-
-    monkeypatch.setattr(
-        mediaserver_endpoint,
-        "MediaServerOper",
-        lambda _db: EmptyMediaServerOper(),
-    )
 
     response = await mediaserver_endpoint.exists_local(
         title="未入库电影",
@@ -150,7 +144,7 @@ async def test_media_exists_not_found_is_a_successful_query(monkeypatch) -> None
         media_source=None,
         media_id=None,
         season=None,
-        db=object(),
+        service=EmptyMediaServerQueryService(),
         _=None,
     )
 

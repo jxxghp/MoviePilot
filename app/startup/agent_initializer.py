@@ -8,11 +8,19 @@ from app.agent.runtime_loader import (
     is_tool_factory_materialized,
     reconcile_agent_service,
 )
+from app.agent.llm.gateway import register_llm_provider_runtime
 from app.application.agent import register_agent_service_providers
 from app.runtime.config import settings
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
+
+
+def _get_llm_provider_runtime() -> Any:
+    """按需返回 LLM provider 运行时，实现只在真实调用边界加载。"""
+    from app.agent.llm.provider import LLMProviderManager
+
+    return LLMProviderManager()
 
 
 # 嵌入式启动器可显式注入 manager；常规进程使用 Capability Runtime。
@@ -177,6 +185,7 @@ register_agent_service_providers(
     manual_redo_prompt_builder_provider=_get_manual_redo_prompt_builder,
     skill_helper_provider=_get_skill_helper,
 )
+register_llm_provider_runtime(_get_llm_provider_runtime)
 
 
 async def init_agent() -> bool:

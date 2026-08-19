@@ -7,11 +7,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.cache import TTLCache
 from app.runtime.config import settings
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.application.directory import DirectoryHelper
-from app.application.history import (HistoryGateAction, describe_history_gate,
-                                        evaluate_history_gate, is_skip_action,
-                                        max_failed_retries, resolve_history)
+from app.application.history import (
+    HistoryGateAction,
+    TransferHistoryPort as TransferHistoryOper,
+    describe_history_gate,
+    evaluate_history_gate,
+    is_skip_action,
+    max_failed_retries,
+    resolve_history,
+)
 from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy
 from app.schemas.workflow import FileItem

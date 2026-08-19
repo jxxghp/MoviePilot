@@ -63,6 +63,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert encrypt is CryptoJsUtils.encrypt
     assert ModuleManager is CanonicalModuleManager
     assert PluginManager is CanonicalPluginManager
+    assert CanonicalPluginManager.__module__ == "app.runtime.extensions.plugin_manager"
 
 
 def test_legacy_common_crypto_aliases_round_trip():

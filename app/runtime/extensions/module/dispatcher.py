@@ -6,9 +6,8 @@ import inspect
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Protocol
 
-from fastapi.concurrency import run_in_threadpool
-
 from app.foundation.reflection import ObjectUtils
+from app.runtime.execution import run_in_threadpool
 from app.runtime.extensions.contract import (
     ExtensionFaultScope,
     ExtensionProvider,

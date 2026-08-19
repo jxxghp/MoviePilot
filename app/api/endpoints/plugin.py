@@ -33,11 +33,8 @@ from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavIt
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
-from app.application.plugins import (
-    register_plugin_api,
-    remove_plugin_api,
-    remove_plugin_from_folders,
-)
+from app.application.plugin.folders import remove_plugin_from_folders
+from app.application.plugin.routes import register_plugin_api, remove_plugin_api
 from app.application.plugin.install import PluginInstallCommand
 from app.application.plugin.config import PluginConfigCommand
 from app.application.commands import init_commands
@@ -45,8 +42,8 @@ from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.cache import async_fresh
 from app.runtime.config import settings
 from app.runtime.extensions.instance import extension_id_of
-from app.runtime.extensions.plugin_manager import PluginManager
-from app.application.security.access import (
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.adapters.web.security.access import (
     resource_token_cookie,
     verify_resource_token,
     verify_token,
@@ -54,7 +51,9 @@ from app.application.security.access import (
 from app.db.models import User
 from app.db.models.pluginconfig import LOG_LEVELS
 from app.db.oper.pluginconfig import PluginConfigOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.api.deps import (
     get_current_active_superuser,
     get_current_active_superuser_async,
@@ -262,7 +261,7 @@ async def _get_plugin_history_detail(
 
 @router.get("/", summary="所有插件", response_model=List[_SchemaPlugin])
 async def all_plugins(
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
     state: Optional[str] = "all",
     force: bool = False,
 ) -> List[_SchemaPlugin]:
@@ -320,17 +319,17 @@ async def all_plugins(
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-async def installed(_: User = Depends(get_current_active_superuser_async)) -> Any:
+async def installed(_: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
     """
     查询用户已安装插件清单
     """
-    return SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    return get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
 
 
 @router.get("/history/{plugin_id}", summary="获取插件更新说明", response_model=_SchemaPlugin)
 async def plugin_history(
     plugin_id: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
     force: bool = True,
 ) -> _SchemaPlugin:
     """
@@ -352,7 +351,7 @@ async def plugin_history(
 )
 async def plugin_releases(
     plugin_id: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
     repo_url: Optional[str] = "",
     force: bool = False,
 ) -> dict:
@@ -427,7 +426,7 @@ async def statistic(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
 )
 async def plugin_ratings(
     plugin_ids: Optional[str] = None,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Dict[str, _SchemaPluginRating]:
     """
     批量查询插件平均分、评分人数和当前安装实例评分。
@@ -447,7 +446,7 @@ async def plugin_ratings(
 )
 async def plugin_rating(
     plugin_id: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaPluginRating:
     """
     查询单个插件平均分、评分人数和当前安装实例评分。
@@ -464,12 +463,12 @@ async def plugin_rating(
 async def rate_plugin(
     plugin_id: str,
     payload: _SchemaPluginRatingRequest,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """
     为已安装插件新增或更新当前安装实例评分。
     """
-    installed_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    installed_plugins = get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
     if plugin_id not in installed_plugins:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -489,7 +488,7 @@ async def rate_plugin(
     "/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None]
 )
 def reload_plugin(
-    plugin_id: str, _: User = Depends(get_current_active_superuser)
+    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
 ) -> Any:
     """
     重新加载插件
@@ -507,7 +506,7 @@ async def install(
     repo_url: Optional[str] = "",
     release_version: Optional[str] = None,
     force: Optional[bool] = False,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
     安装插件
@@ -517,7 +516,7 @@ async def install(
 
     async def save_installed_plugins(plugin_ids: List[str]) -> object:
         """保存安装用例确认后的插件列表。"""
-        return await SystemConfigOper().async_set(
+        return await get_configured_system_config().async_set(
             SystemConfigKey.UserInstalledPlugins,
             plugin_ids,
         )
@@ -545,7 +544,7 @@ async def install(
         return await run_in_threadpool(register_plugin, target_id)
 
     command = PluginInstallCommand(
-        installed_plugins_reader=lambda: SystemConfigOper().get(
+        installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         installed_plugins_writer=save_installed_plugins,
@@ -607,7 +606,7 @@ def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     response_model=_SchemaJsonObject,
 )
 def plugin_form(
-    plugin_id: str, _: User = Depends(get_current_active_superuser)
+    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
 ) -> dict:
     """
     根据插件ID获取插件配置表单或Vue组件URL
@@ -643,7 +642,7 @@ def plugin_form(
     response_model=_SchemaJsonObject,
 )
 def plugin_page(
-    plugin_id: str, _: User = Depends(get_current_active_superuser)
+    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
 ) -> dict:
     """
     根据插件ID获取插件数据页面
@@ -671,7 +670,7 @@ def plugin_page(
     response_model=List[_SchemaPluginDashboardMetaItem],
 )
 def plugin_dashboard_meta(
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> List[dict]:
     """
     获取所有插件仪表板元信息
@@ -684,7 +683,7 @@ def plugin_dashboard_by_key(
     plugin_id: str,
     key: str,
     user_agent: Annotated[str | None, Header()] = None,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> Optional[_SchemaPluginDashboard]:
     """
     根据插件ID获取插件仪表板
@@ -696,7 +695,7 @@ def plugin_dashboard_by_key(
 def plugin_dashboard(
     plugin_id: str,
     user_agent: Annotated[str | None, Header()] = None,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> Optional[_SchemaPluginDashboard]:
     """
     根据插件ID获取插件仪表板
@@ -709,7 +708,7 @@ def plugin_dashboard(
 )
 def reset_plugin(
     plugin_id: str,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
     command: PluginConfigCommand = Depends(get_plugin_config_command),
 ) -> Any:
     """
@@ -825,13 +824,13 @@ async def plugin_static_file(
     response_model=_SchemaPluginFoldersData,
 )
 async def get_plugin_folders(
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> dict:
     """
     获取插件文件夹分组配置
     """
     try:
-        result = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+        result = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
         return result
     except Exception as e:
         logger.error(f"[文件夹API] 获取文件夹配置失败: {str(e)}")
@@ -840,13 +839,13 @@ async def get_plugin_folders(
 
 @router.post("/folders", summary="保存插件文件夹配置", response_model=_SchemaResponse[None])
 async def save_plugin_folders(
-    folders: dict, _: User = Depends(get_current_active_superuser_async)
+    folders: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> Any:
     """
     保存插件文件夹分组配置
     """
     try:
-        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
         return _SchemaResponse(success=True)
     except Exception as e:
         logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
@@ -857,15 +856,15 @@ async def save_plugin_folders(
     "/folders/{folder_name}", summary="创建插件文件夹", response_model=_SchemaResponse[None]
 )
 async def create_plugin_folder(
-    folder_name: str, _: User = Depends(get_current_active_superuser_async)
+    folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> Any:
     """
     创建新的插件文件夹
     """
-    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
     if folder_name not in folders:
         folders[folder_name] = []
-        SystemConfigOper().set(SystemConfigKey.PluginFolders, folders)
+        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
         return _SchemaResponse(
             success=True, message=f"文件夹 '{folder_name}' 创建成功"
         )
@@ -877,15 +876,15 @@ async def create_plugin_folder(
     "/folders/{folder_name}", summary="删除插件文件夹", response_model=_SchemaResponse[None]
 )
 async def delete_plugin_folder(
-    folder_name: str, _: User = Depends(get_current_active_superuser_async)
+    folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> Any:
     """
     删除插件文件夹
     """
-    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
     if folder_name in folders:
         del folders[folder_name]
-        await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
+        await get_configured_system_config().async_set(SystemConfigKey.PluginFolders, folders)
         return _SchemaResponse(
             success=True, message=f"文件夹 '{folder_name}' 删除成功"
         )
@@ -901,14 +900,14 @@ async def delete_plugin_folder(
 async def update_folder_plugins(
     folder_name: str,
     plugin_ids: List[str],
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
     更新指定文件夹中的插件列表
     """
-    folders = SystemConfigOper().get(SystemConfigKey.PluginFolders) or {}
+    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
     folders[folder_name] = plugin_ids
-    await SystemConfigOper().async_set(SystemConfigKey.PluginFolders, folders)
+    await get_configured_system_config().async_set(SystemConfigKey.PluginFolders, folders)
     return _SchemaResponse(
         success=True, message=f"文件夹 '{folder_name}' 中的插件已更新"
     )
@@ -1189,7 +1188,7 @@ def plugin_instance_log_files(
     response_model=_SchemaJsonObject,
 )
 async def plugin_config(
-    plugin_id: str, _: User = Depends(get_current_active_superuser_async)
+    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> dict:
     """
     根据插件ID获取插件配置信息
@@ -1201,7 +1200,7 @@ async def plugin_config(
 def set_plugin_config(
     plugin_id: str,
     conf: dict,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
     command: PluginConfigCommand = Depends(get_plugin_config_command),
 ) -> Any:
     """
@@ -1213,7 +1212,7 @@ def set_plugin_config(
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=_SchemaResponse[None])
 def uninstall_plugin(
-    plugin_id: str, _: User = Depends(get_current_active_superuser)
+    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
 ) -> Any:
     """
     卸载插件：停止运行态、清理配置数据与源码目录，并注销已安装登记、动态 API、

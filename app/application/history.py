@@ -6,11 +6,15 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.config import settings
-from app.db.models.transferhistory import TransferHistory
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.runtime.log import logger
+from app.schemas.history import (
+    DownloadHistory as DownloadHistoryView,
+    TransferHistory as TransferHistoryView,
+    TransferHistoryPage,
+)
 from app.schemas.workflow import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING
@@ -28,12 +32,275 @@ FAILED_RETRY_TTL = 24 * 3600
 _failed_retry_counts = TTLCache(region="transfer_failed_retry", maxsize=5000, ttl=FAILED_RETRY_TTL)
 
 
+class TransferHistoryRecord(Protocol):
+    """整理历史用例读取的最小记录投影。"""
+
+    id: int
+    status: bool
+    src: Optional[str]
+    src_storage: Optional[str]
+    src_fileitem: Optional[dict]
+
+
+class TransferHistoryWriter(Protocol):
+    """整理历史写入和查重端口。"""
+
+    def get_by_src(self, src: str, storage: Optional[str] = None) -> Optional[TransferHistoryRecord]:
+        """按源路径读取记录。"""
+
+    def get_success_by_src(self, src: str, storage: Optional[str] = None) -> Optional[TransferHistoryRecord]:
+        """按源路径读取成功记录。"""
+
+    def add_force(self, **payload: Any) -> Optional[TransferHistoryRecord]:
+        """强制写入整理历史。"""
+
+
+_configured_transfer_history_provider: Callable[[], TransferHistoryWriter] | None = None
+
+
+def configure_transfer_history_provider(
+    provider: Callable[[], TransferHistoryWriter],
+) -> None:
+    """由启动组合根登记整理历史数据端口提供器。"""
+    global _configured_transfer_history_provider
+    _configured_transfer_history_provider = provider
+
+
+def _get_transfer_history_writer(
+    writer: Optional[TransferHistoryWriter],
+) -> TransferHistoryWriter:
+    """获取显式传入或组合根登记的整理历史数据端口。"""
+    if writer is not None:
+        return writer
+    if _configured_transfer_history_provider is None:
+        raise RuntimeError("整理历史数据端口尚未配置")
+    return _configured_transfer_history_provider()
+
+
+class TransferHistoryPort:
+    """把监控等宿主用例的存量构造形态转发到整理历史端口。"""
+
+    def __getattr__(self, name: str) -> Any:
+        """转发整理历史读写方法，避免上层直接导入数据库操作器。"""
+        return getattr(_get_transfer_history_writer(None), name)
+
+
 @dataclass(frozen=True, slots=True)
 class HistoryMutationResult:
     """描述历史记录维护操作是否成功及兼容提示。"""
 
     success: bool
     message: str = ""
+
+
+class AsyncDownloadHistoryQueryRepository(Protocol):
+    """下载历史只读用例需要的最小异步持久化端口。"""
+
+    async def async_list_by_page(
+        self,
+        page: int = 1,
+        count: int = 30,
+    ) -> list[Any]:
+        """按下载时间倒序分页读取历史记录。"""
+        ...
+
+
+class AsyncTransferHistoryQueryRepository(Protocol):
+    """整理历史列表和详情查询需要的最小异步持久化端口。"""
+
+    async def async_get(self, historyid: int) -> Optional[Any]:
+        """按主键读取单条整理历史。"""
+        ...
+
+    async def async_list_by_title(
+        self,
+        title: str,
+        page: int = 1,
+        count: int = 30,
+        status: Optional[bool] = None,
+        wildcard: bool = False,
+    ) -> list[Any]:
+        """按标题或路径分页读取整理历史。"""
+        ...
+
+    async def async_list_by_page(
+        self,
+        page: int = 1,
+        count: int = 30,
+        status: Optional[bool] = None,
+    ) -> list[Any]:
+        """按时间倒序分页读取整理历史。"""
+        ...
+
+    async def async_count(self, status: Optional[bool] = None) -> Optional[int]:
+        """统计指定状态的整理历史数量。"""
+        ...
+
+    async def async_count_by_title(
+        self,
+        title: str,
+        status: Optional[bool] = None,
+        wildcard: bool = False,
+    ) -> Optional[int]:
+        """统计匹配标题或路径的整理历史数量。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ManualTransferHistory:
+    """手动整理准备阶段需要的稳定历史投影。"""
+
+    id: int
+    status: bool
+    mode: Optional[str]
+    src_fileitem: Optional[dict]
+    dest_fileitem: Optional[dict]
+    downloader: Optional[str]
+    download_hash: Optional[str]
+    type: Optional[str]
+    media_source: Optional[str]
+    media_id: Optional[str]
+    music_type: Optional[str]
+    seasons: Optional[str]
+    episodes: Optional[str]
+    episode_group: Optional[str]
+
+
+class TransferHistoryLookupRepository(Protocol):
+    """手动整理历史投影所需的同步查询端口。"""
+
+    def get(self, history_id: int) -> Optional[Any]:
+        """按主键读取整理历史。"""
+        ...
+
+
+class TransferHistoryLookupService:
+    """向同步整理用例提供脱离 ORM 会话的历史投影。"""
+
+    def __init__(self, repository: TransferHistoryLookupRepository) -> None:
+        """保存整理历史只读端口。"""
+        self._repository = repository
+
+    def get(self, history_id: int) -> Optional[ManualTransferHistory]:
+        """按主键读取手动整理所需字段。"""
+        record = self._repository.get(history_id)
+        if record is None:
+            return None
+        return ManualTransferHistory(
+            id=record.id,
+            status=bool(record.status),
+            mode=record.mode,
+            src_fileitem=record.src_fileitem,
+            dest_fileitem=record.dest_fileitem,
+            downloader=record.downloader,
+            download_hash=record.download_hash,
+            type=record.type,
+            media_source=record.media_source,
+            media_id=record.media_id,
+            music_type=getattr(record, "music_type", None),
+            seasons=record.seasons,
+            episodes=record.episodes,
+            episode_group=record.episode_group,
+        )
+
+
+class HistoryQueryService:
+    """提供历史列表和详情 DTO，隔离 API 与数据库模型。"""
+
+    def __init__(
+        self,
+        *,
+        download_repository: AsyncDownloadHistoryQueryRepository,
+        transfer_repository: AsyncTransferHistoryQueryRepository,
+    ) -> None:
+        """保存下载历史和整理历史的只读端口。"""
+        self._download_repository = download_repository
+        self._transfer_repository = transfer_repository
+
+    async def list_download(
+        self,
+        *,
+        page: int = 1,
+        count: int = 30,
+    ) -> list[DownloadHistoryView]:
+        """分页读取下载历史并转换为稳定的接口 DTO。"""
+        records = await self._download_repository.async_list_by_page(page, count)
+        return [DownloadHistoryView.model_validate(record) for record in records]
+
+    async def list_transfer(
+        self,
+        *,
+        title: Optional[str] = None,
+        page: int = 1,
+        count: int = 30,
+        status: Optional[bool] = None,
+    ) -> TransferHistoryPage:
+        """应用历史筛选规则并返回整理历史分页 DTO。"""
+        if title == "失败":
+            title = None
+            status = False
+        elif title == "成功":
+            title = None
+            status = True
+
+        if title:
+            wildcard = "*" in title or "?" in title
+            if wildcard:
+                pattern = self._glob_to_like(title)
+            else:
+                pattern = "%".join(jieba_cut(title, HMM=False))
+            total = await self._transfer_repository.async_count_by_title(
+                pattern,
+                status=status,
+                wildcard=wildcard,
+            )
+            records = await self._transfer_repository.async_list_by_title(
+                pattern,
+                page=page,
+                count=count,
+                status=status,
+                wildcard=wildcard,
+            )
+        else:
+            records = await self._transfer_repository.async_list_by_page(
+                page=page,
+                count=count,
+                status=status,
+            )
+            total = await self._transfer_repository.async_count(status=status)
+
+        return TransferHistoryPage(
+            list=[TransferHistoryView.model_validate(record) for record in records],
+            total=int(total or 0),
+        )
+
+    async def get_transfer(self, history_id: int) -> Optional[TransferHistoryView]:
+        """读取单条整理历史 DTO，不向调用方泄漏 ORM 实例。"""
+        record = await self._transfer_repository.async_get(history_id)
+        if record is None:
+            return None
+        return TransferHistoryView.model_validate(record)
+
+    async def get_transfers(
+        self,
+        history_ids: list[int],
+    ) -> tuple[list[TransferHistoryView], list[int]]:
+        """按输入顺序读取多条整理历史，并同时返回缺失 ID。"""
+        records: list[TransferHistoryView] = []
+        missing_ids: list[int] = []
+        for history_id in history_ids:
+            record = await self.get_transfer(history_id)
+            if record is None:
+                missing_ids.append(history_id)
+            else:
+                records.append(record)
+        return records, missing_ids
+
+    @staticmethod
+    def _glob_to_like(pattern: str) -> str:
+        """将 glob 通配符转换为使用反斜杠转义的 SQL LIKE 模式。"""
+        result = pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return result.replace("*", "%").replace("?", "_")
 
 
 class DownloadHistoryMutationRepository(Protocol):
@@ -447,7 +714,7 @@ def coerce_size(size: Any) -> Optional[int]:
         return None
 
 
-def history_src_size(history: TransferHistory) -> Optional[int]:
+def history_src_size(history: TransferHistoryRecord) -> Optional[int]:
     """
     读取整理记录中的源文件大小。
     src_fileitem 是 JSON 列，历史数据可能为空、缺 size 键甚至不是字典，
@@ -458,7 +725,7 @@ def history_src_size(history: TransferHistory) -> Optional[int]:
     return history_src_fingerprint(history).get("size")
 
 
-def history_src_fingerprint(history: TransferHistory) -> Dict[str, Any]:
+def history_src_fingerprint(history: TransferHistoryRecord) -> Dict[str, Any]:
     """
     读取整理记录中的源文件版本指纹。
     :param history: 整理记录
@@ -475,8 +742,8 @@ def history_src_fingerprint(history: TransferHistory) -> Dict[str, Any]:
 
 
 def resolve_history(src_path: str, storage: Optional[str] = None,
-                    transfer_history_oper: Optional[TransferHistoryOper] = None
-                    ) -> Optional[TransferHistory]:
+                    transfer_history_oper: Optional[TransferHistoryWriter] = None
+                    ) -> Optional[TransferHistoryRecord]:
     """
     查询源路径对应的整理记录。
 
@@ -488,14 +755,14 @@ def resolve_history(src_path: str, storage: Optional[str] = None,
     :param transfer_history_oper: 复用的历史操作对象，未传时新建
     :return: 命中的整理记录，未命中时为 None
     """
-    oper = transfer_history_oper or TransferHistoryOper()
+    oper = _get_transfer_history_writer(transfer_history_oper)
     history = oper.get_by_src(src_path, storage=storage)
     if history is not None and not history.status:
         history = oper.get_success_by_src(src_path, storage=storage) or history
     return history
 
 
-def evaluate_history_gate(history: Optional[TransferHistory],
+def evaluate_history_gate(history: Optional[TransferHistoryRecord],
                           file_size: Optional[float] = None,
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None,
@@ -547,7 +814,7 @@ def evaluate_history_gate(history: Optional[TransferHistory],
     return HistoryGateAction.SKIP
 
 
-def describe_history_gate(history: Optional[TransferHistory],
+def describe_history_gate(history: Optional[TransferHistoryRecord],
                           file_size: Optional[float] = None,
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None) -> str:
@@ -609,8 +876,8 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
                          mediainfo: Union[MediaInfo, MusicInfo], transferinfo: TransferInfo,
                          downloader: Optional[str] = None,
                          download_hash: Optional[str] = None,
-                         transfer_history_oper: Optional[TransferHistoryOper] = None
-                         ) -> Optional[TransferHistory]:
+                         transfer_history_oper: Optional[TransferHistoryWriter] = None
+                         ) -> Optional[TransferHistoryRecord]:
     """
     新增转移成功历史记录。
     :param fileitem: 源文件项
@@ -623,7 +890,7 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
     :param transfer_history_oper: 复用的历史操作对象，未传时新建
     :return: 落库后的整理记录
     """
-    oper = transfer_history_oper or TransferHistoryOper()
+    oper = _get_transfer_history_writer(transfer_history_oper)
     media_source, media_id = resolve_media_identity(media=mediainfo)
     return oper.add_force(
         src=fileitem.path,
@@ -661,8 +928,8 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
                       transferinfo: Optional[TransferInfo] = None,
                       downloader: Optional[str] = None,
                       download_hash: Optional[str] = None,
-                      transfer_history_oper: Optional[TransferHistoryOper] = None
-                      ) -> Optional[TransferHistory]:
+                      transfer_history_oper: Optional[TransferHistoryWriter] = None
+                      ) -> Optional[TransferHistoryRecord]:
     """
     新增转移失败历史记录。
 
@@ -678,7 +945,7 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
     :param transfer_history_oper: 复用的历史操作对象，未传时新建
     :return: 落库后的整理记录
     """
-    oper = transfer_history_oper or TransferHistoryOper()
+    oper = _get_transfer_history_writer(transfer_history_oper)
     if mediainfo and transferinfo:
         media_source, media_id = resolve_media_identity(media=mediainfo)
         his = oper.add_force(

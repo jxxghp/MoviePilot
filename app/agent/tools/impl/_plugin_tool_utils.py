@@ -3,9 +3,10 @@
 import json
 from typing import Any, Optional
 
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.plugin.install import PluginInstallCommand
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
@@ -24,7 +25,7 @@ def get_plugin_snapshot(plugin_id: str) -> Optional[dict[str, Any]]:
     """
     获取已安装插件的基础信息快照。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     for plugin in plugin_manager.get_local_plugins():
         if plugin.id == plugin_id:
             return {
@@ -68,7 +69,7 @@ def build_preview_payload(value: Any, max_chars: Optional[int]) -> tuple[bool, i
 def refresh_plugin_registrations(plugin_id: str) -> None:
     """重新注册插件的定时任务、命令和动态 API 路由。"""
     # 这些依赖只在真正执行重载时才导入，避免普通查询工具引入不必要的初始化开销。
-    from app.application.plugins import register_plugin_api
+    from app.application.plugin.routes import register_plugin_api
     from app.application.commands import init_commands
     from app.application.scheduling import update_plugin_job
 
@@ -79,7 +80,7 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 def reload_plugin_runtime(plugin_id: str) -> None:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    PluginManager().reload_plugin(plugin_id)
+    get_plugin_manager().reload_plugin(plugin_id)
     refresh_plugin_registrations(plugin_id)
 
 
@@ -155,7 +156,7 @@ async def enrich_installed_plugin_sources(
     if not missing_source_plugins:
         return installed_plugins
 
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     local_repo_map = _map_plugins_by_id(plugin_manager.get_local_repo_plugins())
     for plugin in missing_source_plugins:
         source_plugin = local_repo_map.get(getattr(plugin, "id", None))
@@ -182,7 +183,7 @@ async def load_market_plugins(force_refresh: bool = False) -> list[Any]:
     """
     聚合插件市场与本地插件仓库中的候选插件。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     online_plugins = await plugin_manager.async_get_online_plugins(force=force_refresh)
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     if not online_plugins and not local_repo_plugins:
@@ -194,7 +195,7 @@ def list_installed_plugins() -> list[Any]:
     """
     返回当前已安装插件列表。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     return [plugin for plugin in plugin_manager.get_local_plugins() if plugin.installed]
 
 
@@ -298,7 +299,7 @@ async def install_plugin_runtime(
     """
     按现有插件接口的行为安装插件，并刷新运行态注册信息。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     plugin_helper = PluginHelper()
     package_manager = PluginPackageManager(plugin_helper)
 
@@ -383,10 +384,8 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     :return: 预留的清理结果字段，当前为空字典
     :raises LookupError: 插件不存在
     """
-    from app.application.plugins import (
-        remove_plugin_api,
-        remove_plugin_from_folders,
-    )
+    from app.application.plugin.folders import remove_plugin_from_folders
+    from app.application.plugin.routes import remove_plugin_api
     from app.application.scheduling import remove_plugin_job
 
     plugin_manager = PluginManager()

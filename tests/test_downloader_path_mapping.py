@@ -13,7 +13,7 @@ def _load_downloader_base():
     app_module.__path__ = []
     helper_module = types.ModuleType("app.helper")
     helper_module.__path__ = []
-    service_module = types.ModuleType("app.runtime.extensions.service_registry")
+    service_module = types.ModuleType("app.runtime.extensions.service_config")
     schemas_module = types.ModuleType("app.schemas")
     schema_types_module = types.ModuleType("app.schemas.types")
     utils_module = types.ModuleType("app.utils")
@@ -74,7 +74,7 @@ def _load_downloader_base():
     stub_modules = {
         "app": app_module,
         "app.helper": helper_module,
-        "app.runtime.extensions.service_registry": service_module,
+        "app.runtime.extensions.service_config": service_module,
         "app.schemas": schemas_module,
         "app.schemas.types": schema_types_module,
         "app.utils": utils_module,

@@ -41,10 +41,6 @@ class SiteOper(DbOper):
         """读取站点写用例需要的目标站点。"""
         return await self.async_get(site_id)
 
-    async def get_by_domain(self, domain: str) -> Optional[Site]:
-        """按域名读取站点写用例的重复目标。"""
-        return await Site.async_get_by_domain(self._db, domain)
-
     async def stage_create(self, payload: Mapping[str, Any]) -> None:
         """暂存新增站点，不由仓储自行提交。"""
         values = dict(payload)
@@ -91,6 +87,10 @@ class SiteOper(DbOper):
         """
         return await Site.async_list(self._db)
 
+    async def async_list_order_by_pri(self) -> List[Site]:
+        """异步按优先级获取站点，供站点查询应用服务使用。"""
+        return await Site.async_list_order_by_pri(self._db)
+
     def list_order_by_pri(self) -> List[Site]:
         """
         获取站点列表
@@ -114,6 +114,14 @@ class SiteOper(DbOper):
         删除站点
         """
         Site.delete(self._db, sid)
+
+    def reset(self) -> None:
+        """清空站点表，保留站点模型细节在数据库适配层。"""
+        Site.reset(self._db)
+
+    async def stage_reset(self) -> None:
+        """暂存清空站点表，由应用事务统一提交。"""
+        await self._db.execute(sqlalchemy_delete(Site))
 
     def update(self, sid: int, payload: dict) -> Optional[Site]:
         """
@@ -234,6 +242,25 @@ class SiteOper(DbOper):
         return await SiteUserData.async_get_by_domain(
             self._db, domain=domain, workdate=workdate
         )
+
+    async def async_get_userdata_latest(self) -> List[SiteUserData]:
+        """异步获取各站点最新用户数据。"""
+        return await SiteUserData.async_get_latest(self._db)
+
+    async def async_get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
+        """异步按域名获取站点图标。"""
+        return await SiteIcon.async_get_by_domain(self._db, domain)
+
+    async def async_get_statistic_by_domain(
+        self,
+        domain: str,
+    ) -> Optional[SiteStatistic]:
+        """异步按域名获取站点统计。"""
+        return await SiteStatistic.async_get_by_domain(self._db, domain)
+
+    async def async_list_statistics(self) -> List[SiteStatistic]:
+        """异步获取所有站点统计。"""
+        return await SiteStatistic.async_list(self._db)
 
     def get_userdata_by_date(self, date: str) -> List[SiteUserData]:
         """

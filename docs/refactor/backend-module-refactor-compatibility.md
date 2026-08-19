@@ -123,7 +123,7 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | `utils.mixins` | 按能力拆分，配置重载部分归 `runtime` | 消除 mixin 对全局事件单例的导入期注册 |
 | `helper.redis/browser/doh/display/thread/package` 等 | `adapters/cache`、`adapters/network`、`adapters/system` 或 `runtime/thread.py` | 生命周期由 startup 装配，不在适配器内部反向获取管理器 |
 | `helper.module` | `foundation.reflection` | 只保留通用 Python 反射、模块发现与动态加载，不承担模块生命周期 |
-| `helper.downloader/mediaserver/service` | `app.application` + `app.runtime.extensions.service_registry` | 媒体服务器身份/匹配规则与配置化服务发现统一归入 `application/mediaserver.py`，通用服务注册机制保持独立 |
+| `helper.downloader/mediaserver/service` | `app.application` + `app.application.service` / `app.sdk.services` | 媒体服务器身份/匹配规则与配置化服务发现统一归入 application；旧 `app.runtime.extensions.service_registry` 由 `app/runtime/compat/manifest.py` 精确映射到 `app.sdk.services`，不在新模块复制旧导出 |
 | `helper.message/interaction` | `app.application.messaging` | 负责消息渲染、路由和交互，不承担配置化服务发现 |
 | `helper.notification` | `app.application.notification` | 通知模块发现依赖持久化配置，属于应用服务 |
 | `helper.webpush` | `app.api.endpoints.message` | Web Push 订阅和手动发送只服务消息 HTTP API，直接归入对应 endpoint |

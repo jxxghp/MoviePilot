@@ -6,15 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from app.application.messaging.message import MessageHelper, MessageQueueManager
-from app.db.oper.message import MessageOper
-from app.runtime.cache import AsyncFileCache, FileCache
-from app.runtime.events import EventManager
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.orchestration.data import ChainDataPorts
 
 
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
+ModuleDispatcherFactory = Callable[..., Any]
 ChainRuntimeContextProvider = Callable[[], "ChainRuntimeContext"]
 
 
@@ -30,33 +26,24 @@ class ChainRuntimeContext:
     file_cache: Any
     async_file_cache: Any
     message_queue_factory: MessageQueueFactory
+    module_dispatcher_factory: ModuleDispatcherFactory
+    data_ports: Optional[ChainDataPorts] = None
 
 
-def build_default_chain_runtime_context() -> ChainRuntimeContext:
-    """按旧构造规则创建上下文，同时复用各管理器既有单例身份。"""
-    return ChainRuntimeContext(
-        module_manager=ModuleManager(),
-        plugin_manager=PluginManager(),
-        event_manager=EventManager(),
-        message_oper=MessageOper(),
-        message_helper=MessageHelper(),
-        file_cache=FileCache(),
-        async_file_cache=AsyncFileCache(),
-        message_queue_factory=lambda callback: MessageQueueManager(
-            send_callback=callback
-        ),
-    )
+def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:
+    """拒绝在组合根装配前隐式抓取全局管理器。"""
+    raise RuntimeError("Chain 运行上下文尚未由启动组合根配置")
 
 
-_context_provider: ChainRuntimeContextProvider = build_default_chain_runtime_context
+_context_provider: ChainRuntimeContextProvider = _unconfigured_chain_runtime_context
 
 
 def configure_chain_runtime_context_provider(
     provider: Optional[ChainRuntimeContextProvider],
 ) -> None:
-    """由组合根替换 Chain 上下文来源；传入空值恢复兼容默认值。"""
+    """由组合根替换 Chain 上下文来源；传入空值恢复未配置状态。"""
     global _context_provider
-    _context_provider = provider or build_default_chain_runtime_context
+    _context_provider = provider or _unconfigured_chain_runtime_context
 
 
 def get_chain_runtime_context() -> ChainRuntimeContext:

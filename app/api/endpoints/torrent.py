@@ -12,7 +12,6 @@ from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.db.models import User
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
@@ -32,7 +31,7 @@ router = ResponseAPIRouter()
     summary="获取种子缓存",
     response_model=_SchemaResponse[_SchemaTorrentCacheData],
 )
-async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
+async def torrents_cache(_: object = Depends(get_current_active_superuser_async)):
     """
     获取当前种子缓存数据
     """
@@ -103,7 +102,7 @@ async def torrents_cache(_: User = Depends(get_current_active_superuser_async)):
 async def delete_cache(
     domain: str,
     torrent_hash: str,
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ):
     """
     删除指定的种子缓存
@@ -147,7 +146,7 @@ async def delete_cache(
 
 
 @router.delete("/cache", summary="清理种子缓存", response_model=_SchemaResponse[None])
-async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
+async def clear_cache(_: object = Depends(get_current_active_superuser_async)):
     """
     清理所有种子缓存
     """
@@ -161,7 +160,7 @@ async def clear_cache(_: User = Depends(get_current_active_superuser_async)):
 
 
 @router.post("/cache/refresh", summary="刷新种子缓存", response_model=_SchemaResponse[None])
-def refresh_cache(_: User = Depends(get_current_active_superuser)):
+def refresh_cache(_: object = Depends(get_current_active_superuser)):
     """
     刷新种子缓存
     """
@@ -195,7 +194,7 @@ async def reidentify_cache(
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     music_type: Optional[MusicTargetEntityType] = None,
-    _: User = Depends(get_current_active_superuser_async),
+    _: object = Depends(get_current_active_superuser_async),
 ):
     """
     重新识别指定的种子

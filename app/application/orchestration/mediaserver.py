@@ -4,8 +4,8 @@ from typing import Callable, Dict, List, Union, Optional, Generator, Any
 
 from app.application.orchestration import ChainBase
 from app.runtime.config import global_vars
-from app.db.oper.mediaserver import MediaServerOper
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.application.orchestration.data import MediaServerPortProxy as MediaServerOper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.mediaserver import MediaServerLibrary
 from app.schemas.mediaserver import MediaServerItem

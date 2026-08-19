@@ -259,11 +259,25 @@ class PluginProviderSource:
     def _providers(self, method: str):
         """遍历插件注入的同名方法。
 
+        目录快照未必都经过 `PluginProjection.modules()` 的映射校验（例如调度器
+        直接接一份自定义目录），坏插件把方法表声明成非映射类型时在此处二次防御：
+        产出一个调用即报错的占位提供者，交给分发器既有的异常捕获与故障上报通道
+        隔离，不让它击穿同批次其它插件。
         :param method: 模块方法名称
         :return: 提供者迭代器
         """
         plugin_modules = self._catalog.get_plugin_modules()
         for (extension_id, plugin_name), module_dict in plugin_modules.items():
+            if not isinstance(module_dict, Mapping):
+                yield ExtensionProvider(
+                    extension_id=extension_id,
+                    display_name=plugin_name,
+                    distribution=ExtensionDistribution.MARKET,
+                    fault_scope=ExtensionFaultScope.PLUGIN,
+                    invoke=self._malformed_declaration_invoke(extension_id, module_dict),
+                    announces_invocation=False,
+                )
+                continue
             func = module_dict.get(method)
             if not func:
                 continue
@@ -275,6 +289,24 @@ class PluginProviderSource:
                 invoke=func,
                 announces_invocation=True,
             )
+
+    @staticmethod
+    def _malformed_declaration_invoke(
+        extension_id: str, module_dict: Any
+    ) -> Callable[..., Any]:
+        """构造非法方法表声明的占位调用。
+
+        :param extension_id: 插件标识
+        :param module_dict: 插件声明的非映射方法表
+        :return: 调用即抛出 ``TypeError`` 的函数，供分发器按插件故障统一上报
+        """
+        def _raise(*_args: Any, **_kwargs: Any) -> None:
+            raise TypeError(
+                f"插件 {extension_id} 的模块声明必须是映射，"
+                f"实际是 {type(module_dict).__name__}"
+            )
+
+        return _raise
 
     def notify_providers(self, method: str):
         """返回应被通知的插件提供者。
@@ -403,13 +435,45 @@ class PluginProjection:
                 continue
             try:
                 if extension.is_enabled():
-                    table = plugin.get_module() or []
+                    table = plugin.get_module()
+                    # 基类默认实现返回 None；只接受映射，防止把 list 当成方法表传入调度器
+                    if table is None:
+                        continue
+                    if not isinstance(table, Mapping):
+                        self._logger.error(
+                            f"插件 {extension_id} 的 get_module() 返回值必须是字典，"
+                            f"实际是 {type(table).__name__}"
+                        )
+                        continue
                     modules[(extension_id, extension.display_name)] = table
                     self._warn_dispatch_migration(extension_id, table)
             except Exception as error:
                 self._logger.error(f"获取插件 {extension_id} 模块出错：{str(error)}")
         self._warn_sibling_contract_overlap(modules)
         return modules
+
+    def media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """聚合启用插件声明的媒体数据源。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 数据源描述列表，每项带上声明它的实例键
+        """
+        sources: list[dict] = []
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.supports_hook("get_media_source"):
+                continue
+            try:
+                if not extension.is_enabled():
+                    continue
+                for source in plugin.get_media_source() or []:
+                    if isinstance(source, dict):
+                        item = source.copy()
+                        item.setdefault("plugin_id", extension_id)
+                        sources.append(item)
+            except Exception as error:
+                self._logger.error(f"获取插件 {extension_id} 媒体数据源出错：{str(error)}")
+        return sources
 
     def _warn_sibling_contract_overlap(self, modules: Mapping[tuple, Any]) -> None:
         """就同一插件的多个实例挂载同一契约名各打一次提示，不改写方法表。

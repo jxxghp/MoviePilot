@@ -279,7 +279,7 @@ def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):
     )
     monkeypatch.setattr(
         tmdb_endpoint,
-        "SystemConfigOper",
+        "get_configured_system_config",
         lambda: type("SystemConfigStub", (), {"get": get_system_config})(),
     )
     monkeypatch.setattr(tmdb_endpoint.settings, "MEDIA_RECOGNIZE_SHARE", True)

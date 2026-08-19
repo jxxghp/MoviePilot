@@ -14,8 +14,7 @@ from pydantic import BaseModel
 
 from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
-from app.db.models import Workflow
-from app.db.oper.workflow import WorkflowOper
+from app.application.orchestration.data import WorkflowPortProxy as WorkflowOper
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import ActionFlow
@@ -28,6 +27,7 @@ from app.workflow import WorkFlowManager
 ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "subscribes"}
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
 CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
+Workflow = Any
 
 
 def _serialize_workflow_key(key: Any) -> Any:

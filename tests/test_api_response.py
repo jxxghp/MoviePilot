@@ -10,6 +10,8 @@ from pydantic import BaseModel, ValidationError
 from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
+from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.runtime.extensions.instance import matches_extension
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     ResponseAPIRoute,
@@ -691,7 +693,7 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
 
 def test_plugin_routes_only_register_v1(monkeypatch):
     """插件动态路由只注册 v1 地址，并显式绕过主程序响应路由。"""
-    from app.application import plugins
+    from app.application.plugin import routes as plugin_routes
 
     class FakeApp:
         """记录动态注册路径的应用桩。"""
@@ -725,16 +727,26 @@ def test_plugin_routes_only_register_v1(monkeypatch):
             ]
 
     fake_app = FakeApp()
-    monkeypatch.setattr(plugins, "_api_app", fake_app)
-    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
+    plugin_manager = FakePluginManager()
+    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=fake_app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=plugin_manager.get_plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        route_matches=matches_extension,
+    ))
 
-    plugins._update_plugin_api_routes("DemoPlugin", action="add")
+    plugin_routes.register_plugin_api("DemoPlugin")
     assert [route.path for route in fake_app.routes] == [
         "/api/v1/plugin/DemoPlugin/health"
     ]
     assert fake_app.route_options[0]["route_class_override"] is APIRoute
 
-    plugins._update_plugin_api_routes("DemoPlugin", action="remove")
+    plugin_routes.remove_plugin_api("DemoPlugin")
     assert fake_app.routes == []
 
 
@@ -768,7 +780,7 @@ def test_dynamic_host_route_without_annotation_uses_recursive_json_model():
 
 def build_plugin_api_app(monkeypatch) -> FastAPI:
     """构造覆盖插件自由返回类型的动态路由测试应用。"""
-    from app.application import plugins
+    from app.application.plugin import routes as plugin_routes
 
     class PluginPayload(BaseModel):
         """插件自行声明的响应模型。"""
@@ -844,9 +856,19 @@ def build_plugin_api_app(monkeypatch) -> FastAPI:
 
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
-    monkeypatch.setattr(plugins, "_api_app", app)
-    monkeypatch.setattr(plugins, "PluginManager", FakePluginManager)
-    plugins._update_plugin_api_routes("DemoPlugin", action="add")
+    plugin_manager = FakePluginManager()
+    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=plugin_manager.get_plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        route_matches=matches_extension,
+    ))
+    plugin_routes.register_plugin_api("DemoPlugin")
     return app
 
 

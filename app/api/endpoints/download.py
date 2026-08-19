@@ -18,13 +18,17 @@ from app.api.response import ResponseAPIRouter
 from app.application.orchestration.download import DownloadChain
 from app.application.orchestration.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.security.access import verify_token
-from app.db.models.user import User
-from app.db.oper.site import SiteOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.api.deps import get_current_active_user
+from app.adapters.web.security.access import verify_token
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
+from app.application.site.query import (
+    SiteQueryService,
+    get_configured_site_query_service,
+)
+from app.api.deps import get_current_active_user, get_site_sync_query_service
 from app.application.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
@@ -39,7 +43,10 @@ from app.adapters.network.urlsafety import SecurityUtils
 router = ResponseAPIRouter()
 
 
-def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
+def _prepare_subtitle_download(
+    subtitle: SubtitleInfo,
+    query: SiteQueryService | None = None,
+) -> tuple[bool, str]:
     """
     校验字幕下载签名，并用服务端站点配置覆盖请求凭据。
     """
@@ -53,7 +60,8 @@ def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
     if not clean_url:
         return False, "字幕下载链接签名无效"
 
-    site = SiteOper().get(subtitle.site)
+    site_query = query or get_configured_site_query_service()
+    site = site_query.get_sync(subtitle.site)
     if not site:
         return False, "字幕站点信息不存在"
 
@@ -62,6 +70,44 @@ def _prepare_subtitle_download(subtitle: SubtitleInfo) -> tuple[bool, str]:
     subtitle.site_ua = site.ua
     subtitle.site_proxy = bool(site.proxy)
     return True, ""
+
+
+def _build_unrecognized_media_info(
+    torrent: _SchemaTorrentInfo,
+    metainfo: MetaBase,
+    is_music: bool = False,
+    music_type: Optional[str] = None,
+) -> MediaInfo | MusicInfo:
+    """
+    为用户确认的未识别资源构造最小下载上下文，影视与音乐统一处理。
+
+    影视以种子分类兜底媒体类型并保留标题年份，音乐按解析标题构造音乐信息，
+    两者都不再要求识别出统一媒体信息即可继续下载。
+    """
+    if is_music:
+        return MusicInfo(
+            title=metainfo.title or torrent.title,
+            year=metainfo.year,
+            music_type=music_type or MUSIC_ENTITY_RECORDING,
+        )
+    try:
+        media_type = MediaType(torrent.category)
+    except (TypeError, ValueError):
+        media_type = MediaType.from_agent(torrent.category)
+    if media_type == MediaType.COLLECTION:
+        media_type = MediaType.MOVIE
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = metainfo.type
+        # 合集类型在回退到元数据后同样归一为电影，避免落到 UNKNOWN
+        if media_type == MediaType.COLLECTION:
+            media_type = MediaType.MOVIE
+    if media_type not in (MediaType.MOVIE, MediaType.TV):
+        media_type = MediaType.UNKNOWN
+    return MediaInfo(
+        type=media_type,
+        title=metainfo.name or torrent.title,
+        year=metainfo.year,
+    )
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
@@ -84,7 +130,7 @@ def download(
     torrent_in: _SchemaTorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
     添加下载任务（含媒体信息）
@@ -127,10 +173,11 @@ def add(
     media_source: Annotated[MediaSource | None, Body()] = None,
     media_id: Annotated[str | None, Body()] = None,
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
+    allow_unrecognized: Annotated[bool, Body()] = False,
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
     添加下载任务（不含媒体信息）
@@ -182,7 +229,19 @@ def add(
             music_type=normalized_music_type,
         )
     if not mediainfo:
-        return _SchemaResponse(success=False, message="无法识别媒体信息")
+        if not allow_unrecognized:
+            return _SchemaResponse(
+                success=False,
+                message="无法识别媒体信息",
+                data=_SchemaDownloadAddedData(requires_confirmation=True),
+            )
+        # 用户已确认：影视与音乐统一按种子元信息构造最小上下文继续下载
+        mediainfo = _build_unrecognized_media_info(
+            torrent_in,
+            metainfo,
+            is_music=is_music,
+            music_type=normalized_music_type,
+        )
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
@@ -213,14 +272,20 @@ def download_subtitle(
     media_source: Annotated[MediaSource, Body()],
     media_id: Annotated[str, Body()],
     save_path: Annotated[str | None, Body()] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    query: SiteQueryService = Depends(get_site_sync_query_service),
 ) -> Any:
     """
     下载字幕资源。
     """
     subtitle_info = SubtitleInfo()
     subtitle_info.from_dict(subtitle_in.model_dump())
-    valid, message = _prepare_subtitle_download(subtitle_info)
+    # 直接调用 endpoint 的旧测试/插件入口不会经过 FastAPI 依赖解析；此时让
+    # 应用查询端口自行提供服务，仍保留真实请求中的注入对象。
+    if not hasattr(query, "get_sync"):
+        valid, message = _prepare_subtitle_download(subtitle_info)
+    else:
+        valid, message = _prepare_subtitle_download(subtitle_info, query)
     if not valid:
         return _SchemaResponse(success=False, message=message)
 
@@ -273,7 +338,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
     """
-    downloaders: List[dict] = SystemConfigOper().get(SystemConfigKey.Downloaders)
+    downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
     if downloaders:
         return [
             {"name": d.get("name"), "type": d.get("type")}

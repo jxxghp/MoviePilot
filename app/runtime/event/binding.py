@@ -66,6 +66,12 @@ class EventBindingResolver:
         return names[0], names[1]
 
     @staticmethod
+    def is_class_method_declaration(handler: Callable) -> bool:
+        """判断处理器是否声明在类体内（限定名含类前缀且非局部闭包）。"""
+        parts = handler.__qualname__.split(".")
+        return len(parts) >= 2 and "<locals>" not in parts
+
+    @staticmethod
     def owner_class(handler: Callable) -> Optional[Type[Any]]:
         """从处理器对象本身解析声明类，不按字符串动态导入模块。"""
         if inspect.ismethod(handler):
@@ -83,15 +89,32 @@ class EventBindingResolver:
                 return None
         return owner if isinstance(owner, type) else None
 
+    def _record_unresolved(self, identifier: str, reason: str) -> None:
+        """首次未命中时记录告警，避免重载窗口内重复刷屏。"""
+        with self._lock:
+            first_miss = identifier not in self._unresolved
+            self._unresolved.add(identifier)
+        if first_miss:
+            logger.warning(reason, identifier)
+
     def resolve(
         self,
         handler: Callable,
-    ) -> list[tuple[Callable, EventHandlerBinding, str, str]]:
-        """通过显式 resolver 解析当前全部实例绑定；自由函数返回单元素列表。
+    ) -> Optional[
+        tuple[Callable, EventHandlerBinding, str, str]
+        | list[tuple[Callable, EventHandlerBinding, str, str]]
+    ]:
+        """解析处理器的实例绑定。
 
-        归属已单独停用实例的绑定被剔除，兄弟实例继续参与调度。
+        自由函数不属于任何类，直调路径固定唯一，返回单个绑定元组；托管类方法
+        按已登记 resolver 解析，返回绑定列表（可能为空列表，表示该类当前没有
+        启用实例，归属已单独停用实例的绑定同样被剔除，兄弟实例继续参与调度）；
+        声明类不可解析时（插件重载 stop 阶段清除模块缓存后，窗口期内残留的旧
+        类方法声明无法定位声明类，直接调用原始函数会绕过实例绑定，旧签名可能
+        与事件调用约定不一致）返回 ``None``，调用方须整体跳过本次执行，等待
+        重载完成后按新 handler 注册自愈。
         :param handler: 装饰阶段登记的处理器
-        :return: `(实例方法, 绑定, 类名, 方法名)` 列表
+        :return: 单个绑定元组、绑定元组列表，或 ``None``
         """
         owner_class = self.owner_class(handler)
         declared_method_name = getattr(
@@ -100,12 +123,18 @@ class EventBindingResolver:
             self.parse_handler_names(handler)[1],
         )
         if owner_class is None:
+            if self.is_class_method_declaration(handler):
+                self._record_unresolved(
+                    EventRegistry.handler_identifier(handler),
+                    "事件处理器所属模块已卸载或声明类不可解析，跳过执行：%s",
+                )
+                return None
             binding = EventHandlerBinding(
                 instance=None,
                 owner_name=EventRegistry.handler_identifier(handler),
                 run_sync_in_threadpool=True,
             )
-            return [(handler, binding, "", declared_method_name)]
+            return (handler, binding, "", declared_method_name)
 
         with self._lock:
             resolvers = tuple(self._resolvers().items())
@@ -118,15 +147,10 @@ class EventBindingResolver:
                 resolver_name = name
                 break
         if bindings is None:
-            identifier = EventRegistry.handler_identifier(handler)
-            with self._lock:
-                first_miss = identifier not in self._unresolved
-                self._unresolved.add(identifier)
-            if first_miss:
-                logger.warning(
-                    "事件处理器未绑定显式 resolver，已跳过：%s",
-                    identifier,
-                )
+            self._record_unresolved(
+                EventRegistry.handler_identifier(handler),
+                "事件处理器未绑定显式 resolver，已跳过：%s",
+            )
             return []
         logger.debug(
             "事件处理器绑定：%s -> %s",
@@ -158,3 +182,21 @@ class EventBindingResolver:
                 method_name = fallback_name
             resolved.append((method, binding, owner_class.__name__, method_name))
         return resolved
+
+    @staticmethod
+    def as_binding_sequence(
+        resolved: Optional[
+            tuple[Callable, EventHandlerBinding, str, str]
+            | list[tuple[Callable, EventHandlerBinding, str, str]]
+        ],
+    ) -> tuple[tuple[Callable, EventHandlerBinding, str, str], ...]:
+        """把 `resolve()` 的返回值归一为可直接遍历的绑定序列。
+
+        :param resolved: `resolve()` 的返回值：单个绑定元组、绑定元组列表，或 ``None``
+        :return: 绑定元组序列；输入为 ``None`` 时为空序列
+        """
+        if resolved is None:
+            return ()
+        if isinstance(resolved, list):
+            return tuple(resolved)
+        return (resolved,)

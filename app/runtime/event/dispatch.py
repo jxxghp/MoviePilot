@@ -8,10 +8,9 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from fastapi.concurrency import run_in_threadpool
-
 from app.runtime.event.binding import EventBindingResolver, EventHandlerBinding
 from app.runtime.event.registry import EventRegistry
+from app.runtime.execution import run_in_threadpool
 from app.runtime.extensions.instance import split_instance_key
 from app.runtime.log import logger, wrap_for_plugin_instance
 from app.schemas.types import EventType
@@ -157,9 +156,10 @@ class EventDispatcher:
             await self.invoke_async(handler, event)
 
     def invoke_sync(self, handler: Callable, event: Any) -> None:
-        """解析实例绑定列表并逐个同步调用处理器。"""
-        for method, binding, class_name, method_name in self._binding_resolver.resolve(
-            handler
+        """解析实例绑定并逐个同步调用处理器；声明类不可解析时整体跳过。"""
+        resolved = self._binding_resolver.resolve(handler)
+        for method, binding, class_name, method_name in (
+            EventBindingResolver.as_binding_sequence(resolved)
         ):
             try:
                 _bind_instance_context(method, binding)(event)
@@ -173,9 +173,10 @@ class EventDispatcher:
                 )
 
     async def invoke_async(self, handler: Callable, event: Any) -> None:
-        """解析实例绑定列表，逐个按处理器类型选择协程、线程池或同步调用。"""
-        for method, binding, class_name, method_name in self._binding_resolver.resolve(
-            handler
+        """解析实例绑定，逐个按处理器类型选择协程、线程池或同步调用；声明类不可解析时整体跳过。"""
+        resolved = self._binding_resolver.resolve(handler)
+        for method, binding, class_name, method_name in (
+            EventBindingResolver.as_binding_sequence(resolved)
         ):
             try:
                 bound_method = _bind_instance_context(method, binding)

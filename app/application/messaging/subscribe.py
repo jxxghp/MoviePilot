@@ -1,7 +1,6 @@
 import re
-from typing import List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
-from app.adapters.external.server import MoviePilotServerHelper
 from app.application.messaging.interaction import (
     MessageGateway,
     SlashInteractionManager,
@@ -12,8 +11,6 @@ from app.application.messaging.interaction import (
     supports_markdown,
     update_or_post_message,
 )
-from app.db.models.subscribe import Subscribe
-from app.db.oper.subscribe import SubscribeOper
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MediaType
 
@@ -29,6 +26,19 @@ class SubscribeInteractionActions(Protocol):
     def refresh(self):
         """执行订阅刷新。"""
         ...
+
+
+class SubscribeInteractionRepository(Protocol):
+    """订阅消息交互所需的同步数据端口。"""
+
+    def list(self) -> List[Any]:
+        """返回订阅列表。"""
+
+    def get(self, subscribe_id: int) -> Optional[Any]:
+        """按 ID 返回订阅。"""
+
+    def delete(self, subscribe_id: int) -> Any:
+        """删除订阅。"""
 
     def check(self):
         """执行订阅元数据检查。"""
@@ -51,12 +61,16 @@ class SubscribeInteractionHandler:
             self,
             messenger: MessageGateway,
             actions: SubscribeInteractionActions,
+            repository: SubscribeInteractionRepository,
+            report_deleted: Callable[[dict], Any],
     ):
         """
         注入消息投递接口和订阅业务动作。
         """
         self._messenger = messenger
         self._actions = actions
+        self._repository = repository
+        self._report_deleted = report_deleted
 
     def remote_list(
             self,
@@ -401,7 +415,7 @@ class SubscribeInteractionHandler:
         """
         渲染 /subscribes 当前页面。
         """
-        subscribes = SubscribeOper().list()
+        subscribes = self._repository.list()
         page_size = (
             self._button_page_size
             if supports_interaction_buttons(channel)
@@ -475,7 +489,7 @@ class SubscribeInteractionHandler:
         )
 
     def _format_subscribe_list(
-            self, subscribes: List[Subscribe], channel: Optional[NotificationChannel]
+            self, subscribes: List[Any], channel: Optional[NotificationChannel]
     ) -> str:
         """
         根据渠道能力格式化订阅列表。
@@ -521,7 +535,7 @@ class SubscribeInteractionHandler:
         return mapping.get(state or "", state or "-")
 
     @staticmethod
-    def _format_subscribe_progress(subscribe: Subscribe) -> str:
+    def _format_subscribe_progress(subscribe: Any) -> str:
         """
         构造订阅的季和进度说明。
         """
@@ -658,11 +672,10 @@ class SubscribeInteractionHandler:
         if not subscribe_ids:
             return False, "请输入订阅 ID，多个 ID 用空格分隔，或输入 all"
 
-        subscribeoper = SubscribeOper()
         missing = []
         searched = []
         for subscribe_id in subscribe_ids:
-            subscribe = subscribeoper.get(subscribe_id)
+            subscribe = self._repository.get(subscribe_id)
             if not subscribe:
                 missing.append(str(subscribe_id))
                 continue
@@ -696,17 +709,16 @@ class SubscribeInteractionHandler:
         if not subscribe_ids:
             return False, "请输入至少一个有效的订阅 ID"
 
-        subscribeoper = SubscribeOper()
         deleted = []
         missing = []
         for subscribe_id in subscribe_ids:
-            subscribe = subscribeoper.get(subscribe_id)
+            subscribe = self._repository.get(subscribe_id)
             if not subscribe:
                 missing.append(str(subscribe_id))
                 continue
             deleted.append(subscribe.name)
-            subscribeoper.delete(subscribe_id)
-            MoviePilotServerHelper.sub_done_async(
+            self._repository.delete(subscribe_id)
+            self._report_deleted(
                 {
                     "media_source": subscribe.media_source,
                     "media_id": subscribe.media_id,

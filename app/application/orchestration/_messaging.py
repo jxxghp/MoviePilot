@@ -8,13 +8,13 @@ import copy
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from app.db.oper.user import UserOper
+from app.application.orchestration.data import UserPortProxy as UserOper
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
 from app.application.messaging.message import MessageTemplateHelper
 from app.runtime.config import settings
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message

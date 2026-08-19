@@ -61,6 +61,15 @@ from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
 
 
+class UserOper:
+    """兼容飞书模块存量测试的渠道用户查询门面。"""
+
+    @staticmethod
+    def get_name(**bindings) -> Optional[str]:
+        """把渠道标识查询转发到启动组合根登记的用户端口。"""
+        return UserOper().get_name(**bindings)
+
+
 class Feishu:
     """飞书通知客户端，负责长连接收消息与主动发送通知。"""
 

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.orchestration.subscribe import SubscribeChain
-from app.db.oper.user import UserOper
+from app.application.agentdata import UserPort as UserOper
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, NotificationChannel
 from app.domain.media import normalize_music_type

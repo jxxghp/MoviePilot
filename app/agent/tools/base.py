@@ -19,7 +19,7 @@ from app.agent.tools.tags import ToolTag
 from app.application.orchestration import ChainBase
 from app.runtime.config import settings
 from app.application.messaging.agent import matches_channel_admin
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.notification import resolve_channel

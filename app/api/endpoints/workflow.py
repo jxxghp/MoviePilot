@@ -1,7 +1,6 @@
 from typing import List, Any, Optional
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.workflow import NameValueOption as _SchemaNameValueOption
@@ -10,19 +9,21 @@ from app.schemas.workflow import Workflow as _SchemaWorkflow
 from app.schemas.workflow import WorkflowActionDefinition as _SchemaWorkflowActionDefinition
 from app.schemas.workflow import WorkflowShare as _SchemaWorkflowShare
 from app.api.response import ResponseAPIRouter
-from app.application.workflow import WorkflowDefinitionCommand, WorkflowMutationCommand
+from app.application.workflow import (
+    WorkflowDefinitionCommand,
+    WorkflowMutationCommand,
+    WorkflowQueryService,
+)
 from app.workflow.service import WorkflowChain
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.workflow import WorkFlowManager
-from app.db import get_async_db
-from app.db.models import User
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
     get_workflow_definition_command,
     get_workflow_mutation_command,
+    get_workflow_query_service,
 )
-from app.db.oper.workflow import WorkflowOper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.schemas.types import EventType, EVENT_TYPE_NAMES
 
@@ -30,20 +31,20 @@ router = ResponseAPIRouter()
 
 @router.get("/", summary="所有工作流", response_model=List[_SchemaWorkflow])
 async def list_workflows(
-    db: AsyncSession = Depends(get_async_db),
-    _: User = Depends(get_current_active_manage_user_async),
+    query: WorkflowQueryService = Depends(get_workflow_query_service),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     获取工作流列表
     """
-    return await WorkflowOper(db).async_list()
+    return await query.list()
 
 
 @router.post("/", summary="创建工作流", response_model=_SchemaResponse[None])
 async def create_workflow(
     workflow: _SchemaWorkflow,
     command: WorkflowDefinitionCommand = Depends(get_workflow_definition_command),
-    _: User = Depends(get_current_active_manage_user_async),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     创建工作流
@@ -58,7 +59,7 @@ async def create_workflow(
     response_model=List[_SchemaPluginWorkflowActionGroup],
 )
 def list_plugin_actions(
-    plugin_id: str = None, _: User = Depends(get_current_active_manage_user)
+    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     获取所有动作
@@ -71,7 +72,7 @@ def list_plugin_actions(
     summary="所有动作",
     response_model=List[_SchemaWorkflowActionDefinition],
 )
-async def list_actions(_: User = Depends(get_current_active_manage_user_async)) -> Any:
+async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有动作
     """
@@ -83,7 +84,7 @@ async def list_actions(_: User = Depends(get_current_active_manage_user_async)) 
     summary="获取所有事件类型",
     response_model=List[_SchemaNameValueOption],
 )
-async def get_event_types(_: User = Depends(get_current_active_manage_user_async)) -> Any:
+async def get_event_types(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
     """
     获取所有事件类型
     """
@@ -98,7 +99,7 @@ async def get_event_types(_: User = Depends(get_current_active_manage_user_async
 
 @router.post("/share", summary="分享工作流", response_model=_SchemaResponse[None])
 async def workflow_share(
-    workflow: _SchemaWorkflowShare, _: User = Depends(get_current_active_manage_user_async)
+    workflow: _SchemaWorkflowShare, _: Any = Depends(get_current_active_manage_user_async)
 ) -> Any:
     """
     分享工作流
@@ -119,7 +120,7 @@ async def workflow_share(
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=_SchemaResponse[None])
 async def workflow_share_delete(
-    share_id: int, _: User = Depends(get_current_active_manage_user_async)
+    share_id: int, _: Any = Depends(get_current_active_manage_user_async)
 ) -> Any:
     """
     删除分享
@@ -132,7 +133,7 @@ async def workflow_share_delete(
 async def workflow_fork(
     workflow: _SchemaWorkflowShare,
     command: WorkflowDefinitionCommand = Depends(get_workflow_definition_command),
-    _: User = Depends(get_current_active_manage_user_async),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     复用工作流
@@ -148,7 +149,7 @@ async def workflow_shares(
     name: Optional[str] = None,
     page: Optional[int] = 1,
     count: Optional[int] = 30,
-    _: User = Depends(get_current_active_manage_user_async),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     查询分享的工作流
@@ -162,7 +163,7 @@ async def workflow_shares(
 def run_workflow(
     workflow_id: int,
     from_begin: Optional[bool] = True,
-    _: User = Depends(get_current_active_manage_user),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     执行工作流
@@ -179,7 +180,7 @@ def run_workflow(
 def start_workflow(
     workflow_id: int,
     command: WorkflowMutationCommand = Depends(get_workflow_mutation_command),
-    _: User = Depends(get_current_active_manage_user),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     启用工作流
@@ -194,7 +195,7 @@ def start_workflow(
 def pause_workflow(
     workflow_id: int,
     command: WorkflowMutationCommand = Depends(get_workflow_mutation_command),
-    _: User = Depends(get_current_active_manage_user),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     停用工作流
@@ -209,7 +210,7 @@ def pause_workflow(
 async def reset_workflow(
     workflow_id: int,
     command: WorkflowDefinitionCommand = Depends(get_workflow_definition_command),
-    _: User = Depends(get_current_active_manage_user_async),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     重置工作流
@@ -221,20 +222,20 @@ async def reset_workflow(
 @router.get("/{workflow_id}", summary="工作流详情", response_model=_SchemaWorkflow)
 async def get_workflow(
     workflow_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    _: User = Depends(get_current_active_manage_user_async),
+    query: WorkflowQueryService = Depends(get_workflow_query_service),
+    _: Any = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     获取工作流详情
     """
-    return await WorkflowOper(db).async_get(workflow_id)
+    return await query.get(workflow_id)
 
 
 @router.put("/{workflow_id}", summary="更新工作流", response_model=_SchemaResponse[None])
 def update_workflow(
     workflow: _SchemaWorkflow,
     command: WorkflowMutationCommand = Depends(get_workflow_mutation_command),
-    _: User = Depends(get_current_active_manage_user),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     更新工作流
@@ -247,7 +248,7 @@ def update_workflow(
 def delete_workflow(
     workflow_id: int,
     command: WorkflowMutationCommand = Depends(get_workflow_mutation_command),
-    _: User = Depends(get_current_active_manage_user),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     删除工作流

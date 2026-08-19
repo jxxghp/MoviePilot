@@ -121,7 +121,10 @@ class IndexerModule(_ModuleBase):
         if error_flag:
             SiteOper().fail(domain)
         else:
-            SiteOper().success(domain=domain, seconds=seconds)
+            SiteOper().success(
+                domain=domain,
+                seconds=seconds,
+            )
 
     @staticmethod
     async def __async_indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
@@ -132,7 +135,10 @@ class IndexerModule(_ModuleBase):
         if error_flag:
             await SiteOper().async_fail(domain)
         else:
-            await SiteOper().async_success(domain=domain, seconds=seconds)
+            await SiteOper().async_success(
+                domain=domain,
+                seconds=seconds,
+            )
 
     @staticmethod
     def __parse_result(site: dict, result_array: list, seconds: int) -> TorrentInfo:

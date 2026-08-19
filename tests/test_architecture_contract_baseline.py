@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -132,6 +133,71 @@ assert len(app.schemas.__all__) >= 400
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_agent_policy_root_import_does_not_eagerly_load_policy_submodules():
+    """策略公共入口惰性导出，避免 orchestrator、registry 和 sanitizer 形成导入环。"""
+    script = """
+import sys
+import app.agent.policy
+
+assert not any(
+    name.startswith('app.agent.policy.')
+    for name in sys.modules
+)
+from app.agent.policy import ToolOrigin, sanitize_for_host
+
+assert ToolOrigin.AGENT_API.value == 'agent_api'
+assert sanitize_for_host({'token': 'secret'}) == {'token': '***'}
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_doctor_and_monitor_roots_are_lazy_identity_preserving_facades(tmp_path):
+    """诊断和监控包根不得预载实现，旧路径仍需返回同一公开对象。"""
+    script = """
+import sys
+import app.doctor
+import app.monitor
+
+assert not any(name.startswith('app.doctor.') for name in sys.modules)
+assert not any(name.startswith('app.monitor.') for name in sys.modules)
+
+# CI 无 app.application.site.sites 资源模块，触发实现加载前先补 conftest 同源垫片；
+# 独立子进程不经过 pytest 引导，必须在此显式安装，否则链式 import 会因缺模块失败。
+from app.testing.bootstrap import ensure_sites_stub
+ensure_sites_stub()
+
+from app.doctor import DoctorRunner, run_doctor
+from app.doctor.runner import DoctorRunner as DirectDoctorRunner
+from app.monitor import LocalDirectoryWatcher, Monitor
+from app.monitor.monitor import Monitor as DirectMonitor
+from app.monitor.watcher import LocalDirectoryWatcher as DirectWatcher
+
+assert DoctorRunner is DirectDoctorRunner
+assert Monitor is DirectMonitor
+assert LocalDirectoryWatcher is DirectWatcher
+assert callable(run_doctor)
+"""
+    env = {**os.environ, "CONFIG_DIR": str(tmp_path / "config")}
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=False,

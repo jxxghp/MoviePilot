@@ -7,10 +7,10 @@
 import copy
 from typing import Optional
 
-from fastapi.concurrency import run_in_threadpool
+from app.runtime.execution import run_in_threadpool
 
 from app.adapters.external.server import MoviePilotServerHelper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -85,7 +85,7 @@ class RecognitionMixin:
     def _record_media_recognize_share_hit() -> None:
         """记录一次共享媒体识别成功命中，统计失败不影响识别结果。"""
         try:
-            SystemConfigOper().increment(SystemConfigKey.MediaRecognizeShareCount)
+            get_configured_system_config().increment(SystemConfigKey.MediaRecognizeShareCount)
         except Exception as err:
             logger.error(f"记录共享媒体识别命中次数失败：{str(err)}")
 

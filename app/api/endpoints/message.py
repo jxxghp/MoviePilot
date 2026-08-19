@@ -5,7 +5,6 @@ import time
 from typing import Protocol, Union, Any, List, Optional
 
 from fastapi import BackgroundTasks, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import PlainTextResponse
 
 from app.schemas.message import MessageClearBefore as _SchemaMessageClearBefore
@@ -20,13 +19,12 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.message import MessageChain
 from app.runtime.config import settings, global_vars
-from app.application.security.access import verify_token, verify_apitoken
-from app.db import get_async_db
-from app.db.models import User
-from app.db.oper.message import MessageOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.api.deps import get_current_active_superuser
-from app.runtime.extensions.service_registry import ServiceConfigHelper
+from app.adapters.web.security.access import verify_token, verify_apitoken
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
+from app.api.deps import get_current_active_superuser, get_message_query_service
+from app.application.messaging.message import MessageQueryService
+from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.schemas.types import NotificationChannel, SystemConfigKey
@@ -83,7 +81,7 @@ def _get_notification_clear_before() -> _SchemaMessageClearBefore:
     """
     读取通知中心清理时间配置。
     """
-    value = SystemConfigOper().get(SystemConfigKey.NotificationClearBefore)
+    value = get_configured_system_config().get(SystemConfigKey.NotificationClearBefore)
     if isinstance(value, dict):
         return _SchemaMessageClearBefore(
             all=_normalize_notification_clear_timestamp(value.get("all")),
@@ -156,7 +154,7 @@ async def user_message(
 async def web_message(
     request: Request,
     text: Optional[str] = None,
-    current_user: User = Depends(get_current_active_superuser),
+    current_user: ApiPrincipal = Depends(get_current_active_superuser),
 ):
     """
     WEB消息响应
@@ -194,28 +192,20 @@ async def web_message(
 @router.get("/web", summary="获取WEB消息", response_model=List[_SchemaWebMessageItem])
 async def get_web_message(
     _: _SchemaTokenPayload = Depends(verify_token),
-    db: AsyncSession = Depends(get_async_db),
+    service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
 ):
     """
     获取WEB消息列表
     """
-    ret_messages = []
-    messages = await MessageOper(db).async_list_by_page(page=page, count=count)
-    for message in messages:
-        try:
-            ret_messages.append(message.to_dict())
-        except Exception as e:
-            logger.error(f"获取WEB消息列表失败: {str(e)}")
-            continue
-    return ret_messages
+    return await service.list_web(page=page, count=count)
 
 
 @router.get("/notification", summary="获取通知消息", response_model=List[_SchemaMessageHistoryItem])
 async def get_notification_message(
     _: _SchemaTokenPayload = Depends(verify_token),
-    db: AsyncSession = Depends(get_async_db),
+    service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
 ):
@@ -223,14 +213,14 @@ async def get_notification_message(
     获取系统发送的通知消息列表。
     """
     clear_before = _get_notification_clear_before()
-    messages = await MessageOper(db).async_list_sent_by_page(
+    messages = await service.list_notifications(
         page=page,
         count=count,
         all_clear_before=_format_notification_clear_time(clear_before.all),
         system_clear_before=_format_notification_clear_time(clear_before.system),
         media_clear_before=_format_notification_clear_time(clear_before.media),
     )
-    return [_SchemaMessageHistoryItem(**message.to_dict()) for message in messages]
+    return [_SchemaMessageHistoryItem(**message) for message in messages]
 
 
 @router.delete(
@@ -248,7 +238,7 @@ async def clear_notification_message(
     clear_before = _get_notification_clear_before()
     value = clear_before.model_dump()
     value[scope.value] = int(time.time() * 1000)
-    await SystemConfigOper().async_set(SystemConfigKey.NotificationClearBefore, value)
+    await get_configured_system_config().async_set(SystemConfigKey.NotificationClearBefore, value)
     return _SchemaResponse(success=True, data={"clear_before": value})
 
 

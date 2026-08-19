@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.application.security.access import verify_token
+from app.adapters.web.security.access import verify_token
 from app.db import get_async_db, get_db
 from app.db.models.user import User
 from app.schemas.token import TokenPayload as _SchemaTokenPayload

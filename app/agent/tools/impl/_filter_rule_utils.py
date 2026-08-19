@@ -5,8 +5,8 @@ import re
 from typing import Any, Dict, Iterable, Optional
 
 from app.runtime.events import eventmanager
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.agentdata import SubscribePort as SubscribeOper
+from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.application.rules import RuleHelper
 from app.domain.filterrule import RuleParser
 from app.domain.filterrule import BUILTIN_RULE_SET

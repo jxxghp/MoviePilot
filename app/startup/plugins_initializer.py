@@ -277,7 +277,7 @@ def _seed_plugin_instance_log_levels() -> None:
                 )
 
 
-def _configure_plugin_services() -> None:
+def configure_plugin_services() -> None:
     """把兼容诊断、远程上报和站点认证等级装配到插件管理器。"""
     plugin_helper = PluginHelper()
     market_client = PluginMarketClient(plugin_helper)
@@ -362,7 +362,7 @@ async def sync_plugins() -> bool:
     初始化安装插件，并动态注册后台任务及API
     """
     try:
-        _configure_plugin_services()
+        configure_plugin_services()
         loop = global_vars.loop
         plugin_manager = PluginManager()
 
@@ -417,7 +417,7 @@ def init_plugins():
     """
     初始化插件
     """
-    _configure_plugin_services()
+    configure_plugin_services()
     PluginManager().start()
     # 预热已配置的实例日志等级覆盖，避免进程重启后临时调高的排障等级静默丢失
     _seed_plugin_instance_log_levels()

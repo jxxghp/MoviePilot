@@ -1,7 +1,7 @@
 import base64
 import re
 from datetime import datetime
-from typing import Callable, Optional, Tuple, Union, Dict
+from typing import Any, Callable, Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
@@ -11,9 +11,8 @@ from app.application.orchestration import ChainBase
 from app.application.orchestration._interaction import InteractionChainMixin
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, eventmanager
-from app.db.models.site import Site
-from app.db.oper.site import SiteOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.orchestration.data import SitePortProxy as SiteOper
+from app.application.configuration import get_configured_system_config
 from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
 from app.application.security.cookie import CookieHelper
@@ -31,6 +30,8 @@ from app.domain import site as site_rules
 from app.foundation import size as size_tools
 from app.foundation import url as url_tools
 from app.foundation.dom import DomUtils
+
+Site = Any
 
 
 class SiteChain(InteractionChainMixin, ChainBase):
@@ -640,8 +641,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         # 获取主域名中间那段
         domain_host = url_tools.host_label(domain)
         # 查询以"site.domain_host"开头的配置项，并清除
-        systemconfig = SystemConfigOper()
-        site_keys = systemconfig.all().keys()
+        # SystemConfigService 未提供 all()，无参 get() 经仓库返回全部配置字典
+        systemconfig = get_configured_system_config()
+        site_keys = systemconfig.get().keys()
         for key in site_keys:
             if key.startswith(f"site.{domain_host}"):
                 logger.info(f"清理站点配置：{key}")
@@ -751,7 +753,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def _interaction_handler(self) -> "SiteInteractionHandler":
         """构造 /sites 交互处理器，Cookie 更新动作由本链提供。"""
-        return SiteInteractionHandler(messenger=self, cookie_updater=self.update_cookie)
+        return SiteInteractionHandler(
+            messenger=self,
+            cookie_updater=self.update_cookie,
+            repository=SiteOper(),
+        )
 
     def remote_disable(self, arg_str: str, channel: NotificationChannel,
                        userid: Union[str, int] = None, source: Optional[str] = None):

@@ -148,11 +148,6 @@ def test_passkey_authentication_start_returns_object_options(monkeypatch):
 def test_passkey_registration_start_returns_object_options(monkeypatch):
     """Passkey 注册选项应作为对象返回，避免统一响应模型校验失败。"""
     monkeypatch.setattr(
-        mfa_endpoint.PassKey,
-        "get_by_user_id",
-        staticmethod(lambda **_: []),
-    )
-    monkeypatch.setattr(
         mfa_endpoint.PassKeyHelper,
         "generate_registration_options",
         staticmethod(
@@ -166,7 +161,10 @@ def test_passkey_registration_start_returns_object_options(monkeypatch):
     )
     user = SimpleNamespace(id=1, name="user", settings={})
 
-    response = mfa_endpoint.passkey_register_start(current_user=user)
+    response = mfa_endpoint.passkey_register_start(
+        current_user=user,
+        service=SimpleNamespace(list_by_user_id=lambda user_id: []),
+    )
     payload = schemas.PasskeyStartData.model_validate(response.data)
 
     assert response.success is True

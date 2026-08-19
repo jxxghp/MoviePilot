@@ -88,6 +88,7 @@ moviepilot help update
 moviepilot help agent
 moviepilot help config
 moviepilot help config set
+moviepilot help database
 moviepilot help tool
 moviepilot help scheduler
 ```
@@ -136,6 +137,10 @@ moviepilot config get
 moviepilot config set
 moviepilot config keys
 moviepilot config describe
+moviepilot database backup
+moviepilot database list
+moviepilot database verify <filename>
+moviepilot database restore <filename> --confirm
 moviepilot tool list
 moviepilot tool show
 moviepilot tool run
@@ -463,6 +468,36 @@ moviepilot config describe API_TOKEN --show-secrets
 - `ACOUSTID_API_KEY` 内置可用默认值，也可在前端“高级设置 - 媒体”或配置命令中覆盖；本地安装需要系统可执行路径中存在 Chromaprint `fpcalc`，官方 Docker 镜像已内置
 - `MUSIC_METADATA_TO_SIMPLIFIED` 默认开启；开启后会将识别结果中的曲名、艺术家、专辑和分类等标准音乐元数据转换为简体中文，不转换歌词与来源原始响应
 - `config describe` 显示单个配置项的类型、默认值和当前值
+
+## 数据库备份命令
+
+创建一次在线一致备份：
+
+```shell
+moviepilot database backup
+```
+
+列出本地备份，并按文件名重新校验：
+
+```shell
+moviepilot database list
+moviepilot database verify <filename>
+```
+
+MoviePilot 停止运行后，可通过明确确认执行离线还原：
+
+```shell
+moviepilot database restore <filename> --confirm
+```
+
+说明：
+
+- SQLite 使用在线备份 API，PostgreSQL 使用镜像内置的 `pg_dump` custom format
+- 源码部署使用 PostgreSQL 时，宿主机需安装 `pg_dump` 和 `pg_restore` 并加入 `PATH`；Docker 镜像已内置
+- 默认目录为配置目录下的 `database_backup/`，可通过 `DB_BACKUP_PATH` 调整
+- 文件名包含数据库类型和创建时间，例如 `sqlite_20260819_030000.db`
+- 备份、列举和校验可独立通过 CLI 执行
+- 还原会覆盖当前数据库，执行前必须停止 MoviePilot；运行中的 Web API 和插件 SDK 不提供还原入口
 
 ## Tool 命令
 

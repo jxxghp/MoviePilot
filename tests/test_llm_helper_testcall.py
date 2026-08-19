@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import sys
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -195,36 +196,29 @@ class _OfflineProviderManager:
         }
 
 
-class _OfflineProviderError(RuntimeError):
-    """离线 provider 替身使用的兼容异常类型。"""
+@contextmanager
+def _use_provider_runtime(manager_cls):
+    """在当前测试块内通过正式端口注入 provider 运行时替身。"""
+    from app.agent.llm.gateway import register_llm_provider_runtime
 
-
-def _render_offline_auth_result(*_args, **_kwargs):
-    """满足 LLM provider 包导出的最小 HTML renderer 契约。"""
-    return ""
-
-
-def _build_provider_module(manager_cls):
-    """构造满足 ``app.agent.llm`` 包导入契约的 provider 替身。"""
-    provider_module = ModuleType("app.agent.llm.provider")
-    provider_module.LLMProviderManager = manager_cls
-    provider_module.LLMProviderError = _OfflineProviderError
-    provider_module.LLMProviderAuthError = _OfflineProviderError
-    provider_module.render_auth_result_html = _render_offline_auth_result
-    return provider_module
+    previous = register_llm_provider_runtime(lambda: manager_cls())
+    try:
+        yield
+    finally:
+        register_llm_provider_runtime(previous)
 
 
 class LlmHelperTestCallTest(unittest.TestCase):
     def setUp(self):
         """为每个用例默认注入离线 provider，确保 get_llm 不会真访问 models.dev。
 
-        需要校验特定 resolve_runtime 行为的用例，可在自身 patch.dict 中再覆盖
-        ``sys.modules['app.agent.llm.provider']``；用例结束后由 addCleanup 还原。
+        需要校验特定 resolve_runtime 行为的用例，可在自身注册专用运行时；
+        用例结束后恢复测试进程先前的组合配置。
         """
-        provider_module = _build_provider_module(_OfflineProviderManager)
-        patcher = patch.dict(sys.modules, {"app.agent.llm.provider": provider_module})
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        from app.agent.llm.gateway import register_llm_provider_runtime
+
+        previous = register_llm_provider_runtime(lambda: _OfflineProviderManager())
+        self.addCleanup(register_llm_provider_runtime, previous)
 
     def test_normalize_model_profile_fills_partial_profile_from_provider_record(self):
         profile = llm_module.LLMHelper._normalize_model_profile(
@@ -819,11 +813,12 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = _build_provider_module(_FakeProviderManager)
         openai_module = ModuleType("langchain_openai")
         openai_module.ChatOpenAI = _FakeChatOpenAI
 
-        with patch.object(llm_module.settings, "LLM_PROVIDER", "deepseek"), patch.object(
+        with _use_provider_runtime(_FakeProviderManager), patch.object(
+            llm_module.settings, "LLM_PROVIDER", "deepseek"
+        ), patch.object(
             llm_module.settings, "LLM_MODEL", "deepseek-chat"
         ), patch.object(llm_module.settings, "LLM_API_KEY", "updated-key"), patch.object(
             llm_module.settings, "LLM_BASE_URL", "https://updated.example.com/v1"
@@ -832,7 +827,6 @@ class LlmHelperTestCallTest(unittest.TestCase):
         ), patch.dict(
             sys.modules,
             {
-                "app.agent.llm.provider": provider_module,
                 "langchain_openai": openai_module,
             },
         ):
@@ -882,14 +876,12 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = _build_provider_module(_FakeProviderManager)
         anthropic_module = ModuleType("langchain_anthropic")
         anthropic_module.ChatAnthropic = _FakeChatAnthropic
 
-        with patch.dict(
+        with _use_provider_runtime(_FakeProviderManager), patch.dict(
             sys.modules,
             {
-                "app.agent.llm.provider": provider_module,
                 "langchain_anthropic": anthropic_module,
             },
         ):
@@ -996,13 +988,11 @@ class LlmHelperTestCallTest(unittest.TestCase):
                     "model_metadata": {},
                 }
 
-        provider_module = _build_provider_module(_FakeProviderManager)
         fake_openai_modules, _ = _build_fake_openai_modules()
 
-        with patch.dict(
+        with _use_provider_runtime(_FakeProviderManager), patch.dict(
             sys.modules,
             {
-                "app.agent.llm.provider": provider_module,
                 **fake_openai_modules,
             },
         ):
@@ -1245,12 +1235,9 @@ class LlmHelperTestCallTest(unittest.TestCase):
                 self.model = kwargs["model"]
                 self.profile = None
 
-        provider_module = _build_provider_module(_FakeProviderManager)
-
-        with patch.dict(
+        with _use_provider_runtime(_FakeProviderManager), patch.dict(
             sys.modules,
             {
-                "app.agent.llm.provider": provider_module,
                 "langchain_openai": SimpleNamespace(ChatOpenAI=_FakeChatOpenAI),
             },
         ):

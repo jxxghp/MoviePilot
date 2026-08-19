@@ -23,7 +23,7 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.application.audio import AudioMetadataHelper
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
@@ -146,7 +146,7 @@ class ScrapingConfig:
 
         :return: MediaScrapingConfig 实例
         """
-        user_config = SystemConfigOper().get(SystemConfigKey.ScrapingSwitchs) or {}
+        user_config = get_configured_system_config().get(SystemConfigKey.ScrapingSwitchs) or {}
         return cls(user_config)
 
     @staticmethod
@@ -567,6 +567,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         获取图片名称和url，合并所有模块的结果。
         优先使用高优先级模块的图片，低优先级模块补充缺失的图片类型。
         """
+        # 插件扩展来源没有宿主内置刮削器，按单播取第一个认领该来源的插件返回的图片
+        # 地址；内置来源仍保留原有多模块合并逻辑，避免改变既有图片补全顺序。
+        if mediainfo and mediainfo.media_source not in tuple(MediaSource):
+            plugin_images = self.unicast(
+                "metadata_img",
+                mediainfo=mediainfo,
+                season=season,
+                episode=episode,
+            )
+            if isinstance(plugin_images, dict):
+                return plugin_images or None
         merged = {}
         for module in sorted(
             self.modulemanager.get_running_modules("metadata_img"),

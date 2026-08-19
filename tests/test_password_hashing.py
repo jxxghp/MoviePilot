@@ -5,7 +5,7 @@ import bcrypt
 import pytest
 
 from app.api.endpoints import user as user_endpoint
-from app.application.security.access import (
+from app.application.security.token import (
     PasswordTooLongError,
     get_password_hash,
     verify_password,
@@ -85,7 +85,7 @@ class _CurrentUser:
     """提供用户接口长度校验前需要的最小查询契约。"""
 
     @staticmethod
-    async def async_get_by_name(_db, name):
+    async def async_get_by_name(name):
         """模拟用户名尚未被使用。"""
         assert name == "new-user"
         return None
@@ -95,7 +95,7 @@ def test_create_user_returns_business_error_for_password_over_72_bytes():
     """新增用户遇到超长密码时应返回可读业务错误。"""
     response = asyncio.run(
         user_endpoint.create_user(
-            db=SimpleNamespace(),
+            service=SimpleNamespace(get_by_name=_CurrentUser.async_get_by_name),
             user_in=_CreateUserInput(),
             current_user=_CurrentUser(),
         )
@@ -117,7 +117,7 @@ def test_update_user_returns_business_error_for_password_over_72_bytes():
 
     response = asyncio.run(
         user_endpoint.update_user(
-            db=SimpleNamespace(),
+            service=SimpleNamespace(),
             user_in=user_in,
             current_user=SimpleNamespace(),
         )

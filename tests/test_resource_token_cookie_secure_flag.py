@@ -6,7 +6,8 @@ from fastapi import Response
 
 from app import schemas
 from app.runtime.config import settings
-from app.application.security.access import ALGORITHM, create_access_token, set_or_refresh_resource_token_cookie
+from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
+from app.application.security.token import ALGORITHM, create_access_token
 
 
 class FakeURL:

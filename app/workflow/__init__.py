@@ -6,13 +6,13 @@ from pydantic import BaseModel
 
 from app.runtime.config import global_vars
 from app.runtime.events import eventmanager, Event
-from app.db.models import Workflow
-from app.db.oper.workflow import WorkflowOper
+from app.application.orchestration.data import WorkflowPortProxy as WorkflowOper
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import Action
 from app.schemas.workflow import ActionResult
+from app.schemas.workflow import Workflow
 from app.schemas.types import EventType
 from app.foundation.singleton import Singleton
 

@@ -31,6 +31,10 @@ class DownloadAddedData(BaseModel):
     """下载任务添加结果。"""
 
     download_id: Optional[str] = Field(default=None, description="下载任务 ID")
+    requires_confirmation: bool = Field(
+        default=False,
+        description="是否需要用户确认后下载未识别资源",
+    )
 
 
 class SubtitleDownloadData(BaseModel):

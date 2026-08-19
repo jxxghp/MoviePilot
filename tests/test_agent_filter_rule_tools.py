@@ -13,7 +13,7 @@ from app.agent.tools.impl.query_builtin_filter_rules import (
 class TestAgentFilterRuleTools(unittest.TestCase):
     def test_factory_registers_filter_rule_tools(self):
         with patch(
-            "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+            "app.agent.tools.factory._get_plugin_agent_tools",
             return_value=[],
         ):
             tools = MoviePilotToolFactory.create_tools(

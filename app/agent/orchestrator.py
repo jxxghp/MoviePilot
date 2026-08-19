@@ -68,10 +68,15 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.application.orchestration.agent import AgentChain
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
-from app.runtime.extensions.plugin_manager import PluginManager
-from app.db.oper.agentchat import AgentChatOper
-from app.db.oper.agenttask import AgentTaskOper
-from app.db.oper.user import UserOper
+from app.application.plugin.runtime import get_plugin_manager
+
+
+def _get_plugin_tools_revision() -> int:
+    """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
+    return get_plugin_manager().get_plugin_agent_tools_revision()
+from app.application.agentdata import AgentChatPort as AgentChatOper
+from app.application.agentdata import AgentTaskPort as AgentTaskOper
+from app.application.agentdata import UserPort as UserOper
 from app.runtime.log import logger
 from app.schemas.event import AgentLLMProviderEventData
 from app.schemas.event import AgentTokensUsageEventData
@@ -1566,7 +1571,7 @@ class MoviePilotAgent:
         from app.agent.runtime_loader import get_tool_factory
 
         tool_factory = get_tool_factory()
-        plugin_manager = PluginManager()
+        plugin_manager = get_plugin_manager()
         for _attempt in range(tool_factory.CATALOG_BUILD_MAX_ATTEMPTS):
             before_revision = plugin_manager.get_plugin_agent_tools_revision()
             tools = self._initialize_tools()
@@ -1662,7 +1667,7 @@ class MoviePilotAgent:
                 if tool_catalog is not None and subagent_catalog is not None
                 else (
                     self._tool_factory_revision(),
-                    PluginManager().get_plugin_agent_tools_revision(),
+                    _get_plugin_tools_revision(),
                 )
             ),
         )
@@ -1781,7 +1786,7 @@ class MoviePilotAgent:
         """
         try:
             runtime_config = await self._resolve_llm_runtime_config()
-            plugin_revision = PluginManager().get_plugin_agent_tools_revision()
+            plugin_revision = _get_plugin_tools_revision()
             mcp_config_signature = agent_mcp_manager.config_signature()
             cached_bundle = self._compiled_agent_bundle
             catalog_is_fresh = bool(

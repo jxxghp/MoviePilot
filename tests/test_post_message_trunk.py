@@ -15,6 +15,7 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 
 from app.application.orchestration.context import ChainRuntimeContext  # noqa: E402
 from app.application.orchestration import ChainBase  # noqa: E402
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher  # noqa: E402
 
 
 class ChannelModule:
@@ -91,6 +92,7 @@ def build_chain(*modules):
         file_cache=Mock(),
         async_file_cache=Mock(),
         message_queue_factory=queue_factory,
+        module_dispatcher_factory=ModuleInvocationDispatcher,
     ))
     return chain, captured["callback"], counters
 

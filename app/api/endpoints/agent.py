@@ -16,7 +16,6 @@ from typing import Any, AsyncIterator, Callable, Optional, Union
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.agent import AgentChatDisplaySaveRequest as _SchemaAgentChatDisplaySaveRequest
 from app.schemas.agent import AgentChatSessionDetail as _SchemaAgentChatSessionDetail
@@ -45,12 +44,14 @@ from app.application.orchestration.message import MessageChain
 from app.command import Command
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, EventManager
-from app.db import get_async_db
-from app.db.oper.agentchat import AgentChatOper
-from app.db.models import User
-from app.db.models.agentchat import AgentChat
-from app.db.oper.user import UserOper
-from app.api.deps import get_current_active_user
+from app.api.principal import ApiPrincipal
+from app.api.deps import get_agent_chat_service, get_current_active_user
+from app.application.messaging.chat import (
+    AgentChatRecord,
+    AgentChatService,
+    get_configured_agent_chat_service,
+)
+from app.application.security.user import get_configured_user_id_lookup
 from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
 from app.application.messaging.agent import agent_interaction_manager
 from app.application.messaging.agent import (
@@ -188,7 +189,7 @@ class _WebAgentEventPublisher:
             self._pending_signal.clear()
 
 
-def _ensure_superuser(user: User) -> None:
+def _ensure_superuser(user: ApiPrincipal) -> None:
     """校验当前用户是否为超级管理员。"""
     if not getattr(user, "is_superuser", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
@@ -200,7 +201,7 @@ def _ensure_superuser(user: User) -> None:
     response_model=_SchemaResponse[_SchemaAgentMcpServerListData],
 )
 async def list_agent_mcp_servers(
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     查询 Agent 外部 MCP 服务器配置。
@@ -225,7 +226,7 @@ async def list_agent_mcp_servers(
 )
 async def save_agent_mcp_servers(
     request: _SchemaAgentMcpServersSaveRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     保存 Agent 外部 MCP 服务器配置。
@@ -245,7 +246,7 @@ async def save_agent_mcp_servers(
 )
 async def test_agent_mcp_server(
     request: _SchemaAgentMcpServerTestRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     测试 Agent 外部 MCP 服务器连接并读取工具列表。
@@ -432,7 +433,7 @@ class _WebAgentMoviePilotAgentMixin:
         if not self.user_id:
             return False
         try:
-            user = await UserOper().async_get_by_id(int(self.user_id))
+            user = get_configured_user_id_lookup()(int(self.user_id))
         except (TypeError, ValueError):
             return False
         except Exception as e:
@@ -487,7 +488,7 @@ def _get_web_agent_type() -> type:
         return _WEB_AGENT_TYPE
 
 
-def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
+def _build_web_agent_session_id(user: ApiPrincipal, session_id: Optional[str]) -> str:
     """
     构建前端 Agent 会话 ID。
 
@@ -499,8 +500,8 @@ def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
     if seed.startswith(WEB_AGENT_SESSION_PREFIX):
         return seed
     try:
-        existing_chat = AgentChatOper().get(session_id=seed)
-        if existing_chat and _can_access_agent_chat(existing_chat, user):
+        existing_chat = get_configured_agent_chat_service().get_sync(seed)
+        if existing_chat and AgentChatService.can_access(existing_chat, user):
             return seed
     except Exception as e:
         logger.debug(f"读取WebAgent历史会话失败: {e}")
@@ -509,7 +510,7 @@ def _build_web_agent_session_id(user: User, session_id: Optional[str]) -> str:
     return f"{WEB_AGENT_SESSION_PREFIX}{digest[:32]}"
 
 
-def _can_access_agent_chat(chat: AgentChat, user: User) -> bool:
+def _can_access_agent_chat(chat: Any, user: ApiPrincipal) -> bool:
     """
     判断当前登录用户是否可以访问指定 Agent 会话。
 
@@ -525,15 +526,14 @@ def _can_access_agent_chat(chat: AgentChat, user: User) -> bool:
 
 
 async def _get_accessible_agent_chat(
-    oper: AgentChatOper, session_id: str, user: User
-) -> Optional[AgentChat]:
+    service: AgentChatService,
+    session_id: str,
+    user: ApiPrincipal,
+) -> Optional[AgentChatRecord]:
     """
     读取当前用户可访问的 Agent 会话。
     """
-    chat = await oper.async_get(session_id=session_id)
-    if not chat or not _can_access_agent_chat(chat, user):
-        return None
-    return chat
+    return await service.get_accessible(session_id, user)
 
 
 def _append_web_agent_text_segment(assistant_message: dict, content: str) -> None:
@@ -632,7 +632,7 @@ def _apply_web_agent_display_event(event: dict, assistant_message: dict) -> None
 def _save_web_agent_display_snapshot(
     *,
     session_id: str,
-    current_user: User,
+    current_user: ApiPrincipal,
     messages: list[dict],
     client_session_id: Optional[str] = None,
 ) -> None:
@@ -640,9 +640,9 @@ def _save_web_agent_display_snapshot(
     保存 WebAgent 当前展示消息快照。
     """
     try:
-        oper = AgentChatOper()
-        existing_chat = oper.get(session_id=session_id)
-        AgentChatOper().save_display_messages(
+        service = get_configured_agent_chat_service()
+        existing_chat = service.get_sync(session_id)
+        service.save_display_sync(
             session_id=session_id,
             user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
             username=(existing_chat.username if existing_chat else current_user.name),
@@ -717,7 +717,7 @@ def _sanitize_web_agent_upload_name(
     return safe_name
 
 
-def _get_web_agent_upload_dir(user: User, session_id: Optional[str]) -> Path:
+def _get_web_agent_upload_dir(user: ApiPrincipal, session_id: Optional[str]) -> Path:
     """
     计算当前 Web Agent 会话的临时附件目录。
 
@@ -1422,7 +1422,7 @@ def _get_web_agent_unknown_command_message(text: str) -> Optional[str]:
     return f"命令不存在：{command}"
 
 
-def _ensure_web_agent_command_allowed(current_user: User) -> Optional[str]:
+def _ensure_web_agent_command_allowed(current_user: ApiPrincipal) -> Optional[str]:
     """
     校验当前 Web 用户是否可以执行传统斜杠命令。
 
@@ -1437,7 +1437,7 @@ def _ensure_web_agent_command_allowed(current_user: User) -> Optional[str]:
 async def _collect_web_agent_traditional_events(
     *,
     text: str,
-    current_user: User,
+    current_user: ApiPrincipal,
     original_message_id: Optional[Union[str, int]] = None,
     original_chat_id: Optional[Union[str, int]] = None,
 ) -> list[dict]:
@@ -1634,7 +1634,7 @@ async def download_web_agent_file(file_id: str) -> FileResponse:
 async def upload_web_agent_file(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     上传 Web 智能助手对话附件。
@@ -1677,7 +1677,7 @@ async def upload_web_agent_file(
 )
 async def web_agent_callback(
     payload: _SchemaAgentWebChoiceRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     接收 Web 智能助手选择卡片回调。
@@ -1714,7 +1714,7 @@ async def web_agent_callback(
     response_model=_SchemaResponse[list[_SchemaAgentWebCommandInfo]],
 )
 async def list_web_agent_commands(
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse:
     """
     获取当前 Web 智能助手可补全的斜杠命令。
@@ -1734,8 +1734,8 @@ async def list_web_agent_commands(
     response_model=_SchemaResponse[list[_SchemaAgentChatSessionSummary]],
 )
 async def list_agent_chat_sessions(
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_async_db),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
     page: Optional[int] = 1,
     count: Optional[int] = 30,
 ) -> _SchemaResponse:
@@ -1743,23 +1743,17 @@ async def list_agent_chat_sessions(
     获取当前用户可访问的 Agent 历史会话列表。
 
     :param current_user: 当前登录用户
-    :param db: 异步数据库会话
+    :param service: Agent 会话应用服务
     :param page: 页码
     :param count: 每页数量
     :return: 会话摘要列表
     """
-    user_id = None if current_user.is_superuser else str(current_user.id)
-    username = None if current_user.is_superuser else current_user.name
-    chats = await AgentChatOper(db).async_list_by_page(
+    chats = await service.list(
+        current_user,
         page=page,
         count=count,
-        user_id=user_id,
-        username=username,
     )
-    return _SchemaResponse(
-        success=True,
-        data=[AgentChatOper.to_summary(chat) for chat in chats],
-    )
+    return _SchemaResponse(success=True, data=chats)
 
 
 @router.get(
@@ -1769,24 +1763,27 @@ async def list_agent_chat_sessions(
 )
 async def get_agent_chat_session(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_async_db),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
 ) -> _SchemaResponse:
     """
     获取一条 Agent 历史会话详情。
 
     :param session_id: Agent 会话 ID
     :param current_user: 当前登录用户
-    :param db: 异步数据库会话
+    :param service: Agent 会话应用服务
     :return: 会话详情
     """
-    oper = AgentChatOper(db)
-    chat = await _get_accessible_agent_chat(oper, session_id, current_user)
+    chat = await _get_accessible_agent_chat(service, session_id, current_user)
     server_session_id = session_id
     if not chat:
         server_session_id = _build_web_agent_session_id(current_user, session_id)
         if server_session_id != session_id:
-            chat = await _get_accessible_agent_chat(oper, server_session_id, current_user)
+            chat = await _get_accessible_agent_chat(
+                service,
+                server_session_id,
+                current_user,
+            )
     if not chat:
         manager = get_running_agent_manager()
         if manager and manager.is_session_busy(server_session_id):
@@ -1800,7 +1797,7 @@ async def get_agent_chat_session(
                 },
             )
         return _SchemaResponse(success=False, message="会话不存在或无权访问")
-    data = AgentChatOper.to_detail(chat)
+    data = service.to_detail(chat).model_dump()
     manager = get_running_agent_manager()
     data["is_processing"] = bool(
         manager and manager.is_session_busy(chat.session_id)
@@ -1816,8 +1813,8 @@ async def get_agent_chat_session(
 async def save_agent_chat_display(
     session_id: str,
     payload: _SchemaAgentChatDisplaySaveRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_async_db),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
 ) -> _SchemaResponse:
     """
     保存前端聚合后的 Agent 展示消息。
@@ -1825,12 +1822,15 @@ async def save_agent_chat_display(
     :param session_id: Agent 会话 ID
     :param payload: 展示消息保存请求
     :param current_user: 当前登录用户
-    :param db: 异步数据库会话
+    :param service: Agent 会话应用服务
     :return: 保存后的会话摘要
     """
-    oper = AgentChatOper(db)
-    existing_chat = await oper.async_get(session_id=session_id)
-    if existing_chat and not _can_access_agent_chat(existing_chat, current_user):
+    existing_chat = await service.get_accessible(session_id, current_user)
+    if existing_chat is None:
+        unrestricted_chat = await service.get(session_id)
+    else:
+        unrestricted_chat = existing_chat
+    if unrestricted_chat and existing_chat is None:
         return _SchemaResponse(success=False, message="会话不存在或无权访问")
 
     messages = [
@@ -1844,10 +1844,10 @@ async def save_agent_chat_display(
         messages=messages,
         client_session_id=existing_chat.client_session_id if existing_chat else session_id,
     )
-    chat = await oper.async_get(session_id=session_id)
+    chat = await service.get_accessible(session_id, current_user)
     if not chat:
         return _SchemaResponse(success=False, message="会话保存失败")
-    return _SchemaResponse(success=True, data=AgentChatOper.to_summary(chat))
+    return _SchemaResponse(success=True, data=service.to_summary(chat))
 
 
 @router.delete(
@@ -1857,22 +1857,21 @@ async def save_agent_chat_display(
 )
 async def delete_agent_chat_session(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_async_db),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
 ) -> _SchemaResponse:
     """
     删除一条 Agent 历史会话。
 
     :param session_id: Agent 会话 ID
     :param current_user: 当前登录用户
-    :param db: 异步数据库会话
+    :param service: Agent 会话应用服务
     :return: 删除结果
     """
-    oper = AgentChatOper(db)
-    chat = await _get_accessible_agent_chat(oper, session_id, current_user)
+    chat = await _get_accessible_agent_chat(service, session_id, current_user)
     if not chat:
         return _SchemaResponse(success=False, message="会话不存在或无权访问")
-    deleted = await oper.async_delete(session_id=session_id)
+    deleted = await service.delete(session_id, current_user)
     return _SchemaResponse(success=deleted, message="删除成功" if deleted else "删除失败")
 
 
@@ -1883,23 +1882,25 @@ async def delete_agent_chat_session(
 )
 async def stop_web_agent_session_task(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_async_db),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
 ) -> _SchemaResponse:
     """
     停止当前 Web 智能助手会话正在执行的任务。
 
     :param session_id: Agent 会话 ID
     :param current_user: 当前登录用户
-    :param db: 异步数据库会话
+    :param service: Agent 会话应用服务
     :return: 停止结果
     """
     server_session_id = _build_web_agent_session_id(current_user, session_id)
     chat = await _get_accessible_agent_chat(
-        AgentChatOper(db), server_session_id, current_user
+        service,
+        server_session_id,
+        current_user,
     )
     if not chat and server_session_id != session_id:
-        chat = await _get_accessible_agent_chat(AgentChatOper(db), session_id, current_user)
+        chat = await _get_accessible_agent_chat(service, session_id, current_user)
     if chat and not _can_access_agent_chat(chat, current_user):
         return _SchemaResponse(success=False, message="会话不存在或无权访问")
 
@@ -1927,7 +1928,7 @@ async def stop_web_agent_session_task(
 async def web_agent_stream(
     payload: _SchemaAgentWebChatRequest,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> StreamingResponse:
     """
     Web 智能助手流式对话。

@@ -6,7 +6,7 @@ from typing import Union, Optional
 
 from app.application.orchestration import ChainBase
 from app.runtime.config import settings
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -154,7 +154,7 @@ class SystemChain(ChainBase):
             logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
 
             # 安装缺少的依赖
-            PluginManager.install_plugin_missing_dependencies()
+            get_plugin_manager().install_plugin_missing_dependencies()
 
         # 删除备份目录
         try:

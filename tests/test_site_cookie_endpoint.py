@@ -14,13 +14,11 @@ def test_update_cookie_by_body_uses_request_body():
     fake_chain.update_cookie.return_value = (True, "ok")
     request = schemas.SiteCookieUpdate(username="user", password="password", code="123456")
 
-    with patch.object(site_endpoint.Site, "get", return_value=fake_site), patch.object(
-        site_endpoint, "SiteChain", return_value=fake_chain
-    ):
+    with patch.object(site_endpoint, "SiteChain", return_value=fake_chain):
         response = site_endpoint.update_cookie_by_body(
             site_id=1,
             site_cookie_update=request,
-            db=Mock(),
+            query=SimpleNamespace(get_sync=lambda _site_id: fake_site),
             _=Mock(),
         )
 
@@ -42,15 +40,13 @@ def test_update_cookie_legacy_get_keeps_query_params():
     fake_chain = Mock()
     fake_chain.update_cookie.return_value = (False, "failed")
 
-    with patch.object(site_endpoint.Site, "get", return_value=fake_site), patch.object(
-        site_endpoint, "SiteChain", return_value=fake_chain
-    ):
+    with patch.object(site_endpoint, "SiteChain", return_value=fake_chain):
         response = site_endpoint.update_cookie(
             site_id=1,
             username="user",
             password="password",
             code=None,
-            db=Mock(),
+            query=SimpleNamespace(get_sync=lambda _site_id: fake_site),
             _=Mock(),
         )
 

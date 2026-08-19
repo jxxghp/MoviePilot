@@ -5,7 +5,7 @@ from fastapi import BackgroundTasks, Request, Depends
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.webhook import WebhookChain
-from app.application.security.access import verify_apitoken
+from app.adapters.web.security.access import verify_apitoken
 
 router = ResponseAPIRouter()
 

@@ -118,9 +118,9 @@ class MoviePilotToolsManager:
                     self._load_tools_locked()
             return
 
-        from app.runtime.extensions.plugin_manager import PluginManager
+        from app.application.plugin.runtime import get_plugin_manager
 
-        plugin_manager = PluginManager()
+        plugin_manager = get_plugin_manager()
         if (
             self._plugin_agent_tools_revision
             == plugin_manager.get_plugin_agent_tools_revision()

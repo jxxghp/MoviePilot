@@ -33,7 +33,12 @@ from app.startup.command_initializer import init_command, stop_command, restart_
 from app.startup.domain_initializer import configure_domain_dependencies
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
-from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
+from app.startup.plugins_initializer import (
+    configure_plugin_services,
+    init_plugins,
+    stop_plugins,
+    sync_plugins,
+)
 from app.startup.routers_initializer import init_routers
 from app.startup.scheduler_initializer import (
     stop_scheduler,
@@ -112,6 +117,12 @@ async def run_startup_step(
         logger.info("启动%s完成，耗时=%.2fms", name, elapsed_ms)
 
 
+def prepare_plugin_restore() -> None:
+    """先装配插件外部系统服务，再恢复插件及其依赖。"""
+    configure_plugin_services()
+    SystemChain().restore_plugins()
+
+
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
     """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
     return (
@@ -166,7 +177,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件备份恢复",
             dependencies=("模块服务",),
             mode=LifecycleMode.NORMAL_ONLY,
-            start=lambda: SystemChain().restore_plugins(),
+            start=prepare_plugin_restore,
             start_order=70,
             start_timeout_seconds=300,
         ),

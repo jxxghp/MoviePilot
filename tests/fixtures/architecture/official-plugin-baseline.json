@@ -3348,10 +3348,11 @@
       ]
     },
     "app.agent.llm": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v2/airecognizerenhancer/__init__.py",
-        "plugins.v2/chatgpt/openai.py"
+        "plugins.v2/chatgpt/openai.py",
+        "plugins.v2/qbuploadlimiter/__init__.py"
       ]
     },
     "app.agent.llm.helper": {
@@ -3729,11 +3730,12 @@
       ]
     },
     "app.db": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/historytov2/__init__.py",
         "plugins.v2/promotiontag/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/historytov2/__init__.py"
       ]
@@ -3771,9 +3773,10 @@
       ]
     },
     "app.db.models.siteuserdata": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v2/dailysummary/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
         "plugins.v2/sitestatistic/__init__.py"
       ]
     },
@@ -3781,6 +3784,12 @@
       "file_count": 1,
       "files": [
         "plugins.v3/bangumicoll/__init__.py"
+      ]
+    },
+    "app.db.models.transferhistory": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/qbuploadlimiter/__init__.py"
       ]
     },
     "app.db.models.user": {
@@ -3934,9 +3943,10 @@
       ]
     },
     "app.helper.llm": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/airecognizerenhancer/__init__.py"
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/qbuploadlimiter/__init__.py"
       ]
     },
     "app.helper.mediaserver": {
@@ -4831,13 +4841,13 @@
   },
   "schema_version": 2,
   "source": {
-    "head": "68340c0884c3aff4ee027c9c94ce25d096871aa5",
+    "head": "ddb41dbcbbea21196154a7f6d5fdba3aa34a5e4a",
     "python_file_count": 231,
     "repository": "MoviePilot-Plugins",
     "roots": [
       "plugins.v2",
       "plugins.v3"
     ],
-    "source_sha256": "cb69dda1fe0547e85a36c99ebcc31e9f3de62d035d548b4a33875626a24b7197"
+    "source_sha256": "63663538bd7f5b7c6a9f318ab58ad35d8c5ab68bd7d798d07a5dcdf600f062ad"
   }
 }

@@ -6,7 +6,6 @@ from fastapi.responses import HTMLResponse
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
-from app.db.models import User
 from app.api.deps import get_current_active_superuser_async
 
 router = ResponseAPIRouter()
@@ -29,7 +28,7 @@ def _get_llm_provider_manager_type() -> type:
 async def manage_provider(
         request: Request,
         payload: _SchemaManageRequest,
-        _: User = Depends(get_current_active_superuser_async),
+        _: object = Depends(get_current_active_superuser_async),
 ):
     """
     LLM 提供商统一管理入口：前端上送 target/action/params 原样透传，

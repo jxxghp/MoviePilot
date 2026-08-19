@@ -459,9 +459,9 @@
       "app.core.security": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "application",
-        "replacement": "app.application.security.access",
-        "target": "app.application.security.access"
+        "owner": "sdk",
+        "replacement": "app.sdk.security",
+        "target": "app.sdk.security"
       },
       "app.db.agentchat_oper": {
         "introduced": "v3.0.0",
@@ -530,7 +530,7 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "sdk",
-        "replacement": "app.application.subscribe.add_subscribe",
+        "replacement": "app.application.subscription.write.add_subscribe",
         "target": "app.sdk._legacy.subscribe"
       },
       "app.db.subscribehistory_oper": {
@@ -1569,7 +1569,7 @@
       },
       {
         "caller": "app.application.orchestration.transfer",
-        "line": 608
+        "line": 618
       },
       {
         "caller": "app.db.oper.transferpending",
@@ -1647,19 +1647,19 @@
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 908
+        "line": 952
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1022
+        "line": 1066
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1076
+        "line": 1120
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1090
+        "line": 1134
       },
       {
         "caller": "app.application.orchestration._messaging",
@@ -1721,7 +1721,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 1271
+            "line": 1276
           }
         ]
       },
@@ -1807,7 +1807,7 @@
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 239
+            "line": 382
           }
         ]
       },
@@ -1829,7 +1829,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1053
+            "line": 1057
           }
         ]
       },
@@ -1838,7 +1838,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1420
+            "line": 1424
           }
         ]
       },
@@ -1847,11 +1847,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 1094
+            "line": 1104
           },
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 1110
+            "line": 1120
           }
         ]
       },
@@ -1860,7 +1860,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 2786
+            "line": 2824
           }
         ]
       },
@@ -1869,11 +1869,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 3524
+            "line": 3567
           },
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 3546
+            "line": 3589
           }
         ]
       },
@@ -1931,7 +1931,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 865
+            "line": 870
           }
         ]
       },
@@ -1940,7 +1940,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 388
+            "line": 398
           }
         ]
       },
@@ -1949,7 +1949,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 267
+            "line": 277
           }
         ]
       },
@@ -1983,7 +1983,7 @@
           },
           {
             "caller": "app.startup.agent_initializer",
-            "line": 98
+            "line": 106
           }
         ],
         "producers": []
@@ -1993,7 +1993,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1241
+            "line": 1245
           }
         ]
       },
@@ -2002,7 +2002,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2086
+            "line": 2090
           }
         ]
       },
@@ -2010,13 +2010,13 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2070
+            "line": 2074
           }
         ],
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 225
+            "line": 368
           }
         ]
       },
@@ -2049,17 +2049,17 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.scraping",
-            "line": 586
+            "line": 597
           }
         ],
         "producers": [
           {
             "caller": "app.application.orchestration._transfer",
-            "line": 460
+            "line": 464
           },
           {
             "caller": "app.application.orchestration._transfer",
-            "line": 635
+            "line": 639
           }
         ]
       },
@@ -2089,7 +2089,7 @@
         "consumers": [
           {
             "caller": "app.scheduler",
-            "line": 1077
+            "line": 1179
           }
         ],
         "producers": [
@@ -2107,21 +2107,17 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.search",
-            "line": 2861
+            "line": 2864
           },
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 3001
+            "line": 3044
           }
         ],
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 142
-          },
-          {
-            "caller": "app.api.endpoints.site",
-            "line": 199
+            "line": 214
           }
         ]
       },
@@ -2130,11 +2126,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.site",
-            "line": 74
+            "line": 75
           },
           {
             "caller": "app.application.orchestration.site",
-            "line": 163
+            "line": 164
           }
         ]
       },
@@ -2142,15 +2138,15 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.site",
-            "line": 586
+            "line": 587
           },
           {
             "caller": "app.application.orchestration.site",
-            "line": 628
+            "line": 629
           },
           {
             "caller": "app.application.orchestration.site",
-            "line": 650
+            "line": 652
           }
         ],
         "producers": [
@@ -2160,11 +2156,11 @@
           },
           {
             "caller": "app.api.deps",
-            "line": 137
+            "line": 209
           },
           {
             "caller": "app.application.orchestration.site",
-            "line": 566
+            "line": 567
           }
         ]
       },
@@ -2173,11 +2169,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 996
+            "line": 1034
           },
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 1200
+            "line": 1238
           }
         ]
       },
@@ -2186,7 +2182,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 2824
+            "line": 2862
           }
         ]
       },
@@ -2199,7 +2195,7 @@
           },
           {
             "caller": "app.api.deps",
-            "line": 73
+            "line": 85
           }
         ]
       },
@@ -2212,15 +2208,15 @@
           },
           {
             "caller": "app.api.endpoints.subscribe",
-            "line": 333
+            "line": 296
           },
           {
             "caller": "app.api.endpoints.subscribe",
-            "line": 366
+            "line": 329
           },
           {
             "caller": "app.api.endpoints.subscribe",
-            "line": 444
+            "line": 389
           }
         ]
       },
@@ -2229,7 +2225,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 374
+            "line": 384
           }
         ]
       },
@@ -2238,7 +2234,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 253
+            "line": 263
           }
         ]
       },
@@ -2259,7 +2255,7 @@
           },
           {
             "caller": "app.scheduler",
-            "line": 727
+            "line": 799
           }
         ]
       },
@@ -2268,7 +2264,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 360
+            "line": 370
           }
         ]
       },
@@ -2277,7 +2273,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 239
+            "line": 249
           }
         ]
       },
@@ -2314,7 +2310,7 @@
         ]
       }
     },
-    "producer_count": 68
+    "producer_count": 67
   },
   "run_module": {
     "call_count": 0,
@@ -2471,6 +2467,33 @@
         "kind": "import",
         "name": "settings",
         "target": "app.runtime.config.settings"
+      }
+    ],
+    "app.sdk.database": [
+      {
+        "kind": "import",
+        "name": "BackupArtifact",
+        "target": "app.application.backup.BackupArtifact"
+      },
+      {
+        "kind": "import",
+        "name": "BackupVerification",
+        "target": "app.application.backup.BackupVerification"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "create_backup",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_backups",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "verify_backup",
+        "target": ""
       }
     ],
     "app.sdk.events": [
@@ -2883,7 +2906,154 @@
         "target": "app.runtime.extensions.plugin_manager.PluginManager"
       }
     ],
+    "app.sdk.security": [
+      {
+        "kind": "import",
+        "name": "ALGORITHM",
+        "target": "app.application.security.token.ALGORITHM"
+      },
+      {
+        "kind": "import",
+        "name": "BCRYPT_PASSWORD_MAX_BYTES",
+        "target": "app.application.security.token.BCRYPT_PASSWORD_MAX_BYTES"
+      },
+      {
+        "kind": "import",
+        "name": "BCRYPT_ROUNDS",
+        "target": "app.application.security.token.BCRYPT_ROUNDS"
+      },
+      {
+        "kind": "import",
+        "name": "PasswordTooLongError",
+        "target": "app.application.security.token.PasswordTooLongError"
+      },
+      {
+        "kind": "import",
+        "name": "TokenValidationError",
+        "target": "app.application.security.token.TokenValidationError"
+      },
+      {
+        "kind": "import",
+        "name": "aes_decrypt",
+        "target": "app.application.security.token.aes_decrypt"
+      },
+      {
+        "kind": "import",
+        "name": "aes_encrypt",
+        "target": "app.application.security.token.aes_encrypt"
+      },
+      {
+        "kind": "import",
+        "name": "anthropic_api_key_header",
+        "target": "app.adapters.web.security.access.anthropic_api_key_header"
+      },
+      {
+        "kind": "import",
+        "name": "api_key_header",
+        "target": "app.adapters.web.security.access.api_key_header"
+      },
+      {
+        "kind": "import",
+        "name": "api_key_query",
+        "target": "app.adapters.web.security.access.api_key_query"
+      },
+      {
+        "kind": "import",
+        "name": "api_token_query",
+        "target": "app.adapters.web.security.access.api_token_query"
+      },
+      {
+        "kind": "import",
+        "name": "create_access_token",
+        "target": "app.application.security.token.create_access_token"
+      },
+      {
+        "kind": "import",
+        "name": "decode_access_token",
+        "target": "app.application.security.token.decode_access_token"
+      },
+      {
+        "kind": "import",
+        "name": "decrypt",
+        "target": "app.application.security.token.decrypt"
+      },
+      {
+        "kind": "import",
+        "name": "encrypt_message",
+        "target": "app.application.security.token.encrypt_message"
+      },
+      {
+        "kind": "import",
+        "name": "get_password_hash",
+        "target": "app.application.security.token.get_password_hash"
+      },
+      {
+        "kind": "import",
+        "name": "hash_sha256",
+        "target": "app.application.security.token.hash_sha256"
+      },
+      {
+        "kind": "import",
+        "name": "nexusphp_encrypt",
+        "target": "app.application.security.token.nexusphp_encrypt"
+      },
+      {
+        "kind": "import",
+        "name": "oauth2_scheme_manual_error",
+        "target": "app.adapters.web.security.access.oauth2_scheme_manual_error"
+      },
+      {
+        "kind": "import",
+        "name": "openai_bearer_scheme",
+        "target": "app.adapters.web.security.access.openai_bearer_scheme"
+      },
+      {
+        "kind": "import",
+        "name": "resource_token_cookie",
+        "target": "app.adapters.web.security.access.resource_token_cookie"
+      },
+      {
+        "kind": "import",
+        "name": "set_or_refresh_resource_token_cookie",
+        "target": "app.adapters.web.security.access.set_or_refresh_resource_token_cookie"
+      },
+      {
+        "kind": "import",
+        "name": "set_superuser_token_payload_provider",
+        "target": "app.adapters.web.security.access.set_superuser_token_payload_provider"
+      },
+      {
+        "kind": "import",
+        "name": "verify_apikey",
+        "target": "app.adapters.web.security.access.verify_apikey"
+      },
+      {
+        "kind": "import",
+        "name": "verify_apitoken",
+        "target": "app.adapters.web.security.access.verify_apitoken"
+      },
+      {
+        "kind": "import",
+        "name": "verify_password",
+        "target": "app.application.security.token.verify_password"
+      },
+      {
+        "kind": "import",
+        "name": "verify_resource_token",
+        "target": "app.adapters.web.security.access.verify_resource_token"
+      },
+      {
+        "kind": "import",
+        "name": "verify_token",
+        "target": "app.adapters.web.security.access.verify_token"
+      }
+    ],
     "app.sdk.services": [
+      {
+        "kind": "import",
+        "name": "AsyncMediaServerQueryRepository",
+        "target": "app.application.mediaserver.AsyncMediaServerQueryRepository"
+      },
       {
         "kind": "import",
         "name": "DownloaderHelper",
@@ -2898,6 +3068,11 @@
         "kind": "import",
         "name": "MediaServerIdentityHelper",
         "target": "app.domain.library.MediaServerIdentityHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MediaServerQueryService",
+        "target": "app.application.mediaserver.MediaServerQueryService"
       },
       {
         "kind": "import",
@@ -2922,7 +3097,7 @@
       {
         "kind": "import",
         "name": "ServiceConfigHelper",
-        "target": "app.runtime.extensions.service_registry.ServiceConfigHelper"
+        "target": "app.runtime.extensions.service_config.ServiceConfigHelper"
       },
       {
         "kind": "import",

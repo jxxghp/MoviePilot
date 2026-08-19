@@ -19,6 +19,7 @@ from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
 from app.runtime.config import settings
 from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.state import SystemHelper
 from app.runtime.thread import ThreadHelper
@@ -27,13 +28,23 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.application.messaging.message import MessageHelper, stop_message
+from app.application.messaging.message import (
+    MessageHelper,
+    MessageQueueManager,
+    stop_message,
+)
+from app.db.oper.message import MessageOper
+from app.runtime.cache import AsyncFileCache, FileCache
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
+from app.application.database import configure_database_governance
+from app.application.module import configure_module_runtime
+from app.application.plugin.runtime import configure_plugin_runtime
 from app.db import close_database
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -43,15 +54,16 @@ from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
+from app.startup.database import build_database_governance
 from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
 )
-from app.application.security.access import set_superuser_token_payload_provider
+from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
 from app.application.orchestration.context import (
-    build_default_chain_runtime_context,
+    ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
 from app.runtime.extensions.service_config import configure_service_config_reader
@@ -59,6 +71,27 @@ from app.startup.hostport_initializer import (
     configure_dispatch_host_ports,
     configure_host_ports,
 )
+
+
+def build_default_chain_runtime_context() -> ChainRuntimeContext:
+    """
+    按宿主既有的管理器单例身份组装 Chain 运行上下文
+
+    上下文本身只声明所需对象，装配这些全局管理器是组合根的职责，因此构造放在
+    这里而不是声明处，避免应用层在模块导入期就抓取运行时管理器与数据库操作器。
+    :return: Chain 无参兼容入口使用的运行上下文
+    """
+    return ChainRuntimeContext(
+        module_manager=ModuleManager(),
+        plugin_manager=PluginManager(),
+        event_manager=EventManager(),
+        message_oper=MessageOper(),
+        message_helper=MessageHelper(),
+        file_cache=FileCache(),
+        async_file_cache=AsyncFileCache(),
+        message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
+        module_dispatcher_factory=ModuleInvocationDispatcher,
+    )
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -328,8 +361,13 @@ async def init_modules():
     """
     # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于模块加载完成注入。
     configure_host_ports()
+    # 入口层经应用端口取用模块目录与插件目录，不直接构造运行时单例。
+    configure_module_runtime(lambda: ModuleManager())
+    configure_plugin_runtime(lambda: PluginManager())
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     configure_runtime_data_providers()
+    # 数据库健康探测、清理与备份统一走同一个治理门面，由启动组合根装配后各处按端口取用。
+    configure_database_governance(build_database_governance())
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。

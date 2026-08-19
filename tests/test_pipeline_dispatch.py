@@ -366,6 +366,7 @@ def _build_chain_with_modules(modules: list) -> tuple[ChainBase, Mock]:
         file_cache=Mock(),
         async_file_cache=Mock(),
         message_queue_factory=lambda callback: Mock(),
+        module_dispatcher_factory=ModuleInvocationDispatcher,
     ))
     return chain, module_manager
 

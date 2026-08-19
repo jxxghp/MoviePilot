@@ -270,8 +270,8 @@ def test_uninstall_plugin_runtime_propagates_unknown_plugin_without_deregisterin
 
     with (
         patch("app.agent.tools.impl._plugin_tool_utils.PluginManager", return_value=manager),
-        patch("app.application.plugins.remove_plugin_api") as remove_api,
-        patch("app.application.plugins.remove_plugin_from_folders") as remove_folders,
+        patch("app.application.plugin.routes.remove_plugin_api") as remove_api,
+        patch("app.application.plugin.folders.remove_plugin_from_folders") as remove_folders,
         patch("app.application.scheduling.remove_plugin_job") as remove_job,
     ):
         with pytest.raises(LookupError):
@@ -306,8 +306,8 @@ def test_uninstall_plugin_endpoint_and_agent_tool_share_manager_call():
     with (
         patch("app.agent.tools.impl._plugin_tool_utils.PluginManager", return_value=manager),
         patch("app.agent.tools.impl._plugin_tool_utils.SystemConfigOper", return_value=config_oper),
-        patch("app.application.plugins.remove_plugin_api"),
-        patch("app.application.plugins.remove_plugin_from_folders"),
+        patch("app.application.plugin.routes.remove_plugin_api"),
+        patch("app.application.plugin.folders.remove_plugin_from_folders"),
         patch("app.application.scheduling.remove_plugin_job"),
     ):
         asyncio.run(uninstall_plugin_runtime("DemoPlugin"))

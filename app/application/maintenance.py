@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
 
-from app.db.maintenance import DatabaseCleanupRepository
-from app.db.session import SessionFactory
 from app.runtime.config import settings
 from app.runtime.log import logger
 
@@ -323,14 +321,6 @@ def read_cleanup_policy() -> CleanupPolicy:
         download_failure_days=_normalize_days(
             settings.DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS
         ),
-    )
-
-
-def build_cleanup_service() -> DataCleanupService:
-    """在应用边界组装默认数据库适配器，供兼容调度门面触发。"""
-    return DataCleanupService(
-        repository=DatabaseCleanupRepository(session_factory=SessionFactory),
-        policy_reader=read_cleanup_policy,
     )
 
 

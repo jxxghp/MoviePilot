@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
 
 
@@ -48,7 +48,7 @@ class QueryPluginCapabilitiesTool(MoviePilotTool):
     @staticmethod
     def _load_plugin_capabilities(plugin_id: Optional[str] = None) -> dict:
         """读取运行中插件实例暴露的内存能力信息。"""
-        plugin_manager = PluginManager()
+        plugin_manager = get_plugin_manager()
         result = {}
 
         commands = plugin_manager.get_plugin_commands(pid=plugin_id)

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from app.application.orchestration.context import ChainRuntimeContext, get_chain_runtime_context
+from app.application.orchestration.data import get_chain_data_ports
 from app.application.orchestration._messaging import MessageProcessingMixin, NotificationMixin
 from app.application.orchestration._recognition import RecognitionMixin
 from app.application.orchestration.ports import (
@@ -21,7 +22,6 @@ from app.application.orchestration.ports import (
 )
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
 from app.schemas.mediaserver import ExistMediaInfo
@@ -59,11 +59,12 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.pluginmanager = context.plugin_manager
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
+        self.data_ports = context.data_ports or get_chain_data_ports()
         error_reporter = ModuleErrorReporter(
             event_manager=self.eventmanager,
             message_helper=self.messagehelper,
         )
-        self._module_dispatcher = ModuleInvocationDispatcher(
+        self._module_dispatcher = context.module_dispatcher_factory(
             module_catalog=self.modulemanager,
             plugin_catalog=self.pluginmanager,
             plugin_error_handler=error_reporter.handle_plugin_error,

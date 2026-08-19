@@ -8,7 +8,16 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
-from app.application.plugins import register_api_app
+from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.application.plugin.routes import configure_plugin_routes
+from app.adapters.web.security.access import (
+    configure_token_codec,
+    verify_apikey,
+    verify_token,
+)
+from app.application.security.token import create_access_token, decode_access_token
+from app.runtime.extensions.instance import matches_extension
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.config import settings
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
@@ -306,6 +315,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
     @_app.middleware("http")
     async def locale_context_middleware(
             request: Request,
@@ -322,12 +332,30 @@ def create_app() -> FastAPI:
         finally:
             LocaleHelper.reset_current_locale(token)
 
+    # HTTP 适配器只持有令牌编解码端口，具体实现由组合根在创建应用时连接。
+    configure_token_codec(create_access_token, decode_access_token)
+
+    # 向 application 层插件路由服务注入应用实例，插件 API 的动态注册/移除
+    # 统一经服务完成，避免 api.endpoints 反向依赖本模块。
+    configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=_app,
+        plugin_ids=lambda: PluginManager().get_running_plugin_ids(),
+        plugin_apis=lambda plugin_id: PluginManager().get_plugin_apis(plugin_id),
+        verify_token=verify_token,
+        verify_apikey=verify_apikey,
+        prefix=f"{settings.API_V1_STR}/plugin",
+        protected_routes={
+            f"{settings.API_V1_STR}/openapi.json",
+            "/docs",
+            "/docs/oauth2-redirect",
+            "/redoc",
+        },
+        log=logger,
+        route_matches=matches_extension,
+    ))
+
     return _app
 
 
-# 创建 FastAPI 应用实例
+# 创建 FastAPI 应用实例；所有组合根装配副作用都在 create_app() 内部完成
 app = create_app()
-
-# 向 application 层插件路由服务注入应用实例，插件 API 的动态注册/移除
-# 统一经服务完成，避免 api.endpoints 反向依赖本模块。
-register_api_app(app)

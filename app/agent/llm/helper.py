@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
+from app.agent.llm.gateway import resolve_llm_provider_runtime
 from app.runtime.config import settings
 from app.runtime.log import logger
 
@@ -793,9 +794,7 @@ class LLMHelper:
             return None
 
         try:
-            from app.agent.llm.provider import LLMProviderManager
-
-            metadata = LLMProviderManager().resolve_cached_model_metadata(
+            metadata = resolve_llm_provider_runtime().resolve_cached_model_metadata(
                 provider_id=provider_name,
                 model_id=model_name,
                 base_url=base_url if base_url is not None else settings.LLM_BASE_URL,
@@ -1197,11 +1196,7 @@ class LLMHelper:
             thinking_level=thinking_level,
         )
         try:
-            # 延迟导入，避免单测在最小 stub 环境下 import `llm.py` 时被 provider
-            # 目录依赖链拖住。
-            from app.agent.llm.provider import LLMProviderManager
-
-            runtime = await LLMProviderManager().resolve_runtime(
+            runtime = await resolve_llm_provider_runtime().resolve_runtime(
                 provider_id=provider_name,
                 model=model_name,
                 api_key=api_key_value,
@@ -1328,8 +1323,6 @@ class LLMHelper:
         elif runtime["runtime"] == "bedrock":
             from langchain_aws import ChatBedrockConverse
 
-            from app.agent.llm.provider import LLMProviderManager
-
             bedrock_model_cls = ChatBedrockConverse
             if (
                     str(prompt_cache_key or "").strip()
@@ -1344,7 +1337,7 @@ class LLMHelper:
             aws_auth = runtime.get("aws_auth") or {}
             # Bearer 认证需要跳过 SigV4 签名并注入 Authorization 头，SigV4 认证
             # 直接以 AK/SK 签名；两种方式统一由 provider 管理器构造 boto3 客户端。
-            bedrock_client = LLMProviderManager().create_bedrock_client(
+            bedrock_client = resolve_llm_provider_runtime().create_bedrock_client(
                 "bedrock-runtime",
                 region=aws_region,
                 credentials=aws_auth,
@@ -1558,9 +1551,7 @@ class LLMHelper:
         """
         logger.info(f"获取 {provider} 模型列表...")
         try:
-            from app.agent.llm.provider import LLMProviderManager
-
-            models = await LLMProviderManager().list_models(
+            models = await resolve_llm_provider_runtime().list_models(
                 provider_id=provider,
                 api_key=api_key,
                 base_url=base_url,
@@ -1589,10 +1580,8 @@ class LLMHelper:
                     base_url=base_url,
                 )
             try:
-                from app.agent.llm.provider import LLMProviderManager
-
                 model_list_base_url = (
-                    LLMProviderManager().resolve_model_list_base_url(
+                    resolve_llm_provider_runtime().resolve_model_list_base_url(
                         provider_id=provider,
                         base_url=base_url,
                         base_url_preset_id=base_url_preset,

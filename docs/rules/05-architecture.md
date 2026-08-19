@@ -62,12 +62,12 @@ to make the directory tree look symmetrical.
 | Path | Ownership |
 |---|---|
 | `app/application/*.py` | Established single-module application services and compatibility facades |
-| `app/application/subscription/` | Subscription contracts and write commands: `contract.py` owns shared metadata/media-key projection; `delete.py` and `identity.py` own deletion use cases |
+| `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and later submission use cases |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/orchestration/` | Processing chains and their dispatch primitives; `context.py` owns the injectable runtime context and its no-argument compatibility provider |
-| `app/application/plugin/` | Plugin market catalog, installation command and dynamic-route port; filenames remain single words (`catalog.py`, `install.py`, `routes.py`) |
+| `app/application/plugin/` | Plugin market catalog, installation command, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
@@ -346,7 +346,7 @@ requires an Alembic migration under `database/versions/`.
 
 Oper classes take and return persistence values, not domain objects. Translating
 `MediaInfo` / `MetaBase` into a row is business logic and belongs in
-`app/application/` — see `application/subscribe.py` and `application/history.py`
+`app/application/` — see `application/subscription/write.py` and `application/history.py`
 for the two write paths. Column-type coercion (numeric year to string, boolean
 switches to integers) stays in the Oper because it follows the column, not the
 caller.
@@ -397,8 +397,8 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
 | `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
 | `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/agent_initializer.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
-| `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugins.py`, `scheduling.py` and `commands.py` facades |
-| `api -> factory` | Forbidden; the FastAPI instance is injected into `app/application/plugins.py` by the composition root after creation |
+| `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
+| `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
 | `application -> domain / runtime / adapter / Oper` | Allowed |
 | `module -> canonical capability / Oper` | Allowed |
 | `module -> module / chain` | Forbidden for new code |
@@ -415,7 +415,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 |---|---|
 | `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/agent_initializer.py`, with no static `application -> agent` edge |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
-| `app/application/plugins.py` | Plugin API dynamic route registration/removal; the FastAPI instance is injected by `app/factory.py` after creation |
+| `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
 | `app/application/orchestration/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
@@ -431,11 +431,16 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
 | `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
 | `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
 | `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
 | `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
-| `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol; plugin response payloads remain raw unless the plugin chooses its own envelope |
+| `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol and registration/removal use cases; plugin response payloads remain raw unless the plugin chooses its own envelope |
+| `app/application/plugin/folders.py` | Plugin-folder cleanup use case, compatible with current dictionary and legacy list storage shapes |
+| `app/application/plugin/runtime.py` | Plugin runtime port consumed by API, Agent and Workflow; the concrete `PluginManager` is registered only by startup |
+| `app/application/module.py` | Host module runtime port consumed by entrypoints; the concrete `ModuleManager` is registered only by startup |
+| `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
 | `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
@@ -470,4 +475,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/application/orchestration`.
 
-*Last Updated: 2026-08-17*
+*Last Updated: 2026-08-18*

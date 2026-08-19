@@ -61,9 +61,9 @@ def test_chain_base_does_not_import_concrete_chains() -> None:
 
     # 下划线前缀的内部模块（_messaging/_recognition 等）是 ChainBase 的
     # 功能域 mixin，ports 是按业务域划分的能力端口客户端，context 是 ChainBase
-    # 自身的依赖注入契约，三者都不是具体处理链，允许导入
+    # 自身的依赖注入契约，data 是持久化端口注册表，四者都不是具体处理链，允许导入
     prefix = "app.application.orchestration."
-    allowed_roots = {"ports", "context"}
+    allowed_roots = {"ports", "context", "data"}
     assert not {
         module
         for module in imports

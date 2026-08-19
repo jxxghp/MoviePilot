@@ -33,6 +33,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_workflow",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
+    monkeypatch.setattr(lifecycle, "configure_plugin_services", MagicMock())
     monkeypatch.setattr(lifecycle, "init_modules", AsyncMock())
 
     # 启动期的引擎预热与额度核算也要打桩。不打的话这些用例会走真实的引擎创建，在测试
@@ -124,6 +125,7 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
     asyncio.run(run_lifespan())
 
     lifecycle.init_modules.assert_awaited_once_with()
+    lifecycle.configure_plugin_services.assert_called_once_with()
     for name in (
         "init_plugins",
         "init_scheduler",
@@ -135,6 +137,25 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         getattr(lifecycle, name).assert_called_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
+
+
+def test_lifespan_configures_plugin_services_before_restore(monkeypatch):
+    """插件恢复依赖的外部系统服务必须先于恢复阶段完成装配。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    order = []
+    lifecycle.configure_plugin_services.side_effect = lambda: order.append("configure")
+    lifecycle.SystemChain.return_value.restore_plugins.side_effect = (
+        lambda: order.append("restore")
+    )
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert order == ["configure", "restore"]
+    _assert_completed_once(shutdown_steps["close_http"])
 
 
 def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
@@ -384,8 +405,11 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         lambda *_args: calls.append("signal"),
     )
     monkeypatch.setattr(main, "start_tray", lambda: calls.append("tray"))
-    monkeypatch.setattr(main, "init_db", lambda: calls.append("init_db"))
-    monkeypatch.setattr(main, "update_db", lambda: calls.append("update_db"))
+    monkeypatch.setattr(
+        main,
+        "prepare_database",
+        lambda: calls.append("prepare_database"),
+    )
     monkeypatch.setattr(main.Server, "run", lambda: calls.append("server"))
 
     main.run_application()
@@ -395,8 +419,7 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         "signal",
         "signal",
         "tray",
-        "init_db",
-        "update_db",
+        "prepare_database",
         "server",
     ]
 
@@ -416,8 +439,11 @@ def test_application_does_not_start_server_after_migration_failure(monkeypatch):
     server_run = MagicMock()
     monkeypatch.setattr(main.signal, "signal", MagicMock())
     monkeypatch.setattr(main, "start_tray", MagicMock())
-    monkeypatch.setattr(main, "init_db", MagicMock())
-    monkeypatch.setattr(main, "update_db", MagicMock(side_effect=migration_error))
+    monkeypatch.setattr(
+        main,
+        "prepare_database",
+        MagicMock(side_effect=migration_error),
+    )
     monkeypatch.setattr(main.Server, "run", server_run)
 
     with pytest.raises(RuntimeError) as raised:

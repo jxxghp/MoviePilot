@@ -29,9 +29,9 @@ def _shared_params(tmdb_id: int) -> dict:
 def _mock_counter(monkeypatch) -> Mock:
     """替换系统配置持久化入口并返回递增调用桩。"""
     increment = Mock()
-    # 计数逻辑在识别 mixin 中，按 _recognition 模块命名空间解析 SystemConfigOper
+    # 计数逻辑在识别 mixin 中，按 _recognition 模块命名空间解析 get_configured_system_config
     monkeypatch.setattr(
-        "app.application.orchestration._recognition.SystemConfigOper",
+        "app.application.orchestration._recognition.get_configured_system_config",
         lambda: SimpleNamespace(increment=increment),
     )
     return increment

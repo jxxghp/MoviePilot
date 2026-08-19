@@ -799,7 +799,7 @@ class AgentCapabilityManager:
         if not source:
             return False
 
-        from app.runtime.extensions.service_registry import ServiceConfigHelper
+        from app.runtime.extensions.service_config import ServiceConfigHelper
 
         for config in ServiceConfigHelper.get_notification_configs():
             if config.name != source:

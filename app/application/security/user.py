@@ -1,0 +1,108 @@
+"""用户管理用例。
+
+该模块承接用户端点需要的异步用户操作。具体数据库访问由请求组合根注入，
+避免 API 层同时承担 HTTP 编排和 ORM 适配职责。
+"""
+
+from collections.abc import Callable
+from typing import Any, Protocol
+
+
+class UserRepository(Protocol):
+    """用户用例所需的最小异步数据端口。"""
+
+    async def async_list(self) -> list[Any]:
+        """返回全部用户。"""
+
+    async def async_get_by_name(self, name: str) -> Any | None:
+        """按用户名返回用户。"""
+
+    async def async_get_by_id(self, user_id: int) -> Any | None:
+        """按用户 ID 返回用户。"""
+
+    async def async_create(self, payload: dict[str, Any]) -> Any | None:
+        """创建用户并返回持久化对象。"""
+
+    async def async_update(self, user_id: int, payload: dict[str, Any]) -> Any | None:
+        """更新用户并返回原用户对象。"""
+
+    async def async_delete(self, user_id: int) -> None:
+        """删除用户。"""
+
+    async def async_update_otp_by_name(self, name: str, otp: bool, secret: str) -> None:
+        """更新用户 OTP 状态。"""
+
+
+class UserService:
+    """用户管理应用服务。"""
+
+    def __init__(self, repository: UserRepository) -> None:
+        """创建用户服务。"""
+        self._repository = repository
+
+    async def list(self) -> list[Any]:
+        """返回用户列表。"""
+        return await self._repository.async_list()
+
+    async def get_by_name(self, name: str) -> Any | None:
+        """按用户名查询用户。"""
+        return await self._repository.async_get_by_name(name)
+
+    async def get_by_id(self, user_id: int) -> Any | None:
+        """按用户 ID 查询用户。"""
+        return await self._repository.async_get_by_id(user_id)
+
+    async def create(self, payload: dict[str, Any]) -> Any | None:
+        """创建用户。"""
+        return await self._repository.async_create(payload)
+
+    async def update(self, user_id: int, payload: dict[str, Any]) -> Any | None:
+        """更新用户。"""
+        return await self._repository.async_update(user_id, payload)
+
+    async def delete(self, user_id: int) -> None:
+        """删除用户。"""
+        await self._repository.async_delete(user_id)
+
+    async def update_otp(self, name: str, otp: bool, secret: str) -> None:
+        """更新用户 OTP 状态。"""
+        await self._repository.async_update_otp_by_name(name, otp, secret)
+
+
+_configured_user_id_lookup: Callable[[int], Any | None] | None = None
+_configured_user_name_lookup: Callable[[str], Any | None] | None = None
+_configured_user_channel_lookup: Callable[..., str | None] | None = None
+
+
+def configure_user_lookups(
+    by_id: Callable[[int], Any | None],
+    by_name: Callable[[str], Any | None],
+    by_channel: Callable[..., str | None],
+) -> None:
+    """由启动组合根登记 ID、用户名和渠道身份查询能力。"""
+    global _configured_user_id_lookup, _configured_user_name_lookup
+    global _configured_user_channel_lookup
+    _configured_user_id_lookup = by_id
+    _configured_user_name_lookup = by_name
+    _configured_user_channel_lookup = by_channel
+
+
+def get_configured_user_id_lookup() -> Callable[[int], Any | None]:
+    """返回启动阶段登记的按 ID 用户查询函数。"""
+    if _configured_user_id_lookup is None:
+        raise RuntimeError("按 ID 的用户查询能力尚未配置")
+    return _configured_user_id_lookup
+
+
+def get_configured_user_name_lookup() -> Callable[[str], Any | None]:
+    """返回启动阶段登记的按用户名查询函数。"""
+    if _configured_user_name_lookup is None:
+        raise RuntimeError("按用户名的用户查询能力尚未配置")
+    return _configured_user_name_lookup
+
+
+def get_configured_user_channel_lookup() -> Callable[..., str | None]:
+    """返回启动阶段登记的渠道身份到用户名查询函数。"""
+    if _configured_user_channel_lookup is None:
+        raise RuntimeError("渠道用户查询能力尚未配置")
+    return _configured_user_channel_lookup

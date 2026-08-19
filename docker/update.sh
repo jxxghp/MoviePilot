@@ -37,6 +37,7 @@ function apply_package_cache_env() {
 apply_package_cache_env
 
 PIP_ENV=()
+MOVIEPILOT_UPDATE_RESULT="noop"
 
 function set_package_proxy_env() {
     PIP_ENV=()
@@ -90,20 +91,17 @@ function install_backend_and_download_resources() {
     if [ -f "${TMP_PATH}/App/requirements.in" ]; then
         if ! cmp -s /app/requirements.in "${TMP_PATH}/App/requirements.in"; then
             INFO "检测到依赖变化，正在更新虚拟环境..."
-            # 备份当前requirements.txt
-            cp /app/requirements.txt /tmp/requirements.txt.backup
-            # 复制新的requirements.in
-            cp "${TMP_PATH}/App/requirements.in" /app/requirements.in
-            # 重新编译依赖
-            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip-compile /app/requirements.in -o /app/requirements.txt; then
-                ERROR "依赖编译失败，恢复原依赖"
-                cp /tmp/requirements.txt.backup /app/requirements.txt
+            configure_pip_route
+            INFO "PIP：${PIP_LOG}"
+            local compiled_requirements="${TMP_PATH}/requirements.txt"
+            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip-compile \
+                "${TMP_PATH}/App/requirements.in" -o "${compiled_requirements}"; then
+                ERROR "依赖编译失败，当前程序依赖未变更"
                 return 1
             fi
-            # 安装新依赖
-            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} -r /app/requirements.txt; then
-                ERROR "依赖安装失败，恢复原依赖"
-                cp /tmp/requirements.txt.backup /app/requirements.txt
+            if ! env "${PIP_ENV[@]}" ${VENV_PATH}/bin/pip install ${PIP_OPTIONS} \
+                -r "${compiled_requirements}"; then
+                ERROR "依赖安装失败，当前程序依赖清单未变更"
                 return 1
             fi
             INFO "依赖更新成功"
@@ -145,14 +143,19 @@ function install_backend_and_download_resources() {
     INFO "前端程序下载成功"
     # 备份插件目录
     INFO "→ 正在备份插件目录..."
-    rm -rf /plugins
-    mkdir -p /plugins
-    cp -a /app/app/plugins/* /plugins/
+    if ! rm -rf /plugins \
+        || ! mkdir -p /plugins \
+        || ! cp -a /app/app/plugins/* /plugins/; then
+        ERROR "插件目录备份失败，终止更新"
+        return 1
+    fi
     rm -f /plugins/__init__.py
     # 备份站点资源
     INFO "→ 正在备份站点资源目录..."
-    rm -rf /resources_bakcup
-    mkdir /resources_bakcup
+    if ! rm -rf /resources_bakcup || ! mkdir /resources_bakcup; then
+        ERROR "站点资源备份目录准备失败，终止更新"
+        return 1
+    fi
     resource_source_dir=/app/app/application/site
     for legacy_resource_dir in /app/app/infrastructure /app/app/adapters/network /app/app/helper; do
         if [ ! -d "${resource_source_dir}" ] && [ -d "${legacy_resource_dir}" ]; then
@@ -167,17 +170,21 @@ function install_backend_and_download_resources() {
         [ -f "${resource_file}" ] && cp -a "${resource_file}" /resources_bakcup
     done
     # 清空程序目录
-    rm -rf /app
-    mkdir -p /app
-    # 复制新后端程序
-    cp -a ${TMP_PATH}/App/* /app/
-    # 复制新前端程序
-    rm -rf /public
-    mkdir -p /public
-    cp -a ${TMP_PATH}/dist/* /public/
+    if ! rm -rf /app \
+        || ! mkdir -p /app \
+        || ! cp -a ${TMP_PATH}/App/* /app/ \
+        || ! rm -rf /public \
+        || ! mkdir -p /public \
+        || ! cp -a ${TMP_PATH}/dist/* /public/; then
+        ERROR "程序文件替换失败，更新未完成"
+        return 1
+    fi
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     # 恢复插件目录
-    cp -a /plugins/* /app/app/plugins/
+    if ! cp -a /plugins/* /app/app/plugins/; then
+        ERROR "插件目录恢复失败，更新未完成"
+        return 1
+    fi
     # 更新站点资源
     INFO "→ 开始更新站点资源..."
     python_version=$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')
@@ -188,7 +195,10 @@ function install_backend_and_download_resources() {
         arch_suffix="x86_64-linux-gnu"
     fi
     INFO "当前 Python 版本：${python_version}，架构：${arch}"
-    mkdir -p /app/app/application/site
+    if ! mkdir -p /app/app/application/site; then
+        ERROR "站点资源目录创建失败，更新未完成"
+        return 1
+    fi
     # 下载 V3 站点索引
     if ! curl ${CURL_OPTIONS} "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/application/site/user.sites.v3.bin; then
         if [ -f /resources_bakcup/user.sites.v3.bin ]; then
@@ -207,19 +217,58 @@ function install_backend_and_download_resources() {
     INFO "站点资源更新成功"
     # 清理临时目录
     rm -rf "${TMP_PATH}"
+    MOVIEPILOT_UPDATE_RESULT="updated"
     return 0
 }
 
+function probe_pip_package() {
+    local probe_env=(
+        "UV_NO_CACHE=1"
+        "PIP_NO_CACHE_DIR=1"
+        "UV_HTTP_TIMEOUT=5"
+        "PIP_DEFAULT_TIMEOUT=5"
+        "UV_HTTP_RETRIES=0"
+        "PIP_RETRIES=0"
+    )
+    local package_index="${1:-}"
+    local use_proxy="${2:-false}"
+    local probe_dir
+    local -a probe_args=(install)
+
+    if [[ "${use_proxy}" = "true" ]]; then
+        probe_env+=(
+            "HTTP_PROXY=${PROXY_HOST}"
+            "HTTPS_PROXY=${PROXY_HOST}"
+            "http_proxy=${PROXY_HOST}"
+            "https_proxy=${PROXY_HOST}"
+        )
+    fi
+    probe_dir=$(mktemp -d) || return 1
+    # 包源探针必须使用独立目标目录，避免修改主程序与插件共享的虚拟环境。
+    probe_args+=(--target "${probe_dir}" --no-deps)
+    if [[ -n "${package_index}" ]]; then
+        probe_args+=(-i "${package_index}")
+    fi
+    probe_args+=(pip-hello-world)
+
+    (
+        trap 'rm -rf "${probe_dir}"' EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        timeout --kill-after=2s 10s env "${probe_env[@]}" \
+            "${VENV_PATH}/bin/pip" "${probe_args[@]}" > /dev/null 2>&1
+    )
+}
+
 function test_connectivity_pip() {
-    ${VENV_PATH}/bin/pip uninstall -y pip-hello-world > /dev/null 2>&1
     case "$1" in
     0)
         if [[ -n "${PIP_PROXY}" ]]; then
             if [[ -n "${PROXY_HOST}" ]]; then
-                HTTP_PROXY="${PROXY_HOST}" HTTPS_PROXY="${PROXY_HOST}" http_proxy="${PROXY_HOST}" https_proxy="${PROXY_HOST}" \
-                    ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1
+                probe_pip_package "${PIP_PROXY}" true
             else
-                ${VENV_PATH}/bin/pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1
+                probe_pip_package "${PIP_PROXY}" false
             fi
             if [[ $? -eq 0 ]]; then
                 PIP_OPTIONS="-i ${PIP_PROXY}"
@@ -232,8 +281,7 @@ function test_connectivity_pip() {
         ;;
     1)
         if [[ -n "${PROXY_HOST}" ]]; then
-            if HTTP_PROXY="${PROXY_HOST}" HTTPS_PROXY="${PROXY_HOST}" http_proxy="${PROXY_HOST}" https_proxy="${PROXY_HOST}" \
-                ${VENV_PATH}/bin/pip install pip-hello-world > /dev/null 2>&1; then
+            if probe_pip_package "" true; then
                 PIP_OPTIONS=""
                 PIP_LOG="全局代理模式"
                 set_package_proxy_env
@@ -256,7 +304,7 @@ function test_connectivity_github() {
     case "$1" in
     0)
         if [[ -n "${GITHUB_PROXY}" ]]; then
-            if curl -sL "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
+            if curl -sL --connect-timeout 5 --max-time 10 "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
                 GITHUB_LOG="镜像代理模式"
                 return 0
             fi
@@ -265,7 +313,7 @@ function test_connectivity_github() {
         ;;
     1)
         if [[ -n "${PROXY_HOST}" ]]; then
-            if curl -sL -x ${PROXY_HOST} https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md > /dev/null 2>&1; then
+            if curl -sL --connect-timeout 5 --max-time 10 -x ${PROXY_HOST} https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md > /dev/null 2>&1; then
                 CURL_OPTIONS="-sL -x ${PROXY_HOST}"
                 GITHUB_LOG="全局代理模式"
                 return 0
@@ -279,6 +327,30 @@ function test_connectivity_github() {
         return 0
         ;;
     esac
+}
+
+function configure_pip_route() {
+    local retries=0
+    while true; do
+        if test_connectivity_pip "${retries}"; then
+            return 0
+        fi
+        retries=$((retries + 1))
+    done
+}
+
+function fetch_latest_v3_release() {
+    local response
+    local releases
+    local latest_release
+
+    response=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
+        "https://api.github.com/repos/jxxghp/MoviePilot/releases" \
+        ${CURL_HEADERS}) || return 1
+    releases=$(printf '%s\n' "${response}" | jq -r '.[].tag_name') || return 1
+    latest_release=$(printf '%s\n' "${releases}" | grep "^v3\." | sort -V | tail -n 1)
+    [[ -n "${latest_release}" ]] || return 1
+    printf '%s\n' "${latest_release}"
 }
 
 # 版本号比较
@@ -313,8 +385,11 @@ function compare_versions() {
                 return 1
             elif (( current_ver < release_ver )); then
                 INFO "发现新版本，开始自动升级..."
-                install_backend_and_download_resources "tags/$2.zip"
-                return 0
+                if install_backend_and_download_resources "tags/$2.zip"; then
+                    return 0
+                fi
+                MOVIEPILOT_UPDATE_RESULT="failed"
+                return 1
             else
                 continue
             fi
@@ -350,6 +425,8 @@ function get_priority() {
     fi
 }
 
+function run_moviepilot_update() {
+MOVIEPILOT_UPDATE_RESULT="noop"
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
     TMP_PATH=$(mktemp -d)
     if [ ! -d "${TMP_PATH}" ]; then
@@ -360,17 +437,6 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         fi
         mkdir -p /tmp/mp_update_path
     fi
-    # 优先级：镜像站 > 全局 > 不代理
-    # pip
-    retries=0
-    while true; do
-        if test_connectivity_pip ${retries}; then
-            break
-        else
-            retries=$((retries + 1))
-        fi
-    done
-    # Github
     retries=0
     while true; do
         if test_connectivity_github ${retries}; then
@@ -379,7 +445,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
             retries=$((retries + 1))
         fi
     done
-    INFO "PIP：${PIP_LOG}，Github：${GITHUB_LOG}"
+    INFO "Github：${GITHUB_LOG}"
     if [ -n "${GITHUB_TOKEN}" ]; then
         CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
     else
@@ -387,20 +453,18 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     fi
     if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
         INFO "Dev 更新模式"
-        install_backend_and_download_resources "heads/v3.zip"
+        if ! install_backend_and_download_resources "heads/v3.zip"; then
+            MOVIEPILOT_UPDATE_RESULT="failed"
+        fi
     else
         INFO "Release 更新模式"
         old_version=$(grep -m -1 "^\s*APP_VERSION\s*=\s*" /app/version.py | tr -d '\r\n' | awk -F'#' '{print $1}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         if [[ "${old_version}" == *APP_VERSION* ]]; then
             current_version=$(echo "${old_version}" | sed -rn "s/APP_VERSION\s*=\s*['\"](.*)['\"]/\1/gp")
             INFO "当前版本号：${current_version}"
-            # 获取所有发布的版本列表，并筛选出以v3开头的版本号
-            releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
-            if [ -z "$releases" ]; then
+            if ! latest_v3=$(fetch_latest_v3_release); then
                 WARN "未找到任何v3后端版本，继续启动..."
             else
-                # 找到最新的v3版本
-                latest_v3=$(echo "$releases" | sort -V | tail -n 1)
                 INFO "最新的v3后端版本号：${latest_v3}"
                 # 使用版本号比较函数进行比较，并下载最新版本
                 compare_versions "${current_version}" "${latest_v3}"
@@ -417,3 +481,4 @@ elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
 else
     INFO "MOVIEPILOT_AUTO_UPDATE 变量设置错误"
 fi
+}

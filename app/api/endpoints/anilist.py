@@ -8,7 +8,7 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.anilist import AniListChain
 from app.domain.context import MediaInfo
-from app.application.security.access import verify_token
+from app.adapters.web.security.access import verify_token
 
 router = ResponseAPIRouter()
 

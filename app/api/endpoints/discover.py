@@ -10,7 +10,7 @@ from app.application.orchestration.bangumi import BangumiChain
 from app.application.orchestration.douban import DoubanChain
 from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.events import eventmanager
-from app.application.security.access import verify_token
+from app.adapters.web.security.access import verify_token
 from app.schemas.event import DiscoverSourceEventData
 from app.schemas.types import ChainEventType, MediaType
 

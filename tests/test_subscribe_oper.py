@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.application.subscribe import add_subscribe, async_add_subscribe
+from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.oper.subscribe import SubscribeOper
@@ -17,7 +17,7 @@ def _add(**kwargs):
     """
     经应用层写入路径新增订阅。
 
-    媒体翻译住在 app/application/subscribe.py，查重与落库仍在 SubscribeOper——本文件
+    媒体翻译住在 app/application/subscription/write.py，查重与落库仍在 SubscribeOper——本文件
     钉的是查重语义（谁被查、查几次、带哪些身份字段），所以从翻译入口进、把不带真会话
     的 Oper 注进去，两层的契约一次跑通。
     """
@@ -124,7 +124,7 @@ def test_add_rejects_incomplete_media_identity(identity):
 
     身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，后续按身份去重也会失效。
     """
-    with patch("app.application.subscribe.resolve_media_identity", return_value=identity), \
+    with patch("app.application.subscription.write.resolve_media_identity", return_value=identity), \
             patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         result = _add(mediainfo=_media(None), season=1)
 
@@ -137,7 +137,7 @@ def test_add_rejects_incomplete_media_identity(identity):
 @pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
 def test_async_add_rejects_incomplete_media_identity(identity):
     """异步新增与同步路径共用同一道身份守卫，两条链路不能一宽一严。"""
-    with patch("app.application.subscribe.resolve_media_identity", return_value=identity), \
+    with patch("app.application.subscription.write.resolve_media_identity", return_value=identity), \
             patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.async_exists = AsyncMock()
 

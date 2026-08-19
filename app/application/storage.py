@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from app.schemas.system import StorageConf as _SchemaStorageConf
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.schemas.types import SystemConfigKey
 
 
@@ -15,7 +15,7 @@ class StorageHelper:
         """
         获取所有存储设置
         """
-        storage_confs: List[dict] = SystemConfigOper().get(SystemConfigKey.Storages)
+        storage_confs: List[dict] = get_configured_system_config().get(SystemConfigKey.Storages)
         if not storage_confs:
             return []
         return [_SchemaStorageConf(**s) for s in storage_confs]
@@ -47,7 +47,7 @@ class StorageHelper:
                 if s.type == storage:
                     s.config = conf
                     break
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+        get_configured_system_config().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
 
     def add_storage(self, storage: str, name: str, conf: dict):
         """
@@ -68,7 +68,7 @@ class StorageHelper:
                 name=name,
                 config=conf
             ))
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+        get_configured_system_config().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
 
     def reset_storage(self, storage: str):
         """
@@ -79,4 +79,4 @@ class StorageHelper:
             if s.type == storage:
                 s.config = {}
                 break
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+        get_configured_system_config().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])

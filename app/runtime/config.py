@@ -184,6 +184,20 @@ class ConfigModel(BaseModel):
     # 例如经 PgBouncer 事务模式接入时 asyncpg 需要 {"statement_cache_size": 0}
     DB_CONNECT_ARGS: dict = Field(default_factory=dict)
 
+    # ==================== 数据库备份配置 ====================
+    # 是否启用主程序数据库自动备份
+    DB_BACKUP_ENABLE: bool = False
+    # 定时备份的 Cron 表达式，留空时不注册定时任务
+    DB_BACKUP_CRON: str = "0 3 * * *"
+    # 检测到现有数据库需要迁移时，在结构变更前创建恢复点
+    DB_BACKUP_ON_UPGRADE: bool = True
+    # 备份根目录；未配置时使用 CONFIG_PATH/database_backup
+    DB_BACKUP_PATH: Optional[str] = None
+    # 本地备份的保留天数，0 表示不按时间清理
+    DB_BACKUP_RETENTION_DAYS: int = 30
+    # 本地备份的最大保留份数，0 表示不按数量清理
+    DB_BACKUP_MAX_COUNT: int = 30
+
     # ==================== 数据清理配置 ====================
     # 是否启用数据表定时清理
     DATA_CLEANUP_ENABLE: bool = False
@@ -1078,6 +1092,15 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     def COOKIE_PATH(self):
         """返回站点 Cookie 文件目录。"""
         return self.CONFIG_PATH / "cookies"
+
+    @property
+    def DATABASE_BACKUP_PATH(self) -> Path:
+        """返回数据库备份根目录，允许相对当前配置目录进行配置。"""
+        configured = str(self.DB_BACKUP_PATH or "").strip()
+        if not configured:
+            return self.CONFIG_PATH / "database_backup"
+        path = Path(configured).expanduser()
+        return path if path.is_absolute() else self.CONFIG_PATH / path
 
     @property
     def CONF(self) -> SystemConfModel:

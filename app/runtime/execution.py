@@ -1,10 +1,22 @@
 import asyncio
 import inspect
 import time
-from functools import wraps
+from functools import partial, wraps
 from typing import Any, Callable
 
 from app.schemas.exception import ImmediateException
+from anyio.to_thread import run_sync
+
+
+async def run_in_threadpool(
+    func: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。"""
+    if kwargs:
+        func = partial(func, **kwargs)
+    return await run_sync(func, *args)
 
 
 def retry(ExceptionToCheck: Any,

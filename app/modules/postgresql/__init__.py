@@ -1,9 +1,10 @@
 from typing import Tuple, Union
 
+from sqlalchemy import text
+
 from app.runtime.config import settings
 from app.db import SessionFactory
 from app.modules import _ModuleBase
-from sqlalchemy import text
 
 
 class PostgreSQLModule(_ModuleBase):
@@ -37,7 +38,6 @@ class PostgreSQLModule(_ModuleBase):
         """
         if settings.DB_TYPE != "postgresql":
             return None
-        # 测试数据库连接
         db = SessionFactory()
         try:
             db.execute(text("SELECT 1"))

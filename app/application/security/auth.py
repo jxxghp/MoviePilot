@@ -2,17 +2,12 @@ import secrets
 import threading
 import time
 from datetime import timedelta
-from typing import Any, Optional
-
-from fastapi import HTTPException, status
+from typing import Any, Optional, Protocol
 
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.application.security import access as security
+from app.application.security.token import create_access_token
 from app.runtime.config import settings
-from app.db.models.user import User
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.user import UserOper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
@@ -119,49 +114,128 @@ def consume_plugin_auth_ticket(ticket: str) -> Optional[dict[str, Any]]:
     return AuthTicketStore().consume(ticket)
 
 
-def build_superuser_token_payload() -> _SchemaTokenPayload:
-    """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
-    user = UserOper().get_by_name(settings.SUPERUSER)
-    if not user or not user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户权限不足",
-        )
-    return _SchemaTokenPayload(
-        sub=user.id,
-        username=user.name,
-        super_user=user.is_superuser,
-        level=SitesHelper().auth_level,
-        purpose="authentication",
-    )
+class AuthUser(Protocol):
+    """认证服务需要的最小用户投影。"""
+
+    id: int
+    name: str
+    is_active: bool
+    is_superuser: bool
+    avatar: Optional[str]
+    permissions: Optional[dict]
 
 
-def build_token_response(user: User) -> _SchemaToken:
-    """
-    使用系统统一逻辑构造登录 Token 响应。
+class AuthUserRepository(Protocol):
+    """认证服务的用户数据端口。"""
 
-    :param user: 已认证的本地用户
-    :return: 标准 Token 响应
-    """
-    level = SitesHelper().auth_level
-    show_wizard = (
-        not SystemConfigOper().get(SystemConfigKey.SetupWizardState)
-        and not settings.ADVANCED_MODE
-    )
-    return _SchemaToken(
-        access_token=security.create_access_token(
-            userid=user.id,
+    def get_by_name(self, name: str) -> Optional[AuthUser]:
+        """按用户名查询用户。"""
+
+    def get_by_id(self, user_id: int) -> Optional[AuthUser]:
+        """按 ID 查询用户。"""
+
+
+class AuthPasskeyRepository(Protocol):
+    """认证提供方查询端口。"""
+
+    def list(self) -> list[Any]:
+        """返回已启用的 PassKey。"""
+
+
+class AuthConfigRepository(Protocol):
+    """认证配置读取端口。"""
+
+    def get(self, key: Any) -> Any:
+        """读取配置值。"""
+
+
+class AuthService:
+    """认证应用服务，编排用户、配置和 PassKey 端口。"""
+
+    def __init__(
+        self,
+        users: AuthUserRepository,
+        config: AuthConfigRepository,
+        passkeys: AuthPasskeyRepository,
+    ) -> None:
+        """注入认证所需的数据端口。"""
+        self._users = users
+        self._config = config
+        self._passkeys = passkeys
+
+    def get_user_by_id(self, user_id: int) -> Optional[AuthUser]:
+        """按 ID 查询本地用户。"""
+        return self._users.get_by_id(user_id)
+
+    def has_passkey(self) -> bool:
+        """判断系统是否已有 PassKey。"""
+        return bool(self._passkeys.list())
+
+    def build_superuser_token_payload(self) -> _SchemaTokenPayload:
+        """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
+        user = self._users.get_by_name(settings.SUPERUSER)
+        if not user or not user.is_superuser:
+            raise PermissionError("用户权限不足")
+        return _SchemaTokenPayload(
+            sub=user.id,
             username=user.name,
             super_user=user.is_superuser,
-            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+            level=SitesHelper().auth_level,
+            purpose="authentication",
+        )
+
+    def build_token_response(self, user: AuthUser) -> _SchemaToken:
+        """使用统一逻辑构造登录 Token 响应。"""
+        level = SitesHelper().auth_level
+        show_wizard = (
+            not self._config.get(SystemConfigKey.SetupWizardState)
+            and not settings.ADVANCED_MODE
+        )
+        return _SchemaToken(
+            access_token=create_access_token(
+                userid=user.id,
+                username=user.name,
+                super_user=user.is_superuser,
+                expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+                level=level,
+            ),
+            token_type="bearer",
+            super_user=user.is_superuser,
+            user_id=user.id,
+            user_name=user.name,
+            avatar=user.avatar,
             level=level,
-        ),
-        token_type="bearer",
-        super_user=user.is_superuser,
-        user_id=user.id,
-        user_name=user.name,
-        avatar=user.avatar,
-        level=level,
-        permissions=user.permissions or {},
-        wizard=show_wizard,
-    )
+            permissions=user.permissions or {},
+            wizard=show_wizard,
+        )
+
+
+_configured_auth_service: AuthService | None = None
+
+
+def configure_auth_service(service: AuthService) -> None:
+    """由启动组合根登记认证应用服务。"""
+    global _configured_auth_service
+    _configured_auth_service = service
+
+
+def _get_auth_service() -> AuthService:
+    """返回启动阶段登记的认证应用服务。"""
+    if _configured_auth_service is None:
+        raise RuntimeError("认证服务尚未配置")
+    return _configured_auth_service
+
+
+def get_configured_auth_service() -> AuthService:
+    """返回启动阶段登记的认证服务。"""
+    return _get_auth_service()
+
+
+def build_superuser_token_payload() -> _SchemaTokenPayload:
+    """使用启动组合根注入的认证服务构造超级用户令牌载荷。"""
+    return _get_auth_service().build_superuser_token_payload()
+
+
+def build_token_response(user: AuthUser) -> _SchemaToken:
+    """使用启动组合根注入的认证服务构造登录 Token 响应。"""
+    return _get_auth_service().build_token_response(user)

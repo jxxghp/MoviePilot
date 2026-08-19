@@ -207,3 +207,30 @@ async def test_async_dispatch_awaits_coroutines_and_offloads_sync_functions() ->
 
     assert await dispatcher.async_dispatch("execute") == ["plugin", "system"]
     assert offloaded == [sync_module.execute]
+
+
+def test_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
+    """插件把方法表声明成 list 时走错误策略，且不影响后续健康插件。"""
+    dispatcher, plugin_error, _, _ = _dispatcher(
+        plugins={
+            ("Bad", "坏插件"): ["not-a-mapping"],
+            ("Good", "好插件"): {"execute": lambda: "ok"},
+        },
+    )
+
+    assert dispatcher.dispatch("execute") == "ok"
+    plugin_error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
+    """异步路径下坏插件同样被隔离，嵌套补丁场景不再冒泡击穿调度。"""
+    dispatcher, plugin_error, _, _ = _dispatcher(
+        plugins={
+            ("Bad", "坏插件"): ["not-a-mapping"],
+            ("Good", "好插件"): {"execute": lambda: "ok"},
+        },
+    )
+
+    assert await dispatcher.async_dispatch("execute") == "ok"
+    plugin_error.assert_called_once()

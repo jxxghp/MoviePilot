@@ -1,6 +1,8 @@
 """事件注册、绑定、调度和错误策略组件的独立测试。"""
 
+import sys
 import threading
+import types
 from unittest.mock import Mock
 
 from app.runtime.event.binding import (
@@ -26,6 +28,10 @@ class _UnmanagedHandler:
         """提供可解析的实例方法声明。"""
 
 
+def _free_function_handler(_event: Event) -> None:
+    """模块级自由函数处理器，用于验证直调路径保持不变。"""
+
+
 def test_binding_miss_does_not_construct_handler_owner() -> None:
     """resolver 未命中时只记录诊断，不能调用 owner_class()。"""
     resolvers = {}
@@ -40,6 +46,53 @@ def test_binding_miss_does_not_construct_handler_owner() -> None:
     assert binding.unresolved_handlers() == (
         f"{__name__}._UnmanagedHandler.handle",
     )
+
+
+def test_unloaded_module_class_handler_is_skipped() -> None:
+    """模块缓存被清除后，残留的类方法声明必须跳过而非直调原始函数。"""
+    fake_name = "tests._fake_unloaded_plugin"
+    fake_module = types.ModuleType(fake_name)
+    sys.modules[fake_name] = fake_module
+    try:
+        # 在伪模块命名空间内构造类，使处理器 __module__ 指向该模块
+        exec(
+            "class _ResidualPlugin:\n"
+            "    def reload(self, event):\n"
+            "        raise AssertionError('residual handler must not run')\n",
+            fake_module.__dict__,
+        )
+        residual_handler = fake_module._ResidualPlugin.reload
+        # 模拟插件重载 stop 阶段清除模块缓存后的残留注册
+        del sys.modules[fake_name]
+
+        binding = EventBindingResolver(
+            lock=threading.Lock(),
+            resolvers=lambda: {},
+        )
+        assert binding.resolve(residual_handler) is None
+        # 模块卸载后 identifier 回退为 unknown_module 前缀，与线上日志一致
+        assert binding.unresolved_handlers() == (
+            "unknown_module._ResidualPlugin.reload",
+        )
+    finally:
+        sys.modules.pop(fake_name, None)
+
+
+def test_free_function_handler_still_invoked_directly() -> None:
+    """自由函数处理器不属于类声明，保持直调路径不被新跳过逻辑影响。"""
+    binding = EventBindingResolver(
+        lock=threading.Lock(),
+        resolvers=lambda: {},
+    )
+
+    resolved = binding.resolve(_free_function_handler)
+
+    assert resolved is not None
+    method, handler_binding, class_name, method_name = resolved
+    assert method is _free_function_handler
+    assert handler_binding.run_sync_in_threadpool is True
+    assert class_name == ""
+    assert method_name == "_free_function_handler"
 
 
 def test_binding_uses_explicit_resolver_instance() -> None:

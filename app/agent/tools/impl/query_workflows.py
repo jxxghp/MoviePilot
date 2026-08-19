@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.db.oper.workflow import WorkflowOper
+from app.application.agentdata import WorkflowPort as WorkflowOper
 from app.runtime.log import logger
 
 

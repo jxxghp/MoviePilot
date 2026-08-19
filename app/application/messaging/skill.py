@@ -156,7 +156,11 @@ class SkillInteractionHandler:
             messenger: MessageGateway,
             skill_helper: Optional[Any] = None,
     ):
-        """注入消息接口，技能管理能力延迟到首次访问 skillhelper 时经门面解析。"""
+        """注入消息接口，技能管理能力延迟到首次访问 skillhelper 时经门面解析。
+
+        :param messenger: 消息网关
+        :param skill_helper: 技能目录实现；为空时经 application.agent 门面解析
+        """
         self._messenger = messenger
         self._skill_helper = skill_helper
 

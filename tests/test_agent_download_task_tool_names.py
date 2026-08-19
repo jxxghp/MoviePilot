@@ -8,7 +8,7 @@ def test_factory_registers_plural_download_task_tool_names():
     下载任务工具应统一使用 *_download_tasks 命名。
     """
     with patch(
-        "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+        "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
     ):
         tools = MoviePilotToolFactory.create_tools(

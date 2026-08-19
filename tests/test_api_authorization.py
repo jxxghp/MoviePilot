@@ -17,7 +17,7 @@ from app.api.endpoints import storage as storage_endpoint
 from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
-from app.application.security.access import verify_resource_token
+from app.adapters.web.security.access import verify_resource_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -131,7 +131,11 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
             calls.append(key)
             return [{"path": "/downloads"}]
 
-    monkeypatch.setattr(system_endpoint, "SystemConfigOper", FakeSystemConfigOper)
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_configured_system_config",
+        lambda: FakeSystemConfigOper(),
+    )
 
     response = asyncio.run(
         system_endpoint.get_public_setting(SystemConfigKey.Directories.value)
@@ -189,7 +193,11 @@ def test_login_sets_resource_token_cookie(monkeypatch):
     response = Response()
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
-    monkeypatch.setattr(login_endpoint, "SystemConfigOper", FakeSystemConfigOper)
+    monkeypatch.setattr(
+        login_endpoint,
+        "get_configured_system_config",
+        lambda: FakeSystemConfigOper(),
+    )
 
     token = login_endpoint.login_access_token(
         request=request,
@@ -343,9 +351,9 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            user_endpoint.upload_avatar(
-                user_id=2,
-                db=object(),
+                user_endpoint.upload_avatar(
+                    user_id=2,
+                    service=SimpleNamespace(),
                 file=upload_file,
                 current_user=current_user,
             )
@@ -358,34 +366,28 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
 def test_upload_avatar_returns_filename_in_data(monkeypatch):
     """头像上传成功时应通过 data 返回文件名，message 只保留消息文本。"""
 
-    class FakeUser:
-        """记录头像更新内容的用户桩。"""
+    fake_user = SimpleNamespace()
+    current_user = SimpleNamespace(id=1, is_superuser=False)
+    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    class FakeService:
+        """记录头像查询和更新的用户服务桩。"""
 
-        def __init__(self):
-            self.values = None
-
-        async def async_update(self, db: object, values: dict[str, str]) -> None:
-            """记录待写入的头像数据。"""
-            self.values = values
-
-    class FakeUserModel:
-        """返回固定用户的模型桩。"""
-
-        @classmethod
-        async def async_get(cls, db: object, user_id: int) -> FakeUser:
-            """按用户 ID 返回测试用户。"""
+        async def get_by_id(self, user_id: int):
+            """按 ID 返回测试用户。"""
             assert user_id == 1
             return fake_user
 
-    fake_user = FakeUser()
-    current_user = SimpleNamespace(id=1, is_superuser=False)
-    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
-    monkeypatch.setattr(user_endpoint, "User", FakeUserModel)
+        async def update(self, user_id: int, values: dict[str, str]):
+            """记录用户头像更新。"""
+            assert user_id == 1
+            fake_user.values = values
+            return fake_user
 
+    fake_service = FakeService()
     response = asyncio.run(
         user_endpoint.upload_avatar(
             user_id=1,
-            db=object(),
+            service=fake_service,
             file=upload_file,
             current_user=current_user,
         )

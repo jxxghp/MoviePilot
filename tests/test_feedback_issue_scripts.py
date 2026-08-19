@@ -189,7 +189,7 @@ class TestFeedbackIssueCommon(FeedbackIssueScriptTestCase):
     def test_factory_no_longer_registers_feedback_issue_tools(self):
         """Agent 工厂不应再注册 feedback-issue 专用工具。"""
         with patch(
-            "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+            "app.agent.tools.factory._get_plugin_agent_tools",
             return_value=[],
         ):
             tools = MoviePilotToolFactory.create_tools(

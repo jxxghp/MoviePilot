@@ -39,10 +39,10 @@ from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
-from app.runtime.extensions.module_manager import ModuleManager
-from app.application.security.access import verify_apitoken, verify_resource_token, verify_token
-from app.db.models import User
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.module import ModuleManager
+from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
+from app.api.principal import ApiPrincipal
+from app.application.configuration import get_configured_system_config
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async, get_current_active_user_async
 from app.adapters.media.image import ImageHelper
 from app.runtime.localization import LocaleHelper
@@ -53,12 +53,13 @@ from app.adapters.external.market import (
     split_plugin_market_repo_urls,
 )
 from app.application.messaging.message import MessageHelper
-from app.runtime.progress import ProgressHelper
+from app.runtime.progress import AsyncProgressHelper
+from app.runtime.scheduling import TimerUtils
 from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import PLUGIN_LOG_FILENAME, get_plugin_instance_log_dir, logger
-from app.scheduler import Scheduler
+from app.application.scheduling import Scheduler
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
@@ -87,6 +88,14 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 _LOG_DOWNLOAD_LIMIT = 10
 _LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_DATABASE_BACKUP_SETTING_KEYS = {
+    "DB_BACKUP_ENABLE",
+    "DB_BACKUP_CRON",
+    "DB_BACKUP_ON_UPGRADE",
+    "DB_BACKUP_PATH",
+    "DB_BACKUP_RETENTION_DAYS",
+    "DB_BACKUP_MAX_COUNT",
+}
 
 
 def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
@@ -128,6 +137,38 @@ def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
             tool_id="web_search",
         )
     )
+
+
+def _validate_database_backup_config(env: dict) -> Optional[str]:
+    """在批量写入前校验数据库备份策略，避免只保存部分字段。"""
+    if not _DATABASE_BACKUP_SETTING_KEYS.intersection(env):
+        return None
+
+    cron = str(env.get("DB_BACKUP_CRON", settings.DB_BACKUP_CRON) or "").strip()
+    if cron:
+        try:
+            TimerUtils.normalize_schedule_trigger("cron", cron, settings.TZ)
+        except (TypeError, ValueError):
+            return "数据库备份周期格式不正确"
+
+    backup_path = env.get("DB_BACKUP_PATH", settings.DB_BACKUP_PATH)
+    if backup_path is not None and not isinstance(backup_path, str):
+        return "数据库备份目录必须是路径字符串"
+
+    for key, label in (
+        ("DB_BACKUP_RETENTION_DAYS", "数据库备份过期天数"),
+        ("DB_BACKUP_MAX_COUNT", "数据库备份最大保留份数"),
+    ):
+        value = env.get(key, getattr(settings, key))
+        if isinstance(value, bool):
+            return f"{label}必须是大于等于 0 的整数"
+        try:
+            converted = int(value)
+        except (TypeError, ValueError):
+            return f"{label}必须是大于等于 0 的整数"
+        if converted < 0 or str(value).strip() != str(converted):
+            return f"{label}必须是大于等于 0 的整数"
+    return None
 
 
 def _is_allowed_plugin_market_wiki_url(wiki_url: str) -> bool:
@@ -796,7 +837,7 @@ def get_global_setting(token: str):
     summary="查询用户相关系统设置",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
-async def get_user_global_setting(_: User = Depends(get_current_active_user_async)):
+async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_user_async)):
     """
     查询用户相关系统设置（登录后获取）
     包含业务功能相关的配置和用户权限信息
@@ -837,7 +878,7 @@ async def get_user_global_setting(_: User = Depends(get_current_active_user_asyn
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def get_env_setting(
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """
     查询系统环境变量，包括当前版本号（仅管理员）
@@ -861,7 +902,7 @@ async def get_env_setting(
     summary="查询安装版本统计报表",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
-async def usage_statistic(_: User = Depends(get_current_active_user_async)):
+async def usage_statistic(_: ApiPrincipal = Depends(get_current_active_user_async)):
     """
     查询安装版本统计报表
     """
@@ -869,7 +910,7 @@ async def usage_statistic(_: User = Depends(get_current_active_user_async)):
 
 
 @router.get("/ping", summary="服务存活检测", response_model=_SchemaResponse[None])
-async def ping(_: User = Depends(get_current_active_user_async)) -> _SchemaResponse:
+async def ping(_: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse:
     """
     检测服务是否可用
     """
@@ -882,12 +923,15 @@ async def ping(_: User = Depends(get_current_active_user_async)) -> _SchemaRespo
     response_model=_SchemaResponse[_SchemaSystemEnvironmentUpdateData],
 )
 async def set_env_setting(
-    env: dict, _: User = Depends(get_current_active_superuser_async)
+    env: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ):
     """
     更新系统环境变量（仅管理员）
     """
     validation_error = _validate_llm_server_tool_config(env)
+    if validation_error:
+        return _SchemaResponse(success=False, message=validation_error)
+    validation_error = _validate_database_backup_config(env)
     if validation_error:
         return _SchemaResponse(success=False, message=validation_error)
 
@@ -939,7 +983,7 @@ async def get_progress(
     """
     实时获取处理进度，返回格式为SSE
     """
-    progress = ProgressHelper(process_type)
+    progress = AsyncProgressHelper(process_type)
     locale = LocaleHelper.get_current_locale()
 
     async def event_generator():
@@ -947,7 +991,7 @@ async def get_progress(
             while not global_vars.is_system_stopped:
                 if await request.is_disconnected():
                     break
-                detail = progress.get(locale=locale)
+                detail = await progress.get(locale=locale)
                 yield f"data: {json.dumps(detail)}\n\n"
                 await asyncio.sleep(0.5)
         except asyncio.CancelledError:
@@ -962,7 +1006,7 @@ async def get_progress(
     response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_public_setting(
-    key: str, _: User = Depends(get_current_active_user_async)
+    key: str, _: ApiPrincipal = Depends(get_current_active_user_async)
 ) -> _SchemaResponse:
     """
     查询普通用户可读取的非敏感系统设置
@@ -971,7 +1015,7 @@ async def get_public_setting(
         return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
-    value = SystemConfigOper().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
+    value = get_configured_system_config().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
     return _SchemaResponse(success=True, data={"value": value})
 
 
@@ -982,7 +1026,7 @@ async def get_public_setting(
 )
 async def sync_plugin_market_from_wiki(
     request: Optional[_SchemaPluginMarketSyncRequest] = Body(default=None),
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
     """
     从 Wiki 插件文档同步插件市场仓库地址。
@@ -1048,7 +1092,7 @@ async def sync_plugin_market_from_wiki(
     response_model=_SchemaResponse[_SchemaValueData],
 )
 async def get_setting(
-    key: str, _: User = Depends(get_current_active_superuser_async)
+    key: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
 ) -> _SchemaResponse:
     """
     查询系统设置（仅管理员）
@@ -1056,7 +1100,7 @@ async def get_setting(
     if hasattr(settings, key):
         value = getattr(settings, key)
     else:
-        value = SystemConfigOper().get(key)
+        value = get_configured_system_config().get(key)
     return _SchemaResponse(success=True, data={"value": value})
 
 
@@ -1064,7 +1108,7 @@ async def get_setting(
 async def set_setting(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-    _: User = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ):
     """
     更新系统设置（仅管理员）
@@ -1084,7 +1128,7 @@ async def set_setting(
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
-        success = await SystemConfigOper().async_set(key, value)
+        success = await get_configured_system_config().async_set(key, value)
         if success:
             # 发送配置变更事件
             await eventmanager.async_send_event(
@@ -1583,7 +1627,7 @@ def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
 
 
 @router.get("/restart", summary="重启系统", response_model=_SchemaResponse[None])
-def restart_system(_: User = Depends(get_current_active_superuser)):
+def restart_system(_: ApiPrincipal = Depends(get_current_active_superuser)):
     """
     重启系统（仅管理员）
     """
@@ -1596,7 +1640,7 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
 @router.post("/upgrade", summary="升级并重启系统", response_model=_SchemaResponse[None])
 def upgrade_system(
     mode: Annotated[str | None, Body()] = None,
-    _: User = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ):
     """
     触发系统升级并重启（仅管理员）
@@ -1612,7 +1656,7 @@ def upgrade_system(
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=_SchemaResponse[None])
-def run_scheduler(jobid: str, _: User = Depends(get_current_active_superuser)):
+def run_scheduler(jobid: str, _: ApiPrincipal = Depends(get_current_active_superuser)):
     """
     执行命令（仅管理员）
     """

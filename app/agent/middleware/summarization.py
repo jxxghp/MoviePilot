@@ -4,15 +4,22 @@ from collections.abc import Awaitable, Callable
 from importlib import import_module
 from typing import Any
 
-from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware.summarization import (
+    DEFAULT_SUMMARY_PROMPT,
+    ContextSize,
+    SummarizationMiddleware,
+    TokenCounter,
+    TriggerClause,
+)
 from langchain.agents.middleware.types import (
     AgentMiddleware,
     ExtendedModelResponse,
     ModelRequest,
     ModelResponse,
 )
+from langchain.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, ToolMessage
-from langchain_core.messages.utils import get_buffer_string
+from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import Command
 
@@ -42,6 +49,35 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         "会话历史中存在无法压缩的超长内容，原有上下文已保留，"
         "请新建或清空会话后继续"
     )
+    # LangChain 默认按 4000 token 裁剪待摘要消息，单条超长工具结果或用户输入
+    # （超长无换行文本、非文本多模态块）会被整体丢弃，直接触发"无法压缩"报错。
+    # 调大该上限可容纳更大单条消息，减少误报；16k 相对常见模型窗口仍然安全，
+    # 摘要模型与主模型同窗口，过大会抬高摘要成本并挤占主模型预算。
+    _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE = 16000
+
+    def __init__(
+        self,
+        model: str | BaseChatModel,
+        *,
+        trigger: (
+            ContextSize | TriggerClause | list[ContextSize | TriggerClause] | None
+        ) = None,
+        keep: ContextSize = ("messages", 20),
+        token_counter: TokenCounter = count_tokens_approximately,
+        summary_prompt: str = DEFAULT_SUMMARY_PROMPT,
+        trim_tokens_to_summarize: int | None = _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE,
+        **deprecated_kwargs: Any,
+    ) -> None:
+        """按 MoviePilot 的默认压缩策略构建摘要中间件。"""
+        super().__init__(
+            model=model,
+            trigger=trigger,
+            keep=keep,
+            token_counter=token_counter,
+            summary_prompt=summary_prompt,
+            trim_tokens_to_summarize=trim_tokens_to_summarize,
+            **deprecated_kwargs,
+        )
 
     @classmethod
     def _require_valid_summary(cls, summary: str) -> str:

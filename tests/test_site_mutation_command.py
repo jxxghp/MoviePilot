@@ -9,7 +9,7 @@ def _command(**overrides):
     """构造可观察站点写用例及其依赖。"""
     repository = Mock()
     repository.get_by_id = AsyncMock(return_value=object())
-    repository.get_by_domain = AsyncMock(return_value=None)
+    repository.async_get_by_domain = AsyncMock(return_value=None)
     repository.stage_create = AsyncMock()
     repository.stage_update = AsyncMock(return_value=True)
     repository.stage_delete = AsyncMock()

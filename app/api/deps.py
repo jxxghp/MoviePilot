@@ -4,65 +4,77 @@ API 层的公共依赖。
 包含两类：把请求级用例与其适配器装配起来的工厂，以及从安全服务取得的鉴权依赖。
 端点统一经由本模块声明 Depends，不直接触达具体实现。
 """
-from fastapi import BackgroundTasks, Depends
+from typing import Any
+
+from fastapi import BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.application.subscription.delete import (
-    DeleteSubscribeCommand,
-    SubscribeDeletionCandidateRepository,
-)
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.application.subscription.delete import DeleteSubscribeCommand
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
 from app.application.subscription.search import SearchSubscriptionsCommand
+from app.application.subscription.query import SubscriptionQueryService
+from app.application.subscription.mutation import SubscriptionMutationService
 from app.application.site.mutation import SiteMutationCommand
+from app.application.site.query import SiteQueryService
 from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
+    WorkflowQueryService,
 )
+from app.application.messaging.message import MessageQueryService
+from app.application.messaging.chat import AgentChatService
+from app.application.mediaserver import MediaServerQueryService
+from app.application.servarr import ServarrSubscriptionService
+from app.application.dashboard import DashboardQueryService
 from app.application.history import (
     DownloadHistoryMutationCommand,
+    HistoryQueryService,
+    TransferHistoryLookupService,
     TransferHistoryMutationCommand,
     clear_transfer_failures,
 )
 from app.application.plugin.config import PluginConfigCommand
 from app.application.commands import init_commands
-from app.application.plugins import register_plugin_api
+from app.application.plugin.routes import register_plugin_api
 from app.application.scheduling import update_plugin_job
-# 端点声明鉴权时统一从本模块取用的当前用户依赖族
-from app.application.security.dependencies import (  # noqa: F401
-    get_current_active_manage_user,
-    get_current_active_manage_user_async,
-    get_current_active_superuser,
-    get_current_active_superuser_async,
-    get_current_active_user,
-    get_current_active_user_async,
-    get_current_user,
-    get_current_user_async,
-)
+from app.adapters.web.security.access import verify_token
+from app.application.security.user import UserService
+from app.application.security.auth import AuthService
+from app.application.security.passkeys import PasskeyService
 from app.adapters.external.server import MoviePilotServerHelper
-from app.db import get_async_db, get_db
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.site import SiteOper
-from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+from app.api.data import get_api_data_ports, get_async_db, get_db
 from app.runtime.events import eventmanager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.runtime.log import logger
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.types import ChainEventType, EventType
-from app.scheduler import Scheduler
+from app.application.scheduling import Scheduler
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.domain import site as site_rules
 from app.foundation import url as url_tools
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.runtime.config import global_vars
 from app.workflow import WorkFlowManager
 from app.application.orchestration.storage import StorageChain
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+
+def _repository(name: str, session: Any) -> Any:
+    """构造绑定当前请求会话的数据仓储。"""
+    return get_api_data_ports().repository(name, session)
+
+
+def _standalone_repository(name: str) -> Any:
+    """构造无需绑定请求会话的数据端口。"""
+    return get_api_data_ports().standalone_repository(name)
+
+
+def _transaction(name: str, session: Any) -> Any:
+    """构造绑定当前请求会话的事务端口。"""
+    return get_api_data_ports().transaction(name, session)
 
 
 async def _publish_subscribe_deleted(
@@ -81,8 +93,8 @@ def get_delete_subscribe_command(
 ) -> DeleteSubscribeCommand:
     """组装请求级订阅删除用例及其具体适配器。"""
     return DeleteSubscribeCommand(
-        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
-        unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
+        repository=_repository("subscribe", db),
+        unit_of_work=_transaction("async", db),
         publish_deleted=_publish_subscribe_deleted,
         report_deleted=MoviePilotServerHelper.sub_done_async,
     )
@@ -104,8 +116,8 @@ def get_delete_subscriptions_by_identity_command(
 ) -> DeleteSubscriptionsByIdentityCommand:
     """组装请求级按媒体身份删除订阅用例。"""
     return DeleteSubscriptionsByIdentityCommand(
-        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
-        unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
+        repository=_repository("subscribe", db),
+        unit_of_work=_transaction("async", db),
         publish_deleted=_publish_subscribe_deleted,
         handle_event_error=_log_subscribe_deleted_event_error,
     )
@@ -127,8 +139,68 @@ def get_search_subscriptions_command(
         )
 
     return SearchSubscriptionsCommand(
-        repository=SubscribeDeletionCandidateRepository(SubscribeOper(db)),
+        repository=_repository("subscribe", db),
         schedule_search=schedule_search,
+    )
+
+
+def get_subscription_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> SubscriptionQueryService:
+    """组装订阅和订阅历史异步查询服务。"""
+    return SubscriptionQueryService(
+        repository=_repository("subscribe", db),
+        async_repository=_repository("subscribe", db),
+        history_repository=_repository("subscribe_history", db),
+    )
+
+
+def get_user_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> UserService:
+    """组装用户管理应用服务。"""
+    return UserService(repository=_repository("user", db))
+
+
+def get_auth_service() -> AuthService:
+    """组装同步认证应用服务。"""
+    return AuthService(
+        users=_standalone_repository("user"),
+        config=_standalone_repository("system_config"),
+        passkeys=_standalone_repository("passkey"),
+    )
+
+
+def get_passkey_service() -> PasskeyService:
+    """组装 PassKey 应用服务。"""
+    return PasskeyService(repository=_standalone_repository("passkey"))
+
+
+def get_subscription_mutation_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> SubscriptionMutationService:
+    """组装异步订阅写服务。"""
+    return SubscriptionMutationService(
+        repository=_repository("subscribe", db),
+        history_repository=_repository("subscribe_history", db),
+    )
+
+
+def get_subscription_sync_mutation_service(
+        db: Session = Depends(get_db),
+) -> SubscriptionMutationService:
+    """组装同步订阅查询服务，供文件信息接口使用。"""
+    return SubscriptionMutationService(repository=_repository("subscribe", db))
+
+
+def get_servarr_subscription_service(
+    async_db: AsyncSession = Depends(get_async_db),
+    db: Session = Depends(get_db),
+) -> ServarrSubscriptionService:
+    """组装 Servarr 兼容路由的请求级订阅数据用例。"""
+    return ServarrSubscriptionService(
+        async_repository=_repository("subscribe", async_db),
+        sync_repository=_repository("subscribe", db),
     )
 
 
@@ -154,8 +226,8 @@ def get_site_mutation_command(
         return f"{scheme}://{netloc}/"
 
     return SiteMutationCommand(
-        repository=SiteOper(db),
-        unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
+        repository=_repository("site", db),
+        unit_of_work=_transaction("async", db),
         auth_level_provider=lambda: sites_helper.auth_level,
         indexer_loader=sites_helper.async_get_indexer,
         domain_extractor=site_rules.extract_domain,
@@ -165,6 +237,20 @@ def get_site_mutation_command(
     )
 
 
+def get_site_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> SiteQueryService:
+    """组装站点异步查询服务。"""
+    return SiteQueryService(repository=_repository("site", db))
+
+
+def get_site_sync_query_service(
+        db: Session = Depends(get_db),
+) -> SiteQueryService:
+    """组装站点同步查询服务，用于同步 Chain 路由。"""
+    return SiteQueryService(repository=_repository("site", db))
+
+
 def get_workflow_mutation_command(
         db: Session = Depends(get_db),
 ) -> WorkflowMutationCommand:
@@ -172,15 +258,15 @@ def get_workflow_mutation_command(
     scheduler = Scheduler()
     workflow_manager = WorkFlowManager()
     return WorkflowMutationCommand(
-        repository=WorkflowOper(db),
-        unit_of_work=SqlAlchemyUnitOfWork(db),
+        repository=_repository("workflow", db),
+        unit_of_work=_transaction("sync", db),
         add_timer=scheduler.update_workflow_job,
         remove_timer=scheduler.remove_workflow_job,
         load_event=workflow_manager.load_workflow_events,
         remove_event=workflow_manager.remove_workflow_event,
         refresh_event=workflow_manager.update_workflow_event,
         stop_running=global_vars.stop_workflow,
-        delete_cache=lambda workflow_id: SystemConfigOper().delete(
+        delete_cache=lambda workflow_id: _standalone_repository("system_config").delete(
             f"WorkflowCache-{workflow_id}"
         ),
     )
@@ -191,13 +277,53 @@ def get_workflow_definition_command(
 ) -> WorkflowDefinitionCommand:
     """组装工作流创建、复用和重置的异步写用例。"""
     return WorkflowDefinitionCommand(
-        repository=WorkflowOper(db),
-        unit_of_work=SqlAlchemyAsyncUnitOfWork(db),
+        repository=_repository("workflow", db),
+        unit_of_work=_transaction("async", db),
         stop_running=global_vars.stop_workflow,
-        delete_cache=lambda workflow_id: SystemConfigOper().delete(
+        delete_cache=lambda workflow_id: _standalone_repository("system_config").delete(
             f"WorkflowCache-{workflow_id}"
         ),
         report_fork=MoviePilotServerHelper.async_workflow_fork_by_id,
+    )
+
+
+def get_workflow_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> WorkflowQueryService:
+    """组装工作流只读查询用例，避免端点直接持有数据库操作器。"""
+    return WorkflowQueryService(repository=_repository("workflow", db))
+
+
+def get_message_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> MessageQueryService:
+    """组装消息历史异步查询服务。"""
+    return MessageQueryService(repository=_repository("message", db))
+
+
+def get_agent_chat_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> AgentChatService:
+    """组装 Agent 会话历史查询和删除服务。"""
+    return AgentChatService(repository=_repository("agent_chat", db))
+
+
+def get_mediaserver_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> MediaServerQueryService:
+    """组装媒体服务器本地条目异步查询服务。"""
+    return MediaServerQueryService(repository=_repository("media_server", db))
+
+
+def get_dashboard_query_service(
+        db: Session = Depends(get_db),
+) -> DashboardQueryService:
+    """组装 Dashboard 媒体与整理历史统计查询服务。"""
+    from app.application.orchestration.dashboard import DashboardChain
+
+    return DashboardQueryService(
+        repository=_repository("transfer_history", db),
+        media_statistics=DashboardChain().media_statistic,
     )
 
 
@@ -206,9 +332,26 @@ def get_download_history_mutation_command(
 ) -> DownloadHistoryMutationCommand:
     """组装下载历史删除用例及其请求级事务。"""
     return DownloadHistoryMutationCommand(
-        repository=DownloadHistoryOper(db),
-        unit_of_work=SqlAlchemyUnitOfWork(db),
+        repository=_repository("download_history", db),
+        unit_of_work=_transaction("sync", db),
     )
+
+
+def get_history_query_service(
+        db: AsyncSession = Depends(get_async_db),
+) -> HistoryQueryService:
+    """组装历史列表和详情异步查询服务。"""
+    return HistoryQueryService(
+        download_repository=_repository("download_history", db),
+        transfer_repository=_repository("transfer_history", db),
+    )
+
+
+def get_transfer_history_lookup_service(
+        db: Session = Depends(get_db),
+) -> TransferHistoryLookupService:
+    """组装手动整理使用的同步历史投影服务。"""
+    return TransferHistoryLookupService(_repository("transfer_history", db))
 
 
 def get_transfer_history_mutation_command(
@@ -217,9 +360,9 @@ def get_transfer_history_mutation_command(
     """组装整理历史删除、文件处理和事件发布用例。"""
     storage_chain = StorageChain()
     return TransferHistoryMutationCommand(
-        repository=TransferHistoryOper(db),
-        download_repository=DownloadHistoryOper(db),
-        unit_of_work=SqlAlchemyUnitOfWork(db),
+        repository=_repository("transfer_history", db),
+        download_repository=_repository("download_history", db),
+        unit_of_work=_transaction("sync", db),
         file_item_factory=lambda payload: _SchemaFileItem(**payload),
         delete_media_file=storage_chain.delete_media_file,
         publish_download_file_deleted=lambda payload: eventmanager.send_event(
@@ -261,3 +404,15 @@ def get_plugin_config_command() -> PluginConfigCommand:
         publish_reset=publish_reset,
         refresh_registrations=refresh_registrations,
     )
+
+
+from app.application.security.dependencies import (  # noqa: F401
+    get_current_active_manage_user,
+    get_current_active_manage_user_async,
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+    get_current_active_user,
+    get_current_active_user_async,
+    get_current_user,
+    get_current_user_async,
+)

@@ -13,7 +13,7 @@ from app.schemas.mcp import ToolCallRequest as _SchemaToolCallRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.agent.tools.manager import moviepilot_tool_manager
-from app.application.security.access import verify_apikey
+from app.adapters.web.security.access import verify_apikey
 from app.runtime.log import logger
 
 # 导入版本号

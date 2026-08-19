@@ -21,7 +21,7 @@ class SiteMutationRepository(Protocol):
         """读取指定站点。"""
         ...
 
-    async def get_by_domain(self, domain: str) -> Optional[Any]:
+    async def async_get_by_domain(self, domain: str) -> Optional[Any]:
         """按域名读取站点。"""
         ...
 
@@ -39,6 +39,10 @@ class SiteMutationRepository(Protocol):
 
     async def stage_priorities(self, priorities: list[dict]) -> None:
         """暂存一组站点优先级变更。"""
+        ...
+
+    async def stage_reset(self) -> None:
+        """暂存清空全部站点。"""
         ...
 
 
@@ -86,7 +90,7 @@ class SiteMutationCommand:
         site_info = await self._indexer_loader(domain)
         if not site_info:
             return SiteMutationResult(False, "该站点不支持，请检查站点域名是否正确")
-        if await self._repository.get_by_domain(domain):
+        if await self._repository.async_get_by_domain(domain):
             return SiteMutationResult(False, f"{domain} 站点己存在")
 
         values.update({
@@ -131,6 +135,13 @@ class SiteMutationCommand:
         await self._repository.stage_delete(site_id)
         await self._commit()
         await self._publish_deleted({"site_id": site_id})
+        return SiteMutationResult(True)
+
+    async def reset(self) -> SiteMutationResult:
+        """清空全部站点，并在提交后发布通配站点删除事件。"""
+        await self._repository.stage_reset()
+        await self._commit()
+        await self._publish_deleted({"site_id": "*"})
         return SiteMutationResult(True)
 
     async def _commit(self) -> None:

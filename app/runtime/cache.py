@@ -1158,6 +1158,143 @@ class CacheProxy:
         self._cache_backend.close()
 
 
+class AsyncCacheProxy:
+    """
+    异步缓存代理类，将异步缓存后端的方法直接代理到实例上
+
+    与同步 CacheProxy 的唯一差异是方法均为 async，默认绑定构造时指定的 region。
+    """
+
+    def __init__(self, cache_backend: AsyncCacheBackend, region: str):
+        """
+        初始化异步缓存代理
+
+        :param cache_backend: 异步缓存后端实例
+        :param region: 缓存区域
+        """
+        self._cache_backend = cache_backend
+        self._region = region
+
+    def is_redis(self) -> bool:
+        """
+        检查当前缓存后端是否为 Redis（纯状态判断，无需 await）
+        """
+        return self._cache_backend.is_redis()
+
+    async def get(self, key: str, **kwargs) -> Any:
+        """
+        获取缓存值
+        """
+        kwargs.setdefault('region', self._region)
+        return await self._cache_backend.get(key, **kwargs)
+
+    async def set(self, key: str, value: Any, **kwargs) -> None:
+        """
+        设置缓存值
+        """
+        kwargs.setdefault('region', self._region)
+        await self._cache_backend.set(key, value, **kwargs)
+
+    async def delete(self, key: str, **kwargs) -> None:
+        """
+        删除缓存值
+        """
+        kwargs.setdefault('region', self._region)
+        await self._cache_backend.delete(key, **kwargs)
+
+    async def exists(self, key: str, **kwargs) -> bool:
+        """
+        检查缓存键是否存在
+        """
+        kwargs.setdefault('region', self._region)
+        return await self._cache_backend.exists(key, **kwargs)
+
+    async def clear(self, **kwargs) -> None:
+        """
+        清除缓存
+        """
+        kwargs.setdefault('region', self._region)
+        await self._cache_backend.clear(**kwargs)
+
+    async def items(self, **kwargs):
+        """
+        获取所有缓存项
+        """
+        kwargs.setdefault('region', self._region)
+        async for item in self._cache_backend.items(**kwargs):
+            yield item
+
+    async def keys(self, **kwargs):
+        """
+        获取所有缓存键
+        """
+        kwargs.setdefault('region', self._region)
+        async for key in self._cache_backend.keys(**kwargs):
+            yield key
+
+    async def values(self, **kwargs):
+        """
+        获取所有缓存值
+        """
+        kwargs.setdefault('region', self._region)
+        async for value in self._cache_backend.values(**kwargs):
+            yield value
+
+    async def update(self, other: Dict[str, Any], **kwargs) -> None:
+        """
+        更新缓存
+        """
+        kwargs.setdefault('region', self._region)
+        await self._cache_backend.update(other, **kwargs)
+
+    async def pop(self, key: str, default: Any = None, **kwargs) -> Any:
+        """
+        弹出缓存项
+        """
+        kwargs.setdefault('region', self._region)
+        return await self._cache_backend.pop(key, default, **kwargs)
+
+    async def popitem(self, **kwargs) -> Tuple[str, Any]:
+        """
+        弹出最后一个缓存项
+        """
+        kwargs.setdefault('region', self._region)
+        return await self._cache_backend.popitem(**kwargs)
+
+    async def setdefault(self, key: str, default: Any = None, **kwargs) -> Any:
+        """
+        设置默认值
+        """
+        kwargs.setdefault('region', self._region)
+        return await self._cache_backend.setdefault(key, default, **kwargs)
+
+    async def close(self) -> None:
+        """
+        关闭缓存连接
+        """
+        await self._cache_backend.close()
+
+
+class AsyncTTLCache(AsyncCacheProxy):
+    """
+    基于 TTL 的异步缓存类，与同步 TTLCache 使用同一 region 语义，
+    内存后端共享进程内存储，Redis 后端共享同一键空间
+    """
+
+    def __init__(self,
+                 region: Optional[str] = DEFAULT_CACHE_REGION,
+                 maxsize: Optional[int] = DEFAULT_CACHE_SIZE,
+                 ttl: Optional[int] = DEFAULT_CACHE_TTL):
+        """
+        初始化异步 TTL 缓存
+
+        :param maxsize: 缓存的最大条目数
+        :param ttl: 缓存的存活时间，单位秒
+        :param region: 缓存的区，为 None 时使用默认区
+        """
+        super().__init__(AsyncCache(cache_type='ttl', maxsize=maxsize, ttl=ttl), region)
+
+
 class TTLCache(CacheProxy):
     """
     基于 TTL 的缓存类，兼容 cachetools.TTLCache 接口

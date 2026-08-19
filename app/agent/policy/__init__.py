@@ -1,68 +1,55 @@
 """MoviePilot Agent 宿主策略公共内部入口。"""
 
-from app.agent.policy.contracts import (
-    ActionEffect,
-    ActionPolicy,
-    AuthSource,
-    ConfirmationMode,
-    ExecutionOutcome,
-    ExecutionReceipt,
-    MigrationState,
-    PolicyDecision,
-    PolicyObservation,
-    PolicyPrincipal,
-    PrincipalRole,
-    PrincipalType,
-    RecoveryMode,
-    ResultSensitivity,
-    ToolInvocation,
-    ToolOrigin,
-    ToolPolicyContext,
-    ToolRevision,
-)
-from app.agent.policy.orchestrator import (
-    DEFAULT_TOOL_POLICY_ORCHESTRATOR,
-    AgentToolPolicyOrchestrator,
-    call_policy_hook,
-)
-from app.agent.policy.registry import DEFAULT_TOOL_POLICY_REGISTRY, ToolPolicyRegistry
-from app.agent.policy.sanitizer import (
-    REDACTED_VALUE,
-    sanitize_for_host,
-    stable_type_name,
-    summarize_error,
-    summarize_input,
-    summarize_result,
-)
+from importlib import import_module
+from typing import Any
 
-__all__ = [
-    "ActionEffect",
-    "ActionPolicy",
-    "AgentToolPolicyOrchestrator",
-    "AuthSource",
-    "ConfirmationMode",
-    "DEFAULT_TOOL_POLICY_ORCHESTRATOR",
-    "DEFAULT_TOOL_POLICY_REGISTRY",
-    "ExecutionOutcome",
-    "ExecutionReceipt",
-    "MigrationState",
-    "PolicyDecision",
-    "PolicyObservation",
-    "PolicyPrincipal",
-    "PrincipalRole",
-    "PrincipalType",
-    "REDACTED_VALUE",
-    "RecoveryMode",
-    "ResultSensitivity",
-    "ToolInvocation",
-    "ToolOrigin",
-    "ToolPolicyContext",
-    "ToolRevision",
-    "ToolPolicyRegistry",
-    "call_policy_hook",
-    "sanitize_for_host",
-    "stable_type_name",
-    "summarize_error",
-    "summarize_input",
-    "summarize_result",
-]
+
+_EXPORT_MODULES = {
+    "ActionEffect": "app.agent.policy.contracts",
+    "ActionPolicy": "app.agent.policy.contracts",
+    "AuthSource": "app.agent.policy.contracts",
+    "ConfirmationMode": "app.agent.policy.contracts",
+    "ExecutionOutcome": "app.agent.policy.contracts",
+    "ExecutionReceipt": "app.agent.policy.contracts",
+    "MigrationState": "app.agent.policy.contracts",
+    "PolicyDecision": "app.agent.policy.contracts",
+    "PolicyObservation": "app.agent.policy.contracts",
+    "PolicyPrincipal": "app.agent.policy.contracts",
+    "PrincipalRole": "app.agent.policy.contracts",
+    "PrincipalType": "app.agent.policy.contracts",
+    "RecoveryMode": "app.agent.policy.contracts",
+    "ResultSensitivity": "app.agent.policy.contracts",
+    "ToolInvocation": "app.agent.policy.contracts",
+    "ToolOrigin": "app.agent.policy.contracts",
+    "ToolPolicyContext": "app.agent.policy.contracts",
+    "ToolRevision": "app.agent.policy.contracts",
+    "AgentToolPolicyOrchestrator": "app.agent.policy.orchestrator",
+    "DEFAULT_TOOL_POLICY_ORCHESTRATOR": "app.agent.policy.orchestrator",
+    "call_policy_hook": "app.agent.policy.orchestrator",
+    "DEFAULT_TOOL_POLICY_REGISTRY": "app.agent.policy.registry",
+    "ToolPolicyRegistry": "app.agent.policy.registry",
+    "REDACTED_VALUE": "app.agent.policy.sanitizer",
+    "sanitize_for_host": "app.agent.policy.sanitizer",
+    "stable_type_name": "app.agent.policy.sanitizer",
+    "summarize_error": "app.agent.policy.sanitizer",
+    "summarize_input": "app.agent.policy.sanitizer",
+    "summarize_result": "app.agent.policy.sanitizer",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """首次访问公开策略对象时只加载其所属模块。"""
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module 'app.agent.policy' has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """让惰性公开对象继续支持交互式发现。"""
+    return sorted(set(globals()) | set(_EXPORT_MODULES))
+
+
+__all__ = list(_EXPORT_MODULES)

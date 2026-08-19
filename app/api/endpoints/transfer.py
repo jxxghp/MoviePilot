@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Any, List, Annotated, Optional
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
 
 from app.schemas.common import NameData as _SchemaNameData
 from app.schemas.response import Response as _SchemaResponse
@@ -19,12 +18,13 @@ from app.api.response import ResponseAPIRouter
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings, global_vars
-from app.application.security.access import verify_token, verify_apitoken
-from app.db import get_db
-from app.db.models import User
-from app.db.models.transferhistory import TransferHistory
-from app.api.deps import get_current_active_manage_user
+from app.adapters.web.security.access import verify_token, verify_apitoken
+from app.api.deps import (
+    get_current_active_manage_user,
+    get_transfer_history_lookup_service,
+)
 from app.application.directory import DirectoryHelper
+from app.application.history import TransferHistoryLookupService
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
@@ -106,7 +106,8 @@ async def remove_queue(
 
 
 def _resolve_manual_transfer_source_fileitems(
-    transer_item: ManualTransferItem, db: Session
+    transer_item: ManualTransferItem,
+    history_query: TransferHistoryLookupService,
 ) -> tuple[List[FileItem], Optional[str]]:
     """
     从手动整理请求中解析源文件项。
@@ -114,7 +115,7 @@ def _resolve_manual_transfer_source_fileitems(
     if transer_item.logids:
         fileitems: List[FileItem] = []
         for logid in transer_item.logids:
-            history: TransferHistory = TransferHistory.get(db, logid)
+            history = history_query.get(logid)
             if not history:
                 return [], f"整理记录不存在，ID：{logid}"
             if history.status and ("move" in history.mode):
@@ -124,7 +125,7 @@ def _resolve_manual_transfer_source_fileitems(
         return fileitems, None
 
     if transer_item.logid:
-        history: TransferHistory = TransferHistory.get(db, transer_item.logid)
+        history = history_query.get(transer_item.logid)
         if not history:
             return [], f"整理记录不存在，ID：{transer_item.logid}"
         if history.status and ("move" in history.mode):
@@ -195,19 +196,21 @@ def _get_manual_transfer_target_key(
 )
 def match_manual_transfer_target_path(
     transer_item: ManualTransferItem,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_active_manage_user),
+    history_query: TransferHistoryLookupService = Depends(
+        get_transfer_history_lookup_service
+    ),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     根据源文件匹配手动整理目的路径。
 
     :param transer_item: 手工整理项
-    :param db: 数据库
+    :param history_query: 整理历史投影服务
     :param _: Token校验
     """
     src_fileitems, error_message = _resolve_manual_transfer_source_fileitems(
         transer_item=transer_item,
-        db=db,
+        history_query=history_query,
     )
     if error_message:
         return _SchemaResponse(success=False, message=error_message)
@@ -258,19 +261,21 @@ def match_manual_transfer_target_path(
 )
 def query_manual_transfer_history(
     transer_item: ManualTransferItem,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_active_manage_user),
+    history_query: TransferHistoryLookupService = Depends(
+        get_transfer_history_lookup_service
+    ),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     查询文件或目录命中的成功整理记录。
 
     :param transer_item: 手工整理项
-    :param db: 数据库
+    :param history_query: 整理历史投影服务
     :param _: Token校验
     """
     src_fileitems, error_message = _resolve_manual_transfer_source_fileitems(
         transer_item=transer_item,
-        db=db,
+        history_query=history_query,
     )
     if error_message:
         return _SchemaResponse(success=False, message=error_message)
@@ -293,14 +298,16 @@ def query_manual_transfer_history(
 def manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool] = False,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_active_manage_user),
+    history_query: TransferHistoryLookupService = Depends(
+        get_transfer_history_lookup_service
+    ),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
     :param transer_item: 手工整理项
     :param background: 后台运行
-    :param db: 数据库
+    :param history_query: 整理历史投影服务
     :param _: Token校验
     """
     force = False
@@ -311,7 +318,7 @@ def manual_transfer(
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
     if transer_item.logid:
         # 查询历史记录
-        history: TransferHistory = TransferHistory.get(db, transer_item.logid)
+        history = history_query.get(transer_item.logid)
         if not history:
             return _SchemaResponse(
                 success=False, message=f"整理记录不存在，ID：{transer_item.logid}"
@@ -592,7 +599,7 @@ def manual_transfer(
 )
 def recommend_episode_format(
     recommend_item: EpisodeFormatRecommendItem,
-    _: User = Depends(get_current_active_manage_user),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     根据目录样本推荐集数定位模板

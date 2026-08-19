@@ -9,7 +9,7 @@ Create Date: 2024-07-20 08:43:40.741251
 import secrets
 
 from app.runtime.config import settings
-from app.application.security.access import get_password_hash
+from app.application.security.token import get_password_hash
 from app.db import SessionFactory
 from app.db.models import *
 from app.db.oper.systemconfig import SystemConfigOper

@@ -2,9 +2,6 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
-import pytest
-
-
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
 # 包级依赖矩阵：键是包，值是它允许 import 的包全集。
@@ -116,6 +113,8 @@ RETIRED_CANONICAL_FILES = (
     "app/runtime/runtime.py",
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
+    "app/application/plugins.py",
+    "app/application/subscribe.py",
 )
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
@@ -491,6 +490,39 @@ def test_capability_packages_do_not_import_forbidden_upper_layers():
         }
         if forbidden:
             violations[module_name] = forbidden
+    assert violations == {}
+
+
+# 路由依赖模块的职责就是声明 FastAPI 依赖链，其对 Depends 与令牌校验的引用属于
+# 该职责本身，不是应用层向传输层的越界扩散。
+TRANSPORT_AWARE_APPLICATION_FILES = frozenset({
+    "app/application/security/dependencies.py",
+})
+
+
+def test_application_does_not_import_transport_frameworks():
+    """应用层不得依赖 FastAPI、Starlette 或宿主 HTTP 适配器。"""
+    violations: dict[str, set[str]] = {}
+    for path in (APP_ROOT / "application").rglob("*.py"):
+        if str(path.relative_to(PROJECT_ROOT)) in TRANSPORT_AWARE_APPLICATION_FILES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        forbidden: set[str] = set()
+        for node in ast.walk(tree):
+            candidates: list[str] = []
+            if isinstance(node, ast.Import):
+                candidates.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                candidates.append(node.module)
+            forbidden.update(
+                candidate
+                for candidate in candidates
+                if candidate.startswith(
+                    ("fastapi", "starlette", "app.api", "app.adapters.web")
+                )
+            )
+        if forbidden:
+            violations[str(path.relative_to(PROJECT_ROOT))] = forbidden
     assert violations == {}
 
 

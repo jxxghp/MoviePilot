@@ -42,7 +42,7 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
             music_type="album",
         ),
         background=True,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -73,22 +73,17 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
 
     captured = {}
 
-    def fake_get(_db, logid):
-        assert logid == 1
-        return history
-
     class FakeTransferChain:
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
             return True, ""
 
-    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
 
     resp = manual_transfer(
         transer_item=ManualTransferItem(logid=1, from_history=True),
         background=True,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda history_id: history if history_id == 1 else None),
         _="token",
     )
 
@@ -122,11 +117,6 @@ def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatc
     )
     captured = {}
 
-    def fake_get(_db, logid):
-        """返回受污染的历史记录。"""
-        assert logid == 1
-        return history
-
     class FakeTransferChain:
         """记录 API 传入整理链的参数。"""
 
@@ -135,13 +125,12 @@ def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatc
             captured.update(kwargs)
             return True, ""
 
-    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
 
     resp = manual_transfer(
         transer_item=ManualTransferItem(logid=1, from_history=False),
         background=True,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda history_id: history if history_id == 1 else None),
         _="token",
     )
 
@@ -180,22 +169,17 @@ def test_manual_transfer_from_history_passes_old_dest_cleanup_to_chain(monkeypat
     )
     captured = {}
 
-    def fake_get(_db, logid):
-        assert logid == 1
-        return history
-
     class FakeTransferChain:
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
             return True, ""
 
-    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
 
     resp = manual_transfer(
         transer_item=ManualTransferItem(logid=1),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda history_id: history if history_id == 1 else None),
         _="token",
     )
 
@@ -231,10 +215,6 @@ def test_manual_transfer_from_history_preview_does_not_cleanup_old_dest(monkeypa
     )
     captured = {}
 
-    def fake_get(_db, logid):
-        assert logid == 1
-        return history
-
     class FakeTransferChain:
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
@@ -244,13 +224,12 @@ def test_manual_transfer_from_history_preview_does_not_cleanup_old_dest(monkeypa
                 "message": "",
             }
 
-    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
 
     resp = manual_transfer(
         transer_item=ManualTransferItem(logid=1, preview=True),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda history_id: history if history_id == 1 else None),
         _="token",
     )
 
@@ -314,7 +293,7 @@ def test_manual_transfer_preview_uses_explicit_fileitems_instead_of_directory(mo
             preview=True,
         ),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -374,7 +353,7 @@ def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
             preview=True,
         ),
         background=False,
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -410,7 +389,7 @@ def test_match_manual_transfer_target_path_returns_directory_match(monkeypatch):
                 "type": "file",
             },
         ),
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -457,7 +436,7 @@ def test_match_manual_transfer_target_path_returns_null_for_ambiguous_matches(mo
                 },
             ],
         ),
-        db=object(),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
         _="token",
     )
 
@@ -490,9 +469,6 @@ def test_match_manual_transfer_target_path_accepts_multiple_history_records(monk
         ),
     }
 
-    def fake_get(_db, logid):
-        return histories.get(logid)
-
     class FakeDirectoryHelper:
         def get_dir(self, **_kwargs):
             return TransferDirectoryConf(
@@ -501,12 +477,11 @@ def test_match_manual_transfer_target_path_accepts_multiple_history_records(monk
                 transfer_type="copy",
             )
 
-    monkeypatch.setattr("app.api.endpoints.transfer.TransferHistory.get", fake_get)
     monkeypatch.setattr("app.api.endpoints.transfer.DirectoryHelper", FakeDirectoryHelper)
 
     resp = match_manual_transfer_target_path(
         transer_item=ManualTransferItem(logids=[1, 2]),
-        db=object(),
+        history_query=SimpleNamespace(get=histories.get),
         _="token",
     )
 

@@ -87,6 +87,8 @@ class SiteUserData(BaseModel):
 
     # 站点域名
     domain: Optional[str] = None
+    # 站点名称
+    name: Optional[str] = None
     # 用户名
     username: Optional[str] = None
     # 用户ID
@@ -123,6 +125,9 @@ class SiteUserData(BaseModel):
     updated_day: Optional[str] = None
     # 更新时间
     updated_time: Optional[str] = None
+
+    # 查询仓储返回 SQLAlchemy ORM 对象时，从对象属性读取字段。
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SiteAuth(BaseModel):

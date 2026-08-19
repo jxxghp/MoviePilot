@@ -189,7 +189,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.get_configured_system_config") as system_config_oper,
             patch("app.application.orchestration.search.SitesHelper") as sites_helper,
             patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
@@ -235,7 +235,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.get_configured_system_config") as system_config_oper,
             patch("app.application.orchestration.search.SitesHelper") as sites_helper,
             patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
@@ -281,7 +281,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.get_configured_system_config") as system_config_oper,
             patch("app.application.orchestration.search.SitesHelper") as sites_helper,
             patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
@@ -346,7 +346,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.get_configured_system_config") as system_config_oper,
             patch("app.application.orchestration.search.SitesHelper") as sites_helper,
             patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
@@ -392,7 +392,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.application.orchestration.search.SystemConfigOper") as system_config_oper,
+            patch("app.application.orchestration.search.get_configured_system_config") as system_config_oper,
             patch("app.application.orchestration.search.SitesHelper") as sites_helper,
             patch("app.application.orchestration.search.ProgressHelper") as progress_helper,
         ):
@@ -473,7 +473,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
     def test_tool_factory_excludes_message_tools_when_disabled(self):
         with patch(
-            "app.agent.tools.factory.PluginManager.get_plugin_agent_tools",
+            "app.agent.tools.factory._get_plugin_agent_tools",
             return_value=[],
         ):
             tools = MoviePilotToolFactory.create_tools(

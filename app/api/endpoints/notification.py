@@ -6,7 +6,6 @@ from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.notification import NotificationChain
-from app.db.models import User
 from app.api.deps import get_current_active_superuser
 
 router = ResponseAPIRouter()
@@ -19,7 +18,7 @@ router = ResponseAPIRouter()
 )
 def manage_channel(
     request: _SchemaManageRequest,
-    _: User = Depends(get_current_active_superuser),
+    _: object = Depends(get_current_active_superuser),
 ):
     """
     通知渠道统一管理入口

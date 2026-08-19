@@ -17,15 +17,30 @@ ENV LANG="C.UTF-8" \
 
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d -m 0755 /usr/share/postgresql-common/pgdg \
+    && curl -fsSL \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 3 \
+    --retry-all-errors \
+    --retry-delay 2 \
+    --retry-max-time 90 \
+    "https://www.postgresql.org/media/keys/ACCC4CF8.asc" \
+    -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && chmod 0644 /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && printf '%s\n' \
+    'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+    > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     nginx \
     gettext-base \
     locales \
     procps \
     gosu \
     bash \
-    ca-certificates \
-    curl \
     wget \
     git \
     gh \
@@ -45,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsof \
     nano \
     unar \
+    postgresql-client-18 \
     libchromaprint-tools \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
@@ -149,11 +165,15 @@ COPY --from=prepare_code /public /public
 
 RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
     && cp -f /app/docker/nginx.template.conf /etc/nginx/nginx.template.conf \
-    && cp -f /app/docker/update.sh /usr/local/bin/mp_update.sh \
-    && cp -f /app/docker/entrypoint.sh /entrypoint.sh \
+    && mkdir -p /usr/local/lib/moviepilot/control \
+    && find /app/docker -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' -exec cp -f -t /usr/local/lib/moviepilot/control {} + \
+    && cp -f /app/docker/launcher.sh /entrypoint.sh \
     && cp -f /app/docker/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf \
     && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /usr/local/bin/moviepilot \
-    && chmod +x /entrypoint.sh /usr/local/bin/mp_update.sh /usr/local/bin/moviepilot \
+    && bash -n /entrypoint.sh \
+    && for control_script in /usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done \
+    && chmod 755 /entrypoint.sh /usr/local/bin/moviepilot \
+    && chmod 500 /usr/local/lib/moviepilot/control/*.sh \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 918 \
@@ -166,5 +186,5 @@ RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
 
 EXPOSE 3000
 VOLUME [ "${CONFIG_DIR}" ]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -fsS "http://127.0.0.1:${PORT:-3001}/api/v1/system/global?token=moviepilot" >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD /usr/bin/curl -fsS "http://127.0.0.1:${PORT:-3001}/api/v1/system/global?token=moviepilot" >/dev/null || exit 1
 ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]
