@@ -109,6 +109,55 @@ def test_download_add_allows_confirmed_unrecognized_video(monkeypatch) -> None:
     assert context.media_info.media_id is None
 
 
+def test_download_add_requires_confirmation_for_unrecognized_music(monkeypatch) -> None:
+    """未识别的音乐资源同样需要先由用户确认，不能直接提交下载。"""
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = None
+    download_chain = Mock()
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="Various Artists - 90s Collection",
+            category=MediaType.MUSIC.value,
+        ),
+        music_type="album",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is False
+    assert response.message == "无法识别媒体信息"
+    assert response.data.requires_confirmation is True
+    download_chain.download_single.assert_not_called()
+
+
+def test_download_add_allows_confirmed_unrecognized_music(monkeypatch) -> None:
+    """用户确认后音乐资源也应使用种子元数据继续下载。"""
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = None
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-music"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="Various Artists - 90s Collection",
+            category="music",
+        ),
+        music_type="album",
+        allow_unrecognized=True,
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.type == MediaType.MUSIC
+    assert context.media_info.music_type == "album"
+    assert context.media_info.title == "90s Collection"
+
+
 def test_subtitle_download_passes_generic_media_source(monkeypatch) -> None:
     """字幕下载接口应把统一来源ID传递到下载链。"""
     captured = {}

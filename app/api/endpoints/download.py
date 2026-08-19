@@ -74,8 +74,21 @@ def _prepare_subtitle_download(
 def _build_unrecognized_media_info(
     torrent: _SchemaTorrentInfo,
     metainfo: MetaInfo,
-) -> MediaInfo:
-    """为用户确认的未识别影视资源构造最小下载上下文。"""
+    is_music: bool = False,
+    music_type: Optional[str] = None,
+) -> MediaInfo | MusicInfo:
+    """
+    为用户确认的未识别资源构造最小下载上下文，影视与音乐统一处理。
+
+    影视以种子分类兜底媒体类型并保留标题年份，音乐按解析标题构造音乐信息，
+    两者都不再要求识别出统一媒体信息即可继续下载。
+    """
+    if is_music:
+        return MusicInfo(
+            title=metainfo.title or torrent.title,
+            year=metainfo.year,
+            music_type=music_type or MUSIC_ENTITY_RECORDING,
+        )
     try:
         media_type = MediaType(torrent.category)
     except (TypeError, ValueError):
@@ -212,15 +225,19 @@ def add(
             music_type=normalized_music_type,
         )
     if not mediainfo:
-        if is_music:
-            return _SchemaResponse(success=False, message="无法识别媒体信息")
         if not allow_unrecognized:
             return _SchemaResponse(
                 success=False,
                 message="无法识别媒体信息",
                 data=_SchemaDownloadAddedData(requires_confirmation=True),
             )
-        mediainfo = _build_unrecognized_media_info(torrent_in, metainfo)
+        # 用户已确认：影视与音乐统一按种子元信息构造最小上下文继续下载
+        mediainfo = _build_unrecognized_media_info(
+            torrent_in,
+            metainfo,
+            is_music=is_music,
+            music_type=normalized_music_type,
+        )
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
