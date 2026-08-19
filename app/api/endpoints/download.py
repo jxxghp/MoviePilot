@@ -18,6 +18,7 @@ from app.api.response import ResponseAPIRouter
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
@@ -73,7 +74,7 @@ def _prepare_subtitle_download(
 
 def _build_unrecognized_media_info(
     torrent: _SchemaTorrentInfo,
-    metainfo: MetaInfo,
+    metainfo: MetaBase,
     is_music: bool = False,
     music_type: Optional[str] = None,
 ) -> MediaInfo | MusicInfo:
@@ -97,6 +98,9 @@ def _build_unrecognized_media_info(
         media_type = MediaType.MOVIE
     if media_type not in (MediaType.MOVIE, MediaType.TV):
         media_type = metainfo.type
+        # 合集类型在回退到元数据后同样归一为电影，避免落到 UNKNOWN
+        if media_type == MediaType.COLLECTION:
+            media_type = MediaType.MOVIE
     if media_type not in (MediaType.MOVIE, MediaType.TV):
         media_type = MediaType.UNKNOWN
     return MediaInfo(
