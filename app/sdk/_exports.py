@@ -215,6 +215,7 @@ SDK_HOST_INTERNAL_EXPORTS = {
     'app.domain.metainfo.clear_rust_parse_options_cache': '重置宿主解析加速器的选项缓存',
     'app.domain.scraper.MediaScraperHelper': '刮削助手的取用位置由 app.helper.scraper 条目指向 app.domain.scraper',
     'app.foundation.text.convert': '简繁转换的取用位置由 app.utils.zhconv 条目指向 app.foundation.text',
+    'app.runtime.extensions.module_manager.configure_plugin_capability_roots': '装配宿主扩展能力声明根来源',
     'app.runtime.extensions.plugin_manager.configure_plugin_catalog_factory': '装配宿主插件目录工厂',
     'app.runtime.extensions.plugin_manager.configure_plugin_install_reporter': '装配宿主插件安装上报器',
     'app.runtime.extensions.plugin_manager.configure_plugin_legacy_import_services': '装配宿主旧导入诊断服务',

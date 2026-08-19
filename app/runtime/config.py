@@ -551,6 +551,10 @@ class ConfigModel(BaseModel):
     # 本地插件仓库目录，多个地址使用,分隔
     PLUGIN_LOCAL_REPO_PATHS: Optional[str] = None
 
+    # ==================== 废弃能力开关 ====================
+    # 已进入「默认关闭」阶段但需临时恢复的废弃能力标识，取值见 app/runtime/deprecation/notices.py
+    DEPRECATION_ENABLED: List[str] = []
+
     # ==================== 技能配置 ====================
     # 技能市场仓库地址，多个地址使用,分隔
     SKILL_MARKET: str = (

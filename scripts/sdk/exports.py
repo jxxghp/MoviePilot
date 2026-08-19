@@ -48,6 +48,8 @@ HOST_INTERNAL_EXPORTS = {
         "装配宿主插件资源导入准备器",
     "app.runtime.extensions.plugin_manager.configure_site_auth_level_provider":
         "装配宿主站点认证级别提供者",
+    "app.runtime.extensions.module_manager.configure_plugin_capability_roots":
+        "装配宿主扩展能力声明根来源",
 }
 
 

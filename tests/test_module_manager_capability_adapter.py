@@ -236,7 +236,7 @@ def module_manager_harness(
     monkeypatch.setattr(
         module_manager_extension,
         "build_host_module_registry",
-        lambda: registry,
+        lambda *_roots: registry,
     )
 
     config_values = {"Notifications": []}

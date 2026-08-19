@@ -56,8 +56,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6219,
-  "edge_sha256": "00c1b2f4efc84aa2d3bbeeb5b52fb076bfab210563ea873a3aaee0838f3c835e",
+  "edge_count": 6224,
+  "edge_sha256": "bca88cb5860343b11cfde7498e88066caf1f06ced4a51afcc23243997b8b6a29",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5448,6 +5448,7 @@
     "app.runtime.extensions.module_manager -> app.runtime",
     "app.runtime.extensions.module_manager -> app.runtime.capabilities",
     "app.runtime.extensions.module_manager -> app.runtime.capabilities.model",
+    "app.runtime.extensions.module_manager -> app.runtime.capabilities.registry",
     "app.runtime.extensions.module_manager -> app.runtime.capabilities.runtime",
     "app.runtime.extensions.module_manager -> app.runtime.config",
     "app.runtime.extensions.module_manager -> app.runtime.events",
@@ -5460,6 +5461,8 @@
     "app.runtime.extensions.plugin.layout -> app.foundation",
     "app.runtime.extensions.plugin.layout -> app.foundation.version",
     "app.runtime.extensions.plugin.layout -> app.runtime",
+    "app.runtime.extensions.plugin.layout -> app.runtime.capabilities",
+    "app.runtime.extensions.plugin.layout -> app.runtime.capabilities.registry",
     "app.runtime.extensions.plugin.layout -> app.runtime.log",
     "app.runtime.extensions.plugin.projection -> app.runtime",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions",
@@ -6011,6 +6014,8 @@
     "app.startup.modules_initializer -> app.runtime.extensions.module",
     "app.startup.modules_initializer -> app.runtime.extensions.module.dispatcher",
     "app.startup.modules_initializer -> app.runtime.extensions.module_manager",
+    "app.startup.modules_initializer -> app.runtime.extensions.plugin",
+    "app.startup.modules_initializer -> app.runtime.extensions.plugin.layout",
     "app.startup.modules_initializer -> app.runtime.extensions.plugin_manager",
     "app.startup.modules_initializer -> app.runtime.extensions.service_config",
     "app.startup.modules_initializer -> app.runtime.log",
