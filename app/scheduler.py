@@ -348,13 +348,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 },
             }
 
-            # 创建定时服务
             self._scheduler = BackgroundScheduler(
                 timezone=settings.TZ,
                 executors={"default": ThreadPoolExecutor(settings.CONF.scheduler)},
             )
 
-            # 数据库备份复用宿主调度器，不创建独立定时线程。
             self._register_database_backup_job()
 
             # CookieCloud定时同步

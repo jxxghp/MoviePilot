@@ -27,6 +27,7 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
     assert Scheduler.CONFIG_WATCH.intersection({
         "DB_BACKUP_ENABLE",
         "DB_BACKUP_CRON",
+        "DB_BACKUP_ON_UPGRADE",
         "DB_BACKUP_PATH",
         "DB_BACKUP_RETENTION_DAYS",
         "DB_BACKUP_MAX_COUNT",
