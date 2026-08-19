@@ -602,6 +602,301 @@ def test_updater_exposes_explicit_result(
     assert result.stdout == f"{expected}\n"
 
 
+def test_release_noop_preserves_prerelease_selection_without_probing_package_index(
+    tmp_path: Path,
+) -> None:
+    pip_probe = tmp_path / "pip-probe"
+    curl_log = tmp_path / "curl.log"
+    comparison_log = tmp_path / "comparison.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        MOVIEPILOT_AUTO_UPDATE=release
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
+        PIP_PROBE="$2"
+        CURL_LOG="$3"
+        COMPARISON_LOG="$4"
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        test_connectivity_pip() {{ touch "${{PIP_PROBE}}"; return 0; }}
+        test_connectivity_github() {{ CURL_OPTIONS=-sL; GITHUB_LOG=test; return 0; }}
+        compare_versions() {{ printf '%s|%s\n' "$1" "$2" > "${{COMPARISON_LOG}}"; return 1; }}
+        grep() {{
+            if [[ "$*" == *"/app/version.py"* ]]; then
+                printf '%s\n' "APP_VERSION = 'v3.0.0'"
+                return 0
+            fi
+            command grep "$@"
+        }}
+        sed() {{
+            if [[ "$*" == *"APP_VERSION"* ]]; then
+                printf '%s\n' 'v3.0.0'
+                return 0
+            fi
+            command sed "$@"
+        }}
+        curl() {{
+            printf '%s\n' "$*" >> "${{CURL_LOG}}"
+            printf '%s\n' '[{{"tag_name":"v2.15.6"}},{{"tag_name":"v3.1.0-beta"}},{{"tag_name":"v3.1.0-rc"}},{{"tag_name":"v3.0.0"}}]'
+        }}
+        run_moviepilot_update
+        printf '%s\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "release-noop-test",
+            str(tmp_path / "config"),
+            str(pip_probe),
+            str(curl_log),
+            str(comparison_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "noop\n"
+    assert not pip_probe.exists()
+    curl_args = curl_log.read_text(encoding="utf-8")
+    assert "/releases" in curl_args
+    assert "/releases/latest" not in curl_args
+    assert "--compressed" in curl_args
+    assert "--fail" in curl_args
+    assert "--connect-timeout 5" in curl_args
+    assert "--max-time 15" in curl_args
+    assert comparison_log.read_text(encoding="utf-8") == "v3.0.0|v3.1.0-rc\n"
+
+
+@pytest.mark.parametrize(
+    ("dependencies_changed", "expected_route_calls", "expected_install_calls"),
+    ((False, 0, 0), (True, 1, 1)),
+)
+def test_package_route_is_only_configured_for_changed_dependencies(
+    tmp_path: Path,
+    dependencies_changed: bool,
+    expected_route_calls: int,
+    expected_install_calls: int,
+) -> None:
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    pip_log = tmp_path / "pip.log"
+    route_log = tmp_path / "route.log"
+    for executable in ("pip", "pip-compile"):
+        path = venv_bin / executable
+        path.write_text(
+            "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"${PIP_TEST_LOG}\"\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+    update_tree = tmp_path / "update" / "App"
+    update_tree.mkdir(parents=True)
+    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
+    (update_tree / "version.py").write_text("FRONTEND_VERSION = ''\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        TMP_PATH="$3"
+        ROUTE_LOG="$4"
+        DEPENDENCIES_CHANGED="$5"
+        PIP_PROXY= PROXY_HOST=
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        download_and_unzip() {{ return 0; }}
+        cmp() {{ [ "${{DEPENDENCIES_CHANGED}}" = false ]; }}
+        cp() {{ return 0; }}
+        configure_pip_route() {{ printf 'route\n' >> "${{ROUTE_LOG}}"; PIP_LOG=test; }}
+        install_backend_and_download_resources tags/v3.0.1.zip || true
+        """
+    )
+
+    env = {**os.environ, "PIP_TEST_LOG": str(pip_log)}
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "package-route-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(tmp_path / "update"),
+            str(route_log),
+            str(dependencies_changed).lower(),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+
+    assert result.stderr == ""
+    route_calls = route_log.read_text(encoding="utf-8").splitlines() if route_log.exists() else []
+    install_calls = pip_log.read_text(encoding="utf-8").splitlines() if pip_log.exists() else []
+    assert len(route_calls) == expected_route_calls
+    compile_calls = [call for call in install_calls if not call.startswith("install ")]
+    package_install_calls = [call for call in install_calls if call.startswith("install ")]
+    assert len(package_install_calls) == expected_install_calls
+    if dependencies_changed:
+        assert compile_calls == [
+            f"{update_tree / 'requirements.in'} -o {tmp_path / 'update' / 'requirements.txt'}"
+        ]
+        assert package_install_calls == [
+            f"install -r {tmp_path / 'update' / 'requirements.txt'}"
+        ]
+
+
+@pytest.mark.parametrize("failure", ("compile", "install", "post_install"))
+def test_failed_dependency_update_does_not_overwrite_current_manifests(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    command_log = tmp_path / "commands.log"
+    copy_log = tmp_path / "copies.log"
+    for executable in ("pip", "pip-compile"):
+        path = venv_bin / executable
+        path.write_text(
+            "#!/bin/bash\n"
+            'printf \'%s|%s\\n\' "$(basename "$0")" "$*" >> "${COMMAND_LOG}"\n'
+            f'[[ "$(basename "$0")" == "pip-compile" && "{failure}" == "compile" ]] && exit 1\n'
+            f'[[ "$(basename "$0")" == "pip" && "{failure}" == "install" ]] && exit 1\n'
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+    update_tree = tmp_path / "update" / "App"
+    update_tree.mkdir(parents=True)
+    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
+    (update_tree / "version.py").write_text(
+        "FRONTEND_VERSION = 'v3.0.0'\n",
+        encoding="utf-8",
+    )
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        TMP_PATH="$3"
+        COPY_LOG="$4"
+        PIP_PROXY= PROXY_HOST=
+        FAILURE={failure}
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        download_and_unzip() {{
+            if [[ "${{FAILURE}}" = post_install ]] && [[ "$2" = dist ]]; then
+                return 1
+            fi
+            return 0
+        }}
+        cmp() {{ return 1; }}
+        cp() {{ printf '%s\n' "$*" >> "${{COPY_LOG}}"; }}
+        configure_pip_route() {{ PIP_LOG=test; }}
+        install_backend_and_download_resources tags/v3.0.1.zip || true
+        if [[ "${{FAILURE}}" = post_install ]]; then
+            install_backend_and_download_resources tags/v3.0.1.zip || true
+        fi
+        """
+    )
+
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "dependency-failure-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(tmp_path / "update"),
+            str(copy_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "COMMAND_LOG": str(command_log)},
+    )
+
+    assert not copy_log.exists()
+    commands = command_log.read_text(encoding="utf-8").splitlines()
+    assert commands[0] == (
+        f"pip-compile|{update_tree / 'requirements.in'} "
+        f"-o {tmp_path / 'update' / 'requirements.txt'}"
+    )
+    assert all("/app/requirements" not in command for command in commands)
+    if failure == "compile":
+        assert len(commands) == 1
+    elif failure == "install":
+        assert commands[1] == f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}"
+    else:
+        assert commands == [
+            (
+                f"pip-compile|{update_tree / 'requirements.in'} "
+                f"-o {tmp_path / 'update' / 'requirements.txt'}"
+            ),
+            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
+            (
+                f"pip-compile|{update_tree / 'requirements.in'} "
+                f"-o {tmp_path / 'update' / 'requirements.txt'}"
+            ),
+            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
+        ]
+
+
+def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
+    timeout_log = tmp_path / "timeout.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        TIMEOUT_LOG="$3"
+        PIP_PROXY=https://packages.example/simple
+        PROXY_HOST=
+        source {UPDATER!s}
+        timeout() {{ printf '%s\n' "$*" > "${{TIMEOUT_LOG}}"; return 124; }}
+        test_connectivity_pip 0 || true
+        """
+    )
+
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "package-probe-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(timeout_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    command = timeout_log.read_text(encoding="utf-8")
+    assert command.startswith("--kill-after=2s 10s env ")
+    assert "UV_NO_CACHE=1" in command
+    assert "PIP_NO_CACHE_DIR=1" in command
+    assert "UV_HTTP_TIMEOUT=5" in command
+    assert "PIP_DEFAULT_TIMEOUT=5" in command
+    assert "UV_HTTP_RETRIES=0" in command
+    assert "PIP_RETRIES=0" in command
+    assert "pip install --target " in command
+    assert " --no-deps -i https://packages.example/simple pip-hello-world" in command
+    assert "uninstall" not in command
+    probe_dir = Path(command.split("--target ", 1)[1].split(" ", 1)[0])
+    assert not probe_dir.exists()
+
+
 @pytest.mark.parametrize(
     ("result", "current", "next_generation", "guard", "expected"),
     (
