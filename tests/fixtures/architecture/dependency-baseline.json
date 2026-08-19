@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6028,
-  "edge_sha256": "5d7edd263b74841b2b98cfdb032190e4a2dd2961733402eacbeba31b21ecf136",
+  "edge_count": 6029,
+  "edge_sha256": "a312bbaffcb68adc5ead36130d0e1e20056cab73273727a55182f2bfed5efd34",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1676,6 +1676,7 @@
     "app.api.endpoints.download -> app.domain.context",
     "app.api.endpoints.download -> app.domain.media",
     "app.api.endpoints.download -> app.domain.meta",
+    "app.api.endpoints.download -> app.domain.meta.metabase",
     "app.api.endpoints.download -> app.domain.meta.metamusic",
     "app.api.endpoints.download -> app.domain.metainfo",
     "app.api.endpoints.download -> app.schemas",
