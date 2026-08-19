@@ -26,6 +26,7 @@ from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.extensions.contract import supports_extension_hook
+from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
@@ -39,6 +40,9 @@ LegacyPluginImportPreparer = Callable[..., None]
 PluginInstallReporter = Callable[..., None]
 SiteAuthLevelProvider = Callable[[], int]
 PluginCatalogFactory = Callable[["PluginManager"], Any]
+PluginDatabaseEnsurer = Callable[[str, str], None]
+PluginDatabaseReleaser = Callable[[str], None]
+PluginDatabaseDestroyer = Callable[[str, str], None]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
@@ -59,6 +63,18 @@ def _unavailable_plugin_catalog_factory(_manager: "PluginManager") -> Any:
     raise RuntimeError("插件目录应用服务尚未由启动组合根装配")
 
 
+def _ignore_plugin_database_ensure(_plugin_id: str, _instance_id: str) -> None:
+    """插件数据库框架尚未装配时跳过建库，避免扩展层反向依赖 DB 层。"""
+
+
+def _ignore_plugin_database_release(_plugin_id: str) -> None:
+    """插件数据库框架尚未装配时跳过连接释放。"""
+
+
+def _ignore_plugin_database_destroy(_plugin_id: str, _instance_id: str) -> None:
+    """插件数据库框架尚未装配时跳过库文件销毁。"""
+
+
 _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
     _ignore_legacy_diagnostics
 )
@@ -69,6 +85,9 @@ _legacy_plugin_import_preparer: LegacyPluginImportPreparer = (
 _plugin_install_reporter: PluginInstallReporter = _ignore_legacy_diagnostics
 _site_auth_level_provider: SiteAuthLevelProvider = _unavailable_site_auth_level
 _plugin_catalog_factory: PluginCatalogFactory = _unavailable_plugin_catalog_factory
+_plugin_database_ensure: PluginDatabaseEnsurer = _ignore_plugin_database_ensure
+_plugin_database_release: PluginDatabaseReleaser = _ignore_plugin_database_release
+_plugin_database_destroy: PluginDatabaseDestroyer = _ignore_plugin_database_destroy
 
 
 def configure_plugin_legacy_import_services(
@@ -106,6 +125,27 @@ def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
     """由启动组合根注入插件目录应用服务工厂，消除 Runtime 反向依赖。"""
     global _plugin_catalog_factory
     _plugin_catalog_factory = factory
+
+
+def _configure_plugin_database_lifecycle(
+    *,
+    ensure: PluginDatabaseEnsurer,
+    release: PluginDatabaseReleaser,
+    destroy: PluginDatabaseDestroyer,
+) -> None:
+    """
+    由插件数据库框架（app.db.plugin）自注册建库、释放与销毁钩子。
+
+    runtime/extensions 层不得反向依赖 db 层，因此这里只声明可注入的钩子；
+    实现由 app.db.plugin 包首次被 import 时自行注入。
+    :param ensure: 按插件实例声明建库，未声明模型也未声明迁移目录时不做任何事
+    :param release: 释放某插件全部实例的数据库连接，不销毁库文件
+    :param destroy: 销毁某插件实例的数据库，含库文件本身，不可逆
+    """
+    global _plugin_database_ensure, _plugin_database_release, _plugin_database_destroy
+    _plugin_database_ensure = ensure
+    _plugin_database_release = release
+    _plugin_database_destroy = destroy
 
 
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
@@ -211,6 +251,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 extension = PluginExtension(plugin_obj, plugin_id)
                 # 生效插件配置
                 extension.initialize(self.get_plugin_config(plugin_id))
+                # 按插件声明建立其数据库，未声明模型或迁移目录时不做任何事
+                _plugin_database_ensure(plugin_id, DEFAULT_INSTANCE_ID)
                 # 存储运行实例
                 self._running_plugins[plugin_id] = plugin_obj
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
@@ -287,6 +329,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self.__stop_plugin(plugin)
             # 插件停止后撤销其渠道能力登记，不留残留
             self._revoke_channel_capabilities(plugin_id)
+            # 停止只释放数据库连接，不销毁库文件——销毁只在明确删除插件数据的路径触发
+            _plugin_database_release(plugin_id)
         # 清空对象
         if pid:
             # 清空指定插件
@@ -951,6 +995,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not force and not self._plugins.get(pid):
             return False
         get_plugin_storage().delete_data(pid)
+        # 删除插件数据时才销毁其数据库文件，这是不可逆操作
+        _plugin_database_destroy(pid, DEFAULT_INSTANCE_ID)
         return True
 
     def get_plugin_state(self, pid: str) -> bool:

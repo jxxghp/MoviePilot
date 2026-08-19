@@ -276,6 +276,11 @@ async def close_database():
     异步引擎与全部池化引擎就都跳过了释放——一条坏连接拖着其余连接一起泄漏，
     正是关停路径最不该出现的失败方式。
     """
+    # 先释放全部插件数据库容器，再 dispose 宿主引擎：PostgreSQL 下插件引擎是宿主
+    # 引擎的外观，反过来会让插件会话清理落在已失效的连接上。函数内 import 避免
+    # app.db.plugin 经 app.plugins 拉起的一整条依赖链在包内成环。
+    from app.db.plugin import release_all as _release_plugin_databases
+    _release_plugin_databases()
     # 只释放确实创建过的引擎：惰性之后，为了 dispose 而先把引擎创建出来毫无意义，
     # 还会在从未用过数据库的进程里凭空连一次库
     sync_engine = engine_module.peek_sync_engine()

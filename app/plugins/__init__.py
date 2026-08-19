@@ -4,7 +4,9 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, List, Dict, Optional, Tuple, Type, Union
+
+from sqlalchemy.orm import DeclarativeBase
 
 from app.application.messaging.message import MessageHelper
 from app.application.orchestration import ChainBase
@@ -19,8 +21,11 @@ from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilities
 from app.schemas.types import MessageType, NotificationChannel
 
-# 当前支持的插件持久化路径用途
-_PLUGIN_PATH_KINDS = frozenset({"data"})
+if TYPE_CHECKING:
+    from app.db.plugin import PluginDatabaseHandle
+
+# 当前支持的插件持久化路径用途：data 为插件业务数据，db 为插件自管理数据库
+_PLUGIN_PATH_KINDS = frozenset({"data", "db"})
 # 插件实例目录布局迁移完成后写入插件持久化根目录下的哨兵文件名
 _INSTANCE_LAYOUT_SENTINEL_NAME = ".instance-layout-migrated"
 # 迁移过程中源目录的改名中转目录名前缀，与插件持久化根目录同级
@@ -35,7 +40,7 @@ def plugin_instance_path(plugin_id: str, instance_id: str, kind: str) -> Path:
 
     :param plugin_id: 插件标识
     :param instance_id: 实例标识
-    :param kind: 用途分类，目前仅支持 "data"
+    :param kind: 用途分类，取值为 "data"（插件业务数据）或 "db"（插件自管理数据库）
     :return: 对应目录的绝对路径
     :raises ValueError: 标识包含路径分隔符、盘符、空字符、指向上级目录，或 kind 不受支持
     """
@@ -439,6 +444,64 @@ class _PluginBase(metaclass=ABCMeta):
         if not plugin_id:
             plugin_id = self.__class__.__name__
         return plugin_instance_path(plugin_id, DEFAULT_INSTANCE_ID, "data")
+
+    def declare_plugin_models(
+        self,
+        base: Type[DeclarativeBase],
+        plugin_id: Optional[str] = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ) -> None:
+        """
+        声明本插件在其专属数据库中使用的 ORM 模型集合。
+
+        ``base`` 须由 ``app.db.plugin.plugin_declarative_base`` 产出，插件模型继承
+        它定义；其 ``metadata`` 上注册的全部表会在插件数据库建立时一并建表。插件
+        同时声明了迁移目录时本声明被忽略，改走 alembic。
+        :param base: 插件专属声明式基类
+        :param plugin_id: 插件ID，为空时取当前插件
+        :param instance_id: 插件实例标识，本批固定取默认实例
+        """
+        from app.db.plugin import declare_models
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        declare_models(plugin_id, instance_id, base)
+
+    def declare_plugin_migrations(
+        self,
+        directory: Union[str, Path],
+        plugin_id: Optional[str] = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ) -> None:
+        """
+        声明本插件的 Alembic 迁移脚本目录，声明后插件数据库改走 alembic upgrade
+        建库，不再按 ``declare_plugin_models`` 声明的模型建表。
+        :param directory: 迁移脚本目录，须符合 Alembic script_location 布局
+        :param plugin_id: 插件ID，为空时取当前插件
+        :param instance_id: 插件实例标识，本批固定取默认实例
+        """
+        from app.db.plugin import declare_migrations
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        declare_migrations(plugin_id, instance_id, Path(directory))
+
+    def get_plugin_database(
+        self,
+        plugin_id: Optional[str] = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ) -> "PluginDatabaseHandle":
+        """
+        获取本插件指定实例的数据库句柄，用于取会话读写插件自有表。
+
+        句柄持有插件专属的引擎与会话工厂；容器不存在时按需建立，不要求提前调用
+        ``declare_plugin_models``。
+        :param plugin_id: 插件ID，为空时取当前插件
+        :param instance_id: 插件实例标识，本批固定取默认实例
+        :return: 插件实例的数据库句柄
+        """
+        from app.db.plugin import get_database
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return get_database(plugin_id, instance_id)
 
     def save_data(self, key: str, value: Any, plugin_id: Optional[str] = None):
         """
