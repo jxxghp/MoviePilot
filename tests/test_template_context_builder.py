@@ -189,3 +189,59 @@ def test_build_exposes_music_audio_specs_for_notifications() -> None:
     assert context["audio_specs"] == "FLAC · 24-bit · 96 kHz · 2,304 kbps"
     assert context["bitrate_kbps"] == 2304
     assert context["sample_rate_khz"] == "96"
+
+
+def _build_music_context(album, year):
+    """
+    构造音乐重命名上下文：标签专辑名带年份、文件/目录年份可独立渲染的场景。
+    """
+    meta = MetaMusic(
+        title="欲望反光",
+        album=album,
+        artists=["萧敬腾"],
+        album_artist="萧敬腾",
+        year=year,
+        track_number=1,
+        audio_format="FLAC",
+    )
+    return TemplateContextBuilder().build(meta=meta)
+
+
+def test_music_rename_strips_duplicate_album_year() -> None:
+    """专辑名尾部的年份标记不应与模板追加的年份重复（issue #6355）。"""
+    context = _build_music_context(album="欲望反光 (2018)", year=2018)
+
+    assert context["album"] == "欲望反光"
+    assert context["year"] == 2018
+
+
+def test_music_rename_strips_album_year_different_from_media_year() -> None:
+    """标签专辑名年份与识别年份不一致时，仅保留模板追加的识别年份。"""
+    context = _build_music_context(
+        album="洛克先生Mr.Rock演唱会Live纪实 (2010)", year=2009
+    )
+
+    assert context["album"] == "洛克先生Mr.Rock演唱会Live纪实"
+    assert context["year"] == 2009
+
+
+def test_music_rename_strips_repeated_album_year_suffixes() -> None:
+    """历史整理已生成的重复年份目录再次重命名时，所有尾部年份都应被剥离。"""
+    context = _build_music_context(album="爱的时刻自选辑 (2009) (2009)", year=2015)
+
+    assert context["album"] == "爱的时刻自选辑"
+    assert context["year"] == 2015
+
+
+def test_music_rename_keeps_album_year_when_no_standalone_year() -> None:
+    """没有独立年份可渲染时保留专辑名自带的年份，避免信息丢失。"""
+    context = _build_music_context(album="欲望反光 (2018)", year=None)
+
+    assert context["album"] == "欲望反光 (2018)"
+
+
+def test_music_rename_keeps_plain_album_title() -> None:
+    """不含年份的普通专辑名不受影响。"""
+    context = _build_music_context(album="叶惠美", year=2003)
+
+    assert context["album"] == "叶惠美"

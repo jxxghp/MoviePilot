@@ -29,6 +29,13 @@ from app.foundation import size as size_tools
 from app.foundation.crypto import HashUtils
 
 
+# 专辑名尾部的括号年份标记；重命名模板会独立追加 `({{year}})`，
+# 标签或目录名中自带的尾部年份若不剥离，会生成重复年份的目录名（issue #6355）
+_ALBUM_TRAILING_YEAR_RE = re.compile(
+    r"(?:[\s\u3000]*[\(\[（【]\s*(?:19|20)\d{2}\s*[\)\]）】])+$"
+)
+
+
 class AsyncMessageQueryRepository(Protocol):
     """消息查询用例依赖的异步持久化端口。"""
 
@@ -169,22 +176,31 @@ class TemplateContextBuilder:
                     aggregate_music_album
                     and mediainfo.music_type == MUSIC_ENTITY_ALBUM
             )
+            # 专辑场景以识别结果的专辑名为标题；整专年份以识别结果为准，
+            # 逐文件场景沿用 meta 解析年份，保证文件级年份优先。
+            year = (
+                mediainfo.year
+                if (is_album_context and mediainfo.year)
+                else (context.get("year") or mediainfo.year)
+            )
             if is_album_context and mediainfo.album:
-                title = cls.__convert_invalid_characters(mediainfo.album)
+                title = cls.__strip_album_trailing_year(
+                    cls.__convert_invalid_characters(mediainfo.album), year
+                )
             else:
                 title = context.get("title") or cls.__convert_invalid_characters(mediainfo.title)
             artists = context.get("artists") or [
                 cls.__convert_invalid_characters(item) for item in mediainfo.artists
             ]
             artist = context.get("artist") or cls.__convert_invalid_characters(mediainfo.artist)
-            album = context.get("album") or cls.__convert_invalid_characters(mediainfo.album)
+            # 标签/目录名自带的尾部年份会被重命名模板的 `({{year}})` 再次追加，
+            # 统一剥离避免生成 "专辑 (2018) (2018)" 这类重复年份目录（issue #6355）
+            album = cls.__strip_album_trailing_year(
+                context.get("album") or cls.__convert_invalid_characters(mediainfo.album),
+                year,
+            )
             album_artist = context.get("album_artist") or cls.__convert_invalid_characters(
                 mediainfo.album_artist
-            )
-            year = (
-                mediainfo.year
-                if (is_album_context and mediainfo.year)
-                else (context.get("year") or mediainfo.year)
             )
             disc_number = context.get("disc_number") or mediainfo.disc_number
             track_number = (
@@ -305,7 +321,10 @@ class TemplateContextBuilder:
                 "title": cls.__convert_invalid_characters(meta.title),
                 "artists": [cls.__convert_invalid_characters(item) for item in meta.artists],
                 "artist": cls.__convert_invalid_characters(meta.artist),
-                "album": cls.__convert_invalid_characters(meta.album),
+                # 标签专辑名常自带尾部年份，与模板独立追加的年份去重（issue #6355）
+                "album": cls.__strip_album_trailing_year(
+                    cls.__convert_invalid_characters(meta.album), meta.year
+                ),
                 "album_artist": cls.__convert_invalid_characters(meta.album_artist),
                 "year": meta.year,
                 "disc_number": meta.disc_number,
@@ -512,6 +531,21 @@ class TemplateContextBuilder:
         for char in invalid_characters:
             filename = filename.replace(char, char.translate(translation_table))
         return filename
+
+    @staticmethod
+    def __strip_album_trailing_year(
+            album: Optional[str], year: Optional[int]
+    ) -> Optional[str]:
+        """
+        去除专辑名尾部的括号年份标记（如 ``欲望反光 (2018)`` -> ``欲望反光``）。
+
+        音频标签或下载目录常把发行年份写进专辑名，而重命名模板会独立追加
+        ``({{year}})``，两者叠加会生成 "专辑 (2018) (2018)" 这类重复年份目录；
+        仅当存在可独立渲染的年份时才剥离，避免丢失只存在于专辑名中的年份信息。
+        """
+        if not album or not year:
+            return album
+        return _ALBUM_TRAILING_YEAR_RE.sub("", album) or album
 
 
 class TemplateHelper(metaclass=SingletonClass):
