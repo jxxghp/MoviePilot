@@ -15,6 +15,8 @@ from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
+from app.schemas.plugin import PluginInstanceCreate as _SchemaPluginInstanceCreate
+from app.schemas.plugin import PluginInstanceInfo as _SchemaPluginInstanceInfo
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
@@ -926,6 +928,75 @@ def clone_plugin(
     except Exception as e:
         logger.error(f"创建插件分身失败：{str(e)}")
         return _SchemaResponse(success=False, message=f"创建插件分身失败：{str(e)}")
+
+
+@router.get(
+    "/instances/{plugin_id}",
+    summary="获取插件实例列表",
+    response_model=List[_SchemaPluginInstanceInfo],
+)
+def list_plugin_instances(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    列出指定插件的全部实例及其运行状态
+    """
+    try:
+        return PluginManager().list_plugin_instances(plugin_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post(
+    "/instances/{plugin_id}",
+    summary="创建插件实例",
+    response_model=_SchemaPluginInstanceInfo,
+)
+def create_plugin_instance(
+    plugin_id: str,
+    instance_data: _SchemaPluginInstanceCreate,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    创建插件的新实例：写入初始配置并拉起，随后重建该插件的定时服务、命令与接口
+    """
+    plugin_manager = PluginManager()
+    try:
+        info = plugin_manager.create_plugin_instance(
+            plugin_id, instance_data.instance_id, instance_data.config
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # 新实例的定时服务、命令与接口需要整体重建才会被登记
+    register_plugin(plugin_id)
+    return info
+
+
+@router.delete(
+    "/instances/{plugin_id}/{instance_id}",
+    summary="删除插件实例",
+    response_model=_SchemaResponse[None],
+)
+def delete_plugin_instance(
+    plugin_id: str,
+    instance_id: str,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    删除插件的单个实例：停止运行态、回收配置数据与自管理库，随后重建该插件的定时服务、命令与接口
+    """
+    plugin_manager = PluginManager()
+    try:
+        plugin_manager.delete_plugin_instance(plugin_id, instance_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # 删除后必须整体重建，避免残留登记指向已停止的实例，兄弟实例的登记原样恢复
+    register_plugin(plugin_id)
+    return _SchemaResponse(success=True)
 
 
 @router.get(

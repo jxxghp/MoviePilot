@@ -4,6 +4,7 @@ import importlib.util
 import inspect
 import os
 import posixpath
+import shutil
 import sys
 import threading
 import time
@@ -19,6 +20,7 @@ from watchfiles import watch
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.foundation.crypto import RSAUtils
+from app.foundation.paths import ensure_path_segment
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.log import logger
@@ -50,6 +52,9 @@ PluginCatalogFactory = Callable[["PluginManager"], Any]
 PluginDatabaseEnsurer = Callable[[str, str], None]
 PluginDatabaseReleaser = Callable[[str], None]
 PluginDatabaseDestroyer = Callable[[str, str], None]
+PluginInstanceConfigUpserter = Callable[[str, str, dict], None]
+PluginInstanceConfigDeleter = Callable[[str, str], bool]
+PluginInstanceDataDeleter = Callable[[str, str], None]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
@@ -82,6 +87,19 @@ def _ignore_plugin_database_destroy(_plugin_id: str, _instance_id: str) -> None:
     """插件数据库框架尚未装配时跳过库文件销毁。"""
 
 
+def _ignore_plugin_instance_config_upsert(_plugin_id: str, _instance_id: str, _config: dict) -> None:
+    """插件实例持久化框架尚未装配时忽略实例配置写入。"""
+
+
+def _ignore_plugin_instance_config_delete(_plugin_id: str, _instance_id: str) -> bool:
+    """插件实例持久化框架尚未装配时报告实例配置未删除。"""
+    return False
+
+
+def _ignore_plugin_instance_data_delete(_plugin_id: str, _instance_id: str) -> None:
+    """插件实例持久化框架尚未装配时忽略实例数据删除。"""
+
+
 _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
     _ignore_legacy_diagnostics
 )
@@ -95,6 +113,13 @@ _plugin_catalog_factory: PluginCatalogFactory = _unavailable_plugin_catalog_fact
 _plugin_database_ensure: PluginDatabaseEnsurer = _ignore_plugin_database_ensure
 _plugin_database_release: PluginDatabaseReleaser = _ignore_plugin_database_release
 _plugin_database_destroy: PluginDatabaseDestroyer = _ignore_plugin_database_destroy
+_plugin_instance_config_upsert: PluginInstanceConfigUpserter = (
+    _ignore_plugin_instance_config_upsert
+)
+_plugin_instance_config_delete: PluginInstanceConfigDeleter = (
+    _ignore_plugin_instance_config_delete
+)
+_plugin_instance_data_delete: PluginInstanceDataDeleter = _ignore_plugin_instance_data_delete
 
 
 def configure_plugin_legacy_import_services(
@@ -132,6 +157,27 @@ def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
     """由启动组合根注入插件目录应用服务工厂，消除 Runtime 反向依赖。"""
     global _plugin_catalog_factory
     _plugin_catalog_factory = factory
+
+
+def _configure_plugin_instance_persistence(
+    *,
+    upsert_config: PluginInstanceConfigUpserter,
+    delete_config: PluginInstanceConfigDeleter,
+    delete_data: PluginInstanceDataDeleter,
+) -> None:
+    """由启动组合根注入按任意实例标识写删配置与数据的持久化钩子。
+
+    PluginStorage 端口的 write_config/delete_config 只覆盖默认实例，delete_data
+    也不区分实例；创建与删除插件实例需要按任意实例标识精确写删一行，这里另开
+    一组钩子，避免扩展层反向依赖 DB 层。
+    :param upsert_config: 按 (插件ID, 实例标识) 写入或更新一行配置
+    :param delete_config: 按 (插件ID, 实例标识) 删除一行配置，返回是否命中记录
+    :param delete_data: 按 (插件ID, 实例标识) 删除该实例的全部业务数据
+    """
+    global _plugin_instance_config_upsert, _plugin_instance_config_delete, _plugin_instance_data_delete
+    _plugin_instance_config_upsert = upsert_config
+    _plugin_instance_config_delete = delete_config
+    _plugin_instance_data_delete = delete_data
 
 
 def _configure_plugin_database_lifecycle(
@@ -1213,6 +1259,137 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         for target in self._plugin_instance_ids(pid):
             _plugin_database_destroy(pid, target)
         return True
+
+    def _instance_info(self, plugin_id: str, instance_id: str) -> Dict[str, Any]:
+        """
+        组装单个实例的信息
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :return: 含实例标识、实例键、是否在运行态、启用状态的字典
+        """
+        key = instance_key(plugin_id, instance_id)
+        plugin = self._running_plugins.get(key)
+        return {
+            "instance_id": instance_id,
+            "instance_key": key,
+            "running": plugin is not None,
+            "state": self._instance_state(key, plugin) if plugin is not None else False,
+        }
+
+    def list_plugin_instances(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """
+        列出插件的全部实例及其运行状态
+        :param plugin_id: 插件ID
+        :return: 实例信息列表，按实例标识升序排列
+        :raises LookupError: 插件不存在
+        """
+        if plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        configured_ids = set(get_plugin_storage().list_instances(plugin_id))
+        running_ids = {
+            split_instance_key(key)[1]
+            for key in self._plugin_registry.instance_keys(plugin_id)
+        }
+        all_ids = configured_ids | running_ids or {DEFAULT_INSTANCE_ID}
+        return [self._instance_info(plugin_id, instance_id) for instance_id in sorted(all_ids)]
+
+    def create_plugin_instance(
+        self, plugin_id: str, instance_id: str, config: Optional[dict] = None
+    ) -> Dict[str, Any]:
+        """
+        创建插件的新实例：写入初始配置并拉起
+
+        实例标识先后经过分隔符校验与单层目录名安全校验，全部通过才会触达配置表；
+        该插件此前一条实例配置记录都没有时，先把默认实例固化成一行，否则默认实例
+        会因为没有记录在下次启动时缺席。
+        :param plugin_id: 插件ID
+        :param instance_id: 新实例标识
+        :param config: 实例初始配置，为空时使用空字典
+        :return: 新实例信息
+        :raises LookupError: 插件不存在
+        :raises ValueError: 实例标识非法，或该实例已存在
+        """
+        if plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        normalized_instance_id = normalize_instance_id(instance_id)
+        if normalized_instance_id == DEFAULT_INSTANCE_ID:
+            raise ValueError("默认实例已存在，无需创建")
+        # 路径分段校验先于任何文件或数据库写入，拒绝目录穿越等非法实例标识
+        ensure_path_segment(normalized_instance_id, subject="插件实例ID")
+
+        existing_ids = set(get_plugin_storage().list_instances(plugin_id))
+        already_running = bool(self._resolve_instance_key(plugin_id, normalized_instance_id))
+        if normalized_instance_id in existing_ids or already_running:
+            raise ValueError(f"插件实例 {plugin_id}@{normalized_instance_id} 已存在")
+        if not existing_ids:
+            # 此前没有任何实例配置记录，先固化默认实例
+            _plugin_instance_config_upsert(
+                plugin_id,
+                DEFAULT_INSTANCE_ID,
+                self.get_plugin_config(plugin_id, DEFAULT_INSTANCE_ID) or {},
+            )
+        _plugin_instance_config_upsert(plugin_id, normalized_instance_id, config or {})
+        self.start_instance(plugin_id, normalized_instance_id)
+        return self._instance_info(plugin_id, normalized_instance_id)
+
+    @staticmethod
+    def _remove_instance_directory(plugin_id: str, instance_id: str) -> None:
+        """
+        删除插件实例的持久化目录，不可逆操作
+
+        目录路径取自 ``plugin_instance_path`` 已校验的结果，经 ``resolve()`` 后
+        三重校验（位于插件持久化根目录之内、不等于该根目录本身、目录名与实例标识
+        一致）全部通过才执行删除。
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识，调用方需确保不是默认实例
+        """
+        from app.plugins import plugin_instance_path
+        instance_dir = plugin_instance_path(plugin_id, instance_id, "data").parent
+        plugin_root = instance_dir.parent
+        resolved_instance_dir = instance_dir.resolve()
+        resolved_plugin_root = plugin_root.resolve()
+        checks_passed = (
+            resolved_instance_dir.is_relative_to(resolved_plugin_root)
+            and resolved_instance_dir != resolved_plugin_root
+            and resolved_instance_dir.name == instance_id
+        )
+        if not checks_passed:
+            logger.error(f"插件实例目录校验未通过，跳过删除：{resolved_instance_dir}")
+            return
+        if resolved_instance_dir.exists():
+            shutil.rmtree(resolved_instance_dir, ignore_errors=True)
+
+    def delete_plugin_instance(self, plugin_id: str, instance_id: str) -> None:
+        """
+        删除插件的单个实例
+
+        依次停止其运行态、删除配置行与数据行、销毁其自管理数据库（含 SQLite 预写
+        日志与共享内存边车文件）、删除其持久化目录；兄弟实例不受影响。
+        :param plugin_id: 插件ID
+        :param instance_id: 待删除的实例标识
+        :raises LookupError: 插件不存在，或该实例未登记
+        :raises ValueError: 默认实例不可删除
+        """
+        if plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        normalized_instance_id = normalize_instance_id(instance_id)
+        if normalized_instance_id == DEFAULT_INSTANCE_ID:
+            raise ValueError("默认实例不可删除")
+
+        existing_ids = set(get_plugin_storage().list_instances(plugin_id))
+        still_running = bool(self._resolve_instance_key(plugin_id, normalized_instance_id))
+        if normalized_instance_id not in existing_ids and not still_running:
+            raise LookupError(f"插件实例 {plugin_id}@{normalized_instance_id} 不存在")
+
+        # 停止运行态：撤销事件与渠道能力登记，兄弟实例不受影响
+        self.stop(plugin_id, normalized_instance_id)
+        # 删除配置与业务数据行
+        _plugin_instance_config_delete(plugin_id, normalized_instance_id)
+        _plugin_instance_data_delete(plugin_id, normalized_instance_id)
+        # 销毁自管理数据库，不可逆操作
+        _plugin_database_destroy(plugin_id, normalized_instance_id)
+        # 删除持久化数据目录，三重校验后执行，不可逆操作
+        self._remove_instance_directory(plugin_id, normalized_instance_id)
 
     def get_plugin_state(self, pid: str) -> bool:
         """

@@ -204,3 +204,23 @@ class PluginDashboardMetaItem(BaseModel):
     instance_id: Optional[str] = None
     # 实例键，默认实例的实例键等于插件 ID
     instance_key: Optional[str] = None
+
+
+class PluginInstanceInfo(BaseModel):
+    """插件实例信息，用于实例列表与创建实例的返回。"""
+
+    instance_id: str = Field(description="实例标识，默认实例取值为 default")
+    instance_key: str = Field(description="实例键，默认实例的实例键等于插件 ID")
+    running: bool = Field(default=False, description="实例是否处于运行态")
+    state: bool = Field(default=False, description="实例启用状态，未处于运行态时为 False")
+
+
+class PluginInstanceCreate(BaseModel):
+    """创建插件实例请求体。"""
+
+    instance_id: str = Field(
+        description="新实例标识，不能包含实例键分隔符 @，且需满足单层目录名安全校验"
+    )
+    config: Optional[Dict[str, JsonData]] = Field(
+        default=None, description="实例初始配置，为空时使用空字典"
+    )

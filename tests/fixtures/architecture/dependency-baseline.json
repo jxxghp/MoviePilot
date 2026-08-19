@@ -64,8 +64,8 @@
     "application_to_agent": [],
     "runtime_to_db": []
   },
-  "edge_count": 6288,
-  "edge_sha256": "b2856683464680a5cc1aa00f032e93da020e8c387d8dd72674b58b73f1ab6dc5",
+  "edge_count": 6289,
+  "edge_sha256": "00bbd6bfbb7835e63bd6bd7b3e87db9d49af2eda7aa0243056c27b9e9534b8d4",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5597,6 +5597,7 @@
     "app.runtime.extensions.plugin.storage -> app.runtime.extensions.instance",
     "app.runtime.extensions.plugin_manager -> app.foundation",
     "app.runtime.extensions.plugin_manager -> app.foundation.crypto",
+    "app.runtime.extensions.plugin_manager -> app.foundation.paths",
     "app.runtime.extensions.plugin_manager -> app.foundation.singleton",
     "app.runtime.extensions.plugin_manager -> app.foundation.version",
     "app.runtime.extensions.plugin_manager -> app.runtime",

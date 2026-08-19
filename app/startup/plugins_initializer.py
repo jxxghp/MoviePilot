@@ -11,6 +11,7 @@ from app.runtime.extensions.plugin_manager import (
     PluginManager,
     configure_plugin_catalog_factory,
     configure_plugin_install_reporter,
+    _configure_plugin_instance_persistence,
     configure_plugin_legacy_import_services,
     configure_plugin_resource_import_preparer,
     configure_site_auth_level_provider,
@@ -89,6 +90,21 @@ def _delete_plugin_instance_config(plugin_id: str) -> bool:
     return PluginConfigOper().delete_instance(plugin_id, DEFAULT_INSTANCE_ID)
 
 
+def _upsert_plugin_instance_config_row(plugin_id: str, instance_id: str, config: dict) -> None:
+    """按插件标识与实例标识写入或更新一行配置。"""
+    PluginConfigOper().upsert(plugin_id, instance_id, {"config_data": config})
+
+
+def _delete_plugin_instance_config_row(plugin_id: str, instance_id: str) -> bool:
+    """按插件标识与实例标识删除一行配置，返回是否命中记录。"""
+    return PluginConfigOper().delete_instance(plugin_id, instance_id)
+
+
+def _delete_plugin_instance_data_rows(plugin_id: str, instance_id: str) -> None:
+    """删除指定插件实例的全部业务数据，不影响其余实例。"""
+    PluginDataOper().del_data(plugin_id, instance_id=instance_id)
+
+
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
     for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
@@ -141,6 +157,11 @@ def _configure_plugin_services() -> None:
         delete_config=_delete_plugin_instance_config,
         list_instances=_list_plugin_instance_ids,
     ))
+    _configure_plugin_instance_persistence(
+        upsert_config=_upsert_plugin_instance_config_row,
+        delete_config=_delete_plugin_instance_config_row,
+        delete_data=_delete_plugin_instance_data_rows,
+    )
 
 
 def _build_plugin_catalog(manager: PluginManager) -> PluginCatalogService:
