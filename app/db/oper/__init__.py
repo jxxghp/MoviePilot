@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.db.oper.downloadhistory import DownloadHistoryOper
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
+    from app.db.oper.pluginconfig import PluginConfigOper
     from app.db.oper.plugindata import PluginDataOper
     from app.db.oper.site import SiteOper
     from app.db.oper.subscribe import SubscribeOper
@@ -45,6 +46,7 @@ _OPER_MODULES = {
     "DownloadHistoryOper": "downloadhistory",
     "MediaServerOper": "mediaserver",
     "MessageOper": "message",
+    "PluginConfigOper": "pluginconfig",
     "PluginDataOper": "plugindata",
     "SiteOper": "site",
     "SubscribeHistoryOper": "subscribehistory",
@@ -87,6 +89,7 @@ __all__ = [
     "DownloadHistoryOper",
     "MediaServerOper",
     "MessageOper",
+    "PluginConfigOper",
     "PluginDataOper",
     "SiteOper",
     "SubscribeHistoryOper",

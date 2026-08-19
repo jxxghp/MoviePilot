@@ -16,6 +16,7 @@ _MODEL_EXPORTS = {
     "MediaServerItem": ("app.db.models.mediaserver", "MediaServerItem"),
     "Message": ("app.db.models.message", "Message"),
     "PassKey": ("app.db.models.passkey", "PassKey"),
+    "PluginConfig": ("app.db.models.pluginconfig", "PluginConfig"),
     "PluginData": ("app.db.models.plugindata", "PluginData"),
     "Site": ("app.db.models.site", "Site"),
     "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),

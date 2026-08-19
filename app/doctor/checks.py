@@ -19,6 +19,10 @@ from urllib.request import Request, urlopen
 import psutil
 
 from app.runtime.config import settings
+from app.runtime.compat.plugin_version_readiness import (
+    PluginVersionReadiness,
+    scan_plugin_version_readiness,
+)
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorReport, DoctorSeverity
 from app.adapters.system.host import SystemUtils
 
@@ -139,6 +143,7 @@ def default_checks() -> list[CheckFunc]:
         _check_database,
         _check_frontend_assets,
         _check_logs,
+        _check_plugin_version_layout,
         _check_docker,
         _check_safe_mode,
     ]
@@ -912,6 +917,96 @@ def _check_logs(runner: DoctorRunnerProtocol) -> None:
                 "启动日志和插件日志；插件扩展告警不参与核心健康状态。"
             ),
             recommendation="如果问题仍存在，请结合具体操作时间扩大日志范围排查。",
+        )
+
+
+def _plugins_root_dir() -> Path:
+    return settings.ROOT_PATH / "app" / "plugins"
+
+
+def _installed_plugin_dirs(plugins_dir: Path) -> list[Path]:
+    """按插件加载器同样的过滤规则列出已安装插件源码目录。"""
+    if not plugins_dir.exists():
+        return []
+    return sorted(
+        (
+            entry for entry in plugins_dir.iterdir()
+            if entry.is_dir()
+            and not entry.name.startswith("_")
+            and (entry / "__init__.py").exists()
+        ),
+        key=lambda entry: entry.name,
+    )
+
+
+def _plugin_version_readiness_detail(readiness: PluginVersionReadiness) -> str:
+    """把单个插件的多版本目录布局扫描结论拼装成可读文本。"""
+    sections: list[str] = []
+    if readiness.self_referential_imports:
+        hits = "\n".join(
+            f"  {hit.file}:{hit.line} `{hit.statement}` → {hit.suggestion}"
+            for hit in readiness.self_referential_imports
+        )
+        sections.append(f"自引用绝对 import（版本化后会 ModuleNotFoundError，须改为相对 import）：\n{hits}")
+    if readiness.cross_plugin_imports:
+        hits = "\n".join(
+            f"  {hit.file}:{hit.line} `{hit.statement}` 依赖插件 {hit.target_plugin_id}"
+            for hit in readiness.cross_plugin_imports
+        )
+        sections.append(f"跨插件依赖（多版本下需重新评估兼容性）：\n{hits}")
+    if readiness.shared_base_models:
+        hits = "\n".join(
+            f"  {hit.file}:{hit.line} class {hit.class_name}"
+            for hit in readiness.shared_base_models
+        )
+        sections.append(f"在宿主共享声明基类 Base 上定义模型（多版本会同名建表冲突，无法并存）：\n{hits}")
+    if readiness.unparsed_files:
+        sections.append("以下文件无法解析，未参与本次静态扫描：" + "、".join(readiness.unparsed_files))
+    if not sections:
+        return "未发现自引用绝对 import、跨插件依赖或共享基类模型定义，适配多版本目录布局无需改动。"
+    return "\n".join(sections)
+
+
+def _check_plugin_version_layout(runner: DoctorRunnerProtocol) -> None:
+    """扫描已安装插件源码，报告其对按版本分目录布局（app/plugins/<pid>/<版本号>/）的适配情况。"""
+    plugins_dir = _plugins_root_dir()
+    plugin_dirs = _installed_plugin_dirs(plugins_dir)
+    if not plugin_dirs:
+        runner.add(
+            finding_id="plugins.version_layout.none",
+            severity=DoctorSeverity.Info,
+            status=DoctorFindingStatus.Skipped,
+            title="未发现已安装插件源码",
+            detail=f"{plugins_dir} 下没有包含 __init__.py 的插件目录。",
+            recommendation="无需处理。",
+            affects_report_status=False,
+        )
+        return
+
+    for plugin_dir in plugin_dirs:
+        readiness = scan_plugin_version_readiness(plugin_dir.name, plugin_dir)
+        has_issue = not readiness.is_clean
+        runner.add(
+            finding_id=f"plugins.version_layout.{plugin_dir.name.lower()}",
+            severity=DoctorSeverity.Warn if has_issue else DoctorSeverity.Info,
+            status=DoctorFindingStatus.Degraded if has_issue else DoctorFindingStatus.Ok,
+            title=f"插件 {plugin_dir.name} 多版本目录布局适配情况",
+            detail=_plugin_version_readiness_detail(readiness),
+            recommendation=(
+                "按上方建议把自引用绝对 import 改成相对 import；"
+                "跨插件依赖需在多版本环境下重新确认兼容性；"
+                "在共享 Base 上定义模型的插件需迁移到插件自有的声明式基类，否则无法与自身其他版本并存。"
+                if has_issue
+                else "无需处理。"
+            ),
+            affects_report_status=False,
+            context={
+                "plugin_id": plugin_dir.name,
+                "has_self_referential_imports": readiness.has_self_referential_imports,
+                "has_cross_plugin_imports": readiness.has_cross_plugin_imports,
+                "has_shared_base_models": readiness.has_shared_base_models,
+                "unparsed_files": list(readiness.unparsed_files),
+            },
         )
 
 
