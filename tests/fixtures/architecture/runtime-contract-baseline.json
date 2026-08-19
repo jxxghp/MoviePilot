@@ -1581,15 +1581,15 @@
       },
       {
         "caller": "app.runtime.events",
-        "line": 138
+        "line": 145
       },
       {
         "caller": "app.runtime.events",
-        "line": 461
+        "line": 472
       },
       {
         "caller": "app.runtime.events",
-        "line": 465
+        "line": 476
       },
       {
         "caller": "app.startup.hostport_initializer",
@@ -2095,7 +2095,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 806
+            "line": 1018
           }
         ]
       },
@@ -2255,7 +2255,7 @@
           },
           {
             "caller": "app.runtime.events",
-            "line": 114
+            "line": 121
           },
           {
             "caller": "app.scheduler",

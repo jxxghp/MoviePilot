@@ -21,13 +21,23 @@ class EventRegistry:
         chain_subscribers: Callable[[], dict],
         disabled_handlers: Callable[[], set],
         disabled_classes: Callable[[], set],
+        disabled_instances: Callable[[], set] = lambda: set(),
     ) -> None:
-        """绑定由兼容门面持有的存储，便于热重载和旧测试替换快照。"""
+        """绑定由兼容门面持有的存储，便于热重载和旧测试替换快照。
+
+        :param lock: 保护订阅表的锁
+        :param broadcast_subscribers: 广播订阅表取用函数
+        :param chain_subscribers: 链式订阅表取用函数
+        :param disabled_handlers: 停用处理器标识集合的取用函数
+        :param disabled_classes: 停用处理器类标识集合的取用函数
+        :param disabled_instances: 停用实例的 `(类标识, 实例键)` 集合取用函数
+        """
         self._lock = lock
         self._broadcast_subscribers = broadcast_subscribers
         self._chain_subscribers = chain_subscribers
         self._disabled_handlers = disabled_handlers
         self._disabled_classes = disabled_classes
+        self._disabled_instances = disabled_instances
 
     @staticmethod
     def handler_identifier(target: Callable | type) -> str:
@@ -140,20 +150,68 @@ class EventRegistry:
                 handler_id,
             )
 
-    def disable(self, target: Callable | type) -> None:
-        """禁用单个处理器或整个处理器类。"""
+    def is_instance_enabled(
+        self,
+        owner: Callable | type,
+        instance_key: str | None,
+    ) -> bool:
+        """判断处理器类的某个运行实例是否处于启用状态。
+
+        :param owner: 声明处理器的类
+        :param instance_key: 运行实例的实例键，为空时视为未区分实例
+        :return: 该实例未被单独停用时为 True
+        """
+        if not instance_key:
+            return True
+        identifier = self.handler_identifier(owner)
+        return (identifier, instance_key) not in self._disabled_instances()
+
+    def disable(
+        self,
+        target: Callable | type,
+        instance_key: str | None = None,
+    ) -> None:
+        """禁用单个处理器、整个处理器类，或处理器类的单个运行实例。
+
+        :param target: 处理器函数或类
+        :param instance_key: 实例键，给出时只停用该实例，兄弟实例不受影响
+        :return: 无返回值
+        """
         identifier = self.handler_identifier(target)
-        if isinstance(target, type):
+        if instance_key:
+            self._disabled_instances().add((identifier, instance_key))
+            logger.debug(
+                "Disabled event handler instance - %s@%s",
+                identifier,
+                instance_key,
+            )
+        elif isinstance(target, type):
             self._disabled_classes().add(identifier)
             logger.debug("Disabled event handler class - %s", identifier)
         else:
             self._disabled_handlers().add(identifier)
             logger.debug("Disabled event handler - %s", identifier)
 
-    def enable(self, target: Callable | type) -> None:
-        """重新启用单个处理器或整个处理器类。"""
+    def enable(
+        self,
+        target: Callable | type,
+        instance_key: str | None = None,
+    ) -> None:
+        """重新启用单个处理器、整个处理器类，或处理器类的单个运行实例。
+
+        :param target: 处理器函数或类
+        :param instance_key: 实例键，给出时只启用该实例，不改变整类的停用状态
+        :return: 无返回值
+        """
         identifier = self.handler_identifier(target)
-        if isinstance(target, type):
+        if instance_key:
+            self._disabled_instances().discard((identifier, instance_key))
+            logger.debug(
+                "Enabled event handler instance - %s@%s",
+                identifier,
+                instance_key,
+            )
+        elif isinstance(target, type):
             self._disabled_classes().discard(identifier)
             logger.debug("Enabled event handler class - %s", identifier)
         else:

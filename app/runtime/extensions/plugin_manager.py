@@ -26,7 +26,14 @@ from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.extensions.contract import supports_extension_hook
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.instance import (
+    DEFAULT_INSTANCE_ID,
+    extension_id_of,
+    instance_key,
+    matches_extension,
+    normalize_instance_id,
+    split_instance_key,
+)
 from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
@@ -182,22 +189,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self,
             owner_class: Type[Any],
     ) -> Optional[List[EventHandlerBinding]]:
-        """为插件声明的事件方法解析当前运行实例绑定列表。"""
+        """为插件声明的事件方法解析当前运行实例绑定列表。
+
+        :param owner_class: 声明事件处理方法的插件类
+        :return: 该插件全部运行实例的绑定，每条带其实例键；非插件类返回 None
+        """
         plugin_id = owner_class.__name__
         # 旧测试与部分扩展会替换私有映射来构造隔离运行态，解析器继续尊重该接缝。
         if plugin_id not in self._plugins:
             return None
-        plugin = self._running_plugins.get(plugin_id)
-        owner_name = plugin_id
-        if plugin and callable(getattr(plugin, "get_name", None)):
-            owner_name = plugin.get_name()
-        return [
-            EventHandlerBinding(
-                instance=plugin,
-                owner_name=owner_name,
-                run_sync_in_threadpool=True,
+        bindings: List[EventHandlerBinding] = []
+        for key, plugin in dict(self._running_plugins).items():
+            if extension_id_of(key) != plugin_id:
+                continue
+            owner_name = key
+            if callable(getattr(plugin, "get_name", None)):
+                owner_name = plugin.get_name()
+            bindings.append(
+                EventHandlerBinding(
+                    instance=plugin,
+                    owner_name=owner_name,
+                    run_sync_in_threadpool=True,
+                    instance_key=key,
+                )
             )
-        ]
+        return bindings
 
     def init_config(self):
         """按最新系统配置完整重启插件。"""
@@ -206,10 +222,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 启动插件
         self.start()
 
-    def start(self, pid: Optional[str] = None):
+    def start(self, pid: Optional[str] = None, instance_id: Optional[str] = None):
         """
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
+        :param instance_id: 实例标识，为空时加载该插件已登记的全部实例
         """
 
         _legacy_diagnostics_configurator(
@@ -225,15 +242,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 return False
             return True
 
+        # 目标插件与目标实例：pid 传实例键时，插件目录按其所属插件标识定位
+        target_plugin_id = extension_id_of(pid) if pid else None
+        target_instance_id = instance_id
+        if pid and not target_instance_id and pid != target_plugin_id:
+            target_instance_id = split_instance_key(pid)[1]
         # 已安装插件
         installed_plugins = get_plugin_storage().read(SystemConfigKey.UserInstalledPlugins) or []
         # 扫描插件目录，只加载符合条件的插件
-        plugins = self._load_selective_plugins(pid, installed_plugins, check_module)
+        plugins = self._load_selective_plugins(target_plugin_id, installed_plugins, check_module)
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         for plugin in plugins:
             plugin_id = plugin.__name__
-            if pid and plugin_id != pid:
+            if target_plugin_id and plugin_id != target_plugin_id:
                 continue
             try:
                 # 判断插件是否满足认证要求，如不满足则不进行实例化
@@ -244,48 +266,186 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
-                # 生成实例
-                plugin_obj = plugin()
-                extension = PluginExtension(plugin_obj, plugin_id)
-                # 生效插件配置
-                extension.initialize(self.get_plugin_config(plugin_id))
-                # 按插件声明建立其数据库，未声明模型或迁移目录时不做任何事
-                _plugin_database_ensure(plugin_id, DEFAULT_INSTANCE_ID)
-                # 存储运行实例
-                self._running_plugins[plugin_id] = plugin_obj
-                logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
-                # 同步插件声明的渠道能力
-                self._sync_channel_capabilities(plugin_id)
-                # 启用的插件才设置事件注册状态可用
-                if extension.is_enabled():
-                    eventmanager.enable_event_handler(plugin)
+                if target_instance_id:
+                    instance_ids = [normalize_instance_id(target_instance_id)]
                 else:
-                    eventmanager.disable_event_handler(plugin)
+                    instance_ids = self._plugin_instance_ids(plugin_id)
+                for target in instance_ids:
+                    self.__start_instance(plugin, plugin_id, target)
+                self._sync_family_event_state(plugin_id, plugin)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
         self.clear_plugin_agent_tools_cache()
 
-    def init_plugin(self, plugin_id: str, conf: dict):
+    def start_instance(self, pid: str, instance_id: str) -> None:
+        """
+        启动指定插件的单个实例，兄弟实例不受影响
+        :param pid: 插件ID
+        :param instance_id: 实例标识
+        """
+        self.start(pid, instance_id)
+
+    @staticmethod
+    def _plugin_instance_ids(plugin_id: str) -> List[str]:
+        """
+        读取插件已登记的实例清单
+        :param plugin_id: 插件ID
+        :return: 实例标识列表；一条实例配置都没有时回落到单个默认实例
+        """
+        try:
+            instance_ids = get_plugin_storage().list_instances(plugin_id)
+        except Exception as err:
+            logger.error(f"读取插件 {plugin_id} 实例清单出错：{str(err)}")
+            instance_ids = []
+        normalized = [
+            normalize_instance_id(item)
+            for item in instance_ids
+            if isinstance(item, str)
+        ]
+        return list(dict.fromkeys(normalized)) or [DEFAULT_INSTANCE_ID]
+
+    @staticmethod
+    def _instantiate_plugin(plugin_class: Type[Any], plugin_id: str, instance_id: str) -> Any:
+        """
+        构造插件运行实例，并回写其插件标识与实例标识
+        :param plugin_class: 插件类
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :return: 插件运行实例
+        """
+        try:
+            parameters = inspect.signature(plugin_class.__init__).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        kwargs = {}
+        if "plugin_id" in parameters:
+            kwargs["plugin_id"] = plugin_id
+        if "instance_id" in parameters:
+            kwargs["instance_id"] = instance_id
+        plugin_obj = plugin_class(**kwargs)
+        # 存量插件的无参 __init__ 不会收到这两个参数，构造后无条件回写保证属性一定存在
+        plugin_obj.plugin_id = plugin_id
+        plugin_obj.instance_id = instance_id
+        return plugin_obj
+
+    def __start_instance(self, plugin_class: Type[Any], plugin_id: str, instance_id: str) -> None:
+        """
+        启动插件的单个实例
+        :param plugin_class: 插件类
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        """
+        key = instance_key(plugin_id, instance_id)
+        try:
+            # 生成实例
+            plugin_obj = self._instantiate_plugin(plugin_class, plugin_id, instance_id)
+            extension = PluginExtension(plugin_obj, key)
+            # 生效插件配置
+            extension.initialize(self.get_plugin_config(key))
+            # 按插件声明建立其数据库，未声明模型或迁移目录时不做任何事
+            _plugin_database_ensure(plugin_id, instance_id)
+            # 存储运行实例
+            self._running_plugins[key] = plugin_obj
+            logger.info(f"加载插件：{key} 版本：{plugin_obj.plugin_version}")
+            # 同步插件声明的渠道能力
+            self._sync_channel_capabilities(key)
+            # 启用的实例才设置事件注册状态可用
+            if extension.is_enabled():
+                eventmanager.enable_event_handler(plugin_class, key)
+            else:
+                eventmanager.disable_event_handler(plugin_class, key)
+        except Exception as err:
+            logger.error(f"加载插件 {key} 出错：{str(err)} - {traceback.format_exc()}")
+
+    def _sync_family_event_state(self, plugin_id: str, plugin_class: Optional[Type[Any]]) -> None:
+        """
+        按插件全部实例的启用情况同步整类的事件注册状态
+
+        整类停用会连带停掉全部实例，因此只有一个实例都没启用时才停用整类；
+        单个实例的启停由实例级开关承担。
+        :param plugin_id: 插件ID
+        :param plugin_class: 插件类，取不到时不改变整类状态
+        """
+        if plugin_class is None:
+            return
+        enabled = any(
+            self._instance_state(key, plugin)
+            for key, plugin in self._matching_instances(plugin_id)
+        )
+        if enabled:
+            eventmanager.enable_event_handler(plugin_class)
+        else:
+            eventmanager.disable_event_handler(plugin_class)
+
+    @staticmethod
+    def _instance_state(extension_id: str, plugin: Any) -> bool:
+        """
+        读取单个运行实例的启用状态
+        :param extension_id: 实例键
+        :param plugin: 插件运行实例
+        :return: 实例已启用时为 True；实例不存在或读取出错时为 False
+        """
+        if plugin is None or not hasattr(plugin, "get_state"):
+            return False
+        try:
+            return bool(plugin.get_state())
+        except Exception as err:
+            logger.error(f"获取插件 {extension_id} 状态出错：{str(err)}")
+            return False
+
+    def _resolve_instance_key(self, pid: str, instance_id: Optional[str] = None) -> Optional[str]:
+        """
+        定位单个运行实例的实例键
+        :param pid: 插件ID或实例键
+        :param instance_id: 实例标识，给出时与 pid 所属插件组合定位
+        :return: 命中的实例键；未运行或按插件ID无法唯一确定时为 None
+        """
+        running = dict(self._running_plugins)
+        if instance_id:
+            key = instance_key(extension_id_of(pid), instance_id)
+            return key if key in running else None
+        if pid in running:
+            return pid
+        keys = [key for key in running if extension_id_of(key) == pid]
+        return keys[0] if len(keys) == 1 else None
+
+    def _matching_instances(self, pid: Optional[str]) -> List[Tuple[str, Any]]:
+        """
+        列出筛选条件命中的运行实例
+        :param pid: 插件ID命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: `(实例键, 运行实例)` 列表
+        """
+        return [
+            (key, plugin)
+            for key, plugin in dict(self._running_plugins).items()
+            if matches_extension(key, pid)
+        ]
+
+    def init_plugin(self, plugin_id: str, conf: dict, instance_id: Optional[str] = None):
         """
         初始化插件
-        :param plugin_id: 插件ID
+        :param plugin_id: 插件ID或实例键
         :param conf: 插件配置
+        :param instance_id: 实例标识，为空时按 plugin_id 定位实例
         """
-        plugin = self._running_plugins.get(plugin_id)
+        key = self._resolve_instance_key(plugin_id, instance_id)
+        if not key:
+            return
+        plugin = self._running_plugins.get(key)
         if not plugin:
             return
-        extension = PluginExtension(plugin, plugin_id)
+        extension = PluginExtension(plugin, key)
         # 初始化插件
         extension.initialize(conf)
-        # 检查插件状态并启用/禁用事件处理器
+        # 检查实例状态并启用/禁用其事件处理器
         if extension.is_enabled():
-            # 启用插件类的事件处理器
-            eventmanager.enable_event_handler(type(plugin))
+            eventmanager.enable_event_handler(type(plugin), key)
         else:
-            # 禁用插件类的事件处理器
-            eventmanager.disable_event_handler(type(plugin))
-        # 配置变更可能启用或停用插件，重新同步渠道能力登记
-        self._sync_channel_capabilities(plugin_id)
+            eventmanager.disable_event_handler(type(plugin), key)
+        # 兄弟实例可能仍然启用，整类的事件注册状态按全族重新裁决
+        self._sync_family_event_state(extension_id_of(key), type(plugin))
+        # 配置变更可能启用或停用实例，重新同步渠道能力登记
+        self._sync_channel_capabilities(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -303,45 +463,93 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         with self._plugin_agent_tools_cache_lock:
             return self._plugin_agent_tools_revision
 
-    def stop(self, pid: Optional[str] = None):
+    def stop(self, pid: Optional[str] = None, instance_id: Optional[str] = None):
         """
         停止插件服务
-        :param pid: 插件ID，为空停止所有插件
+        :param pid: 插件ID或实例键，为空停止所有插件
+        :param instance_id: 实例标识，为空时停止 pid 命中的全部实例
         """
         # 停止插件
         if pid:
             logger.info(f"正在停止插件 {pid}...")
-            plugin_obj = self._running_plugins.get(pid)
-            if not plugin_obj:
+            keys = self._stop_targets(pid, instance_id)
+            if not keys:
                 # 指定插件可能在上次加载时已导入模块但初始化失败，此时不会进入运行态列表。
                 # 仍需继续清理类缓存和 sys.modules，避免后续热重载反复复用旧模块。
                 logger.debug(f"插件 {pid} 不存在或未加载")
-                plugins = {}
-            else:
-                plugins = {pid: plugin_obj}
         else:
             logger.info("正在停止所有插件...")
-            plugins = self._running_plugins
-        for plugin_id, plugin in plugins.items():
-            eventmanager.disable_event_handler(type(plugin))
+            keys = list(self._running_plugins)
+        # 类对象在实例摘除后就取不到了，先留存用于停止后的事件停用
+        classes = {
+            extension_id_of(key): self._plugin_registry.plugin_class(key)
+            for key in ([pid] if pid else []) + keys
+        }
+        for key in keys:
+            plugin = self._running_plugins.get(key)
+            if plugin is None:
+                continue
+            eventmanager.disable_event_handler(type(plugin), key)
             self.__stop_plugin(plugin)
-            # 插件停止后撤销其渠道能力登记，不留残留
-            self._revoke_channel_capabilities(plugin_id)
-            # 停止只释放数据库连接，不销毁库文件——销毁只在明确删除插件数据的路径触发
-            _plugin_database_release(plugin_id)
+            # 实例停止后撤销其渠道能力登记，不留残留
+            self._revoke_channel_capabilities(key)
         # 清空对象
         if pid:
-            # 清空指定插件
-            self._plugin_registry.remove(pid)
-            # 清除插件模块缓存，包括所有子模块
-            self._clear_plugin_modules(pid)
+            single_instance = bool(instance_id) or pid != extension_id_of(pid)
+            if single_instance:
+                for key in keys:
+                    self._plugin_registry.remove_instance(key)
+            else:
+                self._plugin_registry.remove(extension_id_of(pid))
+            for plugin_id, plugin_class in classes.items():
+                self._recycle_stopped_family(plugin_id, plugin_class)
         else:
             # 清空
             self._plugin_registry.clear()
+            for plugin_id, plugin_class in classes.items():
+                if plugin_class is not None:
+                    eventmanager.disable_event_handler(plugin_class)
+                # 停止只释放数据库连接，不销毁库文件——销毁只在明确删除插件数据的路径触发
+                _plugin_database_release(plugin_id)
             # 清除所有插件模块缓存
             self._clear_plugin_modules()
         self.clear_plugin_agent_tools_cache()
         logger.info("插件停止完成")
+
+    def _stop_targets(self, pid: str, instance_id: Optional[str]) -> List[str]:
+        """
+        列出一次停止请求命中的运行实例键
+        :param pid: 插件ID或实例键
+        :param instance_id: 实例标识，为空时命中 pid 所指的全部实例
+        :return: 实例键列表
+        """
+        running = dict(self._running_plugins)
+        plugin_id = extension_id_of(pid)
+        if instance_id:
+            candidates = [instance_key(plugin_id, instance_id)]
+        elif pid != plugin_id:
+            candidates = [pid]
+        else:
+            candidates = [key for key in running if extension_id_of(key) == plugin_id]
+        return [key for key in candidates if key in running]
+
+    def _recycle_stopped_family(self, plugin_id: str, plugin_class: Optional[Type[Any]]) -> None:
+        """
+        在插件最后一个实例停止后回收其整族资源
+
+        仍有兄弟实例在运行时整族资源必须原样保留：清除模块缓存会让运行中的实例
+        与下次导入产生的类对象脱节，释放数据库连接会掐断兄弟实例正在用的会话。
+        :param plugin_id: 插件ID
+        :param plugin_class: 停止前留存的插件类，取不到时为 None
+        """
+        if self._plugin_registry.instance_keys(plugin_id):
+            return
+        if plugin_class is not None:
+            eventmanager.disable_event_handler(plugin_class)
+        # 停止只释放数据库连接，不销毁库文件——销毁只在明确删除插件数据的路径触发
+        _plugin_database_release(plugin_id)
+        # 清除插件模块缓存，包括所有子模块
+        self._clear_plugin_modules(plugin_id)
 
     @staticmethod
     def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
@@ -618,16 +826,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugin_dir = runtime_root / relative_parts[0]
                 pid = next(
                     (
-                        plugin_id
-                        for plugin_id in self._running_plugins
-                        if plugin_id.lower() == relative_parts[0].lower()
+                        extension_id_of(key)
+                        for key in self._running_plugins
+                        if extension_id_of(key).lower() == relative_parts[0].lower()
                     ),
                     None,
                 )
 
             if not pid:
                 return None
-            plugin = self._running_plugins.get(pid)
+            # 联邦构建产物属于插件本身而非某个实例，取任一在运行的实例读取渲染模式
+            plugin = next(
+                (plugin for _key, plugin in self._matching_instances(pid)),
+                None,
+            )
             if not plugin:
                 return None
 
@@ -935,14 +1147,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
         return missing_dependencies
 
-    def get_plugin_config(self, pid: str) -> dict:
+    def get_plugin_config(self, pid: str, instance_id: Optional[str] = None) -> dict:
         """
         获取插件配置
-        :param pid: 插件ID
+        :param pid: 插件ID或实例键
+        :param instance_id: 实例标识，为空时取 pid 所指实例，pid 为插件ID时取默认实例
         """
-        if not self._plugins.get(pid):
+        plugin_id, resolved_instance_id = split_instance_key(pid)
+        if instance_id:
+            resolved_instance_id = normalize_instance_id(instance_id)
+        if not self._plugins.get(plugin_id):
             return {}
-        conf = get_plugin_storage().read_config(pid)
+        conf = get_plugin_storage().read_config(plugin_id, resolved_instance_id)
         if conf:
             # 去掉空Key
             return {k: v for k, v in conf.items() if k}
@@ -993,17 +1209,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not force and not self._plugins.get(pid):
             return False
         get_plugin_storage().delete_data(pid)
-        # 删除插件数据时才销毁其数据库文件，这是不可逆操作
-        _plugin_database_destroy(pid, DEFAULT_INSTANCE_ID)
+        # 删除插件数据时才销毁其数据库文件，这是不可逆操作，全部实例一并销毁
+        for target in self._plugin_instance_ids(pid):
+            _plugin_database_destroy(pid, target)
         return True
 
     def get_plugin_state(self, pid: str) -> bool:
         """
         获取插件状态
-        :param pid: 插件ID
+        :param pid: 插件ID或实例键，插件ID时任一实例启用即为启用
         """
-        plugin = self._plugin_registry.instance(pid)
-        return plugin.get_state() if plugin else False
+        return any(
+            self._instance_state(key, plugin)
+            for key, plugin in self._matching_instances(pid)
+        )
 
     def _plugin_projection(self) -> PluginProjection:
         """构造绑定当前运行态插件注册表的能力投影服务。"""
@@ -1143,11 +1362,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 return self._copy_plugin_agent_tools(cached_tools)
 
             ret_tools = []
-            # 创建字典快照避免并发修改
-            running_plugins_snapshot = dict(self._running_plugins)
-            for plugin_id, plugin in running_plugins_snapshot.items():
-                if pid and pid != plugin_id:
-                    continue
+            for extension_id, plugin in self._matching_instances(pid):
                 if supports_extension_hook(plugin, "get_agent_tools"):
                     try:
                         if not plugin.get_state():
@@ -1155,12 +1370,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         tools = plugin.get_agent_tools()
                         if tools:
                             ret_tools.append({
-                                "plugin_id": plugin_id,
+                                "plugin_id": extension_id,
                                 "plugin_name": plugin.plugin_name,
                                 "tools": tools
                             })
                     except Exception as e:
-                        logger.error(f"获取插件 {plugin_id} 智能体工具出错：{str(e)}")
+                        logger.error(f"获取插件 {extension_id} 智能体工具出错：{str(e)}")
             with self._plugin_agent_tools_cache_lock:
                 if cache_revision != self._plugin_agent_tools_revision:
                     # 插件状态在注册表构建期间发生变化，重新读取以避免写回过期快照。
@@ -1322,8 +1537,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_running_plugin_ids(self) -> List[str]:
         """
-        获取所有运行态插件ID
+        获取所有运行态插件ID，同一插件的多个实例只出现一次
         """
+        return self._plugin_registry.running_plugin_ids()
+
+    def get_running_instance_keys(self, pid: Optional[str] = None) -> List[str]:
+        """
+        获取运行态插件实例键
+        :param pid: 插件ID，为空时返回全部运行实例
+        """
+        if pid:
+            return self._plugin_registry.instance_keys(extension_id_of(pid))
         return self._plugin_registry.running_ids()
 
     def get_online_plugins(self, force: bool = False) -> List[_SchemaPlugin]:
@@ -1354,8 +1578,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 已安装插件
         installed_apps = get_plugin_storage().read(SystemConfigKey.UserInstalledPlugins) or []
         for pid, plugin_class in self._plugins.items():
-            # 运行状插件
-            plugin_obj = self._running_plugins.get(pid)
+            # 运行态实例
+            instances = self._matching_instances(pid)
             # 基本属性
             plugin = _SchemaPlugin()
             # ID
@@ -1365,16 +1589,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugin.installed = True
             else:
                 plugin.installed = False
-            # 运行状态
-            if plugin_obj and hasattr(plugin_obj, "get_state"):
-                try:
-                    state = plugin_obj.get_state()
-                except Exception as e:
-                    logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
-                    state = False
-                plugin.state = state
-            else:
-                plugin.state = False
+            # 运行状态，任一实例启用即为启用
+            plugin.state = any(
+                self._instance_state(key, instance) for key, instance in instances
+            )
             # 是否有详情页面
             if hasattr(plugin_class, "get_page"):
                 plugin.has_page = supports_extension_hook(plugin_class, "get_page")
@@ -1807,8 +2025,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"正在注册分身插件 {clone_id} ...")
             PluginManager().reload_plugin(clone_id)
             # 确保分身插件正确初始化配置
-            if clone_id in self._running_plugins:
-                clone_instance = self._running_plugins[clone_id]
+            clone_instance = self._plugin_registry.instance(clone_id)
+            if clone_instance is not None:
                 clone_config = self.get_plugin_config(clone_id)
                 if clone_config:
                     logger.info(f"正在为分身插件 {clone_id} 重新初始化配置...")

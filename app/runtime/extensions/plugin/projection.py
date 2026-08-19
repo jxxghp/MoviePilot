@@ -8,6 +8,7 @@ from app.runtime.extensions.contract import (
     ExtensionProvider,
     supports_extension_hook,
 )
+from app.runtime.extensions.instance import extension_id_of, matches_extension
 from app.runtime.log import logger as default_logger
 from app.schemas.notification import ChannelCapabilities, channel_identity
 
@@ -113,6 +114,9 @@ _NEW_MULTI_SOURCE_CONTRACT_NAMES = frozenset(DEPRECATED_PLUGIN_METHOD_NAMES.valu
 # 实例共享：该类每次调用都会重新构造，去重状态不能挂在实例上。
 _deprecated_method_warnings_seen: set[tuple[str, str]] = set()
 _new_contract_hints_seen: set[tuple[str, str]] = set()
+
+# 已就「同一插件多个实例挂载同一契约名」告警过的 (插件ID, 方法名) 组合，去重理由同上。
+_sibling_contract_warnings_seen: set[tuple[str, str]] = set()
 
 
 class PluginExtension:
@@ -254,12 +258,12 @@ class PluginProviderSource:
         :return: 提供者迭代器
         """
         plugin_modules = self._catalog.get_plugin_modules()
-        for (plugin_id, plugin_name), module_dict in plugin_modules.items():
+        for (extension_id, plugin_name), module_dict in plugin_modules.items():
             func = module_dict.get(method)
             if not func:
                 continue
             yield ExtensionProvider(
-                extension_id=plugin_id,
+                extension_id=extension_id,
                 display_name=plugin_name,
                 distribution=ExtensionDistribution.MARKET,
                 fault_scope=ExtensionFaultScope.PLUGIN,
@@ -299,32 +303,29 @@ class PluginProjection:
         self._remote_entry_factory = remote_entry_factory
 
     def _extensions(self, pid: Optional[str]) -> list[PluginExtension]:
-        """返回指定插件或全部运行态插件的扩展视图快照。
+        """返回指定筛选条件命中的运行态插件实例的扩展视图快照。
 
-        :param pid: 插件 ID，为空时返回全部运行态插件
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
         :return: 插件扩展视图列表
         """
-        snapshot = dict(self._running_plugins)
-        if pid:
-            plugin = snapshot.get(pid)
-            return [PluginExtension(plugin, pid)] if plugin is not None else []
         return [
-            PluginExtension(plugin, plugin_id)
-            for plugin_id, plugin in snapshot.items()
+            PluginExtension(plugin, key)
+            for key, plugin in dict(self._running_plugins).items()
+            if matches_extension(key, pid)
         ]
 
     def commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合插件命令并补充插件 ID。"""
         commands: list[dict] = []
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_command"):
                 continue
             try:
                 if not extension.is_enabled():
                     continue
                 for command in plugin.get_command() or []:
-                    command["pid"] = plugin_id
+                    command["pid"] = extension_id
                     commands.append(command)
             except Exception as error:
                 self._logger.error(f"获取插件命令出错：{str(error)}")
@@ -334,53 +335,91 @@ class PluginProjection:
         """聚合插件 API 并补充宿主路径和默认认证方式。"""
         apis: list[dict] = []
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_api"):
                 continue
             try:
                 for api in plugin.get_api() or []:
-                    api["path"] = f"/{plugin_id}{api['path']}"
+                    api["path"] = f"/{extension_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"
                     apis.append(api)
             except Exception as error:
-                self._logger.error(f"获取插件 {plugin_id} API出错：{str(error)}")
+                self._logger.error(f"获取插件 {extension_id} API出错：{str(error)}")
         return apis
 
     def services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件的定时服务。"""
         services: list[dict] = []
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_service"):
                 continue
             try:
                 if extension.is_enabled():
                     services.extend(plugin.get_service() or [])
             except Exception as error:
-                self._logger.error(f"获取插件 {plugin_id} 服务出错：{str(error)}")
+                self._logger.error(f"获取插件 {extension_id} 服务出错：{str(error)}")
         return services
 
     def modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
-        """聚合启用插件的模块方法清单。"""
+        """聚合启用插件的模块方法清单。
+
+        键取 `(实例键, 展示名)`：同一插件的多个实例展示名相同，只有实例键能把它们
+        区分开，否则后登记的实例会覆盖先登记的，被覆盖的那一份实现从此不再参与分发。
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: `(实例键, 展示名)` 到该实例方法表的映射
+        """
         modules: dict[tuple, dict] = {}
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_module"):
                 continue
             try:
                 if extension.is_enabled():
                     table = plugin.get_module() or []
-                    modules[(plugin_id, extension.display_name)] = table
-                    self._warn_dispatch_migration(plugin_id, table)
+                    modules[(extension_id, extension.display_name)] = table
+                    self._warn_dispatch_migration(extension_id, table)
             except Exception as error:
-                self._logger.error(f"获取插件 {plugin_id} 模块出错：{str(error)}")
+                self._logger.error(f"获取插件 {extension_id} 模块出错：{str(error)}")
+        self._warn_sibling_contract_overlap(modules)
         return modules
 
-    def _warn_dispatch_migration(self, plugin_id: str, table: Any) -> None:
+    def _warn_sibling_contract_overlap(self, modules: Mapping[tuple, Any]) -> None:
+        """就同一插件的多个实例挂载同一契约名各打一次提示，不改写方法表。
+
+        多实例同时挂同一契约名是合法配置：广播逐个触达、多播收齐每个实例的答案，
+        但单播只取首个非空答案，其余实例的实现不会被调用。
+
+        :param modules: `(实例键, 展示名)` 到方法表的映射
+        :return: 无返回值
+        """
+        claimants: dict[tuple[str, str], list[str]] = {}
+        for (extension_id, _display_name), table in modules.items():
+            if not isinstance(table, Mapping):
+                continue
+            for method in table:
+                claimants.setdefault(
+                    (extension_id_of(extension_id), method), []
+                ).append(extension_id)
+        for (plugin_id, method), extension_ids in claimants.items():
+            if len(extension_ids) < 2:
+                continue
+            key = (plugin_id, method)
+            if key in _sibling_contract_warnings_seen:
+                continue
+            _sibling_contract_warnings_seen.add(key)
+            self._logger.warning(
+                f"插件[{plugin_id}]有 {len(extension_ids)} 个实例挂载模块方法 "
+                f"{method!r}：{extension_ids}；广播与多播会逐个触达，单播按实例登记"
+                f"顺序取首个非空答案，其余实例不会被调用。若只应由一个实例应答，"
+                f"请停用其余实例，或让它们对不负责的请求返回 None 让出"
+            )
+
+    def _warn_dispatch_migration(self, extension_id: str, table: Any) -> None:
         """就插件挂载的废弃分发名和新多来源契约名各打一次提示，不改写方法表。
 
-        :param plugin_id: 插件 ID
+        :param extension_id: 插件 ID
         :param table: 插件 `get_module()` 声明的方法表
         :return: 无返回值
         """
@@ -389,20 +428,20 @@ class PluginProjection:
         for method in table:
             replacement = DEPRECATED_PLUGIN_METHOD_NAMES.get(method)
             if replacement:
-                key = (plugin_id, method)
+                key = (extension_id, method)
                 if key not in _deprecated_method_warnings_seen:
                     _deprecated_method_warnings_seen.add(key)
                     self._logger.warning(
-                        f"插件[{plugin_id}]挂载的模块方法名 {method!r} 已随分发面归一废弃，"
+                        f"插件[{extension_id}]挂载的模块方法名 {method!r} 已随分发面归一废弃，"
                         f"不会再被任何分发调用触达；请改用新契约名 {replacement!r}"
                     )
                 continue
             if method in _NEW_MULTI_SOURCE_CONTRACT_NAMES:
-                key = (plugin_id, method)
+                key = (extension_id, method)
                 if key not in _new_contract_hints_seen:
                     _new_contract_hints_seen.add(key)
                     self._logger.info(
-                        f"插件[{plugin_id}]挂载的模块方法名 {method!r} 是多来源契约，"
+                        f"插件[{extension_id}]挂载的模块方法名 {method!r} 是多来源契约，"
                         f"由多个数据源共用同一分发名；实现须按 source 参数自认领，"
                         f"非本插件负责的来源须返回 None 让出，否则会拦截该契约下的全部来源"
                     )
@@ -411,7 +450,7 @@ class PluginProjection:
         """聚合启用插件的工作流动作。"""
         actions: list[dict] = []
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_actions"):
                 continue
             try:
@@ -420,19 +459,19 @@ class PluginProjection:
                 plugin_actions = plugin.get_actions()
                 if plugin_actions:
                     actions.append({
-                        "plugin_id": plugin_id,
+                        "plugin_id": extension_id,
                         "plugin_name": plugin.plugin_name,
                         "actions": plugin_actions,
                     })
             except Exception as error:
-                self._logger.error(f"获取插件 {plugin_id} 动作出错：{str(error)}")
+                self._logger.error(f"获取插件 {extension_id} 动作出错：{str(error)}")
         return actions
 
     def remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """投影插件联邦远程入口，并保持旧渲染模式筛选语义。"""
         remotes = []
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_render_mode"):
                 continue
             render_mode, dist_path = plugin.get_render_mode()
@@ -441,8 +480,8 @@ class PluginProjection:
             if not self._remote_entry_factory:
                 raise RuntimeError("插件联邦入口生成器尚未配置")
             remotes.append({
-                "id": plugin_id,
-                "url": self._remote_entry_factory(plugin_id, dist_path),
+                "id": extension_id,
+                "url": self._remote_entry_factory(extension_id, dist_path),
                 "name": plugin.plugin_name,
             })
         return remotes
@@ -451,7 +490,7 @@ class PluginProjection:
         """投影启用插件声明的登录认证提供方。"""
         providers = []
         for extension in self._extensions(None):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "get_auth_providers"
             ):
@@ -460,7 +499,7 @@ class PluginProjection:
                 plugin_providers = plugin.get_auth_providers() or []
             except Exception as error:
                 self._logger.error(
-                    f"获取插件 {plugin_id} 登录认证提供方出错：{str(error)}"
+                    f"获取插件 {extension_id} 登录认证提供方出错：{str(error)}"
                 )
                 continue
             render_mode = None
@@ -472,8 +511,8 @@ class PluginProjection:
                     continue
                 provider = raw_provider.copy()
                 provider["type"] = "plugin"
-                provider["plugin_id"] = plugin_id
-                provider.setdefault("id", f"plugin:{plugin_id}")
+                provider["plugin_id"] = extension_id
+                provider.setdefault("id", f"plugin:{extension_id}")
                 provider.setdefault("name", plugin.plugin_name)
                 provider.setdefault("enabled", True)
                 if render_mode == "vue" and dist_path:
@@ -481,8 +520,8 @@ class PluginProjection:
                         raise RuntimeError("插件联邦入口生成器尚未配置")
                     provider.setdefault("component", "AuthPage")
                     provider["remote"] = {
-                        "id": plugin_id,
-                        "url": self._remote_entry_factory(plugin_id, dist_path),
+                        "id": extension_id,
+                        "url": self._remote_entry_factory(extension_id, dist_path),
                         "name": plugin.plugin_name,
                     }
                 providers.append(provider)
@@ -494,7 +533,7 @@ class PluginProjection:
         valid_permissions = {"subscribe", "discovery", "search", "manage", "admin"}
         items = []
         for extension in self._extensions(None):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "get_sidebar_nav"
             ):
@@ -518,7 +557,7 @@ class PluginProjection:
                             character in nav_key for character in ["/", "?", "#", " "]
                     ):
                         self._logger.warning(
-                            f"插件[{plugin_id}]侧栏项 nav_key 无效，已跳过: "
+                            f"插件[{extension_id}]侧栏项 nav_key 无效，已跳过: "
                             f"{nav_key!r}"
                         )
                         continue
@@ -535,7 +574,7 @@ class PluginProjection:
                     except (TypeError, ValueError):
                         order = 0
                     items.append({
-                        "plugin_id": plugin_id,
+                        "plugin_id": extension_id,
                         "nav_key": nav_key,
                         "title": raw.get("title") or plugin.plugin_name,
                         "icon": raw.get("icon") or "mdi-puzzle",
@@ -545,7 +584,7 @@ class PluginProjection:
                     })
             except Exception as error:
                 self._logger.error(
-                    f"获取插件[{plugin_id}]侧栏导航出错：{str(error)}"
+                    f"获取插件[{extension_id}]侧栏导航出错：{str(error)}"
                 )
         items.sort(
             key=lambda item: (
@@ -562,12 +601,12 @@ class PluginProjection:
     ) -> Dict[str, List[ChannelCapabilities]]:
         """投影启用插件声明的消息渠道能力。
 
-        :param pid: 插件 ID，为空时返回全部运行态插件
-        :return: 插件 ID 到其声明的 `ChannelCapabilities` 列表的映射
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其声明的 `ChannelCapabilities` 列表的映射
         """
         result: Dict[str, List[ChannelCapabilities]] = {}
         for extension in self._extensions(pid):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "get_channel_capabilities"
             ):
@@ -576,27 +615,27 @@ class PluginProjection:
                 declared = plugin.get_channel_capabilities() or []
             except Exception as error:
                 self._logger.error(
-                    f"获取插件 {plugin_id} 渠道能力出错：{str(error)}"
+                    f"获取插件 {extension_id} 渠道能力出错：{str(error)}"
                 )
                 continue
             accepted: List[ChannelCapabilities] = []
             for item in declared:
                 if not isinstance(item, ChannelCapabilities):
                     self._logger.warning(
-                        f"插件[{plugin_id}]声明的渠道能力类型无效，已跳过：{item!r}"
+                        f"插件[{extension_id}]声明的渠道能力类型无效，已跳过：{item!r}"
                     )
                     continue
                 if not channel_identity(item.channel):
                     continue
                 accepted.append(item)
-            result[plugin_id] = accepted
+            result[extension_id] = accepted
         return result
 
     def dashboard_metadata(self) -> List[Dict[str, str]]:
         """投影启用插件的单仪表板或多仪表板元信息。"""
         metadata = []
         for extension in self._extensions(None):
-            plugin_id, plugin = extension.extension_id, extension.instance
+            extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_dashboard"):
                 continue
             try:
@@ -606,18 +645,18 @@ class PluginProjection:
                     plugin_metadata = plugin.get_dashboard_meta()
                     if plugin_metadata:
                         metadata.extend({
-                            "id": plugin_id,
+                            "id": extension_id,
                             "name": item.get("name"),
                             "key": item.get("key"),
                         } for item in plugin_metadata if item)
                 else:
                     metadata.append({
-                        "id": plugin_id,
+                        "id": extension_id,
                         "name": plugin.plugin_name,
                         "key": "",
                     })
             except Exception as error:
                 self._logger.error(
-                    f"获取插件[{plugin_id}]仪表盘元数据出错：{str(error)}"
+                    f"获取插件[{extension_id}]仪表盘元数据出错：{str(error)}"
                 )
         return metadata

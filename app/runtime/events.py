@@ -90,6 +90,8 @@ class EventManager(metaclass=Singleton):
         self.__disabled_handlers = set()
         # 禁用的事件处理器类集合
         self.__disabled_classes = set()
+        # 禁用的事件处理器运行实例集合，元素为 (类标识, 实例键)
+        self.__disabled_instances = set()
         # 线程锁
         self.__lock = threading.Lock()
         # 退出事件
@@ -104,10 +106,15 @@ class EventManager(metaclass=Singleton):
             chain_subscribers=lambda: self.__chain_subscribers,
             disabled_handlers=lambda: self.__disabled_handlers,
             disabled_classes=lambda: self.__disabled_classes,
+            disabled_instances=lambda: self.__disabled_instances,
         )
         self.__binding_resolver = EventBindingResolver(
             lock=self.__lock,
             resolvers=lambda: self.__handler_instance_resolvers,
+            instance_enabled=lambda owner, key: self.__registry.is_instance_enabled(
+                owner,
+                key,
+            ),
         )
         self.__error_policy = EventErrorPolicy(
             notifier=lambda: self.__error_notifier,
@@ -234,19 +241,23 @@ class EventManager(metaclass=Singleton):
         """
         self.__registry.remove(event_type, handler)
 
-    def disable_event_handler(self, target: Union[Callable, type]):
+    def disable_event_handler(self, target: Union[Callable, type],
+                              instance_key: Optional[str] = None):
         """
         禁用指定的事件处理器或事件处理器类
         :param target: 处理器函数或类
+        :param instance_key: 运行实例的实例键，给出时只停用该实例，兄弟实例继续响应
         """
-        self.__registry.disable(target)
+        self.__registry.disable(target, instance_key)
 
-    def enable_event_handler(self, target: Union[Callable, type]):
+    def enable_event_handler(self, target: Union[Callable, type],
+                             instance_key: Optional[str] = None):
         """
         启用指定的事件处理器或事件处理器类
         :param target: 处理器函数或类
+        :param instance_key: 运行实例的实例键，给出时只启用该实例，不改变整类的停用状态
         """
-        self.__registry.enable(target)
+        self.__registry.enable(target, instance_key)
 
     def visualize_handlers(self) -> List[Dict]:
         """

@@ -16,7 +16,11 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.instance import (
+    DEFAULT_INSTANCE_ID,
+    instance_key,
+    normalize_instance_id,
+)
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilities
@@ -193,8 +197,21 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_order: Optional[int] = 9999
     # 是否为插件分身
     is_clone: bool = False
+    # 插件标识，缺省取插件主类名
+    plugin_id: Optional[str] = None
+    # 运行实例标识，同一插件类的多个实例各自持有独立的配置、数据与数据目录
+    instance_id: str = DEFAULT_INSTANCE_ID
 
-    def __init__(self):
+    def __init__(self, plugin_id: Optional[str] = None, instance_id: Optional[str] = None):
+        """
+        初始化插件运行实例
+        :param plugin_id: 插件标识，为空时取插件主类名
+        :param instance_id: 实例标识，为空时取默认实例
+        """
+        # 插件标识
+        self.plugin_id = plugin_id or self.__class__.__name__
+        # 实例标识
+        self.instance_id = normalize_instance_id(instance_id)
         # 插件数据
         self.plugindata = PluginDataOper()
         # 处理链
@@ -205,6 +222,25 @@ class _PluginBase(metaclass=ABCMeta):
         self.systemmessage = MessageHelper()
         # 事件管理器
         self.eventmanager = EventManager()
+
+    def _target_instance(self, plugin_id: Optional[str]) -> Tuple[str, str]:
+        """
+        定位一次持久化访问的目标插件与实例
+        :param plugin_id: 调用方指定的插件标识，为空时取当前插件
+        :return: `(插件标识, 实例标识)`；访问其他插件时取该插件的默认实例
+        """
+        current = self.plugin_id or self.__class__.__name__
+        if not plugin_id or plugin_id == current:
+            return current, self.instance_id or DEFAULT_INSTANCE_ID
+        return plugin_id, DEFAULT_INSTANCE_ID
+
+    def get_instance_key(self) -> str:
+        """
+        获取本实例在宿主内的稳定标识
+        :return: 实例键，默认实例即裸插件标识
+        """
+        plugin_id, instance_id = self._target_instance(None)
+        return instance_key(plugin_id, instance_id)
 
     @abstractmethod
     def init_plugin(self, config: dict = None):
@@ -422,9 +458,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param config: 配置信息字典
         :param plugin_id: 插件ID
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        PluginConfigOper().upsert(plugin_id, DEFAULT_INSTANCE_ID, {"config_data": config})
+        target_id, instance_id = self._target_instance(plugin_id)
+        PluginConfigOper().upsert(target_id, instance_id, {"config_data": config})
         return True
 
     def get_config(self, plugin_id: Optional[str] = None) -> Any:
@@ -432,9 +467,8 @@ class _PluginBase(metaclass=ABCMeta):
         获取配置信息
         :param plugin_id: 插件ID
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        row = PluginConfigOper().get(plugin_id, DEFAULT_INSTANCE_ID)
+        target_id, instance_id = self._target_instance(plugin_id)
+        row = PluginConfigOper().get(target_id, instance_id)
         return row.config_data if row else None
 
     def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
@@ -444,15 +478,14 @@ class _PluginBase(metaclass=ABCMeta):
         :return: 插件数据目录，不存在时创建
         :raises ValueError: 插件ID包含路径分隔符、盘符，或指向数据根目录之外
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        return plugin_instance_path(plugin_id, DEFAULT_INSTANCE_ID, "data")
+        target_id, instance_id = self._target_instance(plugin_id)
+        return plugin_instance_path(target_id, instance_id, "data")
 
     def declare_plugin_models(
         self,
         base: Type[DeclarativeBase],
         plugin_id: Optional[str] = None,
-        instance_id: str = DEFAULT_INSTANCE_ID,
+        instance_id: Optional[str] = None,
     ) -> None:
         """
         声明本插件在其专属数据库中使用的 ORM 模型集合。
@@ -462,35 +495,33 @@ class _PluginBase(metaclass=ABCMeta):
         同时声明了迁移目录时本声明被忽略，改走 alembic。
         :param base: 插件专属声明式基类
         :param plugin_id: 插件ID，为空时取当前插件
-        :param instance_id: 插件实例标识，本批固定取默认实例
+        :param instance_id: 插件实例标识，为空时取当前实例
         """
         from app.db.plugin import declare_models
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        declare_models(plugin_id, instance_id, base)
+        target_id, target_instance = self._target_instance(plugin_id)
+        declare_models(target_id, instance_id or target_instance, base)
 
     def declare_plugin_migrations(
         self,
         directory: Union[str, Path],
         plugin_id: Optional[str] = None,
-        instance_id: str = DEFAULT_INSTANCE_ID,
+        instance_id: Optional[str] = None,
     ) -> None:
         """
         声明本插件的 Alembic 迁移脚本目录，声明后插件数据库改走 alembic upgrade
         建库，不再按 ``declare_plugin_models`` 声明的模型建表。
         :param directory: 迁移脚本目录，须符合 Alembic script_location 布局
         :param plugin_id: 插件ID，为空时取当前插件
-        :param instance_id: 插件实例标识，本批固定取默认实例
+        :param instance_id: 插件实例标识，为空时取当前实例
         """
         from app.db.plugin import declare_migrations
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        declare_migrations(plugin_id, instance_id, Path(directory))
+        target_id, target_instance = self._target_instance(plugin_id)
+        declare_migrations(target_id, instance_id or target_instance, Path(directory))
 
     def get_plugin_database(
         self,
         plugin_id: Optional[str] = None,
-        instance_id: str = DEFAULT_INSTANCE_ID,
+        instance_id: Optional[str] = None,
     ) -> "PluginDatabaseHandle":
         """
         获取本插件指定实例的数据库句柄，用于取会话读写插件自有表。
@@ -498,13 +529,12 @@ class _PluginBase(metaclass=ABCMeta):
         句柄持有插件专属的引擎与会话工厂；容器不存在时按需建立，不要求提前调用
         ``declare_plugin_models``。
         :param plugin_id: 插件ID，为空时取当前插件
-        :param instance_id: 插件实例标识，本批固定取默认实例
+        :param instance_id: 插件实例标识，为空时取当前实例
         :return: 插件实例的数据库句柄
         """
         from app.db.plugin import get_database
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        return get_database(plugin_id, instance_id)
+        target_id, target_instance = self._target_instance(plugin_id)
+        return get_database(target_id, instance_id or target_instance)
 
     def save_data(self, key: str, value: Any, plugin_id: Optional[str] = None):
         """
@@ -513,9 +543,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param value: 数据值
         :param plugin_id: 插件ID
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        self.plugindata.save(plugin_id, key, value)
+        target_id, instance_id = self._target_instance(plugin_id)
+        self.plugindata.save(target_id, key, value, instance_id)
 
     async def async_save_data(
         self, key: str, value: Any, plugin_id: Optional[str] = None
@@ -527,9 +556,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param value: 数据值
         :param plugin_id: 插件ID
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        await self.plugindata.async_save(plugin_id, key, value)
+        target_id, instance_id = self._target_instance(plugin_id)
+        await self.plugindata.async_save(target_id, key, value, instance_id)
 
     def get_data(self, key: Optional[str] = None, plugin_id: Optional[str] = None) -> Any:
         """
@@ -537,9 +565,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param key: 数据key
         :param plugin_id: plugin_id
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        return self.plugindata.get_data(plugin_id, key)
+        target_id, instance_id = self._target_instance(plugin_id)
+        return self.plugindata.get_data(target_id, key, instance_id)
 
     async def async_get_data(
         self, key: Optional[str] = None, plugin_id: Optional[str] = None
@@ -551,9 +578,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param plugin_id: 插件ID
         :return: 指定键的数据值或插件的全部数据
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        return await self.plugindata.async_get_data(plugin_id, key)
+        target_id, instance_id = self._target_instance(plugin_id)
+        return await self.plugindata.async_get_data(target_id, key, instance_id)
 
     def del_data(self, key: str, plugin_id: Optional[str] = None) -> Any:
         """
@@ -561,9 +587,8 @@ class _PluginBase(metaclass=ABCMeta):
         :param key: 数据key
         :param plugin_id: plugin_id
         """
-        if not plugin_id:
-            plugin_id = self.__class__.__name__
-        return self.plugindata.del_data(plugin_id, key)
+        target_id, instance_id = self._target_instance(plugin_id)
+        return self.plugindata.del_data(target_id, key, instance_id)
 
     def post_message(self, channel: NotificationChannel = None, mtype: MessageType = None, title: Optional[str] = None,
                      text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None,
@@ -573,7 +598,9 @@ class _PluginBase(metaclass=ABCMeta):
         发送消息
         """
         if not link:
-            link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
+            link = settings.MP_DOMAIN(
+                f"#/plugins?tab=installed&id={self.get_instance_key()}"
+            )
         self.chain.post_message(Message(
             channel=channel, mtype=mtype, title=title, text=text,
             image=image, link=link, userid=userid, username=username, **kwargs

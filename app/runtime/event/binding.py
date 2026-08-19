@@ -34,10 +34,17 @@ class EventBindingResolver:
         *,
         lock: Any,
         resolvers: Callable[[], dict[str, HandlerInstanceResolver]],
+        instance_enabled: Optional[Callable[[Type[Any], Optional[str]], bool]] = None,
     ) -> None:
-        """绑定 resolver 存储，并记录未命中的处理器用于启动诊断。"""
+        """绑定 resolver 存储，并记录未命中的处理器用于启动诊断。
+
+        :param lock: 保护 resolver 存储的锁
+        :param resolvers: 已登记实例解析器的取用函数
+        :param instance_enabled: 判定某个实例键是否仍启用的谓词，缺省时不筛选
+        """
         self._lock = lock
         self._resolvers = resolvers
+        self._instance_enabled = instance_enabled
         self._unresolved: set[str] = set()
 
     def register(self, name: str, resolver: HandlerInstanceResolver) -> None:
@@ -80,7 +87,12 @@ class EventBindingResolver:
         self,
         handler: Callable,
     ) -> list[tuple[Callable, EventHandlerBinding, str, str]]:
-        """通过显式 resolver 解析当前全部实例绑定；自由函数返回单元素列表。"""
+        """通过显式 resolver 解析当前全部实例绑定；自由函数返回单元素列表。
+
+        归属已单独停用实例的绑定被剔除，兄弟实例继续参与调度。
+        :param handler: 装饰阶段登记的处理器
+        :return: `(实例方法, 绑定, 类名, 方法名)` 列表
+        """
         owner_class = self.owner_class(handler)
         declared_method_name = getattr(
             handler,
@@ -124,6 +136,11 @@ class EventBindingResolver:
         resolved: list[tuple[Callable, EventHandlerBinding, str, str]] = []
         for binding in bindings:
             if binding.instance is None:
+                continue
+            if self._instance_enabled and not self._instance_enabled(
+                owner_class,
+                binding.instance_key,
+            ):
                 continue
             method_name = declared_method_name
             method = getattr(binding.instance, method_name, None)

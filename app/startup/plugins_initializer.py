@@ -50,10 +50,28 @@ async def _async_write_plugin_config(key, value):
     return await SystemConfigOper().async_set(key, value)
 
 
-def _read_plugin_instance_config(plugin_id: str):
-    """读取插件默认实例配置行的业务配置。"""
-    row = PluginConfigOper().get(plugin_id, DEFAULT_INSTANCE_ID)
+def _read_plugin_instance_config(plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID):
+    """读取插件某个实例配置行的业务配置。
+
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识，缺省为默认实例
+    :return: 该实例的业务配置，未登记时为 None
+    """
+    row = PluginConfigOper().get(plugin_id, instance_id)
     return row.config_data if row else None
+
+
+def _list_plugin_instance_ids(plugin_id: str) -> list:
+    """列出插件已登记的全部实例标识。
+
+    :param plugin_id: 插件标识
+    :return: 实例标识列表，按默认实例优先、其余按标识升序排列
+    """
+    instance_ids = {row.instance_id for row in PluginConfigOper().list_by_plugin(plugin_id)}
+    ordered = sorted(instance_ids - {DEFAULT_INSTANCE_ID})
+    if DEFAULT_INSTANCE_ID in instance_ids:
+        ordered.insert(0, DEFAULT_INSTANCE_ID)
+    return ordered
 
 
 def _write_plugin_instance_config(plugin_id: str, value) -> None:
@@ -121,6 +139,7 @@ def _configure_plugin_services() -> None:
         write_config=_write_plugin_instance_config,
         async_write_config=_async_write_plugin_instance_config,
         delete_config=_delete_plugin_instance_config,
+        list_instances=_list_plugin_instance_ids,
     ))
 
 
