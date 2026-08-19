@@ -227,6 +227,61 @@ class PluginInstanceCreate(BaseModel):
     )
 
 
+class PluginInstalledVersion(BaseModel):
+    """插件已安装的一个版本。"""
+
+    version: str = Field(description="版本号")
+    directory: str = Field(description="版本目录名")
+    installed_at: Optional[str] = Field(default=None, description="登记的安装时间")
+    source: Optional[str] = Field(default=None, description="版本来源：market/local/migrated")
+    is_current: bool = Field(default=False, description="是否为版本元信息登记的当前版本")
+
+
+class PluginInstanceVersionBinding(BaseModel):
+    """插件实例的版本绑定情况。"""
+
+    instance_id: str = Field(description="实例标识，默认实例取值为 default")
+    instance_key: str = Field(description="实例键，默认实例的实例键等于插件 ID")
+    plugin_version: Optional[str] = Field(
+        default=None, description="已生效版本；为空表示尚未成功启动过任何版本"
+    )
+    follow_default_version: bool = Field(
+        default=True, description="是否跟随默认实例的版本"
+    )
+    target_version: Optional[str] = Field(
+        default=None,
+        description="期望版本，与已生效版本不一致表示待切换；无从解析时为空",
+    )
+    running: bool = Field(default=False, description="实例是否处于运行态")
+
+
+class PluginVersionOverview(BaseModel):
+    """插件已装版本与各实例绑定情况。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    current_version: Optional[str] = Field(
+        default=None, description="版本元信息登记的当前版本"
+    )
+    installed_versions: List[PluginInstalledVersion] = Field(
+        default_factory=list, description="磁盘上可加载的已装版本"
+    )
+    instances: List[PluginInstanceVersionBinding] = Field(
+        default_factory=list, description="各实例的版本绑定情况"
+    )
+
+
+class PluginInstanceVersionSet(BaseModel):
+    """设置插件实例版本绑定请求体。"""
+
+    follow_default_version: bool = Field(
+        default=True, description="是否跟随默认实例的版本"
+    )
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="目标版本号；不跟随默认实例时必填，且必须是该插件已安装的版本",
+    )
+
+
 class PluginInstanceLogLevelInfo(BaseModel):
     """插件实例的日志等级设置与当前生效值。"""
 

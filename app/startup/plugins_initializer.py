@@ -1,9 +1,11 @@
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.plugin_version_readiness import scan_plugin_version_readiness
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
 from app.runtime.config import global_vars
 from app.runtime.config import settings
@@ -12,10 +14,14 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_catalog_factory,
     configure_plugin_install_reporter,
     _configure_plugin_instance_persistence,
+    _configure_plugin_instance_version_binding,
     configure_plugin_legacy_import_services,
+    _configure_plugin_multi_version_probe,
     configure_plugin_resource_import_preparer,
+    _configure_plugin_version_switch_notifier,
     configure_site_auth_level_provider,
 )
+from app.application.messaging.message import MessageHelper
 from app.application.plugin.catalog import PluginCatalogService
 from app.adapters.external.plugin.client import PluginMarketClient
 from app.runtime.extensions.plugin.storage import (
@@ -34,8 +40,17 @@ from app.adapters.external.market import (
     VERSION_BACKWARD_COMPATIBLE_FLAGS,
     configure_installed_plugins_provider,
 )
-from app.adapters.system.plugin.dependency import PluginDependencyInstaller
+from app.adapters.system.plugin.dependency import (
+    PluginDependencyInstaller,
+    describe_version_dependency_conflicts,
+    find_version_dependency_conflicts,
+    read_requirement_specifiers,
+)
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.runtime.extensions.plugin.layout import (
+    plugin_version_dirs,
+    plugin_version_from_dir_name,
+)
 from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
@@ -109,6 +124,112 @@ def _delete_plugin_instance_data_rows(plugin_id: str, instance_id: str) -> None:
     PluginDataOper().del_data(plugin_id, instance_id=instance_id)
 
 
+def _read_plugin_instance_version(plugin_id: str, instance_id: str):
+    """读取插件实例已生效的版本与版本跟随开关。
+
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识
+    :return: `(已生效版本, 是否跟随默认实例)`；该实例没有配置行时为 None
+    """
+    row = PluginConfigOper().get(plugin_id, instance_id)
+    if row is None:
+        return None
+    return row.plugin_version, bool(row.follow_default_version)
+
+
+def _write_plugin_instance_version(plugin_id: str, instance_id: str, version: str) -> None:
+    """把实例本次成功启动的版本登记为其已生效版本。
+
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识
+    :param version: 本次生效的版本号
+    """
+    PluginConfigOper().upsert(plugin_id, instance_id, {"plugin_version": version})
+
+
+def _write_plugin_instance_follow_default(
+    plugin_id: str, instance_id: str, follow: bool
+) -> None:
+    """写入实例的版本跟随开关。
+
+    :param plugin_id: 插件标识
+    :param instance_id: 实例标识
+    :param follow: 是否跟随默认实例的版本
+    """
+    PluginConfigOper().upsert(
+        plugin_id, instance_id, {"follow_default_version": bool(follow)}
+    )
+
+
+def _notify_plugin_version_switch(title: str, text: str) -> None:
+    """把插件版本切换失败投递为系统消息。
+
+    :param title: 消息标题
+    :param text: 消息正文
+    """
+    MessageHelper().put(text, title=title, role="system")
+
+
+def plugin_multi_version_blockers(plugin_id: str, source_dirs: List[Path]) -> List[str]:
+    """检查插件源码是否允许多版本并存，给出阻断原因。
+
+    两类写法使插件无法同时跑两个版本：自引用绝对导入在版本化目录下必然
+    ``ModuleNotFoundError``；在宿主共享声明基类上定义的模型会让两个版本映射到同名表，
+    导入第二个版本时直接冲突。
+    :param plugin_id: 插件目录名
+    :param source_dirs: 待检查的插件源码目录，不存在的目录按无命中处理
+    :return: 阻断原因列表，为空表示允许多版本并存
+    """
+    blockers: List[str] = []
+    for source_dir in source_dirs:
+        readiness = scan_plugin_version_readiness(plugin_id, Path(source_dir))
+        blockers.extend(
+            f"存在自引用绝对导入：{hit.file}:{hit.line} {hit.statement}；{hit.suggestion}"
+            for hit in readiness.self_referential_imports
+        )
+        blockers.extend(
+            f"在宿主共享声明基类上定义模型 {hit.class_name}：{hit.file}:{hit.line}"
+            for hit in readiness.shared_base_models
+        )
+    return blockers
+
+
+def plugin_version_coexistence_rejection(
+    plugin_id: str,
+    new_version: str,
+    new_source_dir: Path,
+    installed_versions: Dict[str, Path],
+) -> Optional[str]:
+    """判定待装版本能否与该插件已装的其它版本并存。
+
+    先看插件写法是否允许多版本，再对两个版本共同依赖的包求版本约束交集，
+    交集为空即判定不可并存，把故障从运行期提前到安装时明确拒绝。
+    :param plugin_id: 插件ID
+    :param new_version: 待装版本号
+    :param new_source_dir: 待装版本的源码目录
+    :param installed_versions: 已装版本号到其源码目录的映射
+    :return: 拒绝说明；允许并存时为 None
+    """
+    blockers = plugin_multi_version_blockers(
+        plugin_id.lower(), [Path(new_source_dir), *installed_versions.values()]
+    )
+    if blockers:
+        return (
+            f"插件 {plugin_id} 的写法不支持多版本并存，拒绝安装第二个版本："
+            + "；".join(blockers)
+        )
+    new_requirements = read_requirement_specifiers(new_source_dir)
+    for installed_version, installed_dir in sorted(installed_versions.items()):
+        conflicts = find_version_dependency_conflicts(
+            read_requirement_specifiers(installed_dir), new_requirements
+        )
+        if conflicts:
+            return describe_version_dependency_conflicts(
+                installed_version, new_version, conflicts
+            )
+    return None
+
+
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
     for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
@@ -173,7 +294,12 @@ def _configure_plugin_services() -> None:
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_system(PluginSystemServices(
         market=market_client,
-        package=PluginPackageManager(plugin_helper),
+        package=PluginPackageManager(
+            plugin_helper,
+            version_dirs=plugin_version_dirs,
+            coexistence_checker=plugin_version_coexistence_rejection,
+            version_name_resolver=plugin_version_from_dir_name,
+        ),
         dependency=PluginDependencyInstaller(
             plugin_helper,
             installed_plugins_provider=lambda: SystemConfigOper().get(
@@ -204,6 +330,13 @@ def _configure_plugin_services() -> None:
         delete_config=_delete_plugin_instance_config_row,
         delete_data=_delete_plugin_instance_data_rows,
     )
+    _configure_plugin_instance_version_binding(
+        read_binding=_read_plugin_instance_version,
+        write_version=_write_plugin_instance_version,
+        write_follow_default=_write_plugin_instance_follow_default,
+    )
+    _configure_plugin_version_switch_notifier(_notify_plugin_version_switch)
+    _configure_plugin_multi_version_probe(plugin_multi_version_blockers)
     configure_plugin_log_dir_resolver(_resolve_plugin_instance_log_dir)
 
 

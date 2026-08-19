@@ -20,6 +20,9 @@ from app.schemas.plugin import PluginInstanceInfo as _SchemaPluginInstanceInfo
 from app.schemas.plugin import PluginInstanceLogFileInfo as _SchemaPluginInstanceLogFileInfo
 from app.schemas.plugin import PluginInstanceLogLevelInfo as _SchemaPluginInstanceLogLevelInfo
 from app.schemas.plugin import PluginInstanceLogLevelSet as _SchemaPluginInstanceLogLevelSet
+from app.schemas.plugin import PluginInstanceVersionBinding as _SchemaPluginInstanceVersionBinding
+from app.schemas.plugin import PluginInstanceVersionSet as _SchemaPluginInstanceVersionSet
+from app.schemas.plugin import PluginVersionOverview as _SchemaPluginVersionOverview
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
@@ -977,6 +980,55 @@ def delete_plugin_instance(
     # 删除后必须整体重建，避免残留登记指向已停止的实例，兄弟实例的登记原样恢复
     register_plugin(plugin_id)
     return _SchemaResponse(success=True)
+
+
+@router.get(
+    "/versions/{plugin_id}",
+    summary="获取插件已装版本与各实例的版本绑定",
+    response_model=_SchemaPluginVersionOverview,
+)
+def list_plugin_versions(
+    plugin_id: str, _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    列出插件磁盘上可加载的已装版本，以及各实例已生效版本、跟随开关与期望版本
+    """
+    try:
+        return PluginManager().list_plugin_versions(plugin_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put(
+    "/versions/{plugin_id}/{instance_id}",
+    summary="设置插件实例绑定的版本",
+    response_model=_SchemaPluginInstanceVersionBinding,
+)
+def set_plugin_instance_version(
+    plugin_id: str,
+    instance_id: str,
+    version_data: _SchemaPluginInstanceVersionSet,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    设置插件实例绑定的版本与跟随开关，并立即停止再启动该实例完成切换；
+    切换失败时已生效版本保持旧值并以旧版本重新启动，随后重建该插件的定时服务、命令与接口
+    """
+    plugin_manager = PluginManager()
+    try:
+        binding = plugin_manager.set_plugin_instance_version(
+            plugin_id,
+            instance_id,
+            version=version_data.plugin_version,
+            follow_default_version=version_data.follow_default_version,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # 切换后实例对象已换新，定时服务、命令与接口需要整体重建才会指向新实例
+    register_plugin(plugin_id)
+    return binding
 
 
 def _require_known_plugin_instance(plugin_id: str, instance_id: str) -> None:

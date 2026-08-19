@@ -39,7 +39,9 @@ from app.runtime.extensions.instance import (
 from app.runtime.extensions.plugin.layout import (
     ensure_plugin_version_dir_available,
     plugin_module_name,
+    plugin_version_dirs,
     plugin_version_from_dir_name,
+    read_plugin_versions_manifest,
     register_plugin_version,
     resolve_plugin_version_dir,
 )
@@ -62,6 +64,11 @@ PluginDatabaseDestroyer = Callable[[str, str], None]
 PluginInstanceConfigUpserter = Callable[[str, str, dict], None]
 PluginInstanceConfigDeleter = Callable[[str, str], bool]
 PluginInstanceDataDeleter = Callable[[str, str], None]
+PluginInstanceVersionReader = Callable[[str, str], Optional[Tuple[Optional[str], bool]]]
+PluginInstanceVersionWriter = Callable[[str, str, str], None]
+PluginInstanceFollowWriter = Callable[[str, str, bool], None]
+PluginVersionSwitchNotifier = Callable[[str, str], None]
+PluginMultiVersionProbe = Callable[[str, List[Path]], List[str]]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
@@ -107,6 +114,34 @@ def _ignore_plugin_instance_data_delete(_plugin_id: str, _instance_id: str) -> N
     """插件实例持久化框架尚未装配时忽略实例数据删除。"""
 
 
+def _unknown_plugin_instance_version(
+    _plugin_id: str, _instance_id: str
+) -> Optional[Tuple[Optional[str], bool]]:
+    """实例版本绑定尚未装配时报告无绑定记录。"""
+    return None
+
+
+def _ignore_plugin_instance_version_write(
+    _plugin_id: str, _instance_id: str, _version: str
+) -> None:
+    """实例版本绑定尚未装配时忽略已生效版本写入。"""
+
+
+def _ignore_plugin_instance_follow_write(
+    _plugin_id: str, _instance_id: str, _follow: bool
+) -> None:
+    """实例版本绑定尚未装配时忽略跟随开关写入。"""
+
+
+def _ignore_plugin_version_switch_notice(_title: str, _text: str) -> None:
+    """系统消息通道尚未装配时忽略版本切换告警。"""
+
+
+def _no_multi_version_blockers(_plugin_id: str, _source_dirs: List[Path]) -> List[str]:
+    """插件写法体检尚未装配时不给出多版本阻断结论。"""
+    return []
+
+
 _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
     _ignore_legacy_diagnostics
 )
@@ -127,6 +162,17 @@ _plugin_instance_config_delete: PluginInstanceConfigDeleter = (
     _ignore_plugin_instance_config_delete
 )
 _plugin_instance_data_delete: PluginInstanceDataDeleter = _ignore_plugin_instance_data_delete
+_plugin_instance_version_read: PluginInstanceVersionReader = _unknown_plugin_instance_version
+_plugin_instance_version_write: PluginInstanceVersionWriter = (
+    _ignore_plugin_instance_version_write
+)
+_plugin_instance_follow_write: PluginInstanceFollowWriter = (
+    _ignore_plugin_instance_follow_write
+)
+_plugin_version_switch_notifier: PluginVersionSwitchNotifier = (
+    _ignore_plugin_version_switch_notice
+)
+_plugin_multi_version_probe: PluginMultiVersionProbe = _no_multi_version_blockers
 
 
 def configure_plugin_legacy_import_services(
@@ -185,6 +231,46 @@ def _configure_plugin_instance_persistence(
     _plugin_instance_config_upsert = upsert_config
     _plugin_instance_config_delete = delete_config
     _plugin_instance_data_delete = delete_data
+
+
+def _configure_plugin_instance_version_binding(
+    *,
+    read_binding: PluginInstanceVersionReader,
+    write_version: PluginInstanceVersionWriter,
+    write_follow_default: PluginInstanceFollowWriter,
+) -> None:
+    """由启动组合根注入实例版本绑定的读写钩子。
+
+    绑定信息落在实例配置表的两列上，扩展层不得反向依赖 DB 层，因此这里只声明
+    可注入的钩子。
+    :param read_binding: 按 (插件ID, 实例标识) 读取 `(已生效版本, 是否跟随默认实例)`
+    :param write_version: 按 (插件ID, 实例标识) 写入已生效版本
+    :param write_follow_default: 按 (插件ID, 实例标识) 写入跟随开关
+    """
+    global _plugin_instance_version_read, _plugin_instance_version_write
+    global _plugin_instance_follow_write
+    _plugin_instance_version_read = read_binding
+    _plugin_instance_version_write = write_version
+    _plugin_instance_follow_write = write_follow_default
+
+
+def _configure_plugin_version_switch_notifier(notifier: PluginVersionSwitchNotifier) -> None:
+    """由启动组合根注入版本切换失败的系统消息通道。
+
+    :param notifier: 接收 `(标题, 正文)` 并投递系统消息的函数
+    """
+    global _plugin_version_switch_notifier
+    _plugin_version_switch_notifier = notifier
+
+
+def _configure_plugin_multi_version_probe(probe: PluginMultiVersionProbe) -> None:
+    """由启动组合根注入插件多版本准入体检。
+
+    体检实现落在兼容层，扩展层不得反向依赖，因此这里只声明可注入的钩子。
+    :param probe: 接收 `(插件目录名, 源码目录列表)` 并返回阻断原因列表的函数
+    """
+    global _plugin_multi_version_probe
+    _plugin_multi_version_probe = probe
 
 
 def _configure_plugin_database_lifecycle(
@@ -324,7 +410,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 else:
                     instance_ids = self._plugin_instance_ids(plugin_id)
                 for target in instance_ids:
-                    self.__start_instance(plugin, plugin_id, target)
+                    self._start_instance_with_version(plugin, plugin_id, target)
                 self._sync_family_event_state(plugin_id, plugin)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
@@ -355,7 +441,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             for item in instance_ids
             if isinstance(item, str)
         ]
-        return list(dict.fromkeys(normalized)) or [DEFAULT_INSTANCE_ID]
+        ordered = list(dict.fromkeys(normalized)) or [DEFAULT_INSTANCE_ID]
+        if DEFAULT_INSTANCE_ID in ordered:
+            # 跟随默认版本的实例要读默认实例本次启动后登记的版本，默认实例必须先起
+            ordered.remove(DEFAULT_INSTANCE_ID)
+            ordered.insert(0, DEFAULT_INSTANCE_ID)
+        return ordered
 
     @staticmethod
     def _instantiate_plugin(plugin_class: Type[Any], plugin_id: str, instance_id: str) -> Any:
@@ -381,12 +472,250 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugin_obj.instance_id = instance_id
         return plugin_obj
 
-    def __start_instance(self, plugin_class: Type[Any], plugin_id: str, instance_id: str) -> None:
+    @staticmethod
+    def _instance_version_binding(plugin_id: str, instance_id: str) -> Tuple[Optional[str], bool]:
+        """
+        读取实例的已生效版本与跟随开关
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :return: `(已生效版本, 是否跟随默认实例)`；无记录或读取出错时为 `(None, True)`
+        """
+        try:
+            binding = _plugin_instance_version_read(plugin_id, instance_id)
+        except Exception as err:
+            logger.error(f"读取插件 {plugin_id} 实例 {instance_id} 版本绑定出错：{str(err)}")
+            return None, True
+        if not binding:
+            return None, True
+        version, follow = binding
+        return (version or None), bool(follow)
+
+    def _desired_instance_version(self, plugin_id: str, instance_id: str) -> Optional[str]:
+        """
+        解析实例本次应加载的插件版本
+
+        跟随开关决定期望版本的来源：普通实例为真时取默认实例已生效的版本，为假时取
+        本实例自己已生效的版本。默认实例没有可跟随的兄弟，其跟随开关表示跟随插件当前
+        安装的版本，因此返回空让调用方按当前版本目录启动；关掉跟随即固定在自己已生效
+        的版本上。
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :return: 期望版本；跟随插件当前版本或无从解析时为 None
+        """
+        version, follow = self._instance_version_binding(plugin_id, instance_id)
+        if instance_id == DEFAULT_INSTANCE_ID:
+            return None if follow else version
+        if not follow:
+            return version
+        default_version, _ = self._instance_version_binding(plugin_id, DEFAULT_INSTANCE_ID)
+        return default_version or version
+
+    @staticmethod
+    def _plugin_version_source_dir(plugin_id: str, version: str) -> Optional[Path]:
+        """
+        定位插件某个版本的源码目录
+        :param plugin_id: 插件ID
+        :param version: 版本号
+        :return: 版本目录；该版本未落盘时为 None
+        """
+        plugin_root = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        return plugin_version_dirs(plugin_root).get(version)
+
+    @staticmethod
+    def _load_plugin_class_for_version(
+        plugin_id: str, version: str, source_dir: Path
+    ) -> Optional[Type[Any]]:
+        """
+        按指定版本目录导入插件模块并取出其主类
+        :param plugin_id: 插件ID
+        :param version: 版本号
+        :param source_dir: 该版本的源码目录
+        :return: 插件类；导入失败或模块内没有插件类时为 None
+        """
+        plugin_root = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        module_name = plugin_module_name(plugin_root, source_dir)
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as err:
+            logger.error(
+                f"导入插件 {plugin_id} 版本 {version} 的模块 {module_name} 失败："
+                f"{str(err)} - {traceback.format_exc()}"
+            )
+            return None
+        candidates = [
+            obj
+            for name, obj in module.__dict__.items()
+            if not name.startswith("_")
+            and isinstance(obj, type)
+            and hasattr(obj, "init_plugin")
+            and hasattr(obj, "plugin_name")
+        ]
+        for candidate in candidates:
+            if candidate.__name__ == plugin_id:
+                return candidate
+        if candidates:
+            return candidates[0]
+        logger.error(f"插件 {plugin_id} 版本 {version} 的模块 {module_name} 中没有插件类")
+        return None
+
+    @staticmethod
+    def _record_effective_version(plugin_id: str, instance_id: str, version: str) -> None:
+        """
+        把本次成功启动的版本登记为该实例的已生效版本
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :param version: 本次生效的版本号
+        """
+        try:
+            _plugin_instance_version_write(plugin_id, instance_id, version)
+        except Exception as err:
+            logger.error(
+                f"登记插件实例 {instance_key(plugin_id, instance_id)} 已生效版本 "
+                f"{version} 出错：{str(err)}"
+            )
+
+    def _start_and_record(
+        self,
+        plugin_class: Type[Any],
+        plugin_id: str,
+        instance_id: str,
+        version: Optional[str],
+        effective_version: Optional[str],
+    ) -> bool:
+        """
+        启动实例，成功后才登记本次已生效的版本
+        :param plugin_class: 本次使用的插件类
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :param version: 本次尝试启动的版本号
+        :param effective_version: 启动前登记的已生效版本
+        :return: 实例是否成功进入运行态
+        """
+        if not self.__start_instance(plugin_class, plugin_id, instance_id):
+            return False
+        if version and version != effective_version:
+            self._record_effective_version(plugin_id, instance_id, version)
+        return True
+
+    def _recover_previous_version(
+        self,
+        plugin_class: Type[Any],
+        plugin_id: str,
+        instance_id: str,
+        desired: str,
+        effective_version: Optional[str],
+        current_version: Optional[str],
+    ) -> bool:
+        """
+        目标版本启动失败后以已生效版本重新启动，完成回退
+
+        已生效版本一列保持原值不动，其版本目录仍在磁盘上，因此可以直接以该版本
+        重启；回退期间不写入任何版本，兄弟实例不受影响。
+        :param plugin_class: 插件当前版本的类
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :param desired: 启动失败的目标版本
+        :param effective_version: 启动前登记的已生效版本
+        :param current_version: 插件当前版本目录对应的版本号
+        :return: 回退启动是否成功
+        """
+        key = instance_key(plugin_id, instance_id)
+        if not effective_version or effective_version == desired:
+            logger.error(f"插件实例 {key} 以版本 {desired} 启动失败，且没有可回退的已生效版本")
+            return False
+        logger.error(
+            f"插件实例 {key} 切换到版本 {desired} 失败，已生效版本 {effective_version} "
+            f"保持不变，正在以该版本重新启动"
+        )
+        try:
+            _plugin_version_switch_notifier(
+                "插件版本切换失败",
+                f"插件实例 {key} 切换到版本 {desired} 失败，已回退到版本 "
+                f"{effective_version}，请查看插件日志排查原因。",
+            )
+        except Exception as err:
+            logger.error(f"发送插件 {key} 版本切换失败消息出错：{str(err)}")
+        if effective_version == current_version:
+            fallback_class = plugin_class
+        else:
+            source_dir = self._plugin_version_source_dir(plugin_id, effective_version)
+            fallback_class = (
+                self._load_plugin_class_for_version(plugin_id, effective_version, source_dir)
+                if source_dir is not None
+                else None
+            )
+        if fallback_class is not None and self.__start_instance(
+            fallback_class, plugin_id, instance_id
+        ):
+            return True
+        logger.error(f"插件实例 {key} 以已生效版本 {effective_version} 回退启动同样失败")
+        return False
+
+    def _start_instance_with_version(
+        self,
+        plugin_class: Type[Any],
+        plugin_id: str,
+        instance_id: str,
+        requested_version: Optional[str] = None,
+    ) -> bool:
+        """
+        按实例绑定的版本启动单个实例，切换失败时回退到已生效版本
+
+        三种异常情形各自的行为：实例从未成功启动过（无已生效版本）时按插件当前
+        版本启动并登记；绑定的版本目录不存在时告警并回落到插件当前版本，启动成功
+        后如实登记该版本；目标版本加载或启动失败时保持已生效版本不变，再以该版本
+        重新启动完成回退。任一情形都只影响本实例。
+        :param plugin_class: 插件当前版本的类
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :param requested_version: 本次显式指定的目标版本，为空时按绑定解析
+        :return: 实例是否成功进入运行态
+        """
+        key = instance_key(plugin_id, instance_id)
+        current_version = getattr(plugin_class, "plugin_version", None)
+        effective_version, _follow = self._instance_version_binding(plugin_id, instance_id)
+        desired = requested_version or self._desired_instance_version(plugin_id, instance_id)
+
+        if not desired:
+            logger.info(f"插件实例 {key} 未固定版本，按插件当前版本 {current_version} 启动")
+            return self._start_and_record(
+                plugin_class, plugin_id, instance_id, current_version, effective_version
+            )
+
+        source_dir = (
+            None if desired == current_version
+            else self._plugin_version_source_dir(plugin_id, desired)
+        )
+        if desired != current_version and source_dir is None:
+            logger.warning(
+                f"插件实例 {key} 绑定的版本 {desired} 的版本目录不存在，"
+                f"回落到插件当前版本 {current_version} 启动"
+            )
+            return self._start_and_record(
+                plugin_class, plugin_id, instance_id, current_version, effective_version
+            )
+
+        target_class = (
+            plugin_class if source_dir is None
+            else self._load_plugin_class_for_version(plugin_id, desired, source_dir)
+        )
+        if target_class is not None:
+            logger.info(f"插件实例 {key} 按绑定版本 {desired} 启动")
+            if self._start_and_record(
+                target_class, plugin_id, instance_id, desired, effective_version
+            ):
+                return True
+        return self._recover_previous_version(
+            plugin_class, plugin_id, instance_id, desired, effective_version, current_version
+        )
+
+    def __start_instance(self, plugin_class: Type[Any], plugin_id: str, instance_id: str) -> bool:
         """
         启动插件的单个实例
         :param plugin_class: 插件类
         :param plugin_id: 插件ID
         :param instance_id: 实例标识
+        :return: 实例是否成功进入运行态
         """
         key = instance_key(plugin_id, instance_id)
         try:
@@ -407,8 +736,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 eventmanager.enable_event_handler(plugin_class, key)
             else:
                 eventmanager.disable_event_handler(plugin_class, key)
+            return True
         except Exception as err:
             logger.error(f"加载插件 {key} 出错：{str(err)} - {traceback.format_exc()}")
+            self._running_plugins.pop(key, None)
+            return False
 
     def _sync_family_event_state(self, plugin_id: str, plugin_class: Optional[Type[Any]]) -> None:
         """
@@ -1364,6 +1696,186 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         }
         all_ids = configured_ids | running_ids or {DEFAULT_INSTANCE_ID}
         return [self._instance_info(plugin_id, instance_id) for instance_id in sorted(all_ids)]
+
+    def plugin_version_binding(self, plugin_id: str, instance_id: str) -> Dict[str, Any]:
+        """
+        组装单个实例的版本绑定信息
+
+        期望版本按跟随规则解析，跟随插件当前版本时回落到当前版本目录对应的版本号，
+        与已生效版本不一致即表示待切换。
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :return: 含实例标识、实例键、已生效版本、跟随开关、期望版本与运行状态的字典
+        """
+        key = instance_key(plugin_id, instance_id)
+        version, follow = self._instance_version_binding(plugin_id, instance_id)
+        target_version = self._desired_instance_version(plugin_id, instance_id) or getattr(
+            self._plugins.get(plugin_id), "plugin_version", None
+        )
+        return {
+            "instance_id": instance_id,
+            "instance_key": key,
+            "plugin_version": version,
+            "follow_default_version": follow,
+            "target_version": target_version,
+            "running": key in self._running_plugins,
+        }
+
+    def list_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        列出插件已装版本与各实例的版本绑定情况
+        :param plugin_id: 插件ID
+        :return: 含已装版本列表与各实例绑定信息的字典
+        :raises LookupError: 插件不存在
+        """
+        if plugin_id not in self._plugins:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        plugin_root = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        manifest = read_plugin_versions_manifest(plugin_root)
+        current = manifest.get("current")
+        current_version = current if isinstance(current, str) and current else None
+        registered = {
+            entry.get("version"): entry
+            for entry in (manifest.get("versions") or [])
+            if isinstance(entry, dict)
+        }
+        installed_versions = [
+            {
+                "version": version,
+                "directory": path.name,
+                "installed_at": (registered.get(version) or {}).get("installed_at"),
+                "source": (registered.get(version) or {}).get("source"),
+                "is_current": version == current_version,
+            }
+            for version, path in sorted(plugin_version_dirs(plugin_root).items())
+        ]
+        return {
+            "plugin_id": plugin_id,
+            "current_version": current_version,
+            "installed_versions": installed_versions,
+            "instances": [
+                self.plugin_version_binding(plugin_id, info["instance_id"])
+                for info in self.list_plugin_instances(plugin_id)
+            ],
+        }
+
+    def _ensure_version_bindable(self, plugin_id: str, instance_id: str, version: str) -> None:
+        """
+        校验目标版本已安装，且该插件允许把不同实例绑到不同版本
+        :param plugin_id: 插件ID
+        :param instance_id: 待改绑的实例标识
+        :param version: 目标版本号
+        :raises ValueError: 目标版本未安装，或插件写法不支持多版本并存
+        """
+        plugin_root = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        installed = plugin_version_dirs(plugin_root)
+        if version not in installed:
+            raise ValueError(f"插件 {plugin_id} 未安装版本 {version}")
+        current_version = getattr(self._plugins.get(plugin_id), "plugin_version", None)
+        sibling_versions = {
+            self._desired_instance_version(plugin_id, other) or current_version
+            for other in self._plugin_instance_ids(plugin_id)
+            if other != instance_id
+        }
+        sibling_versions.discard(None)
+        if not sibling_versions - {version}:
+            # 全部兄弟实例都会落在同一个版本上，不构成多版本并存
+            return
+        blockers = _plugin_multi_version_probe(plugin_id.lower(), list(installed.values()))
+        if blockers:
+            raise ValueError(
+                f"插件 {plugin_id} 的写法不支持多版本并存，拒绝按版本分别绑定实例："
+                + "；".join(blockers)
+            )
+
+    def set_plugin_instance_version(
+        self,
+        plugin_id: str,
+        instance_id: str,
+        *,
+        version: Optional[str] = None,
+        follow_default_version: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        设置实例绑定的插件版本与跟随开关，并立即完成一次停止再启动
+
+        已生效版本一列只登记启动成功的版本，因此目标版本不预先落库：切换成功由启动
+        路径写入新版本，切换失败则保持旧值并以旧版本重新启动。
+        :param plugin_id: 插件ID
+        :param instance_id: 实例标识
+        :param version: 目标版本号，跟随默认实例时忽略
+        :param follow_default_version: 是否跟随默认实例的版本
+        :return: 该实例最新的版本绑定信息
+        :raises LookupError: 插件不存在，或该实例未登记
+        :raises ValueError: 实例标识非法、未指定目标版本、目标版本未安装，
+            或该插件写法不支持多版本并存
+        """
+        plugin_class = self._plugins.get(plugin_id)
+        if plugin_class is None:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        normalized_instance_id = normalize_instance_id(instance_id)
+        known_ids = {info["instance_id"] for info in self.list_plugin_instances(plugin_id)}
+        if normalized_instance_id not in known_ids:
+            raise LookupError(f"插件实例 {plugin_id}@{normalized_instance_id} 不存在")
+
+        if follow_default_version:
+            # 跟随时的目标版本由启动路径按写入后的跟随开关重新解析
+            target_version = None
+        else:
+            target_version = (version or "").strip() or None
+            if not target_version:
+                raise ValueError("未跟随默认实例时必须指定目标版本")
+            self._ensure_version_bindable(plugin_id, normalized_instance_id, target_version)
+
+        _plugin_instance_follow_write(
+            plugin_id, normalized_instance_id, bool(follow_default_version)
+        )
+        # 停止再启动是干净的生命周期切换，不做热替换
+        self.stop(plugin_id, normalized_instance_id)
+        self._start_instance_with_version(
+            plugin_class, plugin_id, normalized_instance_id, target_version
+        )
+        self._sync_family_event_state(plugin_id, plugin_class)
+        self.clear_plugin_agent_tools_cache()
+        if normalized_instance_id == DEFAULT_INSTANCE_ID:
+            self.restart_version_following_instances(plugin_id)
+        return self.plugin_version_binding(plugin_id, normalized_instance_id)
+
+    def restart_version_following_instances(self, plugin_id: str) -> List[str]:
+        """
+        把跟随默认版本的实例逐个停止再启动，切到默认实例当前已生效的版本
+
+        热替换等于在运行期换掉一个已注册事件、已起定时任务、可能有在途请求的实例，
+        因此这里走完整的实例级停止再启动；单个实例切换失败不波及兄弟实例。
+        :param plugin_id: 插件ID
+        :return: 实际触发切换的实例标识列表
+        :raises LookupError: 插件不存在
+        """
+        plugin_class = self._plugins.get(plugin_id)
+        if plugin_class is None:
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        target_version, _ = self._instance_version_binding(plugin_id, DEFAULT_INSTANCE_ID)
+        if not target_version:
+            logger.debug(f"插件 {plugin_id} 的默认实例尚无已生效版本，跟随实例无需切换")
+            return []
+        switched: List[str] = []
+        for target in self._plugin_instance_ids(plugin_id):
+            if target == DEFAULT_INSTANCE_ID:
+                continue
+            version, follow = self._instance_version_binding(plugin_id, target)
+            if not follow or version == target_version:
+                continue
+            logger.info(
+                f"插件实例 {instance_key(plugin_id, target)} 跟随默认实例切换到版本 "
+                f"{target_version}"
+            )
+            self.stop(plugin_id, target)
+            self._start_instance_with_version(plugin_class, plugin_id, target, target_version)
+            switched.append(target)
+        if switched:
+            self._sync_family_event_state(plugin_id, plugin_class)
+            self.clear_plugin_agent_tools_cache()
+        return switched
 
     def create_plugin_instance(
         self, plugin_id: str, instance_id: str, config: Optional[dict] = None

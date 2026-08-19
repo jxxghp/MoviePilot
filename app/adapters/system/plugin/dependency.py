@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any, Optional
 
 from packaging.requirements import Requirement
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.specifiers import InvalidSpecifier, Specifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from app.runtime.config import settings
 from app.runtime.log import logger
+
+# 精确锁定版本的比较运算符，同一包出现两个不同锁定值即为不相容
+_PINNING_OPERATORS = frozenset({"==", "==="})
+
+
+@dataclass(frozen=True, slots=True)
+class PluginVersionDependencyConflict:
+    """同一依赖包在插件两个版本间的不相容约束。"""
+
+    package: str  # 标准化后的包名
+    existing_specifier: str  # 已装版本声明的版本约束
+    new_specifier: str  # 待装版本声明的版本约束
 
 
 class PluginDependencyInstaller:
@@ -223,3 +236,158 @@ class PluginDependencyInstaller:
     async def async_install(self, dependencies: list[str]) -> tuple[bool, str]:
         """在线程池中安装依赖，复用同步 pip 健康检查策略。"""
         return await asyncio.to_thread(self.install, dependencies)
+
+
+def _bound_version(specifier: Specifier) -> Optional[Version]:
+    """解析比较运算符右侧的版本号。
+
+    :param specifier: 单条版本约束
+    :return: 版本号；含通配符或无法解析时为 None
+    """
+    if "*" in specifier.version:
+        return None
+    try:
+        return Version(specifier.version)
+    except InvalidVersion:
+        return None
+
+
+def _tighter_bound(
+    current: Optional[tuple[Version, bool]],
+    candidate: tuple[Version, bool],
+    *,
+    upper: bool,
+) -> tuple[Version, bool]:
+    """在同向的两个边界中取更紧的一个。
+
+    :param current: 当前边界 `(版本, 是否含端点)`，尚无边界时为 None
+    :param candidate: 候选边界 `(版本, 是否含端点)`
+    :param upper: 是否为上界；上界取更小值，下界取更大值，端点相同时开区间更紧
+    :return: 更紧的边界
+    """
+    if current is None:
+        return candidate
+    if candidate[0] == current[0]:
+        return current if candidate[1] else candidate
+    tighter = candidate[0] < current[0] if upper else candidate[0] > current[0]
+    return candidate if tighter else current
+
+
+def is_unsatisfiable(specifiers: Iterable[str]) -> bool:
+    """判断同一个包的一组版本约束交集是否为空。
+
+    存在锁定版本时，只要没有任何一个锁定值满足全部约束即为空集；没有锁定版本
+    时按上下界比较，下界高于上界、或上下界重合但任一侧为开区间即为空集。无法
+    解析的约束一律按可满足处理，交由 pip 自行裁决，避免误判造成错误拒绝。
+
+    :param specifiers: 同一个包的多条版本约束文本
+    :return: 交集为空时为 True
+    """
+    spec_set = SpecifierSet()
+    for text in specifiers:
+        if not text:
+            continue
+        try:
+            spec_set &= SpecifierSet(text)
+        except InvalidSpecifier as err:
+            logger.debug(f"版本约束无法解析，按可满足处理：{text} - {err}")
+            return False
+    pins: list[Version] = []
+    for specifier in spec_set:
+        if specifier.operator not in _PINNING_OPERATORS:
+            continue
+        version = _bound_version(specifier)
+        if version is not None:
+            pins.append(version)
+    if pins:
+        return not any(spec_set.contains(pin, prereleases=True) for pin in pins)
+    lower: Optional[tuple[Version, bool]] = None
+    upper: Optional[tuple[Version, bool]] = None
+    for specifier in spec_set:
+        version = _bound_version(specifier)
+        if version is None:
+            continue
+        if specifier.operator in (">=", "~="):
+            lower = _tighter_bound(lower, (version, True), upper=False)
+        elif specifier.operator == ">":
+            lower = _tighter_bound(lower, (version, False), upper=False)
+        elif specifier.operator == "<=":
+            upper = _tighter_bound(upper, (version, True), upper=True)
+        elif specifier.operator == "<":
+            upper = _tighter_bound(upper, (version, False), upper=True)
+    if lower is None or upper is None:
+        return False
+    if lower[0] > upper[0]:
+        return True
+    return lower[0] == upper[0] and not (lower[1] and upper[1])
+
+
+def read_requirement_specifiers(source_dir: Path) -> dict[str, list[str]]:
+    """读取一个插件源码目录声明的依赖包及其版本约束。
+
+    :param source_dir: 插件源码目录
+    :return: 标准化包名到版本约束文本列表的映射，无 requirements.txt 时为空字典
+    """
+    requirements_file = Path(source_dir) / "requirements.txt"
+    if not requirements_file.is_file():
+        return {}
+    return PluginDependencyInstaller._parse_requirements(requirements_file)
+
+
+def find_version_dependency_conflicts(
+    existing_requirements: dict[str, list[str]],
+    new_requirements: dict[str, list[str]],
+) -> list[PluginVersionDependencyConflict]:
+    """对两个插件版本共同依赖的包求约束交集，返回交集为空的那些包。
+
+    :param existing_requirements: 已装版本的依赖约束
+    :param new_requirements: 待装版本的依赖约束
+    :return: 不相容的依赖包列表，为空表示两版本可以并存
+    """
+    conflicts: list[PluginVersionDependencyConflict] = []
+    for package_name in sorted(set(existing_requirements) & set(new_requirements)):
+        existing_specifiers = existing_requirements[package_name]
+        new_specifiers = new_requirements[package_name]
+        if not is_unsatisfiable([*existing_specifiers, *new_specifiers]):
+            continue
+        conflicts.append(
+            PluginVersionDependencyConflict(
+                package=package_name,
+                existing_specifier=_render_specifiers(existing_specifiers),
+                new_specifier=_render_specifiers(new_specifiers),
+            )
+        )
+    return conflicts
+
+
+def _render_specifiers(specifiers: Iterable[str]) -> str:
+    """把一个包的多条版本约束拼成可读文本。
+
+    :param specifiers: 版本约束文本列表
+    :return: 逗号分隔的约束文本，全部为空时返回「任意版本」
+    """
+    rendered = ", ".join(text for text in specifiers if text)
+    return rendered or "任意版本"
+
+
+def describe_version_dependency_conflicts(
+    existing_version: str,
+    new_version: str,
+    conflicts: list[PluginVersionDependencyConflict],
+) -> str:
+    """拼装两个插件版本依赖冲突的拒绝说明。
+
+    :param existing_version: 已装版本号
+    :param new_version: 待装版本号
+    :param conflicts: 不相容的依赖包列表
+    :return: 拒绝说明文案，指明冲突的包与双方约束
+    """
+    details = "；".join(
+        f"{conflict.package}（v{existing_version} 要求 {conflict.existing_specifier}，"
+        f"v{new_version} 要求 {conflict.new_specifier}）"
+        for conflict in conflicts
+    )
+    return (
+        f"该插件的 v{existing_version} 与 v{new_version} 依赖冲突，无法并存，请选择其一。"
+        f"冲突依赖：{details}"
+    )
