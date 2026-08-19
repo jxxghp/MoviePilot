@@ -22,7 +22,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
 from app.application.configuration import get_configured_system_config
-from app.runtime.progress import ProgressHelper
+from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 from app.application.search.state import (
     SearchStateService,
@@ -2396,9 +2396,9 @@ class SearchChain(ChainBase):
             logger.warn('未开启任何有效站点，无法搜索资源')
             return []
 
-        # 开始进度
-        progress = ProgressHelper(ProgressKey.Search)
-        progress.start()
+        # 开始进度（异步后端，避免同步 Redis 在事件循环上阻塞）
+        progress = AsyncProgressHelper(ProgressKey.Search)
+        await progress.start()
         # 开始计时
         start_time = datetime.now()
         search_pages = self._build_search_pages(page)
@@ -2407,8 +2407,8 @@ class SearchChain(ChainBase):
         # 完成数
         finish_count = 0
         # 更新进度
-        progress.update(value=0,
-                        text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
+        await progress.update(value=0,
+                              text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         # 结果集
         results = []
         semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
@@ -2470,8 +2470,8 @@ class SearchChain(ChainBase):
                             f"{site.get('name')} 第 {search_page} 页返回 {len(result or [])} 条，停止继续翻页"
                         )
                     logger.info(f"站点搜索进度：{finish_count} / {total_num}")
-                    progress.update(value=finish_count / total_num * 100,
-                                    text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ...")
+                    await progress.update(value=finish_count / total_num * 100,
+                                          text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ...")
         finally:
             for task in pending_tasks:
                 if not task.done():
@@ -2482,11 +2482,11 @@ class SearchChain(ChainBase):
         # 计算耗时
         end_time = datetime.now()
         # 更新进度
-        progress.update(value=100,
-                        text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
+        await progress.update(value=100,
+                              text=f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         # 结束进度
-        progress.end()
+        await progress.end()
 
         # 返回
         return results
@@ -2527,14 +2527,15 @@ class SearchChain(ChainBase):
             }
             return
 
-        progress = ProgressHelper(ProgressKey.Search)
-        progress.start()
+        # 开始进度（异步后端，避免同步 Redis 在事件循环上阻塞）
+        progress = AsyncProgressHelper(ProgressKey.Search)
+        await progress.start()
         start_time = datetime.now()
         search_pages = self._build_search_pages(page)
         total_num = len(indexer_sites) * len(search_pages)
         finish_count = 0
-        progress.update(value=0,
-                        text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
+        await progress.update(value=0,
+                              text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         yield {
             "type": "progress",
             "stage": "searching",
@@ -2606,7 +2607,7 @@ class SearchChain(ChainBase):
                     logger.info(f"站点搜索进度：{finish_count} / {total_num}")
                     progress_value = finish_count / total_num * 100
                     progress_text = f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ..."
-                    progress.update(value=progress_value, text=progress_text)
+                    await progress.update(value=progress_value, text=progress_text)
                     yield {
                         "type": "append",
                         "stage": "searching",
@@ -2628,10 +2629,10 @@ class SearchChain(ChainBase):
                 await asyncio.gather(*tasks.keys(), return_exceptions=True)
 
         end_time = datetime.now()
-        progress.update(value=100,
-                        text=f"站点搜索完成，有效资源数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
+        await progress.update(value=100,
+                              text=f"站点搜索完成，有效资源数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点搜索完成，有效资源数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
-        progress.end()
+        await progress.end()
 
     async def __async_search_subtitles_all_sites(self, keyword: str,
                                                  sites: List[int] = None,
@@ -2657,14 +2658,15 @@ class SearchChain(ChainBase):
             logger.warn('未开启任何支持字幕搜索的有效站点，无法搜索字幕')
             return []
 
-        progress = ProgressHelper(ProgressKey.Search)
-        progress.start()
+        # 开始进度（异步后端，避免同步 Redis 在事件循环上阻塞）
+        progress = AsyncProgressHelper(ProgressKey.Search)
+        await progress.start()
         start_time = datetime.now()
         search_pages = self._build_search_pages(page)
         total_num = len(indexer_sites) * len(search_pages)
         finish_count = 0
-        progress.update(value=0,
-                        text=f"开始搜索字幕，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
+        await progress.update(value=0,
+                              text=f"开始搜索字幕，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         results = []
         semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
 
@@ -2714,8 +2716,8 @@ class SearchChain(ChainBase):
                             f"{site.get('name')} 字幕第 {search_page} 页返回 {len(result or [])} 条，停止继续翻页"
                         )
                     logger.info(f"站点字幕搜索进度：{finish_count} / {total_num}")
-                    progress.update(value=finish_count / total_num * 100,
-                                    text=f"正在搜索字幕{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ...")
+                    await progress.update(value=finish_count / total_num * 100,
+                                          text=f"正在搜索字幕{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ...")
         finally:
             for task in pending_tasks:
                 if not task.done():
@@ -2724,10 +2726,10 @@ class SearchChain(ChainBase):
                 await asyncio.gather(*pending_tasks.keys(), return_exceptions=True)
 
         end_time = datetime.now()
-        progress.update(value=100,
-                        text=f"站点字幕搜索完成，有效字幕数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
+        await progress.update(value=100,
+                              text=f"站点字幕搜索完成，有效字幕数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点字幕搜索完成，有效字幕数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
-        progress.end()
+        await progress.end()
         return results
 
     async def __async_search_subtitles_all_sites_stream(self, keyword: str,
@@ -2762,14 +2764,15 @@ class SearchChain(ChainBase):
             }
             return
 
-        progress = ProgressHelper(ProgressKey.Search)
-        progress.start()
+        # 开始进度（异步后端，避免同步 Redis 在事件循环上阻塞）
+        progress = AsyncProgressHelper(ProgressKey.Search)
+        await progress.start()
         start_time = datetime.now()
         search_pages = self._build_search_pages(page)
         total_num = len(indexer_sites) * len(search_pages)
         finish_count = 0
-        progress.update(value=0,
-                        text=f"开始搜索字幕，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
+        await progress.update(value=0,
+                              text=f"开始搜索字幕，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         yield {
             "type": "progress",
             "stage": "searching",
@@ -2831,7 +2834,7 @@ class SearchChain(ChainBase):
                     logger.info(f"站点字幕搜索进度：{finish_count} / {total_num}")
                     progress_value = finish_count / total_num * 100
                     progress_text = f"正在搜索字幕{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ..."
-                    progress.update(value=progress_value, text=progress_text)
+                    await progress.update(value=progress_value, text=progress_text)
                     yield {
                         "type": "append",
                         "stage": "searching",
@@ -2853,10 +2856,10 @@ class SearchChain(ChainBase):
                 await asyncio.gather(*tasks.keys(), return_exceptions=True)
 
         end_time = datetime.now()
-        progress.update(value=100,
-                        text=f"站点字幕搜索完成，有效字幕数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
+        await progress.update(value=100,
+                              text=f"站点字幕搜索完成，有效字幕数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
         logger.info(f"站点字幕搜索完成，有效字幕数：{results_count}，总耗时 {(end_time - start_time).seconds} 秒")
-        progress.end()
+        await progress.end()
 
     @eventmanager.register(EventType.SiteDeleted)
     def remove_site(self, event: Event):

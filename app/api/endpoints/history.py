@@ -28,7 +28,7 @@ from app.api.deps import (
     get_history_query_service,
     get_transfer_history_mutation_command,
 )
-from app.runtime.progress import ProgressHelper
+from app.runtime.progress import AsyncProgressHelper
 from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
@@ -49,19 +49,24 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
 
 
 def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
-    """在后台线程中启动单条 AI 重新整理任务，并通过 ProgressHelper 实时更新进度。"""
-    progress = ProgressHelper(progress_key)
-    progress.start()
-    progress.update(
-        text=f"智能助手正在准备整理记录 #{history_id} ...",
-        data={"history_id": history_id, "success": True},
-    )
+    """在后台任务中启动单条 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    progress = AsyncProgressHelper(progress_key)
 
     def update_output(text: str):
-        progress.update(text=text, data={"history_id": history_id})
+        # 输出回调由 agent 在事件循环上同步调用，不能直接 await；
+        # 提交到全局事件循环非阻塞执行，避免同步缓存后端阻塞事件循环。
+        asyncio.run_coroutine_threadsafe(
+            progress.update(text=text, data={"history_id": history_id}),
+            global_vars.loop,
+        )
 
     async def runner():
         try:
+            await progress.start()
+            await progress.update(
+                text=f"智能助手正在准备整理记录 #{history_id} ...",
+                data={"history_id": history_id, "success": True},
+            )
             manager = get_running_agent_manager()
             if manager is None:
                 logger.warning("智能助手服务未运行，跳过单条整理历史 AI 重做")
@@ -73,12 +78,12 @@ def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
                 reply_mode=ReplyMode.CAPTURE_ONLY,
                 allow_message_tools=False,
             )
-            progress.update(
+            await progress.update(
                 text="智能助手整理完成",
                 data={"history_id": history_id, "success": True, "completed": True},
             )
         except Exception as e:
-            progress.update(
+            await progress.update(
                 text=f"智能助手整理失败：{str(e)}",
                 data={
                     "history_id": history_id,
@@ -88,7 +93,7 @@ def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
                 },
             )
         finally:
-            progress.end()
+            await progress.end()
 
     asyncio.run_coroutine_threadsafe(runner(), global_vars.loop)
 
@@ -98,19 +103,24 @@ def _start_batch_ai_redo_task(
     prompt: str,
     progress_key: str,
 ):
-    """在后台线程中启动批量 AI 重新整理任务，并通过 ProgressHelper 实时更新进度。"""
-    progress = ProgressHelper(progress_key)
-    progress.start()
-    progress.update(
-        text=f"智能助手正在准备批量整理 {len(history_ids)} 条记录 ...",
-        data={"history_ids": history_ids, "success": True},
-    )
+    """在后台任务中启动批量 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    progress = AsyncProgressHelper(progress_key)
 
     def update_output(text: str):
-        progress.update(text=text, data={"history_ids": history_ids})
+        # 输出回调由 agent 在事件循环上同步调用，不能直接 await；
+        # 提交到全局事件循环非阻塞执行，避免同步缓存后端阻塞事件循环。
+        asyncio.run_coroutine_threadsafe(
+            progress.update(text=text, data={"history_ids": history_ids}),
+            global_vars.loop,
+        )
 
     async def runner():
         try:
+            await progress.start()
+            await progress.update(
+                text=f"智能助手正在准备批量整理 {len(history_ids)} 条记录 ...",
+                data={"history_ids": history_ids, "success": True},
+            )
             manager = get_running_agent_manager()
             if manager is None:
                 logger.warning("智能助手服务未运行，跳过批量整理历史 AI 重做")
@@ -122,12 +132,12 @@ def _start_batch_ai_redo_task(
                 reply_mode=ReplyMode.CAPTURE_ONLY,
                 allow_message_tools=False,
             )
-            progress.update(
+            await progress.update(
                 text="智能助手批量整理完成",
                 data={"history_ids": history_ids, "success": True, "completed": True},
             )
         except Exception as e:
-            progress.update(
+            await progress.update(
                 text=f"智能助手批量整理失败：{str(e)}",
                 data={
                     "history_ids": history_ids,
@@ -137,7 +147,7 @@ def _start_batch_ai_redo_task(
                 },
             )
         finally:
-            progress.end()
+            await progress.end()
 
     asyncio.run_coroutine_threadsafe(runner(), global_vars.loop)
 

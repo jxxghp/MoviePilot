@@ -52,7 +52,7 @@ from app.adapters.external.market import (
     split_plugin_market_repo_urls,
 )
 from app.application.messaging.message import MessageHelper
-from app.runtime.progress import ProgressHelper
+from app.runtime.progress import AsyncProgressHelper
 from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
@@ -847,7 +847,7 @@ async def get_progress(
     """
     实时获取处理进度，返回格式为SSE
     """
-    progress = ProgressHelper(process_type)
+    progress = AsyncProgressHelper(process_type)
     locale = LocaleHelper.get_current_locale()
 
     async def event_generator():
@@ -855,7 +855,7 @@ async def get_progress(
             while not global_vars.is_system_stopped:
                 if await request.is_disconnected():
                     break
-                detail = progress.get(locale=locale)
+                detail = await progress.get(locale=locale)
                 yield f"data: {json.dumps(detail)}\n\n"
                 await asyncio.sleep(0.5)
         except asyncio.CancelledError:

@@ -31,7 +31,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.application.maintenance import build_cleanup_service
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
-from app.runtime.progress import ProgressHelper
+from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
@@ -609,7 +609,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         )
         return job
 
-    def __finish_job(
+    async def __finish_job(
             self,
             job_id: str,
             success: bool = True,
@@ -627,10 +627,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 job["last_finished_at"] = finished_at
                 job["last_error"] = error
         job_name = job.get("name") if job else job_id
-        progress = ProgressHelper(self._get_progress_key(job_id))
-        current_progress = progress.get() or {}
+        # 收尾可能发生在事件循环上（__run_coro_job），使用异步进度后端避免阻塞
+        progress = AsyncProgressHelper(self._get_progress_key(job_id))
+        current_progress = await progress.get() or {}
         progress_value = 100 if success else current_progress.get("value", 0)
-        progress.end(
+        await progress.end(
             text=f"{job_name} {'执行完成' if success else '执行失败'}",
             data={
                 "id": job_id,
@@ -659,6 +660,45 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             last_finished_at = job.get("last_finished_at") if job else None
             last_error = job.get("last_error") if job else None
         detail = ProgressHelper(self._get_progress_key(job_id)).get() or {}
+        if not job and not detail:
+            return None
+        data = detail.get("data") or {}
+        value = detail.get("value", 0)
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            value = 0.0
+        return _SchemaScheduleProgress(
+            id=job_id,
+            name=data.get("name") or job_name,
+            provider=data.get("provider") or provider_name,
+            enable=bool(detail.get("enable", running)),
+            value=max(min(value, 100), 0),
+            text=detail.get("text"),
+            status=data.get("status") or ("running" if running else "waiting"),
+            success=data.get("success"),
+            started_at=data.get("started_at") or last_started_at,
+            finished_at=data.get("finished_at") or last_finished_at,
+            error=data.get("error") or last_error,
+            data=data,
+        )
+
+    async def aget_progress(self, job_id: str) -> Optional[_SchemaScheduleProgress]:
+        """
+        查询指定定时服务的执行进度（异步版本，供事件循环上的端点使用）。
+        """
+        if not job_id:
+            return None
+        with self._lock:
+            job = self._jobs.get(job_id)
+            job_name = job.get("name") if job else job_id
+            provider_name = job.get("provider_name", "[系统]") if job else None
+            running = bool(job.get("running")) if job else False
+            last_started_at = job.get("last_started_at") if job else None
+            last_finished_at = job.get("last_finished_at") if job else None
+            last_error = job.get("last_error") if job else None
+        # 异步后端读取，避免在事件循环上阻塞
+        detail = await AsyncProgressHelper(self._get_progress_key(job_id)).get() or {}
         if not job and not detail:
             return None
         data = detail.get("data") or {}
@@ -726,11 +766,19 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             }
             if data:
                 progress_data.update(data)
-            ProgressHelper(self._get_progress_key(job_id)).update(
-                value=value,
-                text=text,
-                data=progress_data,
-            )
+            key = self._get_progress_key(job_id)
+
+            async def _update() -> None:
+                # 异步后端更新，避免任务函数在事件循环内调用回调时阻塞
+                await AsyncProgressHelper(key).update(
+                    value=value,
+                    text=text,
+                    data=progress_data,
+                )
+
+            # 回调可能在事件循环内（async 任务）或线程池中（sync 任务）被调用，
+            # 统一经事件循环提交；无运行中循环时同步执行兜底
+            self._submit_to_loop(_update())
 
         return update_progress
 
@@ -778,7 +826,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             error = str(err)
             self.__handle_job_error(job_id=job_id, job=job, error=err)
         finally:
-            self.__finish_job(job_id=job_id, success=success, error=error)
+            # 协程收尾在事件循环上完成，同步路径（线程池/调用线程）提交到事件循环执行
+            await self.__finish_job(job_id=job_id, success=success, error=error)
 
     def start(self, job_id: str, *args, **kwargs) -> None:
         """
@@ -845,8 +894,29 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self.__handle_job_error(job_id=job_id, job=job, error=e)
         finally:
             if not deferred_finish:
-                # 运行结束
-                self.__finish_job(job_id=job_id, success=success, error=error)
+                # 同步上下文执行异步收尾：优先提交到当前/全局事件循环，无循环时新建循环
+                self._submit_to_loop(self.__finish_job(
+                    job_id=job_id, success=success, error=error
+                ))
+
+    @staticmethod
+    def _submit_to_loop(coro: Any) -> None:
+        """
+        把协程提交到事件循环执行，兼容以下调用环境：
+        - 已在事件循环内（async 任务内部）：排队为独立任务，避免阻塞
+        - 外部线程且全局循环在运行：跨线程提交，非阻塞
+        - 无运行中循环（测试/CLI）：新建循环同步执行，确保进度不丢失
+        """
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop:
+            asyncio.create_task(coro)
+        elif global_vars.loop and global_vars.loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, global_vars.loop)
+        else:
+            asyncio.run(coro)
 
     @staticmethod
     def _get_agent_task_job_id(task_id: int) -> str:

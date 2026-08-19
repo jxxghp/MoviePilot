@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Annotated
 
 from fastapi import Depends
+from fastapi.concurrency import run_in_threadpool
 
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
@@ -160,7 +161,8 @@ async def schedule(_: Any = Depends(get_current_active_superuser)) -> Any:
     """
     查询后台服务信息
     """
-    return Scheduler().list()
+    # 同步 list() 内含同步进度读取，放到线程池执行避免阻塞事件循环
+    return await run_in_threadpool(Scheduler().list)
 
 
 @router.get(
@@ -174,7 +176,8 @@ async def schedule_progress(
     """
     查询指定后台服务的执行进度。
     """
-    progress = Scheduler().get_progress(job_id)
+    # 异步进度后端读取，避免同步 Redis 调用阻塞事件循环
+    progress = await Scheduler().aget_progress(job_id)
     if not progress:
         return _SchemaResponse(success=False, message="后台服务不存在")
     return _SchemaResponse(success=True, data=progress.model_dump())
@@ -189,7 +192,8 @@ async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
-    return Scheduler().list()
+    # 同步 list() 内含同步进度读取，放到线程池执行避免阻塞事件循环
+    return await run_in_threadpool(Scheduler().list)
 
 
 @router.get(
@@ -203,7 +207,8 @@ async def schedule_progress2(
     """
     查询指定后台服务的执行进度 API_TOKEN认证（?token=xxx）
     """
-    progress = Scheduler().get_progress(job_id)
+    # 异步进度后端读取，避免同步 Redis 调用阻塞事件循环
+    progress = await Scheduler().aget_progress(job_id)
     if not progress:
         return _SchemaResponse(success=False, message="后台服务不存在")
     return _SchemaResponse(success=True, data=progress.model_dump())
