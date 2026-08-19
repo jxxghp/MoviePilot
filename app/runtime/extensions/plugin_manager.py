@@ -1390,7 +1390,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
         """
         获取插件的远程入口地址
-        :param plugin_id: 插件 ID
+        :param plugin_id: 插件 ID 或实例键，联邦构建产物属于插件本身而非某个
+            实例，先降级到插件标识再拼目录，避免实例键的 @ 分隔符指向不存在
+            的目录
         :param dist_path: 插件的分发路径
         :return: 远程入口地址
         """
@@ -1398,7 +1400,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         path = posixpath.join(
             "plugin",
             "file",
-            plugin_id.lower(),
+            extension_id_of(plugin_id).lower(),
             dist_path,
             "remoteEntry.js",
         )

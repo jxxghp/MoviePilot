@@ -95,6 +95,12 @@ class PluginSidebarNavItem(BaseModel):
         description="权限：subscribe / discovery / search / manage / admin",
     )
     order: int = Field(default=0, description="同组内排序，越小越靠前")
+    instance_id: Optional[str] = Field(
+        default=None, description="实例标识，默认实例取值为 default"
+    )
+    instance_key: Optional[str] = Field(
+        default=None, description="实例键，默认实例的实例键等于插件 ID"
+    )
 
 
 class PluginRatingRequest(BaseModel):
@@ -194,3 +200,7 @@ class PluginDashboardMetaItem(BaseModel):
     id: str
     name: Optional[str] = None
     key: Optional[str] = None
+    # 实例标识，默认实例取值为 default
+    instance_id: Optional[str] = None
+    # 实例键，默认实例的实例键等于插件 ID
+    instance_key: Optional[str] = None

@@ -268,6 +268,74 @@ def test_plugin_auth_remote_files_allow_anonymous_bootstrap(monkeypatch):
     assert calls == []
 
 
+def test_plugin_auth_remote_files_allow_anonymous_bootstrap_for_non_default_instance(
+    monkeypatch,
+):
+    """非默认实例声明的认证 remote 同样允许登录前匿名加载。
+
+    remote.id 是实例键（AuthPlugin@second），联邦构建产物目录始终按插件标识
+    拼接（AuthPlugin），请求的 plugin_id 是裸插件标识，两侧须降级到插件标识
+    后才能匹配，否则实例键会让本应放行的路径被误判为不匹配。
+    """
+    calls = []
+
+    class FakePluginManager:
+        """返回非默认实例认证 remote 信息的插件管理器桩。"""
+
+        def get_plugin_auth_providers(self):
+            """返回插件认证入口列表，remote.id 携带实例键。"""
+            return [
+                {
+                    "remote": {
+                        "id": "AuthPlugin@second",
+                        "url": "/plugin/file/AuthPlugin/dist/remoteEntry.js",
+                    }
+                }
+            ]
+
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", FakePluginManager)
+    monkeypatch.setattr(plugin_endpoint, "verify_resource_token", lambda token: calls.append(token))
+
+    plugin_endpoint._verify_plugin_static_file_access(
+        plugin_id="AuthPlugin",
+        filepath="dist/remoteEntry.js",
+    )
+
+    assert calls == []
+
+
+def test_plugin_auth_remote_files_do_not_loosen_access_for_a_different_plugin(
+    monkeypatch,
+):
+    """实例键降级比对不能放宽到前缀相同但实际不同的插件。"""
+    calls = []
+
+    class FakePluginManager:
+        """返回另一插件认证 remote 信息的插件管理器桩。"""
+
+        def get_plugin_auth_providers(self):
+            """返回插件认证入口列表，remote 属于另一个插件。"""
+            return [
+                {
+                    "remote": {
+                        "id": "AuthPluginX",
+                        "url": "/plugin/file/AuthPluginX/dist/remoteEntry.js",
+                    }
+                }
+            ]
+
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", FakePluginManager)
+    monkeypatch.setattr(plugin_endpoint, "verify_resource_token", lambda token: calls.append(token))
+
+    plugin_endpoint._verify_plugin_static_file_access(
+        plugin_id="AuthPlugin",
+        filepath="dist/remoteEntry.js",
+        resource_token="resource-token",
+    )
+
+    assert calls == ["resource-token"]
+
+
 def test_upload_avatar_rejects_other_user_for_non_superuser():
     """普通用户不能通过 user_id 参数修改其他用户头像。"""
     current_user = SimpleNamespace(id=1, is_superuser=False)

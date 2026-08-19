@@ -25,6 +25,7 @@ from app.application.orchestration.transfer import TransferChain
 from app.workflow.service import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
+from app.runtime.extensions.instance import matches_extension
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -1123,8 +1124,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     def remove_plugin_job(self, pid: str, job_id: Optional[str] = None):
         """
         移除定时服务，可以是单个服务（包括默认服务）或整个插件的所有服务
-        :param pid: 插件 ID
-        :param job_id: 可选，指定要移除的单个服务的 job_id。如果不提供，则移除该插件的所有服务，当移除单个服务时，默认服务也包含在内
+        :param pid: 插件 ID 或实例键，插件 ID 命中该插件全部实例的服务，实例键只命中该实例
+        :param job_id: 可选，指定要移除的单个服务的 job_id。如果不提供，则移除该插件（或该实例）的所有服务，当移除单个服务时，默认服务也包含在内
         """
         if not self._scheduler:
             return
@@ -1136,11 +1137,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     return
                 jobs_to_remove = [(job_id, service)]
             else:
-                # 移除插件的所有服务
+                # 移除插件（或该实例）的所有服务，按归属实例键筛选
                 jobs_to_remove = [
                     (job_id, service)
                     for job_id, service in self._jobs.items()
-                    if service.get("pid") == pid
+                    if matches_extension(service.get("pid"), pid)
                 ]
                 for job_id, _ in jobs_to_remove:
                     self._jobs.pop(job_id, None)
@@ -1210,10 +1211,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     def update_plugin_job(self, pid: str):
         """
         更新插件定时服务
+        :param pid: 插件 ID 或实例键，插件 ID 时按插件当前全部实例重新注册
         """
         if not self._scheduler or not pid:
             return
-        # 移除该插件的全部服务
+        # 移除该插件（或该实例）的全部服务
         self.remove_plugin_job(pid)
         # 获取插件服务列表
         with self._lock:
@@ -1225,18 +1227,19 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}"
                 )
                 return
-            # 获取插件名称
-            plugin_name = plugin_manager.get_plugin_attr(pid, "plugin_name")
-            # 开始注册插件服务
+            # 任务 id 按服务声明的归属实例键（服务项的 pid 字段）构造，同一插件的
+            # 多个实例声明同名服务 id 时才不会互相覆盖对方登记的任务
             for service in plugin_services:
+                owner = service.get("pid") or pid
+                plugin_name = plugin_manager.get_plugin_attr(owner, "plugin_name")
                 try:
-                    sid = f"{pid}_{service['id']}"
+                    sid = f"{owner}_{service['id']}"
                     job_id = sid.split("|")[0]
-                    self.remove_plugin_job(pid, job_id)
+                    self.remove_plugin_job(owner, job_id)
                     self._jobs[job_id] = {
                         "func": service["func"],
                         "name": service["name"],
-                        "pid": pid,
+                        "pid": owner,
                         "provider_name": plugin_name,
                         "kwargs": service.get("func_kwargs") or {},
                         "running": False,

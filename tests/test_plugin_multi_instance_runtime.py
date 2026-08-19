@@ -661,3 +661,17 @@ def test_dispatch_sees_both_instances_and_unicast_takes_first_claimer():
     )
     assert dispatcher.unicast("recognize_media") == "先手"
     assert calls == ["default"]
+
+
+def test_get_plugin_remote_entry_downgrades_instance_key_to_plugin_id():
+    """联邦入口地址按插件标识拼目录，实例键降级后指向同一份共享代码产物。
+
+    联邦构建产物属于插件本身而非某个实例，实例键的 @ 分隔符不能出现在目录
+    路径里，否则指向一个不存在的目录。
+    """
+    default_url = PluginManager.get_plugin_remote_entry(PLUGIN_ID, "dist/assets")
+    instance_url = PluginManager.get_plugin_remote_entry(SECOND_KEY, "dist/assets")
+
+    assert instance_url == default_url
+    assert "@" not in instance_url
+    assert instance_url == f"/plugin/file/{PLUGIN_ID.lower()}/dist/assets/remoteEntry.js"

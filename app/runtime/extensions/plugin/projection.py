@@ -8,7 +8,11 @@ from app.runtime.extensions.contract import (
     ExtensionProvider,
     supports_extension_hook,
 )
-from app.runtime.extensions.instance import extension_id_of, matches_extension
+from app.runtime.extensions.instance import (
+    extension_id_of,
+    matches_extension,
+    split_instance_key,
+)
 from app.runtime.log import logger as default_logger
 from app.schemas.notification import ChannelCapabilities, channel_identity
 
@@ -349,7 +353,14 @@ class PluginProjection:
         return apis
 
     def services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件的定时服务。"""
+        """聚合启用插件的定时服务并标注归属实例键。
+
+        同一插件的多个实例可能声明相同的服务 id，调用方须按 `pid` 字段区分
+        归属实例才能构造不冲突的定时任务标识。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 服务声明列表，每项的 `pid` 字段被改写为声明来源的实例键
+        """
         services: list[dict] = []
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
@@ -357,7 +368,9 @@ class PluginProjection:
                 continue
             try:
                 if extension.is_enabled():
-                    services.extend(plugin.get_service() or [])
+                    for service in plugin.get_service() or []:
+                        service["pid"] = extension_id
+                        services.append(service)
             except Exception as error:
                 self._logger.error(f"获取插件 {extension_id} 服务出错：{str(error)}")
         return services
@@ -515,6 +528,10 @@ class PluginProjection:
                 provider.setdefault("id", f"plugin:{extension_id}")
                 provider.setdefault("name", plugin.plugin_name)
                 provider.setdefault("enabled", True)
+                # plugin_id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
+                # 与实例键，供需要区分同一插件多个实例的调用方使用。
+                provider["instance_id"] = split_instance_key(extension_id)[1]
+                provider["instance_key"] = extension_id
                 if render_mode == "vue" and dist_path:
                     if not self._remote_entry_factory:
                         raise RuntimeError("插件联邦入口生成器尚未配置")
@@ -581,6 +598,10 @@ class PluginProjection:
                         "section": section,
                         "permission": permission,
                         "order": order,
+                        # plugin_id 沿用既有语义继续填实例键；这两个字段显式拆出
+                        # 实例标识与实例键，供需要区分同一插件多个实例的调用方使用。
+                        "instance_id": split_instance_key(extension_id)[1],
+                        "instance_key": extension_id,
                     })
             except Exception as error:
                 self._logger.error(
@@ -644,16 +665,22 @@ class PluginProjection:
                 if extension.supports_hook("get_dashboard_meta"):
                     plugin_metadata = plugin.get_dashboard_meta()
                     if plugin_metadata:
+                        # id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
+                        # 与实例键，供需要区分同一插件多个实例的调用方使用。
                         metadata.extend({
                             "id": extension_id,
                             "name": item.get("name"),
                             "key": item.get("key"),
+                            "instance_id": split_instance_key(extension_id)[1],
+                            "instance_key": extension_id,
                         } for item in plugin_metadata if item)
                 else:
                     metadata.append({
                         "id": extension_id,
                         "name": plugin.plugin_name,
                         "key": "",
+                        "instance_id": split_instance_key(extension_id)[1],
+                        "instance_key": extension_id,
                     })
             except Exception as error:
                 self._logger.error(

@@ -303,23 +303,33 @@ class Command(metaclass=Singleton):
     def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict]:
         """
         构建插件命令
+
+        命令字符串是命令表的唯一键，先到者胜：同一命令字符串被多个插件（或同一
+        插件的多个实例）声明时，只有登记顺序中第一个生效，其余的会被跳过并告警。
         """
         # 为了保证命令顺序的一致性，目前这里没有直接使用 pid 获取单一插件命令，后续如果存在性能问题，可以考虑优化这里的逻辑
         plugin_commands = {}
         for command in self.pluginmanager.get_plugin_commands():
             cmd = command.get("cmd")
-            if cmd:
-                plugin_commands[cmd] = {
-                    "pid": command.get("pid"),
-                    "func": self.send_plugin_event,
-                    "description": command.get("desc"),
-                    "category": command.get("category"),
-                    "show": command.get("show", True),
-                    "data": {
-                        "etype": command.get("event"),
-                        "data": command.get("data"),
-                    },
-                }
+            if not cmd:
+                continue
+            if cmd in plugin_commands:
+                logger.warning(
+                    f"插件命令 {cmd!r} 已被 {plugin_commands[cmd].get('pid')!r} 注册，"
+                    f"{command.get('pid')!r} 的重复声明已跳过"
+                )
+                continue
+            plugin_commands[cmd] = {
+                "pid": command.get("pid"),
+                "func": self.send_plugin_event,
+                "description": command.get("desc"),
+                "category": command.get("category"),
+                "show": command.get("show", True),
+                "data": {
+                    "etype": command.get("event"),
+                    "data": command.get("data"),
+                },
+            }
         return plugin_commands
 
     def __run_command(

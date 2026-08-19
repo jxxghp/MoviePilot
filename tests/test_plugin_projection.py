@@ -69,7 +69,7 @@ def test_projection_preserves_services_modules_actions_and_pid_filter():
     other = _Plugin(get_service=lambda: [{"id": "other"}])
     projection = PluginProjection({"Demo": demo, "Other": other})
 
-    assert projection.services("Demo") == [{"id": "job"}]
+    assert projection.services("Demo") == [{"id": "job", "pid": "Demo"}]
     assert projection.modules("Demo") == {
         ("Demo", "测试插件"): {"recognize": "handler"}
     }
@@ -97,7 +97,7 @@ def test_projection_isolates_one_plugin_hook_failure():
         log=log,
     )
 
-    assert projection.services() == [{"id": "healthy"}]
+    assert projection.services() == [{"id": "healthy", "pid": "Healthy"}]
     assert errors and "Broken" in errors[0]
 
 
@@ -123,6 +123,8 @@ def test_projection_builds_federation_and_auth_provider_entries():
         "plugin_id": "Demo",
         "name": "测试插件",
         "enabled": True,
+        "instance_id": "default",
+        "instance_key": "Demo",
         "component": "AuthPage",
         "remote": {
             "id": "Demo",
@@ -155,9 +157,53 @@ def test_projection_normalizes_sidebar_and_dashboard_metadata():
         "section": "system",
         "permission": None,
         "order": 3,
+        "instance_id": "default",
+        "instance_key": "Demo",
     }]
     assert projection.dashboard_metadata() == [{
         "id": "Demo",
         "name": "状态",
         "key": "status",
+        "instance_id": "default",
+        "instance_key": "Demo",
     }]
+
+
+def test_projection_tags_services_with_owning_instance_key():
+    """两个实例声明同一服务 id 时，各自的服务项带上归属实例键，互不覆盖。"""
+    default_plugin = _Plugin(get_service=lambda: [{"id": "sync"}])
+    second_plugin = _Plugin(get_service=lambda: [{"id": "sync"}])
+    projection = PluginProjection({"Demo": default_plugin, "Demo@second": second_plugin})
+
+    services = projection.services("Demo")
+
+    assert [service["pid"] for service in services] == ["Demo", "Demo@second"]
+
+
+def test_projection_adds_instance_fields_to_sidebar_dashboard_and_auth_providers():
+    """侧栏、仪表板、认证提供方的既有字段继续填实例键，并补实例标识字段。"""
+    second_plugin = _Plugin(
+        get_render_mode=lambda: ("vue", "dist"),
+        get_sidebar_nav=lambda: [{"key": "settings", "section": "system"}],
+        get_dashboard=lambda: ({}, {}, []),
+        get_auth_providers=lambda: [{"id": "demo-login"}],
+    )
+    projection = PluginProjection(
+        {"Demo@second": second_plugin},
+        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+    )
+
+    sidebar_item = projection.sidebar()[0]
+    assert sidebar_item["plugin_id"] == "Demo@second"
+    assert sidebar_item["instance_id"] == "second"
+    assert sidebar_item["instance_key"] == "Demo@second"
+
+    dashboard_item = projection.dashboard_metadata()[0]
+    assert dashboard_item["id"] == "Demo@second"
+    assert dashboard_item["instance_id"] == "second"
+    assert dashboard_item["instance_key"] == "Demo@second"
+
+    provider = projection.auth_providers()[0]
+    assert provider["plugin_id"] == "Demo@second"
+    assert provider["instance_id"] == "second"
+    assert provider["instance_key"] == "Demo@second"

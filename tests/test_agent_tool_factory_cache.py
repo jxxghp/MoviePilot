@@ -336,3 +336,51 @@ def test_factory_catalog_records_two_plugin_duplicate_names(
     assert [
         entry.source for entry in catalog.collisions["demo_agent_tool"]
     ] == ["plugin:PluginOne", "plugin:PluginTwo"]
+
+
+def test_plugin_agent_tools_pid_filter_matches_all_instances_of_a_plugin(
+    plugin_manager: PluginManager,
+) -> None:
+    """插件标识命中该插件全部实例，实例键只命中该实例。"""
+    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool])
+    plugin_manager.running_plugins["DemoPlugin@second"] = _build_plugin(
+        [DemoMessageAgentTool]
+    )
+
+    all_instances = plugin_manager.get_plugin_agent_tools("DemoPlugin")
+    only_second_instance = plugin_manager.get_plugin_agent_tools("DemoPlugin@second")
+
+    assert {entry["plugin_id"] for entry in all_instances} == {
+        "DemoPlugin",
+        "DemoPlugin@second",
+    }
+    assert [entry["plugin_id"] for entry in only_second_instance] == [
+        "DemoPlugin@second"
+    ]
+
+
+def test_factory_tool_source_distinguishes_sibling_instances(
+    plugin_manager: PluginManager,
+) -> None:
+    """两个实例各自加载工具时，工具来源标识带实例键，不会互相撞名。"""
+    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool])
+    plugin_manager.running_plugins["DemoPlugin@second"] = _build_plugin(
+        [DemoAgentTool]
+    )
+
+    with patch.object(
+        MoviePilotToolFactory,
+        "_get_builtin_tool_classes",
+        return_value=[],
+    ):
+        tools = MoviePilotToolFactory.create_tools(
+            session_id="session-1",
+            user_id="10001",
+        )
+
+    sources = {
+        getattr(tool, "_agent_tool_source", None)
+        for tool in tools
+        if tool.name == "demo_agent_tool"
+    }
+    assert sources == {"plugin:DemoPlugin", "plugin:DemoPlugin@second"}

@@ -19,8 +19,14 @@ class FastAPIDynamicRouteRegistry:
         prefix: str,
         protected_routes: set[str],
         log: Any,
+        route_matches: Callable[[str, Optional[str]], bool],
     ) -> None:
-        """注入应用、插件投影、认证依赖和日志端口。"""
+        """注入应用、插件投影、认证依赖、日志端口和实例键匹配判据。
+
+        :param route_matches: 判断路由路径首段（实例键）是否命中筛选条件的谓词，
+            签名与 `app.runtime.extensions.instance.matches_extension` 一致；
+            适配器层不直接依赖插件运行时模块，由组合根注入具体实现
+        """
         self._app = app
         self._plugin_ids = plugin_ids
         self._plugin_apis = plugin_apis
@@ -29,6 +35,7 @@ class FastAPIDynamicRouteRegistry:
         self._prefix = prefix
         self._protected_routes = protected_routes
         self._logger = log
+        self._route_matches = route_matches
 
     def update(self, plugin_id: Optional[str], action: str) -> None:
         """按插件生命周期新增或移除动态路由。"""
@@ -73,14 +80,25 @@ class FastAPIDynamicRouteRegistry:
             self._app.setup()
 
     def remove(self, plugin_id: str) -> bool:
-        """移除指定插件前缀下的全部动态路由。"""
+        """移除指定插件标识或实例键命中的全部动态路由。
+
+        路由路径首段即插件实例的实例键：传插件标识命中该插件全部实例的路由，
+        避免删整个插件时留下分身路由；传实例键只精确命中该实例，不误删兄弟
+        实例的路由。
+
+        :param plugin_id: 插件标识或实例键
+        :return: 是否有路由被移除
+        """
         if not plugin_id:
             return False
-        prefix = f"{self._prefix}/{plugin_id}/"
-        routes = [
-            route for route in self._app.routes
-            if route.path.startswith(prefix)
-        ]
+        base = f"{self._prefix}/"
+        routes = []
+        for route in self._app.routes:
+            if not route.path.startswith(base):
+                continue
+            segment = route.path[len(base):].split("/", 1)[0]
+            if self._route_matches(segment, plugin_id):
+                routes.append(route)
         removed = False
         for route in routes:
             try:

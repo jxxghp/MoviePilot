@@ -35,6 +35,7 @@ from app.application.commands import init_commands
 from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.cache import async_fresh
 from app.runtime.config import settings
+from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.application.security.access import (
     resource_token_cookie,
@@ -154,13 +155,16 @@ def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
 
     登录页加载插件认证组件时尚未产生登录态和资源 Cookie，因此仅对插件主动
     声明的认证 remote 保留匿名读取能力，其余插件静态资源仍需资源令牌。
+    联邦构建产物属于插件本身而非某个实例，比对前把两侧都降级到插件标识，
+    非默认实例声明的认证 remote 才不会因实例键带的 @ 分隔符被误判为不匹配。
     """
     path = filepath.lstrip("/")
-    normalized_plugin_id = plugin_id.lower()
+    normalized_plugin_id = extension_id_of(plugin_id).lower()
     plugin_manager = PluginManager()
     for provider in plugin_manager.get_plugin_auth_providers():
         remote = provider.get("remote") or {}
-        if str(remote.get("id") or "").lower() != normalized_plugin_id:
+        remote_plugin_id = extension_id_of(str(remote.get("id") or "")).lower()
+        if remote_plugin_id != normalized_plugin_id:
             continue
         remote_path = str(remote.get("url") or "").lstrip("/")
         remote_path_lower = remote_path.lower()
@@ -730,8 +734,13 @@ async def plugin_static_file(
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
+    # 联邦构建产物属于插件本身而非某个实例，先降级到插件标识再拼目录，
+    # 避免实例键的 @ 分隔符指向不存在的目录，同一插件的全部实例共享同一份代码。
     plugin_base_dir = (
-        AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
+        AsyncPath(settings.ROOT_PATH)
+        / "app"
+        / "plugins"
+        / extension_id_of(plugin_id).lower()
     )
     plugin_file_path = plugin_base_dir / filepath.lstrip("/")
 

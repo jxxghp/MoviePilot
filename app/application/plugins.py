@@ -17,6 +17,7 @@ from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.application.security.access import verify_apikey, verify_token
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.config import settings
+from app.runtime.extensions.instance import matches_extension
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
@@ -57,6 +58,7 @@ def _route_registry() -> FastAPIDynamicRouteRegistry:
         prefix=PLUGIN_PREFIX,
         protected_routes=PROTECTED_ROUTES,
         log=logger,
+        route_matches=matches_extension,
     )
 
 
