@@ -112,3 +112,11 @@ class AuthProviderInfo(BaseModel):
     component: Optional[str] = None
     plugin_id: Optional[str] = None
     remote: Optional[AuthProviderRemote] = None
+    # 该认证方式的专属配置界面，归属声明它的那条声明而非扩展自身；二选一，
+    # 与声明方扩展的渲染模式对应，都不给表示该认证方式没有专属界面
+    config_form: Optional[list[dict[str, JsonData]]] = Field(
+        default=None, description="vuetify 模式的组件树，非 vuetify 模式时为 None"
+    )
+    config_component: Optional[dict[str, JsonData]] = Field(
+        default=None, description="vue 模式下应加载的组件名与其所在联邦远程入口"
+    )

@@ -96,6 +96,109 @@ class ModuleDeclaration(ExtensionDeclaration):
     service_config: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class AuthProviderDeclaration(ExtensionDeclaration):
+    """
+    登录认证提供方声明
+
+    ``id``/``name``/``icon`` 是该登录入口向宿主自报的展示信息，缺省时分别回落为
+    ``plugin:<实例键>``、插件展示名、无图标；``enabled`` 默认为 True。vue 模式下
+    登录入口渲染组件固定为 ``AuthPage``，由宿主联邦机制原样注入，与旧写法语义
+    一致，不受本声明字段影响。
+
+    该认证提供方的专属配置界面二选一，字段语义与 ``StorageDeclaration`` 相同：
+
+    - ``config_form``：vuetify 模式，(组件树, 默认数据) 二元组
+    - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
+      要求扩展的 ``get_render_mode()`` 返回 ``"vue"``
+
+    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该认证
+    提供方没有专属配置界面。界面归属这条声明，不归属声明它的扩展。
+
+    :param id: 提供方标识，缺省时回落为 ``plugin:<实例键>``
+    :param name: 展示名称，缺省时回落为插件展示名
+    :param icon: 展示图标
+    :param enabled: 是否启用，默认为 True
+    :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
+        ``config_component`` 互斥
+    :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    """
+
+    id: Optional[str] = None
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    enabled: bool = True
+    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
+    config_component: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class MediaSourceDeclaration(ExtensionDeclaration):
+    """
+    媒体数据源声明
+
+    识别、搜索、图片与 NFO 刮削的实际实现仍由 ``provides_modules()``/``get_module()``
+    按契约方法名分发；本声明只承载数据源自身的展示信息，供宿主聚合成来源列表。
+
+    :param media_source: 规范媒体来源标识，须能被 ``MediaSource`` 解析——内置常量
+        或形如 ``[a-z][a-z0-9._-]{0,63}`` 的插件扩展标识
+    :param name: 数据源展示名称
+    :param media_types: 支持的媒体类型；留空时由消费方按自身默认值处理
+    """
+
+    media_source: str = ""
+    name: str = ""
+    media_types: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ActionDeclaration(ExtensionDeclaration):
+    """
+    工作流动作声明
+
+    ``impl`` 是动作的实现函数：首个位置参数固定为 ``ActionContext`` 实例，返回
+    ``(执行状态, 更新后的 ActionContext)`` 二元组，与既有 ``get_actions()`` 对
+    实现函数的要求一致。
+
+    :param action_id: 动作标识，工作流按此标识调用该动作
+    :param name: 动作展示名称
+    :param kwargs: 调用该动作实现时附加传递的静态参数
+    """
+
+    action_id: str = ""
+    name: str = ""
+    kwargs: Mapping[str, Any] = MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
+class DashboardDeclaration(ExtensionDeclaration):
+    """
+    仪表盘声明
+
+    声明的是「有哪些仪表盘、长什么样」；「当前该显示什么数据」仍由带参数的
+    ``get_dashboard(key, **kwargs)`` 在每次请求时实时取用，两者不是一回事。
+
+    该仪表盘的专属界面二选一，与 ``StorageDeclaration.config_form``/
+    ``config_component`` 同一套语义：``config_form`` 是 vuetify 模式下的
+    （组件树, 默认数据）二元组，``config_component`` 是 vue 模式下本扩展联邦
+    远程中承载该仪表盘的组件名，要求扩展的 ``get_render_mode()`` 返回 ``"vue"``。
+    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该仪表盘
+    没有随声明附带的初始界面。
+
+    :param key: 仪表盘 key，在插件实例范围内唯一；单仪表盘插件可留空，代表
+        插件的默认仪表盘
+    :param name: 仪表盘展示名称
+    :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
+        ``config_component`` 互斥
+    :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    """
+
+    key: str = ""
+    name: str = ""
+    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
+    config_component: Optional[str] = None
+
+
 def declaration_schema(declaration: Any) -> Optional[str]:
     """
     读取声明自报的存储标识
@@ -129,6 +232,31 @@ def declaration_config_component(declaration: Any) -> Optional[str]:
     :return: 组件名；未声明或为空白时为 None
     """
     return _declared_text(declaration, "config_component")
+
+
+def declaration_auth_provider_fields(declaration: Any) -> Optional[Dict[str, Any]]:
+    """
+    读取认证提供方声明的展示字段
+
+    兼容插件直接交出字段字典而不包 `AuthProviderDeclaration` 的写法：此时字典即
+    声明本身，字段原样返回；此时无法声明专属配置界面，因为字典没有
+    ``config_form``/``config_component`` 属性可读。
+
+    :param declaration: `AuthProviderDeclaration` 实例，或插件直接交出的字段字典
+    :return: 含 id/name/icon/enabled 等展示字段的字典；声明形状不合法时为 None
+    """
+    if isinstance(declaration, Mapping):
+        return dict(declaration)
+    if isinstance(declaration, AuthProviderDeclaration):
+        fields: Dict[str, Any] = {"enabled": declaration.enabled}
+        if declaration.id:
+            fields["id"] = declaration.id
+        if declaration.name:
+            fields["name"] = declaration.name
+        if declaration.icon:
+            fields["icon"] = declaration.icon
+        return fields
+    return None
 
 
 def declaration_agent_tool_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
@@ -182,3 +310,108 @@ def declaration_impl(declaration: Any) -> Optional[Any]:
         return None
     impl = getattr(declaration, "impl", None)
     return impl if impl is not None else declaration
+
+
+def _declared_field(declaration: Any, field: str) -> Any:
+    """
+    读取声明字段的原始值，兼容属性对象与映射两种载体
+
+    媒体数据源、工作流动作与仪表盘的兼容旧写法是插件直接交出描述字典而非
+    声明对象，字典没有属性访问，须按载体类型分别取值。
+
+    :param declaration: 声明对象，或插件直接交出的描述字典
+    :param field: 字段名
+    :return: 字段原始值；字段缺失时为 None
+    """
+    if isinstance(declaration, Mapping):
+        return declaration.get(field)
+    return getattr(declaration, field, None)
+
+
+def _declared_field_text(declaration: Any, field: str) -> Optional[str]:
+    """
+    读取声明字段的非空字符串值，兼容属性对象与映射两种载体
+
+    :param declaration: 声明对象，或插件直接交出的描述字典
+    :param field: 字段名
+    :return: 去除首尾空白后的字符串；字段缺失、非字符串或全为空白时为 None
+    """
+    value = _declared_field(declaration, field)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def declaration_media_source_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的数据源标识与展示名称
+
+    :param declaration: `MediaSourceDeclaration` 实例，或插件直接交出的描述字典
+    :return: (数据源标识, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "media_source"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_media_types(declaration: Any) -> Optional[Tuple[Any, ...]]:
+    """
+    读取声明自报的支持媒体类型
+
+    :param declaration: `MediaSourceDeclaration` 实例，或插件直接交出的描述字典
+    :return: 媒体类型序列转换成的元组；字段缺失或不是序列时为 None
+    """
+    value = _declared_field(declaration, "media_types")
+    return tuple(value) if isinstance(value, (list, tuple)) else None
+
+
+def declaration_action_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的动作标识与展示名称
+
+    :param declaration: `ActionDeclaration` 实例，或插件直接交出的描述字典
+    :return: (动作标识, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "action_id"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_action_impl(declaration: Any) -> Any:
+    """
+    读取声明的动作实现函数
+
+    兼容插件直接交出描述字典而不包 `ActionDeclaration` 的写法：字典形态复用
+    ``get_actions()`` 返回项的 ``func`` 字段存放实现函数，与工作流实际消费的
+    字段一致。
+
+    :param declaration: `ActionDeclaration` 实例，或插件直接交出的描述字典
+    :return: 实现函数；取不到时为 None
+    """
+    if isinstance(declaration, Mapping):
+        return declaration.get("func")
+    return getattr(declaration, "impl", None)
+
+
+def declaration_action_kwargs(declaration: Any) -> Any:
+    """
+    读取声明自带的动作附加参数原始值
+
+    :param declaration: `ActionDeclaration` 实例，或插件直接交出的描述字典
+    :return: kwargs 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "kwargs")
+
+
+def declaration_dashboard_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的仪表盘 key 与展示名称
+
+    key 保留原始字符串（含空字符串），空字符串代表插件的默认仪表盘，与
+    ``name`` 的「非空才有效」语义不同，不能共用同一条读取规则。
+
+    :param declaration: `DashboardDeclaration` 实例，或插件直接交出的描述字典
+    :return: (仪表盘 key, 展示名称) 二元组；key 非字符串时为 None，name 为空白时为 None
+    """
+    key = _declared_field(declaration, "key")
+    return (key if isinstance(key, str) else None), _declared_field_text(declaration, "name")

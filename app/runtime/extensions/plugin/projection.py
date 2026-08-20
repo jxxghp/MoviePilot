@@ -13,9 +13,31 @@ from app.runtime.extensions.instance import (
     matches_extension,
     split_instance_key,
 )
-from app.runtime.extensions.declaration import declaration_methods
+from app.runtime.extensions.declaration import (
+    declaration_action_identity,
+    declaration_action_impl,
+    declaration_action_kwargs,
+    declaration_auth_provider_fields,
+    declaration_config_component,
+    declaration_config_form,
+    declaration_dashboard_identity,
+    declaration_media_source_identity,
+    declaration_media_types,
+    declaration_methods,
+)
+from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
 from app.runtime.extensions.plugin.agent_tool_capabilities import (
     agent_tool_declaration_violation,
+)
+from app.runtime.extensions.plugin.auth_provider_capabilities import (
+    auth_provider_declaration_violation,
+)
+from app.runtime.extensions.plugin.channel_capabilities import (
+    channel_capability_declaration_violation,
+)
+from app.runtime.extensions.plugin.dashboard_capabilities import dashboard_declaration_violation
+from app.runtime.extensions.plugin.media_source_capabilities import (
+    media_source_declaration_violation,
 )
 from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
 from app.runtime.extensions.plugin.storage_capabilities import storage_declaration_violation
@@ -582,27 +604,112 @@ class PluginProjection:
                 )
         return {**legacy, **declared}
 
+    def provided_media_sources(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的媒体数据源。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其媒体数据源声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_media_sources"
+            ):
+                continue
+            try:
+                declared = plugin.provides_media_sources() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} 媒体数据源声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            for item in declared:
+                violation = media_source_declaration_violation(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的媒体数据源 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    @staticmethod
+    def _declared_media_source(extension_id: str, item: Any) -> Dict[str, Any]:
+        """把单条已通过契约校验的媒体数据源声明投影为描述字典。
+
+        :param extension_id: 插件实例键
+        :param item: 已通过契约校验的媒体数据源声明
+        :return: 含 name、media_source、plugin_id 的描述字典，声明了 media_types
+            时另含该字段
+        """
+        media_source, name = declaration_media_source_identity(item)
+        media_types = declaration_media_types(item)
+        entry: Dict[str, Any] = {
+            "name": name,
+            "media_source": media_source,
+            "plugin_id": extension_id,
+        }
+        if media_types is not None:
+            entry["media_types"] = list(media_types)
+        return entry
+
+    def _legacy_media_sources(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> List[Dict[str, Any]]:
+        """取用插件 `get_media_source()` 声明的数据源，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 数据源描述字典列表；未声明该钩子或废弃阶段已默认关闭时为空列表
+        """
+        if not extension.supports_hook("get_media_source"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_media_source"):
+            return []
+        try:
+            raw_sources = plugin.get_media_source()
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 媒体数据源出错：{str(error)}")
+            return []
+        if raw_sources is None:
+            return []
+        deprecation_warn("plugin.get_media_source", context=extension_id)
+        sources: List[Dict[str, Any]] = []
+        for source in raw_sources:
+            if isinstance(source, dict):
+                item = source.copy()
+                item.setdefault("plugin_id", extension_id)
+                sources.append(item)
+        return sources
+
     def media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件声明的媒体数据源。
+
+        聚合两条来源：`provides_media_sources()` 声明式登记（经契约校验）与
+        `get_media_source()` 裸描述字典列表（后者已进入废弃期，触达即告警一次）。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
         :return: 数据源描述列表，每项带上声明它的实例键
         """
         sources: list[dict] = []
+        declared_by_instance = self.provided_media_sources(pid)
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.supports_hook("get_media_source"):
+            if not extension.is_enabled():
                 continue
-            try:
-                if not extension.is_enabled():
-                    continue
-                for source in plugin.get_media_source() or []:
-                    if isinstance(source, dict):
-                        item = source.copy()
-                        item.setdefault("plugin_id", extension_id)
-                        sources.append(item)
-            except Exception as error:
-                self._logger.error(f"获取插件 {extension_id} 媒体数据源出错：{str(error)}")
+            for item in declared_by_instance.get(extension_id, []):
+                sources.append(self._declared_media_source(extension_id, item))
+            sources.extend(self._legacy_media_sources(extension, extension_id, plugin))
         return sources
 
     def _warn_sibling_contract_overlap(self, modules: Mapping[tuple, Any]) -> None:
@@ -666,25 +773,113 @@ class PluginProjection:
                         f"非本插件负责的来源须返回 None 让出，否则会拦截该契约下的全部来源"
                     )
 
-    def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件的工作流动作。"""
-        actions: list[dict] = []
+    def provided_actions(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的工作流动作。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其动作声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.supports_hook("get_actions"):
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_actions"
+            ):
                 continue
             try:
-                if not extension.is_enabled():
-                    continue
-                plugin_actions = plugin.get_actions()
-                if plugin_actions:
-                    actions.append({
-                        "plugin_id": extension_id,
-                        "plugin_name": plugin.plugin_name,
-                        "actions": plugin_actions,
-                    })
+                declared = plugin.provides_actions() or []
             except Exception as error:
-                self._logger.error(f"获取插件 {extension_id} 动作出错：{str(error)}")
+                self._logger.error(
+                    f"获取插件 {extension_id} 动作声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            for item in declared:
+                violation = action_declaration_violation(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的动作 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    @staticmethod
+    def _declared_action(item: Any) -> Dict[str, Any]:
+        """把单条已通过契约校验的动作声明投影为与 `get_actions()` 一致的描述字典。
+
+        :param item: 已通过契约校验的动作声明
+        :return: 含 action_id、name、func、kwargs 的动作描述字典
+        """
+        action_id, name = declaration_action_identity(item)
+        kwargs = declaration_action_kwargs(item)
+        return {
+            "action_id": action_id,
+            "name": name,
+            "func": declaration_action_impl(item),
+            "kwargs": dict(kwargs) if kwargs else {},
+        }
+
+    def _legacy_actions(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> List[Dict[str, Any]]:
+        """取用插件 `get_actions()` 声明的动作，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 插件声明的动作列表；未声明该钩子、废弃阶段已默认关闭或返回
+            空值时为空列表
+        """
+        if not extension.supports_hook("get_actions"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_actions"):
+            return []
+        try:
+            plugin_actions = plugin.get_actions()
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 动作出错：{str(error)}")
+            return []
+        if not plugin_actions:
+            return []
+        deprecation_warn("plugin.get_actions", context=extension_id)
+        return plugin_actions
+
+    def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """聚合启用插件的工作流动作。
+
+        聚合两条来源：`provides_actions()` 声明式登记（经契约校验）与
+        `get_actions()` 裸列表（后者已进入废弃期，触达即告警一次）；同一实例
+        两条来源皆有声明时动作列表合并，声明式登记排在前面。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 按插件实例分组的动作列表
+        """
+        actions: list[dict] = []
+        declared_by_instance = self.provided_actions(pid)
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled():
+                continue
+            declared_actions = [
+                self._declared_action(item)
+                for item in declared_by_instance.get(extension_id, [])
+            ]
+            legacy_actions = self._legacy_actions(extension, extension_id, plugin)
+            merged = declared_actions + legacy_actions
+            if merged:
+                actions.append({
+                    "plugin_id": extension_id,
+                    "plugin_name": plugin.plugin_name,
+                    "actions": merged,
+                })
         return actions
 
     def _remote_descriptor(
@@ -747,45 +942,184 @@ class PluginProjection:
             remotes.append(self._remote_descriptor(extension_id, plugin, dist_path))
         return remotes
 
-    def auth_providers(self) -> List[Dict[str, Any]]:
-        """投影启用插件声明的登录认证提供方。"""
-        providers = []
-        for extension in self._extensions(None):
+    def provided_auth_providers(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的登录认证提供方。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其认证提供方声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
-                    "get_auth_providers"
+                    "provides_auth_providers"
             ):
                 continue
             try:
-                plugin_providers = plugin.get_auth_providers() or []
+                declared = plugin.provides_auth_providers() or []
             except Exception as error:
                 self._logger.error(
-                    f"获取插件 {extension_id} 登录认证提供方出错：{str(error)}"
+                    f"获取插件 {extension_id} 登录认证提供方声明出错：{str(error)}"
                 )
+                continue
+            # config_component 只在扩展渲染模式为 vue 时合法，默认 vuetify 与
+            # get_render_mode() 基类实现的缺省值一致
+            render_mode = "vuetify"
+            if extension.supports_hook("get_render_mode"):
+                render_mode, _ = plugin.get_render_mode()
+            accepted: List[Any] = []
+            for item in declared:
+                violation = auth_provider_declaration_violation(item, render_mode=render_mode)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的登录认证提供方 {item!r} 不合登记"
+                        f"契约，已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    def auth_provider_component_descriptor(
+        self, extension_id: str, plugin: Any, component: str
+    ) -> Dict[str, Any]:
+        """构造认证提供方 vue 模式配置界面的组件描述：组件名加所在联邦远程入口。
+
+        调用方需自行保证 ``component`` 已通过登记契约校验、其声明方渲染模式
+        确为 vue；本方法只负责组装，不重复校验。
+
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param component: 认证提供方声明携带的组件名
+        :return: 含 component 与 remote（联邦远程入口描述）的字典
+        :raises RuntimeError: 联邦入口生成器尚未配置
+        """
+        _, dist_path = plugin.get_render_mode()
+        return {
+            "component": component,
+            "remote": self._remote_descriptor(extension_id, plugin, dist_path),
+        }
+
+    def _build_auth_provider(
+        self,
+        extension_id: str,
+        plugin: Any,
+        fields: Mapping[str, Any],
+        render_mode: Optional[str],
+        dist_path: Optional[str],
+    ) -> Dict[str, Any]:
+        """按既有字段语义组装单条认证提供方描述。
+
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param fields: 声明携带的展示字段（id/name/icon/enabled）
+        :param render_mode: 声明方扩展当前的渲染模式
+        :param dist_path: vue 模式下的联邦构建产物相对路径
+        :return: 含 id/type/plugin_id/name/enabled/instance_id/instance_key 的字典，
+            vue 模式下另含登录入口渲染用的 component 与 remote
+        """
+        provider = dict(fields)
+        provider["type"] = "plugin"
+        provider["plugin_id"] = extension_id
+        provider.setdefault("id", f"plugin:{extension_id}")
+        provider.setdefault("name", plugin.plugin_name)
+        provider.setdefault("enabled", True)
+        # plugin_id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
+        # 与实例键，供需要区分同一插件多个实例的调用方使用。
+        provider["instance_id"] = split_instance_key(extension_id)[1]
+        provider["instance_key"] = extension_id
+        if render_mode == "vue" and dist_path:
+            provider.setdefault("component", "AuthPage")
+            provider["remote"] = self._remote_descriptor(extension_id, plugin, dist_path)
+        return provider
+
+    def _legacy_auth_providers(
+        self,
+        extension: PluginExtension,
+        extension_id: str,
+        plugin: Any,
+        render_mode: Optional[str],
+        dist_path: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """取用插件 `get_auth_providers()` 声明的登录入口，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :param render_mode: 声明方扩展当前的渲染模式
+        :param dist_path: vue 模式下的联邦构建产物相对路径
+        :return: 认证提供方描述列表；未声明该钩子或废弃阶段已默认关闭时为空列表
+        """
+        if not extension.supports_hook("get_auth_providers"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_auth_providers"):
+            return []
+        try:
+            plugin_providers = plugin.get_auth_providers() or []
+        except Exception as error:
+            self._logger.error(
+                f"获取插件 {extension_id} 登录认证提供方出错：{str(error)}"
+            )
+            return []
+        providers: List[Dict[str, Any]] = []
+        for raw_provider in plugin_providers:
+            if not raw_provider or not isinstance(raw_provider, dict):
+                continue
+            providers.append(
+                self._build_auth_provider(
+                    extension_id, plugin, raw_provider, render_mode, dist_path
+                )
+            )
+        if providers:
+            deprecation_warn("plugin.get_auth_providers", context=extension_id)
+        return providers
+
+    def auth_providers(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """投影启用插件声明的登录认证提供方。
+
+        聚合两条来源：`provides_auth_providers()` 声明式登记（经契约校验，可选带
+        专属配置界面）与 `get_auth_providers()` 裸字典列表（后者已进入废弃期，
+        触达即告警一次）。两条来源按既有字段语义统一组装：vue 渲染模式下登录
+        入口组件缺省为 `AuthPage`，附带联邦远程入口描述；仅声明式登记额外支持
+        `config_form`/`config_component` 专属配置界面。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 认证提供方描述列表
+        """
+        providers: List[Dict[str, Any]] = []
+        declared_by_instance = self.provided_auth_providers(pid)
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled():
                 continue
             render_mode = None
             dist_path = None
             if extension.supports_hook("get_render_mode"):
                 render_mode, dist_path = plugin.get_render_mode()
-            for raw_provider in plugin_providers:
-                if not raw_provider or not isinstance(raw_provider, dict):
-                    continue
-                provider = raw_provider.copy()
-                provider["type"] = "plugin"
-                provider["plugin_id"] = extension_id
-                provider.setdefault("id", f"plugin:{extension_id}")
-                provider.setdefault("name", plugin.plugin_name)
-                provider.setdefault("enabled", True)
-                # plugin_id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
-                # 与实例键，供需要区分同一插件多个实例的调用方使用。
-                provider["instance_id"] = split_instance_key(extension_id)[1]
-                provider["instance_key"] = extension_id
-                if render_mode == "vue" and dist_path:
-                    provider.setdefault("component", "AuthPage")
-                    provider["remote"] = self._remote_descriptor(
-                        extension_id, plugin, dist_path
+            for declaration in declared_by_instance.get(extension_id, []):
+                fields = declaration_auth_provider_fields(declaration)
+                provider = self._build_auth_provider(
+                    extension_id, plugin, fields, render_mode, dist_path
+                )
+                component = declaration_config_component(declaration)
+                config_form = declaration_config_form(declaration)
+                if component:
+                    provider["config_component"] = self.auth_provider_component_descriptor(
+                        extension_id, plugin, component
                     )
+                elif config_form is not None:
+                    provider["config_form"] = config_form
                 providers.append(provider)
+            providers.extend(
+                self._legacy_auth_providers(
+                    extension, extension_id, plugin, render_mode, dist_path
+                )
+            )
         return providers
 
     def sidebar(self) -> List[Dict[str, Any]]:
@@ -861,39 +1195,122 @@ class PluginProjection:
         )
         return items
 
-    def channel_capabilities(
+    def provided_channel_capabilities(
         self, pid: Optional[str] = None
     ) -> Dict[str, List[ChannelCapabilities]]:
-        """投影启用插件声明的消息渠道能力。
+        """投影启用插件声明且通过登记契约校验的消息渠道能力。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其声明的 `ChannelCapabilities` 列表的映射
+        :return: 实例键到其渠道能力声明列表的映射，仅含通过契约校验的条目
         """
         result: Dict[str, List[ChannelCapabilities]] = {}
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
-                    "get_channel_capabilities"
+                    "provides_channel_capabilities"
             ):
                 continue
             try:
-                declared = plugin.get_channel_capabilities() or []
+                declared = plugin.provides_channel_capabilities() or []
             except Exception as error:
                 self._logger.error(
-                    f"获取插件 {extension_id} 渠道能力出错：{str(error)}"
+                    f"获取插件 {extension_id} 渠道能力声明出错：{str(error)}"
                 )
                 continue
             accepted: List[ChannelCapabilities] = []
             for item in declared:
-                if not isinstance(item, ChannelCapabilities):
-                    self._logger.warning(
-                        f"插件[{extension_id}]声明的渠道能力类型无效，已跳过：{item!r}"
+                violation = channel_capability_declaration_violation(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的渠道能力 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
                     )
-                    continue
-                if not channel_identity(item.channel):
                     continue
                 accepted.append(item)
             result[extension_id] = accepted
+        return result
+
+    def _legacy_channel_capabilities(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> List[ChannelCapabilities]:
+        """取用插件 `get_channel_capabilities()` 声明的渠道能力，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 通过基础形状校验的渠道能力列表；未声明该钩子或废弃阶段已默认
+            关闭时为空列表
+        """
+        if not extension.supports_hook("get_channel_capabilities"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_channel_capabilities"):
+            return []
+        try:
+            declared = plugin.get_channel_capabilities() or []
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 渠道能力出错：{str(error)}")
+            return []
+        accepted: List[ChannelCapabilities] = []
+        for item in declared:
+            if not isinstance(item, ChannelCapabilities):
+                self._logger.warning(
+                    f"插件[{extension_id}]声明的渠道能力类型无效，已跳过：{item!r}"
+                )
+                continue
+            if not channel_identity(item.channel):
+                continue
+            accepted.append(item)
+        if accepted:
+            deprecation_warn("plugin.get_channel_capabilities", context=extension_id)
+        return accepted
+
+    @staticmethod
+    def _merge_channel_capability_sources(
+        declared: List[ChannelCapabilities], legacy: List[ChannelCapabilities]
+    ) -> List[ChannelCapabilities]:
+        """合并声明式与旧式两条来源的渠道能力列表，同一渠道标识以声明式登记为准。
+
+        渠道能力管理器按渠道标识做字典登记，同一标识后登记的条目覆盖先登记的，
+        因此声明式条目排在旧式条目之后，才能在标识重合时保持声明式登记优先生效。
+
+        :param declared: `provides_channel_capabilities()` 已通过契约校验的声明列表
+        :param legacy: `get_channel_capabilities()` 声明的渠道能力列表
+        :return: 合并后的渠道能力列表，旧式条目在前、声明式条目在后
+        """
+        if not declared:
+            return legacy
+        if not legacy:
+            return declared
+        return [*legacy, *declared]
+
+    def channel_capabilities(
+        self, pid: Optional[str] = None
+    ) -> Dict[str, List[ChannelCapabilities]]:
+        """投影启用插件声明的消息渠道能力。
+
+        聚合两条来源：`provides_channel_capabilities()` 声明式登记（经契约校验）
+        与 `get_channel_capabilities()` 裸列表（后者已进入废弃期，触达即告警
+        一次）。同一渠道标识被两条来源同时声明时，声明式登记优先生效。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其声明的 `ChannelCapabilities` 列表的映射
+        """
+        result: Dict[str, List[ChannelCapabilities]] = {}
+        declared_by_instance = self.provided_channel_capabilities(pid)
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled():
+                continue
+            declared = declared_by_instance.get(extension_id, [])
+            legacy = self._legacy_channel_capabilities(extension, extension_id, plugin)
+            if not declared and not legacy:
+                continue
+            result[extension_id] = self._merge_channel_capability_sources(declared, legacy)
         return result
 
     def provided_storages(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
@@ -973,9 +1390,117 @@ class PluginProjection:
             result[extension_id] = accepted
         return result
 
+    def provided_dashboards(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的仪表盘。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其仪表盘声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_dashboards"
+            ):
+                continue
+            try:
+                declared = plugin.provides_dashboards() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} 仪表盘声明出错：{str(error)}"
+                )
+                continue
+            # config_component 只在扩展渲染模式为 vue 时合法，默认 vuetify 与
+            # get_render_mode() 基类实现的缺省值一致
+            render_mode = "vuetify"
+            if extension.supports_hook("get_render_mode"):
+                render_mode, _ = plugin.get_render_mode()
+            accepted: List[Any] = []
+            for item in declared:
+                violation = dashboard_declaration_violation(item, render_mode=render_mode)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的仪表盘 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    def _declared_dashboard_metadata(
+        self, extension_id: str, plugin: Any, item: Any
+    ) -> Dict[str, Any]:
+        """把单条已通过契约校验的仪表盘声明投影为元信息条目。
+
+        vue 模式下声明了 config_component 时附带该组件所在的联邦远程入口描述，
+        与存储、认证提供方两族的 vue 模式配置组件描述同一形状。
+
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param item: 已通过契约校验的仪表盘声明
+        :return: 含 id、name、key、instance_id、instance_key 的元信息字典，
+            vue 模式声明了 config_component 时另含 component 与 remote
+        """
+        key, name = declaration_dashboard_identity(item)
+        entry: Dict[str, Any] = {
+            "id": extension_id,
+            "name": name or plugin.plugin_name,
+            "key": key or "",
+            "instance_id": split_instance_key(extension_id)[1],
+            "instance_key": extension_id,
+        }
+        component = declaration_config_component(item)
+        if component:
+            _, dist_path = plugin.get_render_mode()
+            entry["component"] = component
+            entry["remote"] = self._remote_descriptor(extension_id, plugin, dist_path)
+        return entry
+
+    def _legacy_dashboard_metadata(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> Optional[List[Dict[str, Any]]]:
+        """取用插件 `get_dashboard_meta()` 声明的仪表盘元信息，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 元信息条目列表；未声明该钩子、废弃阶段已默认关闭或返回空值时
+            为 None，调用方据此区分「无声明」与「声明为空列表」
+        """
+        if not extension.supports_hook("get_dashboard_meta"):
+            return None
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_dashboard_meta"):
+            return None
+        plugin_metadata = plugin.get_dashboard_meta()
+        if not plugin_metadata:
+            return None
+        deprecation_warn("plugin.get_dashboard_meta", context=extension_id)
+        # id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
+        # 与实例键，供需要区分同一插件多个实例的调用方使用。
+        return [{
+            "id": extension_id,
+            "name": item.get("name"),
+            "key": item.get("key"),
+            "instance_id": split_instance_key(extension_id)[1],
+            "instance_key": extension_id,
+        } for item in plugin_metadata if item]
+
     def dashboard_metadata(self) -> List[Dict[str, str]]:
-        """投影启用插件的单仪表板或多仪表板元信息。"""
+        """投影启用插件的单仪表板或多仪表板元信息。
+
+        聚合两条来源：`provides_dashboards()` 声明式登记（经契约校验，vue 模式
+        可附带组件描述）与 `get_dashboard_meta()` 裸元信息列表（后者已进入
+        废弃期，触达即告警一次）；同一实例声明式登记优先，两者皆未声明时退化
+        为单一默认仪表盘，与既有行为一致。
+        """
         metadata = []
+        declared_by_instance = self.provided_dashboards()
         for extension in self._extensions(None):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.supports_hook("get_dashboard"):
@@ -983,26 +1508,26 @@ class PluginProjection:
             try:
                 if not extension.is_enabled():
                     continue
-                if extension.supports_hook("get_dashboard_meta"):
-                    plugin_metadata = plugin.get_dashboard_meta()
-                    if plugin_metadata:
-                        # id 沿用既有语义继续填实例键；这两个字段显式拆出实例标识
-                        # 与实例键，供需要区分同一插件多个实例的调用方使用。
-                        metadata.extend({
-                            "id": extension_id,
-                            "name": item.get("name"),
-                            "key": item.get("key"),
-                            "instance_id": split_instance_key(extension_id)[1],
-                            "instance_key": extension_id,
-                        } for item in plugin_metadata if item)
-                else:
-                    metadata.append({
-                        "id": extension_id,
-                        "name": plugin.plugin_name,
-                        "key": "",
-                        "instance_id": split_instance_key(extension_id)[1],
-                        "instance_key": extension_id,
-                    })
+                declared = declared_by_instance.get(extension_id, [])
+                if declared:
+                    metadata.extend(
+                        self._declared_dashboard_metadata(extension_id, plugin, item)
+                        for item in declared
+                    )
+                    continue
+                legacy_metadata = self._legacy_dashboard_metadata(
+                    extension, extension_id, plugin
+                )
+                if legacy_metadata is not None:
+                    metadata.extend(legacy_metadata)
+                    continue
+                metadata.append({
+                    "id": extension_id,
+                    "name": plugin.plugin_name,
+                    "key": "",
+                    "instance_id": split_instance_key(extension_id)[1],
+                    "instance_key": extension_id,
+                })
             except Exception as error:
                 self._logger.error(
                     f"获取插件[{extension_id}]仪表盘元数据出错：{str(error)}"

@@ -17,7 +17,11 @@ from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
 from app.runtime.extensions.declaration import (
+    ActionDeclaration,
     AgentToolDeclaration,
+    AuthProviderDeclaration,
+    DashboardDeclaration,
+    MediaSourceDeclaration,
     ModuleDeclaration,
     StorageDeclaration,
 )
@@ -370,6 +374,35 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def provides_dashboards(self) -> Optional[List[DashboardDeclaration]]:
+        """
+        声明本插件提供的仪表盘
+
+        声明的是「有哪些仪表盘、长什么样」；「当前该显示什么数据」仍由带参数的
+        get_dashboard(key, **kwargs) 在每次请求时实时取用，两者不是一回事。
+
+        返回示例：
+        [DashboardDeclaration(
+            key="dashboard1",                    # 仪表盘 key，在插件实例范围内
+                                                  # 唯一；单仪表盘插件可留空
+            name="仪表盘1",                       # 展示名称
+            config_form=([...], {...}),          # 该仪表盘的初始界面（vuetify
+                                                  # 模式），形状与 get_form() 相同；
+                                                  # 与 config_component 互斥，可选
+        )]
+
+        vue 模式改用 `config_component="Dashboard1"`——本插件联邦远程中承载该
+        仪表盘的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form`
+        二选一，同时给出视为意图不明，整条声明被拒。
+
+        也可直接返回描述字典（不包 `DashboardDeclaration`），字典形态复用
+        get_dashboard_meta() 的 key/name 字段，兼容早期写法；此时无法声明专属
+        配置界面。
+
+        :return: `DashboardDeclaration` 列表；插件不提供仪表盘时无需实现
+        """
+        pass
+
     def get_auth_providers(self) -> List[Dict[str, Any]]:
         """
         声明插件提供的登录认证入口。
@@ -382,6 +415,35 @@ class _PluginBase(metaclass=ABCMeta):
             "component": "AuthPage",
             "enabled": True
         }]
+        """
+        pass
+
+    def provides_auth_providers(self) -> Optional[List[AuthProviderDeclaration]]:
+        """
+        声明本插件提供的登录认证入口
+
+        返回示例：
+        [AuthProviderDeclaration(
+            id="oidc",                           # 提供方标识，缺省回落为
+                                                  # plugin:<实例键>
+            name="OIDC 登录",                     # 展示名称，缺省回落为插件展示名
+            icon="mdi-openid",
+            capabilities=["oidc"],               # 承诺提供的能力方法名
+            config_form=([...], {...}),          # 该提供方的专属配置界面（vuetify
+                                                  # 模式），形状与 get_form() 相同；
+                                                  # 与 config_component 互斥，可选
+        )]
+
+        vue 模式改用 `config_component="OidcProviderConfig"`——本插件联邦远程中承载
+        该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
+        同时给出视为意图不明，整条声明被拒。登录入口本身在 vue 模式下固定渲染为
+        `AuthPage`，由宿主联邦机制原样注入，不受本字段影响；该配置界面归属这条
+        声明，不归属插件本身。
+
+        也可直接返回字段字典本身（不包 `AuthProviderDeclaration`），宿主按字典内容
+        取用展示字段，兼容早期写法，此时无法声明专属配置界面。
+
+        :return: `AuthProviderDeclaration` 列表；插件不提供登录认证入口时无需实现
         """
         pass
 
@@ -441,6 +503,26 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def provides_channel_capabilities(self) -> Optional[List[ChannelCapabilities]]:
+        """
+        声明本插件承载的消息渠道能力
+
+        返回示例：
+        [ChannelCapabilities(
+            channel="my_channel",                # 渠道标识，开放取值，不要求登记于
+                                                  # NotificationChannel 枚举
+            capabilities={ChannelCapability.MARKDOWN, ChannelCapability.IMAGES},
+            max_message_length=4000,
+        )]
+
+        返回值形状与 `get_channel_capabilities()` 相同，区别在于本钩子经契约
+        校验：渠道标识非空、能力集合须是 `ChannelCapability` 成员的集合，不合
+        契约的声明会被拒绝登记，不留到调用时才失败。
+
+        :return: `ChannelCapabilities` 列表；插件不作为消息渠道时无需实现
+        """
+        pass
+
     def provides_storages(self) -> Optional[List[StorageDeclaration]]:
         """
         声明本插件提供的存储后端
@@ -487,6 +569,30 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def provides_media_sources(self) -> Optional[List[MediaSourceDeclaration]]:
+        """
+        声明本插件提供的媒体数据源
+
+        返回示例：
+        [MediaSourceDeclaration(
+            media_source="acme.video",           # 规范媒体来源标识，须能被
+                                                  # MediaSource 解析——内置常量
+                                                  # 或形如 [a-z][a-z0-9._-]{0,63}
+                                                  # 的插件扩展标识
+            name="Acme Video",                   # 数据源展示名称
+            media_types=["电影", "电视剧"],       # 支持的媒体类型，可选
+        )]
+
+        识别、搜索、图片与 NFO 刮削的实际实现仍通过 provides_modules()/get_module()
+        按契约方法名分发，本声明只承载数据源自身的展示信息。
+
+        也可直接返回描述字典（不包 `MediaSourceDeclaration`），字典形态复用
+        get_media_source() 每项的字段名，兼容早期写法。
+
+        :return: `MediaSourceDeclaration` 列表；插件不提供媒体数据源时无需实现
+        """
+        pass
+
     def get_actions(self) -> List[Dict[str, Any]]:
         """
         获取插件工作流动作
@@ -500,6 +606,28 @@ class _PluginBase(metaclass=ABCMeta):
         对实现函数的要求：
         1、函数的第一个参数固定为 ActionContent 实例，如需要传递额外参数，在kwargs中定义
         2、函数的返回：执行状态 True / False，更新后的 ActionContent 实例
+        """
+        pass
+
+    def provides_actions(self) -> Optional[List[ActionDeclaration]]:
+        """
+        声明本插件提供的工作流动作
+
+        返回示例：
+        [ActionDeclaration(
+            action_id="my_action",               # 动作标识，工作流按此标识调用
+            name="我的动作",                      # 动作展示名称
+            impl=self.xxx,                       # 动作实现函数，首个位置参数固定
+                                                  # 为 ActionContext 实例，返回
+                                                  # (执行状态, 更新后的 ActionContext)
+                                                  # 二元组
+            kwargs={},                           # 需要附加传递的静态参数，可选
+        )]
+
+        也可直接返回描述字典（不包 `ActionDeclaration`），字典形态复用
+        get_actions() 每项的字段名（action_id/name/func/kwargs），兼容早期写法。
+
+        :return: `ActionDeclaration` 列表；插件不提供工作流动作时无需实现
         """
         pass
 
