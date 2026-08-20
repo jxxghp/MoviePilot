@@ -70,6 +70,15 @@ NOTICES: Mapping[str, DeprecationNotice] = {
         replacement="provides_modules() 等 provides_* 声明式注册钩子",
         reason="按方法名胁持内建模块实现，无契约校验、无归属记账、卸载不可回收",
     ),
+    "plugin.get_agent_tools": DeprecationNotice(
+        key="plugin.get_agent_tools",
+        subject="_PluginBase.get_agent_tools()",
+        stage=DeprecationStage.WARN,
+        since="v3.1.0",
+        remove_in="v3.3.0",
+        replacement="provides_agent_tools()",
+        reason="返回裸工具类列表，无契约校验、无归属记账、卸载不可回收",
+    ),
     "plugin.clone_by_source_copy": DeprecationNotice(
         key="plugin.clone_by_source_copy",
         subject="以复制源码目录方式创建插件分身",

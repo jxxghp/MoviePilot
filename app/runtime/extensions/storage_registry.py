@@ -123,17 +123,25 @@ class StorageBackendRegistry:
                 self._builtin_entries[entry.storage_id] = entry
         return entry.storage_id
 
-    def unregister(self, storage_id: str) -> bool:
+    def unregister(self, storage_id: str, owner: Optional[str] = None) -> bool:
         """
         注销指定存储标识的后端
 
         内建后端注销即真正腾空标识；覆盖了内建后端的登记被注销后，该标识按其
         最近一次内建登记的快照还原，不会因扩展停用而让内建后端整体消失。
 
+        给出 ``owner`` 时只注销当前仍归属该登记方的条目。标识被更晚的登记接管后，
+        原登记方停自己那一份不应连带把接管方踢掉——内建模块重启即属此列。
+
         :param storage_id: 存储标识
-        :return: 该标识原本已登记时为 True
+        :param owner: 注销方标识，为空时不校验归属
+        :return: 该标识原本已登记且归属校验通过时为 True
         """
         with self._lock:
+            if owner is not None:
+                current = self._entries.get(storage_id)
+                if current is None or current.owner != owner:
+                    return False
             return self._unregister_locked(storage_id)
 
     def _unregister_locked(self, storage_id: str) -> bool:

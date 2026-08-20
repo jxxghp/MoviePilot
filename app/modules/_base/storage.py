@@ -473,10 +473,14 @@ class _StorageModuleBase(_ModuleBase):
         return getattr(cls.storage_class, "schema", None)
 
     def stop(self) -> None:
-        """注销存储后端登记并释放存储操作对象。"""
+        """注销存储后端登记并释放存储操作对象。
+
+        注销时给出自身归属，标识若已被扩展接管则跳过——本模块停止不应连带撤掉
+        接管方的登记。
+        """
         storage_id = self.storage_id()
         if storage_id:
-            storage_backend_registry.unregister(storage_id)
+            storage_backend_registry.unregister(storage_id, owner=self.__class__.__name__)
         self._storage = None
 
     def test(self) -> Optional[Tuple[bool, str]]:

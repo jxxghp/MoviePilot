@@ -16,7 +16,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
-from app.runtime.extensions.declaration import StorageDeclaration
+from app.runtime.extensions.declaration import AgentToolDeclaration, StorageDeclaration
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
     instance_key,
@@ -472,6 +472,28 @@ class _PluginBase(metaclass=ABCMeta):
         2、工具类需要实现 run 方法（异步方法）
         3、工具类需要定义 name 和 description 属性
         4、工具类可以定义 args_schema 来指定输入参数模型
+        """
+        pass
+
+    def provides_agent_tools(self) -> Optional[List[AgentToolDeclaration]]:
+        """
+        声明本插件提供的智能体工具
+
+        返回示例：
+        [AgentToolDeclaration(
+            name="my_tool",                      # 工具名，供 Agent 识别并调用
+            description="工具功能说明",           # 工具描述，供 Agent 判断何时调用
+            capabilities=["my_tool"],            # 承诺提供的能力方法名
+            impl=MyTool,                         # 工具实现类，须继承
+                                                  # app.agent.tools.base.MoviePilotTool
+                                                  # 并实现异步的 run 方法；不合契约的声明
+                                                  # 会被拒绝登记，不留到调用时才失败
+        )]
+
+        也可直接返回实现类本身（不包 `AgentToolDeclaration`），宿主按类自身的 name、
+        description 字段取用标识，兼容早期写法。
+
+        :return: `AgentToolDeclaration` 列表；插件不提供智能体工具时无需实现
         """
         pass
 

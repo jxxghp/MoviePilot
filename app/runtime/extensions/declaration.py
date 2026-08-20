@@ -39,6 +39,23 @@ class StorageDeclaration(ExtensionDeclaration):
     schema: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class AgentToolDeclaration(ExtensionDeclaration):
+    """
+    智能体工具声明
+
+    ``name``/``description`` 是工具向宿主自报的标识与说明，作为声明数据独立于
+    ``impl``：宿主换实现语言、扩展改为独立进程时，这两个字段随其余声明数据
+    原样成为握手报文，``impl`` 不参与传输。
+
+    :param name: 工具名，供 Agent 识别并调用
+    :param description: 工具描述，供 Agent 判断何时调用该工具
+    """
+
+    name: str = ""
+    description: str = ""
+
+
 def declaration_schema(declaration: Any) -> Optional[str]:
     """
     读取声明自报的存储标识
@@ -50,6 +67,28 @@ def declaration_schema(declaration: Any) -> Optional[str]:
     if isinstance(schema, str) and schema.strip():
         return schema.strip()
     return None
+
+
+def declaration_agent_tool_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的工具名与描述
+
+    :param declaration: 智能体工具声明，或插件直接交出的实现类
+    :return: (工具名, 工具描述) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return _declared_text(declaration, "name"), _declared_text(declaration, "description")
+
+
+def _declared_text(declaration: Any, field: str) -> Optional[str]:
+    """
+    读取声明对象上的非空字符串字段
+
+    :param declaration: 声明对象
+    :param field: 字段名
+    :return: 去除首尾空白后的字符串；字段缺失、非字符串或全为空白时为 None
+    """
+    value = getattr(declaration, field, None)
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def declaration_impl(declaration: Any) -> Optional[Any]:

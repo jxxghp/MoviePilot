@@ -27,6 +27,7 @@ from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.deprecation.policy import warn as deprecation_warn
 from app.runtime.extensions.contract import ExtensionDistribution, supports_extension_hook
 from app.runtime.extensions.declaration import declaration_impl, declaration_schema
 from app.runtime.extensions.instance import (
@@ -2274,6 +2275,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_agent_tools(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件智能体工具
+
+        聚合两条来源：`provides_agent_tools()` 声明式登记（经契约校验）与
+        `get_agent_tools()` 裸类列表（后者已进入废弃期，触达即告警一次）；
+        同一实例两条来源皆有声明时工具列表合并。
         [{
             "plugin_id": "插件ID",
             "plugin_name": "插件名称",
@@ -2288,21 +2293,30 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             if cached_tools is not None:
                 return self._copy_plugin_agent_tools(cached_tools)
 
+            declared_tools = self._plugin_projection().provided_agent_tools(pid)
             ret_tools = []
             for extension_id, plugin in self._matching_instances(pid):
+                tools: List[Any] = [
+                    declaration_impl(item)
+                    for item in declared_tools.get(extension_id, [])
+                ]
                 if supports_extension_hook(plugin, "get_agent_tools"):
                     try:
-                        if not plugin.get_state():
-                            continue
-                        tools = plugin.get_agent_tools()
-                        if tools:
-                            ret_tools.append({
-                                "plugin_id": extension_id,
-                                "plugin_name": plugin.plugin_name,
-                                "tools": tools
-                            })
+                        if plugin.get_state():
+                            legacy_tools = plugin.get_agent_tools()
+                            if legacy_tools:
+                                deprecation_warn(
+                                    "plugin.get_agent_tools", context=extension_id
+                                )
+                                tools.extend(legacy_tools)
                     except Exception as e:
                         logger.error(f"获取插件 {extension_id} 智能体工具出错：{str(e)}")
+                if tools:
+                    ret_tools.append({
+                        "plugin_id": extension_id,
+                        "plugin_name": plugin.plugin_name,
+                        "tools": tools
+                    })
             with self._plugin_agent_tools_cache_lock:
                 if cache_revision != self._plugin_agent_tools_revision:
                     # 插件状态在注册表构建期间发生变化，重新读取以避免写回过期快照。

@@ -13,6 +13,9 @@ from app.runtime.extensions.instance import (
     matches_extension,
     split_instance_key,
 )
+from app.runtime.extensions.plugin.agent_tool_capabilities import (
+    agent_tool_declaration_violation,
+)
 from app.runtime.extensions.plugin.storage_capabilities import storage_declaration_violation
 from app.runtime.deprecation.policy import warn as deprecation_warn
 from app.runtime.log import logger as default_logger
@@ -780,6 +783,42 @@ class PluginProjection:
                 if violation:
                     self._logger.error(
                         f"插件[{extension_id}]声明的存储 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    def provided_agent_tools(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的智能体工具。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其智能体工具声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_agent_tools"
+            ):
+                continue
+            try:
+                declared = plugin.provides_agent_tools() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} 智能体工具声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            for item in declared:
+                violation = agent_tool_declaration_violation(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的智能体工具 {item!r} 不合登记契约，"
                         f"已跳过：{violation}"
                     )
                     continue

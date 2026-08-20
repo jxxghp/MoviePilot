@@ -23,6 +23,22 @@ def _get_llm_provider_runtime() -> Any:
     return LLMProviderManager()
 
 
+def _configure_agent_tool_contract_base() -> None:
+    """把智能体工具基类注入插件工具声明的契约校验。
+
+    插件的启动次序排在模块服务之后，本函数在模块服务阶段的 `init_agent()` 中
+    执行，早于插件加载；使插件登记 `provides_agent_tools()` 时基类已就绪，
+    能够判定实现类的真实继承关系。与是否启用 AI 智能体功能无关，因此不受
+    `AI_AGENT_ENABLE` 开关影响。
+    """
+    from app.agent.tools.base import MoviePilotTool
+    from app.runtime.extensions.plugin.agent_tool_capabilities import (
+        configure_agent_tool_base,
+    )
+
+    configure_agent_tool_base(MoviePilotTool)
+
+
 # 嵌入式启动器可显式注入 manager；常规进程使用 Capability Runtime。
 agent_manager: Any = None
 
@@ -113,6 +129,7 @@ class AgentInitializer:
         初始化AI智能体管理器
         """
         try:
+            _configure_agent_tool_contract_base()
             self._shutdown_complete = False
             if agent_manager is not None:
                 if not settings.AI_AGENT_ENABLE:

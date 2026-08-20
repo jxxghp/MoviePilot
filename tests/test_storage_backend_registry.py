@@ -23,6 +23,7 @@ from app.modules.u115 import U115Module
 from app.modules.u115.u115 import U115Pan
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.storage_registry import (
+    StorageBackendRegistry,
     storage_backend_identity,
     storage_backend_registry,
 )
@@ -318,3 +319,31 @@ def test_file_uri_round_trips_free_identity_storage(memory_module):
     assert file_uri.storage == "memfs"
     assert file_uri.path == "/media/anime"
     assert file_uri.uri == "memfs:/media/anime"
+
+
+def test_builtin_restart_does_not_evict_an_extension_override() -> None:
+    """内建模块重启不会踢掉扩展对同一标识的接管。
+
+    内建停止时按标识注销，而该标识此刻可能已被扩展接管。注销若不校验归属，
+    弹出的就是接管方那条，随后内建快照又把取值还原回内建——扩展的登记在一次
+    与它无关的内建重启中被静默抹掉。注销带上自身归属才能挡住这条路径。
+    """
+    registry = StorageBackendRegistry()
+
+    class _BuiltinBackend:
+        """内建存储后端桩。"""
+        schema = "restart_probe"
+
+    class _ExtensionBackend:
+        """扩展提供的同标识存储后端桩。"""
+        schema = "restart_probe"
+
+    registry.register(_BuiltinBackend, ExtensionDistribution.BUILTIN, owner="ProbeModule")
+    registry.register(_ExtensionBackend, ExtensionDistribution.MARKET, owner="ProbePlugin@default")
+
+    assert registry.unregister("restart_probe", owner="ProbeModule") is False
+    assert registry.find("restart_probe").owner == "ProbePlugin@default"
+
+    # 接管方自己撤销后，标识按内建快照还原
+    registry.unregister_owner("ProbePlugin@default")
+    assert registry.find("restart_probe").owner == "ProbeModule"
