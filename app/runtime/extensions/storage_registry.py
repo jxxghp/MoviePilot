@@ -1,8 +1,12 @@
-"""存储后端注册表：按存储标识查得可用的存储实现。
+"""存储后端注册表：按存储令牌查得可用的存储实现。
 
 登记由各存储模块的生命周期驱动：模块启动时把自己承载的后端登记进来，
 模块停止时注销。整理编排需要成对的源、目标存储操作对象，无法经分发取得，
 本表即为这类按标识直取的唯一入口。
+
+同一存储标识下可登记多个具名实例，登记键为 ``(存储标识, 实例名)``。未给出实例名的
+登记占据该标识的默认实例位，裸令牌 ``u115`` 即指向它；具名登记以 ``u115@work``
+形式的令牌取用。覆盖与内建快照还原按整条登记键进行，不同实例之间互不影响。
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.instance import describe_instance_candidates
 from app.runtime.log import logger
 from app.schemas.file import FileURI
 
@@ -43,6 +48,8 @@ class StorageBackendEntry:
         (组件树, 默认数据) 二元组
     :param config_component: 登记方为该存储标识声明的 vue 模式配置组件，
         形状为 ``{"component": 组件名, "remote": 联邦远程入口描述}``
+    :param instance: 实例名，为 None 表示本条登记占据该存储标识的默认实例位
+    :param is_default: 本条具名登记是否为该存储标识的默认实例
     """
 
     storage_id: str
@@ -51,6 +58,26 @@ class StorageBackendEntry:
     owner: Optional[str] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[Dict[str, Any]] = None
+    instance: Optional[str] = None
+    is_default: bool = False
+
+    @property
+    def storage(self) -> str:
+        """
+        本条登记的存储令牌
+
+        :return: 存储令牌，未具名实例即裸存储标识
+        """
+        return FileURI.join_storage(self.storage_id, self.instance)
+
+    @property
+    def key(self) -> Tuple[str, Optional[str]]:
+        """
+        本条登记在注册表中的键
+
+        :return: (存储标识, 实例名) 二元组
+        """
+        return self.storage_id, self.instance
 
     def supports(self, method: Optional[str] = None) -> bool:
         """
@@ -75,14 +102,17 @@ def build_storage_entry(backend: Any,
                         owner: Optional[str] = None,
                         storage_id: Optional[str] = None,
                         config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
-                        config_component: Optional[Dict[str, Any]] = None
+                        config_component: Optional[Dict[str, Any]] = None,
+                        instance: Optional[str] = None,
+                        is_default: bool = False
                         ) -> Optional[StorageBackendEntry]:
     """
     构造登记项，标识优先取调用方显式给定的值，否则从后端声明推导
 
     显式标识用于登记方持有自己一套声明数据、不依赖内省后端类取得标识的场景——
     例如按 ``StorageDeclaration.schema`` 登记的扩展存储，其标识来自声明字段而非
-    ``impl.schema``，两者允许不同。
+    ``impl.schema``，两者允许不同。标识只承载存储类型，实例名另经 ``instance``
+    给出，带实例分隔符的标识按非法处理。
 
     :param backend: 存储后端类
     :param distribution: 后端的发行方式
@@ -92,7 +122,9 @@ def build_storage_entry(backend: Any,
         不给出时该标识没有专属界面
     :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
         不给出时该标识没有专属界面
-    :return: 登记项；标识缺失或无法作为路径前缀时为 None
+    :param instance: 实例名，为空表示登记为该标识的默认实例
+    :param is_default: 该具名实例是否为该标识的默认实例，未具名时不生效
+    :return: 登记项；标识缺失、无法作为路径前缀或实例名不合法时为 None
     """
     identity = (storage_id or "").strip() or storage_backend_identity(backend)
     source = owner or getattr(backend, "__name__", backend)
@@ -102,6 +134,10 @@ def build_storage_entry(backend: Any,
     if not FileURI.is_storage_scheme(identity):
         logger.error(f"【存储】{source} 的存储标识 {identity} 不能作为路径前缀，无法登记")
         return None
+    instance_name = (instance or "").strip() or None
+    if instance_name is not None and not FileURI.is_storage_instance(instance_name):
+        logger.error(f"【存储】{source} 的存储实例名 {instance_name} 不合法，无法登记")
+        return None
     return StorageBackendEntry(
         storage_id=identity,
         backend=backend,
@@ -109,28 +145,35 @@ def build_storage_entry(backend: Any,
         owner=owner,
         config_form=config_form,
         config_component=config_component,
+        instance=instance_name,
+        is_default=bool(is_default) and instance_name is not None,
     )
 
 
 class StorageBackendRegistry:
-    """按存储标识登记存储后端。"""
+    """按 (存储标识, 实例名) 登记存储后端。"""
 
     def __init__(self) -> None:
         """创建登记表。"""
         self._lock = threading.RLock()
-        self._entries: dict[str, StorageBackendEntry] = {}
+        self._entries: dict[Tuple[str, Optional[str]], StorageBackendEntry] = {}
         # 内建后端最近一次登记的快照，覆盖登记被撤销时据此还原内建取值
-        self._builtin_entries: dict[str, StorageBackendEntry] = {}
+        self._builtin_entries: dict[Tuple[str, Optional[str]], StorageBackendEntry] = {}
 
     def register(self, backend: Any,
                  distribution: ExtensionDistribution = ExtensionDistribution.BUILTIN,
                  owner: Optional[str] = None,
                  storage_id: Optional[str] = None,
                  config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
-                 config_component: Optional[Dict[str, Any]] = None
+                 config_component: Optional[Dict[str, Any]] = None,
+                 instance: Optional[str] = None,
+                 is_default: bool = False
                  ) -> Optional[str]:
         """
-        登记一个存储后端，同标识重复登记以最新一次为准
+        登记一个存储后端，同一 (存储标识, 实例名) 重复登记以最新一次为准
+
+        不给实例名即登记为该标识的默认实例，与只有单一实现时的行为一致；给出实例名
+        则与同标识的其它实例并存，互不覆盖。
 
         :param backend: 存储后端类
         :param distribution: 后端的发行方式
@@ -140,76 +183,97 @@ class StorageBackendRegistry:
             不给出时沿用既有调用点不传该参数时的行为
         :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
             不给出时沿用既有调用点不传该参数时的行为
-        :return: 登记成功的存储标识；登记失败时为 None
+        :param instance: 实例名，为空表示登记为该标识的默认实例
+        :param is_default: 该具名实例是否为该标识的默认实例，未具名时不生效
+        :return: 登记成功的存储令牌；登记失败时为 None
         """
         entry = build_storage_entry(
-            backend, distribution, owner, storage_id, config_form, config_component
+            backend, distribution, owner, storage_id, config_form, config_component,
+            instance, is_default
         )
         if not entry:
             return None
         with self._lock:
-            self._entries[entry.storage_id] = entry
+            self._entries[entry.key] = entry
             if distribution == ExtensionDistribution.BUILTIN:
-                self._builtin_entries[entry.storage_id] = entry
-        return entry.storage_id
+                self._builtin_entries[entry.key] = entry
+        return entry.storage
 
-    def unregister(self, storage_id: str, owner: Optional[str] = None) -> bool:
+    def unregister(self, storage: str, owner: Optional[str] = None,
+                   instance: Optional[str] = None) -> bool:
         """
-        注销指定存储标识的后端
+        注销指定存储令牌的后端
 
-        内建后端注销即真正腾空标识；覆盖了内建后端的登记被注销后，该标识按其
+        内建后端注销即真正腾空该实例位；覆盖了内建后端的登记被注销后，该实例位按其
         最近一次内建登记的快照还原，不会因扩展停用而让内建后端整体消失。
 
-        给出 ``owner`` 时只注销当前仍归属该登记方的条目。标识被更晚的登记接管后，
+        给出 ``owner`` 时只注销当前仍归属该登记方的条目。实例位被更晚的登记接管后，
         原登记方停自己那一份不应连带把接管方踢掉——内建模块重启即属此列。
 
-        :param storage_id: 存储标识
+        :param storage: 存储令牌，如 u115 或 u115@work
         :param owner: 注销方标识，为空时不校验归属
-        :return: 该标识原本已登记且归属校验通过时为 True
+        :param instance: 实例名，给出时覆盖令牌中携带的实例名
+        :return: 该实例位原本已登记且归属校验通过时为 True
+        :raises ValueError: 存储令牌带实例分隔符但不合法
         """
+        if not storage:
+            return False
+        key = self._entry_key(storage, instance)
         with self._lock:
             if owner is not None:
-                current = self._entries.get(storage_id)
+                current = self._entries.get(key)
                 if current is None or current.owner != owner:
                     return False
-            return self._unregister_locked(storage_id)
+            return self._unregister_locked(key)
 
-    def _unregister_locked(self, storage_id: str) -> bool:
+    @staticmethod
+    def _entry_key(storage: str, instance: Optional[str] = None) -> Tuple[str, Optional[str]]:
         """
-        在已持有锁的前提下注销一个存储标识，供内部批量操作复用
+        把存储令牌与显式实例名合成登记键
 
-        :param storage_id: 存储标识
-        :return: 该标识原本已登记时为 True
+        :param storage: 存储令牌
+        :param instance: 实例名，给出时覆盖令牌中携带的实例名
+        :return: (存储标识, 实例名) 二元组
+        :raises ValueError: 存储令牌带实例分隔符但不合法
         """
-        removed = self._entries.pop(storage_id, None)
+        identity, token_instance = FileURI.split_storage(storage)
+        return identity, instance if instance is not None else token_instance
+
+    def _unregister_locked(self, key: Tuple[str, Optional[str]]) -> bool:
+        """
+        在已持有锁的前提下注销一条登记，供内部批量操作复用
+
+        :param key: (存储标识, 实例名) 二元组
+        :return: 该实例位原本已登记时为 True
+        """
+        removed = self._entries.pop(key, None)
         if removed is None:
             return False
         if removed.distribution == ExtensionDistribution.BUILTIN:
-            self._builtin_entries.pop(storage_id, None)
+            self._builtin_entries.pop(key, None)
         else:
-            builtin_entry = self._builtin_entries.get(storage_id)
+            builtin_entry = self._builtin_entries.get(key)
             if builtin_entry is not None:
-                self._entries[storage_id] = builtin_entry
+                self._entries[key] = builtin_entry
         return True
 
     def unregister_owner(self, owner: str) -> tuple[str, ...]:
         """
-        注销指定登记方当前仍生效的全部存储标识
+        注销指定登记方当前仍生效的全部存储登记
 
         条目一旦被更晚的登记覆盖，owner 随之更新为新的登记方，因此本方法只回收
-        标识当前仍归属该登记方的条目，不会波及后来居上、已接管同一标识的登记方。
+        当前仍归属该登记方的条目，不会波及后来居上、已接管同一实例位的登记方。
 
         :param owner: 登记方标识
-        :return: 被注销的存储标识元组
+        :return: 被注销的存储令牌元组
         """
         with self._lock:
             owned = tuple(
-                storage_id for storage_id, entry in self._entries.items()
-                if entry.owner == owner
+                entry for entry in self._entries.values() if entry.owner == owner
             )
-            for storage_id in owned:
-                self._unregister_locked(storage_id)
-            return owned
+            for entry in owned:
+                self._unregister_locked(entry.key)
+            return tuple(entry.storage for entry in owned)
 
     def entries(self) -> tuple[StorageBackendEntry, ...]:
         """
@@ -222,49 +286,126 @@ class StorageBackendRegistry:
 
     def storage_ids(self) -> tuple[str, ...]:
         """
-        列出当前可用的全部存储标识
+        列出当前可用的全部存储标识，同标识的多个实例只出现一次
 
         :return: 存储标识元组
         """
-        return tuple(entry.storage_id for entry in self.entries())
+        return tuple(dict.fromkeys(entry.storage_id for entry in self.entries()))
 
-    def find(self, storage_id: str,
-             method: Optional[str] = None) -> Optional[StorageBackendEntry]:
+    def storage_tokens(self) -> tuple[str, ...]:
         """
-        查找指定存储标识的登记项
+        列出当前可用的全部存储令牌，具名实例各占一项
+
+        :return: 存储令牌元组
+        """
+        return tuple(entry.storage for entry in self.entries())
+
+    def instances(self, storage_id: str) -> tuple[StorageBackendEntry, ...]:
+        """
+        列出指定存储标识下的全部实例登记
 
         :param storage_id: 存储标识
-        :param method: 需要后端提供的操作方法名，为空表示不限定操作
-        :return: 登记项；未登记或不提供该操作时为 None
+        :return: 登记项元组，按实例名升序排列，未具名实例排在最前
         """
+        return tuple(sorted(
+            (entry for entry in self.entries() if entry.storage_id == storage_id),
+            key=lambda item: (item.instance is not None, item.instance or ""),
+        ))
+
+    def default_entry(self, storage_id: str) -> Optional[StorageBackendEntry]:
+        """
+        裁决指定存储标识的默认实例
+
+        未具名的登记就是该标识的默认实例位，优先命中；全部为具名实例时只认唯一一个
+        被标记为默认的实例。没有默认、或多个实例同时自称默认，一律报错而不按登记顺序
+        取任意一个——默认已停用的实例在本表中即已注销，与从未标记过默认同属无默认。
+
+        :param storage_id: 存储标识
+        :return: 默认实例的登记项；该标识一条登记都没有时为 None
+        :raises LookupError: 该标识有登记但无法裁决出默认实例
+        """
+        with self._lock:
+            unnamed = self._entries.get((storage_id, None))
+            if unnamed is not None:
+                return unnamed
+            named = [
+                entry for entry in self._entries.values()
+                if entry.storage_id == storage_id
+            ]
+        if not named:
+            return None
+        marked = [entry for entry in named if entry.is_default]
+        if len(marked) == 1:
+            return marked[0]
+        candidates = describe_instance_candidates(
+            (entry.instance, True)
+            for entry in sorted(named, key=lambda item: item.instance or "")
+        )
+        if marked:
+            raise LookupError(
+                f"存储 {storage_id} 有多个实例被标记为默认，调用必须显式指定实例；"
+                f"可选实例：{candidates}"
+            )
+        raise LookupError(
+            f"存储 {storage_id} 未设置默认实例，调用必须显式指定实例；"
+            f"可选实例：{candidates}"
+        )
+
+    def find(self, storage: str, method: Optional[str] = None,
+             instance: Optional[str] = None) -> Optional[StorageBackendEntry]:
+        """
+        查找指定存储令牌的登记项
+
+        令牌未带实例名且未显式给出实例名时走默认实例裁决。
+
+        :param storage: 存储令牌，如 u115 或 u115@work
+        :param method: 需要后端提供的操作方法名，为空表示不限定操作
+        :param instance: 实例名，给出时覆盖令牌中携带的实例名
+        :return: 登记项；未登记或不提供该操作时为 None
+        :raises ValueError: 存储令牌带实例分隔符但不合法
+        :raises LookupError: 未指定实例，且该标识有登记但无法裁决出默认实例
+        """
+        if not storage:
+            return None
+        storage_id, selected = self._entry_key(storage, instance)
         if not storage_id:
             return None
-        with self._lock:
-            entry = self._entries.get(storage_id)
+        if selected is not None:
+            with self._lock:
+                entry = self._entries.get((storage_id, selected))
+        else:
+            entry = self.default_entry(storage_id)
         if not entry or not entry.supports(method):
             return None
         return entry
 
-    def resolve(self, storage_id: str, method: Optional[str] = None) -> Optional[Any]:
+    def resolve(self, storage: str, method: Optional[str] = None,
+                instance: Optional[str] = None) -> Optional[Any]:
         """
-        取得指定存储标识的操作对象
+        取得指定存储令牌的操作对象
 
-        :param storage_id: 存储标识
+        :param storage: 存储令牌，如 u115 或 u115@work
         :param method: 需要后端提供的操作方法名，为空表示不限定操作
+        :param instance: 实例名，给出时覆盖令牌中携带的实例名
         :return: 存储操作对象；未登记或不提供该操作时为 None
+        :raises ValueError: 存储令牌带实例分隔符但不合法
+        :raises LookupError: 未指定实例，且该标识有登记但无法裁决出默认实例
         """
-        entry = self.find(storage_id, method)
+        entry = self.find(storage, method, instance)
         return entry.create() if entry else None
 
     def diagnose(self) -> list[dict[str, Any]]:
         """
         输出只读的登记诊断信息
 
-        :return: 每个存储标识的标识、发行方式与提供方
+        :return: 每条登记的存储令牌、存储标识、实例名、是否默认、发行方式与提供方
         """
         return [
             {
-                "storage": entry.storage_id,
+                "storage": entry.storage,
+                "storage_id": entry.storage_id,
+                "instance": entry.instance,
+                "default": entry.is_default,
                 "distribution": entry.distribution.value,
                 "owner": entry.owner,
             }

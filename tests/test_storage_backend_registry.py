@@ -347,3 +347,188 @@ def test_builtin_restart_does_not_evict_an_extension_override() -> None:
     # 接管方自己撤销后，标识按内建快照还原
     registry.unregister_owner("ProbePlugin@default")
     assert registry.find("restart_probe").owner == "ProbeModule"
+
+
+class _NamedInstanceBackend:
+    """按实例登记的存储后端桩。"""
+
+    schema = "multi_probe"
+
+
+class _OtherNamedInstanceBackend:
+    """同标识另一实例的存储后端桩。"""
+
+    schema = "multi_probe"
+
+
+def test_same_identity_holds_several_named_instances() -> None:
+    """同一存储标识下的多个具名实例并存，互不覆盖，各自按令牌取用。"""
+    registry = StorageBackendRegistry()
+
+    assert registry.register(_NamedInstanceBackend, instance="work") == "multi_probe@work"
+    assert registry.register(_OtherNamedInstanceBackend, instance="home") == "multi_probe@home"
+
+    assert registry.find("multi_probe@work").backend is _NamedInstanceBackend
+    assert registry.find("multi_probe@home").backend is _OtherNamedInstanceBackend
+    assert registry.storage_ids() == ("multi_probe",)
+    assert set(registry.storage_tokens()) == {"multi_probe@work", "multi_probe@home"}
+    assert [entry.instance for entry in registry.instances("multi_probe")] == ["home", "work"]
+
+
+def test_unnamed_registration_is_the_default_instance() -> None:
+    """未具名登记占据默认实例位，裸令牌与今天一样直接命中它。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend)
+    registry.register(_OtherNamedInstanceBackend, instance="work")
+
+    assert registry.find("multi_probe").backend is _NamedInstanceBackend
+    assert registry.find("multi_probe").instance is None
+    assert registry.default_entry("multi_probe").backend is _NamedInstanceBackend
+    assert registry.find("multi_probe@work").backend is _OtherNamedInstanceBackend
+
+
+def test_marked_named_instance_serves_the_bare_token() -> None:
+    """全为具名实例时，被显式标记为默认的那个承接不指定实例的调用。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, instance="work")
+    registry.register(_OtherNamedInstanceBackend, instance="home", is_default=True)
+
+    assert registry.find("multi_probe").backend is _OtherNamedInstanceBackend
+    assert type(registry.resolve("multi_probe")) is _OtherNamedInstanceBackend
+
+
+def test_missing_default_reports_candidates_instead_of_taking_the_first() -> None:
+    """无默认实例时报错并列出候选，绝不按登记顺序取第一个。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, instance="work")
+    registry.register(_OtherNamedInstanceBackend, instance="home")
+
+    with pytest.raises(LookupError) as excinfo:
+        registry.find("multi_probe")
+
+    message = str(excinfo.value)
+    assert "未设置默认实例" in message
+    assert "home" in message and "work" in message
+
+
+def test_several_self_claimed_defaults_count_as_no_default() -> None:
+    """多个实例同时自称默认即无法裁决，一律报错并列出候选。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
+    registry.register(_OtherNamedInstanceBackend, instance="home", is_default=True)
+
+    with pytest.raises(LookupError) as excinfo:
+        registry.resolve("multi_probe")
+
+    assert "多个实例被标记为默认" in str(excinfo.value)
+
+
+def test_unregistered_identity_still_reports_absence_not_error() -> None:
+    """一条登记都没有的标识仍返回 None，不改成报错。"""
+    registry = StorageBackendRegistry()
+
+    assert registry.find("multi_probe") is None
+    assert registry.resolve("multi_probe") is None
+    assert registry.default_entry("multi_probe") is None
+    assert registry.find("multi_probe@work") is None
+
+
+def test_default_instance_stops_serving_after_it_is_unregistered() -> None:
+    """默认实例注销后等同于无默认，报错而不改走另一个已登记实例。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
+    registry.register(_OtherNamedInstanceBackend, instance="home")
+    registry.unregister("multi_probe@work")
+
+    assert registry.find("multi_probe@home").backend is _OtherNamedInstanceBackend
+    with pytest.raises(LookupError):
+        registry.find("multi_probe")
+
+
+def test_instance_takeover_checks_ownership_per_instance() -> None:
+    """归属校验按实例位进行，接管某个实例不影响同标识其它实例的回收。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, ExtensionDistribution.BUILTIN,
+                      owner="ProbeModule", instance="work")
+    registry.register(_OtherNamedInstanceBackend, ExtensionDistribution.MARKET,
+                      owner="ProbePlugin@default", instance="work")
+    registry.register(_NamedInstanceBackend, ExtensionDistribution.BUILTIN,
+                      owner="ProbeModule", instance="home")
+
+    # 内建按自身归属注销被接管的实例位不生效，接管方仍在
+    assert registry.unregister("multi_probe@work", owner="ProbeModule") is False
+    assert registry.find("multi_probe@work").owner == "ProbePlugin@default"
+    # 同标识另一实例仍归内建，正常注销
+    assert registry.unregister("multi_probe@home", owner="ProbeModule") is True
+
+    # 接管方撤销后，被覆盖的内建实例位按快照还原
+    registry.unregister_owner("ProbePlugin@default")
+    assert registry.find("multi_probe@work").owner == "ProbeModule"
+
+
+def test_unregister_owner_returns_storage_tokens() -> None:
+    """按登记方回收返回的是存储令牌，具名实例可与默认实例区分。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, ExtensionDistribution.MARKET,
+                      owner="ProbePlugin@default")
+    registry.register(_OtherNamedInstanceBackend, ExtensionDistribution.MARKET,
+                      owner="ProbePlugin@default", instance="work")
+
+    assert set(registry.unregister_owner("ProbePlugin@default")) == {
+        "multi_probe", "multi_probe@work"
+    }
+    assert registry.storage_tokens() == ()
+
+
+def test_registry_rejects_malformed_instance_name() -> None:
+    """实例名不合法的登记被拒绝，不会造出无法用 URI 表达的实例位。"""
+    registry = StorageBackendRegistry()
+
+    assert registry.register(_NamedInstanceBackend, instance="wo rk") is None
+    assert registry.register(_NamedInstanceBackend, instance="wo:rk") is None
+    assert registry.register(_NamedInstanceBackend, storage_id="multi_probe@work") is None
+    assert registry.storage_tokens() == ()
+
+
+def test_registry_diagnose_reports_instances() -> None:
+    """诊断信息按登记逐条给出存储令牌、实例名与默认标记。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
+    diagnosed = registry.diagnose()[0]
+
+    assert diagnosed["storage"] == "multi_probe@work"
+    assert diagnosed["storage_id"] == "multi_probe"
+    assert diagnosed["instance"] == "work"
+    assert diagnosed["default"] is True
+
+
+def test_named_instance_uri_resolves_through_the_registry() -> None:
+    """带实例名的 URI 经注册表取到该实例的后端，裸 URI 仍取默认实例。"""
+    registry = StorageBackendRegistry()
+
+    registry.register(_NamedInstanceBackend)
+    registry.register(_OtherNamedInstanceBackend, instance="work")
+
+    for uri, expected in (
+        ("multi_probe:/media", _NamedInstanceBackend),
+        ("multi_probe@work:/media", _OtherNamedInstanceBackend),
+    ):
+        file_uri = FileURI.from_uri(uri)
+        assert file_uri.uri == uri
+        assert registry.find(file_uri.storage).backend is expected
+
+
+def test_builtin_module_registers_the_default_instance(storage_modules) -> None:
+    """内建存储模块登记的是各自标识的默认实例，不带实例名。"""
+    for storage_id, _, _ in BUILTIN_STORAGE_MODULES:
+        entry = storage_backend_registry.find(storage_id)
+        assert entry.instance is None
+        assert entry.storage == storage_id

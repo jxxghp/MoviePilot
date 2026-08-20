@@ -2,7 +2,7 @@ import re
 from typing import Optional
 
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.schemas.types import StorageSchema
 
 # Windows 盘符绝对路径，如 Z:/Downloads 或 Z:\Downloads
@@ -11,16 +11,49 @@ WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 # 存储标识：字母开头且长度不小于 2，与单字母的 Windows 盘符区分开
 _STORAGE_SCHEME_EXPR = r"[A-Za-z][A-Za-z0-9_.+-]+"
 _STORAGE_SCHEME_PATTERN = re.compile(rf"^{_STORAGE_SCHEME_EXPR}$")
-_STORAGE_URI_PATTERN = re.compile(rf"^({_STORAGE_SCHEME_EXPR}):(.*)$", re.DOTALL)
+
+# 存储实例名与存储标识之间的分隔符，如 u115@work
+STORAGE_INSTANCE_SEPARATOR = "@"
+
+# 存储实例名的最大长度
+STORAGE_INSTANCE_MAX_LENGTH = 64
+
+# 存储实例名：非空、不含空白与控制字符，且不含 : / \ @ 四个会造成歧义解析的分隔符
+_STORAGE_INSTANCE_EXPR = rf"[^\x00-\x20\x7f:/\\@]{{1,{STORAGE_INSTANCE_MAX_LENGTH}}}"
+_STORAGE_INSTANCE_PATTERN = re.compile(rf"^{_STORAGE_INSTANCE_EXPR}$")
+
+# 存储令牌：存储标识，可选带一个实例名
+_STORAGE_TOKEN_PATTERN = re.compile(
+    rf"^({_STORAGE_SCHEME_EXPR})(?:{STORAGE_INSTANCE_SEPARATOR}({_STORAGE_INSTANCE_EXPR}))?$"
+)
 
 
 class FileURI(BaseModel):
-    """带存储类型的文件 URI。"""
+    """带存储类型的文件 URI。
+
+    ``storage`` 存放存储令牌，形如 ``u115`` 或 ``u115@work``：前者指该存储类型的
+    默认实例，后者指该类型下名为 ``work`` 的具名实例。实例名不得含 ``:``、``/``、
+    ``\\``、``@``、空白与控制字符，长度不超过 64。
+    """
 
     # 文件路径
     path: Optional[str] = "/"
-    # 存储类型
+    # 存储令牌，形如 u115 或 u115@work
     storage: Optional[str] = Field(default=StorageSchema.Local.value)
+
+    @field_validator("storage")
+    @classmethod
+    def _check_storage_token(cls, value: Optional[str]) -> Optional[str]:
+        """
+        校验存储令牌中的实例名写法，不合法即拒绝而不退回默认实例
+
+        :param value: 存储令牌
+        :return: 原样返回的存储令牌
+        :raises ValueError: 令牌带实例分隔符但实例名或存储标识不合法
+        """
+        if value and STORAGE_INSTANCE_SEPARATOR in value:
+            cls.split_storage(value)
+        return value
 
     @property
     def uri(self) -> str:
@@ -29,36 +62,117 @@ class FileURI(BaseModel):
         """
         return self.path if self.storage == StorageSchema.Local.value else f"{self.storage}:{self.path}"
 
+    @property
+    def storage_id(self) -> str:
+        """
+        存储令牌中的存储标识部分
+
+        :return: 存储标识
+        """
+        return self.split_storage(self.storage)[0]
+
+    @property
+    def storage_instance(self) -> Optional[str]:
+        """
+        存储令牌中的实例名部分
+
+        :return: 实例名；令牌未带实例名时为 None
+        """
+        return self.split_storage(self.storage)[1]
+
     @classmethod
     def is_storage_scheme(cls, value: str) -> bool:
         """
-        判断字符串能否作为文件 URI 的存储前缀
+        判断字符串能否作为文件 URI 的存储标识
 
         :param value: 待判断的存储标识
-        :return: 可作为存储前缀时为 True
+        :return: 可作为存储标识时为 True
         """
         return bool(value) and bool(_STORAGE_SCHEME_PATTERN.match(value))
 
     @classmethod
+    def is_storage_instance(cls, value: str) -> bool:
+        """
+        判断字符串能否作为存储实例名
+
+        :param value: 待判断的实例名
+        :return: 可作为实例名时为 True
+        """
+        return bool(value) and bool(_STORAGE_INSTANCE_PATTERN.match(value))
+
+    @classmethod
+    def join_storage(cls, storage_id: str, instance: Optional[str] = None) -> str:
+        """
+        把存储标识与实例名拼成存储令牌
+
+        :param storage_id: 存储标识
+        :param instance: 实例名，为空表示该类型的默认实例
+        :return: 存储令牌
+        """
+        if not instance:
+            return storage_id or ""
+        return f"{storage_id}{STORAGE_INSTANCE_SEPARATOR}{instance}"
+
+    @classmethod
+    def split_storage(cls, storage: Optional[str]) -> tuple[str, Optional[str]]:
+        """
+        拆分存储令牌为存储标识与实例名
+
+        不带实例分隔符的令牌原样作为存储标识返回，实例名为 None，表示该存储类型的
+        默认实例；此时不校验标识本身的写法，按标识直取的既有调用不受影响。
+
+        :param storage: 存储令牌，如 u115 或 u115@work
+        :return: 存储标识与实例名；令牌未带实例名时实例名为 None
+        :raises ValueError: 令牌带实例分隔符但整体不是合法令牌
+        """
+        value = storage or ""
+        if not value:
+            return "", None
+        matched = _STORAGE_TOKEN_PATTERN.match(value)
+        if matched:
+            return matched.group(1), matched.group(2)
+        if STORAGE_INSTANCE_SEPARATOR in value:
+            raise ValueError(
+                f"存储令牌 {value} 不合法：存储标识需为字母开头、长度不小于 2，"
+                f"实例名需为 1-{STORAGE_INSTANCE_MAX_LENGTH} 个字符且不含空白或 : / \\ @"
+            )
+        return value, None
+
+    @classmethod
     def split_uri(cls, uri: str) -> tuple[Optional[str], str]:
         """
-        拆分文件 URI 的存储前缀与路径，路径原样保留
+        拆分文件 URI 的存储令牌与路径，路径原样保留
 
-        :param uri: 文件 URI，如 /media/movie、u115:/media/movie 或 Windows 盘符路径 Z:/media
-        :return: 存储标识与去掉前缀的路径；无存储前缀时存储标识为 None
+        存储令牌只在首个冒号之前的一段中识别，该段含路径分隔符时一律视为路径本身；
+        该段带实例分隔符却不是合法令牌时报错，不退回按无前缀路径解析。
+
+        :param uri: 文件 URI，如 /media/movie、u115:/media/movie、u115@work:/media/movie
+            或 Windows 盘符路径 Z:/media
+        :return: 存储令牌与去掉前缀的路径；无存储前缀时存储令牌为 None
+        :raises ValueError: 存储令牌位置带实例分隔符但不是合法令牌
         """
-        matched = _STORAGE_URI_PATTERN.match(uri or "")
-        if not matched:
-            return None, uri
-        return matched.group(1), matched.group(2)
+        value = uri or ""
+        head, separator, rest = value.partition(":")
+        if not separator:
+            return None, value
+        if "/" in head or "\\" in head:
+            return None, value
+        if STORAGE_INSTANCE_SEPARATOR in head:
+            cls.split_storage(head)
+            return head, rest
+        if not _STORAGE_SCHEME_PATTERN.match(head):
+            return None, value
+        return head, rest
 
     @classmethod
     def from_uri(cls, uri: str) -> "FileURI":
         """
-        解析文件 URI 为存储类型和路径
+        解析文件 URI 为存储令牌和路径
 
-        :param uri: 文件 URI，如 /media/movie、u115:/media/movie 或 Windows 盘符路径 Z:/media
+        :param uri: 文件 URI，如 /media/movie、u115:/media/movie、u115@work:/media/movie
+            或 Windows 盘符路径 Z:/media
         :return: FileURI 对象
+        :raises ValueError: 存储令牌位置带实例分隔符但不是合法令牌
         """
         storage, path = cls.split_uri(uri)
         storage = storage or StorageSchema.Local.value
