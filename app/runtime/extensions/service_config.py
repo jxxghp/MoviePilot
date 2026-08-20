@@ -1,13 +1,18 @@
-"""宿主服务配置的读取端口，以及服务能力标签与配置存放位置的唯一对照。
+"""宿主服务配置的读取端口，以及「一份服务类型按配置扇出多个具名实例」的唯一实现。
 
 下载器、媒体服务器与消息通知按「一份配置扇出一个具名实例」消费，声明面只出现
 能力标签（``downloader``/``mediaserver``/``notification``）；这三族配置分别存放在
 systemconfig 的哪个键、按哪个模型校验，是宿主内部实现，只在本模块落地。
+
+扇出本身也收在本模块：内建模块在 `init_module()` 时按自身类型扇出，扩展声明的类型
+由服务实例注册表在取用时扇出，两条入口共用 `select_instance_configs` 与
+`create_service_instance`，因此不会在「哪些配置该产出实例」和「实例按什么形状构造」
+上出现分歧。两条入口的差别只在时机与缓存，不在规则。
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from types import MappingProxyType
-from typing import Any, List, Mapping, Optional, Tuple, Type
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Type
 
 from pydantic import ValidationError
 
@@ -94,6 +99,74 @@ def service_capability_configs(capability: Optional[str]) -> List:
         return []
     config_key, conf_type = entry
     return ServiceConfigHelper.get_configs(config_key, conf_type)
+
+
+def select_instance_configs(
+    configs: Iterable[Any],
+    service_type: Optional[str],
+    *,
+    multi_instance: bool = True,
+    on_overflow: Optional[Callable[[str, Tuple[str, ...]], None]] = None,
+) -> Dict[str, Any]:
+    """按类型标识与启用态筛出一个服务类型应当扇出实例的配置。
+
+    只认已启用、具名且类型一致的配置：取不到实例名的配置产出的实例既无法被显式
+    指定，也无法被默认配置裁决选中，留着只会让实例数与可用实例数对不上。
+
+    单实例类型只认用户配置列表里排在最前的一份，溢出交给 ``on_overflow`` 由调用方
+    决定如何提示。这不是在候选里替用户做选择——配置列表是用户自己排的持久数据，
+    顺序在设置页上可见且每次读取都一致。多出来的配置只忽略不删除，整类型也照常
+    产出那一个实例：删配置不可逆，而整类型停摆会让一份合法配置跟着失效。
+
+    :param configs: 该族全部已通过结构校验的配置，顺序即用户配置列表顺序
+    :param service_type: 类型标识，为空时不产出任何实例配置
+    :param multi_instance: 该类型能否接受多份配置，为 False 时只认第一份
+    :param on_overflow: 单实例类型被配了多份时的回调，入参为
+        ``(本次生效的配置名, 全部已启用配置名)``
+    :return: 实例名到配置的映射
+    """
+    if not service_type:
+        return {}
+    enabled = {
+        conf.name: conf
+        for conf in configs
+        if getattr(conf, "name", None) and conf.type == service_type and conf.enabled
+    }
+    if multi_instance or len(enabled) <= 1:
+        return enabled
+    kept = next(iter(enabled))
+    if on_overflow is not None:
+        on_overflow(kept, tuple(enabled))
+    return {kept: enabled[kept]}
+
+
+def create_service_instance(
+    name: str,
+    conf: Any,
+    *,
+    impl: Optional[Any] = None,
+    factory: Optional[Any] = None,
+) -> Any:
+    """按单条用户配置构造一个具名服务实例。
+
+    构造形状是宿主与服务类型之间的契约：``impl`` 路径由宿主填入实例名并按关键字
+    展开配置内容，``factory`` 路径把整条配置对象原样交给声明方。扩展声明的契约
+    校验内省的正是这两种形状，两侧共用本函数，校验过的形状即实际构造的形状。
+
+    构造失败原样抛出，由调用方决定是跳过这一条还是整体失败。
+
+    :param name: 实例名
+    :param conf: 该实例的用户配置
+    :param impl: 实例实现类，与 factory 二选一
+    :param factory: 实例工厂，与 impl 二选一
+    :return: 构造出的服务实例
+    :raises ValueError: impl 与 factory 均未给出，没有可用的构造路径
+    """
+    if factory is not None:
+        return factory(conf)
+    if impl is None:
+        raise ValueError(f"服务实例 {name} 没有可用的构造路径")
+    return impl(name=name, **(getattr(conf, "config", None) or {}))
 
 
 class ServiceConfigHelper:

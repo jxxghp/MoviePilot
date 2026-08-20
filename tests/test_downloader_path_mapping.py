@@ -40,7 +40,54 @@ def _load_downloader_base():
         def get_mediaserver_configs():
             return []
 
+    def _select_instance_configs(configs, service_type, *, multi_instance=True, on_overflow=None):
+        """按类型标识与启用态筛出实例配置的替身。
+
+        :param configs: 该族全部配置
+        :param service_type: 类型标识
+        :param multi_instance: 该类型能否接受多份配置，本替身不区分
+        :param on_overflow: 单实例类型溢出回调，本替身不触发
+        :return: 实例名到配置的映射
+        """
+        del multi_instance, on_overflow
+        if not service_type:
+            return {}
+        return {
+            conf.name: conf
+            for conf in configs
+            if getattr(conf, "name", None) and conf.type == service_type and conf.enabled
+        }
+
+    def _create_service_instance(name, conf, *, impl=None, factory=None):
+        """按单条配置构造具名服务实例的替身。
+
+        :param name: 实例名
+        :param conf: 该实例的用户配置
+        :param impl: 实例实现类
+        :param factory: 实例工厂
+        :return: 构造出的实例
+        """
+        if factory is not None:
+            return factory(conf)
+        return impl(name=name, **(getattr(conf, "config", None) or {}))
+
+    def _service_capability_configs(_capability):
+        """按能力标签读取配置的替身，本用例不依赖真实用户配置。
+
+        :param _capability: 服务能力标签
+        :return: 空配置列表
+        """
+        return []
+
     schema_types_module.StorageSchema = StorageSchema
+    schema_types_module.ModuleType = Enum(
+        "ModuleType",
+        {
+            "Downloader": "downloader",
+            "MediaServer": "mediaserver",
+            "Notification": "notification",
+        },
+    )
     schema_types_module.DownloaderType = Enum("DownloaderType", {"Qbittorrent": "Qbittorrent"})
     schema_types_module.MediaServerType = Enum("MediaServerType", {"Emby": "Emby"})
     schema_types_module.NotificationChannel = Enum("NotificationChannel", {"Telegram": "telegram"})
@@ -58,6 +105,9 @@ def _load_downloader_base():
     )
 
     service_module.ServiceConfigHelper = _ServiceConfigHelper
+    service_module.select_instance_configs = _select_instance_configs
+    service_module.create_service_instance = _create_service_instance
+    service_module.service_capability_configs = _service_capability_configs
     mixins_module.ConfigReloadMixin = _ConfigReloadMixin
     schemas_module.Message = object
     schemas_module.NotificationConf = object

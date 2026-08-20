@@ -4,14 +4,19 @@ from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callabl
 from pathlib import Path
 
 from app.runtime.extensions.instance import describe_instance_candidates
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_config import (
+    ServiceConfigHelper,
+    create_service_instance,
+    select_instance_configs,
+    service_capability_configs,
+)
 from app.runtime.log import logger
 from app.schemas.file import FileURI
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.system import MediaServerConf
 from app.schemas.system import DownloaderConf
-from app.schemas.types import NotificationChannel, SystemConfigKey
+from app.schemas.types import ModuleType, NotificationChannel, SystemConfigKey
 from app.runtime.reload import ConfigReloadMixin
 
 
@@ -98,6 +103,9 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
     抽象服务基类，负责服务的初始化、获取实例和配置管理
     """
 
+    # 本族服务的能力标签，决定 get_configs() 从哪一族用户配置里取值
+    SERVICE_CAPABILITY: Optional[str] = None
+
     def __init__(self):
         """
         初始化 ServiceBase 类的实例
@@ -110,6 +118,9 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
                      service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None):
         """
         初始化服务，获取配置并实例化对应服务
+
+        单条配置构造失败只跳过它自己，同类型下其余配置照常产出实例：一条连不上的
+        配置不应让整个模块连同其余可用实例一起失效。
 
         :param service_name: 服务名称，作为配置匹配的依据
         :param service_type: 服务的类型，可以是类类型（Type[TService]）、工厂函数（Callable）或 None 来跳过实例化
@@ -124,14 +135,15 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         self._instances = {}
         if not service_type:
             return
-        for conf in self._configs.values():
-            # 通过服务类型或工厂函数来创建实例
-            if isinstance(service_type, type):
-                # 如果传入的是类类型，调用构造函数实例化
-                self._instances[conf.name] = service_type(name=conf.name, **conf.config)
-            else:
-                # 如果传入的是工厂函数，直接调用工厂函数
-                self._instances[conf.name] = service_type(conf)
+        impl = service_type if isinstance(service_type, type) else None
+        factory = None if impl is not None else service_type
+        for name, conf in self._configs.items():
+            try:
+                self._instances[name] = create_service_instance(
+                    name, conf, impl=impl, factory=factory
+                )
+            except Exception as err:
+                logger.error(f"{service_name} 实例 {name} 构造失败，已跳过：{err}")
 
     def get_instances(self) -> Dict[str, TService]:
         """
@@ -156,14 +168,19 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         name = self.get_default_config_name()
         return self._instances.get(name) if name else None
 
-    @abstractmethod
     def get_configs(self) -> Dict[str, TConf]:
         """
-        获取已启用的服务配置字典
+        获取本模块名下已启用的服务配置字典
 
-        :return: 返回配置字典
+        按本族能力标签读取用户配置，只保留类型与本模块一致、已启用且具名的配置。
+        三族的差别只在能力标签，筛选规则不逐族重复。
+
+        :return: 返回配置字典 ``{配置名称: 配置}``
         """
-        pass
+        return select_instance_configs(
+            service_capability_configs(self.SERVICE_CAPABILITY),
+            self._service_name,
+        )
 
     def get_config(self, name: Optional[str] = None) -> Optional[TConf]:
         """
@@ -217,6 +234,7 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
     消息基类
     """
     CONFIG_WATCH = {SystemConfigKey.Notifications.value}
+    SERVICE_CAPABILITY = ModuleType.Notification.value
 
     def __init__(self):
         """
@@ -224,17 +242,6 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         """
         super().__init__()
         self._channel: Optional[NotificationChannel] = None
-
-    def get_configs(self) -> Dict[str, NotificationConf]:
-        """
-        获取已启用的消息通知渠道的配置字典
-
-        :return: 返回消息通知的配置字典
-        """
-        configs = ServiceConfigHelper.get_notification_configs()
-        if not self._service_name:
-            return {}
-        return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
     def check_message(self, message: Message, source: str = None) -> bool:
         """
@@ -265,6 +272,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
     下载器基类
     """
     CONFIG_WATCH = {SystemConfigKey.Downloaders.value}
+    SERVICE_CAPABILITY = ModuleType.Downloader.value
 
     def __init__(self):
         """
@@ -334,17 +342,6 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
             f"存在多个已启用下载器但未设置默认下载器，调用必须显式指定下载器；"
             f"可选下载器：{candidates}"
         )
-
-    def get_configs(self) -> Dict[str, DownloaderConf]:
-        """
-        获取已启用的下载器的配置字典
-
-        :return: 返回下载器配置字典
-        """
-        configs = ServiceConfigHelper.get_downloader_configs()
-        if not self._service_name:
-            return {}
-        return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
     def reset_default_config_name(self):
         """
@@ -421,14 +418,4 @@ class _MediaServerBase(ServiceBase[TService, MediaServerConf]):
     媒体服务器基类
     """
     CONFIG_WATCH = {SystemConfigKey.MediaServers.value}
-
-    def get_configs(self) -> Dict[str, MediaServerConf]:
-        """
-        获取已启用的媒体服务器的配置字典
-
-        :return: 返回媒体服务器配置字典
-        """
-        configs = ServiceConfigHelper.get_mediaserver_configs()
-        if not self._service_name:
-            return {}
-        return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
+    SERVICE_CAPABILITY = ModuleType.MediaServer.value

@@ -20,7 +20,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.instance import extension_id_of
-from app.runtime.extensions.service_config import service_capability_configs
+from app.runtime.extensions.service_config import (
+    create_service_instance,
+    select_instance_configs,
+    service_capability_configs,
+)
 from app.runtime.log import logger
 
 # 已就「只认一份配置的类型被配了多份」告警过的 (扩展标识, 能力标签, 类型标识) 组合。
@@ -158,8 +162,8 @@ class ServiceInstanceAdapter:
     def _desired_configs(self) -> Dict[str, Any]:
         """读取本类型下应当扇出实例的用户配置。
 
-        多实例类型每条已启用配置各得一个实例；单实例类型只认一份，多出来的配置
-        由 `_single_desired_config` 裁掉。
+        筛选规则与内建模块共用一份实现，单实例类型的溢出提示由本适配器承担：
+        提示文案要指明是哪个扩展声明的哪个类型，那是登记项才有的信息。
 
         :return: 实例名到配置的映射；配置读取出错时为空字典
         """
@@ -171,47 +175,29 @@ class ServiceInstanceAdapter:
                 f"扩展 {self._entry.owner} 声明的 {self._entry.service_type} 实例暂不可用：{error}"
             )
             return {}
-        enabled = {
-            conf.name: conf
-            for conf in configs
-            if conf.name and conf.type == self._entry.service_type and conf.enabled
-        }
-        if self._entry.multi_instance or len(enabled) <= 1:
-            return enabled
-        return self._single_desired_config(enabled)
-
-    def _single_desired_config(self, enabled: Dict[str, Any]) -> Dict[str, Any]:
-        """从多份配置里为单实例类型选出唯一生效的那一份。
-
-        取用户配置列表里排在最前的一份。这不是「在候选里替用户做选择」——配置列表
-        是用户自己排的持久数据，顺序在设置页上可见且每次读取都一致，因此「列表里
-        第一条生效」是用户看得见也改得动的规则；被禁止的是依赖宿主内部登记顺序的
-        那种挑选，其结果用户既看不见也无法预期。
-
-        多出来的配置只忽略不删除：声明改成单实例前用户可能已经配了多份，删配置是
-        不可逆的，而忽略加告警给用户留了自行取舍的余地。整类型不产出实例同样不取，
-        那会让一份合法配置也跟着失效，惩罚的范围超出了问题本身。
-
-        :param enabled: 本类型下全部已启用配置，按用户配置列表顺序排列
-        :return: 只含唯一生效配置的映射
-        """
-        kept = next(iter(enabled))
-        _warn_single_instance_overflow(self._entry, kept, tuple(enabled))
-        return {kept: enabled[kept]}
+        return select_instance_configs(
+            configs,
+            self._entry.service_type,
+            multi_instance=self._entry.multi_instance,
+            on_overflow=lambda kept, configured: _warn_single_instance_overflow(
+                self._entry, kept, configured
+            ),
+        )
 
     def _create_instance(self, name: str, conf: Any) -> Optional[Any]:
         """按单条配置构造一个具名实例。
 
-        登记项声明了工厂就把整条配置交给工厂，否则按关键字展开配置内容调用实现类。
+        构造形状与内建模块共用一份实现；同一条坏配置只报错一次，避免取服务这条
+        热路径反复刷屏。
 
         :param name: 实例名
         :param conf: 该实例的用户配置
         :return: 实例；构造失败时为 None
         """
         try:
-            if self._entry.factory is not None:
-                return self._entry.factory(conf)
-            return self._entry.impl(name=name, **(conf.config or {}))
+            return create_service_instance(
+                name, conf, impl=self._entry.impl, factory=self._entry.factory
+            )
         except Exception as error:
             if self._failed_configs.get(name) != conf:
                 self._failed_configs[name] = conf
