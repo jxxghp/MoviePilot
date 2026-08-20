@@ -824,6 +824,23 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         keys = [key for key in running if extension_id_of(key) == pid]
         return keys[0] if len(keys) == 1 else None
 
+    def _resolve_call_target_key(self, pid: str) -> Optional[str]:
+        """
+        定位一次调用应当落到的运行实例键
+        :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
+        :return: 命中的实例键；该插件没有实例在运行时为 None
+        :raises LookupError: 该插件有实例在运行，但没有已启用的默认调用目标
+        """
+        if self._plugin_registry.instance(pid) is not None:
+            return pid
+        # 实例键精确未命中即该实例未运行，不按插件族另找一个顶替
+        if pid != extension_id_of(pid):
+            return None
+        # 一个实例都没在跑属于「插件未加载」，与「选不出目标」是两回事
+        if not self._plugin_registry.instance_keys(pid):
+            return None
+        return resolve_plugin_instance_key(pid)
+
     def _resolve_call_target(self, pid: str) -> Optional[Any]:
         """
         定位一次调用应当落到的运行实例
@@ -831,16 +848,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :return: 运行实例；该插件没有实例在运行时为 None
         :raises LookupError: 该插件有实例在运行，但没有已启用的默认调用目标
         """
-        plugin = self._plugin_registry.instance(pid)
-        if plugin is not None:
-            return plugin
-        # 实例键精确未命中即该实例未运行，不按插件族另找一个顶替
-        if pid != extension_id_of(pid):
-            return None
-        # 一个实例都没在跑属于「插件未加载」，与「选不出目标」是两回事
-        if not self._plugin_registry.instance_keys(pid):
-            return None
-        return self._plugin_registry.instance(resolve_plugin_instance_key(pid))
+        key = self._resolve_call_target_key(pid)
+        return self._plugin_registry.instance(key) if key is not None else None
 
     def _matching_instances(self, pid: Optional[str]) -> List[Tuple[str, Any]]:
         """
@@ -2428,6 +2437,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         }]
         """
         return self._plugin_projection().actions(pid)
+
+    def get_plugin_action(self, pid: str, action_id: str) -> Dict[str, Any]:
+        """
+        确定一次插件动作调用应当执行的动作声明
+
+        `get_plugin_actions` 按插件全部运行实例分组返回，同一 `action_id` 可能在
+        不同分身上各存在一份、彼此是两个独立的动作；本方法在未显式指定实例时按
+        该插件的默认调用目标裁决，只挑出裁决命中的那一个分身，不取登记顺序中的
+        第一个。插件未运行、目标分身未声明该动作，或该插件有实例在运行但没有
+        已启用的默认调用目标，均以异常呈现，不返回空值。
+        :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
+        :param action_id: 动作ID
+        :return: 动作描述字典，含 action_id、name、func、kwargs
+        :raises LookupError: 插件未运行、目标分身未声明该动作，
+            或该插件有实例在运行但没有已启用的默认调用目标
+        """
+        target_key = self._resolve_call_target_key(pid)
+        if target_key is None:
+            raise LookupError(f"插件 {pid} 不存在或未运行")
+        groups = self.get_plugin_actions(target_key)
+        actions = groups[0].get("actions", []) if groups else []
+        action = next((item for item in actions if item.get("action_id") == action_id), None)
+        if action is None or not action.get("func"):
+            raise LookupError(f"插件 {pid} 未声明动作 {action_id}")
+        return action
 
     @staticmethod
     def _copy_plugin_agent_tools(

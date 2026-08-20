@@ -49,25 +49,17 @@ class InvokePluginAction(BaseAction):
     def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
         """
         执行插件定义的动作
+
+        插件按配置扇出多个分身时，未指定实例的调用按该插件的默认调用目标裁决；
+        插件不存在、动作不存在，或裁决不出目标，均以异常呈现给工作流引擎，由其
+        统一转换为用户可见的失败原因，本层不再吞掉后转成静默失败。
         """
         params = InvokePluginParams(**params)
         if not params.plugin_id or not params.action_id:
             return context
-        try:
-            plugin_actions = PluginManager().get_plugin_actions(params.plugin_id)
-            if not plugin_actions:
-                logger.error(f"插件不存在: {params.plugin_id}")
-                return context
-            actions = plugin_actions[0].get("actions", [])
-            action = next((action for action in actions if action.get("action_id") == params.action_id), None)
-            if not action or not action.get("func"):
-                logger.error(f"插件动作不存在: {params.plugin_id} - {params.action_id}")
-                return context
-            # 执行插件动作
-            self._success, context = action["func"](context, **params.action_params)
-        except Exception as e:
-            self._success = False
-            logger.error(f"调用插件动作失败: {e}")
-            return context
+        logger.info(f"调用插件动作: {params.plugin_id} - {params.action_id}")
+        action = PluginManager().get_plugin_action(params.plugin_id, params.action_id)
+        # 执行插件动作
+        self._success, context = action["func"](context, **params.action_params)
         self.job_done()
         return context
