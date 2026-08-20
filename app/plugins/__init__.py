@@ -587,6 +587,11 @@ class _PluginBase(metaclass=ABCMeta):
         方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
         照常登记，只是没有实例产出。
 
+        该类型只该被配一份时加上 `multi_instance=False`——例如一个全局唯一的接入点。
+        此时宿主只认用户配置列表里的第一份，多出来的会被忽略并告警。该字段与本插件
+        建了几个实例无关：插件实例是插件自己的分身，`multi_instance` 描述的是本类型
+        的配置列表允许有几条记录。缺省为 True，即按配置扇出多个实例。
+
         :return: `ServiceInstanceDeclaration` 列表；插件不提供服务实例类型时无需实现
         """
         pass

@@ -1593,11 +1593,11 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2216
+        "line": 2217
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2287
+        "line": 2288
       },
       {
         "caller": "app.startup.hostport_initializer",
@@ -2103,7 +2103,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1524
+            "line": 1525
           }
         ]
       },

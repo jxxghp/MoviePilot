@@ -117,7 +117,7 @@ def test_endpoint_reports_unavailable_for_builtin_type():
     result = service_config_form_endpoint("downloader", "qbittorrent", None)
 
     assert result == {
-        "available": False, "name": None, "conf": None,
+        "available": False, "name": None, "multi_instance": True, "conf": None,
         "model": None, "component": None, "remote": None,
     }
 

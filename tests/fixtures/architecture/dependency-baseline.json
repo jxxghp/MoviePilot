@@ -56,8 +56,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6322,
-  "edge_sha256": "c4401f1f3e8848deeff5f0344e4d2eb7e1efe3eb39f99d0d5c5ac3b01bcc9921",
+  "edge_count": 6323,
+  "edge_sha256": "f709ddb723d017d2cad5270ed0e6faca090cb6b3377a98707d4ef08e0334037b",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5593,6 +5593,7 @@
     "app.runtime.extensions.service_instance_registry -> app.runtime",
     "app.runtime.extensions.service_instance_registry -> app.runtime.extensions",
     "app.runtime.extensions.service_instance_registry -> app.runtime.extensions.contract",
+    "app.runtime.extensions.service_instance_registry -> app.runtime.extensions.instance",
     "app.runtime.extensions.service_instance_registry -> app.runtime.extensions.service_config",
     "app.runtime.extensions.service_instance_registry -> app.runtime.log",
     "app.runtime.extensions.service_registry -> app.runtime",
