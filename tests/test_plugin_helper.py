@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import stat
 import sys
 import tempfile
@@ -1526,6 +1527,7 @@ class TestPluginHelper:
             uv_bin.write_text("", encoding="utf-8")
 
             with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
+                    patch.dict(os.environ, {}, clear=True), \
                     patch("app.adapters.external.market.settings.CONFIG_DIR", str(root / "config")), \
                     patch("app.adapters.external.market.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
                     patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \

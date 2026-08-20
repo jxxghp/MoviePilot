@@ -119,7 +119,7 @@ class CliAutoUpdateTests(unittest.TestCase):
         module.settings.PIP_PROXY = "https://mirror.example/simple"
         run_result = SimpleNamespace(returncode=0, stdout="ok")
 
-        with patch.dict(module.os.environ, {"HTTPS_PROXY": "http://old.example:8080"}, clear=False), patch.object(
+        with patch.dict(module.os.environ, {"HTTPS_PROXY": "http://old.example:8080"}, clear=True), patch.object(
             module, "_auto_update_mode", return_value="release"
         ), patch.object(module, "_resolve_auto_update_targets", return_value="v2.10.12"), patch.object(
             module.subprocess, "run", return_value=run_result
@@ -144,7 +144,7 @@ class CliAutoUpdateTests(unittest.TestCase):
             {
                 "PACKAGE_CACHE_ROOT": str(package_cache_root),
             },
-            clear=False,
+            clear=True,
         ), patch.object(module, "_auto_update_mode", return_value="release"), patch.object(
             module, "_resolve_auto_update_targets", return_value="v2.10.12"
         ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(

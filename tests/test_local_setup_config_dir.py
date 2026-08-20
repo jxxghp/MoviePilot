@@ -336,7 +336,7 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                     "PIP_PROXY": "https://user:pass@mirror.example/simple",
                     "PACKAGE_CACHE_ROOT": str(Path(temp_dir) / "custom-package-cache"),
                 },
-                clear=False,
+                clear=True,
         ):
             root = Path(temp_dir)
             venv_dir = root / "venv"

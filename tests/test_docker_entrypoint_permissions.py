@@ -32,6 +32,18 @@ def _write_fake_chown(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     chown.chmod(0o755)
+    gosu = fake_bin / "gosu"
+    gosu.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            shift
+            exec "$@"
+            """
+        ),
+        encoding="utf-8",
+    )
+    gosu.chmod(0o755)
     return fake_bin
 
 
@@ -78,6 +90,7 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
         "PUID": str(os.getuid()),
         "PGID": str(os.getgid()),
     }
+    case_env.pop("UV_CACHE_DIR", None)
     if env:
         case_env.update(env)
 
