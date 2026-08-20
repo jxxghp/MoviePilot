@@ -7,23 +7,34 @@ from typing import List, Optional
 from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo
 from app.domain.filterrule import BUILTIN_RULE_SET, RuleParser  # noqa: F401
+from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
 from app.schemas.types import SystemConfigKey
 
 
 class RuleHelper:
-    """读取用户过滤规则配置，并按媒体上下文选择适用规则组。"""
+    """读取过滤规则配置，并按媒体上下文选择适用规则组。"""
 
     @staticmethod
     def get_rule_groups() -> List[FilterRuleGroup]:
-        """返回用户配置的全部过滤规则组。"""
-        rule_groups: List[dict] = get_configured_system_config().get(
+        """返回当前可用的全部过滤规则组，插件提供的排在用户配置之前。
+
+        同名时以用户配置为准：用户手改过的规则组不能被装了个插件之后悄悄改掉。
+        插件规则组因此与插件规则同一套优先级，四个使用场景按组名引用时不必区分
+        一个组来自插件还是用户配置。
+        """
+        groups: dict[str, FilterRuleGroup] = {
+            name: FilterRuleGroup(**definition)
+            for name, definition in plugin_filter_rule_registry.rule_group_definitions().items()
+        }
+        user_groups: List[dict] = get_configured_system_config().get(
             SystemConfigKey.UserFilterRuleGroups
         )
-        if not rule_groups:
-            return []
-        return [FilterRuleGroup(**group) for group in rule_groups]
+        for group in user_groups or []:
+            model = FilterRuleGroup(**group)
+            groups[model.name] = model
+        return list(groups.values())
 
     def get_rule_group(self, group_name: str) -> Optional[FilterRuleGroup]:
         """按名称返回过滤规则组。"""

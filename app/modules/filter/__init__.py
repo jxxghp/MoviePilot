@@ -8,6 +8,7 @@ from app.domain.filterrule import get_builtin_rule_set, parse_rule_group
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
 from app.runtime.log import logger
 from app.modules import _ModuleBase
+from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
 from app.runtime.filterrules import filter_rule_group_port
 from app.runtime.torrentanalysis import torrent_analysis_port
 from app.schemas.filter import TorrentVerdict
@@ -79,7 +80,7 @@ class FilterModule(_ModuleBase):
 
     # 内置规则的只读快照，由 init_module 写入，方便查询工具区分内置规则与自定义规则。
     builtin_rule_set: Dict[str, dict] = {}
-    # 运行期规则集 = 内置规则 + 自定义规则覆盖。
+    # 运行期规则集 = 内置规则 + 插件规则覆盖 + 用户自定义规则覆盖。
     rule_set: Dict[str, dict] = {}
 
     def __init__(self) -> None:
@@ -88,24 +89,53 @@ class FilterModule(_ModuleBase):
         """
         super().__init__()
         self.rulehelper = filter_rule_group_port.resolve()
+        # 用户自定义规则快照，由 init_module 从系统配置读入，插件登记变化时无需重读
+        self._custom_rule_set: Dict[str, dict] = {}
+        # 组装当前规则集时插件规则注册表的版本号，用于判断规则集是否过期
+        self._plugin_rule_revision = plugin_filter_rule_registry.revision
 
     def init_module(self) -> None:
         """
-        初始化过滤规则集，合并内置规则和用户自定义规则。
+        初始化过滤规则集，按内置 < 插件 < 用户的次序合并三层规则。
         """
-        # 每次重载都先恢复为纯内置规则，避免旧的自定义规则残留在内存里。
+        # 每次重载都先恢复为纯内置规则，避免旧的插件规则或自定义规则残留在内存里。
         self.builtin_rule_set = deepcopy(get_builtin_rule_set())
-        self.rule_set = deepcopy(self.builtin_rule_set)
-        self.__init_custom_rules()
+        self._custom_rule_set = self.__load_custom_rules()
+        self.__compose_rule_set()
 
-    def __init_custom_rules(self):
+    def __load_custom_rules(self) -> Dict[str, dict]:
         """
-        加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准
+        读取用户自定义规则。
         """
-        custom_rules = self.rulehelper.get_custom_rules()
-        for rule in custom_rules:
+        custom_rule_set: Dict[str, dict] = {}
+        for rule in self.rulehelper.get_custom_rules():
             logger.info(f"加载自定义规则 {rule.id} - {rule.name}")
-            self.rule_set[rule.id] = rule.model_dump()
+            custom_rule_set[rule.id] = rule.model_dump()
+        return custom_rule_set
+
+    def __compose_rule_set(self) -> None:
+        """
+        按内置 < 插件 < 用户的次序组装运行期规则集。
+
+        用户自定义永远赢：用户手改过的规则不能被装了个插件之后悄悄改掉。插件规则
+        每次都从注册表实时取，因此插件停用后其规则在下一次组装时即消失。
+        """
+        rule_set = deepcopy(self.builtin_rule_set)
+        revision = plugin_filter_rule_registry.revision
+        rule_set.update(deepcopy(plugin_filter_rule_registry.rule_definitions()))
+        rule_set.update(self._custom_rule_set)
+        self.rule_set = rule_set
+        self._plugin_rule_revision = revision
+
+    def __refresh_plugin_rules(self) -> None:
+        """
+        插件规则登记发生变化时重新组装运行期规则集。
+
+        插件的启停不经过模块重载路径，规则集因此需要一个自己的过期判据；版本号
+        未变时不做任何事，判定只是一次整数比较。
+        """
+        if plugin_filter_rule_registry.revision != self._plugin_rule_revision:
+            self.__compose_rule_set()
 
     @staticmethod
     def get_name() -> str:
@@ -178,6 +208,8 @@ class FilterModule(_ModuleBase):
         """
         if not rule_groups or not torrent_list:
             return None
+        # 插件的启停不经过模块重载路径，判定前先确认规则集没有过期
+        self.__refresh_plugin_rules()
         # 查询规则表详情
         groups = self.rulehelper.get_rule_group_by_media(media=mediainfo, group_names=rule_groups)
         if not groups:

@@ -62,6 +62,7 @@ from app.runtime.extensions.plugin.projection import PluginExtension, PluginProj
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.schemas.notification import ChannelCapabilityManager
@@ -761,6 +762,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._sync_plugin_storages(key)
             # 同步插件声明的服务实例类型
             self._sync_plugin_service_instances(key)
+            # 同步插件声明的筛选规则与筛选规则组
+            self._sync_plugin_filter_rules(key)
             # 启用的实例才设置事件注册状态可用
             if extension.is_enabled():
                 eventmanager.enable_event_handler(plugin_class, key)
@@ -894,6 +897,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._sync_plugin_storages(key)
         # 服务实例声明同理，重新同步服务实例登记
         self._sync_plugin_service_instances(key)
+        # 筛选规则声明同理，重新同步筛选规则登记
+        self._sync_plugin_filter_rules(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -945,6 +950,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._revoke_plugin_storages(key)
             # 实例停止后撤销其服务实例登记，不留残留
             self._revoke_plugin_service_instances(key)
+            # 实例停止后撤销其筛选规则登记，不留残留
+            self._revoke_plugin_filter_rules(key)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -1007,9 +1014,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def _reelect_extension_registrations(self, plugin_id: str) -> None:
         """在实例停止后按存活实例重新裁决扩展级声明的登记归属
 
-        存储标识与服务实例类型只登记一次，归属落在裁决胜出的那个实例。胜出实例
-        停止后，仍在运行且声明同一标识的兄弟实例应当接手，否则该标识会随一个实例
-        的停止整体消失——它描述的是「本宿主提供这个标识」，而宿主里还有实例提供它。
+        存储标识、服务实例类型与筛选规则标识只登记一次，归属落在裁决胜出的那个实例。
+        胜出实例停止后，仍在运行且声明同一标识的兄弟实例应当接手，否则该标识会随一个
+        实例的停止整体消失——它描述的是「本宿主提供这个标识」，而宿主里还有实例提供它。
         最后一个实例停止后没有存活实例可裁决，登记在各自的撤销里已经清干净。
         :param plugin_id: 插件ID
         :return: 无返回值
@@ -1019,6 +1026,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return
         self._sync_plugin_storages(survivors[0])
         self._sync_plugin_service_instances(survivors[0])
+        self._sync_plugin_filter_rules(survivors[0])
 
     @staticmethod
     def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
@@ -2346,6 +2354,56 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             service_instance_registry.unregister_owner(key)
         except Exception as error:
             logger.error(f"撤销插件实例 {key} 服务实例登记出错：{str(error)}")
+
+    def _sync_plugin_filter_rules(self, key: str) -> None:
+        """按插件当前全部运行实例的声明重建其在筛选规则注册表中的登记。
+
+        规则标识与规则组名是扩展级事实，同步粒度与存储族同理是整个插件而不是单个
+        实例，胜出方由投影按稳定规则裁决。
+
+        规则与规则组一并登记：两者归属同一实例、同进同退，分两次登记会让注册表在
+        两次调用之间短暂持有一个规则组引用着尚未登记的规则的中间态。
+
+        :param key: 触发本次同步的实例键
+        :return: 无返回值
+        """
+        try:
+            projection = self._plugin_projection()
+            plugin_id = extension_id_of(key)
+            rules = projection.provided_filter_rules(plugin_id)
+            groups = projection.provided_filter_rule_groups(plugin_id)
+            for owner in self._extension_registration_owners(key):
+                try:
+                    plugin_filter_rule_registry.register(
+                        owner,
+                        rules=[
+                            projection.declared_filter_rule(item)
+                            for item in rules.get(owner, [])
+                        ],
+                        groups=[
+                            projection.declared_filter_rule_group(item)
+                            for item in groups.get(owner, [])
+                        ],
+                    )
+                except Exception as error:
+                    logger.error(f"登记插件实例 {owner} 的筛选规则声明出错：{str(error)}")
+        except Exception as error:
+            logger.error(f"同步插件实例 {key} 筛选规则登记出错：{str(error)}")
+
+    @staticmethod
+    def _revoke_plugin_filter_rules(key: str) -> None:
+        """撤销插件实例登记的筛选规则与筛选规则组。
+
+        实例停止后其声明不再可信，须直接清空登记：规则集在下一次组装时就不再含有
+        它们，插件停用后其规则不会残留在运行期规则集里。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            plugin_filter_rule_registry.unregister_owner(key)
+        except Exception as error:
+            logger.error(f"撤销插件实例 {key} 筛选规则登记出错：{str(error)}")
 
     @staticmethod
     def _revoke_plugin_storages(key: str) -> None:
