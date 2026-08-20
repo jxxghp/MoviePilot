@@ -5,16 +5,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException
+from starlette import status
 from starlette.responses import FileResponse, Response
 
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.storage import StorageConfigForm as _SchemaStorageConfigForm
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.storage import StorageChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
+from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.api.principal import ApiPrincipal
 from app.api.deps import (
     get_current_active_manage_user,
@@ -25,6 +28,47 @@ from app.schemas.types import ProgressKey
 from app.foundation import text as text_tools
 
 router = ResponseAPIRouter()
+
+
+@router.get(
+    "/config_form/{storage_type}",
+    summary="获取存储类型的专属配置界面",
+    response_model=_SchemaStorageConfigForm,
+)
+def config_form(
+    storage_type: str, _: ApiPrincipal = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    按存储类型获取扩展为其声明的配置界面
+
+    界面归属声明该类型的扩展本身，不归属某个插件：同一插件可能同时声明存储与
+    另一种能力，此处只按存储类型索引到登记时随声明附带的界面，不会读到扩展
+    自身的 get_form()。界面按扩展声明时的渲染模式二选一返回：vuetify 模式给
+    conf/model 组件树，vue 模式给 component/remote 供前端从联邦远程加载组件。
+    内建类型的界面已由前端内置、未随登记附带界面，``available`` 为 False 而非
+    报错；只有存储类型本身未登记时才视为请求出错。
+    :param storage_type: 存储标识，即 StorageConf.type
+    :param _: 鉴权
+    :return: available 为 False 时该类型没有专属界面，其余字段均为 None
+    """
+    entry = storage_backend_registry.find(storage_type)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"存储类型 {storage_type} 不存在",
+        )
+    empty = {"available": False, "conf": None, "model": None, "component": None, "remote": None}
+    if entry.config_form is not None:
+        layout, defaults = entry.config_form
+        return {**empty, "available": True, "conf": layout, "model": defaults}
+    if entry.config_component is not None:
+        return {
+            **empty,
+            "available": True,
+            "component": entry.config_component.get("component"),
+            "remote": entry.config_component.get("remote"),
+        }
+    return empty
 
 
 @router.post(

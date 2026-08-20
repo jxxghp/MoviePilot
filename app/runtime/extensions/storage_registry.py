@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.log import logger
@@ -33,12 +33,24 @@ def storage_backend_identity(backend: Any) -> Optional[str]:
 
 @dataclass(frozen=True, slots=True)
 class StorageBackendEntry:
-    """存储后端在注册表中的一条登记。"""
+    """存储后端在注册表中的一条登记。
+
+    配置界面二选一：``config_form`` 为 vuetify 模式，``config_component``
+    为 vue 模式的已解析组件描述（组件名加联邦远程入口）；内建登记与未声明
+    界面的扩展登记二者均为 None，此时前端沿用内建类型的渲染方式，不视为异常。
+
+    :param config_form: 登记方为该存储标识声明的专属配置界面，形状为
+        (组件树, 默认数据) 二元组
+    :param config_component: 登记方为该存储标识声明的 vue 模式配置组件，
+        形状为 ``{"component": 组件名, "remote": 联邦远程入口描述}``
+    """
 
     storage_id: str
     backend: Any
     distribution: ExtensionDistribution
     owner: Optional[str] = None
+    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
+    config_component: Optional[Dict[str, Any]] = None
 
     def supports(self, method: Optional[str] = None) -> bool:
         """
@@ -61,7 +73,10 @@ class StorageBackendEntry:
 def build_storage_entry(backend: Any,
                         distribution: ExtensionDistribution,
                         owner: Optional[str] = None,
-                        storage_id: Optional[str] = None) -> Optional[StorageBackendEntry]:
+                        storage_id: Optional[str] = None,
+                        config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
+                        config_component: Optional[Dict[str, Any]] = None
+                        ) -> Optional[StorageBackendEntry]:
     """
     构造登记项，标识优先取调用方显式给定的值，否则从后端声明推导
 
@@ -73,6 +88,10 @@ def build_storage_entry(backend: Any,
     :param distribution: 后端的发行方式
     :param owner: 提供该后端的扩展标识
     :param storage_id: 显式指定的存储标识，为空时从后端的 schema 属性推导
+    :param config_form: 登记方为该标识声明的专属配置界面（vuetify 模式），
+        不给出时该标识没有专属界面
+    :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
+        不给出时该标识没有专属界面
     :return: 登记项；标识缺失或无法作为路径前缀时为 None
     """
     identity = (storage_id or "").strip() or storage_backend_identity(backend)
@@ -88,6 +107,8 @@ def build_storage_entry(backend: Any,
         backend=backend,
         distribution=distribution,
         owner=owner,
+        config_form=config_form,
+        config_component=config_component,
     )
 
 
@@ -104,7 +125,10 @@ class StorageBackendRegistry:
     def register(self, backend: Any,
                  distribution: ExtensionDistribution = ExtensionDistribution.BUILTIN,
                  owner: Optional[str] = None,
-                 storage_id: Optional[str] = None) -> Optional[str]:
+                 storage_id: Optional[str] = None,
+                 config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
+                 config_component: Optional[Dict[str, Any]] = None
+                 ) -> Optional[str]:
         """
         登记一个存储后端，同标识重复登记以最新一次为准
 
@@ -112,9 +136,15 @@ class StorageBackendRegistry:
         :param distribution: 后端的发行方式
         :param owner: 提供该后端的扩展标识
         :param storage_id: 显式指定的存储标识，为空时从后端的 schema 属性推导
+        :param config_form: 登记方为该标识声明的专属配置界面（vuetify 模式），
+            不给出时沿用既有调用点不传该参数时的行为
+        :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
+            不给出时沿用既有调用点不传该参数时的行为
         :return: 登记成功的存储标识；登记失败时为 None
         """
-        entry = build_storage_entry(backend, distribution, owner, storage_id)
+        entry = build_storage_entry(
+            backend, distribution, owner, storage_id, config_form, config_component
+        )
         if not entry:
             return None
         with self._lock:

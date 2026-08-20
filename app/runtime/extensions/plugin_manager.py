@@ -27,9 +27,15 @@ from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
 from app.runtime.extensions.contract import ExtensionDistribution, supports_extension_hook
-from app.runtime.extensions.declaration import declaration_impl, declaration_schema
+from app.runtime.extensions.declaration import (
+    declaration_config_component,
+    declaration_config_form,
+    declaration_impl,
+    declaration_schema,
+)
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
     extension_id_of,
@@ -2152,7 +2158,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             storage_backend_registry.unregister_owner(key)
-            declared = self._plugin_projection().provided_storages(key)
+            projection = self._plugin_projection()
+            declared = projection.provided_storages(key)
+            plugin = self._running_plugins.get(key)
             for item in declared.get(key, []):
                 try:
                     storage_backend_registry.register(
@@ -2160,11 +2168,35 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         distribution=ExtensionDistribution.MARKET,
                         owner=key,
                         storage_id=declaration_schema(item),
+                        config_form=declaration_config_form(item),
+                        config_component=self._resolve_storage_config_component(
+                            projection, key, plugin, item
+                        ),
                     )
                 except Exception as error:
                     logger.error(f"登记插件实例 {key} 的存储声明出错：{str(error)}")
         except Exception as error:
             logger.error(f"同步插件实例 {key} 存储登记出错：{str(error)}")
+
+    @staticmethod
+    def _resolve_storage_config_component(
+        projection: PluginProjection, key: str, plugin: Optional[Any], item: Any
+    ) -> Optional[Dict[str, Any]]:
+        """把存储声明携带的 vue 模式组件名解析为完整的联邦远程描述。
+
+        声明未带组件名、或实例键取不到运行态插件实例时不解析，登记项的
+        ``config_component`` 保持为空，等价于该存储标识没有专属界面。
+
+        :param projection: 已绑定当前运行态插件注册表的能力投影服务
+        :param key: 实例键
+        :param plugin: 运行态插件实例
+        :param item: 已通过登记契约校验的存储声明
+        :return: 含 component 与 remote 的字典；无需解析时为 None
+        """
+        component = declaration_config_component(item)
+        if not component or plugin is None:
+            return None
+        return projection.storage_component_descriptor(key, plugin, component)
 
     @staticmethod
     def _revoke_plugin_storages(key: str) -> None:
@@ -2300,7 +2332,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     declaration_impl(item)
                     for item in declared_tools.get(extension_id, [])
                 ]
-                if supports_extension_hook(plugin, "get_agent_tools"):
+                # 废弃阶段推进到默认关闭后不再取用旧钩子，按未声明处理；标识列入
+                # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+                if (
+                    supports_extension_hook(plugin, "get_agent_tools")
+                    and deprecation_is_active("plugin.get_agent_tools")
+                ):
                     try:
                         if plugin.get_state():
                             legacy_tools = plugin.get_agent_tools()

@@ -16,7 +16,11 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
-from app.runtime.extensions.declaration import AgentToolDeclaration, StorageDeclaration
+from app.runtime.extensions.declaration import (
+    AgentToolDeclaration,
+    ModuleDeclaration,
+    StorageDeclaration,
+)
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
     instance_key,
@@ -398,6 +402,37 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def provides_modules(self) -> Optional[List[ModuleDeclaration]]:
+        """
+        声明本插件提供的模块方法表
+
+        返回示例：
+        [ModuleDeclaration(
+            methods={                            # 方法名到实现的映射，即 get_module()
+                "id1": self.xxx1,                 # 那张表的声明式版本
+                "id2": self.xxx2,
+            },
+            capabilities=["id1", "id2"],         # 承诺提供的能力方法名
+            service_config="Downloaders",        # 归属的服务配置族，取值须是
+                                                  # SystemConfigKey 的成员值；不归属
+                                                  # 任何服务族时不填
+        )]
+
+        也可直接返回方法表字典本身（不包 `ModuleDeclaration`），宿主按字典内容
+        取用方法表，兼容早期写法；此时不能声明 service_config。
+
+        多来源契约（media_detail、media_credits、media_recommend、media_similar、
+        person_detail、person_credits、discover、discover_board、match_media，
+        及其 async_ 变体）由多个数据源共用同一方法名，按调用方传入的 source 参数区分
+        来源，声明式登记与 get_module() 遵循同一规则：非本插件负责的 source 必须
+        返回 None 让出，返回空列表会被判定为已认领而短路。
+
+        同一实例的方法名若被本钩子与 get_module() 同时挂载，声明式登记优先生效。
+
+        :return: `ModuleDeclaration` 列表；插件不提供模块方法表时无需实现
+        """
+        pass
+
     def get_channel_capabilities(self) -> Optional[List[ChannelCapabilities]]:
         """
         声明本插件承载的消息渠道能力
@@ -419,7 +454,14 @@ class _PluginBase(metaclass=ABCMeta):
                                                   # app.modules._base.storage.StorageBase
                                                   # 并落地全部抽象方法；不合契约的声明
                                                   # 会被拒绝登记，不留到调用时才失败
+            config_form=([...], {...}),          # 该存储类型的专属配置界面（vuetify
+                                                  # 模式），形状与 get_form() 相同；
+                                                  # 与 config_component 互斥，可选
         )]
+
+        vue 模式改用 `config_component="U115StorageConfig"`——本插件联邦远程中承载
+        该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
+        同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
 
         也可直接返回实现类本身（不包 `StorageDeclaration`），宿主按类自身的 schema
         属性取用标识，兼容早期写法。

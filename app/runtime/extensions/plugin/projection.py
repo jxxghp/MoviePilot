@@ -13,10 +13,13 @@ from app.runtime.extensions.instance import (
     matches_extension,
     split_instance_key,
 )
+from app.runtime.extensions.declaration import declaration_methods
 from app.runtime.extensions.plugin.agent_tool_capabilities import (
     agent_tool_declaration_violation,
 )
+from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
 from app.runtime.extensions.plugin.storage_capabilities import storage_declaration_violation
+from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
 from app.runtime.log import logger as default_logger
 from app.runtime.log import wrap_for_plugin_instance
@@ -127,6 +130,10 @@ _new_contract_hints_seen: set[tuple[str, str]] = set()
 
 # 已就「同一插件多个实例挂载同一契约名」告警过的 (插件ID, 方法名) 组合，去重理由同上。
 _sibling_contract_warnings_seen: set[tuple[str, str]] = set()
+
+# 已就「同一实例同时用 provides_modules() 与 get_module() 挂载同一方法名」告警过的
+# (实例键, 重叠方法名元组) 组合，去重理由同上。
+_module_source_overlap_warnings_seen: set[tuple[str, tuple[str, ...]]] = set()
 
 
 class PluginExtension:
@@ -425,8 +432,48 @@ class PluginProjection:
                 self._logger.error(f"获取插件 {extension_id} 服务出错：{str(error)}")
         return services
 
+    def provided_modules(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的模块方法表。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其模块声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_modules"
+            ):
+                continue
+            try:
+                declared = plugin.provides_modules() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} 模块声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            for item in declared:
+                violation = module_declaration_violation(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的模块 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
     def modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
         """聚合启用插件的模块方法清单。
+
+        聚合两条来源：`provides_modules()` 声明式登记（经契约校验）与 `get_module()`
+        裸方法表（后者已进入废弃期，触达即告警一次）。同一实例的两条来源同时挂载
+        同一方法名时，声明式登记优先生效，并就重叠方法名各打一次提示。
 
         键取 `(实例键, 展示名)`：同一插件的多个实例展示名相同，只有实例键能把它们
         区分开，否则后登记的实例会覆盖先登记的，被覆盖的那一份实现从此不再参与分发。
@@ -434,31 +481,106 @@ class PluginProjection:
         :return: `(实例键, 展示名)` 到该实例方法表的映射
         """
         modules: dict[tuple, dict] = {}
+        declared_by_instance = self.provided_modules(pid)
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.supports_hook("get_module"):
+            if not extension.is_enabled():
                 continue
-            try:
-                if extension.is_enabled():
-                    table = plugin.get_module()
-                    # 基类默认实现返回 None；只接受映射，防止把 list 当成方法表传入调度器
-                    if table is None:
-                        continue
-                    if not isinstance(table, Mapping):
-                        self._logger.error(
-                            f"插件 {extension_id} 的 get_module() 返回值必须是字典，"
-                            f"实际是 {type(table).__name__}"
-                        )
-                        continue
-                    modules[(extension_id, extension.display_name)] = table
-                    # 注入式模块声明整体处于废弃期，按实例留一次痕迹；表内旧分发名的
-                    # 迁移提示是另一件事，两者互不替代
-                    deprecation_warn("plugin.get_module", context=extension_id)
-                    self._warn_dispatch_migration(extension_id, table)
-            except Exception as error:
-                self._logger.error(f"获取插件 {extension_id} 模块出错：{str(error)}")
+            declared_table = self._merge_declared_module_methods(
+                declared_by_instance.get(extension_id, [])
+            )
+            legacy_table, legacy_present = self._legacy_module_table(
+                extension, extension_id, plugin
+            )
+            if not declared_table and not legacy_present:
+                continue
+            modules[(extension_id, extension.display_name)] = self._merge_module_sources(
+                extension_id, declared_table, legacy_table
+            )
         self._warn_sibling_contract_overlap(modules)
         return modules
+
+    @staticmethod
+    def _merge_declared_module_methods(declarations: List[Any]) -> Dict[str, Any]:
+        """把同一实例的多条模块声明合并为单张方法表。
+
+        同名方法被多条声明挂载时后一条覆盖前一条，与 `dict.update` 语义一致。
+
+        :param declarations: 已通过契约校验的模块声明列表
+        :return: 合并后的方法名到可调用对象的映射
+        """
+        merged: dict[str, Any] = {}
+        for declaration in declarations:
+            methods = declaration_methods(declaration)
+            if methods:
+                merged.update(methods)
+        return merged
+
+    def _legacy_module_table(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> tuple[Dict[str, Any], bool]:
+        """取用插件 `get_module()` 声明的方法表，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: (方法表, 是否取到有效声明)；未声明该钩子、返回 None 或格式非法时
+            方法表为空字典且第二项为 False
+        """
+        if not extension.supports_hook("get_module"):
+            return {}, False
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_module"):
+            return {}, False
+        try:
+            table = plugin.get_module()
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 模块出错：{str(error)}")
+            return {}, False
+        # 基类默认实现返回 None；只接受映射，防止把 list 当成方法表传入调度器
+        if table is None:
+            return {}, False
+        if not isinstance(table, Mapping):
+            self._logger.error(
+                f"插件 {extension_id} 的 get_module() 返回值必须是字典，"
+                f"实际是 {type(table).__name__}"
+            )
+            return {}, False
+        # 注入式模块声明整体处于废弃期，按实例留一次痕迹；表内旧分发名的
+        # 迁移提示是另一件事，两者互不替代
+        deprecation_warn("plugin.get_module", context=extension_id)
+        self._warn_dispatch_migration(extension_id, table)
+        return table, True
+
+    def _merge_module_sources(
+        self, extension_id: str, declared: Dict[str, Any], legacy: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """合并声明式与旧式两条来源的方法表，同名方法声明式优先。
+
+        只有一条来源提供方法时原样返回该来源的表对象，不额外拷贝：告警是只读
+        动作，插件如果依赖投影结果与自己交出的表同一身份，该身份不因告警而改变。
+
+        :param extension_id: 插件实例键
+        :param declared: `provides_modules()` 已通过契约校验的合并方法表
+        :param legacy: `get_module()` 声明的方法表
+        :return: 合并后的方法表，声明式条目覆盖旧式的同名条目
+        """
+        if not declared:
+            return legacy
+        if not legacy:
+            return declared
+        overlap = tuple(sorted(set(declared) & set(legacy)))
+        if overlap:
+            key = (extension_id, overlap)
+            if key not in _module_source_overlap_warnings_seen:
+                _module_source_overlap_warnings_seen.add(key)
+                self._logger.warning(
+                    f"插件[{extension_id}]的 provides_modules() 与 get_module() "
+                    f"同时挂载方法名 {list(overlap)}：声明式登记优先生效，"
+                    f"get_module() 中的同名实现不会被调用，请从 get_module() 中移除"
+                )
+        return {**legacy, **declared}
 
     def media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件声明的媒体数据源。
@@ -590,6 +712,26 @@ class PluginProjection:
             "name": plugin.plugin_name,
             "version": version,
             "remote_key": f"{extension_id}#{version}" if version else extension_id,
+        }
+
+    def storage_component_descriptor(
+        self, extension_id: str, plugin: Any, component: str
+    ) -> Dict[str, Any]:
+        """构造存储 vue 模式配置界面的组件描述：组件名加所在联邦远程入口。
+
+        调用方需自行保证 ``component`` 已通过登记契约校验、其声明方渲染模式
+        确为 vue；本方法只负责组装，不重复校验。
+
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param component: 存储声明携带的组件名
+        :return: 含 component 与 remote（联邦远程入口描述）的字典
+        :raises RuntimeError: 联邦入口生成器尚未配置
+        """
+        _, dist_path = plugin.get_render_mode()
+        return {
+            "component": component,
+            "remote": self._remote_descriptor(extension_id, plugin, dist_path),
         }
 
     def remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -777,9 +919,14 @@ class PluginProjection:
                     f"获取插件 {extension_id} 存储声明出错：{str(error)}"
                 )
                 continue
+            # config_component 只在扩展渲染模式为 vue 时合法，默认 vuetify 与
+            # get_render_mode() 基类实现的缺省值一致
+            render_mode = "vuetify"
+            if extension.supports_hook("get_render_mode"):
+                render_mode, _ = plugin.get_render_mode()
             accepted: List[Any] = []
             for item in declared:
-                violation = storage_declaration_violation(item)
+                violation = storage_declaration_violation(item, render_mode=render_mode)
                 if violation:
                     self._logger.error(
                         f"插件[{extension_id}]声明的存储 {item!r} 不合登记契约，"
