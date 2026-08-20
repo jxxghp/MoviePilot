@@ -220,6 +220,9 @@ class PluginInstanceInfo(BaseModel):
     instance_key: str = Field(description="实例键，默认实例的实例键等于插件 ID")
     running: bool = Field(default=False, description="实例是否处于运行态")
     state: bool = Field(default=False, description="实例启用状态，未处于运行态时为 False")
+    is_default_target: bool = Field(
+        default=False, description="是否为该插件当前的默认调用目标"
+    )
 
 
 class PluginInstanceCreate(BaseModel):

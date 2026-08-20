@@ -922,12 +922,17 @@ def list_plugin_instances(
     plugin_id: str, _: User = Depends(get_current_active_superuser)
 ) -> Any:
     """
-    列出指定插件的全部实例及其运行状态
+    列出指定插件的全部实例及其运行状态，并标注当前的默认调用目标
     """
     try:
-        return PluginManager().list_plugin_instances(plugin_id)
+        instances = PluginManager().list_plugin_instances(plugin_id)
     except LookupError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    default_target = PluginConfigOper().get_default_target(plugin_id)
+    default_instance_id = default_target.instance_id if default_target else None
+    for info in instances:
+        info["is_default_target"] = info["instance_id"] == default_instance_id
+    return instances
 
 
 @router.post(
@@ -979,6 +984,49 @@ def delete_plugin_instance(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     # 删除后必须整体重建，避免残留登记指向已停止的实例，兄弟实例的登记原样恢复
     register_plugin(plugin_id)
+    return _SchemaResponse(success=True)
+
+
+@router.put(
+    "/instances/{plugin_id}/{instance_id}/default_target",
+    summary="设为插件的默认调用目标",
+    response_model=_SchemaResponse[None],
+)
+def set_plugin_instance_default_target(
+    plugin_id: str,
+    instance_id: str,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    把指定实例设为该插件的默认调用目标：外部调用未指定实例时改按该实例解析；
+    同一事务内先清除该插件原有的置位再置位新目标，目标实例没有配置行时报错
+    且原有置位保持不变
+    """
+    if not PluginConfigOper().set_default_target(plugin_id, instance_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"插件实例 {plugin_id}@{instance_id} 不存在",
+        )
+    return _SchemaResponse(success=True)
+
+
+@router.delete(
+    "/instances/{plugin_id}/{instance_id}/default_target",
+    summary="清除插件的默认调用目标",
+    response_model=_SchemaResponse[None],
+)
+def clear_plugin_instance_default_target(
+    plugin_id: str,
+    instance_id: str,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    清除该插件的默认调用目标置位：仅当该实例当前正是默认调用目标时才会清除，
+    否则视为目标状态已经满足，直接返回成功
+    """
+    default_target = PluginConfigOper().get_default_target(plugin_id)
+    if default_target is not None and default_target.instance_id == instance_id:
+        PluginConfigOper().clear_default_target(plugin_id)
     return _SchemaResponse(success=True)
 
 
