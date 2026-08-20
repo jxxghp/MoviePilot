@@ -67,6 +67,7 @@ def configure_plugin_system_services():
     from app.db.oper.workflow import WorkflowOper
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
+    from app.db.oper.user_identity import UserIdentityOper
 
     configure_api_data_ports(
         sync_session=get_db,
@@ -82,17 +83,25 @@ def configure_plugin_system_services():
             "subscribe_history": SubscribeHistoryOper,
             "transfer_history": TransferHistoryOper,
             "user": UserOper,
+            "user_identity": UserIdentityOper,
             "workflow": WorkflowOper,
         },
         standalone={
             "passkey": PassKeyOper,
             "system_config": SystemConfigOper,
             "user": UserOper,
+            "user_identity": UserIdentityOper,
         },
         unit_of_work={
             "async": SqlAlchemyAsyncUnitOfWork,
             "sync": SqlAlchemyUnitOfWork,
         },
+    )
+
+    from app.application.security.auth import configure_auth_identity_ports
+    configure_auth_identity_ports(
+        identities=UserIdentityOper(),
+        provisioning=UserOper(),
     )
 
     configure_chain_data_ports(

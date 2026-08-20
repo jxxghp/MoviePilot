@@ -158,6 +158,8 @@
     "认证请求已失效": "The authentication request has expired",
     "通行密钥已删除": "Passkey deleted",
     "通行密钥不存在或无权删除": "The passkey does not exist or you do not have permission to delete it",
+    "已解绑": "Unbound",
+    "绑定不存在": "The binding does not exist",
     "验证失败": "Verification failed",
     "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
     "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",

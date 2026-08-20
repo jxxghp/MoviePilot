@@ -60,7 +60,7 @@ class UserOper(DbOper):
 
     async def async_delete(self, user_id: int) -> None:
         """异步删除用户。"""
-        await User.async_delete_by_id(self._db, user_id)
+        await User().async_delete_by_id(self._db, user_id)
 
     async def async_update_otp_by_name(
         self,

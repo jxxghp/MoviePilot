@@ -87,6 +87,18 @@ class UserInDB(UserInDBBase):
     hashed_password: str
 
 
+class UserIdentityInfo(BaseModel):
+    """当前用户的第三方身份绑定摘要。"""
+
+    id: int
+    provider: str
+    external_id: str
+    display_name: Optional[str] = None
+    created_at: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AuthProviderRemote(BaseModel):
     """插件认证提供方的远程组件信息。"""
 

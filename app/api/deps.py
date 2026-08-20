@@ -45,6 +45,7 @@ from app.adapters.web.security.access import verify_token
 from app.application.security.user import UserService
 from app.application.security.auth import AuthService
 from app.application.security.passkeys import PasskeyService
+from app.application.security.identity import UserIdentityService
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.data import get_api_data_ports, get_async_db, get_db
 from app.runtime.events import eventmanager
@@ -174,6 +175,11 @@ def get_auth_service() -> AuthService:
 def get_passkey_service() -> PasskeyService:
     """组装 PassKey 应用服务。"""
     return PasskeyService(repository=_standalone_repository("passkey"))
+
+
+def get_user_identity_service() -> UserIdentityService:
+    """组装第三方身份绑定应用服务。"""
+    return UserIdentityService(repository=_standalone_repository("user_identity"))
 
 
 def get_subscription_mutation_service(

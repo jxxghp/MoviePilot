@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
 from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.models.user_identity import UserIdentity
 
 
 class User(Base):
@@ -64,6 +65,7 @@ class User(Base):
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)
         if user:
+            UserIdentity.delete_by_user_id(db, user.id)
             user.delete(db, user.id)
         return True
 
@@ -71,6 +73,7 @@ class User(Base):
     async def async_delete_by_name(self, db: AsyncSession, name: str):
         user = await self.async_get_by_name(db, name)
         if user:
+            await UserIdentity.async_delete_by_user_id(db, user.id)
             await user.async_delete(db, user.id)
         return True
 
@@ -78,6 +81,9 @@ class User(Base):
     def delete_by_id(self, db: Session, user_id: int):
         user = self.get_by_id(db, user_id)
         if user:
+            # 数据库层已声明 user_id 外键 ON DELETE CASCADE，此处显式级联删除是因为
+            # SQLite 默认不启用外键约束强制，不能只依赖数据库自动级联
+            UserIdentity.delete_by_user_id(db, user_id)
             user.delete(db, user.id)
         return True
 
@@ -85,6 +91,7 @@ class User(Base):
     async def async_delete_by_id(self, db: AsyncSession, user_id: int):
         user = await self.async_get_by_id(db, user_id)
         if user:
+            await UserIdentity.async_delete_by_user_id(db, user_id)
             await user.async_delete(db, user.id)
         return True
 

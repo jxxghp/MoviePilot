@@ -6,9 +6,10 @@ from typing import Any, Optional, Protocol
 
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.application.security.token import create_access_token
+from app.application.security.token import create_access_token, get_password_hash
 from app.runtime.config import settings
 from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
 
@@ -123,6 +124,146 @@ class AuthUser(Protocol):
     is_superuser: bool
     avatar: Optional[str]
     permissions: Optional[dict]
+
+
+class AuthIdentityRepository(Protocol):
+    """第三方身份绑定查询与新增端口。"""
+
+    def get_by_provider_external_id(self, provider: str, external_id: str) -> Optional[Any]:
+        """按 (provider, external_id) 查已绑定的身份行，返回对象须带 user_id 属性。"""
+
+    def bind(
+        self,
+        user_id: int,
+        provider: str,
+        external_id: str,
+        display_name: Optional[str] = None,
+    ) -> Any:
+        """新增身份绑定；该身份已被其他用户占用时抛出该端口自定义的冲突异常。"""
+
+
+class AuthUserProvisioningRepository(Protocol):
+    """第三方登录自动建号所需的最小用户创建端口。"""
+
+    def get_by_name(self, name: str) -> Optional[AuthUser]:
+        """按用户名查询用户，用于生成不冲突的新用户名。"""
+
+    def add(self, **kwargs: Any) -> None:
+        """新增用户。"""
+
+
+_configured_identity_repository: Optional[AuthIdentityRepository] = None
+_configured_user_provisioning_repository: Optional[AuthUserProvisioningRepository] = None
+
+
+def configure_auth_identity_ports(
+    identities: AuthIdentityRepository,
+    provisioning: AuthUserProvisioningRepository,
+) -> None:
+    """由启动组合根登记第三方身份绑定查询与自动建号所需的数据端口。"""
+    global _configured_identity_repository, _configured_user_provisioning_repository
+    _configured_identity_repository = identities
+    _configured_user_provisioning_repository = provisioning
+
+
+def _generate_unique_username(
+    provider_id: str, external_id: str, display_name: Optional[str]
+) -> str:
+    """
+    为自动建号生成不与现有用户名冲突的用户名。
+
+    :param provider_id: 提供方标识
+    :param external_id: 第三方侧的用户标识
+    :param display_name: 第三方侧的显示名，取不到时退回 provider/external_id 拼接
+    :return: 不与现有用户重名的用户名
+    """
+    base = (display_name or f"{provider_id}_{external_id}").strip() or external_id
+    base = base[:60]
+    candidate = base
+    suffix = 2
+    while _configured_user_provisioning_repository.get_by_name(candidate) is not None:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def resolve_or_create_user_id_for_identity(
+    provider_id: str,
+    external_id: str,
+    *,
+    display_name: Optional[str] = None,
+) -> Optional[int]:
+    """
+    按第三方身份查已绑定的本项目用户；未绑定时按
+    ``settings.AUTH_IDENTITY_AUTO_CREATE_USER`` 决定是否自动建号并完成绑定。
+
+    首次第三方登录默认不自动创建本项目用户：否则任何能登录该第三方账号的人都能在
+    本项目开号，绑定必须由已登录用户主动发起。
+
+    :param provider_id: 提供方标识
+    :param external_id: 第三方侧的用户标识
+    :param display_name: 第三方侧的显示名，仅在自动建号时用于生成用户名
+    :return: 已绑定或新建的本项目用户 ID；未绑定且未开启自动建号时为 None
+    :raises RuntimeError: 身份绑定端口尚未由组合根配置
+    """
+    if _configured_identity_repository is None:
+        raise RuntimeError("第三方身份绑定端口尚未配置")
+    existing = _configured_identity_repository.get_by_provider_external_id(
+        provider_id, external_id
+    )
+    if existing is not None:
+        return existing.user_id
+    if not settings.AUTH_IDENTITY_AUTO_CREATE_USER:
+        return None
+    if _configured_user_provisioning_repository is None:
+        raise RuntimeError("自动建号所需的用户创建端口尚未配置")
+    logger.warning(
+        f"第三方登录 {provider_id}（账号 {external_id}）尚未绑定本项目用户，"
+        f"AUTH_IDENTITY_AUTO_CREATE_USER 已开启，将自动创建新用户——"
+        f"任何能登录该第三方账号的人都会因此获得一个本项目账号，请确认该认证源可信"
+    )
+    username = _generate_unique_username(provider_id, external_id, display_name)
+    _configured_user_provisioning_repository.add(
+        name=username,
+        is_active=True,
+        is_superuser=False,
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+    )
+    created = _configured_user_provisioning_repository.get_by_name(username)
+    if created is None:
+        return None
+    identity = _configured_identity_repository.bind(
+        created.id, provider_id, external_id, display_name
+    )
+    return identity.user_id
+
+
+def create_plugin_auth_ticket_for_identity(
+    provider_id: str,
+    external_id: str,
+    *,
+    display_name: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> Optional[str]:
+    """
+    第三方登录成功后，查已绑定的本项目用户并签发一次性登录票据。
+
+    这是插件完成自身的第三方认证握手后应调用的落点：查绑定命中即签发票据，
+    未命中按 `resolve_or_create_user_id_for_identity` 的策略处理。
+
+    :param provider_id: 提供方标识
+    :param external_id: 第三方侧的用户标识
+    :param display_name: 第三方侧的显示名
+    :param metadata: 插件侧附加信息，随票据一并保存
+    :return: 一次性登录票据；未绑定且未开启自动建号时为 None，调用方应提示用户
+        先登录后在设置页发起绑定
+    """
+    user_id = resolve_or_create_user_id_for_identity(
+        provider_id, external_id, display_name=display_name
+    )
+    if user_id is None:
+        return None
+    return create_plugin_auth_ticket(user_id=user_id, provider_id=provider_id, metadata=metadata)
 
 
 class AuthUserRepository(Protocol):

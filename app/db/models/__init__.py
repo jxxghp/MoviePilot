@@ -32,6 +32,7 @@ _MODEL_EXPORTS = {
     "TransferPending": ("app.db.models.transferpending", "TransferPending"),
     "User": ("app.db.models.user", "User"),
     "UserConfig": ("app.db.models.userconfig", "UserConfig"),
+    "UserIdentity": ("app.db.models.user_identity", "UserIdentity"),
     "Workflow": ("app.db.models.workflow", "Workflow"),
 }
 

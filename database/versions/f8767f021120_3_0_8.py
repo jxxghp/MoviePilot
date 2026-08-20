@@ -1,5 +1,5 @@
 """3.0.8
-新增插件实例配置表
+新增插件实例配置表与用户第三方身份绑定表
 
 Revision ID: f8767f021120
 Revises: 73370ce9bab7
@@ -88,12 +88,51 @@ def upgrade() -> None:
             ["plugin_id", "plugin_version"],
         )
 
+    _create_useridentity_table()
+
+
+def _create_useridentity_table() -> None:
+    """建立用户第三方身份绑定表及其唯一约束、外键与索引。
+
+    ``user_id`` 外键带 ``ON DELETE CASCADE``：用户删除时数据库层级联删除其全部
+    身份绑定行。``UniqueConstraint("provider", "external_id")`` 禁止同一第三方
+    身份绑定到多个本项目用户，不对 ``(user_id, provider)`` 设唯一约束——同一用户
+    允许绑定同一 provider 族下的多个实例（如两台媒体服务器）。唯一约束与外键随建表
+    一并声明：SQLite 不支持事后 ALTER TABLE 添加约束，只能在 CREATE TABLE 时一次性带上。
+    """
+    if not _has_table("useridentity"):
+        dialect_name = op.get_bind().dialect.name
+        op.create_table(
+            "useridentity",
+            _id_column(dialect_name),
+            sa.Column("user_id", sa.Integer(), nullable=False),
+            sa.Column("provider", sa.String(), nullable=False),
+            sa.Column("external_id", sa.String(), nullable=False),
+            sa.Column("display_name", sa.String(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["user_id"], ["user.id"],
+                name="fk_useridentity_user_id",
+                ondelete="CASCADE",
+            ),
+            sa.UniqueConstraint(
+                "provider", "external_id", name="ux_useridentity_provider_external_id"
+            ),
+        )
+    if not _has_index("useridentity", "ix_useridentity_user_id"):
+        op.create_index("ix_useridentity_user_id", "useridentity", ["user_id"])
+
 
 def downgrade() -> None:
-    """删除插件实例配置表，唯一约束随建表内联声明，随表一并删除。"""
+    """删除插件实例配置表与用户第三方身份绑定表，唯一约束与外键随建表内联声明，随表一并删除。"""
     if _has_table("pluginconfig"):
         if _has_index("pluginconfig", "ix_pluginconfig_plugin_id_plugin_version"):
             op.drop_index("ix_pluginconfig_plugin_id_plugin_version", table_name="pluginconfig")
         if _has_index("pluginconfig", "ix_pluginconfig_plugin_id"):
             op.drop_index("ix_pluginconfig_plugin_id", table_name="pluginconfig")
         op.drop_table("pluginconfig")
+
+    if _has_table("useridentity"):
+        if _has_index("useridentity", "ix_useridentity_user_id"):
+            op.drop_index("ix_useridentity_user_id", table_name="useridentity")
+        op.drop_table("useridentity")

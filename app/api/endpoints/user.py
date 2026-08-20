@@ -10,14 +10,17 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.user import User as _SchemaUser
 from app.schemas.user import UserCreate as _SchemaUserCreate
 from app.schemas.user import UserUpdate as _SchemaUserUpdate
+from app.schemas.user import UserIdentityInfo as _SchemaUserIdentityInfo
 from app.api.response import ResponseAPIRouter
 from app.application.security.token import PasswordTooLongError, get_password_hash
 from app.application.security.user import UserService
+from app.application.security.identity import UserIdentityService
 from app.api.deps import (
     get_current_active_superuser_async,
     get_current_active_user_async,
     get_current_active_user,
     get_user_service,
+    get_user_identity_service,
 )
 from app.application.security.userconfig import get_configured_user_configuration
 
@@ -163,6 +166,52 @@ def set_config(
         value=value,
     )
     return _SchemaResponse(success=True)
+
+
+@router.get(
+    "/identity/list",
+    summary="获取当前用户的第三方身份绑定列表",
+    response_model=_SchemaResponse[List[_SchemaUserIdentityInfo]],
+)
+def list_user_identities(
+    current_user: Any = Depends(get_current_active_user),
+    service: UserIdentityService = Depends(get_user_identity_service),
+) -> Any:
+    """
+    获取当前用户绑定的全部第三方身份
+    """
+    identities = service.list_by_user_id(current_user.id)
+    return _SchemaResponse(
+        success=True,
+        data=[
+            {
+                "id": identity.id,
+                "provider": identity.provider,
+                "external_id": identity.external_id,
+                "display_name": identity.display_name,
+                "created_at": identity.created_at.isoformat() if identity.created_at else None,
+            }
+            for identity in identities
+        ],
+    )
+
+
+@router.delete(
+    "/identity/{identity_id}",
+    summary="解绑第三方身份",
+    response_model=_SchemaResponse[None],
+)
+def unbind_user_identity(
+    identity_id: int,
+    current_user: Any = Depends(get_current_active_user),
+    service: UserIdentityService = Depends(get_user_identity_service),
+) -> Any:
+    """
+    解绑当前用户名下的第三方身份，不属于当前用户的绑定不会被解绑
+    """
+    if service.unbind(identity_id, current_user.id):
+        return _SchemaResponse(success=True, message="已解绑")
+    return _SchemaResponse(success=False, message="绑定不存在")
 
 
 @router.delete("/id/{user_id}", summary="删除用户", response_model=_SchemaResponse[None])

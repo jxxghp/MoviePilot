@@ -122,6 +122,10 @@ class ConfigModel(BaseModel):
     API_TOKEN: Optional[str] = None
     # 用户认证站点
     AUTH_SITE: str = ""
+    # 第三方身份（认证扩展 AuthProviderDeclaration，如 GitHub、媒体服务器账号）首次登录
+    # 但未绑定本项目用户时，是否自动创建新用户并完成绑定。默认关闭：开启后任何能登录该
+    # 第三方账号的人都会在本项目自动开号，仅在确认第三方认证源可信时启用
+    AUTH_IDENTITY_AUTO_CREATE_USER: bool = False
 
     # ==================== 数据库配置 ====================
     # 数据库类型，支持 sqlite 和 postgresql，默认使用 sqlite
