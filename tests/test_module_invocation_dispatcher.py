@@ -234,3 +234,41 @@ async def test_async_plugin_non_mapping_module_decl_is_reported_and_skipped() ->
 
     assert await dispatcher.async_dispatch("execute") == "ok"
     plugin_error.assert_called_once()
+
+
+def test_module_selection_failure_is_reported_not_swallowed() -> None:
+    """模块选不出调用目标而抛错时必须走错误策略上报，不能只留一个空结果。"""
+
+    def refuse():
+        """模拟下载器模块无法确定默认下载器。"""
+        raise LookupError("存在多个已启用下载器但未设置默认下载器")
+
+    dispatcher, _, system_error, _ = _dispatcher(
+        modules=[_Module("Qbittorrent", 1, refuse)],
+    )
+
+    assert dispatcher.dispatch("execute") is None
+    system_error.assert_called_once()
+    reported = system_error.call_args.args[0]
+    assert isinstance(reported, LookupError)
+    assert "未设置默认下载器" in str(reported)
+
+
+def test_system_error_reaches_user_visible_message() -> None:
+    """错误策略把原因原文推给系统消息，用户看得到而不是静默失败。"""
+    from app.application.orchestration.ports.dispatch import ModuleErrorReporter
+
+    event_manager, message_helper = Mock(), Mock()
+    reporter = ModuleErrorReporter(
+        event_manager=event_manager, message_helper=message_helper
+    )
+
+    reporter.handle_system_error(
+        LookupError("默认下载器 主力 已停用，调用必须显式指定下载器"),
+        module_id="QbittorrentModule",
+        module_name="Qbittorrent",
+        method="download",
+    )
+
+    assert "默认下载器 主力 已停用" in message_helper.put.call_args.kwargs["message"]
+    assert event_manager.send_event.call_count == 1

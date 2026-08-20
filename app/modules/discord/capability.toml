@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Discord"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Discord"
 priority = 4
 

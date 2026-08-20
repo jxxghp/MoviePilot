@@ -476,13 +476,13 @@ class _PluginBase(metaclass=ABCMeta):
                 "id2": self.xxx2,
             },
             capabilities=["id1", "id2"],         # 承诺提供的能力方法名
-            service_config="Downloaders",        # 归属的服务配置族，取值须是
-                                                  # SystemConfigKey 的成员值；不归属
-                                                  # 任何服务族时不填
         )]
 
         也可直接返回方法表字典本身（不包 `ModuleDeclaration`），宿主按字典内容
-        取用方法表，兼容早期写法；此时不能声明 service_config。
+        取用方法表，兼容早期写法。
+
+        按用户配置扇出多个具名服务实例（下载器、媒体服务器、消息通知）由
+        `provides_service_instances()` 承担，不在本钩子的方法表里声明。
 
         多来源契约（media_detail、media_credits、media_recommend、media_similar、
         person_detail、person_credits、discover、discover_board、match_media，

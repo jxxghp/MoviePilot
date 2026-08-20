@@ -11,7 +11,6 @@ from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.plugin import module_capabilities
 from app.runtime.extensions.plugin import projection as projection_module
 from app.runtime.extensions.plugin.projection import PluginProjection, PluginProviderSource
-from app.schemas.types import SystemConfigKey
 
 
 @pytest.fixture(autouse=True)
@@ -94,16 +93,6 @@ def test_contract_accepts_bare_dict_declaration() -> None:
     assert module_capabilities.module_declaration_violation({"recognize": _handler}) is None
 
 
-def test_contract_accepts_known_service_config() -> None:
-    """service_config 取值为已知服务配置键时合规。"""
-    declaration = ModuleDeclaration(
-        methods={"get_instances": _handler},
-        service_config=SystemConfigKey.Downloaders.value,
-    )
-
-    assert module_capabilities.module_declaration_violation(declaration) is None
-
-
 @pytest.mark.parametrize(
     "declaration",
     [
@@ -144,34 +133,6 @@ def test_contract_rejects_non_callable_method_value() -> None:
     violation = module_capabilities.module_declaration_violation(declaration)
 
     assert violation is not None
-
-
-def test_contract_rejects_unknown_service_config() -> None:
-    """service_config 取值不是已知服务配置键的声明必须被拒绝。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler}, service_config="NotARealServiceConfig"
-    )
-
-    violation = module_capabilities.module_declaration_violation(declaration)
-
-    assert violation is not None
-    assert "service_config" in violation
-
-
-def test_contract_rejects_non_string_service_config() -> None:
-    """service_config 为非字符串类型的声明必须被拒绝，而不是被当作未声明忽略。"""
-    declaration = ModuleDeclaration(methods={"recognize": _handler}, service_config=123)
-
-    violation = module_capabilities.module_declaration_violation(declaration)
-
-    assert violation is not None
-
-
-def test_contract_treats_blank_service_config_as_not_declared() -> None:
-    """service_config 留空时不受该项约束。"""
-    declaration = ModuleDeclaration(methods={"recognize": _handler}, service_config="")
-
-    assert module_capabilities.module_declaration_violation(declaration) is None
 
 
 # ---------------------------------------------------------------------------

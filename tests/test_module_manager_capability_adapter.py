@@ -23,7 +23,10 @@ from app.runtime.extensions import host_module_adapter
 from app.runtime.extensions import module_manager as module_manager_extension
 from app.runtime.extensions.module_manager import ModuleManager
 
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service_config import (
+    configure_service_config_reader,
+    service_config_key,
+)
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -37,7 +40,7 @@ depends_on = []
 
 [metadata]
 name = "Sample"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Telegram"
 priority = 10
 
@@ -62,7 +65,7 @@ depends_on = []
 
 [metadata]
 name = "Other"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Telegram"
 priority = 20
 
@@ -1045,21 +1048,24 @@ def _write_single_module_manifest(
     *,
     package: str,
     subtype: Optional[str] = None,
-    service_config: Optional[str] = None,
+    service_capability: Optional[str] = None,
 ) -> None:
     """在合成模块根下写入一个只含单个包的 Host Module 声明，用于单独测试 metadata 校验。
 
     :param module_root: 合成模块根目录
     :param package: 一级模块包名
     :param subtype: 模块子类型，为空时不声明
-    :param service_config: 模块消费的服务配置键，为空时不声明
+    :param service_capability: 模块归属的服务能力标签，为空时不声明
     """
     package_dir = module_root / package
     package_dir.mkdir(parents=True)
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
-    service_line = f'service_config = "{service_config}"\n' if service_config else ""
+    service_line = (
+        f'service_capability = "{service_capability}"\n' if service_capability else ""
+    )
     subtype_line = f'subtype = "{subtype}"\n' if subtype else ""
-    watch = f'["{service_config}"]' if service_config else "[]"
+    config_key = service_config_key(service_capability)
+    watch = f'["{config_key.value}"]' if config_key else "[]"
     (package_dir / "capability.toml").write_text(
         f"""
 schema_version = 1
@@ -1091,7 +1097,7 @@ def test_manifest_accepts_unregistered_subtype_for_non_notification_module(
         module_root,
         package="newbackend",
         subtype="TotallyNewBackend",
-        service_config="Downloaders",
+        service_capability="downloader",
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
@@ -1112,7 +1118,7 @@ def test_manifest_accepts_unregistered_subtype_for_notification_module(
         module_root,
         package="newchannel",
         subtype="TotallyNewChannel",
-        service_config="Notifications",
+        service_capability="notification",
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
@@ -1132,7 +1138,7 @@ def test_manifest_requires_subtype_for_notification_module(
     _write_single_module_manifest(
         module_root,
         package="unlabeledchannel",
-        service_config="Notifications",
+        service_capability="notification",
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
@@ -1140,29 +1146,35 @@ def test_manifest_requires_subtype_for_notification_module(
         host_module_adapter.build_host_module_registry()
 
 
-def test_manifest_rejects_unknown_service_config(
+@pytest.mark.parametrize(
+    "capability",
+    ["Sites", "Downloaders"],
+    ids=["unknown_label", "storage_key"],
+)
+def test_manifest_rejects_unknown_service_capability(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capability: str,
 ) -> None:
-    """metadata.service_config 只能是宿主已支持的服务配置键。"""
+    """metadata.service_capability 只能是服务能力标签，配置存放键同样被拒。"""
     module_root = tmp_path / "modules"
     _write_single_module_manifest(
         module_root,
         package="newservice",
         subtype="NewService",
-        service_config="Sites",
+        service_capability=capability,
     )
     monkeypatch.setattr(host_module_adapter, "_MODULE_ROOT", module_root)
 
-    with pytest.raises(ValueError, match="service_config"):
+    with pytest.raises(ValueError, match="service_capability"):
         host_module_adapter.build_host_module_registry()
 
 
-def test_manifest_requires_service_config_to_be_watched(
+def test_manifest_requires_service_config_key_to_be_watched(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """声明了服务配置归属的模块必须同时监听该配置键，配置变更才能重建实例。"""
+    """声明了服务归属的模块必须同时监听该族配置键，配置变更才能重建实例。"""
     module_root = tmp_path / "modules"
     package_dir = module_root / "unwatched"
     package_dir.mkdir(parents=True)
@@ -1177,7 +1189,7 @@ depends_on = []
 
 [metadata]
 name = "Unwatched"
-service_config = "Downloaders"
+service_capability = "downloader"
 subtype = "Unwatched"
 priority = 1
 

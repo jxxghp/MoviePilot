@@ -1,13 +1,12 @@
 """服务实例注册表：按「能力标签加类型标识」登记扩展提供的服务实例类型。
 
 宿主的服务发现按配置扇出实例——同一类型下用户配置了几条，就有几个具名实例。
-内建模块靠 `capability.toml` 的 ``service_config`` 声明归属并自持实例；扩展声明
-的类型不进入模块清单，改由本表为每条声明持有一个适配器，适配器实现与内建模块
-同名的 ``get_instances()``，从而与内建模块一起被服务发现取用。
+内建模块靠 `capability.toml` 的 ``service_capability`` 声明归属并自持实例；扩展
+声明的类型不进入模块清单，改由本表为每条声明持有一个适配器，适配器实现与内建
+模块同名的 ``get_instances()``，从而与内建模块一起被服务发现取用。
 
-扩展只声明能力标签，「这一族配置存放在 systemconfig 的哪个列表里」是宿主内部
-实现：配置读取按能力标签取对应端口，服务发现按存放位置反查能力标签，两张对照表
-都收在本模块内，不向声明面外泄。
+本表全程只认能力标签，「这一族配置存放在 systemconfig 的哪个列表里」是宿主内部
+实现，对照收在 `app.runtime.extensions.service_config`，不向声明面外泄。
 
 登记由扩展实例的生命周期驱动：实例启动或配置生效时按当前声明重建，实例停止时
 按登记方回收。
@@ -17,27 +16,11 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from types import MappingProxyType
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_config import service_capability_configs
 from app.runtime.log import logger
-from app.schemas.types import ModuleType, SystemConfigKey
-
-# 能力标签到配置读取端口的映射，配置一律经既有端口取用并已通过 Schema 校验
-_CONFIG_READERS: Mapping[str, Callable[[], List[Any]]] = MappingProxyType({
-    ModuleType.Downloader.value: ServiceConfigHelper.get_downloader_configs,
-    ModuleType.MediaServer.value: ServiceConfigHelper.get_mediaserver_configs,
-    ModuleType.Notification.value: ServiceConfigHelper.get_notification_configs,
-})
-
-# 服务配置在 systemconfig 中的存放位置到能力标签的映射，供服务发现按存放位置反查
-_CAPABILITIES_BY_CONFIG_KEY: Mapping[str, str] = MappingProxyType({
-    SystemConfigKey.Downloaders.value: ModuleType.Downloader.value,
-    SystemConfigKey.MediaServers.value: ModuleType.MediaServer.value,
-    SystemConfigKey.Notifications.value: ModuleType.Notification.value,
-})
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,11 +123,8 @@ class ServiceInstanceAdapter:
 
         :return: 实例名到配置的映射；配置读取出错时为空字典
         """
-        reader = _CONFIG_READERS.get(self._entry.capability)
-        if reader is None:
-            return {}
         try:
-            configs = reader() or []
+            configs = service_capability_configs(self._entry.capability) or []
         except Exception as error:
             logger.error(
                 f"【服务】读取 {self._entry.capability} 配置出错，"
@@ -257,16 +237,12 @@ class ServiceInstanceRegistry:
                 self._adapters.pop(key, None)
             return tuple(service_type for _capability, service_type in owned)
 
-    def adapters(self, config_key: str) -> Tuple[ServiceInstanceAdapter, ...]:
-        """列出消费指定服务配置的全部适配器。
+    def adapters(self, capability: str) -> Tuple[ServiceInstanceAdapter, ...]:
+        """列出指定能力标签下的全部适配器。
 
-        服务发现按配置在 systemconfig 中的存放位置取用，登记按能力标签建立，故此处
-        先把存放位置反查成能力标签；不对应任何服务族的存放位置没有适配器。
-
-        :param config_key: 服务配置在 systemconfig 中的存放位置
+        :param capability: 能力标签
         :return: 适配器元组，按登记顺序排列
         """
-        capability = _CAPABILITIES_BY_CONFIG_KEY.get(config_key)
         if not capability:
             return ()
         with self._lock:

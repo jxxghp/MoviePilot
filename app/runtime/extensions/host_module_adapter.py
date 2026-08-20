@@ -22,28 +22,29 @@ from app.runtime.extensions.contract import (
     is_implemented_callable,
     supports_extension_hook,
 )
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_config import (
+    service_capability,
+    service_capability_configs,
+    service_config_key,
+)
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import ModuleType
 
 
 HOST_MODULE_KIND = "host_module"
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
 _MODULE_ROOT = Path(__file__).resolve().parents[2] / "modules"
-_SERVICE_CONFIG_GETTERS = MappingProxyType({
-    SystemConfigKey.Downloaders.value: ServiceConfigHelper.get_downloader_configs,
-    SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
-    SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
-})
 # 模块 manifest 必须声明的元数据字段
 _REQUIRED_METADATA_FIELDS = frozenset({"name", "priority"})
-# 只有按服务配置扇出多实例的模块才声明的元数据字段
-_SERVICE_CONFIG_FIELD = "service_config"
+# 只有按服务配置扇出多实例的模块才声明的元数据字段，取值是服务能力标签，
+# 与扩展声明服务实例时用的是同一套取值；该族配置存放在哪个 systemconfig 键
+# 由宿主内部对照，manifest 不重复声明
+_SERVICE_CAPABILITY_FIELD = "service_capability"
 # subtype 是可选元数据字段，声明时必须是非空字符串；渠道标识的取值不
 # 再要求登记于内核枚举，是否声明由模块自身决定
 _SUBTYPE_FIELD = "subtype"
-_NOTIFICATION_CONFIG_KEY = SystemConfigKey.Notifications.value
+_NOTIFICATION_CAPABILITY = ModuleType.Notification.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +65,7 @@ def _validate_setting_selector(config: Mapping[str, Any]) -> None:
 def _validate_service_selector(config: Mapping[str, Any]) -> None:
     """限制服务 selector 使用经过 Schema 校验的三个宿主服务配置。"""
     key = config["key"]
-    if key not in _SERVICE_CONFIG_GETTERS:
+    if service_capability(key) is None:
         raise ValueError(f"不支持的服务配置：{key!r}")
     if config["match_field"] != "type":
         raise ValueError("服务 selector 的 match_field 必须是 type")
@@ -124,27 +125,29 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
         unknown_metadata = (
             metadata_fields
             - _REQUIRED_METADATA_FIELDS
-            - {_SERVICE_CONFIG_FIELD, _SUBTYPE_FIELD}
+            - {_SERVICE_CAPABILITY_FIELD, _SUBTYPE_FIELD}
         )
         if missing_metadata or unknown_metadata:
             raise ValueError(
                 f"{spec.source}: metadata 字段非法，"
                 f"missing={sorted(missing_metadata)} unknown={sorted(unknown_metadata)}"
             )
-        service_config = spec.metadata.get(_SERVICE_CONFIG_FIELD)
-        if service_config is not None:
-            if service_config not in _SERVICE_CONFIG_GETTERS:
+        capability = spec.metadata.get(_SERVICE_CAPABILITY_FIELD)
+        if capability is not None:
+            config_key = service_config_key(capability)
+            if config_key is None:
                 raise ValueError(
-                    f"{spec.source}: 非法 metadata.service_config={service_config!r}"
+                    f"{spec.source}: 非法 metadata.service_capability={capability!r}"
                 )
-            if service_config not in spec.watch:
+            if config_key.value not in spec.watch:
                 raise ValueError(
-                    f"{spec.source}: activation.watch 必须包含 metadata.service_config"
+                    f"{spec.source}: activation.watch 必须包含 "
+                    f"metadata.service_capability 对应的服务配置键"
                 )
         subtype = spec.metadata.get(_SUBTYPE_FIELD)
         if subtype is not None and (not isinstance(subtype, str) or not subtype):
             raise ValueError(f"{spec.source}: metadata.subtype 必须是非空字符串")
-        if service_config == _NOTIFICATION_CONFIG_KEY and subtype is None:
+        if capability == _NOTIFICATION_CAPABILITY and subtype is None:
             raise ValueError(
                 f"{spec.source}: 通知渠道模块必须声明 metadata.subtype"
             )
@@ -191,7 +194,7 @@ def capture_host_module_config(
         for key in sorted(setting_keys)
     }
     service_values = {
-        key: tuple(_SERVICE_CONFIG_GETTERS[key]())
+        key: tuple(service_capability_configs(service_capability(key)))
         for key in sorted(service_keys)
     }
     return HostModuleConfigSnapshot(

@@ -17,6 +17,7 @@ from typing import Optional
 
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
+    describe_instance_candidates,
     instance_key,
     normalize_instance_id,
 )
@@ -77,11 +78,9 @@ def _describe_candidates(targets: Iterable[PluginInstanceTarget]) -> str:
     :param targets: 实例状态集合
     :return: 形如 ``default（已启用）、alt（已停用）`` 的描述，一个实例都没有时为「无」
     """
-    described = [
-        f"{target.instance_id}（{'已启用' if target.is_enabled else '已停用'}）"
-        for target in _ordered(targets)
-    ]
-    return "、".join(described) if described else "无"
+    return describe_instance_candidates(
+        (target.instance_id, target.is_enabled) for target in _ordered(targets)
+    )
 
 
 def select_plugin_instance_id(

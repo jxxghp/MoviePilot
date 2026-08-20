@@ -46,6 +46,7 @@ from app.runtime.extensions.instance import (
     normalize_instance_id,
     split_instance_key,
 )
+from app.runtime.extensions.plugin.instance_selection import resolve_plugin_instance_key
 from app.runtime.extensions.plugin.layout import (
     ensure_plugin_version_dir_available,
     plugin_module_name,
@@ -821,6 +822,24 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return pid
         keys = [key for key in running if extension_id_of(key) == pid]
         return keys[0] if len(keys) == 1 else None
+
+    def _resolve_call_target(self, pid: str) -> Optional[Any]:
+        """
+        定位一次调用应当落到的运行实例
+        :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
+        :return: 运行实例；该插件没有实例在运行时为 None
+        :raises LookupError: 该插件有实例在运行，但没有已启用的默认调用目标
+        """
+        plugin = self._plugin_registry.instance(pid)
+        if plugin is not None:
+            return plugin
+        # 实例键精确未命中即该实例未运行，不按插件族另找一个顶替
+        if pid != extension_id_of(pid):
+            return None
+        # 一个实例都没在跑属于「插件未加载」，与「选不出目标」是两回事
+        if not self._plugin_registry.instance_keys(pid):
+            return None
+        return self._plugin_registry.instance(resolve_plugin_instance_key(pid))
 
     def _matching_instances(self, pid: Optional[str]) -> List[Tuple[str, Any]]:
         """
@@ -2523,7 +2542,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return len(signature.parameters)
 
         # 获取插件实例
-        plugin_instance = self._plugin_registry.instance(pid)
+        try:
+            plugin_instance = self._resolve_call_target(pid)
+        except LookupError as err:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err))
         if not plugin_instance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"插件 {pid} 不存在或未加载")
 
@@ -2563,10 +2585,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """
         获取插件属性
-        :param pid: 插件ID
+        :param pid: 插件ID或实例键
         :param attr: 属性名
+        :return: 属性值；插件未运行或未声明该属性时为 None
         """
-        plugin = self._plugin_registry.instance(pid)
+        plugin = self._plugin_registry.instance(pid) or self._plugin_registry.any_instance(pid)
         if not plugin:
             return None
         if not hasattr(plugin, attr):
@@ -2576,12 +2599,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         运行插件方法
-        :param pid: 插件ID
+        :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
         :param method: 方法名
         :param args: 参数
         :param kwargs: 关键字参数
+        :return: 方法返回值；插件未运行或未实现该方法时为 None
+        :raises LookupError: 该插件有实例在运行，但没有已启用的默认调用目标
         """
-        plugin = self._plugin_registry.instance(pid)
+        plugin = self._resolve_call_target(pid)
         if not plugin:
             return None
         if not hasattr(plugin, method):
@@ -2591,12 +2616,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     async def async_run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         异步运行插件方法
-        :param pid: 插件ID
+        :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
         :param method: 方法名
         :param args: 参数
         :param kwargs: 关键字参数
+        :return: 方法返回值；插件未运行或未实现该方法时为 None
+        :raises LookupError: 该插件有实例在运行，但没有已启用的默认调用目标
         """
-        plugin = self._plugin_registry.instance(pid)
+        plugin = self._resolve_call_target(pid)
         if not plugin:
             return None
         if not hasattr(plugin, method):
@@ -2848,8 +2875,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             # 插件当前版本不兼容
             return None
 
-        # 运行状插件
-        plugin_obj = self._plugin_registry.instance(pid)
+        # 运行状插件，读的是类级属性与整族状态，取任一实例即可
+        plugin_obj = self._plugin_registry.instance(pid) or self._plugin_registry.any_instance(pid)
         # 非运行态插件
         plugin_static = self._plugin_registry.plugin_class(pid)
         # 基本属性

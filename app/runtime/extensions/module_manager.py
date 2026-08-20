@@ -22,6 +22,7 @@ from app.runtime.extensions.host_module_adapter import (
     capture_host_module_config,
     should_run_host_module,
 )
+from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.log import logger
 from app.schemas.types import EventType
@@ -329,24 +330,28 @@ class ModuleManager(metaclass=Singleton):
     def get_service_config_modules(self, config_key: str) -> Generator:
         """返回消费指定服务配置键的实例持有者快照。
 
-        先产出 manifest 声明消费该配置键的运行模块，再产出扩展声明的服务实例
+        先产出 manifest 声明归属该服务族的运行模块，再产出扩展声明的服务实例
         适配器。两者都只需实现 `get_instances()`，扩展声明因此无须进入模块清单，
         也无须承担内建模块的整套生命周期。产出顺序即优先级顺序：同一实例名被
         先后产出多次时以最后一次为准，故扩展声明的同名类型覆盖内建类型。
+
+        入参是配置存放位置，而清单与扩展声明都按服务能力标签归属，故此处先把
+        存放位置反查成标签；不对应任何服务族的存放位置没有实例持有者。
 
         :param config_key: 服务配置键，取值为 `SystemConfigKey` 的成员值
         :return: 实例持有者迭代器，内建模块按 manifest 发现顺序在前，扩展声明的
             适配器按登记顺序在后
         """
-        if not config_key:
+        capability = service_capability(config_key)
+        if not capability:
             return
         for spec in self._specs:
-            if spec.metadata.get("service_config") != config_key:
+            if spec.metadata.get("service_capability") != capability:
                 continue
             instance = self._runtime.get_running(spec.id)
             if instance is not None:
                 yield instance
-        yield from service_instance_registry.adapters(config_key)
+        yield from service_instance_registry.adapters(capability)
 
     def get_module(self, module_id: str) -> Any:
         """显式物化并返回 canonical 模块类；失败保持旧合同返回 None。"""

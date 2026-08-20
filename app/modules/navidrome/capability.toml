@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Navidrome"
-service_config = "MediaServers"
+service_capability = "mediaserver"
 priority = 7
 
 [activation]

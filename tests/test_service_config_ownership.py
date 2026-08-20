@@ -7,21 +7,26 @@ import pytest
 from app.modules import ServiceBase, _DownloaderBase
 from app.runtime.extensions import service_config as service_config_module
 from app.runtime.extensions import service_registry as service_registry_module
+from app.runtime.extensions.declaration import SERVICE_INSTANCE_CAPABILITIES
 from app.runtime.extensions.host_module_adapter import build_host_module_registry
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_config import (
+    ServiceConfigHelper,
+    service_capability,
+    service_config_key,
+)
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import ModuleType, SystemConfigKey
 
 
-# 三族模块在 manifest 中声明的服务配置归属
+# 三族模块在 manifest 中声明的服务能力归属
 _EXPECTED_SERVICE_OWNERSHIP: Dict[str, set] = {
-    SystemConfigKey.Downloaders.value: {
+    ModuleType.Downloader.value: {
         "QbittorrentModule",
         "RtorrentModule",
         "TransmissionModule",
     },
-    SystemConfigKey.MediaServers.value: {
+    ModuleType.MediaServer.value: {
         "EmbyModule",
         "JellyfinModule",
         "NavidromeModule",
@@ -30,7 +35,7 @@ _EXPECTED_SERVICE_OWNERSHIP: Dict[str, set] = {
         "UgreenModule",
         "ZSpaceModule",
     },
-    SystemConfigKey.Notifications.value: {
+    ModuleType.Notification.value: {
         "DiscordModule",
         "FeishuModule",
         "QQBotModule",
@@ -100,37 +105,67 @@ def service_configs(monkeypatch: pytest.MonkeyPatch) -> Iterator[Dict[str, list]
     yield values
 
 
-def test_service_families_declare_config_ownership_in_manifest() -> None:
-    """三族模块在 manifest 中声明消费的服务配置键，其余模块不声明。"""
+def test_service_families_declare_capability_ownership_in_manifest() -> None:
+    """三族模块在 manifest 中声明归属的服务能力标签，其余模块不声明。"""
     specs = build_host_module_registry().list_specs()
 
     ownership: Dict[str, set] = {}
     for spec in specs:
-        service_config = spec.metadata.get("service_config")
-        if service_config is None:
+        capability = spec.metadata.get("service_capability")
+        if capability is None:
             continue
-        ownership.setdefault(service_config, set()).add(spec.id)
+        ownership.setdefault(capability, set()).add(spec.id)
 
     assert ownership == _EXPECTED_SERVICE_OWNERSHIP
 
 
-def test_declared_service_config_matches_activation_selector() -> None:
-    """声明服务配置归属的模块，其激活选择器读取的正是同一配置键。"""
+def test_manifest_never_declares_storage_key_as_capability() -> None:
+    """清单声明的是语义标签，`SystemConfigKey` 取值不得出现在该字段上。"""
+    storage_keys = {member.value for member in SystemConfigKey}
+
+    declared = {
+        spec.metadata.get("service_capability")
+        for spec in build_host_module_registry().list_specs()
+    } - {None}
+
+    assert declared
+    assert declared.isdisjoint(storage_keys)
+
+
+def test_declaration_vocabulary_matches_host_storage_mapping() -> None:
+    """声明面的能力标签与宿主内部的存放位置对照必须覆盖同一套取值。"""
+    mapped = {
+        capability
+        for capability in SERVICE_INSTANCE_CAPABILITIES
+        if service_config_key(capability) is not None
+    }
+
+    assert mapped == set(SERVICE_INSTANCE_CAPABILITIES)
+    assert {
+        service_capability(service_config_key(capability).value)
+        for capability in SERVICE_INSTANCE_CAPABILITIES
+    } == set(SERVICE_INSTANCE_CAPABILITIES)
+
+
+def test_declared_capability_matches_activation_selector() -> None:
+    """声明服务归属的模块，其激活选择器读取的正是该族配置的存放位置。"""
     for spec in build_host_module_registry().list_specs():
-        service_config = spec.metadata.get("service_config")
-        if service_config is None:
+        capability = spec.metadata.get("service_capability")
+        if capability is None:
             continue
+        config_key = service_config_key(capability)
+        assert config_key is not None, spec.id
         assert spec.selector is not None, spec.id
-        assert spec.selector.config["key"] == service_config, spec.id
-        assert service_config in spec.watch, spec.id
+        assert spec.selector.config["key"] == config_key.value, spec.id
+        assert config_key.value in spec.watch, spec.id
 
 
 def test_modules_without_service_instances_declare_no_ownership() -> None:
-    """不按服务配置扇出实例的模块不声明服务配置归属。"""
+    """不按服务配置扇出实例的模块不声明服务能力归属。"""
     declared = {
         spec.id
         for spec in build_host_module_registry().list_specs()
-        if spec.metadata.get("service_config") is not None
+        if spec.metadata.get("service_capability") is not None
     }
 
     assert "TheMovieDbModule" not in declared
@@ -184,6 +219,33 @@ def test_config_ownership_locates_each_family_instances(
     assert helper.get_service(name).instance is instance
 
 
+def test_helper_accepts_config_key_value_as_string(
+    service_configs: Dict[str, list],
+) -> None:
+    """配置键传取值字符串与传枚举成员等价，取服务不因入参写法而失败。"""
+    instance = object()
+    service_configs[SystemConfigKey.Downloaders.value] = [
+        {"name": "下载器", "type": "qbittorrent", "enabled": True},
+    ]
+    _StubModuleManager.registry = {
+        SystemConfigKey.Downloaders.value: [_StubModule({"下载器": instance})],
+    }
+
+    helper = ServiceBaseHelper(
+        config_key=SystemConfigKey.Downloaders.value,
+        conf_type=DownloaderConf,
+    )
+
+    assert helper.config_key is SystemConfigKey.Downloaders
+    assert helper.get_services()["下载器"].instance is instance
+
+
+def test_helper_rejects_unknown_config_key_at_construction() -> None:
+    """取不到对应成员的配置键在构造时即被拒绝，不留到取服务时静默返回空。"""
+    with pytest.raises(ValueError, match="NotARealConfigKey"):
+        ServiceBaseHelper(config_key="NotARealConfigKey", conf_type=DownloaderConf)
+
+
 def test_service_lookup_ignores_other_config_keys(
     service_configs: Dict[str, list],
 ) -> None:
@@ -218,8 +280,10 @@ class _SampleService(ServiceBase[object, NotificationConf]):
         }
 
 
-def test_default_instance_is_first_config(service_configs: Dict[str, list]) -> None:
-    """未指定名称时取第一条配置对应的实例。"""
+def test_default_instance_requires_explicit_name_among_several(
+    service_configs: Dict[str, list],
+) -> None:
+    """本族没有默认标记字段，多条已启用配置时不按顺序取第一条而是报错列候选。"""
     service_configs[SystemConfigKey.Notifications.value] = [
         {"name": "家庭 群聊", "type": "wechat", "enabled": True},
         {"name": "运维告警", "type": "wechat", "enabled": True},
@@ -228,10 +292,34 @@ def test_default_instance_is_first_config(service_configs: Dict[str, list]) -> N
     service.init_service("wechat", service_type=lambda conf: conf.name)
 
     assert set(service.get_instances()) == {"家庭 群聊", "运维告警"}
-    assert service.get_instance() == "家庭 群聊"
-    assert service.get_instance(None) == "家庭 群聊"
     assert service.get_instance("运维告警") == "运维告警"
     assert service.get_instance("不存在") is None
+
+    with pytest.raises(LookupError) as excinfo:
+        service.get_instance()
+    message = str(excinfo.value)
+    assert "家庭 群聊（已启用）" in message
+    assert "运维告警（已启用）" in message
+
+    with pytest.raises(LookupError):
+        service.get_instance(None)
+    with pytest.raises(LookupError):
+        service.get_config()
+
+
+def test_default_instance_is_the_sole_enabled_config(
+    service_configs: Dict[str, list],
+) -> None:
+    """只有一条已启用配置时结果与登记顺序无关，可直接确定目标。"""
+    service_configs[SystemConfigKey.Notifications.value] = [
+        {"name": "家庭 群聊", "type": "wechat", "enabled": True},
+        {"name": "运维告警", "type": "wechat", "enabled": False},
+        {"name": "研发群", "type": "telegram", "enabled": True},
+    ]
+    service = _SampleService()
+    service.init_service("wechat", service_type=lambda conf: conf.name)
+
+    assert service.get_instance() == "家庭 群聊"
     assert service.get_config().name == "家庭 群聊"
 
 
@@ -271,3 +359,96 @@ def test_downloader_default_instance_prefers_default_flag(
     assert service.get_instance() == "主力 下载器"
     assert service.get_instance("客厅 下载器") == "客厅 下载器"
     assert service.get_config().name == "主力 下载器"
+
+
+def test_downloader_default_ignores_disabled_default_flag(
+    service_configs: Dict[str, list],
+) -> None:
+    """默认下载器已停用等同于没有默认，不改走另一个下载器而是报错列候选。"""
+    service_configs[SystemConfigKey.Downloaders.value] = [
+        {"name": "客厅 下载器", "type": "qbittorrent", "enabled": True},
+        {
+            "name": "主力 下载器",
+            "type": "qbittorrent",
+            "enabled": False,
+            "default": True,
+        },
+    ]
+    service = _SampleDownloader()
+    service.init_service("qbittorrent", service_type=lambda conf: conf.name)
+
+    with pytest.raises(LookupError) as excinfo:
+        service.get_instance()
+    message = str(excinfo.value)
+    assert "主力 下载器" in message
+    assert "客厅 下载器（已启用）" in message
+    assert "主力 下载器（已停用）" in message
+    assert service.get_instance("客厅 下载器") == "客厅 下载器"
+
+
+def test_downloader_default_of_another_type_is_not_claimed(
+    service_configs: Dict[str, list],
+) -> None:
+    """默认下载器属于别的类型时本模块没有默认，安静让开而不是缓存别人的名字。"""
+    service_configs[SystemConfigKey.Downloaders.value] = [
+        {"name": "客厅 下载器", "type": "qbittorrent", "enabled": True},
+        {"name": "备用 下载器", "type": "qbittorrent", "enabled": True},
+        {
+            "name": "主力 下载器",
+            "type": "transmission",
+            "enabled": True,
+            "default": True,
+        },
+    ]
+    service = _SampleDownloader()
+    service.init_service("qbittorrent", service_type=lambda conf: conf.name)
+
+    assert service.get_default_config_name() is None
+    assert service.get_instance() is None
+    assert service.get_config() is None
+    # 别的类型的名字不得被缓存下来，否则改判默认后仍会取到旧答案
+    assert service._default_config_name is None
+
+    owner = _SampleDownloader()
+    owner.init_service("transmission", service_type=lambda conf: conf.name)
+    assert owner.get_instance() == "主力 下载器"
+
+
+def test_downloader_default_falls_back_to_the_sole_enabled_downloader(
+    service_configs: Dict[str, list],
+) -> None:
+    """从未标记过默认且全部下载器只有一条已启用时，该条即目标。"""
+    service_configs[SystemConfigKey.Downloaders.value] = [
+        {"name": "客厅 下载器", "type": "qbittorrent", "enabled": True},
+        {"name": "旧下载器", "type": "transmission", "enabled": False},
+    ]
+    service = _SampleDownloader()
+    service.init_service("qbittorrent", service_type=lambda conf: conf.name)
+
+    assert service.get_instance() == "客厅 下载器"
+
+    other = _SampleDownloader()
+    other.init_service("transmission", service_type=lambda conf: conf.name)
+    assert other.get_default_config_name() is None
+
+
+def test_downloader_without_default_flag_refuses_to_pick_among_several(
+    service_configs: Dict[str, list],
+) -> None:
+    """从未标记过默认且有多条已启用下载器时报错，只有持有候选的模块出声。"""
+    service_configs[SystemConfigKey.Downloaders.value] = [
+        {"name": "客厅 下载器", "type": "qbittorrent", "enabled": True},
+        {"name": "备用 下载器", "type": "transmission", "enabled": True},
+    ]
+    service = _SampleDownloader()
+    service.init_service("qbittorrent", service_type=lambda conf: conf.name)
+
+    with pytest.raises(LookupError) as excinfo:
+        service.get_instance()
+    message = str(excinfo.value)
+    assert "客厅 下载器（已启用）" in message
+    assert "备用 下载器（已启用）" in message
+
+    idle = _SampleDownloader()
+    idle.init_service("rtorrent", service_type=lambda conf: conf.name)
+    assert idle.get_default_config_name() is None

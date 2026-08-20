@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Slack"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Slack"
 priority = 3
 

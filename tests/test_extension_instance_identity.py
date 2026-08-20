@@ -4,14 +4,15 @@ import pytest
 
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
+    describe_instance_candidates,
     extension_id_of,
     instance_key,
     is_default_instance_key,
     matches_extension,
     normalize_instance_id,
-    resolve_running_instance,
     split_instance_key,
 )
+from app.runtime.extensions.plugin.registry import PluginRegistry
 
 
 def test_default_instance_key_degrades_to_bare_extension_id() -> None:
@@ -103,27 +104,41 @@ def test_matches_extension_selects_all_instances_of_one_extension() -> None:
     assert [key for key in keys if matches_extension(key, None)] == keys
 
 
-def test_resolve_running_instance_hits_exact_key() -> None:
+def test_registry_instance_hits_exact_key() -> None:
     """运行态表中按实例键精确定位。"""
-    running = {"Emby": "default-instance", "Emby@livingroom": "livingroom-instance"}
+    registry = PluginRegistry()
+    registry.running.update(
+        {"Emby": "default-instance", "Emby@livingroom": "livingroom-instance"}
+    )
 
-    assert resolve_running_instance(running, "Emby") == "default-instance"
-    assert resolve_running_instance(running, "Emby@livingroom") == "livingroom-instance"
-    assert resolve_running_instance(running, "Jellyfin") is None
-
-
-def test_resolve_running_instance_falls_back_to_sole_instance() -> None:
-    """扩展标识只对应一个在运行的实例时回落到该实例。"""
-    running = {"Emby@livingroom": "livingroom-instance"}
-
-    assert resolve_running_instance(running, "Emby") == "livingroom-instance"
+    assert registry.instance("Emby") == "default-instance"
+    assert registry.instance("Emby@livingroom") == "livingroom-instance"
+    assert registry.instance("Jellyfin") is None
 
 
-def test_resolve_running_instance_does_not_guess_among_several() -> None:
-    """扩展标识对应多个在运行的实例时不回落。"""
-    running = {
-        "Emby@livingroom": "livingroom-instance",
-        "Emby@bedroom": "bedroom-instance",
-    }
+def test_registry_instance_does_not_substitute_for_absent_default() -> None:
+    """没有默认实例时不拿其余实例顶替，哪怕只有一个在运行。"""
+    registry = PluginRegistry()
+    registry.running["Emby@livingroom"] = "livingroom-instance"
 
-    assert resolve_running_instance(running, "Emby") is None
+    assert registry.instance("Emby") is None
+    assert registry.instance("Emby@livingroom") == "livingroom-instance"
+
+
+def test_registry_any_instance_takes_whichever_is_running() -> None:
+    """读类级属性时取任一运行实例，与调用目标裁决无关。"""
+    registry = PluginRegistry()
+    registry.running.update(
+        {"Emby@livingroom": "livingroom-instance", "Emby@bedroom": "bedroom-instance"}
+    )
+
+    assert registry.any_instance("Emby") == "livingroom-instance"
+    assert registry.any_instance("Jellyfin") is None
+
+
+def test_describe_instance_candidates_marks_enabled_state() -> None:
+    """候选描述按给定顺序列出名称并标注启用态。"""
+    assert describe_instance_candidates(()) == "无"
+    assert describe_instance_candidates(
+        [("default", True), ("alt", False)]
+    ) == "default（已启用）、alt（已停用）"

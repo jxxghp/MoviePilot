@@ -3,6 +3,7 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
+from app.runtime.extensions.instance import describe_instance_candidates
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.file import FileURI
@@ -146,6 +147,7 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
 
         :param name: 实例名称，可选。如果为 None，则返回默认实例
         :return: 返回符合条件的服务实例，若不存在则返回 None
+        :raises LookupError: 未指定名称，且本模块名下无法确定唯一的默认配置
         """
         if not self._instances:
             return None
@@ -169,6 +171,7 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
 
         :param name: 配置名称，可选。如果为 None，则返回默认服务配置
         :return: 返回符合条件的配置，若不存在则返回 None
+        :raises LookupError: 未指定名称，且本模块名下无法确定唯一的默认配置
         """
         if not self._configs:
             return None
@@ -177,15 +180,36 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         name = self.get_default_config_name()
         return self._configs.get(name) if name else None
 
+    def _describe_configs(self) -> str:
+        """
+        列出本模块名下可供显式指定的配置名及其启用状态
+
+        :return: 候选描述文案，一个配置都没有时为「无」
+        """
+        return describe_instance_candidates(
+            (conf.name, bool(getattr(conf, "enabled", True)))
+            for conf in (self._configs or {}).values()
+        )
+
     def get_default_config_name(self) -> Optional[str]:
         """
         获取默认服务配置的名称
 
-        :return: 默认第一个配置的名称
+        本族配置没有默认标记字段，因此只在本模块名下恰好只有一条已启用配置时才能确定
+        目标——此时结果与登记顺序无关，不构成替调用方做选择。有多条时不按顺序取第一条。
+
+        :return: 默认配置的名称；本模块名下没有已启用配置时为 None
+        :raises LookupError: 本模块名下有多条已启用配置，无法确定默认配置
         """
-        # 默认使用第一个配置的名称
-        first_conf = next(iter(self._configs.values()), None)
-        return first_conf.name if first_conf else None
+        configs = list((self._configs or {}).values())
+        if not configs:
+            return None
+        if len(configs) == 1:
+            return configs[0].name
+        raise LookupError(
+            f"{self._service_name} 有多个已启用配置，调用必须显式指定名称；"
+            f"可选配置：{self._describe_configs()}"
+        )
 
 
 class _MessageBase(ServiceBase[TService, NotificationConf]):
@@ -264,23 +288,52 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
 
     def get_default_config_name(self) -> Optional[str]:
         """
-        获取默认服务配置的名称
+        获取本模块名下默认下载器配置的名称
 
-        :return: 优先从所有下载器中查找配置了默认的下载器，如果没有配置，则获取第一个下载器名称
+        默认标记在全部下载器中全局唯一，而本模块只持有自身类型的实例，因此默认归属其它
+        类型时本模块没有默认下载器，返回 None 让该类型的模块认领；标记已停用等同于用户
+        选定的目标当前不可用，一律报错而不改走另一个下载器。从未标记过默认时，只在全部
+        已启用下载器恰好只有一条的前提下认定它就是目标，多于一条不按顺序取第一条。
+
+        :return: 默认下载器配置的名称；默认归属其它类型或没有任何已启用下载器时为 None
+        :raises LookupError: 本模块名下有已启用配置，但全部下载器中没有可用的默认标记
         """
-        # 优先查找默认配置
         if self._default_config_name:
             return self._default_config_name
 
         configs = ServiceConfigHelper.get_downloader_configs()
-        for conf in configs:
-            if conf.default:
-                self._default_config_name = conf.name
-                return self._default_config_name
-        # 如果没有默认配置，返回第一个配置的名称
-        first_conf = next(iter(configs), None)
-        self._default_config_name = first_conf.name if first_conf else None
-        return self._default_config_name
+        enabled_configs = [conf for conf in configs if conf.enabled]
+        marked = next((conf for conf in configs if conf.default), None)
+
+        if marked is not None and marked.enabled:
+            if marked.type != self._service_name:
+                return None
+            self._default_config_name = marked.name
+            return self._default_config_name
+
+        if marked is None and len(enabled_configs) == 1:
+            sole_conf = enabled_configs[0]
+            if sole_conf.type != self._service_name:
+                return None
+            self._default_config_name = sole_conf.name
+            return self._default_config_name
+
+        # 本模块名下无配置可用时保持沉默，让确实持有候选的模块给出报错
+        if not self._configs:
+            return None
+
+        candidates = describe_instance_candidates(
+            (conf.name, bool(conf.enabled)) for conf in configs
+        )
+        if marked is not None:
+            raise LookupError(
+                f"默认下载器 {marked.name} 已停用，调用必须显式指定下载器；"
+                f"可选下载器：{candidates}"
+            )
+        raise LookupError(
+            f"存在多个已启用下载器但未设置默认下载器，调用必须显式指定下载器；"
+            f"可选下载器：{candidates}"
+        )
 
     def get_configs(self) -> Dict[str, DownloaderConf]:
         """

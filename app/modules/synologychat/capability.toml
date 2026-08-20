@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Synology Chat"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "SynologyChat"
 priority = 5
 

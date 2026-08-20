@@ -2,10 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from app.runtime.extensions.instance import (
-    extension_id_of,
-    resolve_running_instance,
-)
+from app.runtime.extensions.instance import extension_id_of
 
 
 class PluginRegistry:
@@ -47,12 +44,34 @@ class PluginRegistry:
         return self._classes.get(extension_id_of(key))
 
     def instance(self, key: str) -> Optional[Any]:
-        """读取指定运行实例，未运行时返回空。
+        """按实例键精确读取运行实例，未运行时返回空。
 
-        :param key: 实例键；传插件标识且该插件只有一个实例在运行时回落到该实例
-        :return: 运行实例；未运行或无法唯一确定时为 None
+        本表只回答「这个键指的实体在不在」，不回答「调用没指定实例时该走哪一个」。
+        裸插件标识即默认实例的实例键，命中的是默认实例本身；插件没有默认实例时不在
+        其余实例里挑一个顶替，该裁决由默认调用目标负责。
+
+        :param key: 实例键
+        :return: 运行实例；未运行时为 None
         """
-        return resolve_running_instance(self._running, key)
+        return self._running.get(key)
+
+    def any_instance(self, plugin_id: str) -> Optional[Any]:
+        """取该插件任一运行实例，供读取类级属性使用。
+
+        插件类的名称、版本这类属性同一插件的全部实例取值相同，读它们不构成调用目标
+        选择，因此取哪一个实例都不改变结果。
+
+        :param plugin_id: 插件标识
+        :return: 该插件的首个运行实例；一个实例都没有时为 None
+        """
+        return next(
+            (
+                instance
+                for key, instance in self._running.items()
+                if extension_id_of(key) == plugin_id
+            ),
+            None,
+        )
 
     def instance_keys(self, plugin_id: str) -> List[str]:
         """列出指定插件当前在运行的全部实例键。

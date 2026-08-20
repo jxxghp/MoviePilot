@@ -16,7 +16,10 @@ from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service_config import (
+    configure_service_config_reader,
+    service_capability,
+)
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.schemas.types import SystemConfigKey
 
@@ -648,7 +651,7 @@ class _FakeBuiltinModuleManager:
     def get_service_config_modules(self, config_key: str):
         """先产出内建持有者，再产出扩展声明的适配器，与真实实现同序。"""
         yield from self._builtin_holders
-        yield from service_instance_registry.adapters(config_key)
+        yield from service_instance_registry.adapters(service_capability(config_key))
 
 
 class _BuiltinDownloaderHolder:
@@ -717,7 +720,7 @@ def test_module_manager_yields_declared_adapters_after_builtin_modules(
 
     holders = list(ModuleManager().get_service_config_modules("Downloaders"))
 
-    adapters = service_instance_registry.adapters("Downloaders")
+    adapters = service_instance_registry.adapters("downloader")
     assert adapters
     assert holders[-len(adapters):] == list(adapters)
     assert all(hasattr(holder, "get_instances") for holder in holders)
@@ -732,7 +735,7 @@ def test_registry_keeps_adapter_when_registration_is_unchanged():
         impl=_DemoDownloader,
         owner="Owner@default",
     )
-    first = service_instance_registry.adapters("Downloaders")[0]
+    first = service_instance_registry.adapters("downloader")[0]
 
     service_instance_registry.register(
         capability="downloader",
@@ -742,7 +745,7 @@ def test_registry_keeps_adapter_when_registration_is_unchanged():
         owner="Owner@default",
     )
 
-    assert service_instance_registry.adapters("Downloaders")[0] is first
+    assert service_instance_registry.adapters("downloader")[0] is first
 
 
 def test_registry_revokes_only_its_own_registration():
@@ -788,4 +791,4 @@ def test_registry_isolates_types_across_capabilities():
 
     assert service_instance_registry.find("downloader", "same_name").name == "下载器"
     assert service_instance_registry.find("notification", "same_name").name == "通知渠道"
-    assert len(service_instance_registry.adapters("Downloaders")) == 1
+    assert len(service_instance_registry.adapters("downloader")) == 1

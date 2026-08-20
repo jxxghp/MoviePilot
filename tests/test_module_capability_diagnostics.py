@@ -30,7 +30,7 @@ depends_on = []
 
 [metadata]
 name = "Sample"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Telegram"
 priority = 10
 
@@ -55,7 +55,7 @@ depends_on = []
 
 [metadata]
 name = "Other"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Telegram"
 priority = 20
 

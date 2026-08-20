@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "绿联影视"
-service_config = "MediaServers"
+service_capability = "mediaserver"
 priority = 5
 
 [activation]

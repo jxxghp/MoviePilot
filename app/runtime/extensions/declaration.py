@@ -76,6 +76,14 @@ class AgentToolDeclaration(ExtensionDeclaration):
     description: str = ""
 
 
+# 可声明服务实例的能力标签取值集合，即宿主按「一份配置扇出一个具名实例」消费的服务族
+SERVICE_INSTANCE_CAPABILITIES: Tuple[str, ...] = (
+    ModuleType.Downloader.value,
+    ModuleType.MediaServer.value,
+    ModuleType.Notification.value,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ModuleDeclaration(ExtensionDeclaration):
     """
@@ -86,24 +94,14 @@ class ModuleDeclaration(ExtensionDeclaration):
     清单：可调用对象本身不参与序列化，握手报文只带方法名，具体调用改由对端进程
     按同名方法自行响应。
 
-    ``service_config`` 声明本模块归属的服务配置族，取值须是 ``SystemConfigKey``
-    的成员值，例如 ``Downloaders``、``MediaServers``、``Notifications``；不归属
-    任何服务族时留空。
+    本声明只描述方法表。按用户配置扇出多个具名服务实例是另一回事，由
+    `ServiceInstanceDeclaration` 承担——两者混在一条声明里会让「提供一批方法」与
+    「提供一族可配置实例」共用同一个入口，而宿主对二者的装载路径本就不同。
 
     :param methods: 方法名到可调用对象的映射，跨进程时退化为方法名清单
-    :param service_config: 服务配置键，声明本模块归属的服务族；不归属任何服务族时为空
     """
 
     methods: Mapping[str, Any] = MappingProxyType({})
-    service_config: str = ""
-
-
-# 可声明服务实例的能力标签取值集合，即宿主按「一份配置扇出一个具名实例」消费的服务族
-SERVICE_INSTANCE_CAPABILITIES: Tuple[str, ...] = (
-    ModuleType.Downloader.value,
-    ModuleType.MediaServer.value,
-    ModuleType.Notification.value,
-)
 
 
 @dataclass(frozen=True, slots=True)

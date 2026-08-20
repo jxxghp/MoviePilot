@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Optional, TypeVar
+from collections.abc import Iterable
+from typing import Optional
 
 # 未创建分身时实例所用的实例标识
 DEFAULT_INSTANCE_ID = "default"
@@ -18,17 +18,15 @@ DEFAULT_INSTANCE_ID = "default"
 # 实例键中扩展标识与实例标识的分隔符，实例标识不含该字符才能无损反解
 INSTANCE_KEY_SEPARATOR = "@"
 
-T = TypeVar("T")
-
 __all__ = [
     "DEFAULT_INSTANCE_ID",
     "INSTANCE_KEY_SEPARATOR",
+    "describe_instance_candidates",
     "extension_id_of",
     "instance_key",
     "is_default_instance_key",
     "matches_extension",
     "normalize_instance_id",
-    "resolve_running_instance",
     "split_instance_key",
 ]
 
@@ -106,25 +104,14 @@ def matches_extension(key: str, selector: Optional[str]) -> bool:
     return key == selector or extension_id_of(key) == selector
 
 
-def resolve_running_instance(running: Mapping[str, T], key: str) -> Optional[T]:
-    """在运行态表中定位一个扩展实例。
+def describe_instance_candidates(candidates: Iterable[tuple[str, bool]]) -> str:
+    """列出可供显式指定的候选名称及其启用状态。
 
-    优先按实例键精确命中；传入扩展标识且该扩展恰好只有一个实例在运行时回落到该实例，
-    因此只创建了分身、没有默认实例的扩展按扩展标识同样能取到。有多个实例在运行时不回落，
-    避免按登记顺序取到调用方并未指定的那一个。
-
-    :param running: 运行态表 ``{实例键: 运行实体}``
-    :param key: 实例键或扩展标识
-    :return: 运行实体，未运行或无法唯一确定时为 None
+    :param candidates: ``(名称, 是否启用)`` 序列，顺序即文案顺序
+    :return: 形如 ``default（已启用）、alt（已停用）`` 的描述，一个候选都没有时为「无」
     """
-    entity = running.get(key)
-    if entity is not None:
-        return entity
-    candidates = [
-        candidate
-        for running_key, candidate in running.items()
-        if extension_id_of(running_key) == key
+    described = [
+        f"{name}（{'已启用' if is_enabled else '已停用'}）"
+        for name, is_enabled in candidates
     ]
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
+    return "、".join(described) if described else "无"

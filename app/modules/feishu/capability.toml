@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "飞书"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Feishu"
 priority = 2
 

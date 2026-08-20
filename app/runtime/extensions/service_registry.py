@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 
 from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_config import ServiceConfigHelper, resolve_service_config_key
 from app.schemas.system import ServiceInfo
 from app.schemas.types import SystemConfigKey
 
@@ -21,11 +21,16 @@ class ServiceBaseHelper(Generic[TConf]):
     def __init__(self, config_key: SystemConfigKey, conf_type: Type[TConf]):
         """绑定服务配置键与配置模型。
 
-        :param config_key: 服务配置键，同时用于定位声明消费该配置的模块
+        配置键入参在此归一为 `SystemConfigKey` 成员：本类已随 SDK 交给扩展使用，
+        取值字符串与枚举成员都是合理的写法，而取不到对应成员的键读不出任何配置，
+        与其在取服务时静默返回空，不如构造时就拒绝。
+
+        :param config_key: 服务配置键，接受 `SystemConfigKey` 成员或其取值字符串
         :param conf_type: 服务配置模型
+        :raises ValueError: 配置键不是任何 `SystemConfigKey` 成员
         """
         self.modulemanager = ModuleManager()
-        self.config_key = config_key
+        self.config_key = resolve_service_config_key(config_key)
         self.conf_type = conf_type
 
     def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:

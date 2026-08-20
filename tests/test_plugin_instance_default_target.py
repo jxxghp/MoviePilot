@@ -302,6 +302,111 @@ def test_default_target_defaults_to_false_for_new_rows(db):
 
 
 # --------------------------------------------------------------------------- #
+# 运行态定位与调用目标的边界
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def call_target_manager():
+    """构造隔离的插件管理器，供调用目标解析用例登记运行实例。"""
+    from app.runtime.extensions.plugin_manager import PluginManager
+    from app.foundation.singleton import Singleton
+
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+    manager = PluginManager()
+    yield manager
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def test_call_target_hits_exact_instance_key(call_target_manager, instance_targets):
+    """传实例键时精确命中，不经过默认调用目标裁决。"""
+    call_target_manager._running_plugins["PluginP@alt"] = "alt-instance"
+
+    assert call_target_manager._resolve_call_target("PluginP@alt") == "alt-instance"
+    assert call_target_manager._resolve_call_target("PluginP@missing") is None
+
+
+def test_call_target_without_any_running_instance_is_not_loaded(
+    call_target_manager, instance_targets
+):
+    """一个实例都没在跑属于插件未加载，返回空而不是报「选不出目标」。"""
+    instance_targets("PluginP", [_target("alt", default=True)])
+
+    assert call_target_manager._resolve_call_target("PluginP") is None
+
+
+def test_call_target_refuses_the_sole_running_instance_without_default(
+    call_target_manager, instance_targets
+):
+    """插件只有一个实例在跑但未设默认调用目标时报错，不拿它顶替默认实例。"""
+    call_target_manager._running_plugins["PluginP@alt"] = "alt-instance"
+    instance_targets("PluginP", [_target("alt")])
+
+    with pytest.raises(LookupError) as excinfo:
+        call_target_manager._resolve_call_target("PluginP")
+    assert "alt（已启用）" in str(excinfo.value)
+
+
+def test_call_target_follows_the_designated_default(
+    call_target_manager, instance_targets
+):
+    """设定默认调用目标后，按插件标识发起的调用落到该实例。"""
+    call_target_manager._running_plugins["PluginP@alt"] = "alt-instance"
+    instance_targets("PluginP", [_target("alt", default=True)])
+
+    assert call_target_manager._resolve_call_target("PluginP") == "alt-instance"
+
+
+def test_call_target_refuses_disabled_default_among_running_instances(
+    call_target_manager, instance_targets
+):
+    """默认调用目标已停用时报错，不改走另一个在跑的实例。"""
+    call_target_manager._running_plugins.update(
+        {"PluginP@alt": "alt-instance", "PluginP@spare": "spare-instance"}
+    )
+    instance_targets(
+        "PluginP", [_target("alt", enabled=False, default=True), _target("spare")]
+    )
+
+    with pytest.raises(LookupError) as excinfo:
+        call_target_manager._resolve_call_target("PluginP")
+    message = str(excinfo.value)
+    assert "alt（已停用）" in message
+    assert "spare（已启用）" in message
+
+
+def test_class_level_attribute_read_tolerates_undecidable_target(
+    call_target_manager, instance_targets
+):
+    """读类级属性取任一运行实例即可，不受默认调用目标是否可裁决影响。"""
+
+    class _Carrier:
+        plugin_name = "分身插件"
+
+    call_target_manager._running_plugins["PluginP@alt"] = _Carrier()
+    instance_targets("PluginP", [_target("alt")])
+
+    assert call_target_manager.get_plugin_attr("PluginP", "plugin_name") == "分身插件"
+
+
+def test_run_plugin_method_reports_undecidable_target(
+    call_target_manager, instance_targets
+):
+    """按插件标识调用方法而目标裁决不出来时，错误必须冒出来而不是返回空。"""
+
+    class _Carrier:
+        def ping(self) -> str:
+            return "pong"
+
+    call_target_manager._running_plugins["PluginP@alt"] = _Carrier()
+    instance_targets("PluginP", [_target("alt")])
+
+    with pytest.raises(LookupError):
+        call_target_manager.run_plugin_method("PluginP", "ping")
+    assert call_target_manager.run_plugin_method("PluginP@alt", "ping") == "pong"
+    assert call_target_manager.run_plugin_method("PluginQ", "ping") is None
+
+
+# --------------------------------------------------------------------------- #
 # 组合根装配
 # --------------------------------------------------------------------------- #
 

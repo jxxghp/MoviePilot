@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "WebPush"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "WebPush"
 priority = 6
 

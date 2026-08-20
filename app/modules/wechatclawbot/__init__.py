@@ -136,7 +136,8 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         """解析微信 ClawBot 客户端实例，返回 (客户端, 错误信息)。
 
         优先使用已加载的配置实例，均无配置时退回到基于表单参数的临时客户端，
-        用于未保存配置的扫码状态预览。
+        用于未保存配置的扫码状态预览。请求未带渠道名且本模块有多个已启用配置时，
+        把无法确定目标的原因作为错误信息交给调用方展示。
         """
         source_name = str(params.get("source") or "").strip() or None
         fallback_name = str(params.get("fallback_source") or "").strip() or None
@@ -154,7 +155,10 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
                 if client:
                     return client, None
         else:
-            client = self.get_instance()
+            try:
+                client = self.get_instance()
+            except LookupError as err:
+                return None, str(err)
             if client:
                 return client, None
 

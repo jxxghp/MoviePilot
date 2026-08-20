@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Jellyfin"
-service_config = "MediaServers"
+service_capability = "mediaserver"
 priority = 2
 
 [activation]

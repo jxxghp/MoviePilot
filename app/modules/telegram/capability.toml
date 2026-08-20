@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Telegram"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Telegram"
 priority = 0
 

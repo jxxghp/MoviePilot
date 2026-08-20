@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "企业微信"
-service_config = "Notifications"
+service_capability = "notification"
 subtype = "Wechat"
 priority = 1
 

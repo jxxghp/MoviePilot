@@ -51,7 +51,7 @@ class ExampleModule(_ModuleBase, _DownloaderBase):
 
 **Module subtypes** are defined in `app/schemas/types.py` as `DownloaderType`, `MediaServerType`, `NotificationChannel`, `StorageSchema`, `OtherModulesType`, `MediaRecognizeType`.
 
-**Service config ownership:** a module that fans out into per-config service instances declares the `SystemConfigKey` it consumes via `metadata.service_config` in its `capability.toml` (`Downloaders`, `MediaServers` or `Notifications`). `ServiceBaseHelper` locates a family's modules through that declaration; there is no module-family enum.
+**Service capability ownership:** a module that fans out into per-config service instances declares the service family it belongs to via `metadata.service_capability` in its `capability.toml` (`downloader`, `mediaserver` or `notification`) — the same semantic labels plugins use in `ModuleDeclaration.service_capability` and `ServiceInstanceDeclaration.capability`. Where that family's configuration is stored is host-internal: the label-to-`SystemConfigKey` mapping lives in `app/runtime/extensions/service_config.py`, and storage keys only appear in `activation.watch`/selector. `ServiceBaseHelper` locates a family's modules through that declaration; there is no module-family enum.
 
 ---
 

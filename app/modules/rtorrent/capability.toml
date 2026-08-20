@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "Rtorrent"
-service_config = "Downloaders"
+service_capability = "downloader"
 priority = 3
 
 [activation]

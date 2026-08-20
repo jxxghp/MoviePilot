@@ -1593,11 +1593,11 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2175
+        "line": 2194
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2228
+        "line": 2247
       },
       {
         "caller": "app.startup.hostport_initializer",
@@ -1719,7 +1719,7 @@
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 231
+        "line": 232
       }
     ],
     "event_count": 53,
@@ -1983,7 +1983,7 @@
         "consumers": [
           {
             "caller": "app.runtime.extensions.module_manager",
-            "line": 57
+            "line": 58
           },
           {
             "caller": "app.runtime.reload",
@@ -2103,7 +2103,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1488
+            "line": 1507
           }
         ]
       },
