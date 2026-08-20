@@ -248,9 +248,9 @@ class PluginDependencyInstaller:
             merged.append(Requirement(target))
         return merged
 
-    def _plugin_dependencies(self) -> list[Requirement]:
-        """扫描已安装插件的生效依赖清单并合并版本约束。"""
-        dependencies: list[Requirement] = []
+    def _plugin_manifests(self) -> list[Any]:
+        """返回已安装插件当前生效的依赖清单。"""
+        manifests = []
         installed_plugins = {
             plugin_id.lower()
             for plugin_id in self._installed_plugins_provider() or []
@@ -259,7 +259,7 @@ class PluginDependencyInstaller:
             plugin_dirs = list(self._plugin_dir.iterdir())
         except (FileNotFoundError, OSError):
             return []
-        for plugin_dir in plugin_dirs:
+        for plugin_dir in sorted(plugin_dirs, key=lambda item: item.name):
             if not plugin_dir.is_dir():
                 continue
             if plugin_dir.name not in installed_plugins:
@@ -268,6 +268,13 @@ class PluginDependencyInstaller:
             manifest = load_dependency_manifest(plugin_dir)
             if manifest is None:
                 continue
+            manifests.append(manifest)
+        return manifests
+
+    def _plugin_dependencies(self) -> list[Requirement]:
+        """扫描已安装插件的生效依赖清单并合并版本约束。"""
+        dependencies: list[Requirement] = []
+        for manifest in self._plugin_manifests():
             for requirement in manifest.dependencies:
                 if requirement.marker and not requirement.marker.evaluate():
                     continue
@@ -304,29 +311,20 @@ class PluginDependencyInstaller:
         return list(dict.fromkeys(result))
 
     def install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """把依赖写入临时 requirements 并调用统一包安装策略。"""
+        """把已安装插件的原始清单交给一次统一包安装。"""
         if not dependencies:
             return False, "没有传入需要安装的依赖项"
-        requirements_file = (
-            Path(settings.TEMP_PATH)
-            / "plugin_dependencies"
-            / "requirements.txt"
-        )
         try:
-            requirements_file.parent.mkdir(parents=True, exist_ok=True)
-            requirements_file.write_text(
-                "".join(f"{dependency}\n" for dependency in dependencies),
-                encoding="utf-8",
-            )
+            manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
+            if not manifest_paths:
+                return False, "没有找到已安装插件的依赖清单"
             return self._helper.install_packages_with_fallback(
-                requirements_file,
+                manifest_paths,
                 self._wheels_dirs(),
             )
         except Exception as err:
             logger.error(f"安装依赖项时发生错误：{err}")
             return False, f"安装依赖项时发生错误：{err}"
-        finally:
-            requirements_file.unlink(missing_ok=True)
 
     async def async_find_missing(self) -> list[str]:
         """在线程池中扫描缺失依赖，避免阻塞事件循环。"""

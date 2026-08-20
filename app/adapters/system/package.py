@@ -10,10 +10,10 @@ from urllib.parse import urlsplit, urlunsplit
 @dataclass(frozen=True)
 class PackageInstallRequest:
     """
-    Python 包安装请求，集中描述依赖文件、工具缓存、代理和本地 wheels 候选源。
+    Python 包安装请求，集中描述依赖清单、工具缓存、代理和本地 wheels 候选源。
     """
 
-    dependency_file: Path
+    dependency_files: tuple[Path, ...]
     python_bin: Path
     find_links_dirs: list[Path] = field(default_factory=list)
     constraints_file: Path | None = None
@@ -92,7 +92,8 @@ def _base_install_args(request: PackageInstallRequest) -> list[str]:
         args.extend(["--find-links", str(directory)])
     if request.constraints_file:
         args.extend(["-c", str(request.constraints_file)])
-    args.extend(["-r", str(request.dependency_file)])
+    for dependency_file in request.dependency_files:
+        args.extend(["-r", str(dependency_file)])
     return args
 
 
@@ -119,11 +120,14 @@ def _build_uv_command(uv_bin: Path, request: PackageInstallRequest, use_index: b
 
 
 def _build_uv_sync_command(uv_bin: Path, request: PackageInstallRequest, use_index: bool) -> list[str]:
+    if len(request.dependency_files) != 1:
+        raise ValueError("主项目锁定依赖恢复只接受一个 pyproject.toml")
+    project_file = request.dependency_files[0]
     command = [
         str(uv_bin),
         "sync",
         "--project",
-        str(request.dependency_file.parent),
+        str(project_file.parent),
         "--locked",
         "--no-dev",
         "--no-install-project",

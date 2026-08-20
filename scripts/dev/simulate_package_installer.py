@@ -34,24 +34,24 @@ def main() -> None:
 
     samples = {
         "plain": PackageInstallRequest(
-            dependency_file=requirements,
+            dependency_files=(requirements,),
             python_bin=python_bin,
             config_dir=config_dir,
         ),
         "mirror": PackageInstallRequest(
-            dependency_file=requirements,
+            dependency_files=(requirements,),
             python_bin=python_bin,
             config_dir=config_dir,
             package_index_url="https://user:pass@mirror.example/simple",
         ),
         "proxy": PackageInstallRequest(
-            dependency_file=requirements,
+            dependency_files=(requirements,),
             python_bin=python_bin,
             config_dir=config_dir,
             proxy_url="http://proxy.example:7890",
         ),
         "mirror_proxy_wheels": PackageInstallRequest(
-            dependency_file=requirements,
+            dependency_files=(requirements,),
             python_bin=python_bin,
             config_dir=config_dir,
             find_links_dirs=[
