@@ -1,0 +1,164 @@
+name: Dependency Compatibility
+
+on:
+  pull_request:
+    branches:
+      - v3
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'docker/Dockerfile'
+      - 'docker/entrypoint.sh'
+      - 'docker/update.sh'
+      - '.github/workflows/dependency-compat.yml'
+  push:
+    branches:
+      - v3
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'docker/Dockerfile'
+      - 'docker/entrypoint.sh'
+      - 'docker/update.sh'
+      - '.github/workflows/dependency-compat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-compat-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: ${{ matrix.name }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+            python-version: '3.12'
+            expected-system: Linux
+            expected-machine: x86_64
+          - name: Linux x64
+            runner: ubuntu-24.04
+            python-version: '3.13'
+            expected-system: Linux
+            expected-machine: x86_64
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            python-version: '3.12'
+            expected-system: Linux
+            expected-machine: aarch64
+          - name: macOS Intel
+            runner: macos-15-intel
+            python-version: '3.12'
+            expected-system: Darwin
+            expected-machine: x86_64
+          - name: macOS ARM
+            runner: macos-15
+            python-version: '3.12'
+            expected-system: Darwin
+            expected-machine: arm64
+          - name: Windows x64
+            runner: windows-2025
+            python-version: '3.12'
+            expected-system: Windows
+            expected-machine: AMD64
+          - name: Linux x64
+            runner: ubuntu-24.04
+            python-version: '3.14'
+            expected-system: Linux
+            expected-machine: x86_64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install locked runtime dependencies
+        run: uv sync --locked --inexact --no-dev --python ${{ matrix.python-version }}
+
+      - name: Verify environment and core imports
+        env:
+          EXPECTED_SYSTEM: ${{ matrix.expected-system }}
+          EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+        run: >-
+          uv run --locked --no-sync python -c
+          "import os, platform;
+          assert platform.system() == os.environ['EXPECTED_SYSTEM'], (platform.system(), os.environ['EXPECTED_SYSTEM']);
+          assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
+          import alembic, fastapi, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn"
+
+      - name: Verify installed dependency consistency
+        run: uv pip check
+
+  docker-dependencies:
+    name: Docker dependencies / ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            cache-scope: linux-amd64
+            image-tag: moviepilot-dependency-gate:linux-amd64
+            expected-machine: x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            cache-scope: linux-arm64
+            image-tag: moviepilot-dependency-gate:linux-arm64
+            expected-machine: aarch64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build locked dependency stage
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: prepare_venv
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: ${{ matrix.image-tag }}
+          cache-from: type=gha,scope=dependency-compat-${{ matrix.cache-scope }}
+          cache-to: type=gha,scope=dependency-compat-${{ matrix.cache-scope }},mode=max
+
+      - name: Verify dependency image
+        env:
+          IMAGE_TAG: ${{ matrix.image-tag }}
+          EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+        run: >-
+          docker run --rm
+          -e EXPECTED_MACHINE
+          "${IMAGE_TAG}"
+          /opt/venv/bin/python -c
+          "import os, platform;
+          assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
+          import alembic, fastapi, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn"
+
+      - name: Verify pinned uv version
+        env:
+          IMAGE_TAG: ${{ matrix.image-tag }}
+        run: docker run --rm "${IMAGE_TAG}" uv --version | grep -F 'uv 0.12.5'

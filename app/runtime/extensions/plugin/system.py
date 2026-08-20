@@ -16,6 +16,7 @@ class PluginSystemServices:
         market: Any,
         package: Any,
         dependency: Any,
+        dependency_manifest_status: Callable[[Path], Optional[bool]],
         compatible_flags: Callable[[Optional[str]], list[str]],
         frozen: Callable[[], bool],
     ) -> None:
@@ -23,6 +24,7 @@ class PluginSystemServices:
         self.market = market
         self.package = package
         self.dependency = dependency
+        self.dependency_manifest_status = dependency_manifest_status
         self.compatible_flags = compatible_flags
         self.frozen = frozen
 

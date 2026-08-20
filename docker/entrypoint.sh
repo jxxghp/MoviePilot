@@ -35,6 +35,7 @@ function is_truthy_value() {
 # 设置虚拟环境路径（兼容群晖等系统必须这样配置）
 VENV_PATH="${VENV_PATH:-/opt/venv}"
 export PATH="${VENV_PATH}/bin:$PATH"
+UV_BIN="${UV_BIN:-/usr/local/bin/uv}"
 
 # 校正设置目录
 CONFIG_DIR="${CONFIG_DIR:-/config}"
@@ -42,9 +43,8 @@ CONFIG_DIR="${CONFIG_DIR:-/config}"
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
     export PACKAGE_CACHE_ROOT
-    export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/pip}"
     export UV_CACHE_DIR="${UV_CACHE_DIR:-${PACKAGE_CACHE_ROOT}/uv}"
-    mkdir -p "${PIP_CACHE_DIR}" "${UV_CACHE_DIR}"
+    mkdir -p "${UV_CACHE_DIR}"
 }
 
 function run_package_command() {
@@ -346,12 +346,20 @@ function ensure_backend_runtime_dependencies() {
     fi
 
     WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
-    local -a pip_cmd=("${VENV_PATH}/bin/pip" "install" "-r" "/app/requirements.txt")
+    local -a uv_cmd=(
+        "${UV_BIN}" sync
+        --project /app
+        --locked
+        --no-dev
+        --no-install-project
+        --inexact
+    )
     if [ -n "${PIP_PROXY}" ]; then
-        pip_cmd+=("-i" "${PIP_PROXY}")
+        uv_cmd+=(--default-index "${PIP_PROXY}")
     fi
 
-    if ! run_package_command "${pip_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
+    if ! run_package_command env "UV_PROJECT_ENVIRONMENT=${VENV_PATH}" \
+        "${uv_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
         ERROR "→ 自动恢复主程序依赖失败，后端无法启动。"
         diagnostic_keepalive 1
     fi
@@ -463,6 +471,41 @@ function correct_config_permissions() {
     done < <(find "${CONFIG_DIR}" -mindepth 1 -maxdepth 1 -print0)
 }
 
+function correct_package_cache_permissions() {
+    local cache_dir="${UV_CACHE_DIR:-}"
+    [ -n "${cache_dir}" ] || return 0
+    if [[ "${cache_dir}" != /* ]]; then
+        ERROR "→ UV_CACHE_DIR 必须是绝对目录：${cache_dir}"
+        return 1
+    fi
+
+    local resolved_cache
+    local resolved_config
+    resolved_cache="$(python3 -c 'import os, sys; print(os.path.normpath(sys.argv[1]))' "${cache_dir}")"
+    resolved_config="$(python3 -c 'import os, sys; print(os.path.normpath(sys.argv[1]))' "${CONFIG_DIR}")"
+    case "${resolved_cache}/" in
+        "${resolved_config}/"*) return 0 ;;
+    esac
+    case "${resolved_cache}" in
+        /|/app|/public|/opt|/usr|/etc|/var|/home|/root|"${VENV_PATH}")
+            ERROR "→ UV_CACHE_DIR 不能使用受管根目录：${resolved_cache}"
+            return 1
+            ;;
+    esac
+
+    if ! mkdir -p -- "${resolved_cache}" \
+        || ! chown -R moviepilot:moviepilot "${resolved_cache}"; then
+        ERROR "→ uv 缓存目录权限修复失败：${resolved_cache}"
+        return 1
+    fi
+    if ! gosu moviepilot:moviepilot sh -c \
+        'probe="$1/.moviepilot-write-test.$$"; : > "${probe}" && rm -f "${probe}"' \
+        sh "${resolved_cache}"; then
+        ERROR "→ uv 缓存目录不可写：${resolved_cache}"
+        return 1
+    fi
+}
+
 function chown_plugin_runtime_path() {
     local plugin_path="${1:-}"
     [ -n "${plugin_path}" ] || return 0
@@ -492,6 +535,9 @@ function correct_file_permissions() {
     chown_plugin_runtime_path /app/app/plugins
     correct_home_permissions
     correct_config_permissions
+    if ! correct_package_cache_permissions; then
+        return 1
+    fi
     chown -R moviepilot:moviepilot \
         /var/lib/nginx \
         /var/log/nginx

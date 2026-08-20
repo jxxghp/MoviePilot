@@ -21,7 +21,6 @@ def sample(name: str, request: PackageInstallRequest) -> None:
         print(rendered)
         assert all("--proxy" not in arg for arg in strategy.command)
         assert "user:pass" not in rendered
-        assert strategy.env["PIP_CACHE_DIR"].endswith("/.cache/pip")
         assert strategy.env["UV_CACHE_DIR"].endswith("/.cache/uv")
         if strategy.strategy_name.endswith("代理") or strategy.strategy_name.endswith("镜像+代理"):
             assert strategy.env["HTTPS_PROXY"] == "http://proxy.example:7890"
@@ -35,31 +34,31 @@ def main() -> None:
 
     samples = {
         "plain": PackageInstallRequest(
-            requirements_file=requirements,
+            dependency_file=requirements,
             python_bin=python_bin,
             config_dir=config_dir,
         ),
         "mirror": PackageInstallRequest(
-            requirements_file=requirements,
+            dependency_file=requirements,
             python_bin=python_bin,
             config_dir=config_dir,
-            pip_index_url="https://user:pass@mirror.example/simple",
+            package_index_url="https://user:pass@mirror.example/simple",
         ),
         "proxy": PackageInstallRequest(
-            requirements_file=requirements,
+            dependency_file=requirements,
             python_bin=python_bin,
             config_dir=config_dir,
             proxy_url="http://proxy.example:7890",
         ),
         "mirror_proxy_wheels": PackageInstallRequest(
-            requirements_file=requirements,
+            dependency_file=requirements,
             python_bin=python_bin,
             config_dir=config_dir,
             find_links_dirs=[
                 root / "plugins.v2" / "demo" / "wheels",
                 root / "plugins.v2" / "other" / "wheels",
             ],
-            pip_index_url="https://user:pass@mirror.example/simple",
+            package_index_url="https://user:pass@mirror.example/simple",
             proxy_url="http://proxy.example:7890",
         ),
     }

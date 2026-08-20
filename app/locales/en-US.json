@@ -332,7 +332,7 @@
     "样本未识别到有效集数，智能生成失败": "No valid episode number was recognized from the sample, and intelligent generation failed",
     "不存在依赖": "No dependencies exist",
     "主运行环境已恢复": "Main runtime environment has been restored",
-    "[PIP] 所有策略均安装依赖失败，请检查网络连接、PIP 配置或插件依赖约束": "[PIP] All dependency installation strategies failed. Please check the network connection, PIP configuration, or plugin dependency constraints",
+    "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束": "[UV] All dependency installation strategies failed. Please check the network connection, package index configuration, or plugin dependency constraints",
     "可执行文件模式下，只能安装本地插件": "In executable mode, only local plugins can be installed",
     "不支持的插件仓库地址格式": "Unsupported plugin repository URL format",
     "本地插件来源与插件ID不匹配": "Local plugin source does not match the plugin ID",
@@ -948,12 +948,12 @@
       "target": "Cookie decryption failed: {reason}"
     },
     {
-      "source": "插件限定的系统版本范围 {range} 必须是字符串，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
-      "target": "The plugin system version range {range} must be a string. Use pip dependency version format, for example >=2.12.0,<3"
+      "source": "插件限定的系统版本范围 {range} 必须是字符串，请使用 PEP 440 版本范围格式，例如 >=2.12.0,<3",
+      "target": "The plugin system version range {range} must be a string. Use PEP 440 version specifier format, for example >=2.12.0,<3"
     },
     {
-      "source": "插件限定的系统版本范围格式不正确：{range}，请使用 pip 依赖版本格式，例如 >=2.12.0,<3",
-      "target": "The plugin system version range format is invalid: {range}. Use pip dependency version format, for example >=2.12.0,<3"
+      "source": "插件限定的系统版本范围格式不正确：{range}，请使用 PEP 440 版本范围格式，例如 >=2.12.0,<3",
+      "target": "The plugin system version range format is invalid: {range}. Use PEP 440 version specifier format, for example >=2.12.0,<3"
     },
     {
       "source": "当前 MoviePilot 版本 {version} 无法解析，已拒绝安装带版本限制的插件",
@@ -988,8 +988,8 @@
       "target": "Failed to recover {desc}"
     },
     {
-      "source": "[PIP] 所有策略均安装依赖失败：{reason}",
-      "target": "[PIP] All dependency installation strategies failed: {reason}"
+      "source": "[UV] 所有策略均安装依赖失败：{reason}",
+      "target": "[UV] All dependency installation strategies failed: {reason}"
     },
     {
       "source": "{pid} 未声明 Release 安装，无法安装指定版本",

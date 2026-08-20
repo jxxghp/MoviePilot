@@ -27,6 +27,20 @@ def _write_bundle(path: Path, label: str, *, extra_files: tuple[str, ...] = ()) 
 def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
+    assert (
+        "FROM ghcr.io/astral-sh/uv:0.12.5@sha256:"
+        "e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv"
+        in dockerfile
+    )
+    assert "COPY --from=uv /uv /usr/local/bin/uv" in dockerfile
+    assert "COPY pyproject.toml uv.lock ./" in dockerfile
+    assert "python3 -m venv --without-pip ${VENV_PATH}" in dockerfile
+    assert "UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync" in dockerfile
+    for option in ("--locked", "--no-dev", "--no-install-project"):
+        assert option in dockerfile
+    assert "uv-pip-compat" not in dockerfile
+    assert "requirements.in" not in dockerfile
+    assert "${VENV_PATH}/bin/pip" not in dockerfile
     assert "-exec cp -f -t /usr/local/lib/moviepilot/control {} +" in dockerfile
     assert "bash -n /entrypoint.sh" in dockerfile
     assert 'ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]' in dockerfile
@@ -540,7 +554,7 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
         source {UPDATER!s}
         set_package_proxy_env
         printf '%s|%s|%s|%s\\n' "${{HTTP_PROXY-unset}}" "${{HTTPS_PROXY-unset}}" "${{http_proxy-unset}}" "${{https_proxy-unset}}"
-        printf '%s\\n' "${{PIP_ENV[*]}}"
+        printf '%s\\n' "${{PACKAGE_ENV[*]}}"
         """
     )
     env = dict(os.environ)
@@ -578,7 +592,7 @@ def test_updater_exposes_explicit_result(
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        test_connectivity_pip() {{ PIP_LOG=test; return 0; }}
+        test_connectivity_package() {{ PACKAGE_LOG=test; return 0; }}
         test_connectivity_github() {{ GITHUB_LOG=test; return 0; }}
         install_backend_and_download_resources() {{
             if [ "${{INSTALL_RESULT}}" = success ]; then
@@ -605,7 +619,7 @@ def test_updater_exposes_explicit_result(
 def test_release_noop_preserves_prerelease_selection_without_probing_package_index(
     tmp_path: Path,
 ) -> None:
-    pip_probe = tmp_path / "pip-probe"
+    package_probe = tmp_path / "package-probe"
     curl_log = tmp_path / "curl.log"
     comparison_log = tmp_path / "comparison.log"
     script = textwrap.dedent(
@@ -613,14 +627,14 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
         CONFIG_DIR="$1"
         MOVIEPILOT_AUTO_UPDATE=release
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
-        PIP_PROBE="$2"
+        PACKAGE_PROBE="$2"
         CURL_LOG="$3"
         COMPARISON_LOG="$4"
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        test_connectivity_pip() {{ touch "${{PIP_PROBE}}"; return 0; }}
+        test_connectivity_package() {{ touch "${{PACKAGE_PROBE}}"; return 0; }}
         test_connectivity_github() {{ CURL_OPTIONS=-sL; GITHUB_LOG=test; return 0; }}
         compare_versions() {{ printf '%s|%s\n' "$1" "$2" > "${{COMPARISON_LOG}}"; return 1; }}
         grep() {{
@@ -653,7 +667,7 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
             script,
             "release-noop-test",
             str(tmp_path / "config"),
-            str(pip_probe),
+            str(package_probe),
             str(curl_log),
             str(comparison_log),
         ],
@@ -663,7 +677,7 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
     )
 
     assert result.stdout == "noop\n"
-    assert not pip_probe.exists()
+    assert not package_probe.exists()
     curl_args = curl_log.read_text(encoding="utf-8")
     assert "/releases" in curl_args
     assert "/releases/latest" not in curl_args
@@ -675,51 +689,68 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
 
 
 @pytest.mark.parametrize(
-    ("dependencies_changed", "expected_route_calls", "expected_install_calls"),
-    ((False, 0, 0), (True, 1, 1)),
+    ("pyproject_changed", "lock_changed", "expected_route_calls", "expected_sync_calls"),
+    (
+        (False, False, 0, 0),
+        (True, False, 1, 1),
+        (False, True, 1, 1),
+        (True, True, 1, 1),
+    ),
 )
 def test_package_route_is_only_configured_for_changed_dependencies(
     tmp_path: Path,
-    dependencies_changed: bool,
+    pyproject_changed: bool,
+    lock_changed: bool,
     expected_route_calls: int,
-    expected_install_calls: int,
+    expected_sync_calls: int,
 ) -> None:
-    venv_bin = tmp_path / "venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    pip_log = tmp_path / "pip.log"
+    uv_bin = tmp_path / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_log = tmp_path / "uv.log"
     route_log = tmp_path / "route.log"
-    for executable in ("pip", "pip-compile"):
-        path = venv_bin / executable
-        path.write_text(
-            "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"${PIP_TEST_LOG}\"\n",
-            encoding="utf-8",
-        )
-        path.chmod(0o755)
+    uv_bin.write_text(
+        "#!/bin/bash\n"
+        "printf '%s|%s\\n' \"${UV_PROJECT_ENVIRONMENT:-}\" \"$*\" >> \"${UV_TEST_LOG}\"\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
     update_tree = tmp_path / "update" / "App"
     update_tree.mkdir(parents=True)
-    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
-    (update_tree / "version.py").write_text("FRONTEND_VERSION = ''\n", encoding="utf-8")
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         TMP_PATH="$3"
         ROUTE_LOG="$4"
-        DEPENDENCIES_CHANGED="$5"
+        PYPROJECT_CHANGED="$5"
+        LOCK_CHANGED="$6"
+        UV_BIN="$7"
         PIP_PROXY= PROXY_HOST=
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        download_and_unzip() {{ return 0; }}
-        cmp() {{ [ "${{DEPENDENCIES_CHANGED}}" = false ]; }}
-        cp() {{ return 0; }}
-        configure_pip_route() {{ printf 'route\n' >> "${{ROUTE_LOG}}"; PIP_LOG=test; }}
-        install_backend_and_download_resources tags/v3.0.1.zip || true
+        cmp() {{
+            case "$2" in
+                */pyproject.toml) [ "${{PYPROJECT_CHANGED}}" = false ] ;;
+                */uv.lock) [ "${{LOCK_CHANGED}}" = false ] ;;
+            esac
+        }}
+        configure_package_route() {{
+            printf 'route\n' >> "${{ROUTE_LOG}}"
+            PACKAGE_LOG=test
+            PACKAGE_ENV=()
+            UV_OPTIONS=()
+        }}
+        if dependency_manifests_changed; then
+            sync_project_dependencies
+        fi
         """
     )
 
-    env = {**os.environ, "PIP_TEST_LOG": str(pip_log)}
+    env = {**os.environ, "UV_TEST_LOG": str(uv_log)}
     result = subprocess.run(
         [
             "bash",
@@ -730,7 +761,9 @@ def test_package_route_is_only_configured_for_changed_dependencies(
             str(tmp_path / "venv"),
             str(tmp_path / "update"),
             str(route_log),
-            str(dependencies_changed).lower(),
+            str(pyproject_changed).lower(),
+            str(lock_changed).lower(),
+            str(uv_bin),
         ],
         text=True,
         capture_output=True,
@@ -740,72 +773,98 @@ def test_package_route_is_only_configured_for_changed_dependencies(
 
     assert result.stderr == ""
     route_calls = route_log.read_text(encoding="utf-8").splitlines() if route_log.exists() else []
-    install_calls = pip_log.read_text(encoding="utf-8").splitlines() if pip_log.exists() else []
+    sync_calls = uv_log.read_text(encoding="utf-8").splitlines() if uv_log.exists() else []
     assert len(route_calls) == expected_route_calls
-    compile_calls = [call for call in install_calls if not call.startswith("install ")]
-    package_install_calls = [call for call in install_calls if call.startswith("install ")]
-    assert len(package_install_calls) == expected_install_calls
-    if dependencies_changed:
-        assert compile_calls == [
-            f"{update_tree / 'requirements.in'} -o {tmp_path / 'update' / 'requirements.txt'}"
-        ]
-        assert package_install_calls == [
-            f"install -r {tmp_path / 'update' / 'requirements.txt'}"
+    assert len(sync_calls) == expected_sync_calls
+    if expected_sync_calls:
+        assert sync_calls == [
+            f"{tmp_path / 'venv'}|sync --project {update_tree} "
+            f"--locked --inexact --no-dev --no-install-project "
+            f"--python {tmp_path / 'venv' / 'bin' / 'python3'}"
         ]
 
 
-@pytest.mark.parametrize("failure", ("compile", "install", "post_install"))
-def test_failed_dependency_update_does_not_overwrite_current_manifests(
+@pytest.mark.parametrize("missing_manifest", ("pyproject.toml", "uv.lock"))
+def test_dependency_update_requires_complete_uv_manifests(
     tmp_path: Path,
-    failure: str,
+    missing_manifest: str,
 ) -> None:
-    venv_bin = tmp_path / "venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    command_log = tmp_path / "commands.log"
-    copy_log = tmp_path / "copies.log"
-    for executable in ("pip", "pip-compile"):
-        path = venv_bin / executable
-        path.write_text(
-            "#!/bin/bash\n"
-            'printf \'%s|%s\\n\' "$(basename "$0")" "$*" >> "${COMMAND_LOG}"\n'
-            f'[[ "$(basename "$0")" == "pip-compile" && "{failure}" == "compile" ]] && exit 1\n'
-            f'[[ "$(basename "$0")" == "pip" && "{failure}" == "install" ]] && exit 1\n'
-            "exit 0\n",
-            encoding="utf-8",
-        )
-        path.chmod(0o755)
     update_tree = tmp_path / "update" / "App"
     update_tree.mkdir(parents=True)
-    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
-    (update_tree / "version.py").write_text(
-        "FRONTEND_VERSION = 'v3.0.0'\n",
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (update_tree / missing_manifest).unlink()
+    route_marker = tmp_path / "route-called"
+    copy_marker = tmp_path / "copy-called"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        TMP_PATH="$2"
+        ROUTE_MARKER="$3"
+        COPY_MARKER="$4"
+        PIP_PROXY= PROXY_HOST=
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        download_and_unzip() {{ return 0; }}
+        configure_package_route() {{ touch "${{ROUTE_MARKER}}"; }}
+        cp() {{ touch "${{COPY_MARKER}}"; }}
+        ! install_backend_and_download_resources tags/v3.0.1.zip
+        """
+    )
+
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "incomplete-manifest-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "update"),
+            str(route_marker),
+            str(copy_marker),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert not route_marker.exists()
+    assert not copy_marker.exists()
+
+
+def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -> None:
+    uv_bin = tmp_path / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_bin.write_text(
+        "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"${UV_LOG}\"\nexit 1\n",
         encoding="utf-8",
     )
+    uv_bin.chmod(0o755)
+    update_tree = tmp_path / "update" / "App"
+    update_tree.mkdir(parents=True)
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    copy_log = tmp_path / "copies.log"
+    uv_log = tmp_path / "uv.log"
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         TMP_PATH="$3"
-        COPY_LOG="$4"
+        UV_BIN="$4"
+        COPY_LOG="$5"
         PIP_PROXY= PROXY_HOST=
-        FAILURE={failure}
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        download_and_unzip() {{
-            if [[ "${{FAILURE}}" = post_install ]] && [[ "$2" = dist ]]; then
-                return 1
-            fi
-            return 0
-        }}
+        download_and_unzip() {{ return 0; }}
         cmp() {{ return 1; }}
         cp() {{ printf '%s\n' "$*" >> "${{COPY_LOG}}"; }}
-        configure_pip_route() {{ PIP_LOG=test; }}
+        configure_package_route() {{ PACKAGE_LOG=test; PACKAGE_ENV=(); UV_OPTIONS=(); }}
         install_backend_and_download_resources tags/v3.0.1.zip || true
-        if [[ "${{FAILURE}}" = post_install ]]; then
-            install_backend_and_download_resources tags/v3.0.1.zip || true
-        fi
         """
     )
 
@@ -818,38 +877,20 @@ def test_failed_dependency_update_does_not_overwrite_current_manifests(
             str(tmp_path / "config"),
             str(tmp_path / "venv"),
             str(tmp_path / "update"),
+            str(uv_bin),
             str(copy_log),
         ],
         text=True,
         capture_output=True,
         check=True,
-        env={**os.environ, "COMMAND_LOG": str(command_log)},
+        env={**os.environ, "UV_LOG": str(uv_log)},
     )
 
     assert not copy_log.exists()
-    commands = command_log.read_text(encoding="utf-8").splitlines()
-    assert commands[0] == (
-        f"pip-compile|{update_tree / 'requirements.in'} "
-        f"-o {tmp_path / 'update' / 'requirements.txt'}"
+    assert uv_log.read_text(encoding="utf-8") == (
+        f"sync --project {update_tree} --locked --inexact --no-dev "
+        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}\n"
     )
-    assert all("/app/requirements" not in command for command in commands)
-    if failure == "compile":
-        assert len(commands) == 1
-    elif failure == "install":
-        assert commands[1] == f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}"
-    else:
-        assert commands == [
-            (
-                f"pip-compile|{update_tree / 'requirements.in'} "
-                f"-o {tmp_path / 'update' / 'requirements.txt'}"
-            ),
-            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
-            (
-                f"pip-compile|{update_tree / 'requirements.in'} "
-                f"-o {tmp_path / 'update' / 'requirements.txt'}"
-            ),
-            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
-        ]
 
 
 def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
@@ -859,11 +900,12 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         TIMEOUT_LOG="$3"
+        UV_BIN="$4"
         PIP_PROXY=https://packages.example/simple
         PROXY_HOST=
         source {UPDATER!s}
         timeout() {{ printf '%s\n' "$*" > "${{TIMEOUT_LOG}}"; return 124; }}
-        test_connectivity_pip 0 || true
+        test_connectivity_package 0 || true
         """
     )
 
@@ -876,6 +918,7 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
             str(tmp_path / "config"),
             str(tmp_path / "venv"),
             str(timeout_log),
+            "/fake/uv",
         ],
         text=True,
         capture_output=True,
@@ -885,13 +928,12 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
     command = timeout_log.read_text(encoding="utf-8")
     assert command.startswith("--kill-after=2s 10s env ")
     assert "UV_NO_CACHE=1" in command
-    assert "PIP_NO_CACHE_DIR=1" in command
     assert "UV_HTTP_TIMEOUT=5" in command
-    assert "PIP_DEFAULT_TIMEOUT=5" in command
     assert "UV_HTTP_RETRIES=0" in command
-    assert "PIP_RETRIES=0" in command
-    assert "pip install --target " in command
-    assert " --no-deps -i https://packages.example/simple pip-hello-world" in command
+    assert "/fake/uv pip install --target " in command
+    assert (
+        " --no-deps --default-index https://packages.example/simple pip-hello-world" in command
+    )
     assert "uninstall" not in command
     probe_dir = Path(command.split("--target ", 1)[1].split(" ", 1)[0])
     assert not probe_dir.exists()

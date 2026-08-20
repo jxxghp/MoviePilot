@@ -40,9 +40,9 @@ ROLE_LABEL = "org.moviepilot.perf.role"
 SOURCE_LABEL = "org.moviepilot.perf.source-commit"
 SUBSTRATE_LABEL = "org.moviepilot.perf.substrate"
 CRITICAL_SUBSTRATE_PATHS = (
-    "requirements.in",
+    "pyproject.toml",
+    "uv.lock",
     "docker/Dockerfile",
-    "scripts/uv-pip-compat.sh",
 )
 SEED_COMPATIBILITY_PATHS = ("database/versions",)
 AGENT_HEAVY_MODULE_PREFIXES = (

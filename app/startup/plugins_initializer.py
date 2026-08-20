@@ -34,6 +34,7 @@ from app.adapters.external.market import (
     configure_installed_plugins_provider,
 )
 from app.adapters.system.plugin.dependency import PluginDependencyInstaller
+from app.adapters.system.plugin.manifest import dependency_manifest_status
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
@@ -82,6 +83,7 @@ def configure_plugin_services() -> None:
             ) or [],
             plugin_dir=Path(settings.ROOT_PATH) / "app" / "plugins",
         ),
+        dependency_manifest_status=dependency_manifest_status,
         compatible_flags=lambda flag: (
             [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
             if flag else []

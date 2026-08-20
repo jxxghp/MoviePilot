@@ -64,7 +64,7 @@ def _patch_gemini_thought_signature():
             logger.error(
                 f"langchain-google-genai 版本 {_version or '未知'} 过旧，"
                 f"不支持 Gemini 2.5+ 模型的 thought_signature 处理，"
-                f"请升级到 4.2.3+：pip install langchain-google-genai~=4.2.3"
+                f"请恢复 MoviePilot 锁定依赖或更新主程序"
             )
             return
 

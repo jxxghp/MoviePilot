@@ -8,12 +8,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
-
 FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict], bool]]]
 RuntimePluginResolver = Callable[[Path], Optional[str]]
 LocalCandidateResolver = Callable[[Path], Optional[dict]]
 LocalPluginSync = Callable[[str, Optional[dict]], bool]
 PluginReloader = Callable[[str], Any]
+DependencyManifestStatus = Callable[[Path], Optional[bool]]
 WatchFunction = Callable[..., Any]
 
 
@@ -77,6 +77,7 @@ class PluginChangeMonitor:
         local_candidate: LocalCandidateResolver,
         sync_local: LocalPluginSync,
         reload_plugin: PluginReloader,
+        dependency_manifest_status: DependencyManifestStatus,
         watch: WatchFunction,
         log: Any,
     ) -> None:
@@ -90,6 +91,7 @@ class PluginChangeMonitor:
         self._local_candidate = local_candidate
         self._sync_local = sync_local
         self._reload_plugin = reload_plugin
+        self._dependency_manifest_status = dependency_manifest_status
         self._watch = watch
         self._logger = log
 
@@ -120,8 +122,12 @@ class PluginChangeMonitor:
             event_path = Path(path_str)
             if "__pycache__" in event_path.parts:
                 continue
-            if event_path.name == "requirements.txt":
-                self._handle_requirements_change(event_path)
+            manifest_status = self._dependency_manifest_status(event_path)
+            if manifest_status is not None:
+                self._handle_dependency_manifest_change(
+                    event_path,
+                    active=manifest_status,
+                )
                 continue
 
             federated_change = self._federated_change(event_path)
@@ -203,7 +209,12 @@ class PluginChangeMonitor:
                     exc_info=True,
                 )
 
-    def _handle_requirements_change(self, event_path: Path) -> None:
+    def _handle_dependency_manifest_change(
+        self,
+        event_path: Path,
+        *,
+        active: bool,
+    ) -> None:
         """记录依赖文件变化，但不在监控线程中隐式安装依赖。"""
         candidate = self._local_candidate(event_path)
         if not candidate:
@@ -212,6 +223,12 @@ class PluginChangeMonitor:
             self._logger.info(
                 f"检测到本地插件 {candidate.get('id')} 依赖文件变化，"
                 f"但跳过处理：{candidate.get('skip_reason')}"
+            )
+            return
+        if not active:
+            self._logger.debug(
+                f"检测到本地插件 {candidate.get('id')} 非生效依赖文件变化："
+                f"{event_path.name}"
             )
             return
         self._logger.warning(

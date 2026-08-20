@@ -16,6 +16,7 @@ SUPERUSER=""
 SUPERUSER_PASSWORD=""
 OS_NAME="Unknown"
 PYTHON_BIN=""
+UV_VERSION="0.12.5"
 BREW_BIN=""
 PACKAGE_MANAGER=""
 PACKAGE_INDEX_UPDATED="false"
@@ -177,7 +178,7 @@ python_version_ok() {
   local python_bin="$1"
   "$python_bin" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
 PY
 }
 
@@ -195,7 +196,7 @@ try_python_candidate() {
 
 find_python() {
   local minor=""
-  for minor in 20 19 18 17 16 15 14 13 12 11; do
+  for minor in 20 19 18 17 16 15 14 13 12; do
     if try_python_candidate "python3.$minor"; then
       return 0
     fi
@@ -227,20 +228,20 @@ find_uv_python() {
 python_install_hint() {
   case "$OS_NAME" in
     macOS)
-      echo "脚本已尝试自动安装 Git、curl 和 Python 3.11+。" >&2
-      echo "如果自动安装失败，请先安装 Homebrew，或手动执行：brew install git curl python@3.11" >&2
+      echo "脚本已尝试自动安装 Git、curl 和 Python 3.12+。" >&2
+      echo "如果自动安装失败，请先安装 Homebrew，或手动执行：brew install git curl python@3.12" >&2
       ;;
     Linux*)
-      echo "脚本已尝试自动安装 Git、curl 和 Python 3.11+。" >&2
-      echo "如果自动安装失败，请先安装 Git、curl、Python 3.11+，并确保包含 venv 模块。" >&2
-      echo "例如 Debian/Ubuntu: sudo apt install git curl python3.11 python3.11-venv" >&2
-      echo "例如 Fedora/RHEL:  sudo dnf install git curl python3.11" >&2
+      echo "脚本已尝试自动安装 Git、curl 和 Python 3.12+。" >&2
+      echo "如果自动安装失败，请先安装 Git、curl、Python 3.12+。" >&2
+      echo "例如 Debian/Ubuntu: sudo apt install git curl python3.12" >&2
+      echo "例如 Fedora/RHEL:  sudo dnf install git curl python3.12" >&2
       ;;
     Windows)
       echo "推荐在 WSL、Linux 或 macOS 终端中运行此脚本。" >&2
       ;;
     *)
-      echo "请先安装 Git、curl、Python 3.11 或更高版本。" >&2
+      echo "请先安装 Git、curl、Python 3.12+。" >&2
       ;;
   esac
 }
@@ -384,17 +385,19 @@ ensure_base_tools() {
 }
 
 ensure_uv() {
-  if command -v uv >/dev/null 2>&1; then
+  if command -v uv >/dev/null 2>&1 \
+    && [[ "$(uv --version 2>/dev/null | awk '{print $2}')" == "${UV_VERSION}" ]]; then
     return 0
   fi
 
-  echo "==> 自动安装 uv，用于补齐 Python 3.11+ 运行时"
-  env UV_INSTALL_DIR="$HOME/.local/bin" sh -c "$(curl -LsSf https://astral.sh/uv/install.sh)"
+  echo "==> 自动安装 uv ${UV_VERSION}"
+  env UV_INSTALL_DIR="$HOME/.local/bin" sh -c "$(curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh")"
   export PATH="$HOME/.local/bin:$PATH"
   hash -r
 
-  if ! command -v uv >/dev/null 2>&1; then
-    echo "uv 安装失败，无法继续自动安装 Python。" >&2
+  if ! command -v uv >/dev/null 2>&1 \
+    || [[ "$(uv --version 2>/dev/null | awk '{print $2}')" != "${UV_VERSION}" ]]; then
+    echo "uv ${UV_VERSION} 安装失败，无法继续自动安装 Python。" >&2
     return 1
   fi
 }
@@ -412,11 +415,11 @@ ensure_python() {
     return 0
   fi
 
-  echo "==> 未找到可用的 Python 3.11+，开始自动安装独立 Python 运行时"
-  uv python install 3.11
+  echo "==> 未找到可用的 Python 3.12+，开始自动安装 Python 3.12"
+  uv python install 3.12
   PYTHON_BIN="$(find_uv_python "$(command -v uv)" || true)"
   if [[ -z "$PYTHON_BIN" ]] || ! python_version_ok "$PYTHON_BIN"; then
-    echo "自动安装 Python 3.11+ 失败。" >&2
+    echo "自动安装 Python 3.12 失败。" >&2
     return 1
   fi
 }

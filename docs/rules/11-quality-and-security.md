@@ -6,10 +6,10 @@
 
 ```bash
 # Minimum: run tests directly related to the change
-pytest tests/test_<domain>.py
+uv run --locked --no-sync pytest tests/test_<domain>.py
 
 # If the change affects common modules, startup flow, CLI, or agent runtime
-pytest
+uv run --locked --no-sync pytest
 ```
 
 ### When to Expand Scope
@@ -42,7 +42,7 @@ Run the full test suite when changing:
 ## Static Analysis
 
 ```bash
-pylint app/
+uv run --locked --no-sync pylint app/
 ```
 
 - After any Python code change, ensure no new **error-level** pylint issues are introduced.
@@ -54,10 +54,10 @@ pylint app/
 ## Dependency Security Scan
 
 ```bash
-safety check -r requirements.txt --policy-file=safety.policy.yml
+uvx safety scan --target . --policy-file safety.policy.yml
 ```
 
-- Run after runtime dependency changes; scan the development dependency entry as well when `requirements-dev.in` changes.
+- Run manually after runtime or development dependency changes; Safety scans `pyproject.toml` and `uv.lock` directly, and this check is not currently an automated CI job.
 - No new high-severity vulnerabilities may be introduced.
 - If a vulnerability cannot be patched immediately, document it explicitly in the PR description.
 
@@ -131,11 +131,11 @@ Before marking any task as complete:
 
 - [ ] Related pytest tests pass
 - [ ] No new pylint error-level issues in `pylint app/`
-- [ ] If dependencies changed: the package is in the correct runtime or dev dependency entry, and `safety check` passes for the affected entry
+- [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, locked sync and `uv pip check` pass, and the manual Safety scan passes
 - [ ] If CLI behavior changed: `docs/cli.md` and related tests are updated
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated
 - [ ] If database schema changed: a new Alembic migration exists under `database/versions/`
 - [ ] No secrets are included in code, logs, or committed files
 - [ ] Public or cross-module contracts and non-obvious business behavior have useful Chinese documentation
 
-*Last Updated: 2026-08-13*
+*Last Updated: 2026-08-19*

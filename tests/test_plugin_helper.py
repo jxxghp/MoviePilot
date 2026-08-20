@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import stat
 import sys
 import tempfile
@@ -100,6 +101,14 @@ def _build_release_zip_member(name: str, *, symlink: bool = False) -> bytes:
         else:
             zf.writestr(name, b"evil")
     return buffer.getvalue()
+
+
+def _create_fake_uv(root: Path) -> Path:
+    """创建仅供命令构造测试定位的 uv 可执行文件。"""
+    uv_bin = root / "venv" / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True, exist_ok=True)
+    uv_bin.write_text("", encoding="utf-8")
+    return uv_bin
 
 
 def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
@@ -979,7 +988,7 @@ class TestPluginHelper:
         assert not annotated["system_version_compatible"]
         assert "当前版本" in annotated["system_version_message"]
 
-    def test_pip_install_keeps_modules_imported_during_install(self):
+    def test_uv_install_keeps_modules_imported_during_install(self):
         """
         验证依赖安装窗口内被其他任务导入的运行态模块不会被误删。
         """
@@ -1002,14 +1011,14 @@ class TestPluginHelper:
                 requirements_file = Path(temp_dir) / "requirements.txt"
                 requirements_file.write_text("demo-package\n", encoding="utf-8")
                 with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                    success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
             assert success
             assert "ok" == message
             for module_name in module_names:
                 assert module_name in sys.modules
 
-    def test_pip_install_builds_uv_strategy_without_proxy_argument(self):
+    def test_uv_install_builds_uv_strategy_without_proxy_argument(self):
         """
         插件依赖安装优先使用 uv 时，传输代理只进入子进程环境。
         """
@@ -1032,17 +1041,17 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
-                        return_value={"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                        return_value={"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                     ), \
                     patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
                     patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"):
-                success, message = PluginHelper.pip_install_with_fallback(req)
+                success, message = PluginHelper.install_packages_with_fallback(req)
 
         assert success
         assert message == "ok"
@@ -1053,9 +1062,9 @@ class TestPluginHelper:
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
-    def test_pip_install_serializes_concurrent_calls(self):
+    def test_uv_install_serializes_concurrent_calls(self):
         """
-        验证多个依赖安装请求会复用同一把锁串行执行 pip。
+        验证多个依赖安装请求会复用同一把锁串行执行 uv。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -1082,7 +1091,7 @@ class TestPluginHelper:
         def worker(requirements_file: Path):
             try:
                 start_event.wait()
-                PluginHelper.pip_install_with_fallback(requirements_file)
+                PluginHelper.install_packages_with_fallback(requirements_file)
             except Exception as err:  # pragma: no cover - 仅用于并发测试失败诊断
                 errors.append(err)
 
@@ -1144,9 +1153,9 @@ class TestPluginHelper:
             "bcrypt": Version("4.0.1"),
         } == protected_packages
 
-    def test_pip_install_rejects_conflicting_runtime_dependency(self):
+    def test_uv_install_rejects_conflicting_runtime_dependency(self):
         """
-        验证插件如果试图覆盖主程序核心依赖，会在真正执行 pip 前被直接拒绝。
+        验证插件如果试图覆盖主程序核心依赖，会在真正执行安装前被直接拒绝。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -1161,13 +1170,13 @@ class TestPluginHelper:
                     "_PluginHelper__get_protected_runtime_packages",
                     return_value={"fastapi": Version("0.115.14")}
             ):
-                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert not success
         assert "主程序核心依赖" in message
         assert "fastapi" in message
 
-    def test_pip_install_allows_changing_non_runtime_dependency(self):
+    def test_uv_install_allows_changing_non_runtime_dependency(self):
         """
         验证非主程序依赖即便已安装，插件后续仍可调整其版本约束。
         """
@@ -1178,16 +1187,19 @@ class TestPluginHelper:
 
         seen_install_commands = []
 
-        def fake_execute(cmd, env=None, safe_command=None):
-            if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
-                seen_install_commands.append(cmd)
-                assert "-c" not in cmd
-                return True, "ok"
-            return True, "ok"
-
         with tempfile.TemporaryDirectory() as temp_dir:
-            requirements_file = Path(temp_dir) / "requirements.txt"
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
             requirements_file.write_text("demo-package>=2\n", encoding="utf-8")
+            uv_bin = _create_fake_uv(root)
+
+            def fake_execute(cmd, env=None, safe_command=None):
+                if cmd[:3] == [str(uv_bin), "pip", "install"]:
+                    seen_install_commands.append(cmd)
+                    assert "-c" not in cmd
+                    return True, "ok"
+                return True, "ok"
+
             with patch.object(
                     PluginHelper,
                     "_PluginHelper__get_installed_packages",
@@ -1199,14 +1211,14 @@ class TestPluginHelper:
                         return_value={}
                 ):
                     with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                        with patch("app.adapters.system.package._find_uv", return_value=None):
-                            success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                        with patch("app.adapters.system.package.find_uv", return_value=uv_bin):
+                            success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert success
         assert "ok" == message
         assert 1 == len(seen_install_commands)
 
-    def test_pip_install_uses_runtime_constraints_file(self):
+    def test_uv_install_uses_runtime_constraints_file(self):
         """
         验证插件依赖安装会固定主程序依赖的当前版本，防止共享 venv 被改写。
         """
@@ -1217,34 +1229,37 @@ class TestPluginHelper:
 
         seen_constraints = []
 
-        def fake_execute(cmd, env=None, safe_command=None):
-            if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
-                constraint_index = cmd.index("-c") + 1
-                constraint_file = Path(cmd[constraint_index])
-                seen_constraints.append(constraint_file)
-                assert constraint_file.exists()
-                assert "fastapi==0.115.14" in constraint_file.read_text(encoding="utf-8")
-                return True, "ok"
-            return True, "ok"
-
         with tempfile.TemporaryDirectory() as temp_dir:
-            requirements_file = Path(temp_dir) / "requirements.txt"
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
+            uv_bin = _create_fake_uv(root)
+
+            def fake_execute(cmd, env=None, safe_command=None):
+                if cmd[:3] == [str(uv_bin), "pip", "install"]:
+                    constraint_index = cmd.index("-c") + 1
+                    constraint_file = Path(cmd[constraint_index])
+                    seen_constraints.append(constraint_file)
+                    assert constraint_file.exists()
+                    assert "fastapi==0.115.14" in constraint_file.read_text(encoding="utf-8")
+                    return True, "ok"
+                return True, "ok"
+
             with patch.object(
                     PluginHelper,
                     "_PluginHelper__get_protected_runtime_packages",
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.adapters.system.package._find_uv", return_value=None):
-                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                    with patch("app.adapters.system.package.find_uv", return_value=uv_bin):
+                        success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert success
         assert "ok" == message
         assert 1 == len(seen_constraints)
         assert not seen_constraints[0].exists()
 
-    def test_pip_install_repairs_runtime_when_healthcheck_fails(self):
+    def test_uv_install_repairs_runtime_when_healthcheck_fails(self):
         """
         验证插件依赖安装后若破坏运行环境，会先恢复主程序依赖，再向上层返回失败。
         """
@@ -1254,43 +1269,45 @@ class TestPluginHelper:
             pytest.skip(f"missing dependency: {exc}")
 
         repair_commands = []
-        pip_check_count = 0
-        pip_check_cmd = PluginHelper._PluginHelper__build_runtime_pip_command("check")
-
-        def fake_execute(cmd, env=None, safe_command=None):
-            nonlocal pip_check_count
-            if cmd[:4] == [sys.executable, "-m", "pip", "install"]:
-                if "-c" not in cmd:
-                    repair_commands.append(cmd)
-                    return True, "repaired"
-                return True, "installed"
-            if cmd == pip_check_cmd:
-                pip_check_count += 1
-                if pip_check_count == 2:
-                    return False, "broken"
-                return True, "healthy"
-            if len(cmd) >= 3 and cmd[1] == "-c":
-                return True, "probe ok"
-            raise AssertionError(f"unexpected command: {cmd}")
+        uv_check_count = 0
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            requirements_file = Path(temp_dir) / "requirements.txt"
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
+            uv_bin = _create_fake_uv(root)
+
+            def fake_execute(cmd, env=None, safe_command=None):
+                nonlocal uv_check_count
+                if cmd[:3] == [str(uv_bin), "pip", "install"]:
+                    if "-c" not in cmd:
+                        repair_commands.append(cmd)
+                        return True, "repaired"
+                    return True, "installed"
+                if cmd[1:3] == ["pip", "check"]:
+                    uv_check_count += 1
+                    if uv_check_count == 2:
+                        return False, "broken"
+                    return True, "healthy"
+                if len(cmd) >= 3 and cmd[1] == "-c":
+                    return True, "probe ok"
+                raise AssertionError(f"unexpected command: {cmd}")
+
             with patch.object(
                     PluginHelper,
                     "_PluginHelper__get_protected_runtime_packages",
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.adapters.system.package._find_uv", return_value=None):
-                        success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                    with patch("app.adapters.system.package.find_uv", return_value=uv_bin):
+                        success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert not success
         assert "已自动恢复主程序依赖" in message
         assert 1 == len(repair_commands)
         assert "runtime-constraints-" in repair_commands[0][-1]
 
-    def test_pip_install_allows_preexisting_healthcheck_failure(self):
+    def test_uv_install_allows_preexisting_healthcheck_failure(self):
         """
         安装前已存在且安装后未新增的环境异常不应归因于本次插件依赖安装。
         """
@@ -1301,19 +1318,21 @@ class TestPluginHelper:
 
         health_snapshots = [
             {
-                "pip check": (False, "existing issue before install"),
+                "uv check": (False, "existing issue before install"),
                 "核心依赖导入检查": (True, "ok"),
             },
             {
-                "pip check": (False, "same issue with different command summary"),
+                "uv check": (False, "same issue with different command summary"),
                 "核心依赖导入检查": (True, "ok"),
             },
         ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            requirements_file = Path(temp_dir) / "requirements.txt"
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
-            with patch("app.adapters.system.package._find_uv", return_value=None), \
+            uv_bin = _create_fake_uv(root)
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1325,7 +1344,7 @@ class TestPluginHelper:
                         "app.adapters.external.market.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
                     ):
-                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert success
         assert message == "installed"
@@ -1342,23 +1361,25 @@ class TestPluginHelper:
 
         health_snapshots = [
             {
-                "pip check": (False, "existing issue"),
+                "uv check": (False, "existing issue"),
                 "核心依赖导入检查": (True, "ok"),
             },
             {
-                "pip check": (False, "existing issue"),
+                "uv check": (False, "existing issue"),
                 "核心依赖导入检查": (False, "import failed"),
             },
             {
-                "pip check": (False, "existing issue"),
+                "uv check": (False, "existing issue"),
                 "核心依赖导入检查": (True, "ok"),
             },
         ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            requirements_file = Path(temp_dir) / "requirements.txt"
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
             requirements_file.write_text("demo-package\n", encoding="utf-8")
-            with patch("app.adapters.system.package._find_uv", return_value=None), \
+            uv_bin = _create_fake_uv(root)
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
@@ -1374,7 +1395,7 @@ class TestPluginHelper:
                         "app.adapters.external.market.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
                     ):
-                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+                success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert not success
         assert "核心依赖导入检查失败" in message
@@ -1400,16 +1421,17 @@ class TestPluginHelper:
             root = Path(temp_dir)
             req = root / "plugin-requirements.txt"
             req.write_text("demo\n", encoding="utf-8")
+            uv_bin = _create_fake_uv(root)
 
-            with patch("app.adapters.system.package._find_uv", return_value=None), \
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
                         side_effect=[
-                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
-                            {"pip check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
-                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                         ],
                     ), \
                     patch.object(
@@ -1419,7 +1441,7 @@ class TestPluginHelper:
                         or (True, "runtime repaired"),
                     ), \
                     patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                success, message = PluginHelper.pip_install_with_fallback(req)
+                success, message = PluginHelper.install_packages_with_fallback(req)
 
         assert not success
         assert "partial failure" in message or "恢复" in message
@@ -1453,15 +1475,15 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
                     patch.object(
                         PluginHelper,
                         "_PluginHelper__run_runtime_healthcheck",
                         side_effect=[
-                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
-                            {"pip check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
-                            {"pip check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
+                            {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                         ],
                     ), \
                     patch.object(
@@ -1473,7 +1495,7 @@ class TestPluginHelper:
                     patch("app.adapters.external.market.settings.PIP_PROXY", "https://mirror.example/simple"), \
                     patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                success, message = PluginHelper.pip_install_with_fallback(req)
+                success, message = PluginHelper.install_packages_with_fallback(req)
 
         assert not success
         assert "resolver failed" in message
@@ -1504,7 +1526,8 @@ class TestPluginHelper:
             uv_bin.parent.mkdir(parents=True)
             uv_bin.write_text("", encoding="utf-8")
 
-            with patch("app.adapters.system.package._find_uv", return_value=uv_bin), \
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
+                    patch.dict(os.environ, {}, clear=True), \
                     patch("app.adapters.external.market.settings.CONFIG_DIR", str(root / "config")), \
                     patch("app.adapters.external.market.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
                     patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
@@ -1519,14 +1542,13 @@ class TestPluginHelper:
         assert command[:3] == [str(uv_bin), "pip", "install"]
         assert "--proxy" not in command
         assert env["PACKAGE_CACHE_ROOT"] == str(root / "custom-package-cache")
-        assert env["PIP_CACHE_DIR"] == str(root / "custom-package-cache" / "pip")
         assert env["UV_CACHE_DIR"] == str(root / "custom-package-cache" / "uv")
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
-    def test_async_pip_install_runs_in_threadpool(self):
+    def test_async_package_install_runs_in_threadpool(self):
         """
-        验证异步安装路径会把同步 pip 安装派发到线程池，避免阻塞事件循环。
+        验证异步安装路径会把同步包安装派发到线程池，避免阻塞事件循环。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -1539,7 +1561,7 @@ class TestPluginHelper:
         calls = []
 
         async def run_install():
-            return await helper._PluginHelper__async_pip_install_with_fallback(
+            return await helper._PluginHelper__async_install_packages_with_fallback(
                 requirements_file,
                 find_links_dirs
             )
@@ -1554,7 +1576,7 @@ class TestPluginHelper:
         assert success
         assert "ok" == message
         assert 1 == len(calls)
-        assert helper.pip_install_with_fallback == calls[0][0]
+        assert helper.install_packages_with_fallback == calls[0][0]
         assert (requirements_file, find_links_dirs) == calls[0][1]
         assert {} == calls[0][2]
 
@@ -2468,10 +2490,99 @@ class TestPluginHelper:
         assert "dependency failed" == message
         assert ["remove", "restore"] == calls
 
-    def test_prepare_content_via_filelist_sync_preinstalls_requirements_and_downloads(self, monkeypatch):
-        """
-        文件列表安装会先尝试 requirements 预安装，再下载插件文件。
-        """
+    def test_install_flow_sync_restores_backup_for_invalid_modern_manifest(self, tmp_path, monkeypatch):
+        """现代清单无效时恢复旧插件目录。"""
+        from app.adapters.external import market as market_module
+
+        plugin_root = tmp_path / "plugins"
+        plugin_dir = plugin_root / PLUGIN_ID.lower()
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "old.txt").write_text("old", encoding="utf-8")
+        monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
+        monkeypatch.setattr(market_module.settings, "CONFIG_DIR", str(tmp_path))
+
+        def prepare_content():
+            plugin_dir.mkdir(parents=True)
+            (plugin_dir / "pyproject.toml").write_text(
+                "[project]\nname = 'demo'\n",
+                encoding="utf-8",
+            )
+            return True, ""
+
+        success, message = market_module.PluginHelper()._PluginHelper__install_flow_sync(
+            PLUGIN_ID,
+            False,
+            prepare_content,
+        )
+
+        assert not success
+        assert "project.version" in message
+        assert (plugin_dir / "old.txt").read_text(encoding="utf-8") == "old"
+        assert not (plugin_dir / "pyproject.toml").exists()
+
+    def test_install_dependencies_prefers_plugin_pyproject(self, tmp_path, monkeypatch):
+        """同步安装入口只消费双清单中的 pyproject。"""
+        from app.adapters.external import market as market_module
+
+        plugin_root = tmp_path / "plugins"
+        plugin_dir = plugin_root / "demoplugin"
+        plugin_dir.mkdir(parents=True)
+        pyproject_file = plugin_dir / "pyproject.toml"
+        pyproject_file.write_text(
+            '[project]\nname = "demo"\nversion = "1.0.0"\ndependencies = ["modern>=1"]\n',
+            encoding="utf-8",
+        )
+        (plugin_dir / "requirements.txt").write_text("legacy>=1\n", encoding="utf-8")
+        helper = market_module.PluginHelper()
+        seen = []
+        monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
+        monkeypatch.setattr(
+            helper,
+            "install_packages_with_fallback",
+            lambda path: seen.append(path) or (True, ""),
+        )
+
+        result = helper._PluginHelper__install_dependencies_if_required("DemoPlugin")
+
+        assert result == (True, True, "")
+        assert seen == [pyproject_file]
+
+    def test_async_install_dependencies_prefers_plugin_pyproject(self, tmp_path, monkeypatch):
+        """异步安装入口只消费双清单中的 pyproject。"""
+        from app.adapters.external import market as market_module
+
+        plugin_root = tmp_path / "plugins"
+        plugin_dir = plugin_root / "demoplugin"
+        plugin_dir.mkdir(parents=True)
+        pyproject_file = plugin_dir / "pyproject.toml"
+        pyproject_file.write_text(
+            '[project]\nname = "demo"\nversion = "1.0.0"\ndependencies = ["modern>=1"]\n',
+            encoding="utf-8",
+        )
+        (plugin_dir / "requirements.txt").write_text("legacy>=1\n", encoding="utf-8")
+        helper = market_module.PluginHelper()
+        seen = []
+
+        async def fake_install(path, _find_links=None):
+            seen.append(path)
+            return True, ""
+
+        monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__async_install_packages_with_fallback",
+            fake_install,
+        )
+
+        result = asyncio.run(
+            helper._PluginHelper__async_install_dependencies_if_required("DemoPlugin")
+        )
+
+        assert result == (True, True, "")
+        assert seen == [pyproject_file]
+
+    def test_prepare_content_via_filelist_sync_downloads_dependency_manifests_once(self, monkeypatch):
+        """文件列表准备会完整下载内容，依赖由统一安装流程处理。"""
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -2479,55 +2590,28 @@ class TestPluginHelper:
 
         helper = PluginHelper()
         calls = []
-        requirements = {"name": "requirements.txt", "download_url": "https://example.com/requirements.txt"}
-        file_list = [requirements, {"name": "__init__.py", "download_url": "https://example.com/__init__.py"}]
+        file_list = [
+            {"name": "pyproject.toml", "download_url": "https://example.com/pyproject.toml"},
+            {"name": "requirements.txt", "download_url": "https://example.com/requirements.txt"},
+            {"name": "__init__.py", "download_url": "https://example.com/__init__.py"},
+        ]
         monkeypatch.setattr(helper, "_PluginHelper__get_file_list", lambda *_args: (file_list, ""))
-        monkeypatch.setattr(
-            helper,
-            "_PluginHelper__download_and_install_requirements",
-            lambda *_args: calls.append("requirements") or (True, ""),
-        )
+
+        def fake_download(*args):
+            calls.append(args)
+            return True, ""
+
         monkeypatch.setattr(
             helper,
             "_PluginHelper__download_files",
-            lambda *_args: calls.append("download") or (True, ""),
+            fake_download,
         )
 
         success, message = helper._PluginHelper__prepare_content_via_filelist_sync("demoplugin", "demo/repo", "v2")
 
         assert success
         assert "" == message
-        assert ["requirements", "download"] == calls
-
-    def test_prepare_content_via_filelist_sync_continues_when_requirements_preinstall_fails(self, monkeypatch):
-        """
-        requirements 预安装失败不阻断文件下载，最终依赖安装由统一流程兜底。
-        """
-        try:
-            from app.adapters.external.market import PluginHelper
-        except ModuleNotFoundError as exc:
-            pytest.skip(f"missing dependency: {exc}")
-
-        helper = PluginHelper()
-        calls = []
-        file_list = [{"name": "requirements.txt"}, {"name": "__init__.py"}]
-        monkeypatch.setattr(helper, "_PluginHelper__get_file_list", lambda *_args: (file_list, ""))
-        monkeypatch.setattr(
-            helper,
-            "_PluginHelper__download_and_install_requirements",
-            lambda *_args: calls.append("requirements") or (False, "preinstall failed"),
-        )
-        monkeypatch.setattr(
-            helper,
-            "_PluginHelper__download_files",
-            lambda *_args: calls.append("download") or (True, ""),
-        )
-
-        success, message = helper._PluginHelper__prepare_content_via_filelist_sync("demoplugin", "demo/repo", "v2")
-
-        assert success
-        assert "" == message
-        assert ["requirements", "download"] == calls
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
 
     def test_prepare_content_via_filelist_sync_reports_missing_file_list(self, monkeypatch):
         """
@@ -2564,10 +2648,8 @@ class TestPluginHelper:
         assert not success
         assert "download failed" == message
 
-    def test_async_prepare_content_via_filelist_preinstalls_requirements_and_downloads(self, monkeypatch):
-        """
-        异步文件列表安装会先尝试 requirements 预安装，再下载插件文件。
-        """
+    def test_async_prepare_content_via_filelist_downloads_dependency_manifests_once(self, monkeypatch):
+        """异步文件列表准备会完整下载内容，依赖由统一安装流程处理。"""
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -2575,22 +2657,20 @@ class TestPluginHelper:
 
         helper = PluginHelper()
         calls = []
-        requirements = {"name": "requirements.txt", "download_url": "https://example.com/requirements.txt"}
-        file_list = [requirements, {"name": "__init__.py", "download_url": "https://example.com/__init__.py"}]
+        file_list = [
+            {"name": "pyproject.toml", "download_url": "https://example.com/pyproject.toml"},
+            {"name": "requirements.txt", "download_url": "https://example.com/requirements.txt"},
+            {"name": "__init__.py", "download_url": "https://example.com/__init__.py"},
+        ]
 
         async def fake_file_list(*_args):
             return file_list, ""
 
-        async def fake_requirements(*_args):
-            calls.append("requirements")
-            return True, ""
-
-        async def fake_download(*_args):
-            calls.append("download")
+        async def fake_download(*args):
+            calls.append(args)
             return True, ""
 
         monkeypatch.setattr(helper, "_PluginHelper__async_get_file_list", fake_file_list)
-        monkeypatch.setattr(helper, "_PluginHelper__async_download_and_install_requirements", fake_requirements)
         monkeypatch.setattr(helper, "_PluginHelper__async_download_files", fake_download)
 
         success, message = asyncio.run(
@@ -2599,7 +2679,7 @@ class TestPluginHelper:
 
         assert success
         assert "" == message
-        assert ["requirements", "download"] == calls
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
 
     def test_async_prepare_content_via_filelist_reports_missing_file_list(self, monkeypatch):
         """
