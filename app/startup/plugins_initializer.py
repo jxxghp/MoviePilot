@@ -5,6 +5,7 @@ from app.runtime.compat.diagnostics import (
     scan_plugin_legacy_imports,
 )
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
+from app.application.plugin.routes import register_plugin_api
 from app.runtime.config import global_vars
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import (
@@ -162,21 +163,15 @@ async def execute_task(loop, task_func, task_name):
         return []
 
 
-def register_plugin_api():
-    """
-    插件启动后注册插件API
-    """
-    from app.api.endpoints import plugin
-    plugin.register_plugin_api()
-
-
 def init_plugins():
     """
     初始化插件
     """
     configure_plugin_services()
-    PluginManager().start()
+    plugin_manager = PluginManager()
+    plugin_manager.start()
     register_plugin_api()
+    plugin_manager.start_monitor()
 
 
 def stop_plugins():
@@ -185,7 +180,9 @@ def stop_plugins():
     """
     try:
         plugin_manager = PluginManager()
-        plugin_manager.stop()
-        plugin_manager.stop_monitor()
+        try:
+            plugin_manager.stop_monitor()
+        finally:
+            plugin_manager.stop()
     except Exception as e:
         logger.error(f"停止插件时发生错误：{e}", exc_info=True)

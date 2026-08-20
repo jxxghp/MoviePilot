@@ -275,10 +275,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             "plugins",
             self.resolve_event_handler_instance,
         )
-        # 开发者模式监测插件修改
-        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
-            self.__start_monitor()
-
     def resolve_event_handler_instance(
             self,
             owner_class: Type[Any],
@@ -387,6 +383,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """返回配置重载日志使用的功能名称。"""
         return "插件文件修改监测"
 
+    def start_monitor(self):
+        """按当前配置启动插件文件修改监测。"""
+        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
+            self._plugin_monitor.start()
+
     def reload_monitor(self):
         """
         重新加载插件文件修改监测
@@ -394,12 +395,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_monitor.reload(
             enabled=settings.DEV or settings.PLUGIN_AUTO_RELOAD
         )
-
-    def __start_monitor(self):
-        """
-        启用监测插件文件修改监测
-        """
-        self._plugin_monitor.start()
 
     def stop_monitor(self):
         """
