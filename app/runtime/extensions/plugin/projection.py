@@ -21,6 +21,10 @@ from app.runtime.extensions.declaration import (
     declaration_config_component,
     declaration_config_form,
     declaration_dashboard_identity,
+    declaration_filter_rule_conditions,
+    declaration_filter_rule_group_identity,
+    declaration_filter_rule_group_scope,
+    declaration_filter_rule_identity,
     declaration_media_source_identity,
     declaration_media_types,
     declaration_methods,
@@ -40,6 +44,10 @@ from app.runtime.extensions.plugin.channel_capabilities import (
 )
 from app.runtime.extensions.plugin.dashboard_capabilities import dashboard_declaration_violation
 from app.runtime.extensions.plugin.extension_scoped import elect_extension_scoped
+from app.runtime.extensions.plugin.filter_rule_capabilities import (
+    filter_rule_declaration_violation,
+    filter_rule_group_declaration_violation,
+)
 from app.runtime.extensions.plugin.media_source_capabilities import (
     media_source_declaration_violation,
 )
@@ -57,6 +65,7 @@ from app.runtime.log import logger as default_logger
 from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.media import normalize_media_source
 from app.schemas.notification import ChannelCapabilities, channel_identity
+from app.schemas.rule import CustomRule, FilterRuleGroup
 
 # 数据源前缀分发名归一为契约名前，插件若挂载下列旧名，从此不会被任何分发调用触达。
 # 键为废弃名，值为应改用的新契约名；async_ 前缀的旧名对应 async_ 前缀的新契约名。
@@ -215,6 +224,26 @@ def _agent_tool_identity(declaration: Any) -> Optional[tuple]:
     :return: (工具名,)；工具名为空时为 None
     """
     name = agent_tool_declaration_name(declaration)
+    return (name,) if name else None
+
+
+def _filter_rule_identity(declaration: Any) -> Optional[tuple]:
+    """取筛选规则声明在扩展级裁决中的标识。
+
+    :param declaration: 已通过契约校验的筛选规则声明
+    :return: (规则标识,)；标识为空时为 None
+    """
+    rule_id, _name = declaration_filter_rule_identity(declaration)
+    return (rule_id,) if rule_id else None
+
+
+def _filter_rule_group_identity(declaration: Any) -> Optional[tuple]:
+    """取筛选规则组声明在扩展级裁决中的标识。
+
+    :param declaration: 已通过契约校验的筛选规则组声明
+    :return: (规则组名,)；组名为空时为 None
+    """
+    name, _rule_string = declaration_filter_rule_group_identity(declaration)
     return (name,) if name else None
 
 
@@ -1616,6 +1645,122 @@ class PluginProjection:
             ),
             pid,
         )
+
+    def provided_filter_rules(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的筛选规则。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其筛选规则声明列表的映射，仅含通过契约校验且在同插件
+            多实例裁决中胜出的条目
+        """
+        return self._collect_extension_scoped(
+            pid,
+            hook="provides_filter_rules",
+            violation_of=filter_rule_declaration_violation,
+            identity_of=_filter_rule_identity,
+            subject="筛选规则",
+        )
+
+    def provided_filter_rule_groups(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的筛选规则组。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其筛选规则组声明列表的映射，仅含通过契约校验且在同插件
+            多实例裁决中胜出的条目
+        """
+        return self._collect_extension_scoped(
+            pid,
+            hook="provides_filter_rule_groups",
+            violation_of=filter_rule_group_declaration_violation,
+            identity_of=_filter_rule_group_identity,
+            subject="筛选规则组",
+        )
+
+    def _collect_extension_scoped(
+        self,
+        pid: Optional[str],
+        *,
+        hook: str,
+        violation_of: Callable[[Any], Optional[str]],
+        identity_of: Callable[[Any], Optional[tuple]],
+        subject: str,
+    ) -> Dict[str, List[Any]]:
+        """收集一族扩展级声明：取用、契约校验、同插件多实例裁决。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :param hook: 声明钩子名
+        :param violation_of: 单条声明的契约校验函数，合规时返回 None
+        :param identity_of: 从单条声明推导扩展级标识的函数，推导不出时返回 None
+        :param subject: 标识在日志文案里的称呼
+        :return: 实例键到其声明列表的映射，仅含通过契约校验且在裁决中胜出的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(self._extension_scope(pid)):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(hook):
+                continue
+            try:
+                declared = getattr(plugin, hook)() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} {subject}声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            for item in declared:
+                violation = violation_of(item)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的{subject} {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return self._narrow_to_query(
+            elect_extension_scoped(
+                result, identity_of, subject=subject, hook=hook, log=self._logger
+            ),
+            pid,
+        )
+
+    @staticmethod
+    def declared_filter_rule(item: Any) -> tuple:
+        """把单条已通过契约校验的筛选规则声明投影为规则集条目。
+
+        投影结果经 `CustomRule` 归一，形状与用户自定义规则完全一致：规则引擎
+        （含 Rust 快路）按同一份数据形状消费，分辨不出规则来自插件还是用户。
+
+        :param item: 已通过契约校验的筛选规则声明
+        :return: (规则标识, 规则定义字典) 二元组
+        """
+        rule_id, name = declaration_filter_rule_identity(item)
+        conditions = declaration_filter_rule_conditions(item)
+        return rule_id, CustomRule(id=rule_id, name=name, **conditions).model_dump()
+
+    @staticmethod
+    def declared_filter_rule_group(item: Any) -> tuple:
+        """把单条已通过契约校验的筛选规则组声明投影为规则组条目。
+
+        投影结果经 `FilterRuleGroup` 归一，形状与用户配置的规则组完全一致。
+
+        :param item: 已通过契约校验的筛选规则组声明
+        :return: (规则组名, 规则组定义字典) 二元组
+        """
+        name, rule_string = declaration_filter_rule_group_identity(item)
+        media_type, category = declaration_filter_rule_group_scope(item)
+        return name, FilterRuleGroup(
+            name=name,
+            rule_string=rule_string,
+            media_type=media_type,
+            category=category,
+        ).model_dump()
 
     def provided_dashboards(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的仪表盘。

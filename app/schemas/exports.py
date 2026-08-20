@@ -275,6 +275,8 @@ SCHEMA_EXPORTS = {
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),
     'ProgressKeyData': ('app.schemas.common', 'ProgressKeyData'),
+    'RULE_CONDITION_FIELDS': ('app.schemas.rule', 'RULE_CONDITION_FIELDS'),
+    'RULE_ID_GRAMMAR_HINT': ('app.schemas.rule', 'RULE_ID_GRAMMAR_HINT'),
     'RadarrMovie': ('app.schemas.servarr', 'RadarrMovie'),
     'RateLimitExceededException': ('app.schemas.exception', 'RateLimitExceededException'),
     'RecommendMediaSource': ('app.schemas.event', 'RecommendMediaSource'),
@@ -417,16 +419,18 @@ SCHEMA_EXPORTS = {
     'datetime': ('app.schemas.plugin', 'datetime'),
     'field_serializer': ('app.schemas.agent', 'field_serializer'),
     'field_validator': ('app.schemas.system', 'field_validator'),
+    'is_valid_rule_id': ('app.schemas.rule', 'is_valid_rule_id'),
     'json': ('app.schemas.subscribe', 'json'),
     'model_validator': ('app.schemas.subscribe', 'model_validator'),
-    're': ('app.schemas.file', 're'),
+    're': ('app.schemas.rule', 're'),
     'resolve_channel': ('app.schemas.notification', 'resolve_channel'),
+    'rule_string_violation': ('app.schemas.rule', 'rule_string_violation'),
     'translate': ('app.schemas.response', 'translate'),
 }
 
 SCHEMA_CONFLICTS = {
     'Annotated': ['app.schemas.context', 'app.schemas.notification'],
-    'Any': ['app.schemas.common', 'app.schemas.context', 'app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.message', 'app.schemas.response', 'app.schemas.subscribe', 'app.schemas.system', 'app.schemas.workflow'],
+    'Any': ['app.schemas.common', 'app.schemas.context', 'app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.message', 'app.schemas.response', 'app.schemas.rule', 'app.schemas.subscribe', 'app.schemas.system', 'app.schemas.workflow'],
     'BaseModel': ['app.schemas.agent', 'app.schemas.cache', 'app.schemas.category', 'app.schemas.common', 'app.schemas.context', 'app.schemas.dashboard', 'app.schemas.download', 'app.schemas.event', 'app.schemas.file', 'app.schemas.filter', 'app.schemas.history', 'app.schemas.llm', 'app.schemas.mediaserver', 'app.schemas.message', 'app.schemas.mfa', 'app.schemas.music', 'app.schemas.monitoring', 'app.schemas.notification', 'app.schemas.plugin', 'app.schemas.response', 'app.schemas.rule', 'app.schemas.search', 'app.schemas.storage', 'app.schemas.openai', 'app.schemas.servarr', 'app.schemas.servcookie', 'app.schemas.site', 'app.schemas.subscribe', 'app.schemas.system', 'app.schemas.tmdb', 'app.schemas.token', 'app.schemas.transfer', 'app.schemas.user', 'app.schemas.workflow', 'app.schemas.mcp'],
     'ChannelField': ['app.schemas.event', 'app.schemas.message', 'app.schemas.notification'],
     'ConfigDict': ['app.schemas.agent', 'app.schemas.category', 'app.schemas.history', 'app.schemas.mediaserver', 'app.schemas.response', 'app.schemas.openai', 'app.schemas.servcookie', 'app.schemas.site', 'app.schemas.subscribe', 'app.schemas.user', 'app.schemas.workflow'],
@@ -466,5 +470,6 @@ SCHEMA_CONFLICTS = {
     'datetime': ['app.schemas.agent', 'app.schemas.monitoring', 'app.schemas.plugin'],
     'field_validator': ['app.schemas.event', 'app.schemas.file', 'app.schemas.message', 'app.schemas.music', 'app.schemas.response', 'app.schemas.subscribe', 'app.schemas.system'],
     'model_validator': ['app.schemas.dashboard', 'app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.subscribe'],
+    're': ['app.schemas.file', 'app.schemas.rule'],
     'translate': ['app.schemas.dashboard', 'app.schemas.response'],
 }

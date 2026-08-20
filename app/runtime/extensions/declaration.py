@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from app.schemas.rule import RULE_CONDITION_FIELDS
 from app.schemas.types import ModuleType
 
 
@@ -269,6 +270,63 @@ class ActionDeclaration(ExtensionDeclaration):
     action_id: str = ""
     name: str = ""
     kwargs: Mapping[str, Any] = MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
+class FilterRuleDeclaration(ExtensionDeclaration):
+    """
+    筛选规则声明
+
+    规则是纯数据：五个条件字段的形状与用户自定义规则 `CustomRule` 完全相同，宿主把
+    声明投影成同一形状后并入运行期规则集，因此规则引擎（含 Rust 快路）分辨不出一条
+    规则来自内建、插件还是用户。本声明不携带 ``impl``——判定逻辑仍由宿主的规则引擎
+    执行，扩展只提供参数。
+
+    ``rule_id`` 会作为原子进入规则串的语法，必须合规则ID文法，否则用户把它写进规则组
+    时才会解析失败；契约校验在登记时即拒绝不合文法的标识。
+
+    五个条件字段至少要给出一个：一条不带任何条件的规则对每颗种子都判定通过，等同于
+    没有这条规则，声明它多半是笔误而不是意图。
+
+    :param rule_id: 规则标识，作为原子出现在规则串中，须合规则ID文法
+    :param name: 规则展示名称
+    :param include: 包含项正则
+    :param exclude: 排除项正则
+    :param size_range: 大小范围（MB），形如 ``1024-4096``、``>1024``、``<4096``
+    :param seeders: 最少做种人数
+    :param publish_time: 发布时间（分钟），形如 ``60`` 或 ``60-1440``
+    """
+
+    rule_id: str = ""
+    name: str = ""
+    include: Optional[str] = None
+    exclude: Optional[str] = None
+    size_range: Optional[str] = None
+    seeders: Optional[str] = None
+    publish_time: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class FilterRuleGroupDeclaration(ExtensionDeclaration):
+    """
+    筛选规则组声明
+
+    规则组把规则标识按布尔表达式与优先级组合成一套可整体引用的筛选方案，用户在搜索、
+    订阅、洗版与默认规则四个场景里按 ``name`` 引用它。``rule_string`` 的书写顺序即
+    优先级：``>`` 分隔的层级从高到低，同层内用 ``&``/``|``/``!`` 组合规则标识。
+
+    ``name`` 既是标识也是展示名——四个场景保存的就是组名，两者不是可以分开的东西。
+
+    :param name: 规则组名称，用户在四个场景里按此名称引用
+    :param rule_string: 规则串，形如 ``CNSUB & 4K & !BLU > CNSUB & 1080P``
+    :param media_type: 适用媒体类型，为空表示全部；取值为「电影」或「电视剧」
+    :param category: 适用媒体类别，为空表示全部；取值为二级分类名
+    """
+
+    name: str = ""
+    rule_string: str = ""
+    media_type: Optional[str] = None
+    category: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,6 +633,64 @@ def declaration_service_instance_constructor(
     return (
         _declared_field(declaration, "impl"),
         _declared_field(declaration, "factory"),
+    )
+
+
+def declaration_filter_rule_identity(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取筛选规则声明自报的规则标识与展示名称
+
+    :param declaration: `FilterRuleDeclaration` 实例，或插件直接交出的描述字典
+    :return: (规则标识, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "rule_id"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_filter_rule_conditions(declaration: Any) -> Dict[str, Any]:
+    """
+    读取筛选规则声明的全部匹配条件字段原始值
+
+    按原值返回而不做归一：取值合法性由契约校验判定，此处先归一会把非字符串的错误
+    取值悄悄变成一个合法答案，校验就再也看不见它。
+
+    :param declaration: `FilterRuleDeclaration` 实例，或插件直接交出的描述字典
+    :return: 条件字段名到原始值的字典，字段缺失时该项为 None
+    """
+    return {field: _declared_field(declaration, field) for field in RULE_CONDITION_FIELDS}
+
+
+def declaration_filter_rule_group_identity(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取筛选规则组声明自报的组名与规则串
+
+    :param declaration: `FilterRuleGroupDeclaration` 实例，或插件直接交出的描述字典
+    :return: (组名, 规则串) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "name"),
+        _declared_field_text(declaration, "rule_string"),
+    )
+
+
+def declaration_filter_rule_group_scope(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取筛选规则组声明的适用范围
+
+    :param declaration: `FilterRuleGroupDeclaration` 实例，或插件直接交出的描述字典
+    :return: (适用媒体类型, 适用媒体类别) 二元组；对应字段缺失时该位为 None
+    """
+    return (
+        _declared_field(declaration, "media_type"),
+        _declared_field(declaration, "category"),
     )
 
 

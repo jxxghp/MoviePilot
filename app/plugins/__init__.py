@@ -21,6 +21,8 @@ from app.runtime.extensions.declaration import (
     AgentToolDeclaration,
     AuthProviderDeclaration,
     DashboardDeclaration,
+    FilterRuleDeclaration,
+    FilterRuleGroupDeclaration,
     MediaSourceDeclaration,
     MetaParserDeclaration,
     ModuleDeclaration,
@@ -629,6 +631,85 @@ class _PluginBase(metaclass=ABCMeta):
         在该配置里单独关掉某一环。
 
         :return: `MetaParserDeclaration` 列表；插件不提供名称解析器时无需实现
+        """
+        pass
+
+    def test(self) -> Optional[Tuple[bool, str]]:
+        """
+        检测插件依赖的外部服务是否可连通
+
+        :return: `(是否可连通, 失败原因)`；插件不提供自检时无需实现
+        """
+        pass
+
+    def get_media_source(self) -> List[Dict[str, Any]]:
+        """
+        注册插件提供的媒体数据源。
+
+        返回的每项至少包含 ``name``、``media_source`` 和 ``media_types``；实际的
+        搜索、识别、图片和 NFO 刮削实现通过 ``get_module`` 暴露对应方法。
+        """
+        pass
+
+    def provides_filter_rules(self) -> Optional[List[FilterRuleDeclaration]]:
+        """
+        声明本插件提供的筛选规则
+
+        返回示例：
+        [FilterRuleDeclaration(
+            rule_id="ACMEWEB",                   # 规则标识，会作为原子进入规则串
+                                                  # 语法，只能由字母和数字组成且必须
+                                                  # 以字母开头或形如「数字+字母」开头
+                                                  # （BLU、4K、1080P），不合文法的
+                                                  # 标识会被拒绝登记
+            name="Acme 官组 WEB-DL",              # 规则展示名称
+            include=r"Acme.*WEB-?DL",            # 包含项正则
+            exclude=r"HDTV",                     # 排除项正则
+            size_range="1024-8192",              # 大小范围（MB）
+            seeders="5",                         # 最少做种人数
+            publish_time="60-1440",              # 发布时间（分钟）
+        )]
+
+        五个条件字段的形状与用户自定义规则完全相同，至少要给出一个；正则须能编译、
+        数值区间须能转换，不合契约的声明会被拒绝登记，不留到逐条匹配时才失败。
+
+        本钩子只提供规则**数据**，判定逻辑仍由宿主的规则引擎执行——插件不提供可执行
+        的判定谓词。筛选是每颗种子每条规则的热路径且已经加速化，让插件提供判定函数
+        会让每颗种子都跨回插件代码。
+
+        规则标识的优先级为「内建 < 插件 < 用户」：与内建标识相同即覆盖内建定义，
+        用户自定义的同名规则则永远优先于插件。同一标识被**不同插件**声明时双方一并
+        失效并告警——规则是数据不是实现，宿主无从裁决哪一份语义为准，按加载顺序取
+        其一会让筛选行为随插件加载顺序变化。
+
+        :return: `FilterRuleDeclaration` 列表；插件不提供筛选规则时无需实现
+        """
+        pass
+
+    def provides_filter_rule_groups(self) -> Optional[List[FilterRuleGroupDeclaration]]:
+        """
+        声明本插件提供的筛选规则组
+
+        返回示例：
+        [FilterRuleGroupDeclaration(
+            name="Acme 高码率优先",               # 规则组名称，用户在搜索、订阅、洗版
+                                                  # 与默认规则四个场景里按此名称引用
+            rule_string="ACMEWEB & 4K > ACMEWEB & 1080P",
+                                                 # 规则串，> 分隔的层级即优先级从高到低，
+                                                  # 同层内用 &、|、! 组合规则标识
+            media_type="电影",                    # 适用媒体类型，为空表示全部
+            category=None,                       # 适用媒体类别，为空表示全部
+        )]
+
+        规则串会被校验能否解析——括号配对、优先级层级非空、每个原子都合规则ID文法；
+        不合契约的声明会被拒绝登记。规则串引用的标识是否存在不在校验范围内：规则组
+        可以引用内建规则、用户自定义规则，或另一个插件提供的规则，登记本条声明时
+        它们未必都已就位。
+
+        组名的冲突处置与规则标识相同：用户自定义的同名规则组优先，不同插件声明同一
+        组名时双方一并失效并告警。
+
+        :return: `FilterRuleGroupDeclaration` 列表；插件不提供筛选规则组时无需实现
         """
         pass
 
