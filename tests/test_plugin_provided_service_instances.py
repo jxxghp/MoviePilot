@@ -58,6 +58,25 @@ class _PositionalOnlyDownloader:
         self.name = name
 
 
+def _demo_downloader_factory(conf: Any) -> _DemoDownloader:
+    """按整条服务配置构造实例的工厂，构造形状完全由扩展自己决定。
+
+    :param conf: 该实例的用户配置
+    :return: 下载器客户端桩
+    """
+    return _DemoDownloader(name=conf.name, host=(conf.config or {}).get("endpoint"))
+
+
+def _two_argument_factory(conf: Any, extra: Any) -> _DemoDownloader:
+    """必填两个参数的工厂，宿主只传配置对象一个位置参数，补不上第二个。"""
+    return _DemoDownloader(name=conf.name, host=extra)
+
+
+def _keyword_only_factory(*, conf: Any) -> _DemoDownloader:
+    """只接受关键字参数的工厂，宿主按位置传入的配置对象无处可去。"""
+    return _DemoDownloader(name=conf.name)
+
+
 def _downloader_config(name: str, service_type: str, enabled: bool = True, **config: Any) -> dict:
     """构造一条下载器配置的原始字典。
 
@@ -142,7 +161,7 @@ def _projection(plugin: Any, key: str = "DemoPlugin") -> PluginProjection:
 def test_projection_accepts_valid_declaration():
     """契约合规的声明应被接受，字段原样保留。"""
     declaration = ServiceInstanceDeclaration(
-        config_key="Downloaders",
+        capability="downloader",
         type="demo_downloader",
         name="演示下载器",
         impl=_DemoDownloader,
@@ -155,15 +174,15 @@ def test_projection_accepts_valid_declaration():
 
 
 @pytest.mark.parametrize(
-    "config_key",
-    ["Downloaders", "MediaServers", "Notifications"],
+    "capability",
+    ["downloader", "mediaserver", "notification"],
 )
-def test_projection_accepts_every_service_config_family(config_key):
-    """三个服务配置族共用同一条声明，各自都应被接受。"""
+def test_projection_accepts_every_service_capability(capability):
+    """三个服务族共用同一条声明，各自的语义标签都应被接受。"""
     plugin = _CapableServicePlugin(
         declarations=[
             ServiceInstanceDeclaration(
-                config_key=config_key,
+                capability=capability,
                 type="demo_type",
                 name="演示类型",
                 impl=_DemoDownloader,
@@ -175,46 +194,90 @@ def test_projection_accepts_every_service_config_family(config_key):
     declared = _projection(plugin).provided_service_instances()
 
     assert len(declared["DemoPlugin"]) == 1
-    assert declared["DemoPlugin"][0].config_key == config_key
+    assert declared["DemoPlugin"][0].capability == capability
+
+
+@pytest.mark.parametrize(
+    "capability",
+    ["Downloaders", "MediaServers", "Notifications", "storage", "downloaders", "不存在"],
+    ids=[
+        "systemconfig_downloaders_key",
+        "systemconfig_mediaservers_key",
+        "systemconfig_notifications_key",
+        "capability_outside_service_families",
+        "wrong_case",
+        "unknown_label",
+    ],
+)
+def test_projection_rejects_capability_outside_the_label_set(capability):
+    """标签取值不在集合内的声明必须被拒，宿主存储配置的列表名同样不是合法标签。"""
+    plugin = _CapableServicePlugin(
+        declarations=[
+            ServiceInstanceDeclaration(
+                capability=capability,
+                type="demo_type",
+                name="演示类型",
+                impl=_DemoDownloader,
+            )
+        ],
+        render_mode=("vuetify", None),
+    )
+
+    declared = _projection(plugin).provided_service_instances()
+
+    assert declared["DemoPlugin"] == []
 
 
 @pytest.mark.parametrize(
     "declaration",
     [
         ServiceInstanceDeclaration(
-            config_key="Storages", type="t", name="N", impl=_DemoDownloader
+            capability="", type="t", name="N", impl=_DemoDownloader
         ),
         ServiceInstanceDeclaration(
-            config_key="", type="t", name="N", impl=_DemoDownloader
+            capability="downloader", type="", name="N", impl=_DemoDownloader
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="", name="N", impl=_DemoDownloader
+            capability="downloader", type="t", name="", impl=_DemoDownloader
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="t", name="", impl=_DemoDownloader
+            capability="downloader", type="t", name="N"
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="t", name="N", impl=None
+            capability="downloader", type="t", name="N",
+            impl=_DemoDownloader, factory=_demo_downloader_factory
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="t", name="N", impl="not-a-class"
+            capability="downloader", type="t", name="N", impl="not-a-class"
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="t", name="N", impl=_NoNameDownloader
+            capability="downloader", type="t", name="N", impl=_NoNameDownloader
         ),
         ServiceInstanceDeclaration(
-            config_key="Downloaders", type="t", name="N", impl=_PositionalOnlyDownloader
+            capability="downloader", type="t", name="N", impl=_PositionalOnlyDownloader
+        ),
+        ServiceInstanceDeclaration(
+            capability="downloader", type="t", name="N", factory="not-callable"
+        ),
+        ServiceInstanceDeclaration(
+            capability="downloader", type="t", name="N", factory=_two_argument_factory
+        ),
+        ServiceInstanceDeclaration(
+            capability="downloader", type="t", name="N", factory=_keyword_only_factory
         ),
     ],
     ids=[
-        "config_key_not_a_service_family",
-        "config_key_missing",
+        "capability_missing",
         "type_missing",
         "name_missing",
-        "impl_missing",
+        "neither_impl_nor_factory",
+        "both_impl_and_factory",
         "impl_is_string",
         "impl_rejects_name_keyword",
         "impl_has_positional_only_required_param",
+        "factory_not_callable",
+        "factory_needs_two_arguments",
+        "factory_takes_no_positional_argument",
     ],
 )
 def test_projection_rejects_declaration_violating_contract(declaration):
@@ -226,8 +289,24 @@ def test_projection_rejects_declaration_violating_contract(declaration):
     assert declared["DemoPlugin"] == []
 
 
+def test_projection_accepts_factory_declaration():
+    """只给工厂的声明应被接受，工厂原样保留在声明里。"""
+    declaration = ServiceInstanceDeclaration(
+        capability="downloader",
+        type="factory_downloader",
+        name="工厂下载器",
+        factory=_demo_downloader_factory,
+    )
+    plugin = _CapableServicePlugin(declarations=[declaration], render_mode=("vuetify", None))
+
+    declared = _projection(plugin).provided_service_instances()
+
+    assert declared["DemoPlugin"] == [declaration]
+    assert declared["DemoPlugin"][0].factory is _demo_downloader_factory
+
+
 def test_projection_rejects_bare_impl_class_without_declaration():
-    """服务实例类型无法从裸实现类推出配置键与类型标识，裸类写法必须被拒。"""
+    """服务实例类型无法从裸实现类推出能力标签与类型标识，裸类写法必须被拒。"""
     plugin = _CapableServicePlugin(declarations=[_DemoDownloader], render_mode=("vuetify", None))
 
     declared = _projection(plugin).provided_service_instances()
@@ -253,7 +332,7 @@ def test_projection_rejects_impl_with_unimplemented_abstract_methods():
     plugin = _CapableServicePlugin(
         declarations=[
             ServiceInstanceDeclaration(
-                config_key="Downloaders",
+                capability="downloader",
                 type="abstract_downloader",
                 name="抽象下载器",
                 impl=_AbstractDownloader,
@@ -272,13 +351,13 @@ def test_projection_partial_rejection_keeps_valid_siblings():
     plugin = _CapableServicePlugin(
         declarations=[
             ServiceInstanceDeclaration(
-                config_key="Downloaders", type="ok_type", name="可用", impl=_DemoDownloader
+                capability="downloader", type="ok_type", name="可用", impl=_DemoDownloader
             ),
             ServiceInstanceDeclaration(
-                config_key="Downloaders", type="", name="缺类型", impl=_DemoDownloader
+                capability="downloader", type="", name="缺类型", impl=_DemoDownloader
             ),
             ServiceInstanceDeclaration(
-                config_key="Downloaders", type="bad_type", name="坏实现", impl=_NoNameDownloader
+                capability="downloader", type="bad_type", name="坏实现", impl=_NoNameDownloader
             ),
         ],
         render_mode=("vuetify", None),
@@ -295,7 +374,7 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
     healthy = _CapableServicePlugin(
         declarations=[
             ServiceInstanceDeclaration(
-                config_key="Downloaders", type="ok_type", name="可用", impl=_DemoDownloader
+                capability="downloader", type="ok_type", name="可用", impl=_DemoDownloader
             )
         ],
         render_mode=("vuetify", None),
@@ -314,7 +393,7 @@ def test_projection_skips_disabled_extension():
         enabled=False,
         declarations=[
             ServiceInstanceDeclaration(
-                config_key="Downloaders", type="ok_type", name="可用", impl=_DemoDownloader
+                capability="downloader", type="ok_type", name="可用", impl=_DemoDownloader
             )
         ],
         render_mode=("vuetify", None),
@@ -351,7 +430,7 @@ class _FakeDownloaderPlugin:
         """返回声明的固定下载器类型。"""
         return [
             ServiceInstanceDeclaration(
-                config_key="Downloaders",
+                capability="downloader",
                 type=self.service_type,
                 name="假想下载器",
                 impl=self.service_impl,
@@ -390,7 +469,7 @@ def test_plugin_manager_lifecycle_registers_and_revokes_service_type(
     """插件启动后应以实例键为登记方登记声明的服务类型；停止后必须撤销。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _FakeDownloaderPlugin)
 
-    entry = service_instance_registry.find("Downloaders", "fake_downloader")
+    entry = service_instance_registry.find("downloader", "fake_downloader")
     assert entry is not None
     assert entry.owner == plugin_id
     assert entry.distribution == ExtensionDistribution.MARKET
@@ -399,7 +478,7 @@ def test_plugin_manager_lifecycle_registers_and_revokes_service_type(
 
     plugin_manager.stop(plugin_id)
 
-    assert service_instance_registry.find("Downloaders", "fake_downloader") is None
+    assert service_instance_registry.find("downloader", "fake_downloader") is None
 
 
 def test_plugin_manager_config_update_resyncs_service_registration(
@@ -407,16 +486,16 @@ def test_plugin_manager_config_update_resyncs_service_registration(
 ):
     """配置生效后停用实例应撤销登记，重新启用后登记应恢复。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _FakeDownloaderPlugin)
-    assert service_instance_registry.find("Downloaders", "fake_downloader") is not None
+    assert service_instance_registry.find("downloader", "fake_downloader") is not None
 
     plugin_obj = plugin_manager._running_plugins[plugin_id]
     plugin_obj.enabled = False
     plugin_manager.init_plugin(plugin_id, {})
-    assert service_instance_registry.find("Downloaders", "fake_downloader") is None
+    assert service_instance_registry.find("downloader", "fake_downloader") is None
 
     plugin_obj.enabled = True
     plugin_manager.init_plugin(plugin_id, {})
-    assert service_instance_registry.find("Downloaders", "fake_downloader").owner == plugin_id
+    assert service_instance_registry.find("downloader", "fake_downloader").owner == plugin_id
 
 
 def test_plugin_manager_start_survives_declaration_exception(
@@ -434,7 +513,7 @@ def test_plugin_manager_start_survives_declaration_exception(
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _BrokenServicePlugin)
 
     assert plugin_id in plugin_manager._running_plugins
-    assert service_instance_registry.find("Downloaders", "fake_downloader") is None
+    assert service_instance_registry.find("downloader", "fake_downloader") is None
 
 
 def test_declared_downloader_shows_up_in_downloader_helper_services(
@@ -458,6 +537,45 @@ def test_declared_downloader_shows_up_in_downloader_helper_services(
     plugin_manager.stop(plugin_id)
 
     assert "我的下载器" not in DownloaderHelper().get_services()
+
+
+class _FactoryDownloaderPlugin(_FakeDownloaderPlugin):
+    """改走工厂路径声明下载器类型的插件桩。"""
+
+    def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+        """声明的类型不带实现类，构造交给工厂。"""
+        return [
+            ServiceInstanceDeclaration(
+                capability="downloader",
+                type=self.service_type,
+                name="工厂下载器",
+                factory=_demo_downloader_factory,
+            )
+        ]
+
+
+def test_factory_declaration_builds_instances_from_whole_config(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict]
+):
+    """工厂路径拿到的是整条配置对象，实例照常出现在服务列表里。"""
+    service_configs.append(
+        _downloader_config("工厂实例", "fake_downloader", endpoint="10.0.0.1")
+    )
+    plugin_id = _start_plugin(monkeypatch, plugin_manager, _FactoryDownloaderPlugin)
+
+    services = DownloaderHelper().get_services()
+
+    assert "工厂实例" in services
+    instance = services["工厂实例"].instance
+    assert isinstance(instance, _DemoDownloader)
+    assert instance.name == "工厂实例"
+    # 宿主不认识 endpoint 这个配置项，映射到 host 的是工厂而不是宿主的关键字展开
+    assert instance.host == "10.0.0.1"
+    assert instance.extra == {}
+
+    plugin_manager.stop(plugin_id)
+
+    assert "工厂实例" not in DownloaderHelper().get_services()
 
 
 def test_declared_downloader_fans_out_one_instance_per_config(
@@ -608,7 +726,7 @@ def test_module_manager_yields_declared_adapters_after_builtin_modules(
 def test_registry_keeps_adapter_when_registration_is_unchanged():
     """内容相同的重复登记应保留原适配器，已构造的实例不因此全部重建。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="stable_type",
         name="稳定类型",
         impl=_DemoDownloader,
@@ -617,7 +735,7 @@ def test_registry_keeps_adapter_when_registration_is_unchanged():
     first = service_instance_registry.adapters("Downloaders")[0]
 
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="stable_type",
         name="稳定类型",
         impl=_DemoDownloader,
@@ -630,14 +748,14 @@ def test_registry_keeps_adapter_when_registration_is_unchanged():
 def test_registry_revokes_only_its_own_registration():
     """类型被另一个登记方接管后，原登记方的回收不得波及新登记方。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="shared_type",
         name="共享类型",
         impl=_DemoDownloader,
         owner="First@default",
     )
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="shared_type",
         name="共享类型",
         impl=_ExplodingDownloader,
@@ -646,28 +764,28 @@ def test_registry_revokes_only_its_own_registration():
 
     service_instance_registry.unregister_owner("First@default")
 
-    entry = service_instance_registry.find("Downloaders", "shared_type")
+    entry = service_instance_registry.find("downloader", "shared_type")
     assert entry is not None
     assert entry.owner == "Second@default"
 
 
-def test_registry_isolates_types_across_config_keys():
-    """同名类型登记在不同配置键下互不干扰。"""
+def test_registry_isolates_types_across_capabilities():
+    """同名类型登记在不同能力标签下互不干扰。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="same_name",
         name="下载器",
         impl=_DemoDownloader,
         owner="Owner@default",
     )
     service_instance_registry.register(
-        config_key="Notifications",
+        capability="notification",
         service_type="same_name",
         name="通知渠道",
         impl=_DemoDownloader,
         owner="Owner@default",
     )
 
-    assert service_instance_registry.find("Downloaders", "same_name").name == "下载器"
-    assert service_instance_registry.find("Notifications", "same_name").name == "通知渠道"
+    assert service_instance_registry.find("downloader", "same_name").name == "下载器"
+    assert service_instance_registry.find("notification", "same_name").name == "通知渠道"
     assert len(service_instance_registry.adapters("Downloaders")) == 1

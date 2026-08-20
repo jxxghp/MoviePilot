@@ -559,8 +559,8 @@ class _PluginBase(metaclass=ABCMeta):
 
         返回示例：
         [ServiceInstanceDeclaration(
-            config_key="Downloaders",            # 服务配置键，可选值为 Downloaders、
-                                                  # MediaServers、Notifications
+            capability="downloader",             # 能力标签，可选值为 downloader、
+                                                  # mediaserver、notification
             type="my_downloader",                # 类型标识，与该族配置模型的 type
                                                   # 字段取值对应；与内建类型同名即构成
                                                   # 覆盖，用户为该类型配置的实例改由
@@ -575,11 +575,15 @@ class _PluginBase(metaclass=ABCMeta):
                                                   # 与 config_component 互斥，可选
         )]
 
+        实现类的构造形状不便迁就宿主时改用 `factory=my_factory`——宿主对每条用户配置
+        调用 `factory(配置对象)`，配置对象即该族配置模型的一条记录，怎么落到实例上由
+        插件自己决定。`factory` 与 `impl` 二选一，同时给出或都不给出的声明被拒。
+
         vue 模式改用 `config_component="MyDownloaderConfig"`——本插件联邦远程中承载
         该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
         同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
 
-        下载器、媒体服务器与消息通知共用本钩子，差异只在 `config_key`：三者的取用
+        下载器、媒体服务器与消息通知共用本钩子，差异只在 `capability`：三者的取用
         方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
         照常登记，只是没有实例产出。
 

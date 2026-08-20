@@ -35,6 +35,7 @@ from app.runtime.extensions.declaration import (
     declaration_config_form,
     declaration_impl,
     declaration_schema,
+    declaration_service_instance_constructor,
     declaration_service_instance_identity,
 )
 from app.runtime.extensions.instance import (
@@ -2222,13 +2223,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin = self._running_plugins.get(key)
             for item in declared.get(key, []):
                 try:
-                    config_key, service_type, name = declaration_service_instance_identity(item)
+                    capability, service_type, name = declaration_service_instance_identity(item)
+                    impl, factory = declaration_service_instance_constructor(item)
                     service_instance_registry.register(
-                        config_key=config_key,
+                        capability=capability,
                         service_type=service_type,
                         name=name,
-                        impl=declaration_impl(item),
                         owner=key,
+                        impl=impl,
+                        factory=factory,
                         distribution=ExtensionDistribution.MARKET,
                         config_form=declaration_config_form(item),
                         config_component=self._resolve_service_instance_config_component(

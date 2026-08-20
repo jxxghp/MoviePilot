@@ -63,6 +63,48 @@ class PluginConfigOper(DbOper):
         """
         return await PluginConfig.async_list_enabled(self._db)
 
+    def get_default_target(self, plugin_id: str) -> Optional[PluginConfig]:
+        """
+        取某插件的默认调用目标实例。
+        :param plugin_id: 插件标识
+        :return: 置位的配置行，未设置默认调用目标时返回 None
+        """
+        return PluginConfig.get_default_target(self._db, plugin_id)
+
+    async def async_get_default_target(self, plugin_id: str) -> Optional[PluginConfig]:
+        """
+        异步取某插件的默认调用目标实例。
+        :param plugin_id: 插件标识
+        :return: 置位的配置行，未设置默认调用目标时返回 None
+        """
+        return await PluginConfig.async_get_default_target(self._db, plugin_id)
+
+    def set_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        把某插件的默认调用目标改为指定实例，同一事务内清除该插件原有的置位。
+        :param plugin_id: 插件标识
+        :param instance_id: 要设为默认调用目标的实例标识
+        :return: 目标实例存在并完成置位时为 True
+        """
+        return bool(PluginConfig.set_default_target(self._db, plugin_id, instance_id))
+
+    async def async_set_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        异步把某插件的默认调用目标改为指定实例。
+        :param plugin_id: 插件标识
+        :param instance_id: 要设为默认调用目标的实例标识
+        :return: 目标实例存在并完成置位时为 True
+        """
+        return bool(await PluginConfig.async_set_default_target(self._db, plugin_id, instance_id))
+
+    def clear_default_target(self, plugin_id: str) -> int:
+        """
+        清除某插件的默认调用目标置位。
+        :param plugin_id: 插件标识
+        :return: 清除的行数
+        """
+        return PluginConfig.clear_default_target(self._db, plugin_id)
+
     def upsert(self, plugin_id: str, instance_id: str, payload: dict) -> PluginConfig:
         """
         写入或更新单个实例配置，不存在则新建。

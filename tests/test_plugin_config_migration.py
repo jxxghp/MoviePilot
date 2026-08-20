@@ -10,11 +10,13 @@ from app.db.models.pluginconfig import PluginConfig
 
 
 MIGRATION = "database.versions.f8767f021120_3_0_8"
+# 建表之后修订该表结构的迁移，按修订顺序排列
+FOLLOW_UP_MIGRATIONS = ("database.versions.27c3b2eb9b1e_3_0_10",)
 
 
-def _bind_migration(monkeypatch, connection):
+def _bind_migration(monkeypatch, connection, module_name: str = MIGRATION):
     """把迁移绑定到隔离数据库连接。"""
-    migration = importlib.import_module(MIGRATION)
+    migration = importlib.import_module(module_name)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
     return migration
@@ -31,8 +33,6 @@ def test_plugin_config_migration_upgrades_empty_schema_and_downgrades(monkeypatc
 
         inspector = sa.inspect(connection)
         assert "pluginconfig" in inspector.get_table_names()
-        columns = {column["name"] for column in inspector.get_columns("pluginconfig")}
-        assert columns == {column.name for column in PluginConfig.__table__.columns}
 
         unique_names = {
             constraint.get("name")
@@ -53,6 +53,31 @@ def test_plugin_config_migration_upgrades_empty_schema_and_downgrades(monkeypatc
         migration.downgrade()
         inspector = sa.inspect(connection)
         assert "pluginconfig" not in inspector.get_table_names()
+
+
+def test_plugin_config_migration_chain_converges_to_model_columns(monkeypatch) -> None:
+    """建表迁移与其后续修订串起来后，表结构必须与模型完全一致。
+
+    建表迁移单独跑只能建出它那一版的列，后续修订新增的列由各自的迁移补齐；只有整条
+    链收敛到模型，全新安装（create_all）与老库升级（alembic）才会落到同一个结构上。
+    """
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        migrations = [_bind_migration(monkeypatch, connection)]
+        migrations.extend(
+            _bind_migration(monkeypatch, connection, name) for name in FOLLOW_UP_MIGRATIONS
+        )
+        for migration in migrations:
+            migration.upgrade()
+            migration.upgrade()
+
+        inspector = sa.inspect(connection)
+        columns = {column["name"] for column in inspector.get_columns("pluginconfig")}
+        assert columns == {column.name for column in PluginConfig.__table__.columns}
+
+        for migration in reversed(migrations):
+            migration.downgrade()
+        assert "pluginconfig" not in sa.inspect(connection).get_table_names()
 
 
 def test_plugin_config_migration_accepts_fresh_current_schema(monkeypatch) -> None:

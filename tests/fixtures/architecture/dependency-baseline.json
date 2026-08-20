@@ -56,8 +56,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6313,
-  "edge_sha256": "8a40ea521950b20e00217b679936ef922c1e336d4bf50596918ae76c9883df9f",
+  "edge_count": 6317,
+  "edge_sha256": "34631e0ebe4ddcc7431fa9c4f3e66d86544b8cd82957adaccf9f90d60e61b34e",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5497,6 +5497,9 @@
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.declaration",
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.plugin.config_interface",
+    "app.runtime.extensions.plugin.instance_selection -> app.runtime",
+    "app.runtime.extensions.plugin.instance_selection -> app.runtime.extensions",
+    "app.runtime.extensions.plugin.instance_selection -> app.runtime.extensions.instance",
     "app.runtime.extensions.plugin.layout -> app.foundation",
     "app.runtime.extensions.plugin.layout -> app.foundation.version",
     "app.runtime.extensions.plugin.layout -> app.runtime",
@@ -6158,6 +6161,7 @@
     "app.startup.plugins_initializer -> app.runtime.extensions",
     "app.startup.plugins_initializer -> app.runtime.extensions.instance",
     "app.startup.plugins_initializer -> app.runtime.extensions.plugin",
+    "app.startup.plugins_initializer -> app.runtime.extensions.plugin.instance_selection",
     "app.startup.plugins_initializer -> app.runtime.extensions.plugin.layout",
     "app.startup.plugins_initializer -> app.runtime.extensions.plugin.storage",
     "app.startup.plugins_initializer -> app.runtime.extensions.plugin.system",
@@ -6373,7 +6377,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 806,
+  "module_count": 807,
   "modules": [
     "app",
     "app.adapters",
@@ -7046,6 +7050,7 @@
     "app.runtime.extensions.plugin.channel_capabilities",
     "app.runtime.extensions.plugin.config_interface",
     "app.runtime.extensions.plugin.dashboard_capabilities",
+    "app.runtime.extensions.plugin.instance_selection",
     "app.runtime.extensions.plugin.layout",
     "app.runtime.extensions.plugin.media_source_capabilities",
     "app.runtime.extensions.plugin.module_capabilities",

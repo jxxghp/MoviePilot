@@ -24,6 +24,10 @@ from app.runtime.extensions.plugin_manager import (
 from app.application.messaging.message import MessageHelper
 from app.application.plugin.catalog import PluginCatalogService
 from app.adapters.external.plugin.client import PluginMarketClient
+from app.runtime.extensions.plugin.instance_selection import (
+    PluginInstanceTarget,
+    configure_plugin_instance_targets,
+)
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
     configure_plugin_storage,
@@ -92,6 +96,22 @@ def _list_plugin_instance_ids(plugin_id: str) -> list:
     if DEFAULT_INSTANCE_ID in instance_ids:
         ordered.insert(0, DEFAULT_INSTANCE_ID)
     return ordered
+
+
+def _list_plugin_instance_targets(plugin_id: str) -> List[PluginInstanceTarget]:
+    """列出插件全部实例在调用目标解析中所需的状态。
+
+    :param plugin_id: 插件标识
+    :return: 实例状态列表，一条实例配置都没有时为空列表
+    """
+    return [
+        PluginInstanceTarget(
+            instance_id=row.instance_id,
+            is_enabled=bool(row.is_enabled),
+            is_default_target=bool(row.is_default_target),
+        )
+        for row in PluginConfigOper().list_by_plugin(plugin_id)
+    ]
 
 
 def _write_plugin_instance_config(plugin_id: str, value) -> None:
@@ -325,6 +345,7 @@ def configure_plugin_services() -> None:
         delete_config=_delete_plugin_instance_config,
         list_instances=_list_plugin_instance_ids,
     ))
+    configure_plugin_instance_targets(_list_plugin_instance_targets)
     _configure_plugin_instance_persistence(
         upsert_config=_upsert_plugin_instance_config_row,
         delete_config=_delete_plugin_instance_config_row,

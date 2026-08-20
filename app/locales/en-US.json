@@ -751,8 +751,8 @@
       "target": "Storage {storage} does not support the {transfer_type} organization method"
     },
     {
-      "source": "服务配置键 {config_key} 不支持声明服务实例",
-      "target": "Service config key {config_key} does not support declaring service instances"
+      "source": "服务能力 {capability} 不支持声明服务实例",
+      "target": "Service capability {capability} does not support declaring service instances"
     },
     {
       "source": "【{storage}】{path} 复制文件失败",

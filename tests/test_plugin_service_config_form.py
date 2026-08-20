@@ -1,7 +1,7 @@
 """服务实例类型专属配置界面：契约校验、登记表携带、端点下发与不串场断言。
 
 设计判据见 docs/plugin-extension-architecture.md 第 4 节：每份配置界面归属声明它
-的那条声明，不归属扩展本身。本文件覆盖服务实例族这一份界面，端点按「服务配置键
+的那条声明，不归属扩展本身。本文件覆盖服务实例族这一份界面，端点按「能力标签
 加类型标识」两个维度下发。
 """
 
@@ -76,7 +76,7 @@ def _start_plugin(monkeypatch, plugin_manager: PluginManager, plugin_class: type
 def test_endpoint_returns_declared_form_when_present():
     """声明带表单时，端点按配置键与类型返回该表单原样内容。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="demo_downloader",
         name="演示下载器",
         impl=_DemoDownloader,
@@ -84,7 +84,7 @@ def test_endpoint_returns_declared_form_when_present():
         config_form=_VALID_CONFIG_FORM,
     )
 
-    result = service_config_form_endpoint("Downloaders", "demo_downloader", None)
+    result = service_config_form_endpoint("downloader", "demo_downloader", None)
 
     assert result["available"] is True
     assert result["name"] == "演示下载器"
@@ -95,14 +95,14 @@ def test_endpoint_returns_declared_form_when_present():
 def test_endpoint_reports_unavailable_when_declaration_has_no_form():
     """声明未带表单时，端点返回「无自带界面」而非报错，并仍给出展示名。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="demo_downloader",
         name="演示下载器",
         impl=_DemoDownloader,
         owner="DemoPlugin@default",
     )
 
-    result = service_config_form_endpoint("Downloaders", "demo_downloader", None)
+    result = service_config_form_endpoint("downloader", "demo_downloader", None)
 
     assert result["available"] is False
     assert result["name"] == "演示下载器"
@@ -114,7 +114,7 @@ def test_endpoint_reports_unavailable_when_declaration_has_no_form():
 
 def test_endpoint_reports_unavailable_for_builtin_type():
     """内建类型不在扩展登记表内，端点返回「无自带界面」，前端沿用内建渲染。"""
-    result = service_config_form_endpoint("Downloaders", "qbittorrent", None)
+    result = service_config_form_endpoint("downloader", "qbittorrent", None)
 
     assert result == {
         "available": False, "name": None, "conf": None,
@@ -122,20 +122,25 @@ def test_endpoint_reports_unavailable_for_builtin_type():
     }
 
 
-def test_endpoint_raises_404_for_config_key_outside_service_families():
-    """不支持声明服务实例的配置键视为请求出错，而非「无自带界面」。"""
+@pytest.mark.parametrize("capability", ["storage", "Downloaders"])
+def test_endpoint_raises_404_for_capability_outside_service_families(capability):
+    """不支持声明服务实例的能力标签视为请求出错，而非「无自带界面」。
+
+    宿主存放这族配置的 systemconfig 列表名同样不是合法标签：端点的第一个维度是
+    语义标签，不是存储位置。
+    """
     with pytest.raises(HTTPException) as exc_info:
-        service_config_form_endpoint("Storages", "u115", None)
+        service_config_form_endpoint(capability, "u115", None)
 
     assert exc_info.value.status_code == 404
 
 
-def test_endpoint_isolates_same_type_across_config_keys():
-    """同名类型登记在不同配置键下时，端点各取各的界面，不串族。"""
+def test_endpoint_isolates_same_type_across_capabilities():
+    """同名类型登记在不同能力标签下时，端点各取各的界面，不串族。"""
     downloader_form = ([{"component": "VTextField"}], {"host": ""})
     notification_form = ([{"component": "VSwitch"}], {"token": ""})
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="same_name",
         name="下载器",
         impl=_DemoDownloader,
@@ -143,7 +148,7 @@ def test_endpoint_isolates_same_type_across_config_keys():
         config_form=downloader_form,
     )
     service_instance_registry.register(
-        config_key="Notifications",
+        capability="notification",
         service_type="same_name",
         name="通知渠道",
         impl=_DemoDownloader,
@@ -151,14 +156,14 @@ def test_endpoint_isolates_same_type_across_config_keys():
         config_form=notification_form,
     )
 
-    assert service_config_form_endpoint("Downloaders", "same_name", None)["conf"] == downloader_form[0]
-    assert service_config_form_endpoint("Notifications", "same_name", None)["conf"] == notification_form[0]
+    assert service_config_form_endpoint("downloader", "same_name", None)["conf"] == downloader_form[0]
+    assert service_config_form_endpoint("notification", "same_name", None)["conf"] == notification_form[0]
 
 
 def test_response_model_keeps_every_field_the_endpoint_returns():
     """端点返回的字段必须全部在响应模型里，否则会被 FastAPI 静默裁掉。"""
     service_instance_registry.register(
-        config_key="Downloaders",
+        capability="downloader",
         service_type="demo_downloader",
         name="演示下载器",
         impl=_DemoDownloader,
@@ -166,7 +171,7 @@ def test_response_model_keeps_every_field_the_endpoint_returns():
         config_form=_VALID_CONFIG_FORM,
     )
 
-    payload = service_config_form_endpoint("Downloaders", "demo_downloader", None)
+    payload = service_config_form_endpoint("downloader", "demo_downloader", None)
     serialized = ServiceConfigForm(**payload).model_dump()
 
     assert set(serialized) == set(payload)
@@ -220,7 +225,7 @@ def test_declaration_rejected_when_config_interface_is_malformed(
     plugin = _Plugin(
         [
             ServiceInstanceDeclaration(
-                config_key="Downloaders",
+                capability="downloader",
                 type="bad_form_downloader",
                 name="坏表单下载器",
                 impl=_DemoDownloader,
@@ -264,7 +269,7 @@ class _VueServicePlugin:
         """声明本插件提供的下载器类型，附带该类型的 vue 模式配置组件名。"""
         return [
             ServiceInstanceDeclaration(
-                config_key="Downloaders",
+                capability="downloader",
                 type="vue_mode_downloader",
                 name="Vue下载器",
                 impl=_DemoDownloader,
@@ -285,7 +290,7 @@ def test_endpoint_returns_component_and_remote_for_vue_mode_declaration(
     """vue 模式声明登记后，端点返回组件名与联邦远程入口描述，不返回 vuetify 字段。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _VueServicePlugin)
 
-    result = service_config_form_endpoint("Downloaders", "vue_mode_downloader", None)
+    result = service_config_form_endpoint("downloader", "vue_mode_downloader", None)
 
     assert result["available"] is True
     assert result["conf"] is None
@@ -337,7 +342,7 @@ class _MultiCapabilityPlugin:
         """声明本插件提供的下载器类型，附带该类型的专属配置界面。"""
         return [
             ServiceInstanceDeclaration(
-                config_key="Downloaders",
+                capability="downloader",
                 type="multi_capability_downloader",
                 name="多能力下载器",
                 impl=_DemoDownloader,
@@ -358,7 +363,7 @@ def test_service_form_does_not_leak_plugin_own_settings_form(
     """插件同时声明服务实例与自身设置页时，取服务表单只拿到服务那份声明的表单。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _MultiCapabilityPlugin)
 
-    result = service_config_form_endpoint("Downloaders", "multi_capability_downloader", None)
+    result = service_config_form_endpoint("downloader", "multi_capability_downloader", None)
 
     assert result["available"] is True
     assert result["conf"] == _VALID_CONFIG_FORM[0]
@@ -377,12 +382,12 @@ def test_endpoint_no_longer_returns_form_after_extension_stopped(
     """扩展停用后其服务类型不再登记，端点不再能取得该扩展声明的表单。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _MultiCapabilityPlugin)
     assert service_config_form_endpoint(
-        "Downloaders", "multi_capability_downloader", None
+        "downloader", "multi_capability_downloader", None
     )["available"] is True
 
     plugin_manager.stop(plugin_id)
 
-    result = service_config_form_endpoint("Downloaders", "multi_capability_downloader", None)
+    result = service_config_form_endpoint("downloader", "multi_capability_downloader", None)
     assert result["available"] is False
     assert result["name"] is None
 
@@ -391,7 +396,7 @@ def test_registered_entry_carries_declared_form(monkeypatch, plugin_manager: Plu
     """声明携带的表单必须原样进入登记项，不在中途丢失。"""
     plugin_id = _start_plugin(monkeypatch, plugin_manager, _MultiCapabilityPlugin)
 
-    entry = service_instance_registry.find("Downloaders", "multi_capability_downloader")
+    entry = service_instance_registry.find("downloader", "multi_capability_downloader")
     assert entry.config_form == _VALID_CONFIG_FORM
     assert entry.config_component is None
     assert entry.distribution == ExtensionDistribution.MARKET

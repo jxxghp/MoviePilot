@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import ModuleType
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,11 +98,11 @@ class ModuleDeclaration(ExtensionDeclaration):
     service_config: str = ""
 
 
-# 可声明服务实例的服务配置键取值集合，即宿主按「配置扇出 N 个具名实例」消费的配置族
-SERVICE_INSTANCE_CONFIG_KEYS: Tuple[str, ...] = (
-    SystemConfigKey.Downloaders.value,
-    SystemConfigKey.MediaServers.value,
-    SystemConfigKey.Notifications.value,
+# 可声明服务实例的能力标签取值集合，即宿主按「一份配置扇出一个具名实例」消费的服务族
+SERVICE_INSTANCE_CAPABILITIES: Tuple[str, ...] = (
+    ModuleType.Downloader.value,
+    ModuleType.MediaServer.value,
+    ModuleType.Notification.value,
 )
 
 
@@ -113,12 +113,22 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
 
     服务实例与其它扩展点的区别在于「有没有」不是终点：用户在设置页里按类型新建
     任意多个具名实例，每个实例带自己的一份配置。因此声明描述的是**类型**，宿主
-    按该类型下的每条用户配置调用 ``impl(name=配置名, **配置内容)`` 构造实例，与
-    内建服务实例的构造方式一致。
+    按该类型下的每条用户配置构造一个实例。
 
-    下载器、媒体服务器与消息通知共用这一条声明，差异只在 ``config_key``：三者
-    的取用链是同一条——同一张服务实例表，按「配置键加类型标识」取用，形状没有
-    区别，因此不按业务族拆成三个钩子，差异作为参数声明出来。
+    ``capability`` 是该类型属于哪一族服务的语义标签，取值须属于
+    `SERVICE_INSTANCE_CAPABILITIES`。下载器、媒体服务器与消息通知共用这一条声明，
+    差异只在该标签：三者的取用链是同一条——同一张服务实例表，按「能力标签加类型
+    标识」取用，形状没有区别，因此不按业务族拆成三个钩子，差异作为参数声明出来。
+
+    构造方式二选一，宿主对该类型下的每条用户配置执行其一：
+
+    - ``impl``：实现类，宿主按 ``impl(name=配置名, **配置内容)`` 构造，要求构造
+      签名能接受关键字 ``name``
+    - ``factory``：可调用对象，宿主按 ``factory(配置对象)`` 构造，配置对象即该族
+      配置模型的一条记录，怎么落到实例上由扩展自行决定
+
+    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出同样被拒，宿主无从
+    构造实例。二者都是进程内快路径，跨进程时均不参与序列化。
 
     该服务类型的专属配置界面二选一，字段语义与 ``StorageDeclaration`` 相同：
 
@@ -130,17 +140,19 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     没有专属界面，前端沿用内建类型的渲染方式。界面归属这条声明，不归属声明
     它的扩展。
 
-    :param config_key: 服务配置键，取值须属于 `SERVICE_INSTANCE_CONFIG_KEYS`
+    :param capability: 能力标签，取值须属于 `SERVICE_INSTANCE_CAPABILITIES`
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
     :param name: 类型展示名称
+    :param factory: 接收单条服务配置并返回实例的可调用对象；与 ``impl`` 互斥
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
         ``config_component`` 互斥
     :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
     """
 
-    config_key: str = ""
+    capability: str = ""
     type: str = ""
     name: str = ""
+    factory: Optional[Any] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
 
@@ -456,16 +468,34 @@ def declaration_service_instance_identity(
     declaration: Any,
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    读取服务实例声明自报的配置键、类型标识与展示名称
+    读取服务实例声明自报的能力标签、类型标识与展示名称
 
     :param declaration: `ServiceInstanceDeclaration` 实例
-    :return: (服务配置键, 类型标识, 展示名称) 三元组；对应字段缺失、非字符串或
+    :return: (能力标签, 类型标识, 展示名称) 三元组；对应字段缺失、非字符串或
         为空白时该位为 None
     """
     return (
-        _declared_field_text(declaration, "config_key"),
+        _declared_field_text(declaration, "capability"),
         _declared_field_text(declaration, "type"),
         _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_service_instance_constructor(
+    declaration: Any,
+) -> Tuple[Optional[Any], Optional[Any]]:
+    """
+    读取服务实例声明的两条构造路径
+
+    服务实例类型无法从裸实现推出能力标签与类型标识，因此两个字段都按原值读取，
+    不套用 `declaration_impl` 的「实现即声明」回落。
+
+    :param declaration: `ServiceInstanceDeclaration` 实例
+    :return: (实现类, 实例工厂) 二元组；对应字段缺失时该位为 None
+    """
+    return (
+        _declared_field(declaration, "impl"),
+        _declared_field(declaration, "factory"),
     )
 
 

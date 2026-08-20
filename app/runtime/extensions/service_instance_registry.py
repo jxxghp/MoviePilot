@@ -1,9 +1,13 @@
-"""服务实例注册表：按「服务配置键加类型标识」登记扩展提供的服务实例类型。
+"""服务实例注册表：按「能力标签加类型标识」登记扩展提供的服务实例类型。
 
 宿主的服务发现按配置扇出实例——同一类型下用户配置了几条，就有几个具名实例。
 内建模块靠 `capability.toml` 的 ``service_config`` 声明归属并自持实例；扩展声明
 的类型不进入模块清单，改由本表为每条声明持有一个适配器，适配器实现与内建模块
 同名的 ``get_instances()``，从而与内建模块一起被服务发现取用。
+
+扩展只声明能力标签，「这一族配置存放在 systemconfig 的哪个列表里」是宿主内部
+实现：配置读取按能力标签取对应端口，服务发现按存放位置反查能力标签，两张对照表
+都收在本模块内，不向声明面外泄。
 
 登记由扩展实例的生命周期驱动：实例启动或配置生效时按当前声明重建，实例停止时
 按登记方回收。
@@ -19,13 +23,20 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import ModuleType, SystemConfigKey
 
-# 服务配置键到配置读取端口的映射，配置一律经既有端口取用并已通过 Schema 校验
-SERVICE_CONFIG_READERS: Mapping[str, Callable[[], List[Any]]] = MappingProxyType({
-    SystemConfigKey.Downloaders.value: ServiceConfigHelper.get_downloader_configs,
-    SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
-    SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
+# 能力标签到配置读取端口的映射，配置一律经既有端口取用并已通过 Schema 校验
+_CONFIG_READERS: Mapping[str, Callable[[], List[Any]]] = MappingProxyType({
+    ModuleType.Downloader.value: ServiceConfigHelper.get_downloader_configs,
+    ModuleType.MediaServer.value: ServiceConfigHelper.get_mediaserver_configs,
+    ModuleType.Notification.value: ServiceConfigHelper.get_notification_configs,
+})
+
+# 服务配置在 systemconfig 中的存放位置到能力标签的映射，供服务发现按存放位置反查
+_CAPABILITIES_BY_CONFIG_KEY: Mapping[str, str] = MappingProxyType({
+    SystemConfigKey.Downloaders.value: ModuleType.Downloader.value,
+    SystemConfigKey.MediaServers.value: ModuleType.MediaServer.value,
+    SystemConfigKey.Notifications.value: ModuleType.Notification.value,
 })
 
 
@@ -33,28 +44,33 @@ SERVICE_CONFIG_READERS: Mapping[str, Callable[[], List[Any]]] = MappingProxyType
 class ServiceInstanceEntry:
     """服务实例类型在注册表中的一条登记。
 
+    构造路径二选一：``impl`` 按 ``impl(name=..., **config)`` 构造，``factory`` 按
+    ``factory(配置对象)`` 构造，登记时已由契约校验保证恰好给出其一。
+
     配置界面二选一：``config_form`` 为 vuetify 模式，``config_component`` 为 vue
     模式的已解析组件描述（组件名加联邦远程入口）；未声明界面时二者均为 None，
     此时前端沿用内建类型的渲染方式，不视为异常。
 
-    :param config_key: 服务配置键
+    :param capability: 能力标签，即该类型属于哪一族服务
     :param service_type: 类型标识，与该族配置模型的 ``type`` 字段取值对应
     :param name: 类型展示名称
-    :param impl: 实例实现类，按 ``impl(name=..., **config)`` 构造
     :param distribution: 提供方的发行方式
     :param owner: 提供该类型的扩展实例键
+    :param impl: 实例实现类，按 ``impl(name=..., **config)`` 构造
+    :param factory: 实例工厂，按 ``factory(配置对象)`` 构造
     :param config_form: 登记方为该类型声明的专属配置界面，形状为
         (组件树, 默认数据) 二元组
     :param config_component: 登记方为该类型声明的 vue 模式配置组件，形状为
         ``{"component": 组件名, "remote": 联邦远程入口描述}``
     """
 
-    config_key: str
+    capability: str
     service_type: str
     name: str
-    impl: Any
     distribution: ExtensionDistribution
     owner: str
+    impl: Optional[Any] = None
+    factory: Optional[Any] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[Dict[str, Any]] = None
 
@@ -124,14 +140,14 @@ class ServiceInstanceAdapter:
 
         :return: 实例名到配置的映射；配置读取出错时为空字典
         """
-        reader = SERVICE_CONFIG_READERS.get(self._entry.config_key)
+        reader = _CONFIG_READERS.get(self._entry.capability)
         if reader is None:
             return {}
         try:
             configs = reader() or []
         except Exception as error:
             logger.error(
-                f"【服务】读取 {self._entry.config_key} 配置出错，"
+                f"【服务】读取 {self._entry.capability} 配置出错，"
                 f"扩展 {self._entry.owner} 声明的 {self._entry.service_type} 实例暂不可用：{error}"
             )
             return {}
@@ -144,24 +160,28 @@ class ServiceInstanceAdapter:
     def _create_instance(self, name: str, conf: Any) -> Optional[Any]:
         """按单条配置构造一个具名实例。
 
+        登记项声明了工厂就把整条配置交给工厂，否则按关键字展开配置内容调用实现类。
+
         :param name: 实例名
         :param conf: 该实例的用户配置
         :return: 实例；构造失败时为 None
         """
         try:
+            if self._entry.factory is not None:
+                return self._entry.factory(conf)
             return self._entry.impl(name=name, **(conf.config or {}))
         except Exception as error:
             if self._failed_configs.get(name) != conf:
                 self._failed_configs[name] = conf
                 logger.error(
-                    f"【服务】扩展 {self._entry.owner} 声明的 {self._entry.config_key} "
+                    f"【服务】扩展 {self._entry.owner} 声明的 {self._entry.capability} "
                     f"类型 {self._entry.service_type} 实例 {name} 构造失败，已跳过：{error}"
                 )
             return None
 
 
 class ServiceInstanceRegistry:
-    """按「服务配置键加类型标识」登记扩展提供的服务实例类型。"""
+    """按「能力标签加类型标识」登记扩展提供的服务实例类型。"""
 
     def __init__(self) -> None:
         """创建登记表。"""
@@ -169,48 +189,54 @@ class ServiceInstanceRegistry:
         self._adapters: dict[tuple[str, str], ServiceInstanceAdapter] = {}
 
     def register(self,
-                 config_key: str,
+                 capability: str,
                  service_type: str,
                  name: str,
-                 impl: Any,
                  owner: str,
+                 impl: Optional[Any] = None,
+                 factory: Optional[Any] = None,
                  distribution: ExtensionDistribution = ExtensionDistribution.MARKET,
                  config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
                  config_component: Optional[Dict[str, Any]] = None
                  ) -> Optional[str]:
-        """登记一个服务实例类型，同「配置键加类型」重复登记以最新一次为准。
+        """登记一个服务实例类型，同「能力标签加类型」重复登记以最新一次为准。
 
         登记内容与既有登记完全相同时保留原适配器，使已构造的实例不因一次无变化的
         重新同步而全部重建。
 
-        :param config_key: 服务配置键
+        :param capability: 能力标签
         :param service_type: 类型标识
         :param name: 类型展示名称
-        :param impl: 实例实现类
         :param owner: 提供该类型的扩展实例键
+        :param impl: 实例实现类，与 factory 二选一
+        :param factory: 实例工厂，与 impl 二选一
         :param distribution: 提供方的发行方式
         :param config_form: 该类型的专属配置界面（vuetify 模式）
         :param config_component: 该类型的已解析 vue 模式配置组件
-        :return: 登记成功的类型标识；配置键或类型标识缺失时为 None
+        :return: 登记成功的类型标识；能力标签、类型标识或构造路径缺失时为 None
         """
-        if not config_key or not service_type:
-            logger.error(f"【服务】{owner} 的服务实例声明缺少配置键或类型标识，无法登记")
+        if not capability or not service_type:
+            logger.error(f"【服务】{owner} 的服务实例声明缺少能力标签或类型标识，无法登记")
+            return None
+        if impl is None and factory is None:
+            logger.error(f"【服务】{owner} 的服务实例声明缺少构造路径，无法登记")
             return None
         entry = ServiceInstanceEntry(
-            config_key=config_key,
+            capability=capability,
             service_type=service_type,
             name=name,
-            impl=impl,
             distribution=distribution,
             owner=owner,
+            impl=impl,
+            factory=factory,
             config_form=config_form,
             config_component=config_component,
         )
         with self._lock:
-            existing = self._adapters.get((config_key, service_type))
+            existing = self._adapters.get((capability, service_type))
             if existing is None or existing.entry != entry:
-                self._adapters[(config_key, service_type)] = ServiceInstanceAdapter(entry)
-        logger.info(f"【服务】{owner} 提供 {config_key} 类型 {service_type}（{name}）")
+                self._adapters[(capability, service_type)] = ServiceInstanceAdapter(entry)
+        logger.info(f"【服务】{owner} 提供 {capability} 类型 {service_type}（{name}）")
         return service_type
 
     def unregister_owner(self, owner: str) -> Tuple[str, ...]:
@@ -229,33 +255,37 @@ class ServiceInstanceRegistry:
             )
             for key in owned:
                 self._adapters.pop(key, None)
-            return tuple(service_type for _config_key, service_type in owned)
+            return tuple(service_type for _capability, service_type in owned)
 
     def adapters(self, config_key: str) -> Tuple[ServiceInstanceAdapter, ...]:
-        """列出指定服务配置键下当前登记的全部适配器。
+        """列出消费指定服务配置的全部适配器。
 
-        :param config_key: 服务配置键
+        服务发现按配置在 systemconfig 中的存放位置取用，登记按能力标签建立，故此处
+        先把存放位置反查成能力标签；不对应任何服务族的存放位置没有适配器。
+
+        :param config_key: 服务配置在 systemconfig 中的存放位置
         :return: 适配器元组，按登记顺序排列
         """
-        if not config_key:
+        capability = _CAPABILITIES_BY_CONFIG_KEY.get(config_key)
+        if not capability:
             return ()
         with self._lock:
             return tuple(
                 adapter for (key, _service_type), adapter in self._adapters.items()
-                if key == config_key
+                if key == capability
             )
 
-    def find(self, config_key: str, service_type: str) -> Optional[ServiceInstanceEntry]:
-        """查找指定「配置键加类型标识」的登记项。
+    def find(self, capability: str, service_type: str) -> Optional[ServiceInstanceEntry]:
+        """查找指定「能力标签加类型标识」的登记项。
 
-        :param config_key: 服务配置键
+        :param capability: 能力标签
         :param service_type: 类型标识
         :return: 登记项；未登记时为 None
         """
-        if not config_key or not service_type:
+        if not capability or not service_type:
             return None
         with self._lock:
-            adapter = self._adapters.get((config_key, service_type))
+            adapter = self._adapters.get((capability, service_type))
         return adapter.entry if adapter else None
 
     def entries(self) -> Tuple[ServiceInstanceEntry, ...]:
@@ -269,11 +299,11 @@ class ServiceInstanceRegistry:
     def diagnose(self) -> list[dict[str, Any]]:
         """输出只读的登记诊断信息。
 
-        :return: 每个类型的配置键、类型标识、发行方式与提供方
+        :return: 每个类型的能力标签、类型标识、发行方式与提供方
         """
         return [
             {
-                "config_key": entry.config_key,
+                "capability": entry.capability,
                 "type": entry.service_type,
                 "distribution": entry.distribution.value,
                 "owner": entry.owner,

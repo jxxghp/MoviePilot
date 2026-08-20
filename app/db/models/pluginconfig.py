@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import Boolean, DateTime, Index, JSON, String, UniqueConstraint, delete, select
+from sqlalchemy import (Boolean, DateTime, Index, JSON, String, UniqueConstraint, column, delete,
+                        select, update)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -32,6 +33,11 @@ class PluginConfig(Base):
 
     本表只接受 ``str`` 类型的实例标识，不做归一化或合法性校验——两者的单一真源在
     运行时扩展层，本表刻意对其无知。
+
+    表内有三处「默认」，语义互不相干：``instance_id`` 取 ``"default"`` 是身份默认，
+    指未创建分身时那一个实例；``follow_default_version`` 是版本跟随，指期望版本读自
+    身份默认那一行；``is_default_target`` 是调用目标默认，指外部调用未指定实例时该走
+    哪一行，与前两者都无关——身份默认的实例不一定是调用目标，调用目标也可以是任一分身。
     """
     id = get_id_column()
     # 插件标识（插件主类名）
@@ -50,15 +56,29 @@ class PluginConfig(Base):
     plugin_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # 是否跟随默认实例的版本
     follow_default_version: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 该实例是否为本插件的默认调用目标，即外部调用未指定实例时选中的那一行
+    is_default_target: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # 创建时间
     created_at: Mapped[Optional[str]] = mapped_column(String)
     # 更新时间
     updated_at: Mapped[Optional[str]] = mapped_column(String)
 
+    # 条件唯一索引把「每个插件至多一个默认调用目标」交给数据库判定：只索引置位的行，
+    # 未置位的行不入索引，因而同一插件可以有任意多行为假、至多一行为真。应用层的
+    # 「置新清旧」是同一事务内的顺序写，两个并发事务各自置位不同实例时都会通过应用层
+    # 检查，只有这条索引能拦下后提交的那一个。部分索引的谓词是方言特性，SQLite 与
+    # PostgreSQL 各给一份，两边渲染出的谓词分别是 ``IS 1`` 与 ``IS true``。
     __table_args__ = (
         UniqueConstraint("plugin_id", "instance_id", name="ux_pluginconfig_plugin_instance"),
         Index("ix_pluginconfig_plugin_id", "plugin_id"),
         Index("ix_pluginconfig_plugin_id_plugin_version", "plugin_id", "plugin_version"),
+        Index(
+            "ux_pluginconfig_default_target",
+            "plugin_id",
+            unique=True,
+            sqlite_where=column("is_default_target", Boolean).is_(True),
+            postgresql_where=column("is_default_target", Boolean).is_(True),
+        ),
     )
 
     @classmethod
@@ -135,6 +155,117 @@ class PluginConfig(Base):
         """
         result = await db.execute(select(cls).where(cls.is_enabled.is_(True)))
         return list(result.scalars().all())
+
+    @classmethod
+    @db_query
+    def get_default_target(cls, db: Session, plugin_id: str) -> Optional["PluginConfig"]:
+        """
+        取某插件被置为默认调用目标的实例配置。
+        :param db: 数据库会话
+        :param plugin_id: 插件标识
+        :return: 置位的配置行，未设置默认调用目标时返回 None
+        """
+        return db.execute(
+            select(cls).where(cls.plugin_id == plugin_id, cls.is_default_target.is_(True))
+        ).scalars().first()
+
+    @classmethod
+    @async_db_query
+    async def async_get_default_target(cls, db: AsyncSession, plugin_id: str) -> Optional["PluginConfig"]:
+        """
+        异步取某插件被置为默认调用目标的实例配置。
+        :param db: 异步数据库会话
+        :param plugin_id: 插件标识
+        :return: 置位的配置行，未设置默认调用目标时返回 None
+        """
+        result = await db.execute(
+            select(cls).where(cls.plugin_id == plugin_id, cls.is_default_target.is_(True))
+        )
+        return result.scalars().first()
+
+    @classmethod
+    @db_update
+    def set_default_target(cls, db: Session, plugin_id: str, instance_id: str) -> int:
+        """
+        把某插件的默认调用目标改为指定实例。
+
+        目标实例不存在时原样返回，不动原有置位——先清后置一旦在目标缺席时执行到一半，
+        结果是该插件从「有默认调用目标」变成「没有」，调用方却只看到一个失败返回值。
+        目标存在时先清除同插件其余实例的置位再置位目标实例，两条 DML 处在同一事务内，
+        中途不会出现两行同时为真；顺序反过来会先撞上条件唯一索引。
+        :param db: 数据库会话
+        :param plugin_id: 插件标识
+        :param instance_id: 要设为默认调用目标的实例标识
+        :return: 置位的行数，目标实例没有配置行时为 0
+        """
+        target = db.execute(
+            select(cls.id).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
+        ).first()
+        if target is None:
+            return 0
+        execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.plugin_id == plugin_id,
+                cls.instance_id != instance_id,
+                cls.is_default_target.is_(True),
+            )
+            .values(is_default_target=False),
+        )
+        return execute_dml(
+            db,
+            update(cls)
+            .where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
+            .values(is_default_target=True),
+        )
+
+    @classmethod
+    @async_db_update
+    async def async_set_default_target(cls, db: AsyncSession, plugin_id: str, instance_id: str) -> int:
+        """
+        异步把某插件的默认调用目标改为指定实例，目标实例不存在时不动原有置位。
+        :param db: 异步数据库会话
+        :param plugin_id: 插件标识
+        :param instance_id: 要设为默认调用目标的实例标识
+        :return: 置位的行数，目标实例没有配置行时为 0
+        """
+        found = await db.execute(
+            select(cls.id).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
+        )
+        if found.first() is None:
+            return 0
+        await db.execute(
+            update(cls)
+            .where(
+                cls.plugin_id == plugin_id,
+                cls.instance_id != instance_id,
+                cls.is_default_target.is_(True),
+            )
+            .values(is_default_target=False),
+        )
+        await db.execute(
+            update(cls)
+            .where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
+            .values(is_default_target=True),
+        )
+        return 1
+
+    @classmethod
+    @db_update
+    def clear_default_target(cls, db: Session, plugin_id: str) -> int:
+        """
+        清除某插件的默认调用目标置位，清除后该插件不再有默认调用目标。
+        :param db: 数据库会话
+        :param plugin_id: 插件标识
+        :return: 清除的行数
+        """
+        return execute_dml(
+            db,
+            update(cls)
+            .where(cls.plugin_id == plugin_id, cls.is_default_target.is_(True))
+            .values(is_default_target=False),
+        )
 
     @classmethod
     @db_update
