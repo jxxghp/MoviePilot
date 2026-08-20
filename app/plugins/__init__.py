@@ -22,6 +22,7 @@ from app.runtime.extensions.declaration import (
     AuthProviderDeclaration,
     DashboardDeclaration,
     MediaSourceDeclaration,
+    MetaParserDeclaration,
     ModuleDeclaration,
     ServiceInstanceDeclaration,
     StorageDeclaration,
@@ -593,6 +594,41 @@ class _PluginBase(metaclass=ABCMeta):
         的配置列表允许有几条记录。缺省为 True，即按配置扇出多个实例。
 
         :return: `ServiceInstanceDeclaration` 列表；插件不提供服务实例类型时无需实现
+        """
+        pass
+
+    def provides_meta_parsers(self) -> Optional[List[MetaParserDeclaration]]:
+        """
+        声明本插件提供的名称解析器
+
+        返回示例：
+        [MetaParserDeclaration(
+            parser_id="llm",                     # 解析器标识，须形如
+                                                  # [A-Za-z0-9][A-Za-z0-9._-]{0,63}；
+                                                  # 只需在本插件实例内唯一
+            name="大模型识别",                    # 展示名称，供用户在顺序配置里辨认
+            priority=100,                        # 默认顺序，数值越小越靠前，仅在
+                                                  # 用户尚未排到该解析器时生效
+            impl=self.parse,                     # 解析环实现，接收一个
+                                                  # MetaParseRequest，交回本环认为
+                                                  # 成立的 ParsedMeta；不认领返回 None
+        )]
+
+        解析环拿到的 `request.parsed` 是内建识别与上游各环累积出的结果，因此既可以
+        只补空位，也可以改写上游填错的字段——覆盖会被宿主记进字段级溯源，用户能查到
+        某个字段由谁填、原值是什么。要把上游填错的字段清空，把字段名列进
+        `ParsedMeta.clears`；单靠 None 表达的是「本环对该字段无话可说」。
+
+        名称按 `cn_name`/`en_name` 两个字段表达，`MetaBase.name` 是二者的派生属性，
+        不是可声明的字段。
+
+        实现必须是同步函数：识别是同步链路，协程实现会被拒绝登记。一环抛异常只跳过
+        这一环，整条链继续，内建识别保证门面永远返回可用结果。
+
+        执行顺序取用户排定的持久配置，声明的 priority 只是默认初始位置；用户也可以
+        在该配置里单独关掉某一环。
+
+        :return: `MetaParserDeclaration` 列表；插件不提供名称解析器时无需实现
         """
         pass
 

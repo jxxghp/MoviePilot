@@ -66,6 +66,7 @@ from app.application.orchestration.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
+from app.runtime.extensions.meta_parser_registry import configure_meta_parser_order_reader
 from app.runtime.extensions.service_config import configure_service_config_reader
 from app.startup.hostport_initializer import (
     configure_dispatch_host_ports,
@@ -107,6 +108,9 @@ async def _async_get_workflow(workflow_id: int):
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+    configure_meta_parser_order_reader(
+        lambda: SystemConfigOper().get(SystemConfigKey.MetaParserOrder)
+    )
     configure_server_application_services(
         report_service=ServerReportService(
             config_reader=lambda key: SystemConfigOper().get(key),

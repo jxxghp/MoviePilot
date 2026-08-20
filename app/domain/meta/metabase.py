@@ -8,6 +8,7 @@ import regex as re
 
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import resolve_media_identity
+from app.schemas.metaparse import MetaParseTrace
 from app.foundation import text as text_tools
 
 
@@ -104,6 +105,8 @@ class MetaBase(object):
     episode_group: Optional[str] = None
     # 帧率信息（纯数值）
     fps: Optional[int] = None
+    # 字段级解析溯源，记录每个字段由哪一环填写、被覆盖前是什么
+    parse_trace: Optional[MetaParseTrace] = None
 
 
     # 副标题解析
@@ -695,8 +698,12 @@ class MetaBase(object):
     def to_dict(self):
         """
         转为字典
+
+        解析溯源是宿主的诊断数据而非元数据字段，不进入序列化结果，取用改走
+        `parse_trace` 属性。
         """
         dicts = vars(self).copy()
+        dicts.pop("parse_trace", None)
         dicts["type"] = self.type.value if self.type else None
         dicts["season_episode"] = self.season_episode
         dicts["edition"] = self.edition

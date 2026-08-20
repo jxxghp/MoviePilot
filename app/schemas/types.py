@@ -370,6 +370,8 @@ class SystemConfigKey(Enum):
     CustomIdentifiers = "CustomIdentifiers"
     # 集数定位规则词表
     EpisodeFormatRuleTable = "EpisodeFormatRuleTable"
+    # 名称解析器执行顺序与启停
+    MetaParserOrder = "MetaParserOrder"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
     # 种子优先级规则

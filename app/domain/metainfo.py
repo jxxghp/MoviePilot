@@ -14,6 +14,7 @@ from app.domain.meta.infopath import (
     clear_parsed_title_for_parent_merge,
     should_use_parent_title_for_file_stem,
 )
+from app.domain.meta.parsepipeline import enhance_meta
 from app.domain.meta.words import WordsMatcher, get_custom_words
 from app.domain.meta.customization import CustomizationMatcher, get_customization
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
@@ -442,10 +443,11 @@ def _requires_python_metainfo(
     )
 
 
-def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
-             force_video: bool = False) -> MetaBase:
+def _builtin_meta_info(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
+                       force_video: bool = False) -> MetaBase:
     """
-    根据标题和副标题识别元数据
+    按内建规则识别元数据，作为解析管道恒不弃权的第一环
+
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :param custom_words: 自定义识别词列表
@@ -482,6 +484,25 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
     return meta
 
 
+def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
+             force_video: bool = False) -> MetaBase:
+    """
+    根据标题和副标题识别元数据
+    :param title: 标题、种子名、文件名
+    :param subtitle: 副标题、描述
+    :param custom_words: 自定义识别词列表
+    :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
+    :return: MetaAnime、MetaVideo、MetaMusic
+    """
+    meta = _builtin_meta_info(
+        title=title, subtitle=subtitle, custom_words=custom_words, force_video=force_video
+    )
+    # 音乐元数据自带一套音频字段，不属于影视解析契约的槽位，不交给扩展环
+    if isinstance(meta, MetaMusic):
+        return meta
+    return enhance_meta(meta, title=title, subtitle=subtitle, custom_words=custom_words)
+
+
 def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool = False) -> MetaBase:
     """
     根据路径识别元数据
@@ -509,19 +530,32 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
                 _rust_parse_options(custom_words),
             )
         )
-    if rust_meta:
-        return rust_meta
+    builtin_meta = rust_meta or _merged_path_meta(path, custom_words)
+    # 扩展环按整条路径识别一次，此时各级目录的内建解析结果已合并完毕
+    return enhance_meta(
+        builtin_meta, title=path.name, custom_words=custom_words, path=str(path)
+    )
+
+
+def _merged_path_meta(path: Path, custom_words: List[str] = None) -> MetaBase:
+    """
+    按文件名与两级父目录逐层识别并合并元数据
+
+    :param path: 路径
+    :param custom_words: 自定义识别词列表
+    :return: 合并后的元数据对象
+    """
     # 文件元数据，不包含后缀
-    file_meta = MetaInfo(title=path.name, custom_words=custom_words)
+    file_meta = _builtin_meta_info(title=path.name, custom_words=custom_words)
     if should_use_parent_title_for_file_stem(path.stem, path.parent.name, file_meta):
         clear_parsed_title_for_parent_merge(file_meta)
     # 上级目录元数据
-    dir_meta = MetaInfo(title=path.parent.name, custom_words=custom_words)
+    dir_meta = _builtin_meta_info(title=path.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or dir_meta.type != MediaType.TV:
         # 合并元数据
         file_meta.merge(dir_meta)
     # 上上级目录元数据
-    root_meta = MetaInfo(title=path.parent.parent.name, custom_words=custom_words)
+    root_meta = _builtin_meta_info(title=path.parent.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or root_meta.type != MediaType.TV:
         # 合并元数据
         file_meta.merge(root_meta)

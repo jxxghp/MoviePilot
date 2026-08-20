@@ -34,6 +34,8 @@ from app.runtime.extensions.declaration import (
     declaration_config_component,
     declaration_config_form,
     declaration_impl,
+    declaration_meta_parser_identity,
+    declaration_meta_parser_priority,
     declaration_schema,
     declaration_service_instance_constructor,
     declaration_service_instance_identity,
@@ -63,6 +65,7 @@ from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
 from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.meta_parser_registry import meta_parser_registry
 from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, SystemConfigKey
@@ -761,6 +764,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._sync_plugin_storages(key)
             # 同步插件声明的服务实例类型
             self._sync_plugin_service_instances(key)
+            # 同步插件声明的名称解析器
+            self._sync_plugin_meta_parsers(key)
             # 启用的实例才设置事件注册状态可用
             if extension.is_enabled():
                 eventmanager.enable_event_handler(plugin_class, key)
@@ -894,6 +899,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._sync_plugin_storages(key)
         # 服务实例声明同理，重新同步服务实例登记
         self._sync_plugin_service_instances(key)
+        # 名称解析器声明同理，重新同步解析器登记
+        self._sync_plugin_meta_parsers(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -945,6 +952,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._revoke_plugin_storages(key)
             # 实例停止后撤销其服务实例登记，不留残留
             self._revoke_plugin_service_instances(key)
+            # 实例停止后撤销其名称解析器登记，不留残留
+            self._revoke_plugin_meta_parsers(key)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -2346,6 +2355,46 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             service_instance_registry.unregister_owner(key)
         except Exception as error:
             logger.error(f"撤销插件实例 {key} 服务实例登记出错：{str(error)}")
+
+    def _sync_plugin_meta_parsers(self, key: str) -> None:
+        """按插件实例当前的声明重建其在名称解析器注册表中的登记。
+
+        解析环绑在声明它的实例上，同步粒度即单个实例：先回收该实例此前的登记，
+        避免声明缩减后残留，再按当前声明逐条登记，单条登记失败不影响其余声明。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            declared = self._plugin_projection().provided_meta_parsers(key)
+            meta_parser_registry.unregister_owner(key)
+            for item in declared.get(key, []):
+                try:
+                    parser_id, name = declaration_meta_parser_identity(item)
+                    meta_parser_registry.register(
+                        parser_id,
+                        declaration_impl(item),
+                        name=name,
+                        priority=declaration_meta_parser_priority(item) or 0,
+                        owner=key,
+                        distribution=ExtensionDistribution.MARKET,
+                    )
+                except Exception as error:
+                    logger.error(f"登记插件实例 {key} 的名称解析器声明出错：{str(error)}")
+        except Exception as error:
+            logger.error(f"同步插件实例 {key} 名称解析器登记出错：{str(error)}")
+
+    @staticmethod
+    def _revoke_plugin_meta_parsers(key: str) -> None:
+        """撤销插件实例登记的名称解析器。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            meta_parser_registry.unregister_owner(key)
+        except Exception as error:
+            logger.error(f"撤销插件实例 {key} 名称解析器登记出错：{str(error)}")
 
     @staticmethod
     def _revoke_plugin_storages(key: str) -> None:

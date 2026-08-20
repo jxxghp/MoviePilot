@@ -205,6 +205,35 @@ class AuthProviderDeclaration(ExtensionDeclaration):
 
 
 @dataclass(frozen=True, slots=True)
+class MetaParserDeclaration(ExtensionDeclaration):
+    """
+    名称解析器声明
+
+    ``impl`` 是解析环的实现：接收一个 `MetaParseRequest`，交回本环认为成立的
+    `ParsedMeta`，返回 None 即本次不认领。宿主按用户排定的顺序把各环串成管道，
+    每一环拿到的是上游累积出的结果，因此下游既能补空位，也能改写上游填错的字段——
+    代价是宿主为每个字段记录来源与被覆盖前的取值。
+
+    解析环只能贡献，拿不到「继续或中断」的开关：一环抛异常只跳过这一环，整条
+    链继续，内建解析保证门面永远返回可用结果。
+
+    ``priority`` 只是该解析器初次出现在顺序表里的默认位置。实际顺序取用户排定的
+    持久配置——顺序即语义，谁先跑决定谁的结果被覆盖，这种选择不能由用户看不见的
+    声明值或登记先后决定。
+
+    :param parser_id: 解析器标识，取值须形如 ``[A-Za-z0-9][A-Za-z0-9._-]{0,63}``；
+        同一扩展的多个分身各声明一次即多个各自成立的解析环，宿主按实例键为其分别
+        编号，因此标识只需在声明它的实例内唯一
+    :param name: 解析器展示名称，供用户在顺序配置里辨认
+    :param priority: 默认顺序，数值越小越靠前，仅在用户尚未排到该解析器时生效
+    """
+
+    parser_id: str = ""
+    name: str = ""
+    priority: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class MediaSourceDeclaration(ExtensionDeclaration):
     """
     媒体数据源声明
@@ -434,6 +463,32 @@ def declaration_media_types(declaration: Any) -> Optional[Tuple[Any, ...]]:
     """
     value = _declared_field(declaration, "media_types")
     return tuple(value) if isinstance(value, (list, tuple)) else None
+
+
+def declaration_meta_parser_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的解析器标识与展示名称
+
+    :param declaration: `MetaParserDeclaration` 实例
+    :return: (解析器标识, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "parser_id"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_meta_parser_priority(declaration: Any) -> Any:
+    """
+    读取声明自报的默认顺序取值
+
+    按原值返回而不归一为整数：取值合法性由契约校验判定，此处先归一会把非整数的
+    错误取值悄悄变成一个合法答案。
+
+    :param declaration: `MetaParserDeclaration` 实例
+    :return: priority 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "priority")
 
 
 def declaration_action_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
