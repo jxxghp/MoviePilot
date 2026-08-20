@@ -176,6 +176,11 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
    uv run --locked --no-sync pytest
    ```
 
+   `python tests/run.py` 在本地默认把排序后的测试文件按向上取整的连续区间切成 4 片，
+   并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
+   参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。覆盖率报告
+   按需通过 `Unit Tests` workflow 的手动触发串行生成，不阻塞常规 PR / push 门禁。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)

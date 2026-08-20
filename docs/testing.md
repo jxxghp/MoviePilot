@@ -7,11 +7,17 @@
 pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引导，因此任何方式启动 pytest 都会自动隔离。
 
 ```bash
-uv run --locked --no-sync pytest tests                              # 全量
+uv run --locked --no-sync pytest tests                              # 串行全量
 uv run --locked --no-sync pytest tests/test_xxx.py                  # 单文件
 uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
-uv run --locked --no-sync python tests/run.py                       # 等价于 pytest 全量（参数透传）
+uv run --locked --no-sync python tests/run.py                       # 默认按文件连续切成 4 片并行跑全量
+uv run --locked --no-sync python tests/run.py --serial              # 串行全量，便于调试或生成覆盖率
+uv run --locked --no-sync python tests/run.py --shard 1/4           # 只跑指定分片，供 CI 复用
 ```
+
+`tests/run.py` 的 runner 参数只有 `--serial` 和 `--shard N/TOTAL`；其余参数保持原顺序
+透传给 pytest，例如 `python tests/run.py -q --maxfail=1`。文件先按字典序排序，再以
+`ceil(文件数 / 分片数)` 的大小连续切片，确保本地与 CI 执行相同的文件集合和顺序。
 
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
 - 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
@@ -139,6 +145,7 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境并用 `tests/run.py` 跑全量单测。
-- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `uv run --locked --no-sync python tests/run.py`，确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境，通过 `tests/run.py --shard N/TOTAL` 把全量测试文件稳定分到 4 个独立 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。
+- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `uv run --locked --no-sync python tests/run.py`，默认以 4 个独立 pytest 进程完成全量；需要断点、输出顺序或测试污染诊断时使用 `--serial`。确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
+- 覆盖率不参与常规 PR / push 的合并门禁；需要覆盖率制品时手动触发 `Unit Tests` workflow，独立的 `Coverage Report` job 会通过 `tests/run.py --serial` 跑串行全量并上传 JSON / XML 报告。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。
