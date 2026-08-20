@@ -21,8 +21,20 @@ concurrency:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    name: Unit Tests
+    name: Unit Tests (${{ matrix.label }})
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - index: 0
+            label: 1/4
+          - index: 1
+            label: 2/4
+          - index: 2
+            label: 3/4
+          - index: 3
+            label: 4/4
 
     steps:
       - name: Checkout code
@@ -43,9 +55,43 @@ jobs:
 
       - name: Run tests
         timeout-minutes: 10
+        env:
+          SHARD_INDEX: ${{ matrix.index }}
         run: |
-          # tests/run.py 以 pytest 跑 tests 全量；tests/conftest.py 在收集前把 CONFIG_DIR
-          # 指向临时库并建表；CI 额外生成覆盖率报告，便于后续补测和回归分析。
+          mapfile -t test_files < <(find tests -maxdepth 1 -type f -name 'test_*.py' -print | sort)
+          shard_count=4
+          shard_size=$(( (${#test_files[@]} + shard_count - 1) / shard_count ))
+          start=$(( SHARD_INDEX * shard_size ))
+          selected=("${test_files[@]:start:shard_size}")
+          test "${#selected[@]}" -gt 0
+          uv run --locked --no-sync pytest "${selected[@]}"
+
+  coverage:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: Coverage Report
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Generate coverage reports
+        timeout-minutes: 10
+        run: |
           uv run --locked --no-sync python -m coverage erase
           uv run --locked --no-sync python -m coverage run tests/run.py
           uv run --locked --no-sync python -m coverage report
@@ -53,7 +99,6 @@ jobs:
           uv run --locked --no-sync python -m coverage xml
 
       - name: Upload coverage report
-        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: coverage-report

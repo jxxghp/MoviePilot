@@ -139,6 +139,7 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境并用 `tests/run.py` 跑全量单测。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境，按文件名字典序把全量用例切成 4 个独立 pytest 分片并行执行。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。
 - **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `uv run --locked --no-sync python tests/run.py`，确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
+- 覆盖率不参与常规 PR / push 的合并门禁；需要覆盖率制品时手动触发 `Unit Tests` workflow，独立的 `Coverage Report` job 会跑串行全量并上传 JSON / XML 报告。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。

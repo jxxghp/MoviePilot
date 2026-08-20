@@ -176,6 +176,10 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
    uv run --locked --no-sync pytest
    ```
 
+   GitHub Actions 会把根目录下的 `test_*.py` 按字典序均分为 4 个独立分片并行执行；
+   这是 CI 调度优化，不改变本地 pytest 的用例收集和隔离合同。覆盖率报告按需通过
+   `Unit Tests` workflow 的手动触发生成，不阻塞常规 PR / push 门禁。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
