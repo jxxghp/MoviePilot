@@ -1,7 +1,18 @@
+# syntax=docker/dockerfile:1
+
 FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
 
 
 FROM python:3.12.13-slim-bookworm AS base
+
+
+# 准备外部制品所需的最小工具集
+FROM base AS prepare_payload
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash busybox ca-certificates curl jq \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 
 # 准备软件包
@@ -105,30 +116,100 @@ RUN python3 -m venv --without-pip ${VENV_PATH} \
     --no-dev \
     --no-install-project
 
-# 下载准备代码
-FROM prepare_package AS prepare_code
+# 准备后端源码
+FROM base AS prepare_backend
 
 WORKDIR /app
 
 COPY . .
-# 构建上下文中存在 frontend-dist/ 时优先使用本地前端产物（fork 自有前端），
-# 否则回退下载官方 release 的 dist.zip
-RUN if [ -d /app/frontend-dist ]; then \
-    mv /app/frontend-dist /public; \
+RUN rm -rf /app/frontend-dist
+
+
+# 准备前端制品
+FROM prepare_payload AS prepare_frontend
+
+ARG MOVIEPILOT_FRONTEND_VERSION=""
+ARG MOVIEPILOT_FRONTEND_SHA256=""
+
+COPY version.py /tmp/moviepilot-version.py
+COPY frontend-dist/ /tmp/frontend-dist/
+
+RUN set -eu; \
+    mkdir -p /public; \
+    if find /tmp/frontend-dist -mindepth 1 -type f ! -name '.gitkeep' -print -quit | grep -q .; then \
+        rm -f /tmp/frontend-dist/.gitkeep; \
+        cp -a /tmp/frontend-dist/. /public/; \
     else \
-    FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
-    && mv /dist /public; \
-    fi \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
-    && mv -f /tmp/MoviePilot-Plugins-main/plugins.v2/* /app/app/plugins/ \
-    && cat /tmp/MoviePilot-Plugins-main/package.json | jq -r 'to_entries[] | select(.value.v2 == true) | .key' | awk '{print tolower($0)}' | \
-    while read -r i; do if [ ! -d "/app/app/plugins/$i" ]; then mv "/tmp/MoviePilot-Plugins-main/plugins/$i" "/app/app/plugins/"; else echo "跳过 $i"; fi; done \
-    && curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" -o /app/app/application/site/user.sites.v3.bin \
-    && python_ver=$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")') \
-    && ARCH=$(uname -m) \
-    && if [ "$ARCH" = "aarch64" ]; then SUFFIX="aarch64-linux-gnu"; else SUFFIX="x86_64-linux-gnu"; fi \
-    && curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/sites.${python_ver}-${SUFFIX}.so" -o "/app/app/application/site/sites.${python_ver}-${SUFFIX}.so"
+        frontend_version="${MOVIEPILOT_FRONTEND_VERSION:-$(sed -n "s/^FRONTEND_VERSION[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/p" /tmp/moviepilot-version.py)}"; \
+        test -n "${frontend_version}"; \
+        curl -fsSL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" -o /tmp/frontend.zip; \
+        if [ -n "${MOVIEPILOT_FRONTEND_SHA256}" ]; then \
+            printf '%s  %s\n' "${MOVIEPILOT_FRONTEND_SHA256}" /tmp/frontend.zip | sha256sum -c -; \
+        fi; \
+        busybox unzip -q /tmp/frontend.zip -d /tmp/frontend-release; \
+        cp -a /tmp/frontend-release/dist/. /public/; \
+    fi; \
+    test -f /public/index.html
+
+
+# 准备镜像内置插件
+FROM prepare_payload AS prepare_plugins
+
+ARG MOVIEPILOT_PLUGINS_REF="main"
+
+RUN set -eu; \
+    test -n "${MOVIEPILOT_PLUGINS_REF}"; \
+    curl -fsSL "https://github.com/jxxghp/MoviePilot-Plugins/archive/${MOVIEPILOT_PLUGINS_REF}.zip" -o /tmp/plugins.zip; \
+    busybox unzip -q /tmp/plugins.zip -d /tmp/plugins-src; \
+    plugin_root="$(find /tmp/plugins-src -mindepth 1 -maxdepth 1 -type d -print -quit)"; \
+    test -n "${plugin_root}"; \
+    mkdir -p /plugins; \
+    cp -a "${plugin_root}/plugins.v2/." /plugins/; \
+    jq -r 'to_entries[] | select(.value.v2 == true) | .key' "${plugin_root}/package.json" | awk '{print tolower($0)}' | \
+    while read -r plugin_id; do \
+        if [ ! -d "/plugins/${plugin_id}" ]; then \
+            cp -a "${plugin_root}/plugins/${plugin_id}" /plugins/; \
+        fi; \
+    done
+
+
+# 准备站点资源
+FROM prepare_payload AS prepare_resources
+
+ARG TARGETARCH
+ARG MOVIEPILOT_RESOURCES_REF="main"
+
+RUN set -eu; \
+    test -n "${MOVIEPILOT_RESOURCES_REF}"; \
+    python_ver="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')"; \
+    target_arch="${TARGETARCH:-$(uname -m)}"; \
+    case "${target_arch}" in \
+        arm64|aarch64) suffix="aarch64-linux-gnu" ;; \
+        amd64|x86_64) suffix="x86_64-linux-gnu" ;; \
+        *) printf 'Unsupported architecture: %s\n' "${target_arch}" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p /resources; \
+    curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${MOVIEPILOT_RESOURCES_REF}/resources.v3/user.sites.v3.bin" -o /resources/user.sites.v3.bin; \
+    curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${MOVIEPILOT_RESOURCES_REF}/resources.v3/sites.${python_ver}-${suffix}.so" -o "/resources/sites.${python_ver}-${suffix}.so"
+
+
+# 准备容器控制面
+FROM prepare_payload AS prepare_control
+
+WORKDIR /control
+
+COPY docker/ ./
+RUN mkdir -p /bundle/control /bundle/nginx /bundle/bin \
+    && find . -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' -exec cp -f -t /bundle/control {} + \
+    && cp -f launcher.sh /bundle/entrypoint.sh \
+    && cp -f nginx.common.conf /bundle/nginx/common.conf \
+    && cp -f nginx.template.conf /bundle/nginx/nginx.template.conf \
+    && cp -f docker_http_proxy.conf /bundle/nginx/docker_http_proxy.conf \
+    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/bin/moviepilot \
+    && bash -n /bundle/entrypoint.sh \
+    && for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done \
+    && chmod 755 /bundle/entrypoint.sh /bundle/bin/moviepilot \
+    && chmod 500 /bundle/control/*.sh
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
@@ -153,24 +234,15 @@ RUN playwright install-deps chromium \
     /var/lib/apt/lists/* \
     /var/tmp/*
 
-# 准备运行代码
-WORKDIR /app
+# 准备容器控制面和运行目录
+COPY --from=prepare_control /bundle/entrypoint.sh /entrypoint.sh
+COPY --from=prepare_control /bundle/control /usr/local/lib/moviepilot/control
+COPY --from=prepare_control /bundle/nginx/common.conf /etc/nginx/common.conf
+COPY --from=prepare_control /bundle/nginx/nginx.template.conf /etc/nginx/nginx.template.conf
+COPY --from=prepare_control /bundle/nginx/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf
+COPY --from=prepare_control /bundle/bin/moviepilot /usr/local/bin/moviepilot
 
-COPY --from=prepare_code /app /app
-COPY --from=prepare_code /public /public
-
-RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
-    && cp -f /app/docker/nginx.template.conf /etc/nginx/nginx.template.conf \
-    && mkdir -p /usr/local/lib/moviepilot/control \
-    && find /app/docker -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' -exec cp -f -t /usr/local/lib/moviepilot/control {} + \
-    && cp -f /app/docker/launcher.sh /entrypoint.sh \
-    && cp -f /app/docker/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf \
-    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /usr/local/bin/moviepilot \
-    && bash -n /entrypoint.sh \
-    && for control_script in /usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done \
-    && chmod 755 /entrypoint.sh /usr/local/bin/moviepilot \
-    && chmod 500 /usr/local/lib/moviepilot/control/*.sh \
-    && mkdir -p ${HOME} \
+RUN mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 918 \
     && python_ver=$(python3 -V | awk '{print $2}') \
@@ -179,6 +251,14 @@ RUN cp -f /app/docker/nginx.common.conf /etc/nginx/common.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen \
     && locale-gen zh_CN.UTF-8
+
+# 载荷按独立更新频率写入镜像，后端源码保持在最后一层。
+WORKDIR /app
+
+COPY --link --from=prepare_frontend /public /public
+COPY --link --from=prepare_plugins /plugins /app/app/plugins
+COPY --link --from=prepare_resources /resources /app/app/application/site
+COPY --link --from=prepare_backend /app /app
 
 EXPOSE 3000
 VOLUME [ "${CONFIG_DIR}" ]
