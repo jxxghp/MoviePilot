@@ -14,7 +14,7 @@ import time
 import traceback
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable
+from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable, Sequence
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit
 
 import aiofiles
@@ -1461,7 +1461,7 @@ class PluginHelper(metaclass=WeakSingleton):
     @classmethod
     def __build_package_install_request(
             cls,
-            dependency_file: Path,
+            dependency_files: Path | Sequence[Path],
             find_links_dirs: Optional[List[Path]] = None,
             constraints_file: Optional[Path] = None,
             purpose: str = "plugin",
@@ -1469,8 +1469,12 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         将 MoviePilot 运行配置转换为 uv 安装请求，统一缓存、镜像和代理语义。
         """
+        if isinstance(dependency_files, Path):
+            resolved_dependency_files = (dependency_files,)
+        else:
+            resolved_dependency_files = tuple(Path(item) for item in dependency_files)
         return PackageInstallRequest(
-            dependency_file=dependency_file,
+            dependency_files=resolved_dependency_files,
             python_bin=Path(sys.executable),
             find_links_dirs=find_links_dirs or [],
             constraints_file=constraints_file,
@@ -1583,18 +1587,26 @@ class PluginHelper(metaclass=WeakSingleton):
 
     @classmethod
     def install_packages_with_fallback(cls,
-                                       dependency_file: Path,
+                                       dependency_files: Path | Sequence[Path],
                                        find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
         """
         使用自动降级策略安装依赖，并确保新安装的包可被动态导入
-        :param dependency_file: 插件依赖清单路径
+        :param dependency_files: 一个或多个插件依赖清单路径
         :param find_links_dirs: 额外的本地 wheels 目录列表
         :return: (是否成功, 错误信息)
         """
-        wheels_dir = dependency_file.parent / "wheels"
+        if isinstance(dependency_files, Path):
+            resolved_dependency_files = (dependency_files,)
+        else:
+            resolved_dependency_files = tuple(Path(item) for item in dependency_files)
+        if not resolved_dependency_files:
+            return False, "没有传入插件依赖清单"
+
         candidate_dirs = []
-        if wheels_dir.is_dir():
-            candidate_dirs.append(wheels_dir)
+        for dependency_file in resolved_dependency_files:
+            wheels_dir = dependency_file.parent / "wheels"
+            if wheels_dir.is_dir():
+                candidate_dirs.append(wheels_dir)
         if find_links_dirs:
             candidate_dirs.extend(find_links_dirs)
 
@@ -1619,10 +1631,14 @@ class PluginHelper(metaclass=WeakSingleton):
 
         installed_packages = cls.__get_installed_packages()
         protected_packages = cls.__get_protected_runtime_packages(installed_packages)
-        check_ok, check_message = cls.__validate_runtime_dependency_conflicts(dependency_file, protected_packages)
-        if not check_ok:
-            logger.error(f"[UV] 运行环境冲突预检失败：{check_message}")
-            return False, check_message
+        for dependency_file in resolved_dependency_files:
+            check_ok, check_message = cls.__validate_runtime_dependency_conflicts(
+                dependency_file,
+                protected_packages,
+            )
+            if not check_ok:
+                logger.error(f"[UV] 运行环境冲突预检失败：{check_message}")
+                return False, check_message
 
         constraints_file = None
         if protected_packages:
@@ -1633,7 +1649,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 return False, f"创建运行环境约束文件失败：{e}"
 
         request = cls.__build_package_install_request(
-            dependency_file,
+            resolved_dependency_files,
             find_links_dirs=resolved_dirs,
             constraints_file=constraints_file,
             purpose="plugin",

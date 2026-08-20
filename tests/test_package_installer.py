@@ -17,7 +17,7 @@ def test_build_env_maps_proxy_and_cache(tmp_path, monkeypatch):
     monkeypatch.delenv("PACKAGE_CACHE_ROOT", raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://old.example:8080")
     request = PackageInstallRequest(
-        dependency_file=tmp_path / "requirements.txt",
+        dependency_files=(tmp_path / "requirements.txt",),
         python_bin=Path("/venv/bin/python"),
         config_dir=tmp_path / "config",
         package_index_url="https://user:pass@mirror.example/simple",
@@ -38,7 +38,7 @@ def test_build_env_uses_package_cache_root_and_preserves_tool_cache_overrides(tm
     monkeypatch.setenv("PACKAGE_CACHE_ROOT", str(tmp_path / "custom-package-cache"))
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     request = PackageInstallRequest(
-        dependency_file=tmp_path / "requirements.txt",
+        dependency_files=(tmp_path / "requirements.txt",),
         python_bin=Path("/venv/bin/python"),
         config_dir=tmp_path / "config",
     )
@@ -59,7 +59,7 @@ def test_build_strategies_prefers_uv_network_matrix_and_preserves_find_links(tmp
     uv_bin.write_text("", encoding="utf-8")
 
     request = PackageInstallRequest(
-        dependency_file=req,
+        dependency_files=(req,),
         python_bin=tmp_path / "venv" / "bin" / "python",
         find_links_dirs=[wheels],
         config_dir=tmp_path / "config",
@@ -92,7 +92,7 @@ def test_build_strategies_fail_closed_when_uv_missing(tmp_path):
     req = tmp_path / "requirements.txt"
     req.write_text("demo\n", encoding="utf-8")
     request = PackageInstallRequest(
-        dependency_file=req,
+        dependency_files=(req,),
         python_bin=tmp_path / "venv" / "bin" / "python",
         config_dir=tmp_path / "config",
     )
@@ -101,6 +101,32 @@ def test_build_strategies_fail_closed_when_uv_missing(tmp_path):
         strategies = build_package_install_strategies(request)
 
     assert strategies == []
+
+
+def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
+    """多个插件清单必须进入同一个 uv 命令并保持输入顺序。"""
+    modern = tmp_path / "modern" / "pyproject.toml"
+    modern.parent.mkdir()
+    modern.write_text("[project]\nname='modern'\nversion='1'\n", encoding="utf-8")
+    legacy = tmp_path / "legacy" / "requirements.txt"
+    legacy.parent.mkdir()
+    legacy.write_text("demo\n", encoding="utf-8")
+    uv_bin = tmp_path / "venv" / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_bin.write_text("", encoding="utf-8")
+    request = PackageInstallRequest(
+        dependency_files=(modern, legacy),
+        python_bin=tmp_path / "venv" / "bin" / "python",
+    )
+
+    strategies = build_package_install_strategies(request)
+
+    command = strategies[0].command
+    first_requirement = command.index("-r")
+    second_requirement = command.index("-r", first_requirement + 1)
+    assert command.count("-r") == 2
+    assert command[first_requirement + 1] == str(modern)
+    assert command[second_requirement + 1] == str(legacy)
 
 
 def test_redact_url_removes_userinfo():

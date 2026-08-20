@@ -1062,6 +1062,75 @@ class TestPluginHelper:
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
+    def test_uv_install_keeps_multiple_original_manifests_in_one_command(self):
+        """批量恢复必须让 uv 直接读取每个插件的原始生效清单。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        seen_commands = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            seen_commands.append(command)
+            return True, "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            modern = root / "modern" / "pyproject.toml"
+            modern.parent.mkdir()
+            modern.write_text(
+                """
+[project]
+name = "modern"
+version = "1.0.0"
+dependencies = ["demo>=2"]
+
+[[tool.uv.index]]
+name = "private"
+url = "https://packages.example/simple"
+explicit = true
+
+[tool.uv.sources]
+demo = { index = "private" }
+""",
+                encoding="utf-8",
+            )
+            legacy = root / "legacy" / "requirements.txt"
+            legacy.parent.mkdir()
+            legacy.write_text(
+                "--extra-index-url https://legacy.example/simple\nother\n",
+                encoding="utf-8",
+            )
+            uv_bin = _create_fake_uv(root)
+
+            with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
+                    patch.object(PluginHelper, "_PluginHelper__get_installed_packages", return_value={}), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__run_runtime_healthcheck",
+                        return_value={"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
+                    ), \
+                    patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper.install_packages_with_fallback(
+                    [modern, legacy]
+                )
+
+        assert success
+        assert message == "ok"
+        install_command = next(
+            command for command in seen_commands
+            if command[:3] == [str(uv_bin), "pip", "install"]
+        )
+        requirement_positions = [
+            index for index, value in enumerate(install_command) if value == "-r"
+        ]
+        assert [install_command[index + 1] for index in requirement_positions] == [
+            str(modern),
+            str(legacy),
+        ]
+
     def test_uv_install_serializes_concurrent_calls(self):
         """
         验证多个依赖安装请求会复用同一把锁串行执行 uv。

@@ -408,24 +408,38 @@ def test_load_dependency_file_accepts_custom_legacy_filename(tmp_path):
     ]
 
 
-def test_install_uses_adapter_owned_temporary_requirements(tmp_path, monkeypatch):
-    """批量依赖文件由依赖适配器创建并在安装返回后清理。"""
-    helper = Mock()
-    installed_contents = []
+def test_install_passes_all_active_manifests_to_one_install(tmp_path):
+    """缺失依赖恢复必须保留 modern 与 legacy 清单的原始内容。"""
+    plugin_root = tmp_path / "plugins"
+    modern_dir = _write_pyproject(
+        plugin_root,
+        "Alpha",
+        """
+[project]
+name = "alpha"
+version = "1.0.0"
+dependencies = ["demo>=2"]
 
-    def _install_packages(dependency_file, _wheels_dirs):
-        installed_contents.append(dependency_file.read_text(encoding="utf-8"))
-        return True, "installed"
+[[tool.uv.index]]
+name = "private"
+url = "https://packages.example/simple"
+explicit = true
 
-    helper.install_packages_with_fallback.side_effect = _install_packages
-    monkeypatch.setattr(
-        "app.adapters.system.plugin.dependency.settings",
-        SimpleNamespace(ROOT_PATH=tmp_path, TEMP_PATH=tmp_path / "temp"),
+[tool.uv.sources]
+demo = { index = "private" }
+""",
     )
+    _write_requirements(
+        plugin_root,
+        "Beta",
+        "--extra-index-url https://legacy.example/simple\nother\n",
+    )
+    helper = Mock()
+    helper.install_packages_with_fallback.return_value = (True, "installed")
     installer = PluginDependencyInstaller(
         helper,
-        installed_plugins_provider=lambda: [],
-        plugin_dir=tmp_path / "plugins",
+        installed_plugins_provider=lambda: ["Alpha", "Beta"],
+        plugin_dir=plugin_root,
     )
 
     result = installer.install([
@@ -434,9 +448,10 @@ def test_install_uses_adapter_owned_temporary_requirements(tmp_path, monkeypatch
     ])
 
     assert result == (True, "installed")
-    assert installed_contents == [
-        "demo[feature] @ https://example.com/demo.whl\nother\n"
+    manifest_paths = helper.install_packages_with_fallback.call_args.args[0]
+    assert manifest_paths == [
+        modern_dir / "pyproject.toml",
+        plugin_root / "beta" / "requirements.txt",
     ]
-    requirements_file = helper.install_packages_with_fallback.call_args.args[0]
-    assert requirements_file.name == "requirements.txt"
-    assert not requirements_file.exists()
+    assert "[tool.uv.sources]" in manifest_paths[0].read_text(encoding="utf-8")
+    assert "--extra-index-url" in manifest_paths[1].read_text(encoding="utf-8")
