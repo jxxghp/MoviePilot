@@ -37,6 +37,7 @@ from app.runtime.extensions.declaration import (
     declaration_schema,
     declaration_service_instance_constructor,
     declaration_service_instance_identity,
+    declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
@@ -945,6 +946,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 self._plugin_registry.remove(extension_id_of(pid))
             for plugin_id, plugin_class in classes.items():
                 self._recycle_stopped_family(plugin_id, plugin_class)
+                self._reelect_extension_registrations(plugin_id)
         else:
             # 清空
             self._plugin_registry.clear()
@@ -992,6 +994,22 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         _plugin_database_release(plugin_id)
         # 清除插件模块缓存，包括所有子模块
         self._clear_plugin_modules(plugin_id)
+
+    def _reelect_extension_registrations(self, plugin_id: str) -> None:
+        """在实例停止后按存活实例重新裁决扩展级声明的登记归属
+
+        存储标识与服务实例类型只登记一次，归属落在裁决胜出的那个实例。胜出实例
+        停止后，仍在运行且声明同一标识的兄弟实例应当接手，否则该标识会随一个实例
+        的停止整体消失——它描述的是「本宿主提供这个标识」，而宿主里还有实例提供它。
+        最后一个实例停止后没有存活实例可裁决，登记在各自的撤销里已经清干净。
+        :param plugin_id: 插件ID
+        :return: 无返回值
+        """
+        survivors = self._plugin_registry.instance_keys(plugin_id)
+        if not survivors:
+            return
+        self._sync_plugin_storages(survivors[0])
+        self._sync_plugin_service_instances(survivors[0])
 
     @staticmethod
     def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
@@ -2176,35 +2194,54 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.error(f"撤销插件 {plugin_id} 渠道能力登记出错：{str(error)}")
 
     def _sync_plugin_storages(self, key: str) -> None:
-        """按插件实例当前声明重建其在存储后端注册表中的登记。
+        """按插件当前全部运行实例的声明重建其在存储后端注册表中的登记。
 
-        先回收该实例此前登记过的存储标识，避免声明缩减后残留旧登记；再按当前
-        声明逐条登记，单条声明的注册失败不影响同一实例其余声明的登记。
+        存储标识是扩展级事实，同一插件的多个实例声明同一标识只登记一次，胜出方
+        由投影按稳定规则裁决，因此同步粒度是整个插件而不是单个实例——只重建触发方
+        一个实例的话，兄弟实例的落选与接手都无从体现。
 
-        :param key: 实例键
+        先回收各实例此前登记过的存储标识，避免声明缩减后残留旧登记；再按当前
+        声明逐条登记，单条声明的注册失败不影响其余声明的登记。
+
+        :param key: 触发本次同步的实例键
         :return: 无返回值
         """
         try:
-            storage_backend_registry.unregister_owner(key)
             projection = self._plugin_projection()
-            declared = projection.provided_storages(key)
-            plugin = self._running_plugins.get(key)
-            for item in declared.get(key, []):
-                try:
-                    storage_backend_registry.register(
-                        declaration_impl(item),
-                        distribution=ExtensionDistribution.MARKET,
-                        owner=key,
-                        storage_id=declaration_schema(item),
-                        config_form=declaration_config_form(item),
-                        config_component=self._resolve_storage_config_component(
-                            projection, key, plugin, item
-                        ),
-                    )
-                except Exception as error:
-                    logger.error(f"登记插件实例 {key} 的存储声明出错：{str(error)}")
+            declared = projection.provided_storages(extension_id_of(key))
+            for owner in self._extension_registration_owners(key):
+                storage_backend_registry.unregister_owner(owner)
+                plugin = self._running_plugins.get(owner)
+                for item in declared.get(owner, []):
+                    try:
+                        storage_backend_registry.register(
+                            declaration_impl(item),
+                            distribution=ExtensionDistribution.MARKET,
+                            owner=owner,
+                            storage_id=declaration_schema(item),
+                            config_form=declaration_config_form(item),
+                            config_component=self._resolve_storage_config_component(
+                                projection, owner, plugin, item
+                            ),
+                        )
+                    except Exception as error:
+                        logger.error(f"登记插件实例 {owner} 的存储声明出错：{str(error)}")
         except Exception as error:
             logger.error(f"同步插件实例 {key} 存储登记出错：{str(error)}")
+
+    def _extension_registration_owners(self, key: str) -> List[str]:
+        """列出一次扩展级同步需要重建登记的实例键。
+
+        取该插件当前全部运行实例，并保证触发方在列——触发方可能正处在停止途中、
+        已不在运行态表里，它此前登记的条目仍须被回收。
+
+        :param key: 触发本次同步的实例键
+        :return: 实例键列表
+        """
+        owners = list(self._plugin_registry.instance_keys(extension_id_of(key)))
+        if key not in owners:
+            owners.append(key)
+        return owners
 
     @staticmethod
     def _resolve_storage_config_component(
@@ -2227,38 +2264,43 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return projection.storage_component_descriptor(key, plugin, component)
 
     def _sync_plugin_service_instances(self, key: str) -> None:
-        """按插件实例当前声明重建其在服务实例注册表中的登记。
+        """按插件当前全部运行实例的声明重建其在服务实例注册表中的登记。
 
-        先回收该实例此前登记过的服务类型，避免声明缩减后残留旧登记；再按当前
-        声明逐条登记，单条声明的注册失败不影响同一实例其余声明的登记。
+        服务实例类型是扩展级事实，同步粒度与存储族同理是整个插件而不是单个实例，
+        胜出方由投影按稳定规则裁决。
 
-        :param key: 实例键
+        先回收各实例此前登记过的服务类型，避免声明缩减后残留旧登记；再按当前
+        声明逐条登记，单条声明的注册失败不影响其余声明的登记。
+
+        :param key: 触发本次同步的实例键
         :return: 无返回值
         """
         try:
-            service_instance_registry.unregister_owner(key)
             projection = self._plugin_projection()
-            declared = projection.provided_service_instances(key)
-            plugin = self._running_plugins.get(key)
-            for item in declared.get(key, []):
-                try:
-                    capability, service_type, name = declaration_service_instance_identity(item)
-                    impl, factory = declaration_service_instance_constructor(item)
-                    service_instance_registry.register(
-                        capability=capability,
-                        service_type=service_type,
-                        name=name,
-                        owner=key,
-                        impl=impl,
-                        factory=factory,
-                        distribution=ExtensionDistribution.MARKET,
-                        config_form=declaration_config_form(item),
-                        config_component=self._resolve_service_instance_config_component(
-                            projection, key, plugin, item
-                        ),
-                    )
-                except Exception as error:
-                    logger.error(f"登记插件实例 {key} 的服务实例声明出错：{str(error)}")
+            declared = projection.provided_service_instances(extension_id_of(key))
+            for owner in self._extension_registration_owners(key):
+                service_instance_registry.unregister_owner(owner)
+                plugin = self._running_plugins.get(owner)
+                for item in declared.get(owner, []):
+                    try:
+                        capability, service_type, name = declaration_service_instance_identity(item)
+                        impl, factory = declaration_service_instance_constructor(item)
+                        service_instance_registry.register(
+                            capability=capability,
+                            service_type=service_type,
+                            name=name,
+                            owner=owner,
+                            impl=impl,
+                            factory=factory,
+                            multi_instance=declaration_service_instance_multi_instance(item),
+                            distribution=ExtensionDistribution.MARKET,
+                            config_form=declaration_config_form(item),
+                            config_component=self._resolve_service_instance_config_component(
+                                projection, owner, plugin, item
+                            ),
+                        )
+                    except Exception as error:
+                        logger.error(f"登记插件实例 {owner} 的服务实例声明出错：{str(error)}")
         except Exception as error:
             logger.error(f"同步插件实例 {key} 服务实例登记出错：{str(error)}")
 

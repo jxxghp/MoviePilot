@@ -19,11 +19,17 @@ class ServiceConfigForm(BaseModel):
     界面二选一，与声明方扩展的渲染模式对应：``conf``/``model`` 是 vuetify
     模式的组件树加默认数据；``component``/``remote`` 是 vue 模式下应加载的
     组件名与其所在联邦远程入口。``available`` 为 True 时两组字段恰好一组非空。
+
+    ``multi_instance`` 与界面无关，回答的是「该类型能配几份」：为 False 时该
+    类型只接受一份配置，前端据此不提供新增第二份的入口。
     """
 
     available: bool = Field(description="该服务类型是否有随声明登记的专属配置界面")
     name: Optional[str] = Field(
         default=None, description="该服务类型的展示名称，未登记该类型时为 None"
+    )
+    multi_instance: bool = Field(
+        default=True, description="用户能否为该服务类型配置多份，未登记该类型时为 True"
     )
     conf: Optional[list[dict[str, JsonData]]] = Field(
         default=None, description="vuetify 模式的组件树，非 vuetify 模式时为 None"

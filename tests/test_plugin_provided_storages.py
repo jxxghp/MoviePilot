@@ -8,7 +8,7 @@ from app.foundation.singleton import Singleton
 from app.modules._base.storage import StorageBase
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.declaration import StorageDeclaration
-from app.runtime.extensions.plugin import storage_capabilities
+from app.runtime.extensions.plugin import extension_scoped, storage_capabilities
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.storage_registry import storage_backend_registry
@@ -582,4 +582,113 @@ def test_storage_base_qualified_name_still_resolves_to_the_real_class() -> None:
     assert (
         f"{StorageBase.__module__}.{StorageBase.__qualname__}"
         == storage_capabilities._STORAGE_BASE_QUALIFIED_NAME
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clean_extension_scoped_warnings() -> Iterator[None]:
+    """每个用例前后都清空扩展级去重告警记录，避免用例间互相掩盖。"""
+    extension_scoped._extension_scoped_warnings_seen.clear()
+    yield
+    extension_scoped._extension_scoped_warnings_seen.clear()
+
+
+def _start_fanout_instances(
+    monkeypatch, plugin_manager: PluginManager, schemas: dict
+) -> str:
+    """按实例键到存储标识的映射启动存储扇出插件的多个实例。
+
+    :param monkeypatch: pytest monkeypatch
+    :param plugin_manager: 插件管理器
+    :param schemas: 实例键到该实例声明的存储标识的映射
+    :return: 插件ID
+    """
+    plugin_id = _StorageFanOutPlugin.__name__
+    monkeypatch.setattr(
+        plugin_manager,
+        "_load_selective_plugins",
+        lambda pid, installed, check: [_StorageFanOutPlugin],
+    )
+    monkeypatch.setattr(
+        plugin_manager,
+        "_plugin_instance_ids",
+        lambda pid: ["default", "home"],
+    )
+    monkeypatch.setattr(
+        plugin_manager,
+        "get_plugin_config",
+        lambda pid: {"enable": True, "schema": schemas.get(pid)},
+    )
+    plugin_manager.start(pid=plugin_id)
+    return plugin_id
+
+
+def test_sibling_instances_register_one_storage_identity_once(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """两个实例声明同一存储标识时只登记一条，归属默认实例。"""
+    plugin_id = _StorageFanOutPlugin.__name__
+    _start_fanout_instances(
+        monkeypatch,
+        plugin_manager,
+        {plugin_id: "shared_fanout_storage", f"{plugin_id}@home": "shared_fanout_storage"},
+    )
+
+    entry = storage_backend_registry.find("shared_fanout_storage")
+    assert entry is not None
+    assert entry.owner == plugin_id
+    assert [item for item in storage_backend_registry.entries()
+            if item.storage_id == "shared_fanout_storage"] == [entry]
+
+
+def test_stopping_the_storage_owner_hands_the_identity_to_its_sibling(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """登记方停止后存储标识由仍在运行的兄弟实例接手。"""
+    plugin_id = _StorageFanOutPlugin.__name__
+    _start_fanout_instances(
+        monkeypatch,
+        plugin_manager,
+        {plugin_id: "shared_fanout_storage", f"{plugin_id}@home": "shared_fanout_storage"},
+    )
+
+    plugin_manager.stop(plugin_id, instance_id="default")
+
+    entry = storage_backend_registry.find("shared_fanout_storage")
+    assert entry is not None
+    assert entry.owner == f"{plugin_id}@home"
+
+
+def test_storage_identity_is_recycled_after_every_sibling_stops(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """全部实例停止后该存储标识必须被回收干净。"""
+    plugin_id = _StorageFanOutPlugin.__name__
+    _start_fanout_instances(
+        monkeypatch,
+        plugin_manager,
+        {plugin_id: "shared_fanout_storage", f"{plugin_id}@home": "shared_fanout_storage"},
+    )
+
+    plugin_manager.stop(plugin_id, instance_id="default")
+    plugin_manager.stop(plugin_id, instance_id="home")
+
+    assert storage_backend_registry.find("shared_fanout_storage") is None
+
+
+def test_siblings_declaring_distinct_storage_identities_keep_both(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """不同实例声明不同存储标识时两条登记并存，各自归属声明它的实例。"""
+    plugin_id = _StorageFanOutPlugin.__name__
+    _start_fanout_instances(
+        monkeypatch,
+        plugin_manager,
+        {plugin_id: "default_fanout_storage", f"{plugin_id}@home": "home_fanout_storage"},
+    )
+
+    assert storage_backend_registry.find("default_fanout_storage").owner == plugin_id
+    assert (
+        storage_backend_registry.find("home_fanout_storage").owner
+        == f"{plugin_id}@home"
     )

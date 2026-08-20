@@ -45,6 +45,20 @@ def _pydantic_field_default(impl: Any, field: str) -> Optional[str]:
     return default.strip() if isinstance(default, str) and default.strip() else None
 
 
+def agent_tool_declaration_name(declaration: Any) -> Optional[str]:
+    """
+    读取智能体工具声明最终生效的工具名
+
+    工具名优先取声明字段，声明未带时回落到实现类的 name 默认值，取值口径与契约
+    校验一致。
+
+    :param declaration: `AgentToolDeclaration` 实例，或插件直接交出的实现类
+    :return: 工具名；声明与实现两侧都取不到时为 None
+    """
+    name, _description = declaration_agent_tool_identity(declaration)
+    return name or _pydantic_field_default(declaration_impl(declaration), "name")
+
+
 def agent_tool_declaration_violation(declaration: Any) -> Optional[str]:
     """
     校验智能体工具声明是否满足登记契约

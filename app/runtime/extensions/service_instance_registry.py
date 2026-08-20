@@ -19,8 +19,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.service_config import service_capability_configs
 from app.runtime.log import logger
+
+# 已就「只认一份配置的类型被配了多份」告警过的 (扩展标识, 能力标签, 类型标识) 组合。
+# 取服务是热路径，每次取用都会重读配置，去重状态挂在模块上而不挂在适配器上：适配器
+# 会因登记内容变化或归属改选而重建，挂在实例上等于每次重建都重新刷一遍屏。
+_single_instance_overflow_warnings_seen: set[Tuple[str, str, str]] = set()
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +40,9 @@ class ServiceInstanceEntry:
     模式的已解析组件描述（组件名加联邦远程入口）；未声明界面时二者均为 None，
     此时前端沿用内建类型的渲染方式，不视为异常。
 
+    实例数由 ``multi_instance`` 表达而不由服务族推定：为 True 时该类型下有几条已
+    启用配置就扇出几个具名实例，为 False 时只认一份。
+
     :param capability: 能力标签，即该类型属于哪一族服务
     :param service_type: 类型标识，与该族配置模型的 ``type`` 字段取值对应
     :param name: 类型展示名称
@@ -41,6 +50,7 @@ class ServiceInstanceEntry:
     :param owner: 提供该类型的扩展实例键
     :param impl: 实例实现类，按 ``impl(name=..., **config)`` 构造
     :param factory: 实例工厂，按 ``factory(配置对象)`` 构造
+    :param multi_instance: 用户能否为该类型配置多份
     :param config_form: 登记方为该类型声明的专属配置界面，形状为
         (组件树, 默认数据) 二元组
     :param config_component: 登记方为该类型声明的 vue 模式配置组件，形状为
@@ -54,8 +64,35 @@ class ServiceInstanceEntry:
     owner: str
     impl: Optional[Any] = None
     factory: Optional[Any] = None
+    multi_instance: bool = True
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[Dict[str, Any]] = None
+
+
+def _warn_single_instance_overflow(
+    entry: ServiceInstanceEntry, kept: str, configured: Tuple[str, ...]
+) -> None:
+    """就「只认一份配置的类型被配了多份」打一次提示。
+
+    去重按 (扩展标识, 能力标签, 类型标识) 而不按登记方实例键：同一扩展的哪个分身
+    持有该类型是宿主裁决的结果，用户对此无感知，按实例键去重会在归属改选后重复
+    提示同一件事。
+
+    :param entry: 该类型的登记项
+    :param kept: 本次生效的配置名
+    :param configured: 本类型下全部已启用配置名，按用户配置列表顺序排列
+    :return: 无返回值
+    """
+    seen = (extension_id_of(entry.owner), entry.capability, entry.service_type)
+    if seen in _single_instance_overflow_warnings_seen:
+        return
+    _single_instance_overflow_warnings_seen.add(seen)
+    logger.warning(
+        f"【服务】扩展 {entry.owner} 声明的 {entry.capability} 类型 {entry.service_type}"
+        f"（{entry.name}）只接受一份配置，当前已启用 {len(configured)} 份："
+        f"{list(configured)}；本次只有排在最前的 {kept} 生效，其余已忽略。"
+        f"请在设置页停用或删除多余的配置"
+    )
 
 
 class ServiceInstanceAdapter:
@@ -119,7 +156,10 @@ class ServiceInstanceAdapter:
             return dict(self._instances)
 
     def _desired_configs(self) -> Dict[str, Any]:
-        """读取本类型下已启用的用户配置。
+        """读取本类型下应当扇出实例的用户配置。
+
+        多实例类型每条已启用配置各得一个实例；单实例类型只认一份，多出来的配置
+        由 `_single_desired_config` 裁掉。
 
         :return: 实例名到配置的映射；配置读取出错时为空字典
         """
@@ -131,11 +171,33 @@ class ServiceInstanceAdapter:
                 f"扩展 {self._entry.owner} 声明的 {self._entry.service_type} 实例暂不可用：{error}"
             )
             return {}
-        return {
+        enabled = {
             conf.name: conf
             for conf in configs
             if conf.name and conf.type == self._entry.service_type and conf.enabled
         }
+        if self._entry.multi_instance or len(enabled) <= 1:
+            return enabled
+        return self._single_desired_config(enabled)
+
+    def _single_desired_config(self, enabled: Dict[str, Any]) -> Dict[str, Any]:
+        """从多份配置里为单实例类型选出唯一生效的那一份。
+
+        取用户配置列表里排在最前的一份。这不是「在候选里替用户做选择」——配置列表
+        是用户自己排的持久数据，顺序在设置页上可见且每次读取都一致，因此「列表里
+        第一条生效」是用户看得见也改得动的规则；被禁止的是依赖宿主内部登记顺序的
+        那种挑选，其结果用户既看不见也无法预期。
+
+        多出来的配置只忽略不删除：声明改成单实例前用户可能已经配了多份，删配置是
+        不可逆的，而忽略加告警给用户留了自行取舍的余地。整类型不产出实例同样不取，
+        那会让一份合法配置也跟着失效，惩罚的范围超出了问题本身。
+
+        :param enabled: 本类型下全部已启用配置，按用户配置列表顺序排列
+        :return: 只含唯一生效配置的映射
+        """
+        kept = next(iter(enabled))
+        _warn_single_instance_overflow(self._entry, kept, tuple(enabled))
+        return {kept: enabled[kept]}
 
     def _create_instance(self, name: str, conf: Any) -> Optional[Any]:
         """按单条配置构造一个具名实例。
@@ -175,6 +237,7 @@ class ServiceInstanceRegistry:
                  owner: str,
                  impl: Optional[Any] = None,
                  factory: Optional[Any] = None,
+                 multi_instance: bool = True,
                  distribution: ExtensionDistribution = ExtensionDistribution.MARKET,
                  config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
                  config_component: Optional[Dict[str, Any]] = None
@@ -190,6 +253,7 @@ class ServiceInstanceRegistry:
         :param owner: 提供该类型的扩展实例键
         :param impl: 实例实现类，与 factory 二选一
         :param factory: 实例工厂，与 impl 二选一
+        :param multi_instance: 用户能否为该类型配置多份，缺省为可以
         :param distribution: 提供方的发行方式
         :param config_form: 该类型的专属配置界面（vuetify 模式）
         :param config_component: 该类型的已解析 vue 模式配置组件
@@ -209,6 +273,7 @@ class ServiceInstanceRegistry:
             owner=owner,
             impl=impl,
             factory=factory,
+            multi_instance=multi_instance,
             config_form=config_form,
             config_component=config_component,
         )
@@ -275,12 +340,13 @@ class ServiceInstanceRegistry:
     def diagnose(self) -> list[dict[str, Any]]:
         """输出只读的登记诊断信息。
 
-        :return: 每个类型的能力标签、类型标识、发行方式与提供方
+        :return: 每个类型的能力标签、类型标识、可配份数、发行方式与提供方
         """
         return [
             {
                 "capability": entry.capability,
                 "type": entry.service_type,
+                "multi_instance": entry.multi_instance,
                 "distribution": entry.distribution.value,
                 "owner": entry.owner,
             }

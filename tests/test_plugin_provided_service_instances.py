@@ -14,6 +14,7 @@ from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.plugin import extension_scoped
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
@@ -792,3 +793,302 @@ def test_registry_isolates_types_across_capabilities():
     assert service_instance_registry.find("downloader", "same_name").name == "下载器"
     assert service_instance_registry.find("notification", "same_name").name == "通知渠道"
     assert len(service_instance_registry.adapters("downloader")) == 1
+
+
+class _RecordingLogger:
+    """记录告警与错误文本的日志端口替身。"""
+
+    def __init__(self):
+        self.warnings: List[str] = []
+        self.errors: List[str] = []
+
+    def warning(self, message: str) -> None:
+        """记录一条告警。"""
+        self.warnings.append(message)
+
+    def error(self, message: str) -> None:
+        """记录一条错误。"""
+        self.errors.append(message)
+
+    def info(self, message: str) -> None:
+        """记录一条信息，用例不关心其内容。"""
+
+
+@pytest.fixture(autouse=True)
+def _clean_extension_scoped_warnings() -> Iterator[None]:
+    """每个用例前后都清空扩展级去重告警记录，避免用例间互相掩盖。"""
+    extension_scoped._extension_scoped_warnings_seen.clear()
+    yield
+    extension_scoped._extension_scoped_warnings_seen.clear()
+
+
+def _service_declaration(service_type: str, name: str = "演示下载器") -> ServiceInstanceDeclaration:
+    """构造一条契约合规的下载器类型声明。
+
+    :param service_type: 类型标识
+    :param name: 类型展示名称
+    :return: 服务实例声明
+    """
+    return ServiceInstanceDeclaration(
+        capability="downloader",
+        type=service_type,
+        name=name,
+        impl=_DemoDownloader,
+    )
+
+
+def _sibling_projection(
+    declarations_by_key: Dict[str, List[ServiceInstanceDeclaration]],
+    log: Any = None,
+) -> PluginProjection:
+    """构造由多个实例组成的能力投影服务。
+
+    :param declarations_by_key: 实例键到该实例声明列表的映射，字典顺序即登记顺序
+    :param log: 日志端口
+    :return: 能力投影服务
+    """
+    running = {
+        key: _CapableServicePlugin(
+            declarations=declarations, render_mode=("vuetify", None)
+        )
+        for key, declarations in declarations_by_key.items()
+    }
+    return PluginProjection(running, log) if log else PluginProjection(running)
+
+
+def test_sibling_instances_declaring_one_type_register_it_once():
+    """同插件两个实例声明同一类型时只认一次，归属默认实例。"""
+    projection = _sibling_projection({
+        "DemoPlugin": [_service_declaration("my_qb")],
+        "DemoPlugin@home": [_service_declaration("my_qb")],
+    })
+
+    declared = projection.provided_service_instances()
+
+    assert [item.type for item in declared["DemoPlugin"]] == ["my_qb"]
+    assert declared["DemoPlugin@home"] == []
+
+
+def test_sibling_election_does_not_depend_on_registration_order():
+    """认哪一个实例与登记顺序无关，非默认实例先登记同样由默认实例胜出。"""
+    projection = _sibling_projection({
+        "DemoPlugin@home": [_service_declaration("my_qb")],
+        "DemoPlugin": [_service_declaration("my_qb")],
+    })
+
+    declared = projection.provided_service_instances()
+
+    assert [item.type for item in declared["DemoPlugin"]] == ["my_qb"]
+    assert declared["DemoPlugin@home"] == []
+
+
+def test_sibling_election_falls_back_to_ascending_instance_id():
+    """没有默认实例时按实例标识升序取第一个。"""
+    projection = _sibling_projection({
+        "DemoPlugin@work": [_service_declaration("my_qb")],
+        "DemoPlugin@home": [_service_declaration("my_qb")],
+    })
+
+    declared = projection.provided_service_instances()
+
+    assert [item.type for item in declared["DemoPlugin@home"]] == ["my_qb"]
+    assert declared["DemoPlugin@work"] == []
+
+
+def test_duplicate_type_across_siblings_warns_once():
+    """同标识重复声明只告警一次，且文案说明这是扩展级声明。"""
+    log = _RecordingLogger()
+    projection = _sibling_projection(
+        {
+            "DemoPlugin": [_service_declaration("my_qb")],
+            "DemoPlugin@home": [_service_declaration("my_qb")],
+        },
+        log=log,
+    )
+
+    projection.provided_service_instances()
+    projection.provided_service_instances()
+
+    assert len(log.warnings) == 1
+    message = log.warnings[0]
+    assert "downloader/my_qb" in message
+    assert "扩展级事实" in message
+    assert "只登记一次" in message
+    assert "DemoPlugin@home" in message
+
+
+def test_distinct_types_from_each_sibling_are_all_kept():
+    """不同实例声明不同类型是合法的，各自登记且不告警。"""
+    log = _RecordingLogger()
+    projection = _sibling_projection(
+        {
+            "DemoPlugin": [_service_declaration("my_qb")],
+            "DemoPlugin@home": [_service_declaration("my_tr")],
+        },
+        log=log,
+    )
+
+    declared = projection.provided_service_instances()
+
+    assert [item.type for item in declared["DemoPlugin"]] == ["my_qb"]
+    assert [item.type for item in declared["DemoPlugin@home"]] == ["my_tr"]
+    assert log.warnings == []
+
+
+def test_same_type_from_different_plugins_is_not_deduplicated():
+    """去重只在同一插件的实例之间进行，插件之间的同名类型仍按覆盖规则处理。"""
+    log = _RecordingLogger()
+    projection = _sibling_projection(
+        {
+            "FirstPlugin": [_service_declaration("shared_type")],
+            "SecondPlugin": [_service_declaration("shared_type")],
+        },
+        log=log,
+    )
+
+    declared = projection.provided_service_instances()
+
+    assert [item.type for item in declared["FirstPlugin"]] == ["shared_type"]
+    assert [item.type for item in declared["SecondPlugin"]] == ["shared_type"]
+    assert log.warnings == []
+
+
+def test_querying_one_instance_key_still_honours_the_family_wide_election():
+    """按实例键查询也返回族内裁决后的结果，不因筛选条件变出另一个赢家。"""
+    projection = _sibling_projection({
+        "DemoPlugin": [_service_declaration("my_qb")],
+        "DemoPlugin@home": [_service_declaration("my_qb")],
+    })
+
+    assert projection.provided_service_instances("DemoPlugin@home") == {
+        "DemoPlugin@home": []
+    }
+    assert [
+        item.type
+        for item in projection.provided_service_instances("DemoPlugin")["DemoPlugin"]
+    ] == ["my_qb"]
+
+
+def test_disabled_winner_hands_the_type_to_its_running_sibling():
+    """默认实例停用后类型归属仍在运行的兄弟实例，不随停用一起消失。"""
+    running = {
+        "DemoPlugin": _CapableServicePlugin(
+            enabled=False,
+            declarations=[_service_declaration("my_qb")],
+            render_mode=("vuetify", None),
+        ),
+        "DemoPlugin@home": _CapableServicePlugin(
+            declarations=[_service_declaration("my_qb")],
+            render_mode=("vuetify", None),
+        ),
+    }
+
+    declared = PluginProjection(running).provided_service_instances()
+
+    assert "DemoPlugin" not in declared
+    assert [item.type for item in declared["DemoPlugin@home"]] == ["my_qb"]
+
+
+class _FanOutDownloaderPlugin(_FakeDownloaderPlugin):
+    """全部实例都声明同一下载器类型的插件桩，用于驱动多实例生命周期。"""
+
+    plugin_name = "扇出下载器插件"
+    service_type = "fanout_downloader"
+
+
+def _start_instances(
+    monkeypatch, plugin_manager: PluginManager, plugin_class: type, instance_ids: List[str]
+) -> str:
+    """按给定实例清单启动一个插件的多个实例。
+
+    :param monkeypatch: pytest monkeypatch
+    :param plugin_manager: 插件管理器
+    :param plugin_class: 插件类
+    :param instance_ids: 实例标识清单
+    :return: 插件ID
+    """
+    plugin_id = plugin_class.__name__
+    monkeypatch.setattr(
+        plugin_manager,
+        "_load_selective_plugins",
+        lambda pid, installed, check: [plugin_class],
+    )
+    monkeypatch.setattr(plugin_manager, "get_plugin_config", lambda pid: {})
+    monkeypatch.setattr(plugin_manager, "_plugin_instance_ids", lambda pid: instance_ids)
+    plugin_manager.start(pid=plugin_id)
+    return plugin_id
+
+
+def test_sibling_instances_register_the_type_once_with_a_single_owner(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """两个实例声明同一类型时注册表只有一条登记，归属默认实例。"""
+    plugin_id = _start_instances(
+        monkeypatch, plugin_manager, _FanOutDownloaderPlugin, ["default", "home"]
+    )
+
+    assert f"{plugin_id}@home" in plugin_manager._running_plugins
+    assert len(service_instance_registry.adapters("downloader")) == 1
+    assert service_instance_registry.find("downloader", "fanout_downloader").owner == plugin_id
+
+
+def test_stopping_the_owner_hands_the_type_to_the_surviving_sibling(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """登记方停止后类型由仍在运行的兄弟实例接手，不随一个实例的停止消失。"""
+    plugin_id = _start_instances(
+        monkeypatch, plugin_manager, _FanOutDownloaderPlugin, ["default", "home"]
+    )
+
+    plugin_manager.stop(plugin_id, instance_id="default")
+
+    entry = service_instance_registry.find("downloader", "fanout_downloader")
+    assert entry is not None
+    assert entry.owner == f"{plugin_id}@home"
+
+
+def test_type_is_recycled_only_after_every_sibling_stops(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """全部实例停用后该类型必须被回收干净，注册表不留任何残留。"""
+    plugin_id = _start_instances(
+        monkeypatch, plugin_manager, _FanOutDownloaderPlugin, ["default", "home"]
+    )
+
+    plugin_manager.stop(plugin_id, instance_id="default")
+    assert service_instance_registry.find("downloader", "fanout_downloader") is not None
+
+    plugin_manager.stop(plugin_id, instance_id="home")
+
+    assert service_instance_registry.find("downloader", "fanout_downloader") is None
+    assert service_instance_registry.adapters("downloader") == ()
+
+
+def test_stopping_the_whole_plugin_recycles_the_type(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """整插件停止时全部实例的登记一并回收。"""
+    plugin_id = _start_instances(
+        monkeypatch, plugin_manager, _FanOutDownloaderPlugin, ["default", "home"]
+    )
+
+    plugin_manager.stop(plugin_id)
+
+    assert service_instance_registry.find("downloader", "fanout_downloader") is None
+    assert service_instance_registry.adapters("downloader") == ()
+
+
+def test_declared_type_still_serves_configs_after_the_owner_changes(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict]
+):
+    """归属改选后用户配置的实例照常扇出，取用端感知不到归属变化。"""
+    service_configs.append(_downloader_config("我的下载器", "fanout_downloader", host="127.0.0.1"))
+    plugin_id = _start_instances(
+        monkeypatch, plugin_manager, _FanOutDownloaderPlugin, ["default", "home"]
+    )
+
+    plugin_manager.stop(plugin_id, instance_id="default")
+    services = DownloaderHelper().get_services()
+
+    assert "我的下载器" in services
+    assert isinstance(services["我的下载器"].instance, _DemoDownloader)

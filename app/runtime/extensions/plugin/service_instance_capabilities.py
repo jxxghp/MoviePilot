@@ -19,6 +19,7 @@ from app.runtime.extensions.declaration import (
     declaration_config_form,
     declaration_service_instance_constructor,
     declaration_service_instance_identity,
+    declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
 
@@ -36,9 +37,9 @@ def service_instance_declaration_violation(
     校验服务实例声明是否满足登记契约
 
     契约要求声明是 `ServiceInstanceDeclaration` 实例、能力标签属于可声明服务实例的
-    服务族、类型标识与展示名称非空、``impl`` 与 ``factory`` 恰好给出其一且该路径的
-    调用签名成立；配置界面二选一，规则与存储声明相同。任一不满足都拒绝登记，不留
-    到构造实例时才失败。
+    服务族、类型标识与展示名称非空、``multi_instance`` 是布尔值、``impl`` 与
+    ``factory`` 恰好给出其一且该路径的调用签名成立；配置界面二选一，规则与存储声明
+    相同。任一不满足都拒绝登记，不留到构造实例时才失败。
 
     :param declaration: `ServiceInstanceDeclaration` 实例
     :param render_mode: 声明该服务实例的扩展当前的渲染模式；为 None 时跳过
@@ -50,6 +51,7 @@ def service_instance_declaration_violation(
     try:
         impl, factory = declaration_service_instance_constructor(declaration)
         capability, service_type, name = declaration_service_instance_identity(declaration)
+        multi_instance = declaration_service_instance_multi_instance(declaration)
         config_form = declaration_config_form(declaration)
         config_component = declaration_config_component(declaration)
     except Exception as error:
@@ -65,6 +67,8 @@ def service_instance_declaration_violation(
         return "未声明非空的类型标识 type"
     if not name:
         return "未声明非空的展示名称 name"
+    if not isinstance(multi_instance, bool):
+        return f"multi_instance {multi_instance!r} 不是布尔值，无法判定该类型能配几份"
     constructor_violation = _constructor_violation(impl, factory)
     if constructor_violation:
         return constructor_violation

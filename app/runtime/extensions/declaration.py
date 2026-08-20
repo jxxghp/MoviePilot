@@ -110,8 +110,19 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     可配置服务实例类型声明
 
     服务实例与其它扩展点的区别在于「有没有」不是终点：用户在设置页里按类型新建
-    任意多个具名实例，每个实例带自己的一份配置。因此声明描述的是**类型**，宿主
-    按该类型下的每条用户配置构造一个实例。
+    具名实例，每个实例带自己的一份配置。因此声明描述的是**类型**，宿主按该类型
+    下的每条用户配置构造一个实例。
+
+    ``multi_instance`` 回答「用户能为这个类型配几份」：为 True 时该类型下有几条
+    用户配置就有几个具名实例，为 False 时该类型只认一份配置。取值由声明表达而不
+    由服务族推定——同一族里两种都存在，例如认证器接第三方站点单点登录时全局只有
+    一份配置，接媒体服务器单点登录时需要每台服务器一份。
+
+    该字段与「扩展本体是否分身」正交，两者回答的不是同一个问题：分身是扩展自己
+    按 ``plugin_id@instance_id`` 扇出的多个行为体，各自独立运行、各自持有配置；
+    ``multi_instance`` 描述的是本类型的配置列表允许有几条记录，与声明它的扩展建
+    了几个分身无关。一个只建了默认分身的扩展照样可以提供多实例类型，一个建了多
+    个分身的扩展提供的类型也可以只认一份配置。
 
     ``capability`` 是该类型属于哪一族服务的语义标签，取值须属于
     `SERVICE_INSTANCE_CAPABILITIES`。下载器、媒体服务器与消息通知共用这一条声明，
@@ -141,6 +152,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     :param capability: 能力标签，取值须属于 `SERVICE_INSTANCE_CAPABILITIES`
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
     :param name: 类型展示名称
+    :param multi_instance: 用户能否为该类型配置多份，默认为 True
     :param factory: 接收单条服务配置并返回实例的可调用对象；与 ``impl`` 互斥
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
         ``config_component`` 互斥
@@ -150,6 +162,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     capability: str = ""
     type: str = ""
     name: str = ""
+    multi_instance: bool = True
     factory: Optional[Any] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
@@ -477,6 +490,19 @@ def declaration_service_instance_identity(
         _declared_field_text(declaration, "type"),
         _declared_field_text(declaration, "name"),
     )
+
+
+def declaration_service_instance_multi_instance(declaration: Any) -> Any:
+    """
+    读取服务实例声明自报的实例数取值
+
+    按原值返回而不归一为布尔：取值合法性由契约校验判定，此处先归一会把非布尔的
+    错误取值悄悄变成一个合法答案，校验就再也看不见它。
+
+    :param declaration: `ServiceInstanceDeclaration` 实例
+    :return: multi_instance 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "multi_instance")
 
 
 def declaration_service_instance_constructor(

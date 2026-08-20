@@ -56,8 +56,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6316,
-  "edge_sha256": "e41b7f5df2a6b05990add4f76b06d1d3eecb06c6c45b02a36de4476041c9faf0",
+  "edge_count": 6322,
+  "edge_sha256": "c4401f1f3e8848deeff5f0344e4d2eb7e1efe3eb39f99d0d5c5ac3b01bcc9921",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5499,6 +5499,10 @@
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.declaration",
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.dashboard_capabilities -> app.runtime.extensions.plugin.config_interface",
+    "app.runtime.extensions.plugin.extension_scoped -> app.runtime",
+    "app.runtime.extensions.plugin.extension_scoped -> app.runtime.extensions",
+    "app.runtime.extensions.plugin.extension_scoped -> app.runtime.extensions.instance",
+    "app.runtime.extensions.plugin.extension_scoped -> app.runtime.log",
     "app.runtime.extensions.plugin.instance_selection -> app.runtime",
     "app.runtime.extensions.plugin.instance_selection -> app.runtime.extensions",
     "app.runtime.extensions.plugin.instance_selection -> app.runtime.extensions.instance",
@@ -5527,12 +5531,14 @@
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.auth_provider_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.channel_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.dashboard_capabilities",
+    "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.extension_scoped",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.media_source_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.module_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.service_instance_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.storage_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.log",
     "app.runtime.extensions.plugin.projection -> app.schemas",
+    "app.runtime.extensions.plugin.projection -> app.schemas.media",
     "app.runtime.extensions.plugin.projection -> app.schemas.notification",
     "app.runtime.extensions.plugin.registry -> app.runtime",
     "app.runtime.extensions.plugin.registry -> app.runtime.extensions",
@@ -6376,7 +6382,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 807,
+  "module_count": 808,
   "modules": [
     "app",
     "app.adapters",
@@ -7049,6 +7055,7 @@
     "app.runtime.extensions.plugin.channel_capabilities",
     "app.runtime.extensions.plugin.config_interface",
     "app.runtime.extensions.plugin.dashboard_capabilities",
+    "app.runtime.extensions.plugin.extension_scoped",
     "app.runtime.extensions.plugin.instance_selection",
     "app.runtime.extensions.plugin.layout",
     "app.runtime.extensions.plugin.media_source_capabilities",

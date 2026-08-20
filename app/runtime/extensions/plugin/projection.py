@@ -24,9 +24,12 @@ from app.runtime.extensions.declaration import (
     declaration_media_source_identity,
     declaration_media_types,
     declaration_methods,
+    declaration_schema,
+    declaration_service_instance_identity,
 )
 from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
 from app.runtime.extensions.plugin.agent_tool_capabilities import (
+    agent_tool_declaration_name,
     agent_tool_declaration_violation,
 )
 from app.runtime.extensions.plugin.auth_provider_capabilities import (
@@ -36,6 +39,7 @@ from app.runtime.extensions.plugin.channel_capabilities import (
     channel_capability_declaration_violation,
 )
 from app.runtime.extensions.plugin.dashboard_capabilities import dashboard_declaration_violation
+from app.runtime.extensions.plugin.extension_scoped import elect_extension_scoped
 from app.runtime.extensions.plugin.media_source_capabilities import (
     media_source_declaration_violation,
 )
@@ -48,6 +52,7 @@ from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
 from app.runtime.log import logger as default_logger
 from app.runtime.log import wrap_for_plugin_instance
+from app.schemas.media import normalize_media_source
 from app.schemas.notification import ChannelCapabilities, channel_identity
 
 # 数据源前缀分发名归一为契约名前，插件若挂载下列旧名，从此不会被任何分发调用触达。
@@ -159,6 +164,55 @@ _sibling_contract_warnings_seen: set[tuple[str, str]] = set()
 # 已就「同一实例同时用 provides_modules() 与 get_module() 挂载同一方法名」告警过的
 # (实例键, 重叠方法名元组) 组合，去重理由同上。
 _module_source_overlap_warnings_seen: set[tuple[str, tuple[str, ...]]] = set()
+
+
+def _service_instance_identity(declaration: Any) -> Optional[tuple]:
+    """取服务实例声明在扩展级裁决中的标识。
+
+    :param declaration: 已通过契约校验的服务实例声明
+    :return: (能力标签, 类型标识)；任一为空时为 None
+    """
+    capability, service_type, _name = declaration_service_instance_identity(declaration)
+    if not capability or not service_type:
+        return None
+    return capability, service_type
+
+
+def _storage_identity(declaration: Any) -> Optional[tuple]:
+    """取存储声明在扩展级裁决中的标识。
+
+    :param declaration: 已通过契约校验的存储声明
+    :return: (存储标识,)；标识为空时为 None
+    """
+    schema = declaration_schema(declaration)
+    return (schema,) if schema else None
+
+
+def _media_source_identity(declaration: Any) -> Optional[tuple]:
+    """取媒体数据源声明在扩展级裁决中的标识。
+
+    标识按 `MediaSource` 归一后再比对，取用端也按归一值去重，两处口径一致才不会
+    出现「裁决认为是两个数据源、取用端认为是同一个」的分歧。
+    :param declaration: 已通过契约校验的媒体数据源声明
+    :return: (归一后的数据源标识,)；标识为空时为 None
+    """
+    media_source, _name = declaration_media_source_identity(declaration)
+    if not media_source:
+        return None
+    normalized = normalize_media_source(media_source)
+    return (normalized.value if normalized is not None else media_source,)
+
+
+def _agent_tool_identity(declaration: Any) -> Optional[tuple]:
+    """取智能体工具声明在扩展级裁决中的标识。
+
+    工具在智能体侧按工具名寻址，重名工具会让目录判定为身份歧义并拒绝解析，
+    因此标识取最终生效的工具名而非实现类。
+    :param declaration: 已通过契约校验的智能体工具声明
+    :return: (工具名,)；工具名为空时为 None
+    """
+    name = agent_tool_declaration_name(declaration)
+    return (name,) if name else None
 
 
 class PluginExtension:
@@ -388,6 +442,31 @@ class PluginProjection:
             if matches_extension(key, pid)
         ]
 
+    @staticmethod
+    def _extension_scope(pid: Optional[str]) -> Optional[str]:
+        """把一次查询的筛选条件放宽到整个插件族。
+
+        扩展级声明的去重要在同一插件的全部实例之间裁决，只看被查询的那个实例
+        取不到兄弟实例的声明，认哪一次就会随查询条件变化。
+        :param pid: 插件 ID 或实例键，为空时命中全部
+        :return: 收集声明时使用的筛选条件
+        """
+        return extension_id_of(pid) if pid else None
+
+    @staticmethod
+    def _narrow_to_query(
+        declared: Dict[str, List[Any]], pid: Optional[str]
+    ) -> Dict[str, List[Any]]:
+        """把插件族范围的裁决结果收窄回本次查询的筛选条件。
+
+        :param declared: 实例键到声明列表的映射
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 只含命中实例的映射
+        """
+        return {
+            key: items for key, items in declared.items() if matches_extension(key, pid)
+        }
+
     def commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合插件命令并补充插件 ID。"""
         commands: list[dict] = []
@@ -614,10 +693,11 @@ class PluginProjection:
         实例；单个实例取声明时抛异常同理只跳过该实例。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其媒体数据源声明列表的映射，仅含通过契约校验的条目
+        :return: 实例键到其媒体数据源声明列表的映射，仅含通过契约校验且在同插件
+            多实例裁决中胜出的条目
         """
         result: Dict[str, List[Any]] = {}
-        for extension in self._extensions(pid):
+        for extension in self._extensions(self._extension_scope(pid)):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "provides_media_sources"
@@ -641,7 +721,16 @@ class PluginProjection:
                     continue
                 accepted.append(item)
             result[extension_id] = accepted
-        return result
+        return self._narrow_to_query(
+            elect_extension_scoped(
+                result,
+                _media_source_identity,
+                subject="媒体数据源标识",
+                hook="provides_media_sources",
+                log=self._logger,
+            ),
+            pid,
+        )
 
     @staticmethod
     def _declared_media_source(extension_id: str, item: Any) -> Dict[str, Any]:
@@ -1323,10 +1412,11 @@ class PluginProjection:
         实例；单个实例取声明时抛异常同理只跳过该实例。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其存储声明列表的映射，仅含通过契约校验的条目
+        :return: 实例键到其存储声明列表的映射，仅含通过契约校验且在同插件多实例
+            裁决中胜出的条目
         """
         result: Dict[str, List[Any]] = {}
-        for extension in self._extensions(pid):
+        for extension in self._extensions(self._extension_scope(pid)):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "provides_storages"
@@ -1355,7 +1445,16 @@ class PluginProjection:
                     continue
                 accepted.append(item)
             result[extension_id] = accepted
-        return result
+        return self._narrow_to_query(
+            elect_extension_scoped(
+                result,
+                _storage_identity,
+                subject="存储标识",
+                hook="provides_storages",
+                log=self._logger,
+            ),
+            pid,
+        )
 
     def provided_service_instances(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的可配置服务实例类型。
@@ -1364,10 +1463,11 @@ class PluginProjection:
         实例；单个实例取声明时抛异常同理只跳过该实例。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其服务实例声明列表的映射，仅含通过契约校验的条目
+        :return: 实例键到其服务实例声明列表的映射，仅含通过契约校验且在同插件
+            多实例裁决中胜出的条目
         """
         result: Dict[str, List[Any]] = {}
-        for extension in self._extensions(pid):
+        for extension in self._extensions(self._extension_scope(pid)):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "provides_service_instances"
@@ -1398,7 +1498,16 @@ class PluginProjection:
                     continue
                 accepted.append(item)
             result[extension_id] = accepted
-        return result
+        return self._narrow_to_query(
+            elect_extension_scoped(
+                result,
+                _service_instance_identity,
+                subject="服务实例类型",
+                hook="provides_service_instances",
+                log=self._logger,
+            ),
+            pid,
+        )
 
     def service_instance_component_descriptor(
         self, extension_id: str, plugin: Any, component: str
@@ -1427,10 +1536,11 @@ class PluginProjection:
         实例；单个实例取声明时抛异常同理只跳过该实例。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其智能体工具声明列表的映射，仅含通过契约校验的条目
+        :return: 实例键到其智能体工具声明列表的映射，仅含通过契约校验且在同插件
+            多实例裁决中胜出的条目
         """
         result: Dict[str, List[Any]] = {}
-        for extension in self._extensions(pid):
+        for extension in self._extensions(self._extension_scope(pid)):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled() or not extension.supports_hook(
                     "provides_agent_tools"
@@ -1454,7 +1564,16 @@ class PluginProjection:
                     continue
                 accepted.append(item)
             result[extension_id] = accepted
-        return result
+        return self._narrow_to_query(
+            elect_extension_scoped(
+                result,
+                _agent_tool_identity,
+                subject="智能体工具名",
+                hook="provides_agent_tools",
+                log=self._logger,
+            ),
+            pid,
+        )
 
     def provided_dashboards(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的仪表盘。
