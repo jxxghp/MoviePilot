@@ -16,6 +16,7 @@ from app.runtime.extensions.declaration import (
     declaration_impl,
     declaration_schema,
 )
+from app.runtime.extensions.plugin.config_interface import config_interface_violation
 
 # 存储基类的模块与限定名，用于在不引入反向依赖的前提下判定实现类的真实继承关系
 _STORAGE_BASE_QUALIFIED_NAME = "app.modules._base.storage.StorageBase"
@@ -67,39 +68,4 @@ def storage_declaration_violation(
         return f"{impl!r} 未实现抽象方法：{sorted(unimplemented)}"
     if not schema:
         return "未声明非空的存储标识 schema"
-    if config_form is not None and config_component:
-        return "config_form 与 config_component 不可同时声明，配置界面二选一"
-    if config_form is not None:
-        return _config_form_violation(config_form)
-    if config_component:
-        return _config_component_violation(render_mode)
-    return None
-
-
-def _config_form_violation(config_form: Any) -> Optional[str]:
-    """
-    校验声明附带的 vuetify 配置界面是否是合法形状
-
-    :param config_form: 声明的 config_form 字段，调用方已保证非 None
-    :return: 违反契约的描述；形状合法时为 None
-    """
-    if not isinstance(config_form, (tuple, list)) or len(config_form) != 2:
-        return "config_form 必须是（组件树, 默认数据）二元组"
-    layout, defaults = config_form
-    if not isinstance(layout, list):
-        return f"config_form 的组件树必须是 list，实际是 {type(layout).__name__}"
-    if not isinstance(defaults, dict):
-        return f"config_form 的默认数据必须是 dict，实际是 {type(defaults).__name__}"
-    return None
-
-
-def _config_component_violation(render_mode: Optional[str]) -> Optional[str]:
-    """
-    校验 vue 模式配置组件声明是否与扩展渲染模式一致
-
-    :param render_mode: 声明方扩展当前的渲染模式；为 None 时跳过校验
-    :return: 违反契约的描述；渲染模式为 vue 或未知时为 None
-    """
-    if render_mode is not None and render_mode != "vue":
-        return f"config_component 要求扩展渲染模式为 vue，实际是 {render_mode!r}"
-    return None
+    return config_interface_violation(config_form, config_component, render_mode=render_mode)

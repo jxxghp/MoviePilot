@@ -35,6 +35,7 @@ from app.runtime.extensions.declaration import (
     declaration_config_form,
     declaration_impl,
     declaration_schema,
+    declaration_service_instance_identity,
 )
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
@@ -58,6 +59,7 @@ from app.runtime.extensions.plugin.projection import PluginExtension, PluginProj
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, SystemConfigKey
@@ -754,6 +756,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._sync_channel_capabilities(key)
             # 同步插件声明的存储后端
             self._sync_plugin_storages(key)
+            # 同步插件声明的服务实例类型
+            self._sync_plugin_service_instances(key)
             # 启用的实例才设置事件注册状态可用
             if extension.is_enabled():
                 eventmanager.enable_event_handler(plugin_class, key)
@@ -858,6 +862,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._sync_channel_capabilities(key)
         # 配置变更同样可能影响存储声明，重新同步存储登记
         self._sync_plugin_storages(key)
+        # 服务实例声明同理，重新同步服务实例登记
+        self._sync_plugin_service_instances(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -907,6 +913,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._revoke_channel_capabilities(key)
             # 实例停止后撤销其存储登记，不留残留
             self._revoke_plugin_storages(key)
+            # 实例停止后撤销其服务实例登记，不留残留
+            self._revoke_plugin_service_instances(key)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -2197,6 +2205,74 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not component or plugin is None:
             return None
         return projection.storage_component_descriptor(key, plugin, component)
+
+    def _sync_plugin_service_instances(self, key: str) -> None:
+        """按插件实例当前声明重建其在服务实例注册表中的登记。
+
+        先回收该实例此前登记过的服务类型，避免声明缩减后残留旧登记；再按当前
+        声明逐条登记，单条声明的注册失败不影响同一实例其余声明的登记。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            service_instance_registry.unregister_owner(key)
+            projection = self._plugin_projection()
+            declared = projection.provided_service_instances(key)
+            plugin = self._running_plugins.get(key)
+            for item in declared.get(key, []):
+                try:
+                    config_key, service_type, name = declaration_service_instance_identity(item)
+                    service_instance_registry.register(
+                        config_key=config_key,
+                        service_type=service_type,
+                        name=name,
+                        impl=declaration_impl(item),
+                        owner=key,
+                        distribution=ExtensionDistribution.MARKET,
+                        config_form=declaration_config_form(item),
+                        config_component=self._resolve_service_instance_config_component(
+                            projection, key, plugin, item
+                        ),
+                    )
+                except Exception as error:
+                    logger.error(f"登记插件实例 {key} 的服务实例声明出错：{str(error)}")
+        except Exception as error:
+            logger.error(f"同步插件实例 {key} 服务实例登记出错：{str(error)}")
+
+    @staticmethod
+    def _resolve_service_instance_config_component(
+        projection: PluginProjection, key: str, plugin: Optional[Any], item: Any
+    ) -> Optional[Dict[str, Any]]:
+        """把服务实例声明携带的 vue 模式组件名解析为完整的联邦远程描述。
+
+        声明未带组件名、或实例键取不到运行态插件实例时不解析，登记项的
+        ``config_component`` 保持为空，等价于该服务类型没有专属界面。
+
+        :param projection: 已绑定当前运行态插件注册表的能力投影服务
+        :param key: 实例键
+        :param plugin: 运行态插件实例
+        :param item: 已通过登记契约校验的服务实例声明
+        :return: 含 component 与 remote 的字典；无需解析时为 None
+        """
+        component = declaration_config_component(item)
+        if not component or plugin is None:
+            return None
+        return projection.service_instance_component_descriptor(key, plugin, component)
+
+    @staticmethod
+    def _revoke_plugin_service_instances(key: str) -> None:
+        """撤销插件实例登记的服务实例类型。
+
+        只回收当前仍归属该实例的登记，类型被更晚的登记方接管后不受本次回收波及。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            service_instance_registry.unregister_owner(key)
+        except Exception as error:
+            logger.error(f"撤销插件实例 {key} 服务实例登记出错：{str(error)}")
 
     @staticmethod
     def _revoke_plugin_storages(key: str) -> None:

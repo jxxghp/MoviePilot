@@ -23,6 +23,7 @@ from app.runtime.extensions.declaration import (
     DashboardDeclaration,
     MediaSourceDeclaration,
     ModuleDeclaration,
+    ServiceInstanceDeclaration,
     StorageDeclaration,
 )
 from app.runtime.extensions.instance import (
@@ -549,6 +550,40 @@ class _PluginBase(metaclass=ABCMeta):
         属性取用标识，兼容早期写法。
 
         :return: `StorageDeclaration` 列表；插件不作为存储提供方时无需实现
+        """
+        pass
+
+    def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+        """
+        声明本插件提供的可配置服务实例类型
+
+        返回示例：
+        [ServiceInstanceDeclaration(
+            config_key="Downloaders",            # 服务配置键，可选值为 Downloaders、
+                                                  # MediaServers、Notifications
+            type="my_downloader",                # 类型标识，与该族配置模型的 type
+                                                  # 字段取值对应；与内建类型同名即构成
+                                                  # 覆盖，用户为该类型配置的实例改由
+                                                  # 本插件的实现承担
+            name="我的下载器",                    # 类型展示名称
+            impl=MyDownloader,                   # 实例实现类，宿主对该类型下的每条
+                                                  # 用户配置调用 impl(name=配置名,
+                                                  # **配置内容) 构造实例；构造签名不
+                                                  # 接受关键字 name 的声明会被拒绝
+            config_form=([...], {...}),          # 该类型的专属配置界面（vuetify
+                                                  # 模式），形状与 get_form() 相同；
+                                                  # 与 config_component 互斥，可选
+        )]
+
+        vue 模式改用 `config_component="MyDownloaderConfig"`——本插件联邦远程中承载
+        该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
+        同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
+
+        下载器、媒体服务器与消息通知共用本钩子，差异只在 `config_key`：三者的取用
+        方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
+        照常登记，只是没有实例产出。
+
+        :return: `ServiceInstanceDeclaration` 列表；插件不提供服务实例类型时无需实现
         """
         pass
 

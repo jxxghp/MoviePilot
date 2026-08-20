@@ -99,14 +99,14 @@ class ServiceBaseHelper(Generic[TConf]):
         """
         获取指定名称的服务信息，并根据类型过滤
 
+        与 `get_services` 共用同一条筛选与优先级规则：同一实例名被多个持有者产出
+        时以最后一个为准。两者若各自裁决，扩展声明的类型覆盖内建类型的场景下会
+        给出互相矛盾的答案。
+
         :param name: 服务名称
         :param type_filter: 需要过滤的服务类型
         :return: 对应的服务信息，若不存在或类型不匹配则返回 None
         """
         if not name:
             return None
-        for service_info in self.iterate_module_instances():
-            if service_info.name == name:
-                if service_info.config and (type_filter is None or service_info.type == type_filter):
-                    return service_info
-        return None
+        return self.get_services(type_filter=type_filter, name_filters=[name]).get(name)

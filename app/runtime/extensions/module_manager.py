@@ -22,6 +22,7 @@ from app.runtime.extensions.host_module_adapter import (
     capture_host_module_config,
     should_run_host_module,
 )
+from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.log import logger
 from app.schemas.types import EventType
 
@@ -326,10 +327,16 @@ class ModuleManager(metaclass=Singleton):
         return self._capability_index_snapshot().get(method, ())
 
     def get_service_config_modules(self, config_key: str) -> Generator:
-        """返回 manifest 声明消费指定服务配置键的运行模块快照。
+        """返回消费指定服务配置键的实例持有者快照。
+
+        先产出 manifest 声明消费该配置键的运行模块，再产出扩展声明的服务实例
+        适配器。两者都只需实现 `get_instances()`，扩展声明因此无须进入模块清单，
+        也无须承担内建模块的整套生命周期。产出顺序即优先级顺序：同一实例名被
+        先后产出多次时以最后一次为准，故扩展声明的同名类型覆盖内建类型。
 
         :param config_key: 服务配置键，取值为 `SystemConfigKey` 的成员值
-        :return: 运行模块迭代器，按 manifest 发现顺序产出
+        :return: 实例持有者迭代器，内建模块按 manifest 发现顺序在前，扩展声明的
+            适配器按登记顺序在后
         """
         if not config_key:
             return
@@ -339,6 +346,7 @@ class ModuleManager(metaclass=Singleton):
             instance = self._runtime.get_running(spec.id)
             if instance is not None:
                 yield instance
+        yield from service_instance_registry.adapters(config_key)
 
     def get_module(self, module_id: str) -> Any:
         """显式物化并返回 canonical 模块类；失败保持旧合同返回 None。"""

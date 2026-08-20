@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from app.schemas.types import SystemConfigKey
+
 
 @dataclass(frozen=True, slots=True)
 class ExtensionDeclaration:
@@ -94,6 +96,53 @@ class ModuleDeclaration(ExtensionDeclaration):
 
     methods: Mapping[str, Any] = MappingProxyType({})
     service_config: str = ""
+
+
+# 可声明服务实例的服务配置键取值集合，即宿主按「配置扇出 N 个具名实例」消费的配置族
+SERVICE_INSTANCE_CONFIG_KEYS: Tuple[str, ...] = (
+    SystemConfigKey.Downloaders.value,
+    SystemConfigKey.MediaServers.value,
+    SystemConfigKey.Notifications.value,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceInstanceDeclaration(ExtensionDeclaration):
+    """
+    可配置服务实例类型声明
+
+    服务实例与其它扩展点的区别在于「有没有」不是终点：用户在设置页里按类型新建
+    任意多个具名实例，每个实例带自己的一份配置。因此声明描述的是**类型**，宿主
+    按该类型下的每条用户配置调用 ``impl(name=配置名, **配置内容)`` 构造实例，与
+    内建服务实例的构造方式一致。
+
+    下载器、媒体服务器与消息通知共用这一条声明，差异只在 ``config_key``：三者
+    的取用链是同一条——同一张服务实例表，按「配置键加类型标识」取用，形状没有
+    区别，因此不按业务族拆成三个钩子，差异作为参数声明出来。
+
+    该服务类型的专属配置界面二选一，字段语义与 ``StorageDeclaration`` 相同：
+
+    - ``config_form``：vuetify 模式，(组件树, 默认数据) 二元组
+    - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
+      要求扩展的 ``get_render_mode()`` 返回 ``"vue"``
+
+    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该类型
+    没有专属界面，前端沿用内建类型的渲染方式。界面归属这条声明，不归属声明
+    它的扩展。
+
+    :param config_key: 服务配置键，取值须属于 `SERVICE_INSTANCE_CONFIG_KEYS`
+    :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
+    :param name: 类型展示名称
+    :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
+        ``config_component`` 互斥
+    :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    """
+
+    config_key: str = ""
+    type: str = ""
+    name: str = ""
+    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
+    config_component: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,6 +450,23 @@ def declaration_action_kwargs(declaration: Any) -> Any:
     :return: kwargs 字段的原始值；字段缺失时为 None
     """
     return _declared_field(declaration, "kwargs")
+
+
+def declaration_service_instance_identity(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    读取服务实例声明自报的配置键、类型标识与展示名称
+
+    :param declaration: `ServiceInstanceDeclaration` 实例
+    :return: (服务配置键, 类型标识, 展示名称) 三元组；对应字段缺失、非字符串或
+        为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "config_key"),
+        _declared_field_text(declaration, "type"),
+        _declared_field_text(declaration, "name"),
+    )
 
 
 def declaration_dashboard_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:

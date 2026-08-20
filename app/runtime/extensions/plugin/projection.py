@@ -40,6 +40,9 @@ from app.runtime.extensions.plugin.media_source_capabilities import (
     media_source_declaration_violation,
 )
 from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
+from app.runtime.extensions.plugin.service_instance_capabilities import (
+    service_instance_declaration_violation,
+)
 from app.runtime.extensions.plugin.storage_capabilities import storage_declaration_violation
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
@@ -1353,6 +1356,69 @@ class PluginProjection:
                 accepted.append(item)
             result[extension_id] = accepted
         return result
+
+    def provided_service_instances(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的可配置服务实例类型。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其服务实例声明列表的映射，仅含通过契约校验的条目
+        """
+        result: Dict[str, List[Any]] = {}
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_service_instances"
+            ):
+                continue
+            try:
+                declared = plugin.provides_service_instances() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件 {extension_id} 服务实例声明出错：{str(error)}"
+                )
+                continue
+            # config_component 只在扩展渲染模式为 vue 时合法，默认 vuetify 与
+            # get_render_mode() 基类实现的缺省值一致
+            render_mode = "vuetify"
+            if extension.supports_hook("get_render_mode"):
+                render_mode, _ = plugin.get_render_mode()
+            accepted: List[Any] = []
+            for item in declared:
+                violation = service_instance_declaration_violation(
+                    item, render_mode=render_mode
+                )
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的服务实例 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    def service_instance_component_descriptor(
+        self, extension_id: str, plugin: Any, component: str
+    ) -> Dict[str, Any]:
+        """构造服务实例 vue 模式配置界面的组件描述：组件名加所在联邦远程入口。
+
+        调用方需自行保证 ``component`` 已通过登记契约校验、其声明方渲染模式
+        确为 vue；本方法只负责组装，不重复校验。
+
+        :param extension_id: 插件实例键
+        :param plugin: 运行态插件实例
+        :param component: 服务实例声明携带的组件名
+        :return: 含 component 与 remote（联邦远程入口描述）的字典
+        :raises RuntimeError: 联邦入口生成器尚未配置
+        """
+        _, dist_path = plugin.get_render_mode()
+        return {
+            "component": component,
+            "remote": self._remote_descriptor(extension_id, plugin, dist_path),
+        }
 
     def provided_agent_tools(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的智能体工具。
