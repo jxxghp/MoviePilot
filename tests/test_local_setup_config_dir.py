@@ -289,6 +289,42 @@ class LocalSetupConfigDirTests(unittest.TestCase):
                     recreate=True,
                 )
 
+    def test_recreate_rejects_current_python_inside_target_venv(self):
+        module = load_local_setup_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv_dir = (Path(temp_dir) / "venv").resolve()
+            running_python = venv_dir / "bin" / "python"
+            running_python.parent.mkdir(parents=True)
+            running_python.touch()
+
+            with patch.object(module, "ensure_supported_python"), patch.object(
+                module.sys, "executable", str(running_python)
+            ), self.assertRaisesRegex(RuntimeError, "venv 外部"):
+                module.install_deps(
+                    python_bin="/usr/bin/python3",
+                    venv_dir=venv_dir,
+                    recreate=True,
+                )
+
+    def test_recreate_resolves_python_command_through_path(self):
+        module = load_local_setup_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv_dir = (Path(temp_dir) / "venv").resolve()
+            path_python = venv_dir / "bin" / "python"
+            path_python.parent.mkdir(parents=True)
+            path_python.touch()
+
+            with patch.object(module, "ensure_supported_python"), patch.object(
+                module.shutil, "which", return_value=str(path_python)
+            ), self.assertRaisesRegex(RuntimeError, "venv 外部"):
+                module.install_deps(
+                    python_bin="python3",
+                    venv_dir=venv_dir,
+                    recreate=True,
+                )
+
     def test_windows_install_deps_uses_uv_without_pip_bootstrap(self):
         module = load_local_setup_module()
         calls = []

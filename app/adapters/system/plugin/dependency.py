@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from importlib.metadata import distributions
+from importlib.metadata import PackageNotFoundError, distribution, distributions
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
+from packaging.markers import default_environment
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -86,6 +89,132 @@ class PluginDependencyInstaller:
         return installed
 
     @classmethod
+    def _installed_distribution(cls, package_name: str) -> Any | None:
+        """读取一个包的元数据，用于校验 extras 和 direct URL 来源。"""
+        try:
+            return distribution(package_name)
+        except PackageNotFoundError:
+            return None
+
+    def _requirement_satisfied(
+        self,
+        requirement: Requirement,
+        installed: dict[str, Version],
+        *,
+        seen: Optional[set[tuple[str, tuple[str, ...], Optional[str]]]] = None,
+    ) -> bool:
+        """同时校验版本、extras 及 direct URL，不把同名包误认为同一制品。"""
+        package_name = self._standardize(requirement.name)
+        installed_version = installed.get(package_name)
+        try:
+            if installed_version is None or not SpecifierSet(
+                requirement.specifier
+            ).contains(installed_version, prereleases=True):
+                return False
+        except InvalidSpecifier as err:
+            logger.error(f"依赖 {package_name} 约束无效：{err}")
+            return False
+
+        installed_distribution = self._installed_distribution(package_name)
+        if installed_distribution is None:
+            return False if requirement.extras or requirement.url else True
+
+        if requirement.url and not self._direct_url_matches(
+            installed_distribution, requirement.url
+        ):
+            return False
+
+        requested_extras = {
+            self._standardize_extra(extra) for extra in requirement.extras
+        }
+        if requested_extras:
+            provided_extras = {
+                self._standardize_extra(extra)
+                for extra in installed_distribution.metadata.get_all(
+                    "Provides-Extra"
+                )
+                or []
+            }
+            if not requested_extras.issubset(provided_extras):
+                return False
+
+        marker_key = (package_name, tuple(sorted(requested_extras)), requirement.url)
+        if seen is None:
+            seen = set()
+        if marker_key in seen:
+            return True
+        seen.add(marker_key)
+
+        for raw_dependency in installed_distribution.metadata.get_all(
+            "Requires-Dist"
+        ) or []:
+            try:
+                extra_dependency = Requirement(raw_dependency)
+            except Exception as err:
+                logger.debug(
+                    f"无法解析已安装包 {package_name} 的依赖项 '{raw_dependency}'：{err}"
+                )
+                continue
+            if not self._marker_matches_for_extras(
+                extra_dependency, requested_extras
+            ):
+                continue
+            if not self._requirement_satisfied(
+                extra_dependency, installed, seen=seen
+            ):
+                return False
+        return True
+
+    @classmethod
+    def _marker_matches_for_extras(
+        cls, requirement: Requirement, extras: set[str]
+    ) -> bool:
+        """判断已安装发行版声明的可选依赖是否属于当前请求的 extra。"""
+        if requirement.marker is None:
+            return True
+        environment = default_environment()
+        if "extra" in str(requirement.marker):
+            return any(
+                requirement.marker.evaluate({**environment, "extra": extra})
+                for extra in extras
+            )
+        return requirement.marker.evaluate(environment)
+
+    @staticmethod
+    def _standardize_extra(name: str) -> str:
+        """按 PEP 685 兼容规则标准化 extra 名称。"""
+        return (name or "").lower().replace("-", "_").replace(".", "_")
+
+    @staticmethod
+    def _direct_url_matches(installed_distribution: Any, required_url: str) -> bool:
+        """校验安装发行版记录的 PEP 610 URL 与清单来源一致。"""
+        try:
+            payload = installed_distribution.read_text("direct_url.json")
+            if not payload:
+                return False
+            direct_url = json.loads(payload).get("url")
+            if not isinstance(direct_url, str):
+                return False
+            return PluginDependencyInstaller._canonical_direct_url(
+                required_url
+            ) == PluginDependencyInstaller._canonical_direct_url(direct_url)
+        except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _canonical_direct_url(value: str) -> tuple[str, str, str, str, str]:
+        """规范化来源 URL，同时保留 fragment 中可能存在的校验信息。"""
+        parsed = urlsplit(value)
+        netloc = parsed.netloc.rsplit("@", 1)[-1].lower()
+        return (
+            parsed.scheme.lower(),
+            netloc,
+            parsed.path.rstrip("/"),
+            parsed.query,
+            parsed.fragment,
+        )
+
+    @classmethod
     def _merge(cls, dependencies: list[Requirement]) -> list[Requirement]:
         """按包和安装来源合并 extras 与约束，保留完整安装目标。"""
         groups: dict[tuple[str, Optional[str]], _RequirementGroup] = {}
@@ -152,16 +281,7 @@ class PluginDependencyInstaller:
             installed = self._installed_packages()
             missing = []
             for requirement in required:
-                package_name = self._standardize(requirement.name)
-                installed_version = installed.get(package_name)
-                try:
-                    satisfied = installed_version is not None and SpecifierSet(
-                        requirement.specifier
-                    ).contains(installed_version, prereleases=True)
-                except InvalidSpecifier as err:
-                    logger.error(f"依赖 {package_name} 约束无效：{err}")
-                    satisfied = False
-                if not satisfied:
+                if not self._requirement_satisfied(requirement, installed):
                     missing.append(str(requirement))
             return missing
         except PluginDependencyManifestError:

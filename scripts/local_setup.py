@@ -658,6 +658,12 @@ def ensure_supported_python(python_bin: str) -> None:
         )
 
 
+def resolve_python_path(python_bin: str) -> Path:
+    """解析解释器命令，优先按 PATH 找到实际执行文件。"""
+    resolved = shutil.which(python_bin)
+    return Path(resolved or python_bin).expanduser().resolve()
+
+
 def ensure_local_dirs() -> None:
     for path in (CONFIG_DIR, LOG_DIR, CACHE_DIR, TEMP_DIR, COOKIE_DIR, RUNTIME_DIR):
         path.mkdir(parents=True, exist_ok=True)
@@ -2710,8 +2716,11 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
     ensure_supported_python(python_bin)
     venv_dir = venv_dir.expanduser().resolve()
     if recreate:
-        resolved_python = Path(python_bin).expanduser().resolve()
-        if resolved_python.is_relative_to(venv_dir):
+        requested_python = resolve_python_path(python_bin)
+        executing_python = Path(sys.executable).expanduser().resolve()
+        if requested_python.is_relative_to(venv_dir) or executing_python.is_relative_to(
+            venv_dir
+        ):
             raise RuntimeError(
                 "重建虚拟环境需要使用 venv 外部的 Python 3.12+ 解释器。"
             )

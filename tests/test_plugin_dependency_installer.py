@@ -118,6 +118,163 @@ def test_find_missing_preserves_direct_url(tmp_path, monkeypatch):
     assert requirement.url == direct_url
 
 
+def test_find_missing_does_not_accept_base_package_for_extra(
+    tmp_path, monkeypatch
+):
+    """已安装基础包但未安装其 extra 依赖时必须继续恢复。"""
+    plugin_root = tmp_path / "plugins"
+    _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer, "_installed_packages", lambda: {"demo": Version("2.0")}
+    )
+    metadata = SimpleNamespace(
+        get_all=lambda key: {"Provides-Extra": ["feature"], "Requires-Dist": [
+            "feature-dependency>=1; extra == 'feature'"
+        ]}.get(key, []),
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution",
+        lambda package_name: SimpleNamespace(metadata=metadata)
+        if package_name == "demo"
+        else None,
+    )
+
+    assert installer.find_missing() == ["demo[feature]>=1"]
+
+
+def test_find_missing_accepts_satisfied_extra_dependencies(tmp_path, monkeypatch):
+    """已安装 extra 及其依赖时不得重复恢复。"""
+    plugin_root = tmp_path / "plugins"
+    _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_packages",
+        lambda: {"demo": Version("2.0"), "feature_dependency": Version("1.2")},
+    )
+    metadata = SimpleNamespace(
+        get_all=lambda key: {"Provides-Extra": ["feature"], "Requires-Dist": [
+            "feature-dependency>=1; extra == 'feature'"
+        ]}.get(key, []),
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution",
+        lambda package_name: SimpleNamespace(metadata=metadata)
+        if package_name == "demo"
+        else None,
+    )
+
+    assert installer.find_missing() == []
+
+
+def test_find_missing_rejects_missing_transitive_extra_dependency(
+    tmp_path, monkeypatch
+):
+    """extra 的传递依赖缺失时不能只因根包已安装就跳过恢复。"""
+    plugin_root = tmp_path / "plugins"
+    _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_packages",
+        lambda: {"demo": Version("2.0"), "bridge": Version("1.0")},
+    )
+    metadata_by_name = {
+        "demo": SimpleNamespace(
+            metadata=SimpleNamespace(
+                get_all=lambda key: {
+                    "Provides-Extra": ["feature"],
+                    "Requires-Dist": ["bridge>=1; extra == 'feature'"],
+                }.get(key, [])
+            )
+        ),
+        "bridge": SimpleNamespace(
+            metadata=SimpleNamespace(
+                get_all=lambda key: {
+                    "Requires-Dist": ["leaf>=1"],
+                }.get(key, [])
+            )
+        ),
+    }
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution",
+        lambda package_name: metadata_by_name.get(package_name),
+    )
+
+    assert installer.find_missing() == ["demo[feature]>=1"]
+
+
+def test_find_missing_rejects_same_name_package_from_wrong_direct_url(
+    tmp_path, monkeypatch
+):
+    """存在不同 PEP 610 来源时，同名包不能满足 direct URL 依赖。"""
+    plugin_root = tmp_path / "plugins"
+    required_url = "https://example.com/packages/demo-2.0.0-py3-none-any.whl"
+    installed_url = "https://mirror.example.com/packages/demo-2.0.0-py3-none-any.whl"
+    _write_requirements(plugin_root, "Alpha", f"Demo @ {required_url}\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer, "_installed_packages", lambda: {"demo": Version("2.0")}
+    )
+    metadata = SimpleNamespace(get_all=lambda _key: [])
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution",
+        lambda _package_name: SimpleNamespace(
+            metadata=metadata,
+            read_text=lambda _name: '{"url": "' + installed_url + '"}',
+        ),
+    )
+
+    assert installer.find_missing() == [f"demo @ {required_url}"]
+
+
+def test_find_missing_accepts_matching_direct_url(tmp_path, monkeypatch):
+    """同名包且 PEP 610 来源一致时应视为已满足。"""
+    plugin_root = tmp_path / "plugins"
+    direct_url = "https://example.com/packages/demo-2.0.0-py3-none-any.whl"
+    _write_requirements(plugin_root, "Alpha", f"Demo @ {direct_url}\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer, "_installed_packages", lambda: {"demo": Version("2.0")}
+    )
+    metadata = SimpleNamespace(get_all=lambda _key: [])
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution",
+        lambda _package_name: SimpleNamespace(
+            metadata=metadata,
+            read_text=lambda _name: '{"url": "' + direct_url + '"}',
+        ),
+    )
+
+    assert installer.find_missing() == []
+
+
 def test_find_missing_prefers_pyproject_project_dependencies(
     tmp_path,
     monkeypatch,
