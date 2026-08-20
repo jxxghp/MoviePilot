@@ -59,9 +59,27 @@ class EventBindingResolver:
 
     @staticmethod
     def is_class_method_declaration(handler: Callable) -> bool:
-        """判断处理器是否声明在类体内（限定名含类前缀且非局部闭包）。"""
+        """判断处理器是否声明在类体内（限定名含类前缀或签名首参为 self/cls）。
+
+        模块级顶层自由函数的限定名不含 ``.``；类方法、装饰器包装和嵌套函数
+        的限定名含 ``.``。局部作用域自由函数（如测试内联 handler）限定名形如
+        ``func.<locals>.handler``，与装饰器包装方法 ``SiteStatistic.<locals>.
+        wrapper`` 无法靠限定名区分，需按调用约定兜底：签名首参为 self/cls
+        才视为类方法声明。模块卸载后残留的类方法一旦被 unbound 直调，会把
+        event 吞进 self 触发 missing event TypeError，因此必须跳过等待重载自愈。
+        """
         parts = handler.__qualname__.split(".")
-        return len(parts) >= 2 and "<locals>" not in parts
+        if len(parts) < 2:
+            return False
+        if "<locals>" not in parts:
+            return True
+        try:
+            parameters = list(inspect.signature(handler).parameters.values())
+        except (TypeError, ValueError):
+            return True
+        if not parameters:
+            return True
+        return parameters[0].name in ("self", "cls")
 
     @staticmethod
     def owner_class(handler: Callable) -> Optional[Type[Any]]:
