@@ -1432,6 +1432,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             # 作者链接
             if hasattr(plugin_class, "author_url"):
                 plugin.author_url = plugin_class.author_url
+            # 项目主页，兼容旧插件自定义的 plugin_repo 声明
+            plugin.project_url = getattr(plugin_class, "project_url", None) \
+                or getattr(plugin_class, "plugin_repo", None)
             # 加载顺序
             if hasattr(plugin_class, "plugin_order"):
                 plugin.plugin_order = plugin_class.plugin_order
@@ -1692,6 +1695,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 作者
         if plugin_info.get("author"):
             plugin.plugin_author = plugin_info.get("author")
+        # 项目主页
+        if plugin_info.get("project_url"):
+            plugin.project_url = plugin_info.get("project_url")
         # 更新历史
         if plugin_info.get("history"):
             plugin.history = plugin_info.get("history")

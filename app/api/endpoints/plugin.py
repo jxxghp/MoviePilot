@@ -238,6 +238,7 @@ def _merge_plugin_market_metadata(
     """
     合并插件市场中的远端元数据，供已安装插件按需展示更新说明。
     """
+    plugin.project_url = market_plugin.project_url or plugin.project_url
     plugin.repo_url = market_plugin.repo_url or plugin.repo_url
     plugin.history = market_plugin.history or {}
     plugin.release = market_plugin.release

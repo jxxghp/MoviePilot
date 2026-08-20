@@ -649,6 +649,7 @@ class TestPluginHelper:
                 "description": "Demo",
                 "version": "1.0.0",
                 "labels": ["站点", "通知", ""],
+                "project_url": "https://github.com/demo/plugin",
                 "v2": True,
             }
         }
@@ -664,7 +665,33 @@ class TestPluginHelper:
 
         assert len(plugins) == 1
         assert plugins[0].plugin_label == "站点 通知"
+        assert plugins[0].project_url == "https://github.com/demo/plugin"
         assert plugins[0].model_dump()["plugin_label"] == "站点 通知"
+
+    def test_get_local_plugins_maps_legacy_plugin_repo_to_project_url(self, monkeypatch) -> None:
+        """本地插件旧有的 plugin_repo 声明应作为独立项目主页返回。"""
+        try:
+            from app.core.plugin import PluginManager
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        class DemoPlugin:
+            plugin_name = "Demo Plugin"
+            plugin_repo = "https://github.com/demo/plugin"
+
+        plugin_manager = PluginManager()
+        monkeypatch.setattr(plugin_manager, "_plugins", {"DemoPlugin": DemoPlugin})
+        monkeypatch.setattr(plugin_manager, "_running_plugins", {})
+        monkeypatch.setattr(
+            "app.core.plugin.SystemConfigOper",
+            lambda: SimpleNamespace(get=lambda _key: ["DemoPlugin"]),
+        )
+        monkeypatch.setattr("app.core.plugin.SitesHelper", lambda: SimpleNamespace(auth_level=1))
+
+        plugins = plugin_manager.get_local_plugins()
+
+        assert len(plugins) == 1
+        assert plugins[0].project_url == "https://github.com/demo/plugin"
 
     def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """

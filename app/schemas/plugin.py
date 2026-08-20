@@ -22,6 +22,8 @@ class Plugin(BaseModel):
     plugin_author: Optional[str] = None
     # 作者主页
     author_url: Optional[str] = None
+    # 项目主页
+    project_url: Optional[str] = None
     # 插件配置项ID前缀
     plugin_config_prefix: Optional[str] = None
     # 加载顺序

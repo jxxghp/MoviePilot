@@ -27,6 +27,7 @@ def test_plugin_history_merges_remote_metadata():
     )
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
+        project_url="https://github.com/demo/plugin",
         repo_url="https://github.com/demo/plugins",
         history={"v1.1.0": "- 新增更新说明"},
         system_version=">=2.0.0",
@@ -42,6 +43,7 @@ def test_plugin_history_merges_remote_metadata():
         result = asyncio.run(plugin_history("DemoPlugin", None, True))
 
     assert result.repo_url == "https://github.com/demo/plugins"
+    assert result.project_url == "https://github.com/demo/plugin"
     assert result.history == {"v1.1.0": "- 新增更新说明"}
     assert result.system_version == ">=2.0.0"
     assert result.has_update
