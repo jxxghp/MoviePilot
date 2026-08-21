@@ -394,7 +394,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def start_monitor(self):
         """按当前配置启动插件文件修改监测。"""
-        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
+        if (
+            not self.is_plugin_settling()
+            and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+        ):
             self._plugin_monitor.start()
 
     def reload_monitor(self):
@@ -402,7 +405,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         重新加载插件文件修改监测
         """
         self._plugin_monitor.reload(
-            enabled=settings.DEV or settings.PLUGIN_AUTO_RELOAD
+            enabled=(
+                not self.is_plugin_settling()
+                and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+            )
         )
 
     def stop_monitor(self):

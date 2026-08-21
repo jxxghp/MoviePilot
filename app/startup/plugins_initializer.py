@@ -147,18 +147,17 @@ async def sync_plugins() -> bool:
             return False
         classification = plugin_manager.classify_plugins()
         plugin_manager.apply_plugin_dependency_classification(classification)
-        running_ids = set(plugin_manager.running_plugins)
-        synced_ids = set(sync_result or [])
-        changed_ids: list[str] = []
-
-        for plugin_id in classification.ready:
-            if plugin_id in synced_ids and plugin_id in running_ids:
-                plugin_manager.reload_plugin(plugin_id)
-                changed_ids.append(plugin_id)
-                continue
-            if plugin_id not in running_ids:
-                plugin_manager.start(plugin_id)
-                changed_ids.append(plugin_id)
+        changed_ids = await execute_task(
+            loop,
+            lambda: _activate_ready_plugins(
+                plugin_manager,
+                classification.ready,
+                sync_result or [],
+            ),
+            "插件运行态激活",
+        )
+        if changed_ids is None:
+            return False
 
         if not changed_ids:
             logger.debug("没有新的插件进入可运行状态")
@@ -171,9 +170,26 @@ async def sync_plugins() -> bool:
     except Exception as e:
         logger.error(f"插件初始化过程中出现异常: {e}")
         return False
-    finally:
-        if plugin_manager is not None:
-            plugin_manager.set_plugin_settling(False)
+
+
+def _activate_ready_plugins(
+    plugin_manager: PluginManager,
+    ready_ids: tuple[str, ...],
+    synced_ids: list[str],
+) -> list[str]:
+    """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
+    running_ids = set(plugin_manager.running_plugins)
+    synced = set(synced_ids)
+    changed_ids: list[str] = []
+    for plugin_id in ready_ids:
+        if plugin_id in synced and plugin_id in running_ids:
+            plugin_manager.reload_plugin(plugin_id)
+            changed_ids.append(plugin_id)
+            continue
+        if plugin_id not in running_ids:
+            plugin_manager.start(plugin_id)
+            changed_ids.append(plugin_id)
+    return changed_ids
 
 
 async def execute_task(loop, task_func, task_name):
@@ -206,9 +222,7 @@ def init_plugins():
     plugin_manager = PluginManager()
     classification = plugin_manager.classify_plugins()
     plugin_manager.apply_plugin_dependency_classification(classification)
-    plugin_manager.set_plugin_settling(bool(
-        classification.missing_dependencies or classification.missing_source
-    ))
+    plugin_manager.set_plugin_settling(True)
     for plugin_id in classification.ready:
         plugin_manager.start(plugin_id)
     register_plugin_api()

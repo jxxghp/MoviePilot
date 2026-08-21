@@ -25,6 +25,7 @@ except Exception:
     pass
 
 from app.chain.system import SystemChain
+from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.config import global_vars, settings
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
@@ -35,6 +36,7 @@ from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
 from app.startup.plugins_initializer import (
     configure_plugin_services,
+    execute_task,
     init_plugins,
     stop_plugins,
     sync_plugins,
@@ -67,11 +69,18 @@ async def init_extra():
         SystemHelper().set_system_modified()
         SystemChain().restart_finish()
         return
-    if await sync_plugins():
-        # 重新注册插件定时服务
-        init_plugin_scheduler()
-        # 重新注册命令
-        restart_command()
+    plugin_manager = get_plugin_manager()
+    try:
+        if await sync_plugins():
+            await execute_task(
+                global_vars.loop,
+                init_plugin_scheduler,
+                "插件定时服务刷新",
+            )
+            await asyncio.wrap_future(restart_command())
+    finally:
+        plugin_manager.set_plugin_settling(False)
+        plugin_manager.start_monitor()
     # 设置系统已修改标志
     SystemHelper().set_system_modified()
     # 重启完成
@@ -320,12 +329,9 @@ async def lifespan(app: FastAPI):
     finally:
         print("Shutting down...")
         global_vars.stop_system()
-        # 取消同步插件任务
+        # 插件恢复会在线程池中修改源码与依赖，必须完成后再进入资源关闭阶段。
         try:
-            sync_plugins_task.cancel()
             await sync_plugins_task
-        except asyncio.CancelledError:
-            pass
         except Exception as e:
             print(str(e))
         try:

@@ -1,3 +1,6 @@
+import asyncio
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -75,6 +78,7 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     plugins_initializer.init_plugins()
 
     assert order == ["services", "plugin:ReadyPlugin", "routes", "monitor"]
+    manager.set_plugin_settling.assert_called_once_with(True)
 
 
 def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
@@ -211,6 +215,44 @@ async def test_sync_plugins_keeps_runtime_when_nothing_changed(monkeypatch) -> N
     register.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
+    monkeypatch,
+) -> None:
+    """插件初始化运行在线程池时，Web 事件循环仍可继续调度。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("SlowPlugin",),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {}
+    activation_started = threading.Event()
+
+    def slow_start(_plugin_id: str) -> None:
+        activation_started.set()
+        time.sleep(0.1)
+
+    manager.start.side_effect = slow_start
+    monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())
+    monkeypatch.setattr(
+        plugins_initializer.global_vars,
+        "CURRENT_EVENT_LOOP",
+        asyncio.get_running_loop(),
+    )
+
+    sync_task = asyncio.create_task(plugins_initializer.sync_plugins())
+    assert await asyncio.to_thread(activation_started.wait, 1)
+    assert sync_task.done() is False
+    assert await sync_task is True
+
+
 @pytest.mark.parametrize(
     ("dev", "auto_reload", "expected_calls"),
     ((True, False, 1), (False, True, 1), (False, False, 0)),
@@ -239,6 +281,38 @@ def test_start_monitor_respects_runtime_configuration(
     manager.start_monitor()
 
     assert start.call_count == expected_calls
+    _reset_plugin_manager()
+
+
+def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
+    """后台依赖收敛期间不启动文件监控，避免源码写入触发重复重载。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.settings",
+        SimpleNamespace(
+            DEV=True,
+            PLUGIN_AUTO_RELOAD=False,
+            ROOT_PATH=MagicMock(),
+        ),
+    )
+    manager = PluginManager()
+    start = MagicMock()
+    reload_monitor = MagicMock()
+    manager._plugin_monitor.start = start
+    manager._plugin_monitor.reload = reload_monitor
+
+    manager.set_plugin_settling(True)
+    manager.start_monitor()
+    manager.reload_monitor()
+
+    start.assert_not_called()
+    reload_monitor.assert_called_once_with(enabled=False)
+
+    manager.set_plugin_settling(False)
+    manager.start_monitor()
+
+    start.assert_called_once_with()
     _reset_plugin_manager()
 
 
