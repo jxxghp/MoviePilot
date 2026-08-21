@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import traceback
+import uuid
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable, Sequence
@@ -1129,21 +1130,38 @@ class PluginHelper(metaclass=WeakSingleton):
 
         backup_root = settings.CONFIG_PATH / "plugins_backup"
         backup_dir = backup_root / pid.lower()
+        staging_dir = backup_root / f".{pid.lower()}.tmp-{uuid.uuid4().hex}"
+        previous_dir = backup_root / f".{pid.lower()}.old-{uuid.uuid4().hex}"
         try:
             backup_root.mkdir(parents=True, exist_ok=True)
-            if backup_dir.exists():
-                shutil.rmtree(backup_dir, ignore_errors=True)
             shutil.copytree(
                 plugin_dir,
-                backup_dir,
-                dirs_exist_ok=True,
+                staging_dir,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
             )
+            if backup_dir.exists():
+                backup_dir.replace(previous_dir)
+            staging_dir.replace(backup_dir)
+            if previous_dir.exists():
+                shutil.rmtree(previous_dir, ignore_errors=True)
             logger.info(f"已刷新插件备份: {pid}")
             return True
         except Exception as e:
+            if not backup_dir.exists() and previous_dir.exists():
+                try:
+                    previous_dir.replace(backup_dir)
+                except Exception as rollback_error:
+                    logger.error(
+                        f"恢复插件旧备份失败，已保留恢复材料 {previous_dir}: "
+                        f"{rollback_error}"
+                    )
             logger.error(f"刷新插件备份失败: {pid} - {e}")
             return False
+        finally:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            if backup_dir.exists() and previous_dir.exists():
+                shutil.rmtree(previous_dir, ignore_errors=True)
 
     def __collect_plugin_wheels_dirs(self) -> List[Path]:
         """

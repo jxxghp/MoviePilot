@@ -1,12 +1,13 @@
+import errno
 import json
 import re
 import shutil
+import uuid
 from pathlib import Path
 from typing import Union, Optional
 
 from app.chain import ChainBase
 from app.runtime.config import settings
-from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -22,6 +23,7 @@ class SystemChain(ChainBase):
     """
 
     _restart_file = "__system_restart__"
+    _plugin_restore_pending_file = "__plugin_restore_pending__"
 
     def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
         """
@@ -77,31 +79,46 @@ class SystemChain(ChainBase):
 
             # 确保备份目录存在
             backup_dir.mkdir(parents=True, exist_ok=True)
-
+            pending_file = backup_dir / SystemChain._plugin_restore_pending_file
+            pending_items = (
+                SystemChain.__read_plugin_restore_pending(pending_file)
+                if pending_file.exists()
+                else None
+            )
             # 需要排除的文件和目录
             exclude_items = {"__init__.py", "__pycache__", ".DS_Store"}
+
+            backup_failed = False
 
             # 遍历插件目录，备份除排除项外的所有内容
             for item in plugins_dir.iterdir():
                 if item.name in exclude_items:
                     continue
-
+                # 失败项目的原快照是下一次恢复的唯一材料，关停备份不能覆盖它。
+                if pending_file.exists() and (
+                    pending_items is None or item.name in pending_items
+                ):
+                    logger.debug(f"插件 {item.name} 有待重试恢复标记，保留原快照")
+                    continue
                 target_path = backup_dir / item.name
 
-                # 如果是目录
-                if item.is_dir():
-                    if target_path.exists():
-                        continue
-                    shutil.copytree(item, target_path)
-                    logger.debug(f"已备份插件目录: {item.name}")
-                # 如果是文件
-                elif item.is_file():
-                    if target_path.exists():
-                        continue
-                    shutil.copy2(item, target_path)
-                    logger.info(f"已备份插件文件: {item.name}")
+                try:
+                    SystemChain.__replace_snapshot(
+                        item,
+                        target_path,
+                        ignore=shutil.ignore_patterns(
+                            "__pycache__", "*.pyc", ".DS_Store"
+                        ) if item.is_dir() else None,
+                    )
+                    logger.debug(f"已备份插件项目: {item.name}")
+                except Exception as e:
+                    backup_failed = True
+                    logger.error(f"备份插件 {item.name} 失败: {e}")
 
-            logger.info(f"插件备份完成，备份位置: {backup_dir}")
+            if backup_failed:
+                logger.warning(f"插件备份部分失败，保留可用旧快照: {backup_dir}")
+            else:
+                logger.info(f"插件备份完成，备份位置: {backup_dir}")
 
         except Exception as e:
             logger.error(f"插件备份失败: {str(e)}")
@@ -124,44 +141,164 @@ class SystemChain(ChainBase):
             logger.info("插件备份目录不存在，跳过恢复")
             return
 
-        # 系统被重置才恢复插件
-        if SystemHelper().is_system_reset():
+        pending_file = backup_dir / SystemChain._plugin_restore_pending_file
 
-            # 确保插件目录存在
-            plugins_dir.mkdir(parents=True, exist_ok=True)
+        # 系统重置或上次恢复未完成时才消费备份。
+        system_reset = SystemHelper().is_system_reset()
+        should_restore = system_reset or pending_file.exists()
+        if not should_restore:
+            logger.info("当前不是系统重置，保留插件备份供后续重置使用")
+            return
 
-            # 遍历备份目录，恢复所有内容
-            restored_count = 0
-            for item in backup_dir.iterdir():
-                target_path = plugins_dir / item.name
-                try:
-                    # 如果是目录，且目录内有内容
-                    if item.is_dir() and any(item.iterdir()):
-                        if target_path.exists():
-                            shutil.rmtree(target_path)
-                        shutil.copytree(item, target_path)
-                        logger.debug(f"已恢复插件目录: {item.name}")
-                        restored_count += 1
-                    # 如果是文件
-                    elif item.is_file():
-                        shutil.copy2(item, target_path)
-                        logger.debug(f"已恢复插件文件: {item.name}")
-                        restored_count += 1
-                except Exception as e:
-                    logger.error(f"恢复插件 {item.name} 时发生错误: {str(e)}")
+        # 确保插件目录存在
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+
+        # 遍历备份目录，恢复所有内容
+        restored_count = 0
+        restore_failed = False
+        failed_items: dict[str, bool] = {}
+        pending_items = (
+            SystemChain.__read_plugin_restore_pending(pending_file)
+            if pending_file.exists() and not system_reset
+            else None
+        )
+        for item in backup_dir.iterdir():
+            if (
+                item.name == SystemChain._plugin_restore_pending_file
+                or item.name.startswith(".")
+            ):
+                continue
+            target_path = plugins_dir / item.name
+            if pending_items is not None:
+                if item.name not in pending_items:
                     continue
+                if not pending_items[item.name] and target_path.exists():
+                    logger.info(f"插件 {item.name} 已在恢复失败后重新安装，跳过备份覆盖")
+                    continue
+            target_existed = target_path.exists()
+            try:
+                if item.is_dir() or item.is_file():
+                    SystemChain.__replace_snapshot(item, target_path)
+                    logger.debug(f"已恢复插件文件: {item.name}")
+                    restored_count += 1
+            except Exception as e:
+                restore_failed = True
+                failed_items[item.name] = target_existed
+                logger.error(f"恢复插件 {item.name} 时发生错误: {str(e)}")
+                continue
 
-            logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
+        logger.info(f"插件恢复完成，共恢复 {restored_count} 个项目")
 
-            # 安装缺少的依赖
-            get_plugin_manager().install_plugin_missing_dependencies()
+        if restore_failed:
+            if SystemChain.__write_plugin_restore_pending(pending_file, failed_items):
+                logger.warning("插件恢复未完成，保留备份并标记为下次启动重试")
+            else:
+                logger.warning("插件恢复未完成，已保留备份，但无法写入下次启动重试标记")
+            return
 
-        # 删除备份目录
+        # 源码恢复完成后即可消费备份；依赖由启动后的统一后台任务处理。
         try:
             shutil.rmtree(backup_dir)
             logger.info(f"已删除插件备份目录: {backup_dir}")
         except Exception as e:
             logger.warning(f"删除备份目录失败: {str(e)}")
+            if backup_dir.exists():
+                SystemChain.__write_plugin_restore_pending(pending_file, {})
+
+    @staticmethod
+    def __read_plugin_restore_pending(pending_file: Path) -> Optional[dict[str, bool]]:
+        """读取仍需恢复的插件项目；无效内容按全部项目重试。"""
+        try:
+            payload = json.loads(pending_file.read_text(encoding="utf-8"))
+            failed_items = payload.get("failed_items")
+            if not isinstance(failed_items, dict):
+                return None
+            return {
+                str(name): target_existed
+                for name, target_existed in failed_items.items()
+                if isinstance(name, str) and isinstance(target_existed, bool)
+            }
+        except (OSError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def __write_plugin_restore_pending(
+        pending_file: Path,
+        failed_items: dict[str, bool],
+    ) -> bool:
+        """记录失败项目及其原目标状态，供普通重启继续未完成恢复。"""
+        try:
+            pending_file.write_text(
+                json.dumps({"failed_items": failed_items}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return True
+        except Exception as e:
+            logger.error(f"写入插件恢复重试标记失败: {e}")
+            return False
+
+    @staticmethod
+    def __replace_snapshot(source: Path, target: Path, *, ignore=None) -> None:
+        """复制到同级临时路径后替换目标，避免失败时丢失旧快照。"""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        suffix = uuid.uuid4().hex
+        staging = target.with_name(f".{target.name}.tmp-{suffix}")
+        previous = target.with_name(f".{target.name}.old-{suffix}")
+        previous_available = False
+        published = False
+        try:
+            if source.is_dir():
+                shutil.copytree(source, staging, ignore=ignore)
+            else:
+                shutil.copy2(source, staging)
+            if target.exists():
+                try:
+                    target.replace(previous)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    # overlayfs 可能拒绝把镜像层目录直接 rename 到可写层，
+                    # 先复制旧目标保留恢复材料，再删除旧目录继续发布快照。
+                    if target.is_dir():
+                        shutil.copytree(target, previous, symlinks=True)
+                    else:
+                        shutil.copy2(target, previous, follow_symlinks=False)
+                    previous_available = True
+                    SystemChain.__remove_snapshot_path(target)
+                else:
+                    previous_available = True
+            staging.replace(target)
+            published = True
+        except Exception:
+            if previous_available and not published:
+                try:
+                    SystemChain.__remove_snapshot_path(target)
+                    previous.replace(target)
+                    previous_available = False
+                except Exception as rollback_error:
+                    logger.error(
+                        f"恢复旧快照失败，已保留恢复材料 {previous}: "
+                        f"{rollback_error}"
+                    )
+            raise
+        finally:
+            if staging.is_dir():
+                shutil.rmtree(staging, ignore_errors=True)
+            elif staging.exists():
+                staging.unlink(missing_ok=True)
+            if published and previous.exists():
+                if previous.is_dir():
+                    shutil.rmtree(previous, ignore_errors=True)
+                else:
+                    previous.unlink(missing_ok=True)
+
+    @staticmethod
+    def __remove_snapshot_path(path: Path) -> None:
+        """删除待替换目标，保留失败回滚所需的旧快照副本。"""
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
 
     def __get_version_message(self) -> str:
         """

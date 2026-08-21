@@ -16,6 +16,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_resource_import_preparer,
     configure_site_auth_level_provider,
 )
+from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.application.plugin.catalog import PluginCatalogService
 from app.adapters.external.plugin.client import PluginMarketClient
 from app.runtime.extensions.plugin.storage import (
@@ -42,6 +43,7 @@ from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.foundation.version import compare_version
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 
@@ -121,30 +123,83 @@ async def sync_plugins() -> bool:
     """
     初始化安装插件，并动态注册后台任务及API
     """
+    plugin_manager = None
     try:
         configure_plugin_services()
         loop = global_vars.loop
         plugin_manager = PluginManager()
+        plugin_manager.set_plugin_settling(True)
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
-        resolved_dependencies = await execute_task(loop, plugin_manager.install_plugin_missing_dependencies,
-                                                   "缺失依赖项安装")
-        # 判断是否需要进行插件初始化
-        if not sync_result and not resolved_dependencies:
-            logger.debug("没有新的插件同步到本地或缺失依赖项需要安装")
+        dependency_result = await execute_task(
+            loop,
+            plugin_manager.install_plugin_missing_dependencies_with_status,
+            "缺失依赖项安装",
+        )
+        if dependency_result is None:
+            return False
+        if not isinstance(dependency_result, PluginDependencyInstallResult):
+            logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
+            return False
+        previous_statuses = plugin_manager.get_plugin_runtime_statuses()
+        classification = plugin_manager.classify_plugins()
+        plugin_manager.apply_plugin_dependency_classification(classification)
+        if not dependency_result.success:
+            logger.error("缺失依赖项安装未完成，将继续激活当前已就绪插件")
+        changed_ids = await execute_task(
+            loop,
+            lambda: _activate_ready_plugins(
+                plugin_manager,
+                classification.ready,
+                sync_result or [],
+                previous_statuses,
+            ),
+            "插件运行态激活",
+        )
+        if changed_ids is None:
             return False
 
-        # 继续执行后续的插件初始化步骤
-        logger.info("正在重新初始化插件")
-        # 重新初始化插件
-        plugin_manager.init_config()
-        # 重新注册插件API
-        register_plugin_api()
-        logger.info("所有插件初始化完成")
+        if not changed_ids:
+            logger.debug("没有新的插件进入可运行状态")
+            return False
+
+        for plugin_id in changed_ids:
+            register_plugin_api(plugin_id)
+        if dependency_result.success:
+            logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
+        else:
+            logger.warning(
+                f"缺失依赖项仍未全部恢复，已激活 {len(changed_ids)} 个就绪插件"
+            )
         return True
     except Exception as e:
         logger.error(f"插件初始化过程中出现异常: {e}")
         return False
+
+
+def _activate_ready_plugins(
+    plugin_manager: PluginManager,
+    ready_ids: tuple[str, ...],
+    synced_ids: list[str],
+    previous_statuses: dict[str, PluginRuntimeStatus],
+) -> list[str]:
+    """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
+    running_ids = set(plugin_manager.running_plugins)
+    synced = set(synced_ids)
+    changed_ids: list[str] = []
+    for plugin_id in ready_ids:
+        dependency_recovered = (
+            previous_statuses.get(plugin_id)
+            is PluginRuntimeStatus.DEPENDENCY_PENDING
+        )
+        if plugin_id in running_ids and (plugin_id in synced or dependency_recovered):
+            plugin_manager.reload_plugin(plugin_id)
+            changed_ids.append(plugin_id)
+            continue
+        if plugin_id not in running_ids:
+            plugin_manager.start(plugin_id)
+            changed_ids.append(plugin_id)
+    return changed_ids
 
 
 async def execute_task(loop, task_func, task_name):
@@ -153,14 +208,20 @@ async def execute_task(loop, task_func, task_name):
     """
     try:
         result = await loop.run_in_executor(None, task_func)
-        if isinstance(result, list) and result:
-            logger.debug(f"{task_name} 已完成，共处理 {len(result)} 个项目")
+        if isinstance(result, PluginDependencyInstallResult):
+            processed_count = len(result.missing)
+        elif isinstance(result, list):
+            processed_count = len(result)
+        else:
+            processed_count = 0
+        if processed_count:
+            logger.debug(f"{task_name} 已完成，共处理 {processed_count} 个项目")
         else:
             logger.debug(f"没有新的 {task_name} 需要处理")
         return result
     except Exception as e:
         logger.error(f"{task_name} 时发生错误：{e}", exc_info=True)
-        return []
+        return None
 
 
 def init_plugins():
@@ -169,9 +230,19 @@ def init_plugins():
     """
     configure_plugin_services()
     plugin_manager = PluginManager()
-    plugin_manager.start()
+    classification = plugin_manager.classify_plugins()
+    plugin_manager.apply_plugin_dependency_classification(classification)
+    plugin_manager.set_plugin_settling(True)
+    for plugin_id in classification.ready:
+        plugin_manager.start(plugin_id)
     register_plugin_api()
     plugin_manager.start_monitor()
+    logger.info(
+        "插件启动分类：立即加载=%s，等待依赖=%s，等待源码=%s",
+        len(classification.ready),
+        len(classification.missing_dependencies),
+        len(classification.missing_source),
+    )
 
 
 def stop_plugins():

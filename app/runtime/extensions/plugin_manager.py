@@ -1,5 +1,7 @@
 import asyncio
 import posixpath
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
 
@@ -7,6 +9,7 @@ from watchfiles import watch
 
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
+from app.schemas.plugin import PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
@@ -34,7 +37,11 @@ from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.paths import PluginPathResolver
-from app.runtime.extensions.plugin.dependency import PluginDependencyService
+from app.runtime.extensions.plugin.dependency import (
+    PluginDependencyClassification,
+    PluginDependencyInstallResult,
+    PluginDependencyService,
+)
 from app.runtime.extensions.plugin.storage import PluginConfigStore
 from app.schemas.types import EventType, SystemConfigKey
 
@@ -151,10 +158,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             map_plugin=lambda **kwargs: self._process_plugin_info(**kwargs),
             auth_checker=lambda **kwargs: self.__set_and_check_auth_level(**kwargs),
             plugin_attr=lambda pid, attr: self.get_plugin_attr(pid, attr),
+            runtime_status=self._plugin_registry.runtime_status,
             log=logger,
         )
         # 本地插件同步写入运行目录后的短时忽略窗口
         self._recent_local_sync: Dict[str, float] = {}
+        self._monitor_suppression_lock = threading.Lock()
+        self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._plugin_paths = PluginPathResolver(
             runtime_root=settings.ROOT_PATH / "app" / "plugins",
             running=lambda: self._running_plugins,
@@ -205,6 +215,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             clear_tools=self.clear_plugin_agent_tools_cache,
             enable_events=eventmanager.enable_event_handler,
             disable_events=eventmanager.disable_event_handler,
+            runtime_status_writer=self._plugin_registry.set_runtime_status,
             log=logger,
             event_sender=eventmanager.send_event,
         )
@@ -298,17 +309,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """按最新系统配置完整重启插件。"""
         # 停止已有插件
         self.stop()
-        # 启动插件
-        self.start()
+        classification = self.classify_plugins()
+        self.apply_plugin_dependency_classification(classification)
+        for plugin_id in classification.ready:
+            self.start(plugin_id)
 
-    def start(self, pid: Optional[str] = None):
+    def start(self, pid: Optional[str] = None) -> Dict[str, PluginRuntimeStatus]:
         """
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
         """
 
         _legacy_diagnostics_configurator(enabled=settings.DEBUG, emitter=logger.warning)
-        self._plugin_lifecycle.start(pid)
+        return self._plugin_lifecycle.start(pid)
 
     def init_plugin(self, plugin_id: str, conf: dict):
         """
@@ -385,7 +398,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def start_monitor(self):
         """按当前配置启动插件文件修改监测。"""
-        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
+        if (
+            not self.is_plugin_settling()
+            and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+        ):
             self._plugin_monitor.start()
 
     def reload_monitor(self):
@@ -393,7 +409,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         重新加载插件文件修改监测
         """
         self._plugin_monitor.reload(
-            enabled=settings.DEV or settings.PLUGIN_AUTO_RELOAD
+            enabled=(
+                not self.is_plugin_settling()
+                and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+            )
         )
 
     def stop_monitor(self):
@@ -413,6 +432,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             recent_sync=self._recent_local_sync,
             federated_change=self._get_federated_plugin_change,
             runtime_plugin=self._get_plugin_id_from_path,
+            monitor_suppressed=self.is_plugin_monitor_suppressed,
             local_candidate=self._get_local_plugin_candidate_from_path,
             sync_local=self._sync_local_plugin_if_installed,
             reload_plugin=self.reload_plugin,
@@ -454,19 +474,43 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._local_plugin_sync.sync(pid, candidate)
 
+    @contextmanager
+    def suppress_plugin_monitor(self, plugin_id: str):
+        """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
+        normalized_id = plugin_id.lower()
+        with self._monitor_suppression_lock:
+            self._suppressed_monitor_plugins[normalized_id] = (
+                self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+            )
+        try:
+            yield
+        finally:
+            with self._monitor_suppression_lock:
+                count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+                if count <= 1:
+                    self._suppressed_monitor_plugins.pop(normalized_id, None)
+                else:
+                    self._suppressed_monitor_plugins[normalized_id] = count - 1
+
+    def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
+        """判断指定插件是否处于安装或替换写入阶段。"""
+        with self._monitor_suppression_lock:
+            return self._suppressed_monitor_plugins.get(plugin_id.lower(), 0) > 0
+
     def remove_plugin(self, plugin_id: str):
         """
         从内存中移除一个插件
         :param plugin_id: 插件ID
         """
         self._plugin_lifecycle.stop(plugin_id)
+        self._plugin_registry.remove(plugin_id)
 
-    def reload_plugin(self, plugin_id: str):
+    def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
         将一个插件重新加载到内存
         :param plugin_id: 插件ID
         """
-        self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
+        return self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
 
     @staticmethod
     def _clear_plugin_modules(plugin_id: Optional[str] = None):
@@ -498,6 +542,66 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             system=get_plugin_system,
             log=logger,
         ).install_missing()
+
+    @staticmethod
+    def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
+        """安装插件缺失依赖并返回缺失项及安装成功状态。"""
+        return PluginDependencyService(
+            system=get_plugin_system,
+            log=logger,
+        ).install_missing_with_status()
+
+    @staticmethod
+    def classify_plugins() -> PluginDependencyClassification:
+        """按源码和依赖是否就绪划分已安装插件。"""
+        return PluginDependencyService(
+            system=get_plugin_system,
+            log=logger,
+        ).classify_plugins()
+
+    def apply_plugin_dependency_classification(
+        self,
+        classification: PluginDependencyClassification,
+    ) -> None:
+        """把源码和依赖分类写入运行状态，已激活插件保持当前结果。"""
+        running_ids = set(self._plugin_registry.running_ids())
+        for plugin_id in classification.missing_source:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.SOURCE_MISSING,
+            )
+        for plugin_id in classification.missing_dependencies:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.DEPENDENCY_PENDING,
+            )
+        for plugin_id in classification.ready:
+            current_status = self._plugin_registry.runtime_status(plugin_id)
+            if (
+                plugin_id in running_ids
+                and current_status is not PluginRuntimeStatus.DEPENDENCY_PENDING
+            ):
+                continue
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.READY,
+            )
+
+    def set_plugin_settling(self, settling: bool) -> None:
+        """更新启动后的插件恢复任务状态。"""
+        self._plugin_registry.set_settling(settling)
+
+    def get_plugin_runtime_statuses(self) -> Dict[str, PluginRuntimeStatus]:
+        """返回插件运行状态快照。"""
+        return self._plugin_registry.runtime_status_snapshot()
+
+    def get_plugin_runtime_generation(self) -> int:
+        """返回插件状态变化代次。"""
+        return self._plugin_registry.generation
+
+    def is_plugin_settling(self) -> bool:
+        """返回插件源码和依赖是否仍在后台恢复。"""
+        return self._plugin_registry.settling
 
     def get_plugin_config(self, pid: str) -> dict:
         """
@@ -776,6 +880,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         获取所有本地已下载的插件信息
         """
         return self._plugin_catalog_view.local()
+
+    def get_installed_plugins(self) -> List[_SchemaPlugin]:
+        """按安装清单返回插件，即使运行时尚未加载也保留卡片。"""
+        return self._plugin_catalog_view.installed()
 
     def get_local_plugin_version(self, pid: str) -> Optional[str]:
         """

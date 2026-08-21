@@ -139,6 +139,31 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         _assert_completed_once(step)
 
 
+def test_lifespan_waits_for_plugin_settlement_before_shutdown(monkeypatch):
+    """关停必须等待插件恢复线程结束，避免与备份和资源释放并发。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    order = []
+    shutdown_steps["backup_plugins"].side_effect = lambda: order.append("backup")
+
+    async def run_lifespan():
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def settle_plugins():
+            started.set()
+            await release.wait()
+            order.append("settled")
+
+        lifecycle.init_extra.side_effect = settle_plugins
+        async with lifecycle.lifespan(FastAPI()):
+            await started.wait()
+            asyncio.get_running_loop().call_later(0.02, release.set)
+
+    asyncio.run(run_lifespan())
+
+    assert order[:2] == ["settled", "backup"]
+
+
 def test_lifespan_configures_plugin_services_before_restore(monkeypatch):
     """插件恢复依赖的外部系统服务必须先于恢复阶段完成装配。"""
     shutdown_steps = _patch_lifespan(monkeypatch)

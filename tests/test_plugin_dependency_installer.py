@@ -27,6 +27,36 @@ def _write_pyproject(root: Path, plugin_id: str, content: str) -> Path:
     return plugin_dir
 
 
+def test_classify_plugins_preserves_ids_and_separates_startup_paths(
+    tmp_path,
+    monkeypatch,
+):
+    """启动分类保留规范插件 ID，并区分可加载、缺依赖和缺源码。"""
+    plugin_root = tmp_path / "plugins"
+    (plugin_root / "readyplugin").mkdir(parents=True)
+    _write_requirements(plugin_root, "DependencyPending", "demo>=2\n")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: [
+            "ReadyPlugin",
+            "DependencyPending",
+            "SourcePending",
+        ],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_packages",
+        lambda: {"demo": Version("1.0")},
+    )
+
+    ready, missing_dependencies, missing_source = installer.classify_plugins()
+
+    assert ready == ["ReadyPlugin"]
+    assert missing_dependencies == ["DependencyPending"]
+    assert missing_source == ["SourcePending"]
+
+
 def test_find_missing_merges_only_installed_plugin_constraints(tmp_path, monkeypatch):
     """依赖扫描只覆盖安装清单，并合并同名包的多插件约束。"""
     plugin_root = tmp_path / "plugins"
