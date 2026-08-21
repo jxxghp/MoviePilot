@@ -340,3 +340,32 @@ class ServiceInstanceRegistry:
 
 
 service_instance_registry = ServiceInstanceRegistry()
+
+
+def declared_service_instances(
+    capability: str, service_type: str, owner: str
+) -> Dict[str, Any]:
+    """取某个扩展实例名下某个服务实例类型当前已构造的具名实例。
+
+    声明方自己按用户配置重新构造一遍是两处实现，构造形状、配置契约判定与单实例裁决
+    都会各走各的；从本表取则与服务发现看到的是同一批对象，实例的复用与回收也照旧。
+
+    归属核对不是礼节：同一「能力标签加类型标识」被更晚的登记覆盖后 ``owner`` 随之
+    易主，此时把实例交给原声明方等于让它操作别人建起来的连接。归属对不上即交空表，
+    不退而求其次挑一个。
+
+    :param capability: 能力标签
+    :param service_type: 类型标识
+    :param owner: 声明该类型的扩展实例键
+    :return: 实例名到实例的映射；该类型未登记或已不归该扩展所有时为空字典
+    """
+    if not capability or not service_type or not owner:
+        return {}
+    matched = [
+        adapter
+        for adapter in service_instance_registry.adapters(capability)
+        if adapter.entry.service_type == service_type and adapter.entry.owner == owner
+    ]
+    if len(matched) != 1:
+        return {}
+    return matched[0].get_instances()

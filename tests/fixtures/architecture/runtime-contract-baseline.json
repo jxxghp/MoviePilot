@@ -2347,6 +2347,23 @@
   "sdk_exports": {
     "app.sdk": [],
     "app.sdk._exports": [],
+    "app.sdk.auth": [
+      {
+        "kind": "import",
+        "name": "AuthEntry",
+        "target": "app.runtime.extensions.auth_entries.AuthEntry"
+      },
+      {
+        "kind": "import",
+        "name": "create_plugin_auth_ticket_for_identity",
+        "target": "app.application.security.auth.create_plugin_auth_ticket_for_identity"
+      },
+      {
+        "kind": "import",
+        "name": "list_auth_entries",
+        "target": "app.runtime.extensions.auth_entries.list_auth_entries"
+      }
+    ],
     "app.sdk.browser": [
       {
         "kind": "import",
@@ -2520,6 +2537,83 @@
         "target": ""
       }
     ],
+    "app.sdk.declarations": [
+      {
+        "kind": "import",
+        "name": "AUTH_CAPABILITY",
+        "target": "app.runtime.extensions.service_config.AUTH_CAPABILITY"
+      },
+      {
+        "kind": "import",
+        "name": "ActionDeclaration",
+        "target": "app.runtime.extensions.declaration.ActionDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "AgentToolDeclaration",
+        "target": "app.runtime.extensions.declaration.AgentToolDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "CommandDeclaration",
+        "target": "app.runtime.extensions.declaration.CommandDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "DashboardDeclaration",
+        "target": "app.runtime.extensions.declaration.DashboardDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ExtensionDeclaration",
+        "target": "app.runtime.extensions.declaration.ExtensionDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "FilterRuleDeclaration",
+        "target": "app.runtime.extensions.declaration.FilterRuleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "FilterRuleGroupDeclaration",
+        "target": "app.runtime.extensions.declaration.FilterRuleGroupDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "MediaSourceDeclaration",
+        "target": "app.runtime.extensions.declaration.MediaSourceDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "MetaParserDeclaration",
+        "target": "app.runtime.extensions.declaration.MetaParserDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ModuleDeclaration",
+        "target": "app.runtime.extensions.declaration.ModuleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "STORAGE_CAPABILITY",
+        "target": "app.runtime.extensions.service_config.STORAGE_CAPABILITY"
+      },
+      {
+        "kind": "import",
+        "name": "ScheduleDeclaration",
+        "target": "app.runtime.extensions.declaration.ScheduleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ServiceInstanceDeclaration",
+        "target": "app.runtime.extensions.declaration.ServiceInstanceDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ServiceInstanceRequirement",
+        "target": "app.runtime.extensions.declaration.ServiceInstanceRequirement"
+      }
+    ],
     "app.sdk.events": [
       {
         "kind": "import",
@@ -2537,6 +2631,7 @@
         "target": "app.runtime.events.eventmanager"
       }
     ],
+    "app.sdk.extension": [],
     "app.sdk.logging": [
       {
         "kind": "import",
@@ -3137,6 +3232,28 @@
         "kind": "import",
         "name": "SystemHelper",
         "target": "app.runtime.state.SystemHelper"
+      },
+      {
+        "kind": "import",
+        "name": "declared_service_instances",
+        "target": "app.runtime.extensions.service_instance_registry.declared_service_instances"
+      }
+    ],
+    "app.sdk.storage": [
+      {
+        "kind": "import",
+        "name": "StorageBase",
+        "target": "app.modules._base.storage.StorageBase"
+      },
+      {
+        "kind": "import",
+        "name": "StorageInstanceSingleton",
+        "target": "app.modules._base.storage.StorageInstanceSingleton"
+      },
+      {
+        "kind": "import",
+        "name": "transfer_process",
+        "target": "app.modules._base.storage.transfer_process"
       }
     ],
     "app.sdk.string": [

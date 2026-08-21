@@ -48,7 +48,14 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
 }
 # 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
 # 边消失后条目可直接删除，留着不会导致失败。
-DEPENDENCY_DEBT: dict[tuple[str, str], str] = {}
+DEPENDENCY_DEBT: dict[tuple[str, str], str] = {
+    ("sdk", "modules"): (
+        "存储后端契约 StorageBase 现居 app.modules._base.storage，而扩展声明存储类型时"
+        "必须继承它，SDK 不给出口就只能让扩展直接 import 宿主内部路径。同一处安家还逼得"
+        "app.runtime.extensions.plugin.storage_capabilities 改用 MRO 限定名字符串比对。"
+        "清偿方向：把该契约迁出 app.modules，两边即可直接 import。"
+    ),
+}
 # 同一产品线变体模块允许依赖的兄弟模块包：变体只改存储/服务标识，
 # 共用一份客户端实现，属于继承而非跨模块编排。
 MODULE_VARIANT_DEPENDENCIES: dict[str, frozenset[str]] = {

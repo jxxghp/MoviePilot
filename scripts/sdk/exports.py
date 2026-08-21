@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""生成并校验 ``app.sdk`` 必须提供的兼容清单投影。"""
+"""生成并校验 ``app.sdk`` 对外承诺的公开面快照。
+
+快照有两个来源，各自成表：
+
+- **别名推导**：兼容清单里 replacement 指向 ``app.sdk.X`` 的旧路径，倒推出 SDK 必须
+  提供哪些符号。它天然只覆盖有旧路径别名的符号。
+- **门面自报**：SDK 各门面模块 ``__all__`` 里的条目及其 import 来源。声明类这种没有
+  任何旧路径别名的新出口只出现在这一表里，否则永远进不了快照。
+
+两表并列而不合并：一个符号缺席时要能分清是「旧路径承诺了而 SDK 没给」还是「SDK 自己
+的出口改了来源」，合成一张表就分不出来了。
+
+第三张表记 ``_PluginBase`` 的公开面。它是扩展基类，混着冻结契约、扩展点与内部实现三层，
+原样导出而不逐层挑拣；快照的作用是让这三层的增删都成为一次显式改动，而不是随基类改动
+悄悄漂移。
+"""
 
 import argparse
 import ast
@@ -186,23 +201,157 @@ def collect_required_exports() -> dict[str, dict[str, list[tuple[str, str]]]]:
     }
 
 
+def facade_modules() -> list[Path]:
+    """
+    列出插件可见的 SDK 门面模块源码文件。
+
+    :return: ``app/sdk`` 下非下划线开头的模块路径，按名称排序
+    """
+    return sorted(
+        path
+        for path in (PROJECT_ROOT / "app" / "sdk").glob("*.py")
+        if not path.stem.startswith("_")
+    )
+
+
+def declared_names(tree: ast.Module) -> list[str]:
+    """
+    读取模块 ``__all__`` 声明的公开符号名。
+
+    :param tree: 模块语法树
+    :return: ``__all__`` 中的字符串常量；未声明 ``__all__`` 时为空列表
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        ):
+            continue
+        return [
+            element.value
+            for element in getattr(node.value, "elts", ())
+            if isinstance(element, ast.Constant) and isinstance(element.value, str)
+        ]
+    return []
+
+
+def import_origins(tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """
+    建立模块内绑定名到其 import 来源的映射。
+
+    :param tree: 模块语法树
+    :return: ``{本模块绑定名: (来源模块, 来源符号)}``，只含绝对 import
+    """
+    origins: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            origins[alias.asname or alias.name] = (node.module, alias.name)
+    return origins
+
+
+def collect_declared_exports() -> dict[str, dict[str, tuple[str, str]]]:
+    """
+    汇总 SDK 各门面模块自报的导出及其来源。
+
+    声明类这类没有旧路径别名的新出口只能由本表覆盖——别名推导按 replacement 文案倒推，
+    没有别名就没有条目。本表按源码而不是按运行期属性推导，与 ``.pyi`` 同理：门面导出
+    什么是版本化的承诺，不该随构建产物或导入顺序漂移。
+
+    判据取 ``__all__`` 而不是全部顶层 import：``__all__`` 是门面对外承诺的那一份，
+    顶层 import 里还有只供本模块内部使用的绑定。架构基线的 ``sdk_exports`` 收的是后者，
+    答的是「公开运行契约变没变」这个更宽的问题，两表判据不同因而不合并。
+
+    :return: ``{SDK 模块: {符号: (来源模块, 来源符号)}}``；模块内定义的符号来源即自身
+    """
+    declared: dict[str, dict[str, tuple[str, str]]] = {}
+    for path in facade_modules():
+        sdk_name = f"{SDK_PREFIX}.{path.stem}"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        origins = import_origins(tree)
+        exported = {
+            name: origins.get(name, (sdk_name, name))
+            for name in sorted(declared_names(tree))
+        }
+        if exported:
+            declared[sdk_name] = exported
+    return dict(sorted(declared.items()))
+
+
+def collect_plugin_base_surface() -> dict[str, list[str]]:
+    """
+    快照扩展基类 ``_PluginBase`` 对扩展可见的公开面。
+
+    类成员与实例属性分列：前者是扩展覆写或调用的钩子与类属性，后者是基类在
+    ``__init__`` 里塞给扩展的宿主门面，两者的增删性质不同，混成一张表就分不出
+    「多了个钩子」和「多注入了一个宿主对象」。
+
+    :return: ``{"members": [类成员名], "attributes": [实例属性名]}``
+    """
+    from app.plugins import _PluginBase
+
+    source = PROJECT_ROOT / "app" / "plugins" / "__init__.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    class_body = next(
+        node.body
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == _PluginBase.__name__
+    )
+    attributes: set[str] = set()
+    for node in class_body:
+        if not isinstance(node, ast.FunctionDef) or node.name != "__init__":
+            continue
+        for statement in ast.walk(node):
+            targets = []
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+            elif isinstance(statement, ast.AnnAssign):
+                targets = [statement.target]
+            attributes.update(
+                target.attr
+                for target in targets
+                if isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and not target.attr.startswith("_")
+            )
+    return {
+        "members": sorted(
+            name for name in vars(_PluginBase) if not name.startswith("_")
+        ),
+        "attributes": sorted(attributes),
+    }
+
+
 def render_manifest() -> str:
     """
-    把导出要求与宿主自用符号渲染为稳定、可审查的 Python 模块。
+    把两个来源的导出快照、宿主自用符号与扩展基类公开面渲染为可审查的 Python 模块。
 
     :return: 生成文件的完整文本
     """
-    required = collect_required_exports()
     lines = [
         '"""由 scripts/sdk/exports.py 生成，请勿手工编辑。"""',
         "",
         "SDK_REQUIRED_EXPORTS = {",
     ]
-    for sdk_name, symbols in required.items():
+    for sdk_name, symbols in collect_required_exports().items():
         lines.append(f"    {sdk_name!r}: {{")
         lines.extend(
             f"        {name!r}: {sources!r},"
             for name, sources in symbols.items()
+        )
+        lines.append("    },")
+    lines.extend(["}", "", "SDK_DECLARED_EXPORTS = {"])
+    for sdk_name, symbols in collect_declared_exports().items():
+        lines.append(f"    {sdk_name!r}: {{")
+        lines.extend(
+            f"        {name!r}: {source!r},"
+            for name, source in symbols.items()
         )
         lines.append("    },")
     lines.extend(["}", "", "SDK_HOST_INTERNAL_EXPORTS = {"])
@@ -210,6 +359,11 @@ def render_manifest() -> str:
         f"    {path!r}: {reason!r},"
         for path, reason in sorted(HOST_INTERNAL_EXPORTS.items())
     )
+    lines.extend(["}", "", "SDK_PLUGIN_BASE_SURFACE = {"])
+    for kind, names in sorted(collect_plugin_base_surface().items()):
+        lines.append(f"    {kind!r}: [")
+        lines.extend(f"        {name!r}," for name in names)
+        lines.append("    ],")
     lines.extend(["}", ""])
     return "\n".join(lines)
 

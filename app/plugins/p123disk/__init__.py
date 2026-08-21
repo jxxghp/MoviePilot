@@ -18,8 +18,8 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.plugins import _PluginBase
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.sdk.declarations import ServiceInstanceDeclaration
+from app.sdk.extension import _PluginBase
 
 from .config import STORAGE_CONFIG_SCHEMA, plugin_config_form, storage_config_form
 from .storage import STORAGE_ID, P123Storage
