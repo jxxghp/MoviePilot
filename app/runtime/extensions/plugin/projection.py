@@ -51,6 +51,10 @@ from app.runtime.extensions.plugin.filter_rule_capabilities import (
 from app.runtime.extensions.plugin.media_source_capabilities import (
     media_source_declaration_violation,
 )
+from app.runtime.extensions.plugin.media_source_routing import (
+    media_source_method_table,
+    routes_by_source,
+)
 from app.runtime.extensions.plugin.meta_parser_capabilities import (
     meta_parser_declaration_violation,
 )
@@ -173,9 +177,13 @@ _new_contract_hints_seen: set[tuple[str, str]] = set()
 # 已就「同一插件多个实例挂载同一契约名」告警过的 (插件ID, 方法名) 组合，去重理由同上。
 _sibling_contract_warnings_seen: set[tuple[str, str]] = set()
 
-# 已就「同一实例同时用 provides_modules() 与 get_module() 挂载同一方法名」告警过的
-# (实例键, 重叠方法名元组) 组合，去重理由同上。
-_module_source_overlap_warnings_seen: set[tuple[str, tuple[str, ...]]] = set()
+# 已就「同一实例的两条模块来源挂载同一方法名」告警过的
+# (实例键, 低优先来源, 高优先来源, 重叠方法名元组) 组合，去重理由同上。
+_module_source_overlap_warnings_seen: set[tuple[str, str, str, tuple[str, ...]]] = set()
+
+# 已就「挂了多来源契约方法却没声明任何媒体数据源」提示过的 (实例键, 方法名) 组合，
+# 去重理由同上。
+_undeclared_media_source_hints_seen: set[tuple[str, str]] = set()
 
 
 def _service_instance_identity(declaration: Any) -> Optional[tuple]:
@@ -607,9 +615,12 @@ class PluginProjection:
     def modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
         """聚合启用插件的模块方法清单。
 
-        聚合两条来源：`provides_modules()` 声明式登记（经契约校验）与 `get_module()`
-        裸方法表（后者已进入废弃期，触达即告警一次）。同一实例的两条来源同时挂载
-        同一方法名时，声明式登记优先生效，并就重叠方法名各打一次提示。
+        聚合三条来源，优先级从低到高为：`get_module()` 裸方法表（已进入废弃期，触达
+        即告警一次）、`provides_modules()` 声明式方法表、`provides_media_sources()`
+        随数据源声明交出的实现。同一实例的两条来源同时挂载同一方法名时高优先级的
+        生效，并就重叠方法名各打一次提示。
+
+        数据源声明交出的多来源契约方法带 source 路由，非本来源的调用不会触达实现。
 
         键取 `(实例键, 展示名)`：同一插件的多个实例展示名相同，只有实例键能把它们
         区分开，否则后登记的实例会覆盖先登记的，被覆盖的那一份实现从此不再参与分发。
@@ -618,6 +629,7 @@ class PluginProjection:
         """
         modules: dict[tuple, dict] = {}
         declared_by_instance = self.provided_modules(pid)
+        media_sources_by_instance = self.provided_media_sources(pid)
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled():
@@ -625,13 +637,23 @@ class PluginProjection:
             declared_table = self._merge_declared_module_methods(
                 declared_by_instance.get(extension_id, [])
             )
+            source_declarations = media_sources_by_instance.get(extension_id, [])
+            source_table = media_source_method_table(source_declarations)
             legacy_table, legacy_present = self._legacy_module_table(
                 extension, extension_id, plugin
             )
-            if not declared_table and not legacy_present:
+            if not declared_table and not source_table and not legacy_present:
                 continue
+            self._hint_undeclared_media_source(
+                extension_id, declared_table, source_declarations
+            )
             modules[(extension_id, extension.display_name)] = self._merge_module_sources(
-                extension_id, declared_table, legacy_table
+                extension_id,
+                (
+                    ("get_module()", legacy_table),
+                    ("provides_modules()", declared_table),
+                    ("provides_media_sources()", source_table),
+                ),
             )
         self._warn_sibling_contract_overlap(modules)
         return modules
@@ -690,33 +712,91 @@ class PluginProjection:
         return table, True
 
     def _merge_module_sources(
-        self, extension_id: str, declared: Dict[str, Any], legacy: Dict[str, Any]
+        self, extension_id: str, lanes: tuple[tuple[str, Dict[str, Any]], ...]
     ) -> Dict[str, Any]:
-        """合并声明式与旧式两条来源的方法表，同名方法声明式优先。
+        """按优先级合并多条来源的方法表，同名方法高优先级来源生效。
 
         只有一条来源提供方法时原样返回该来源的表对象，不额外拷贝：告警是只读
         动作，插件如果依赖投影结果与自己交出的表同一身份，该身份不因告警而改变。
 
         :param extension_id: 插件实例键
-        :param declared: `provides_modules()` 已通过契约校验的合并方法表
-        :param legacy: `get_module()` 声明的方法表
-        :return: 合并后的方法表，声明式条目覆盖旧式的同名条目
+        :param lanes: (来源钩子名, 方法表) 序列，按优先级从低到高排列
+        :return: 合并后的方法表，高优先级条目覆盖低优先级的同名条目
         """
-        if not declared:
-            return legacy
-        if not legacy:
-            return declared
-        overlap = tuple(sorted(set(declared) & set(legacy)))
-        if overlap:
-            key = (extension_id, overlap)
-            if key not in _module_source_overlap_warnings_seen:
-                _module_source_overlap_warnings_seen.add(key)
-                self._logger.warning(
-                    f"插件[{extension_id}]的 provides_modules() 与 get_module() "
-                    f"同时挂载方法名 {list(overlap)}：声明式登记优先生效，"
-                    f"get_module() 中的同名实现不会被调用，请从 get_module() 中移除"
+        present = [(hook, table) for hook, table in lanes if table]
+        if not present:
+            return {}
+        if len(present) == 1:
+            return present[0][1]
+        merged: Dict[str, Any] = {}
+        for index, (hook, table) in enumerate(present):
+            for higher_hook, higher_table in present[index + 1:]:
+                self._warn_module_source_overlap(
+                    extension_id, hook, table, higher_hook, higher_table
                 )
-        return {**legacy, **declared}
+            merged.update(table)
+        return merged
+
+    def _warn_module_source_overlap(
+        self,
+        extension_id: str,
+        hook: str,
+        table: Dict[str, Any],
+        higher_hook: str,
+        higher_table: Dict[str, Any],
+    ) -> None:
+        """就两条来源挂载的同名方法打一次提示，不改写方法表。
+
+        :param extension_id: 插件实例键
+        :param hook: 低优先级来源的钩子名
+        :param table: 低优先级来源的方法表
+        :param higher_hook: 高优先级来源的钩子名
+        :param higher_table: 高优先级来源的方法表
+        :return: 无返回值
+        """
+        overlap = tuple(sorted(set(table) & set(higher_table)))
+        if not overlap:
+            return
+        key = (extension_id, hook, higher_hook, overlap)
+        if key in _module_source_overlap_warnings_seen:
+            return
+        _module_source_overlap_warnings_seen.add(key)
+        self._logger.warning(
+            f"插件[{extension_id}]的 {hook} 与 {higher_hook} 同时挂载方法名 "
+            f"{list(overlap)}：{higher_hook} 的声明优先生效，{hook} 中的同名实现"
+            f"不会被调用，请从 {hook} 中移除"
+        )
+
+    def _hint_undeclared_media_source(
+        self, extension_id: str, declared_table: Dict[str, Any], source_declarations: List[Any]
+    ) -> None:
+        """就没有数据源声明却挂载多来源契约方法的实例各打一次提示，不改写方法表。
+
+        这种写法有两种都成立的意图：接管一个已存在的来源，或者提供一个新来源却漏写
+        了数据源声明。宿主分不清是哪一种——实现服务哪个来源要到调用时才知道——因此
+        只提示不拒绝，拒绝会把前一种合法用法一并挡掉。
+
+        :param extension_id: 插件实例键
+        :param declared_table: `provides_modules()` 已通过契约校验的合并方法表
+        :param source_declarations: 该实例已通过契约校验的媒体数据源声明列表
+        :return: 无返回值
+        """
+        if source_declarations:
+            return
+        for method in declared_table:
+            if not routes_by_source(method):
+                continue
+            key = (extension_id, method)
+            if key in _undeclared_media_source_hints_seen:
+                continue
+            _undeclared_media_source_hints_seen.add(key)
+            self._logger.info(
+                f"插件[{extension_id}]在 provides_modules() 里挂载了多来源契约方法 "
+                f"{method!r}，却没有声明任何媒体数据源：若这是一个新数据源，请改用 "
+                f"provides_media_sources() 把展示信息与实现写在同一条声明里，否则它"
+                f"不会出现在来源列表中，用户在界面上选不到；若只是接管已有来源，"
+                f"实现须按 source 自认领，非本来源返回 None 让出"
+            )
 
     def provided_media_sources(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的媒体数据源。

@@ -239,18 +239,35 @@ class MediaSourceDeclaration(ExtensionDeclaration):
     """
     媒体数据源声明
 
-    识别、搜索、图片与 NFO 刮削的实际实现仍由 ``provides_modules()``/``get_module()``
-    按契约方法名分发；本声明只承载数据源自身的展示信息，供宿主聚合成来源列表。
+    一条声明同时回答「有这么一个来源」与「它由谁实现」：``media_source``/``name``/
+    ``media_types`` 是来源自身的展示信息，宿主据此聚合来源列表；``methods`` 是识别、
+    搜索、图片与 NFO 刮削的实现，形状与 `ModuleDeclaration.methods` 相同。两者合在
+    一条里，是因为分开声明时各自都独立合法：只报展示信息的来源在界面上选得到、调用
+    却落空，只挂实现的来源能被调用却进不了来源列表，两种残缺都要等到用户使用时才
+    暴露。合成一条后契约校验能在登记时判定完整性。
+
+    ``methods`` 里按 ``source`` 收窄的多来源契约方法（media_detail、media_credits、
+    media_recommend、media_similar、person_detail、person_credits、discover、
+    discover_board、match_media 及其 ``async_`` 变体）由宿主按本声明的
+    ``media_source`` 自动路由：调用带的来源不是本来源时宿主直接让出，不触达实现。
+    因此这些方法只需处理本来源的请求，既不必自己比对 ``source``，也不会因误返回空
+    列表而把该契约下的其它来源一并拦截。其余方法名原样挂载，不做路由。
+
+    跨进程时 ``methods`` 与 `ModuleDeclaration.methods` 一样退化为方法名清单，展示
+    信息原样成为握手报文——路由所依据的 ``media_source`` 本身就是声明数据，异语言
+    宿主拿到同一份报文即可做同样的路由。
 
     :param media_source: 规范媒体来源标识，须能被 ``MediaSource`` 解析——内置常量
         或形如 ``[a-z][a-z0-9._-]{0,63}`` 的插件扩展标识
     :param name: 数据源展示名称
     :param media_types: 支持的媒体类型；留空时由消费方按自身默认值处理
+    :param methods: 方法名到可调用对象的映射，跨进程时退化为方法名清单
     """
 
     media_source: str = ""
     name: str = ""
     media_types: Tuple[str, ...] = ()
+    methods: Mapping[str, Any] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -510,6 +527,20 @@ def declaration_media_source_identity(declaration: Any) -> Tuple[Optional[str], 
         _declared_field_text(declaration, "media_source"),
         _declared_field_text(declaration, "name"),
     )
+
+
+def declaration_media_source_methods(declaration: Any) -> Any:
+    """
+    读取媒体数据源声明携带的方法表
+
+    按原值返回而不做形状归一：取值合法性由契约校验判定，此处先归一会把错误取值悄悄
+    变成一个合法答案。字典形态的声明按 ``methods`` 键取值，不套用 `declaration_methods`
+    的「字典即方法表」回落——媒体数据源的字典还承载展示字段，整份字典不是方法表。
+
+    :param declaration: `MediaSourceDeclaration` 实例，或插件直接交出的描述字典
+    :return: methods 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "methods")
 
 
 def declaration_media_types(declaration: Any) -> Optional[Tuple[Any, ...]]:

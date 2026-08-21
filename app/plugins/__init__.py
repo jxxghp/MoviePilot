@@ -490,10 +490,14 @@ class _PluginBase(metaclass=ABCMeta):
         多来源契约（media_detail、media_credits、media_recommend、media_similar、
         person_detail、person_credits、discover、discover_board、match_media，
         及其 async_ 变体）由多个数据源共用同一方法名，按调用方传入的 source 参数区分
-        来源，声明式登记与 get_module() 遵循同一规则：非本插件负责的 source 必须
-        返回 None 让出，返回空列表会被判定为已认领而短路。
+        来源，本钩子与 get_module() 遵循同一规则：非本插件负责的 source 必须返回 None
+        让出，返回空列表会被判定为已认领而短路。本钩子挂载这些方法名适用于接管一个
+        已存在的来源；提供**新**数据源请改用 `provides_media_sources()` 把展示信息与
+        实现一并声明，宿主据此自动按 source 路由，无需实现自行让出，来源也才会出现在
+        来源列表里供用户选择。
 
-        同一实例的方法名若被本钩子与 get_module() 同时挂载，声明式登记优先生效。
+        同一实例的方法名若被多条来源同时挂载，优先级从低到高为 get_module()、本钩子、
+        `provides_media_sources()`，高优先级的实现生效。
 
         :return: `ModuleDeclaration` 列表；插件不提供模块方法表时无需实现
         """
@@ -648,6 +652,10 @@ class _PluginBase(metaclass=ABCMeta):
 
         返回的每项至少包含 ``name``、``media_source`` 和 ``media_types``；实际的
         搜索、识别、图片和 NFO 刮削实现通过 ``get_module`` 暴露对应方法。
+
+        本钩子只报展示信息，实现另写在 ``get_module`` 里，两处各自独立合法，写漏一处
+        要到用户使用时才暴露。替代它的 ``provides_media_sources()`` 把两者合成一条声明，
+        登记时即可判定完整性。
         """
         pass
 
@@ -727,6 +735,10 @@ class _PluginBase(metaclass=ABCMeta):
 
         返回的每项至少包含 ``name``、``media_source`` 和 ``media_types``；实际的
         搜索、识别、图片和 NFO 刮削实现通过 ``get_module`` 暴露对应方法。
+
+        本钩子只报展示信息，实现另写在 ``get_module`` 里，两处各自独立合法，写漏一处
+        要到用户使用时才暴露。替代它的 ``provides_media_sources()`` 把两者合成一条声明，
+        登记时即可判定完整性。
         """
         pass
 
@@ -742,13 +754,30 @@ class _PluginBase(metaclass=ABCMeta):
                                                   # 的插件扩展标识
             name="Acme Video",                   # 数据源展示名称
             media_types=["电影", "电视剧"],       # 支持的媒体类型，可选
+            methods={                            # 本来源的识别、搜索、图片与 NFO
+                "media_detail": self.detail,      # 刮削实现，形状与 provides_modules()
+                "discover": self.discover,        # 的方法表相同；缺了它整条声明被拒
+            },
         )]
 
-        识别、搜索、图片与 NFO 刮削的实际实现仍通过 provides_modules()/get_module()
-        按契约方法名分发，本声明只承载数据源自身的展示信息。
+        展示信息与实现必须写在同一条声明里，缺任一半都会被拒绝登记：只报展示信息的
+        来源会出现在来源列表里、用户选中后却无实现可调用；只挂实现的来源能被调用却
+        进不了来源列表，用户在界面上选不到它。两种残缺各自都是合法的半条声明，只有
+        合成一条契约校验才拦得住，否则要到用户使用时才暴露。
 
-        也可直接返回描述字典（不包 `MediaSourceDeclaration`），字典形态复用
-        get_media_source() 每项的字段名，兼容早期写法。
+        methods 里按 source 收窄的多来源契约方法（media_detail、media_credits、
+        media_recommend、media_similar、person_detail、person_credits、discover、
+        discover_board、match_media 及其 async_ 变体）由宿主按本条声明的 media_source
+        自动路由：调用带的来源不是本来源时宿主直接让出，实现不会被触达。因此这些方法
+        只需处理本来源的请求，不必自己比对 source，也不会因误返回空列表而把该契约下
+        的其它来源一并拦掉。其余方法名原样挂载，不做路由。
+
+        同一插件实例可以声明多个数据源，各来源的同名契约方法互不覆盖，宿主按来源分别
+        路由。接管一个已存在的来源（而不是提供新来源）仍走 provides_modules()——那种
+        写法没有新来源要进列表，也需要实现自己按 source 认领。
+
+        也可直接返回描述字典（不包 `MediaSourceDeclaration`），字典按 media_source、
+        name、media_types、methods 四个键取值，完整性要求与声明对象相同。
 
         :return: `MediaSourceDeclaration` 列表；插件不提供媒体数据源时无需实现
         """

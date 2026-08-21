@@ -115,6 +115,11 @@ class _OtherTool(_DemoTool):
     description: str = "Another demo tool."
 
 
+def _demo_detail(**kwargs):
+    """媒体数据源声明用的最小实现桩。"""
+    return None
+
+
 def _demo_action(context, **kwargs):
     """工作流动作实现桩，原样返回上下文。"""
     return True, context
@@ -269,8 +274,16 @@ def test_media_source_identity_is_extension_scoped():
     log = _RecordingLogger()
     projection = _siblings(
         "media_sources",
-        [MediaSourceDeclaration(media_source="demosource", name="演示来源")],
-        [MediaSourceDeclaration(media_source="demosource", name="演示来源")],
+        [MediaSourceDeclaration(
+            media_source="demosource",
+            name="演示来源",
+            methods={"media_detail": _demo_detail},
+        )],
+        [MediaSourceDeclaration(
+            media_source="demosource",
+            name="演示来源",
+            methods={"media_detail": _demo_detail},
+        )],
         log=log,
     )
 
@@ -285,8 +298,16 @@ def test_media_source_list_carries_one_entry_per_identity():
     """去重后的来源列表里同一标识只出现一次，归属胜出的实例。"""
     projection = _siblings(
         "media_sources",
-        [MediaSourceDeclaration(media_source="demosource", name="演示来源")],
-        [MediaSourceDeclaration(media_source="demosource", name="演示来源")],
+        [MediaSourceDeclaration(
+            media_source="demosource",
+            name="演示来源",
+            methods={"media_detail": _demo_detail},
+        )],
+        [MediaSourceDeclaration(
+            media_source="demosource",
+            name="演示来源",
+            methods={"media_detail": _demo_detail},
+        )],
     )
 
     sources = projection.media_sources()
