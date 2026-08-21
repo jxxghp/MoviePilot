@@ -1,0 +1,3 @@
+{
+  "app/agent/middleware/activity_log.py:ActivityLogMiddleware._append_activity:os.open": 1
+}

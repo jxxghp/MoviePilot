@@ -56,6 +56,9 @@ jobs:
       - name: Check complexity ratchet
         run: uv run --locked --no-sync python scripts/architecture/complexity.py
 
+      - name: Check async blocking ratchet
+        run: uv run --locked --no-sync python scripts/architecture/async_blocking.py
+
   pytest:
     runs-on: ubuntu-latest
     name: Unit Tests (${{ matrix.shard }})

@@ -833,6 +833,17 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 4. 同步 Module 由 dispatcher 线程池兼容，不要求第三方插件立刻 async 化；
 5. 只在测量证明有收益时改用 async 第三方 client。
 
+**实施记录（2026-08-21）**：
+
+- 新增 `scripts/architecture/async_blocking.py`，AST 扫描 `app/api`、`app/agent`、`app/application` 的
+  async 函数，覆盖直接 `open`/Path 读写遍历、`requests`、`time.sleep`、同步 `subprocess` 和目录遍历。
+- scanner 通过局部类型流识别 `aiofiles` 与 `anyio.AsyncPath`，不会把正确异步 I/O 记成债务；baseline
+  只允许调用减少/删除，新增或次数增长均在 CI architecture job 失败。
+- Web Agent 上传已从 `Path.open/write/unlink` 改为 `aiofiles` 写入和统一 `run_in_threadpool` 清理；当前仅保留
+  ActivityLog 为保证 `O_EXCL` 原子创建使用的一处 `os.open` 精确债务，不泛化豁免整个文件或目录。
+- pytest 全局启用 `asyncio_debug`，专项测试验证实际 loop debug 状态；AST ratchet 与 46 个 Agent 流式回归
+  通过。同步第三方 Module 仍由 dispatcher 的 `app.runtime.execution.run_in_threadpool` 兼容。
+
 ## 6. 推荐执行队列
 
 下表是默认的提交顺序，不表示所有任务必须由同一个 AI 连续完成。一个 AI 一次只领取一行；如果发现前置条件未满足，应停止实施并回报证据，不得顺手扩大范围。

@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, AsyncIterator, Callable, Optional, Union
 
+import aiofiles
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
@@ -758,7 +759,7 @@ async def _save_web_agent_upload(upload_file: UploadFile, target_path: Path) -> 
     """
     size = 0
     try:
-        with target_path.open("wb") as output:
+        async with aiofiles.open(target_path, "wb") as output:
             while True:
                 chunk = await upload_file.read(WEB_AGENT_UPLOAD_CHUNK_SIZE)
                 if not chunk:
@@ -769,9 +770,9 @@ async def _save_web_agent_upload(upload_file: UploadFile, target_path: Path) -> 
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="附件超过 32MB，无法发送给智能助手",
                     )
-                output.write(chunk)
+                await output.write(chunk)
     except Exception:
-        target_path.unlink(missing_ok=True)
+        await run_in_threadpool(target_path.unlink, missing_ok=True)
         raise
     finally:
         await upload_file.close()
