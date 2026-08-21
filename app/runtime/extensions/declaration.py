@@ -31,6 +31,37 @@ class ExtensionDeclaration:
 
 
 @dataclass(frozen=True, slots=True)
+class ServiceInstanceRequirement:
+    """
+    声明「本扩展点作用于哪一族服务实例」
+
+    一个纯扩展型插件只有一个分身，用户真正配了多份的是它提供的**服务实例**：配了
+    三台下载器就该有三台可选。这两个「多」不在同一根轴上，因此动作与仪表盘要指到
+    某台下载器，靠的不是分身标识，而是本声明。
+
+    宿主拿这份声明做三件事，字段形状即由这三件事决定：按 ``capability`` 找到该族
+    的配置列表当作实例选择器的数据源、按 ``types``（给了的话）收窄候选、以及在用户
+    选中的实例消失时按同一对坐标说清是哪一族的哪个实例不在了。
+
+    **不含实例名**：实例名是用户在设置页自填的持久数据，声明期根本不存在——插件被
+    加载时用户可能一台下载器都还没配。声明随插件版本静态发布，实例名随用户增删漂移，
+    把后者钉进前者只会得到一个一改配置就失效、且插件作者无从修正的引用。选哪一台是
+    用户的选择，宿主负责把选择项交给他并校验他的选择，而不是替他写死。
+
+    ``types`` 留空表示该族任意类型都行；给出时只有类型落在其中的实例才是候选。收窄
+    有实际指称：一个提供了某种下载器类型的插件，它的动作多半只对自家那种类型成立，
+    不收窄就会把别家类型的实例也列进选择器，选中后要到运行时才炸。
+
+    :param capability: 能力标签，取值须与服务族登记表中的族一致；判定见
+        `app.runtime.extensions.service_instance_requirement`
+    :param types: 收窄到该族的哪几个类型标识，留空表示不收窄
+    """
+
+    capability: str = ""
+    types: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AgentToolDeclaration(ExtensionDeclaration):
     """
     智能体工具声明
@@ -236,14 +267,21 @@ class ActionDeclaration(ExtensionDeclaration):
     ``(执行状态, 更新后的 ActionContext)`` 二元组，与既有 ``get_actions()`` 对
     实现函数的要求一致。
 
+    ``requires_service_instance`` 声明本动作作用于哪一族服务实例。声明了它，宿主
+    就在工作流编辑器里渲染实例选择器、校验用户选中的实例仍然存在，并在调用时把选中
+    的实例名按关键字 ``service_instance`` 一并交给 ``impl``。省略即本动作与服务实例
+    无关，调用形状一字不改。
+
     :param action_id: 动作标识，工作流按此标识调用该动作
     :param name: 动作展示名称
     :param kwargs: 调用该动作实现时附加传递的静态参数
+    :param requires_service_instance: 本动作作用于哪一族服务实例；为 None 表示无关
     """
 
     action_id: str = ""
     name: str = ""
     kwargs: Mapping[str, Any] = MappingProxyType({})
+    requires_service_instance: Optional[ServiceInstanceRequirement] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,18 +435,25 @@ class DashboardDeclaration(ExtensionDeclaration):
     两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该仪表盘
     没有随声明附带的初始界面。
 
+    ``requires_service_instance`` 声明本仪表盘展示哪一族服务实例的数据。声明了它，
+    宿主就在仪表盘元信息里带上该族的坐标供前端渲染实例选择器，并在取数时把选中的
+    实例名解析出来交给 ``get_dashboard``。省略即本仪表盘与服务实例无关，取数形状
+    一字不改。
+
     :param key: 仪表盘 key，在插件实例范围内唯一；单仪表盘插件可留空，代表
         插件的默认仪表盘
     :param name: 仪表盘展示名称
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
         ``config_component`` 互斥
     :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    :param requires_service_instance: 本仪表盘展示哪一族服务实例的数据；为 None 表示无关
     """
 
     key: str = ""
     name: str = ""
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
+    requires_service_instance: Optional[ServiceInstanceRequirement] = None
 
 
 def declaration_config_form(
@@ -628,6 +673,20 @@ def declaration_action_kwargs(declaration: Any) -> Any:
     :return: kwargs 字段的原始值；字段缺失时为 None
     """
     return _declared_field(declaration, "kwargs")
+
+
+def declaration_service_instance_requirement(declaration: Any) -> Any:
+    """
+    读取声明自报的服务实例作用对象原始值
+
+    按原值返回而不做形状归一：取值合法性由契约校验判定，此处先归一会把错误取值悄悄
+    变成一个合法答案。字段缺失与显式给出 None 都答 None，两者对宿主是同一件事——本
+    声明与服务实例无关。
+
+    :param declaration: 扩展声明，或插件直接交出的描述字典
+    :return: requires_service_instance 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "requires_service_instance")
 
 
 def declaration_schedule_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:

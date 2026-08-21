@@ -1443,6 +1443,34 @@
     {
       "source": "服务能力 {capability} 没有默认调用目标",
       "target": "服務能力 {capability} 沒有預設呼叫目標"
+    },
+    {
+      "source": "服务能力 {capability} 不是已登记的服务族，无法确定作用的实例",
+      "target": "服務能力 {capability} 不是已登記的服務族，無法確定作用的實例"
+    },
+    {
+      "source": "服务能力 {capability} 下已不存在名为 {name} 的实例配置，请改选一个仍然存在的实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 下已不存在名為 {name} 的實例設定，請改選一個仍然存在的實例；可選實例：{candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 下名为 {name} 的实例配置已停用，请启用它或改选一个已启用的实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 下名為 {name} 的實例設定已停用，請啟用它或改選一個已啟用的實例；可選實例：{candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 下名为 {name} 的实例配置类型不在本扩展点声明的范围内，请改选一个类型对得上的实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 下名為 {name} 的實例設定類型不在本擴充點宣告的範圍內，請改選一個類型對得上的實例；可選實例：{candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 没有默认调用目标，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 沒有預設呼叫目標，呼叫必須明確指定實例；可選實例：{candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 的默认调用目标 {name} 已停用，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 的預設呼叫目標 {name} 已停用，呼叫必須明確指定實例；可選實例：{candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 未设置默认调用目标，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "服務能力 {capability} 未設定預設呼叫目標，呼叫必須明確指定實例；可選實例：{candidates}"
     }
   ]
 }

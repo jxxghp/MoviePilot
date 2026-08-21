@@ -2,6 +2,10 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.runtime.extensions.service_instance_requirement import (
+    SERVICE_INSTANCE_PARAM,
+    resolve_required_service_instance,
+)
 from app.runtime.log import logger
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
@@ -53,13 +57,24 @@ class InvokePluginAction(BaseAction):
         插件按配置扇出多个分身时，未指定实例的调用按该插件的默认调用目标裁决；
         插件不存在、动作不存在，或裁决不出目标，均以异常呈现给工作流引擎，由其
         统一转换为用户可见的失败原因，本层不再吞掉后转成静默失败。
+
+        动作声明了作用于哪一族服务实例时，用户在本节点选中的实例名从动作参数里
+        取，解析成立后按同一个键交回给实现；未选中则按该族的默认调用目标裁决，
+        裁决不出即报错并列出候选。未声明作用对象的动作，参数原样展开，调用形状
+        与该字段存在之前逐字相同。
         """
         params = InvokePluginParams(**params)
         if not params.plugin_id or not params.action_id:
             return context
         logger.info(f"调用插件动作: {params.plugin_id} - {params.action_id}")
         action = PluginManager().get_plugin_action(params.plugin_id, params.action_id)
+        action_params = dict(params.action_params)
+        requirement = action.get("requires_service_instance")
+        if requirement:
+            action_params[SERVICE_INSTANCE_PARAM] = resolve_required_service_instance(
+                requirement, action_params.get(SERVICE_INSTANCE_PARAM)
+            )
         # 执行插件动作
-        self._success, context = action["func"](context, **params.action_params)
+        self._success, context = action["func"](context, **action_params)
         self.job_done()
         return context

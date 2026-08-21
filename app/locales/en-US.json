@@ -1447,6 +1447,34 @@
     {
       "source": "服务能力 {capability} 没有默认调用目标",
       "target": "Service capability {capability} has no default call target"
+    },
+    {
+      "source": "服务能力 {capability} 不是已登记的服务族，无法确定作用的实例",
+      "target": "Service capability {capability} is not a registered service family, so the target instance cannot be determined"
+    },
+    {
+      "source": "服务能力 {capability} 下已不存在名为 {name} 的实例配置，请改选一个仍然存在的实例；可选实例：{candidates}",
+      "target": "Service capability {capability} no longer has an instance configuration named {name}; pick an instance that still exists. Candidates: {candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 下名为 {name} 的实例配置已停用，请启用它或改选一个已启用的实例；可选实例：{candidates}",
+      "target": "The instance configuration named {name} under service capability {capability} is disabled; enable it or pick an enabled instance. Candidates: {candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 下名为 {name} 的实例配置类型不在本扩展点声明的范围内，请改选一个类型对得上的实例；可选实例：{candidates}",
+      "target": "The type of the instance configuration named {name} under service capability {capability} is outside the range declared by this extension point; pick an instance with a matching type. Candidates: {candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 没有默认调用目标，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "Service capability {capability} has no default call target, so the call must name an instance explicitly. Candidates: {candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 的默认调用目标 {name} 已停用，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "The default call target {name} of service capability {capability} is disabled, so the call must name an instance explicitly. Candidates: {candidates}"
+    },
+    {
+      "source": "服务能力 {capability} 未设置默认调用目标，调用必须显式指定实例；可选实例：{candidates}",
+      "target": "Service capability {capability} has no default call target configured, so the call must name an instance explicitly. Candidates: {candidates}"
     }
   ]
 }

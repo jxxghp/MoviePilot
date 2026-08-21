@@ -1,0 +1,11 @@
+[project]
+name = "p123disk"
+version = "2.0.0"
+description = "123 云盘存储扩展的插件依赖清单"
+requires-python = ">=3.12"
+# p123client 尚未发布到包索引，只能按 PEP 508 直接引用取源码归档。宿主支持这种写法，
+# 但直链绕开镜像与本地 wheels，且分支头没有版本号——装过一次之后宿主只比对来源 URL，
+# 上游再改也不会重装。httpx、requests 由宿主运行时提供，插件不重复声明以免版本相撞。
+dependencies = [
+    "p123client @ https://github.com/jdzjy/p123client/archive/refs/heads/main.zip",
+]

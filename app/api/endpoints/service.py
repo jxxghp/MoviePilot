@@ -4,9 +4,11 @@
 表里、配置存在同一张服务实例配置表里，按「能力标签加类型标识」两个维度索引，形状也
 完全相同，拆成多个端点只会得到多份同样的代码。
 
-整组端点一律要求管理员：配置载荷里装着 token、password 与 client_secret，读与写都不
-是普通用户该碰的。登录页那条无鉴权的登录入口列表取的是「入口描述」、不带 ``config``，
-与本组端点不是同一件事。
+带配置载荷的端点一律要求超级管理员：``config`` 里装着 token、password 与
+client_secret，读与写都不是普通用户该碰的。实例选择器端点只交出身份与启用态、不带
+``config``，因此按它的消费方——工作流编辑器——同一道门槛收在管理权限上；把它抬到超级
+管理员会让有管理权限的用户编辑工作流时选择器永远是空的。登录页那条无鉴权的登录入口
+列表取的是「入口描述」、同样不带 ``config``，与本组端点不是同一件事。
 """
 
 from typing import Any, Dict, List, Set
@@ -14,7 +16,7 @@ from typing import Any, Dict, List, Set
 from fastapi import Depends, HTTPException, Query
 from starlette import status
 
-from app.api.deps import get_current_active_superuser
+from app.api.deps import get_current_active_manage_user, get_current_active_superuser
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.api.service_secrets import mask_secret_values, restore_masked_secrets
@@ -23,12 +25,17 @@ from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.service_config import get_configured_service_instance_configs
 from app.db.models.serviceconfig import BUILTIN_PROVIDER
 from app.db.oper.serviceconfig import ServiceConfigNameConflictError
+from app.runtime.extensions.declaration import ServiceInstanceRequirement
 from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import service_supports_default_target
 from app.runtime.extensions.service_config_validation import (
     service_config_record,
     service_config_record_violation,
+)
+from app.runtime.extensions.service_instance_requirement import (
+    service_instance_candidates,
+    service_instance_reference_issue,
 )
 from app.runtime.extensions.service_family_registry import service_family_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
@@ -43,6 +50,9 @@ from app.schemas.service import (
 )
 from app.schemas.service import (
     ServiceInstanceConfigPayload as _SchemaServiceInstanceConfigPayload,
+)
+from app.schemas.service import (
+    ServiceInstanceSelection as _SchemaServiceInstanceSelection,
 )
 from app.schemas.service import ServiceTypeInfo as _SchemaServiceTypeInfo
 from app.schemas.types import SystemConfigKey
@@ -511,6 +521,58 @@ def clear_service_default_target(
     _require_family(capability)
     get_configured_service_instance_configs().clear_default_target(capability)
     return _SchemaResponse(success=True)
+
+
+@router.get(
+    "/instance_candidates/{capability}",
+    summary="获取某族可供扩展点选择的服务实例",
+    response_model=_SchemaServiceInstanceSelection,
+)
+def service_instance_selection(
+    capability: str,
+    types: List[str] = Query(default=[], description="收窄到的类型标识，可重复给出"),
+    selected: str = Query(default="", description="已选实例名，给出即一并判定它是否仍然可用"),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
+) -> Any:
+    """
+    列出声明了作用对象的动作或仪表盘当前可选的服务实例，并判定已选实例的现状
+
+    未登记的族答 ``family_registered`` 为 False 而不是报错：提供该族的扩展不在场与
+    用户一份配置都还没建，是两种处置动作完全不同的处境——装回扩展，还是去设置页新建。
+    一并答成 404 会让前端只能显示同一句「取不到」。
+
+    候选只带身份与启用态，不带 ``config``：这份列表是给用户挑选用的，而配置载荷里
+    装着凭据，随选择器下发即等于把它们摊给每一个能编辑工作流的人。
+
+    ``issue`` 只在给了 ``selected`` 时才可能非空，取值是稳定的成因代码，措辞由前端
+    渲染。它与「提供方已消失」那条通路方向相反：那条回答「配置还在、提供方没了」，
+    本字段回答「引用还在、被引用的实例没了」。
+
+    :param capability: 能力标签
+    :param types: 收窄到的类型标识，留空表示该族任意类型都可选
+    :param selected: 已选实例名，留空表示尚未选择
+    :param _: 鉴权
+    :return: 该族当前的可选实例与已选实例的现状
+    """
+    requirement = ServiceInstanceRequirement(capability=capability, types=tuple(types))
+    registered = service_family_registry.is_registered(capability)
+    candidates = service_instance_candidates(requirement) if registered else ()
+    return {
+        "capability": capability,
+        "family_registered": registered,
+        "supports_default_target": service_supports_default_target(capability),
+        "candidates": [
+            {
+                "type": item.type,
+                "name": item.name,
+                "enabled": item.enabled,
+                "is_default_target": item.is_default_target,
+            }
+            for item in candidates
+        ],
+        "selected": selected or None,
+        "issue": service_instance_reference_issue(requirement, selected or None),
+    }
 
 
 @router.get(

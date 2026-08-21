@@ -6,12 +6,14 @@ import pytest
 
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.notification import (
     ChannelCapabilities,
     ChannelCapability,
     ChannelCapabilityManager,
 )
+from app.schemas.types import NotificationChannel
 
 
 @pytest.fixture
@@ -26,11 +28,17 @@ def plugin_manager() -> Iterator[PluginManager]:
 @pytest.fixture(autouse=True)
 def _reset_extension_capability_registry():
     """快照并复原扩展渠道能力登记表，避免测试间相互污染。"""
+    original_registrations = {
+        identity: list(stack)
+        for identity, stack in ChannelCapabilityManager._extension_registrations.items()
+    }
     original_capabilities = dict(ChannelCapabilityManager._extension_capabilities)
     original_owners = dict(ChannelCapabilityManager._extension_owners)
     try:
         yield
     finally:
+        ChannelCapabilityManager._extension_registrations.clear()
+        ChannelCapabilityManager._extension_registrations.update(original_registrations)
         ChannelCapabilityManager._extension_capabilities.clear()
         ChannelCapabilityManager._extension_capabilities.update(original_capabilities)
         ChannelCapabilityManager._extension_owners.clear()
@@ -239,3 +247,182 @@ def test_plugin_manager_start_skips_channel_capabilities_when_plugin_raises(
 
     assert plugin_id in plugin_manager._running_plugins
     assert ChannelCapabilityManager.supports_buttons("fake_lifecycle_channel") is False
+
+
+def _bridge_capabilities(max_buttons_per_row: int) -> ChannelCapabilities:
+    """构造同一渠道标识、按钮行上限不同的一条渠道能力声明。
+
+    :param max_buttons_per_row: 每行按钮数上限，用于分辨生效的是哪一份登记
+    :return: 渠道能力声明
+    """
+    return ChannelCapabilities(
+        channel="demo_bridge",
+        capabilities={ChannelCapability.INLINE_BUTTONS},
+        max_buttons_per_row=max_buttons_per_row,
+    )
+
+
+def test_later_registration_overrides_the_earlier_one_on_the_same_channel():
+    """渠道标识指称同一个外部渠道，不同登记方声明同一标识按后登记生效处置。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+
+    handovers = ChannelCapabilityManager.register_extension_capabilities(
+        "Second", [_bridge_capabilities(6)]
+    )
+
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 6
+    assert [
+        (item.identity, item.previous_owner, item.current_owner) for item in handovers
+    ] == [("demo_bridge", "First", "Second")]
+
+
+def test_revoking_the_override_restores_the_channel_to_the_displaced_owner():
+    """覆盖方撤销登记后，被它压住的那一份重新接手，而不是留下空位。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+    ChannelCapabilityManager.register_extension_capabilities(
+        "Second", [_bridge_capabilities(6)]
+    )
+
+    handovers = ChannelCapabilityManager.register_extension_capabilities("Second", [])
+
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 3
+    assert ChannelCapabilityManager._extension_owners["demo_bridge"] == "First"
+    assert [
+        (item.identity, item.previous_owner, item.current_owner) for item in handovers
+    ] == [("demo_bridge", "Second", "First")]
+
+
+def test_revoking_the_displaced_owner_leaves_the_effective_registration_alone():
+    """被压住的一方自己停用只是从队列里退出，不影响当前生效的覆盖方。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+    ChannelCapabilityManager.register_extension_capabilities(
+        "Second", [_bridge_capabilities(6)]
+    )
+
+    handovers = ChannelCapabilityManager.register_extension_capabilities("First", [])
+
+    assert handovers == ()
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 6
+
+    # 队列里已无 First，覆盖方撤销后该渠道回到无人登记
+    ChannelCapabilityManager.register_extension_capabilities("Second", [])
+    assert ChannelCapabilityManager.supports_buttons("demo_bridge") is False
+
+
+def test_all_owners_revoked_clears_the_channel_entirely():
+    """登记方全部撤销后渠道标识不再残留任何登记。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+    ChannelCapabilityManager.register_extension_capabilities(
+        "Second", [_bridge_capabilities(6)]
+    )
+
+    ChannelCapabilityManager.register_extension_capabilities("Second", [])
+    ChannelCapabilityManager.register_extension_capabilities("First", [])
+
+    assert ChannelCapabilityManager.supports_buttons("demo_bridge") is False
+    assert "demo_bridge" not in ChannelCapabilityManager._extension_registrations
+    assert "demo_bridge" not in ChannelCapabilityManager._extension_owners
+
+
+def test_same_owner_re_registration_is_not_reported_as_a_handover():
+    """同一登记方刷新自己的登记不构成归属变更，不打覆盖告警。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+
+    handovers = ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(9)]
+    )
+
+    assert handovers == ()
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 9
+
+
+def test_re_registering_after_being_displaced_takes_the_channel_back():
+    """被压住的一方重新登记即排到末位，按后登记生效重新拿回渠道。"""
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+    ChannelCapabilityManager.register_extension_capabilities(
+        "Second", [_bridge_capabilities(6)]
+    )
+
+    handovers = ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(4)]
+    )
+
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 4
+    assert [
+        (item.identity, item.previous_owner, item.current_owner) for item in handovers
+    ] == [("demo_bridge", "Second", "First")]
+
+    # Second 仍在队列里，First 撤销后由它接手
+    ChannelCapabilityManager.register_extension_capabilities("First", [])
+    assert ChannelCapabilityManager.get_max_buttons_per_row("demo_bridge") == 6
+
+
+def test_builtin_channel_still_wins_over_extension_registrations():
+    """内建渠道优先未被裁决改动：扩展登记只在内建静态表未命中时才被查到。"""
+    builtin_identity = NotificationChannel.Telegram.value
+    builtin = ChannelCapabilityManager.get_capabilities(NotificationChannel.Telegram)
+
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First",
+        [
+            ChannelCapabilities(
+                channel=builtin_identity,
+                capabilities=set(),
+                max_buttons_per_row=1,
+            )
+        ],
+    )
+    ChannelCapabilityManager.register_extension_capabilities(
+        "Second",
+        [
+            ChannelCapabilities(
+                channel=builtin_identity,
+                capabilities=set(),
+                max_buttons_per_row=2,
+            )
+        ],
+    )
+
+    assert ChannelCapabilityManager.get_capabilities(NotificationChannel.Telegram) is builtin
+    assert ChannelCapabilityManager.supports_buttons(NotificationChannel.Telegram) is True
+
+
+def test_manager_warns_on_override_and_reports_restore(monkeypatch):
+    """管理器把裁决结果落成日志：覆盖打告警，撤销后交回被覆盖方打提示。"""
+    warnings: list = []
+    infos: list = []
+    monkeypatch.setattr(plugin_manager_module.logger, "warning", warnings.append)
+    monkeypatch.setattr(plugin_manager_module.logger, "info", infos.append)
+
+    ChannelCapabilityManager.register_extension_capabilities(
+        "First", [_bridge_capabilities(3)]
+    )
+    PluginManager._log_channel_capability_handovers(
+        "Second",
+        ChannelCapabilityManager.register_extension_capabilities(
+            "Second", [_bridge_capabilities(6)]
+        ),
+    )
+
+    assert len(warnings) == 1
+    assert "demo_bridge" in warnings[0] and "First" in warnings[0]
+
+    PluginManager._log_channel_capability_handovers(
+        "Second", ChannelCapabilityManager.register_extension_capabilities("Second", [])
+    )
+
+    assert len(warnings) == 1
+    assert len(infos) == 1
+    assert "demo_bridge" in infos[0] and "First" in infos[0]

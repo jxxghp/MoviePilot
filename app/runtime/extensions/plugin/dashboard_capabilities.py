@@ -8,8 +8,12 @@ from app.runtime.extensions.declaration import (
     declaration_config_component,
     declaration_config_form,
     declaration_dashboard_identity,
+    declaration_service_instance_requirement,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.service_instance_requirement import (
+    service_instance_requirement_violation,
+)
 
 
 def dashboard_declaration_violation(
@@ -25,6 +29,9 @@ def dashboard_declaration_violation(
     不留到调用时才失败。key 不做非空校验，空字符串代表插件的默认仪表盘，与
     既有单仪表盘约定一致。
 
+    声明了 requires_service_instance 时只判它的形状，不判该能力标签有没有登记成
+    服务族；判据见 `app.runtime.extensions.service_instance_requirement`。
+
     :param declaration: `DashboardDeclaration` 实例，或插件直接交出的描述字典
     :param render_mode: 声明该仪表盘的扩展当前的渲染模式；为 None 时跳过
         ``config_component`` 与渲染模式的一致性校验
@@ -34,8 +41,14 @@ def dashboard_declaration_violation(
         _, name = declaration_dashboard_identity(declaration)
         config_form = declaration_config_form(declaration)
         config_component = declaration_config_component(declaration)
+        requirement = declaration_service_instance_requirement(declaration)
     except Exception as error:
         return f"读取仪表盘声明出错：{error}"
     if not name:
         return "未声明非空的仪表盘展示名称 name"
-    return config_interface_violation(config_form, config_component, render_mode=render_mode)
+    interface_violation = config_interface_violation(
+        config_form, config_component, render_mode=render_mode
+    )
+    if interface_violation:
+        return interface_violation
+    return service_instance_requirement_violation(requirement)
