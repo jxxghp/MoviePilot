@@ -1,4 +1,5 @@
-"""插件声明媒体数据源链路测试：契约校验、实例键归属、停用回收与旧钩子并存。"""
+"""插件声明媒体数据源链路测试：展示信息与实现的完整性校验、source 路由、
+实例键归属与旧钩子并存。"""
 
 from typing import Iterator, List, Optional
 
@@ -11,6 +12,11 @@ from app.runtime.deprecation.notices import DeprecationNotice, DeprecationStage
 from app.runtime.extensions.declaration import MediaSourceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
+
+
+def _detail(**kwargs):
+    """媒体数据源声明用的最小实现桩，回显收到的调用参数。"""
+    return kwargs
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +82,7 @@ def test_projection_accepts_valid_declaration():
                 media_source="acme.video",
                 name="Acme Video",
                 media_types=("电影", "电视剧"),
+                methods={"media_detail": _detail},
             )
         ]
     )
@@ -91,7 +98,11 @@ def test_projection_accepts_valid_declaration():
 
 def test_projection_accepts_bare_dict_without_wrapper():
     """插件直接交出描述字典而不包 MediaSourceDeclaration 的兼容写法应被接受。"""
-    raw = {"name": "Acme Video", "media_source": "acme.video"}
+    raw = {
+        "name": "Acme Video",
+        "media_source": "acme.video",
+        "methods": {"media_detail": _detail},
+    }
     plugin = _CapableMediaSourcePlugin(declarations=[raw])
     projection = PluginProjection({"DemoSource": plugin})
 
@@ -103,14 +114,32 @@ def test_projection_accepts_bare_dict_without_wrapper():
 @pytest.mark.parametrize(
     "declaration",
     [
-        MediaSourceDeclaration(media_source="acme.video", name=""),
-        MediaSourceDeclaration(media_source="", name="Acme Video"),
-        MediaSourceDeclaration(media_source="Not Valid!!", name="Acme Video"),
         MediaSourceDeclaration(
-            media_source="acme.video", name="Acme Video", media_types=(1, 2)
+            media_source="acme.video", name="", methods={"media_detail": _detail}
+        ),
+        MediaSourceDeclaration(
+            media_source="", name="Acme Video", methods={"media_detail": _detail}
+        ),
+        MediaSourceDeclaration(
+            media_source="Not Valid!!", name="Acme Video", methods={"media_detail": _detail}
+        ),
+        MediaSourceDeclaration(
+            media_source="acme.video",
+            name="Acme Video",
+            media_types=(1, 2),
+            methods={"media_detail": _detail},
+        ),
+        MediaSourceDeclaration(
+            media_source="acme.video", name="Acme Video", methods={"media_detail": None}
         ),
     ],
-    ids=["name_empty", "media_source_empty", "media_source_invalid", "media_types_not_str"],
+    ids=[
+        "name_empty",
+        "media_source_empty",
+        "media_source_invalid",
+        "media_types_not_str",
+        "method_not_callable",
+    ],
 )
 def test_projection_rejects_declaration_violations(declaration):
     """不合契约的声明必须被拒绝：名称缺失、标识缺失、标识非法、media_types 非字符串序列。"""
@@ -126,8 +155,12 @@ def test_projection_partial_rejection_keeps_valid_siblings():
     """同一实例声明多条时，不合契约的条目被跳过，合规的条目照常保留。"""
     plugin = _CapableMediaSourcePlugin(
         declarations=[
-            MediaSourceDeclaration(media_source="ok.source", name="OK Source"),
-            MediaSourceDeclaration(media_source="", name="Bad Source"),
+            MediaSourceDeclaration(
+                media_source="ok.source", name="OK Source", methods={"media_detail": _detail}
+            ),
+            MediaSourceDeclaration(
+                media_source="", name="Bad Source", methods={"media_detail": _detail}
+            ),
         ]
     )
     projection = PluginProjection({"DemoSource": plugin})
@@ -142,7 +175,11 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
     """单个插件声明媒体数据源抛异常时不应影响其它插件的投影结果。"""
     broken = _CapableMediaSourcePlugin(raise_error=True)
     healthy = _CapableMediaSourcePlugin(
-        declarations=[MediaSourceDeclaration(media_source="ok.source", name="OK Source")]
+        declarations=[
+            MediaSourceDeclaration(
+                media_source="ok.source", name="OK Source", methods={"media_detail": _detail}
+            )
+        ]
     )
     projection = PluginProjection({"Broken": broken, "Ok": healthy})
 
@@ -155,10 +192,22 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
 def test_media_sources_tag_entries_with_owning_instance_key():
     """两个实例各自声明数据源时，聚合结果按实例键区分，互不覆盖。"""
     default_plugin = _CapableMediaSourcePlugin(
-        declarations=[MediaSourceDeclaration(media_source="default.source", name="默认实例")]
+        declarations=[
+            MediaSourceDeclaration(
+                media_source="default.source",
+                name="默认实例",
+                methods={"media_detail": _detail},
+            )
+        ]
     )
     second_plugin = _CapableMediaSourcePlugin(
-        declarations=[MediaSourceDeclaration(media_source="second.source", name="第二实例")]
+        declarations=[
+            MediaSourceDeclaration(
+                media_source="second.source",
+                name="第二实例",
+                methods={"media_detail": _detail},
+            )
+        ]
     )
     projection = PluginProjection({"Demo": default_plugin, "Demo@second": second_plugin})
 
@@ -205,7 +254,11 @@ def test_get_media_sources_merges_declared_and_legacy_sources(
 ) -> None:
     """同一实例的声明式数据源与旧式裸字典数据源应合并到同一份聚合结果中。"""
     plugin = _FakeMediaSourcePlugin(
-        declared=[MediaSourceDeclaration(media_source="new.source", name="新式来源")],
+        declared=[
+            MediaSourceDeclaration(
+                media_source="new.source", name="新式来源", methods={"media_detail": _detail}
+            )
+        ],
         legacy=[{"name": "旧式来源", "media_source": "legacy.source"}],
     )
     plugin_manager.running_plugins["Demo"] = plugin
