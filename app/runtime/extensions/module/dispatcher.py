@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.runtime.observability import observe_duration
 from app.runtime.extensions.module.contracts import (
     diagnose_module_callable,
     get_module_method_contract,
@@ -68,29 +69,41 @@ class ModuleInvocationDispatcher:
         """先执行插件模块，再按优先级执行宿主模块。"""
         contract = get_module_method_contract(method)
         logger.debug("模块方法契约：%s -> %s", method, contract.family)
-        result = self.execute_plugin_modules(method, None, *args, **kwargs)
+        with observe_duration(
+            "module.provider.duration", method=method, provider_type="plugin"
+        ):
+            result = self.execute_plugin_modules(method, None, *args, **kwargs)
         if not self.is_valid_empty(result) and not isinstance(result, list):
             return result
-        return self.execute_system_modules(method, result, *args, **kwargs)
+        with observe_duration(
+            "module.provider.duration", method=method, provider_type="system"
+        ):
+            return self.execute_system_modules(method, result, *args, **kwargs)
 
     async def async_dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """以与同步路径相同的聚合规则执行同步或异步模块方法。"""
         contract = get_module_method_contract(method)
         logger.debug("异步模块方法契约：%s -> %s", method, contract.family)
-        result = await self.async_execute_plugin_modules(
-            method,
-            None,
-            *args,
-            **kwargs,
-        )
+        with observe_duration(
+            "module.provider.duration", method=method, provider_type="plugin"
+        ):
+            result = await self.async_execute_plugin_modules(
+                method,
+                None,
+                *args,
+                **kwargs,
+            )
         if not self.is_valid_empty(result) and not isinstance(result, list):
             return result
-        return await self.async_execute_system_modules(
-            method,
-            result,
-            *args,
-            **kwargs,
-        )
+        with observe_duration(
+            "module.provider.duration", method=method, provider_type="system"
+        ):
+            return await self.async_execute_system_modules(
+                method,
+                result,
+                *args,
+                **kwargs,
+            )
 
     def execute_plugin_modules(
         self,

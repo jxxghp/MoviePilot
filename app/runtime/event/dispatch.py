@@ -13,6 +13,7 @@ from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.correlation import correlation_scope
+from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
 
 
@@ -147,7 +148,12 @@ class EventDispatcher:
         method, binding, class_name, method_name = resolved
         with correlation_scope(event.correlation_id):
             try:
-                method(event)
+                with observe_duration(
+                    "event.handler.duration",
+                    event_type=event.event_type.value,
+                    handler_type="bound" if class_name else "function",
+                ):
+                    method(event)
             except Exception as err:
                 self._error_handler(
                     event=event,
@@ -165,12 +171,17 @@ class EventDispatcher:
         method, binding, class_name, method_name = resolved
         with correlation_scope(event.correlation_id):
             try:
-                if inspect.iscoroutinefunction(method):
-                    await method(event)
-                elif binding.run_sync_in_threadpool or not class_name:
-                    await run_in_threadpool(method, event)
-                else:
-                    method(event)
+                with observe_duration(
+                    "event.handler.duration",
+                    event_type=event.event_type.value,
+                    handler_type="bound" if class_name else "function",
+                ):
+                    if inspect.iscoroutinefunction(method):
+                        await method(event)
+                    elif binding.run_sync_in_threadpool or not class_name:
+                        await run_in_threadpool(method, event)
+                    else:
+                        method(event)
             except Exception as err:
                 self._error_handler(
                     event=event,

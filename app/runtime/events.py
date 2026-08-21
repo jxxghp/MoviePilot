@@ -22,6 +22,7 @@ from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
 from app.runtime.event.contracts import validate_event_payload
 from app.runtime.correlation import get_correlation_id
+from app.runtime.observability import record_metric
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
@@ -317,6 +318,11 @@ class EventManager(metaclass=Singleton):
         """
         logger.debug(f"Triggering broadcast event: {event}")
         self.__event_queue.put((event.priority, event))
+        record_metric(
+            "event.queue.depth",
+            self.__event_queue.qsize(),
+            delivery="broadcast",
+        )
 
     def __dispatch_chain_event(self, event: Event) -> bool:
         """
@@ -421,6 +427,11 @@ class EventManager(metaclass=Singleton):
         while self.__event.is_set():
             try:
                 priority, event = self.__event_queue.get(timeout=rate_limiter.current_wait)
+                record_metric(
+                    "event.queue.depth",
+                    self.__event_queue.qsize(),
+                    delivery="broadcast",
+                )
                 rate_limiter.reset()
                 self.__dispatch_broadcast_event(event)
             except Empty:

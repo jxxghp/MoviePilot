@@ -756,6 +756,19 @@ app/scheduler.py # APScheduler 兼容 Facade
 
 OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-capable observation Protocol。插件 ID、用户 ID、媒体标题等高基数字段不得直接作为 metric label。
 
+**实施记录（2026-08-21）**：
+
+- `app.runtime.observability` 定义单一 `ObservationPort`、默认 no-op、指标类型/目录、标签白名单和统一耗时
+  作用域；没有 exporter 时所有调用仍可执行，未登记标签在进入 Adapter 前直接拒绝。
+- 指标目录覆盖 HTTP、DB pool、Event、Module、Scheduler、Plugin lifecycle 和 Agent 所列能力；标签审计
+  明确禁止 user/plugin/media/request/job 实例 ID、标题和 URL。首批实际接线覆盖 HTTP route/status/latency、
+  Event queue/handler、Module provider 与 Scheduler duration/overlap，剩余能力可按相同端口逐个接入。
+- `app.adapters.observability.otel` 只在组合根显式读取 `MOVIEPILOT_OTEL_METRICS=1` 后懒加载 OTel API；
+  未安装可选包时稳定回退 no-op，不给核心层增加 SDK 依赖。HTTP Adapter 通过路由匹配输出模板，绝不以原始
+  request path 充当 label。
+- 专项测试覆盖 exporter 缺失、非法标签、全目录高基数审计、成功/失败 outcome、动态 URL 路由模板；
+  既有 API、Event、Module、Scheduler 与健康探针回归保持通过。
+
 #### ARCH-270：渐进式类型门禁
 
 **目标**：不要求全仓一次通过 mypy/pyright；只保证新 canonical contract 和被治理模块完整类型化。

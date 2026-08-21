@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import multiprocessing
 import threading
+import time
 import traceback
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Dict, Any, List
@@ -46,6 +47,7 @@ from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
 from app.runtime.scheduling import TimerUtils
 from app.runtime.correlation import call_with_correlation, get_correlation_id
+from app.runtime.observability import record_metric
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
@@ -562,7 +564,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 return None
             if not JobExecutionState.begin(job, started_at):
                 logger.warning(f"定时任务 {job_id} - {job.get('name')} 正在运行 ...")
+                record_metric(
+                    "scheduler.job.overlap_skip",
+                    owner=str(job.get("owner", "unknown")),
+                )
                 return None
+            job["_metric_started_at"] = time.perf_counter()
         progress = ProgressHelper(self._get_progress_key(job_id))
         progress.start()
         progress.update(
@@ -596,6 +603,14 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             job = self._jobs.get(job_id)
             if job:
                 JobExecutionState.finish(job, finished_at, error)
+                metric_started_at = job.pop("_metric_started_at", None)
+                if metric_started_at is not None:
+                    record_metric(
+                        "scheduler.job.duration",
+                        time.perf_counter() - metric_started_at,
+                        owner=str(job.get("owner", "unknown")),
+                        outcome="success" if success else "error",
+                    )
         job_name = job.get("name") if job else job_id
         # 收尾可能发生在事件循环上（__run_coro_job），使用异步进度后端避免阻塞
         progress = AsyncProgressHelper(self._get_progress_key(job_id))
