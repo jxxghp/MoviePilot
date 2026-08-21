@@ -39,34 +39,29 @@ jobs:
         include:
           - name: Linux x64
             runner: ubuntu-24.04
-            python-version: '3.12'
+            python-version: '3.14'
             expected-system: Linux
             expected-machine: x86_64
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
-            python-version: '3.12'
+            python-version: '3.14'
             expected-system: Linux
             expected-machine: aarch64
           - name: macOS Intel
             runner: macos-15-intel
-            python-version: '3.12'
+            python-version: '3.14'
             expected-system: Darwin
             expected-machine: x86_64
           - name: macOS ARM
             runner: macos-15
-            python-version: '3.12'
+            python-version: '3.14'
             expected-system: Darwin
             expected-machine: arm64
           - name: Windows x64
             runner: windows-2025
-            python-version: '3.12'
+            python-version: '3.14'
             expected-system: Windows
             expected-machine: AMD64
-          - name: Linux x64
-            runner: ubuntu-24.04
-            python-version: '3.14'
-            expected-system: Linux
-            expected-machine: x86_64
 
     steps:
       - name: Checkout code

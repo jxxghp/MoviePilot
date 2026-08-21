@@ -8,11 +8,11 @@ PROJECT_ROOT=""
 PYTHON_BIN=""
 COLLECTOR_PATH=""
 
-# 判断候选 Python 是否满足 3.11 最低版本。
+# 判断候选 Python 是否满足 3.14 最低版本。
 python_version_ok() {
   "$1" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 14) else 1)
 PY
 }
 
@@ -40,7 +40,7 @@ find_python() {
     "${PROJECT_ROOT:+$PROJECT_ROOT/venv/bin/python}" \
     "${PROJECT_ROOT:+$PROJECT_ROOT/.venv/bin/python}" \
     "${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/python}" \
-    python3.13 python3.12 python3.11 python3; do
+    python3.14 python3; do
     [[ -n "$candidate" ]] || continue
     if [[ "$candidate" == */* ]]; then
       resolved="$candidate"
