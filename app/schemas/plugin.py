@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum as _Enum
 from typing import Optional, List, Dict, Union
 
 from pydantic import BaseModel, Field, RootModel
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, RootModel
 from app.schemas.common import JsonData
 
 
-class PluginRuntimeStatus(str, Enum):
+class PluginRuntimeStatus(str, _Enum):
     """插件从源码准备到运行激活的六类状态。"""
 
     SOURCE_MISSING = "source_missing"

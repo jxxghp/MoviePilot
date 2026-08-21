@@ -531,7 +531,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     ) -> None:
         """把源码和依赖分类写入运行状态，已激活插件保持当前结果。"""
         running_ids = set(self._plugin_registry.running_ids())
-        for plugin_id in classification.source_missing:
+        for plugin_id in classification.missing_source:
             self._plugin_registry.set_runtime_status(
                 plugin_id,
                 PluginRuntimeStatus.SOURCE_MISSING,

@@ -11,6 +11,7 @@ from app.runtime.extensions.plugin.dependency import (
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.schemas.plugin import PluginRuntimeStatus
 from app.startup import plugins_initializer
 
 
@@ -74,6 +75,27 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     plugins_initializer.init_plugins()
 
     assert order == ["services", "plugin:ReadyPlugin", "routes", "monitor"]
+
+
+def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
+    """真实管理器按分类字段写入三类启动状态，避免测试替身掩盖字段漂移。"""
+    _reset_plugin_manager()
+    manager = PluginManager()
+
+    manager.apply_plugin_dependency_classification(
+        PluginDependencyClassification(
+            ready=("ReadyPlugin",),
+            missing_dependencies=("DependencyPending",),
+            missing_source=("SourcePending",),
+        )
+    )
+
+    assert manager.get_plugin_runtime_statuses() == {
+        "ReadyPlugin": PluginRuntimeStatus.READY,
+        "DependencyPending": PluginRuntimeStatus.DEPENDENCY_PENDING,
+        "SourcePending": PluginRuntimeStatus.SOURCE_MISSING,
+    }
+    _reset_plugin_manager()
 
 
 def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
