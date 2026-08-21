@@ -646,6 +646,16 @@ ModuleMethodSpec(
 
 ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent task 和 transfer pending，不允许笼统写“全部可靠”。
 
+**实施记录（2026-08-21）**：
+
+- `docs/adr/0007-background-action-reliability.md` 已接受：逐项覆盖 53 个事件，并分别映射
+  BackgroundTasks、Scheduler、Agent task 与 transfer pending 的 E0～E3、完成点、恢复、重试、
+  幂等、关停和失败表达。
+- ADR 明确区分“Registry 标记 durable-required”与“当前已经 durable”；ARCH-251 前仍如实保留
+  commit 后进程崩溃窗口，不用日志或 BackgroundTasks 冒充交付保证。
+- 首个 pilot 选择 `SubscribeAdded`，因为 ARCH-221 已有事务所有权与 post-commit 样板；文件整理
+  继续保持 E3，不在本任务中被降格为普通事件重试。
+
 #### ARCH-251：用现有数据库做首个 durable side-effect pilot
 
 **前置**：ARCH-220/221 与 ARCH-241 完成。
