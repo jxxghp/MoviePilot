@@ -705,6 +705,18 @@ app/scheduler.py # APScheduler 兼容 Facade
 
 **步骤**：先把 job 定义数据化，再提执行状态；不在第一步替换 APScheduler。每个 job 必须声明 overlap policy、timeout、manual、recovery 和 owner。
 
+**实施记录（2026-08-21）**：
+
+- `app.application.scheduling` 新增 `JobSpec`、`JobCatalog`、`JobExecutionState` 以及 overlap/recovery 枚举；
+  系统、媒体服务器、Agent、工作流、插件和 outbox 动态任务均由同一合同生成兼容运行状态。
+- 保留 APScheduler 和既有 `Scheduler` Facade；重入判断、开始/结束/失败状态统一由 execution state 收敛，
+  job 状态稳定暴露 owner、overlap、timeout、manual、recovery 五项策略。
+- coroutine job 的非空 timeout 使用 `asyncio.wait_for`，超时会取消底层任务并记录明确终态；同步 job 默认
+  `timeout=None`，避免用线程强杀制造不可控的半完成副作用。一次性 Agent 任务重启后保持 manual-only，durable
+  outbox/备份/整理与 next-schedule 任务的恢复语义可审计。
+- 61 个 Scheduler、Agent 定时任务、备份、进度和媒体服务器专项测试通过，覆盖重复 ID、overlap skip、
+  timeout cancel、restart/manual recovery 与兼容状态字段。
+
 ### 阶段 6：可观测性、类型和复杂度预算
 
 #### ARCH-260：统一 request/correlation ID

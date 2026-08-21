@@ -49,7 +49,13 @@ from app.runtime.scheduling import TimerUtils
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
 # Agent 自主定时任务前缀下沉到 application 门面，此处保留兼容导出。
-from app.application.scheduling import AGENT_TASK_JOB_PREFIX  # noqa: E402
+from app.application.scheduling import (  # noqa: E402
+    AGENT_TASK_JOB_PREFIX,
+    JobCatalog,
+    JobExecutionState,
+    JobRecoveryPolicy,
+    JobSpec,
+)
 
 
 class SchedulerChain(ChainBase):
@@ -206,11 +212,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             return
 
         job_id = "database_backup"
-        self._jobs[job_id] = {
-            "name": "数据库备份",
-            "func": self.database_backup,
-            "running": False,
-        }
+        self._jobs[job_id] = JobSpec(
+            job_id,
+            "数据库备份",
+            self.database_backup,
+            "database",
+            recovery=JobRecoveryPolicy.DURABLE_QUEUE,
+        ).to_runtime_state()
         self._scheduler.add_job(
             self.start,
             trigger=TimerUtils.build_schedule_trigger(
@@ -242,112 +250,28 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         with lock:
             # 各服务的运行状态
             mediaserver_chain = MediaServerChain()
-            self._jobs = {
-                "cookiecloud": {
-                    "name": "同步CookieCloud站点",
-                    "func": SiteChain().sync_cookies,
-                    "running": False,
-                },
-                "mediaserver_sync": {
-                    "name": "同步媒体服务器",
-                    "func": mediaserver_chain.sync,
-                    "running": False,
-                },
-                "subscribe_tmdb": {
-                    "name": "订阅元数据更新",
-                    "func": SubscribeChain().check,
-                    "running": False,
-                },
-                "subscribe_search": {
-                    "name": "订阅搜索补全",
-                    "func": SubscribeChain().search,
-                    "running": False,
-                    "kwargs": {"state": "R"},
-                },
-                "new_subscribe_search": {
-                    "name": "新增订阅搜索",
-                    "func": SubscribeChain().search,
-                    "running": False,
-                    "kwargs": {"state": "N"},
-                },
-                "subscribe_refresh": {
-                    "name": "订阅刷新",
-                    "func": SubscribeChain().refresh,
-                    "running": False,
-                },
-                "subscribe_follow": {
-                    "name": "关注的订阅分享",
-                    "func": SubscribeChain().follow,
-                    "running": False,
-                },
-                "transfer": {
-                    "name": "下载文件整理",
-                    "func": TransferChain().process,
-                    "running": False,
-                },
-                "clear_cache": {
-                    "name": "缓存清理",
-                    "func": self.clear_cache,
-                    "running": False,
-                    "manual": True,
-                },
-                "data_cleanup": {
-                    "name": "数据表清理",
-                    "func": SchedulerChain().cleanup,
-                    "running": False,
-                },
-                "user_auth": {
-                    "name": "用户认证检查",
-                    "func": self.user_auth,
-                    "running": False,
-                },
-                "scheduler_job": {
-                    "name": "公共定时服务",
-                    "func": SchedulerChain().scheduler_job,
-                    "running": False,
-                },
-                "random_wallpager": {
-                    "name": "壁纸缓存",
-                    "func": WallpaperHelper().get_wallpapers,
-                    "running": False,
-                },
-                "sitedata_refresh": {
-                    "name": "站点数据刷新",
-                    "func": SiteChain().refresh_userdatas,
-                    "running": False,
-                },
-                "recommend_refresh": {
-                    "name": "推荐缓存",
-                    "func": RecommendChain().refresh_recommend,
-                    "running": False,
-                },
-                "plugin_market_refresh": {
-                    "name": "插件市场缓存",
-                    "func": PluginManager().async_get_online_plugins,
-                    "running": False,
-                    "kwargs": {"force": True},
-                },
-                "subscribe_calendar_cache": {
-                    "name": "订阅日历缓存",
-                    "func": SubscribeChain().cache_calendar,
-                    "running": False,
-                },
-                "full_gc": {
-                    "name": "主动内存回收",
-                    "func": self.full_gc,
-                    "running": False,
-                },
-                "agent_heartbeat": {
-                    "name": "智能体定时任务",
-                    "func": self.agent_heartbeat,
-                    "running": False,
-                },
-                "usage_report": {
-                    "name": "安装版本统计上报",
-                    "func": MoviePilotServerHelper.report_usage,
-                    "running": False,
-                },
-            }
+            self._jobs = JobCatalog([
+                JobSpec("cookiecloud", "同步CookieCloud站点", SiteChain().sync_cookies, "site"),
+                JobSpec("mediaserver_sync", "同步媒体服务器", mediaserver_chain.sync, "mediaserver"),
+                JobSpec("subscribe_tmdb", "订阅元数据更新", SubscribeChain().check, "subscription"),
+                JobSpec("subscribe_search", "订阅搜索补全", SubscribeChain().search, "subscription", kwargs={"state": "R"}),
+                JobSpec("new_subscribe_search", "新增订阅搜索", SubscribeChain().search, "subscription", kwargs={"state": "N"}),
+                JobSpec("subscribe_refresh", "订阅刷新", SubscribeChain().refresh, "subscription"),
+                JobSpec("subscribe_follow", "关注的订阅分享", SubscribeChain().follow, "subscription"),
+                JobSpec("transfer", "下载文件整理", TransferChain().process, "transfer", recovery=JobRecoveryPolicy.DURABLE_QUEUE),
+                JobSpec("clear_cache", "缓存清理", self.clear_cache, "runtime", manual=True, recovery=JobRecoveryPolicy.MANUAL_ONLY),
+                JobSpec("data_cleanup", "数据表清理", SchedulerChain().cleanup, "database"),
+                JobSpec("user_auth", "用户认证检查", self.user_auth, "security"),
+                JobSpec("scheduler_job", "公共定时服务", SchedulerChain().scheduler_job, "module"),
+                JobSpec("random_wallpager", "壁纸缓存", WallpaperHelper().get_wallpapers, "image"),
+                JobSpec("sitedata_refresh", "站点数据刷新", SiteChain().refresh_userdatas, "site"),
+                JobSpec("recommend_refresh", "推荐缓存", RecommendChain().refresh_recommend, "recommend"),
+                JobSpec("plugin_market_refresh", "插件市场缓存", PluginManager().async_get_online_plugins, "plugin", kwargs={"force": True}),
+                JobSpec("subscribe_calendar_cache", "订阅日历缓存", SubscribeChain().cache_calendar, "subscription"),
+                JobSpec("full_gc", "主动内存回收", self.full_gc, "runtime"),
+                JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
+                JobSpec("usage_report", "安装版本统计上报", MoviePilotServerHelper.report_usage, "server"),
+            ]).runtime_states()
 
             self._scheduler = BackgroundScheduler(
                 timezone=settings.TZ,
@@ -355,11 +279,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
 
             self._register_database_backup_job()
-            self._jobs["outbox_dispatch"] = {
-                "name": "恢复待投递副作用",
-                "func": dispatch_pending_outbox,
-                "running": False,
-            }
+            self._jobs["outbox_dispatch"] = JobSpec(
+                "outbox_dispatch",
+                "恢复待投递副作用",
+                dispatch_pending_outbox,
+                "outbox",
+                recovery=JobRecoveryPolicy.DURABLE_QUEUE,
+            ).to_runtime_state()
             self._scheduler.add_job(
                 self.start,
                 "interval",
@@ -393,12 +319,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
             for mediaserver_schedule in mediaserver_schedules:
                 job_id = mediaserver_schedule["id"]
-                self._jobs[job_id] = {
-                    "name": mediaserver_schedule["name"],
-                    "func": mediaserver_chain.sync,
-                    "running": False,
-                    "kwargs": {"server": mediaserver_schedule["server"]},
-                }
+                self._jobs[job_id] = JobSpec(
+                    job_id,
+                    mediaserver_schedule["name"],
+                    mediaserver_chain.sync,
+                    "mediaserver",
+                    kwargs={"server": mediaserver_schedule["server"]},
+                ).to_runtime_state()
                 self._scheduler.add_job(
                     self.start,
                     "interval",
@@ -632,13 +559,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             job = self._jobs.get(job_id)
             if not job:
                 return None
-            if job.get("running"):
+            if not JobExecutionState.begin(job, started_at):
                 logger.warning(f"定时任务 {job_id} - {job.get('name')} 正在运行 ...")
                 return None
-            self._jobs[job_id]["running"] = True
-            self._jobs[job_id]["last_started_at"] = started_at
-            self._jobs[job_id]["last_finished_at"] = None
-            self._jobs[job_id]["last_error"] = None
         progress = ProgressHelper(self._get_progress_key(job_id))
         progress.start()
         progress.update(
@@ -671,9 +594,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         with self._lock:
             job = self._jobs.get(job_id)
             if job:
-                job["running"] = False
-                job["last_finished_at"] = finished_at
-                job["last_error"] = error
+                JobExecutionState.finish(job, finished_at, error)
         job_name = job.get("name") if job else job_id
         # 收尾可能发生在事件循环上（__run_coro_job），使用异步进度后端避免阻塞
         progress = AsyncProgressHelper(self._get_progress_key(job_id))
@@ -862,9 +783,16 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         success = True
         error = None
         try:
-            result = await coro
+            result = await JobExecutionState.await_result(
+                coro,
+                timeout_seconds=job.get("timeout_seconds"),
+            )
             error = self.__get_result_error(result)
             success = error is None
+        except asyncio.TimeoutError as err:
+            success = False
+            error = f"任务执行超时（{job.get('timeout_seconds')} 秒）"
+            self.__handle_job_error(job_id=job_id, job=job, error=err)
         except asyncio.CancelledError:
             success = False
             error = "任务已取消"
@@ -1050,13 +978,15 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
-            self._jobs[job_id] = {
-                "name": task.name,
-                "provider_name": "[Agent]",
-                "func": self.execute_agent_task,
-                "running": False,
-                "kwargs": {"task_id": task_id},
-            }
+            self._jobs[job_id] = JobSpec(
+                job_id,
+                task.name,
+                self.execute_agent_task,
+                "agent",
+                recovery=JobRecoveryPolicy.NEXT_SCHEDULE,
+                kwargs={"task_id": task_id},
+            ).to_runtime_state()
+            self._jobs[job_id]["provider_name"] = "[Agent]"
             # 已开始的一次任务在重启后结果未知，只保留显式执行入口，不能按
             # 过期触发时间自动重放可能已经发生的外部副作用。
             if manual_only:
@@ -1272,12 +1202,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         with self._lock:
             try:
                 job_id = f"workflow-{workflow.id}"
-                self._jobs[job_id] = {
-                    "func": WorkflowChain().process,
-                    "name": workflow.name,
-                    "provider_name": "工作流",
-                    "running": False,
-                }
+                self._jobs[job_id] = JobSpec(
+                    job_id,
+                    workflow.name,
+                    WorkflowChain().process,
+                    "workflow",
+                ).to_runtime_state()
+                self._jobs[job_id]["provider_name"] = "工作流"
                 self._scheduler.add_job(
                     self.start,
                     trigger=CronTrigger.from_crontab(workflow.timer),
@@ -1321,14 +1252,17 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     sid = f"{pid}_{service['id']}"
                     job_id = sid.split("|")[0]
                     self.remove_plugin_job(pid, job_id)
-                    self._jobs[job_id] = {
-                        "func": service["func"],
-                        "name": service["name"],
-                        "pid": pid,
-                        "provider_name": plugin_name,
-                        "kwargs": service.get("func_kwargs") or {},
-                        "running": False,
-                    }
+                    self._jobs[job_id] = JobSpec(
+                        job_id,
+                        service["name"],
+                        service["func"],
+                        f"plugin:{pid}",
+                        kwargs=service.get("func_kwargs") or {},
+                    ).to_runtime_state()
+                    self._jobs[job_id].update(
+                        pid=pid,
+                        provider_name=plugin_name,
+                    )
                     self._scheduler.add_job(
                         self.start,
                         service["trigger"],
