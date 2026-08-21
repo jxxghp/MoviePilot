@@ -128,6 +128,13 @@ async def run_startup_step(
         logger.info("启动%s完成，耗时=%.2fms", name, elapsed_ms)
 
 
+async def initialize_modules_component(app: FastAPI) -> None:
+    """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
+    runtime = await init_modules()
+    if runtime is not None:
+        app.state.host_runtime = runtime
+
+
 def prepare_plugin_restore() -> None:
     """先装配插件外部系统服务，再恢复插件及其依赖。"""
     configure_plugin_services()
@@ -197,7 +204,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         LifecycleComponent(
             name="模块服务",
             dependencies=("路由",),
-            start=init_modules,
+            start=lambda: initialize_modules_component(app),
             stop=stop_modules,
             start_order=70,
             stop_order=70,

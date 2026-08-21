@@ -53,7 +53,7 @@ from app.application.site.query import SiteQueryService, configure_site_query_se
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
 from app.application.agentdata import configure_agent_data_ports
-from app.api.data import configure_api_data_ports
+from app.api.data import ApiDataPorts, configure_api_data_runtime
 from app.application.subscription.write import configure_subscribe_writer
 from app.adapters.external.server import (
     MoviePilotServerHelper,
@@ -97,6 +97,7 @@ from app.startup.managed_resources_initializer import (
     stop_managed_resources,
 )
 from app.startup.subscription import TransactionalSubscribeWriter
+from app.startup.context import AgentChatRuntime, HostRuntime
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
@@ -396,16 +397,15 @@ async def stop_modules():
     await run_step("临时文件", clear_temp)
 
 
-async def init_modules():
+async def init_modules() -> HostRuntime:
     """
-    启动模块
+    启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
-    configure_api_data_ports(
+    api_data = ApiDataPorts(
         sync_session=get_db,
         async_session=get_async_db,
         repositories={
-            "agent_chat": AgentChatOper,
             "download_history": DownloadHistoryOper,
             "media_server": MediaServerOper,
             "message": MessageOper,
@@ -427,6 +427,15 @@ async def init_modules():
             "sync": SqlAlchemyUnitOfWork,
         },
     )
+    host_runtime = HostRuntime(
+        agent_chat=AgentChatRuntime(
+            async_session=get_async_db,
+            repository=AgentChatOper,
+            transaction=SqlAlchemyAsyncUnitOfWork,
+        ),
+        compatibility_api_data=api_data,
+    )
+    configure_api_data_runtime(host_runtime.compatibility_api_data)
     configure_runtime_data_providers()
     configure_chain_data_ports(
         site=lambda: SiteOper(),
@@ -513,3 +522,4 @@ async def init_modules():
     start_frontend()
     # 检查认证状态
     check_auth()
+    return host_runtime

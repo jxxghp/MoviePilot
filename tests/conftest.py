@@ -85,7 +85,6 @@ def configure_plugin_system_services():
         sync_session=get_db,
         async_session=get_async_db,
         repositories={
-            "agent_chat": AgentChatOper,
             "download_history": DownloadHistoryOper,
             "media_server": MediaServerOper,
             "message": MessageOper,

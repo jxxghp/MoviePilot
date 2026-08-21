@@ -219,7 +219,8 @@ sequenceDiagram
     Life->>Init: get_engine() / get_global_async_engine() 预热 + fail-fast
     Life->>Init: check_connection_budget() 连接预算核算
     Life->>Init: init_routers(app) 注册 API 路由
-    Life->>Init: init_modules() 发现并初始化模块
+    Life->>Init: init_modules() 发现并初始化模块，返回 HostRuntime
+    Life->>FastAPI: app.state.host_runtime = HostRuntime
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
     Life->>Init: init_command() / init_workflow()
     Life->>Init: replay_pending_transfers()（后台回放未整理文件）
@@ -244,6 +245,9 @@ sequenceDiagram
   和 TestClient 因而共享同一 fail-fast 语义。
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
+- **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
+  上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。Agent 会话已迁移，不再通过
+  字符串仓储键定位；`ApiDataPorts` 暂作未迁移领域的同实例兼容 Facade。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库

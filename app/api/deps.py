@@ -29,6 +29,14 @@ from app.application.workflow import (
 )
 from app.application.messaging.message import MessageQueryService
 from app.application.messaging.chat import AgentChatService
+from app.api.context import (
+    get_agent_chat_repository,
+    get_agent_chat_transaction,
+)
+from app.application.messaging.chat import (
+    AsyncAgentChatRepository,
+    AsyncUnitOfWork as AgentChatUnitOfWork,
+)
 from app.application.mediaserver import MediaServerQueryService
 from app.application.servarr import ServarrSubscriptionService
 from app.application.dashboard import DashboardQueryService
@@ -304,12 +312,13 @@ def get_message_query_service(
 
 
 def get_agent_chat_service(
-        db: AsyncSession = Depends(get_async_db),
+        repository: AsyncAgentChatRepository = Depends(get_agent_chat_repository),
+        unit_of_work: AgentChatUnitOfWork = Depends(get_agent_chat_transaction),
 ) -> AgentChatService:
     """组装 Agent 会话历史查询和删除服务。"""
     return AgentChatService(
-        repository=_repository("agent_chat", db),
-        unit_of_work=_transaction("async", db),
+        repository=repository,
+        unit_of_work=unit_of_work,
     )
 
 

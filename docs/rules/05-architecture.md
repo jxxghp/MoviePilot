@@ -94,6 +94,11 @@ create additional top-level directory categories.
 `app/startup/` remains the established composition root and is not nested under
 runtime. It injects providers and callbacks, orders initialization/shutdown and
 decides restart policy. Lower-level runtime modules must not import startup.
+Startup publishes its frozen, slotted `HostRuntime` through FastAPI `app.state`.
+API dependencies must narrow that object to a domain runtime (for example,
+`AgentChatRuntime`) instead of adding a string key to a global service map.
+Legacy registries may delegate the same object while domains migrate, but they
+must not construct a second set of service instances.
 
 `app.schemas` and `app.db` are compatibility facades, not implementation
 dependency hubs. Host code imports concrete schema submodules; the schema root

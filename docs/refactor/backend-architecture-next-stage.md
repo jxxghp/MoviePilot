@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）与阶段 2（ARCH-220～222）已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与 ARCH-230 已完成，后续任务按 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -447,6 +447,17 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 - 不引入第三方 DI container；
 - 不创建一个更大的全局 `services: dict[str, Any]`；
 - 不把完整 HostRuntime 传入 Domain 或每个小函数。
+
+**实施记录（2026-08-21）**：
+
+- `app/startup/context.py` 定义 frozen slots `HostRuntime` 与首个窄能力
+  `AgentChatRuntime`，仓储、Session、UoW 字段均为具体 Protocol 工厂，不是字符串字典。
+- `init_modules()` 保留零参数兼容签名并返回本次 lifespan 唯一 Runtime；生命周期组件把结果挂到
+  `app.state.host_runtime`。`app/api/context.py` 只向 Depends 暴露 Agent chat 的最小能力。
+- `get_agent_chat_service` 不再读取全局 `_ports` 或 `"agent_chat"` key；该 key 已从宿主和测试
+  `ApiDataPorts.repositories` 删除。未迁移领域仍通过 `compatibility_api_data` 使用同一个实例。
+- fake Runtime 请求测试证明仓储与 UoW 共享同一请求会话，且无需加载真实 DB engine、
+  PluginManager 或其他运行时服务；旧 `configure_api_data_ports()` 调用形态继续可用。
 
 #### ARCH-231：按领域拆分 API dependency 与 presentation
 
