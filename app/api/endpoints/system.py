@@ -44,6 +44,7 @@ from app.runtime.extensions.service_config_validation import service_config_writ
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
+from app.api.service_secrets import mask_secret_values
 from app.application.service_config import (
     async_write_system_setting,
     read_system_setting,
@@ -1015,13 +1016,17 @@ async def get_public_setting(
 ) -> _SchemaResponse:
     """
     查询普通用户可读取的非敏感系统设置
+
+    载荷中的凭据字段一律以掩码交出：该端点只要求已登录，而存储一类的配置带有
+    cookie 与令牌，明文返回等于把管理员凭据交给任意普通用户。
     """
     if key in _PUBLIC_SETTINGS_KEYS:
         return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
     value = read_system_setting(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
-    return _SchemaResponse(success=True, data={"value": value})
+    masked, _masked_fields = mask_secret_values(value)
+    return _SchemaResponse(success=True, data={"value": masked})
 
 
 @router.post(

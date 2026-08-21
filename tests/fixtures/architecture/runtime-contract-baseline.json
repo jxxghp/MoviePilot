@@ -1671,19 +1671,19 @@
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 957
+        "line": 958
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1071
+        "line": 1076
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1125
+        "line": 1130
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 1144
+        "line": 1149
       },
       {
         "caller": "app.application.orchestration._messaging",
@@ -3082,6 +3082,11 @@
         "kind": "import",
         "name": "DownloaderHelper",
         "target": "app.application.downloader.DownloaderHelper"
+      },
+      {
+        "kind": "import",
+        "name": "FilterRuleOriginService",
+        "target": "app.application.rules.FilterRuleOriginService"
       },
       {
         "kind": "import",

@@ -147,6 +147,7 @@ SDK_REQUIRED_EXPORTS = {
     'app.sdk.services': {
         'AsyncMediaServerQueryRepository': [('app.application.mediaserver', 'AsyncMediaServerQueryRepository')],
         'DownloaderHelper': [('app.application.downloader', 'DownloaderHelper')],
+        'FilterRuleOriginService': [('app.application.rules', 'FilterRuleOriginService')],
         'MediaServerHelper': [('app.application.mediaserver', 'MediaServerHelper')],
         'MediaServerQueryService': [('app.application.mediaserver', 'MediaServerQueryService')],
         'NotificationHelper': [('app.application.notification', 'NotificationHelper')],

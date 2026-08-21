@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Dict, List, Optional
 
 from app.runtime.extensions.config_schema import config_value_violations
@@ -81,21 +81,62 @@ def service_config_record_violation(
     )
 
 
-def service_config_records(capability: str, value: Any) -> List[dict]:
+def service_config_record(capability: str, conf: Any) -> Optional[dict]:
     """
-    把一份整族服务配置整形为服务实例配置表的行
+    把单条服务配置整形为服务实例配置表的一行
 
     字段按消费方分流：类型实现自己读的内容进 ``config``，宿主自己读的实例级字段进
     ``host_config``，两者都不与身份三元组混放。宿主载荷取该族配置模型声明的字段，
     模型之外的顶层键不入库——这些键在切表前就没有任何读取方（配置模型一律忽略未声明
     字段），留着只会把 ``host_config`` 变成第二个什么都往里塞的 JSON 大对象，而搬出
     大对象正是切表要换的东西。``provider`` 按服务实例登记表当下的归属回填，登记表查
-    不到该类型时交由持久化层决定。
+    不到该类型时为 None，交由持久化层决定。
 
     取不到类型标识的条目不产出行：表按 ``(capability, type, name)`` 定位一行，装不下没有
     身份的条目。实例名缺省时是否回落为类型标识由族决定（`service_instance_name`），不回落
     的族里无名条目同样不产出行——这类条目在切表前就不产出任何实例，也无法被显式指定或被
-    默认标记裁决选中。同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
+    默认标记裁决选中。
+
+    ``is_default_target`` 按配置自带的标记原样产出，不在此裁决：「每族至多一个默认调用
+    目标」与「每个存储类型恰好一个裸令牌兼容指针」都是族范围内的裁决，单条配置里没有
+    兄弟条目可比，无从判定，由调用方在族的范围内收口。
+
+    :param capability: 该族的能力标签
+    :param conf: 单条服务配置
+    :return: 配置行，含 type/name/enabled/config/host_config/is_default_target/provider；
+        取不到类型标识或实例名时为 None
+    """
+    if not isinstance(conf, Mapping):
+        return None
+    service_type = conf.get("type")
+    if not isinstance(service_type, str) or not service_type.strip():
+        return None
+    service_type = service_type.strip()
+    name = service_instance_name(capability, conf.get("name"), service_type)
+    if not name:
+        return None
+    host_config = {
+        field: conf[field]
+        for field in service_host_fields(capability)
+        if conf.get(field) is not None
+    }
+    return {
+        "type": service_type,
+        "name": name,
+        "enabled": service_instance_enabled(capability, conf),
+        "config": conf.get("config") or {},
+        "host_config": host_config or None,
+        "is_default_target": bool(conf.get("default")),
+        "provider": _provider_of(capability, service_type),
+    }
+
+
+def service_config_records(capability: str, value: Any) -> List[dict]:
+    """
+    把一份整族服务配置整形为服务实例配置表的行
+
+    逐条整形与 `service_config_record` 共用一份实现，本函数只补上族范围内的裁决。
+    同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
 
     有默认调用目标的族同规格：整族裁出至多一条 ``is_default_target``，取顺序上第一条
     为真的；没有默认调用目标的族整族裁成假。存储另外还要裁出裸令牌兼容指针，它落宿主
@@ -107,30 +148,12 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
     :return: 服务实例配置表的行，每项含 type/name/enabled/config/host_config/
         is_default_target/provider
     """
-    host_fields = service_host_fields(capability)
     records: Dict[tuple, dict] = {}
     for conf in value if isinstance(value, list) else []:
-        if not isinstance(conf, Mapping):
+        record = service_config_record(capability, conf)
+        if record is None:
             continue
-        service_type = conf.get("type")
-        if not isinstance(service_type, str) or not service_type.strip():
-            continue
-        service_type = service_type.strip()
-        name = service_instance_name(capability, conf.get("name"), service_type)
-        if not name:
-            continue
-        host_config = {
-            field: conf[field] for field in host_fields if conf.get(field) is not None
-        }
-        records[(service_type, name)] = {
-            "type": service_type,
-            "name": name,
-            "enabled": service_instance_enabled(capability, conf),
-            "config": conf.get("config") or {},
-            "host_config": host_config or None,
-            "is_default_target": bool(conf.get("default")),
-            "provider": _provider_of(capability, service_type),
-        }
+        records[(record["type"], record["name"])] = record
     _trim_default_markers(capability, records)
     return list(records.values())
 
@@ -160,13 +183,31 @@ def _trim_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
         _trim_bare_token_pointers(field, records)
 
 
+def elect_bare_token_holder(
+    field: str, records: Sequence[Mapping[str, Any]]
+) -> Optional[Mapping[str, Any]]:
+    """
+    在同一类型的配置行里裁出承接裸令牌兼容指针的那一份
+
+    有自称的取顺序上第一份，一份都没有自称时取顺序上第一份。裁出「恰好一条」而不是
+    「至多一条」，是因为存量路径必须始终指得到实例——一份都不标记会让该类型已有的裸
+    路径整体失效。整族写入与单条写入共用本裁决，两条写入口因而不会给出不同的指向。
+
+    :param field: 兼容指针在该族配置模型上的字段名
+    :param records: 同一类型下的配置行，顺序即写入先后
+    :return: 承接兼容指针的那一行；一行都没有时为 None
+    """
+    if not records:
+        return None
+    marked = [item for item in records if (item.get("host_config") or {}).get(field)]
+    return marked[0] if marked else records[0]
+
+
 def _trim_bare_token_pointers(field: str, records: Dict[tuple, dict]) -> None:
     """为每个类型裁出恰好一个裸令牌兼容指针，标记落宿主载荷。
 
-    有自称的取顺序上第一份，一份都没有自称时取该类型顺序上第一份。裁出「恰好一条」
-    而不是「至多一条」，是因为存量路径必须始终指得到实例——一份都不标记会让该类型
-    已有的裸路径整体失效。这条兼容层随存量路径补全实例名而退场，届时整个函数与该
-    字段一并移除，默认调用目标不受影响。
+    这条兼容层随存量路径补全实例名而退场，届时整个函数与该字段一并移除，默认调用
+    目标不受影响。
 
     :param field: 兼容指针在该族配置模型上的字段名
     :param records: 身份二元组到配置行的映射，原地改写
@@ -174,8 +215,7 @@ def _trim_bare_token_pointers(field: str, records: Dict[tuple, dict]) -> None:
     """
     for service_type in dict.fromkeys(key[0] for key in records):
         siblings = [record for key, record in records.items() if key[0] == service_type]
-        marked = [item for item in siblings if (item["host_config"] or {}).get(field)]
-        chosen = marked[0] if marked else siblings[0]
+        chosen = elect_bare_token_holder(field, siblings)
         for record in siblings:
             host_config = dict(record["host_config"] or {})
             host_config[field] = record is chosen

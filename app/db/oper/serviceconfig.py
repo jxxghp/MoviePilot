@@ -75,6 +75,57 @@ class ServiceConfigOper(DbOper):
         """
         return [self.to_payload(record) for record in self.list_by_capability(capability)]
 
+    @staticmethod
+    def to_row(record: ServiceConfig) -> dict:
+        """
+        把一行实例配置摊平成列名到列值的字典。
+
+        与 `to_payload` 的差别在于视角：摊平形状是「该族配置模型接受的样子」，供扇出
+        实例与整族读写使用，宿主载荷已铺开在顶层且不含 ``capability``/``provider``；
+        本形状是「表里那一行的样子」，逐列对应、不铺开也不改名，供逐条读写与「提供方
+        已消失」这类按列判定的读取方使用。
+        :param record: 实例配置行
+        :return: 列名到列值的字典
+        """
+        return {
+            "capability": record.capability,
+            "type": record.type,
+            "name": record.name,
+            "enabled": bool(record.enabled),
+            "config": record.config or {},
+            "host_config": record.host_config or {},
+            "is_default_target": bool(record.is_default_target),
+            "provider": record.provider,
+        }
+
+    def list_rows(self, capability: str) -> List[dict]:
+        """
+        列出某族全部实例配置的行形状，按写入先后排列。
+        :param capability: 族标识
+        :return: 该族全部配置行的列名到列值字典
+        """
+        return [self.to_row(record) for record in self.list_by_capability(capability)]
+
+    def list_rows_by_type(self, capability: str, service_type: str) -> List[dict]:
+        """
+        列出某族某类型全部实例配置的行形状，按写入先后排列。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :return: 该类型全部配置行的列名到列值字典
+        """
+        return [self.to_row(record) for record in self.list_by_type(capability, service_type)]
+
+    def get_row(self, capability: str, service_type: str, name: str) -> Optional[dict]:
+        """
+        按 ``(capability, type, name)`` 取单条实例配置的行形状。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :return: 命中的配置行字典，不存在返回 None
+        """
+        record = self.get(capability, service_type, name)
+        return self.to_row(record) if record is not None else None
+
     def replace_capability(self, capability: str, records: List[dict]) -> int:
         """
         用给定的整族配置覆盖某族现有配置。
@@ -121,6 +172,7 @@ class ServiceConfigOper(DbOper):
             name: str,
             *,
             config: Optional[Any] = None,
+            host_config: Optional[Any] = None,
             enabled: bool = False,
             provider: str = BUILTIN_PROVIDER,
     ) -> ServiceConfig:
@@ -132,6 +184,7 @@ class ServiceConfigOper(DbOper):
         :param service_type: 类型标识
         :param name: 实例名
         :param config: 类型专属配置载荷
+        :param host_config: 宿主消费的实例级字段载荷
         :param enabled: 是否启用
         :param provider: 提供该类型的扩展标识，内建取 ``BUILTIN_PROVIDER``
         :return: 新增的配置行
@@ -147,6 +200,7 @@ class ServiceConfigOper(DbOper):
             name=name,
             enabled=enabled,
             config=config,
+            host_config=host_config,
             is_default_target=False,
             provider=provider,
         )
@@ -161,6 +215,27 @@ class ServiceConfigOper(DbOper):
         # 已在提交后关闭，record 的属性已过期且不再绑定会话，再次访问会抛
         # DetachedInstanceError；重新查询得到的对象在本次调用内始终可安全读取。
         return self.get(capability, service_type, name)
+
+    def add_row(self, capability: str, record: dict) -> dict:
+        """
+        按配置行新增一条实例配置。
+
+        入参是 `to_row` 的形状，供逐条写入口直接把整形好的行交进来；``is_default_target``
+        不从行里取，新增的实例一律不是默认调用目标。
+        :param capability: 族标识
+        :param record: 配置行，含 type/name/enabled/config/host_config/provider
+        :return: 新增配置行的列名到列值字典
+        :raises ServiceConfigNameConflictError: 同族同类型下已有同名配置
+        """
+        return self.to_row(self.add(
+            capability,
+            record["type"],
+            record["name"],
+            config=record.get("config"),
+            host_config=record.get("host_config"),
+            enabled=bool(record.get("enabled")),
+            provider=record.get("provider") or BUILTIN_PROVIDER,
+        ))
 
     def update(
             self, capability: str, service_type: str, name: str, payload: dict

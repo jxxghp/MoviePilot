@@ -294,7 +294,6 @@
     "字幕站点信息不存在": "Subtitle site information does not exist",
     "附件不存在或已过期": "Attachment does not exist or has expired",
     "附件超过 32MB，无法发送给智能助手": "The attachment exceeds 32MB and cannot be sent to the assistant",
-    "附件保存失败": "Failed to save attachment",
     "认证票据无效或已过期": "Authentication ticket is invalid or has expired",
     "用户不存在或已禁用": "The user does not exist or has been disabled",
     "用户权限不足": "Insufficient user permissions",
@@ -414,6 +413,7 @@
     "订阅元数据更新完成": "Subscription metadata update completed",
     "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
     "订阅日历预缓存完成": "Subscription calendar precache completed",
+    "服务实例配置缺少类型标识或实例名": "The service instance configuration is missing a type identifier or an instance name",
     "内建识别": "Built-in Recognition",
     "内建识别环由宿主固定执行，无法启停": "The built-in recognition stage is run by the host and cannot be switched on or off",
     "内建识别环由宿主固定执行，无法排定顺序": "The built-in recognition stage is run by the host and cannot be reordered",
@@ -1439,6 +1439,14 @@
     {
       "source": "服务类型 {type} 只接受一份配置，当前已启用 {count} 份，且没有唯一的默认调用目标；请在设置页把其中一份设为默认调用目标，或停用多余的配置。可选配置：{candidates}",
       "target": "Service type {type} accepts only one configuration, but {count} are enabled and none is the single default target; set one of them as the default target on the settings page, or disable the extras. Candidates: {candidates}"
+    },
+    {
+      "source": "{capability} 类型 {service_type} 下不存在名为 {name} 的配置",
+      "target": "No configuration named {name} exists for {capability} type {service_type}"
+    },
+    {
+      "source": "服务能力 {capability} 没有默认调用目标",
+      "target": "Service capability {capability} has no default call target"
     }
   ]
 }
