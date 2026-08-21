@@ -148,6 +148,21 @@ class MediaSource(str, Enum):
 MediaSourceSelection = Union[MediaSource, Tuple[MediaSource, ...]]
 
 
+class MediaSourceCapability(str, Enum):
+    """媒体数据源的能力面，即一个来源可以被拿来做哪几件事。"""
+
+    RECOGNIZE = "recognize"  # 元数据识别
+    SEARCH = "search"  # 媒体搜索
+    DETAIL = "detail"  # 详情与演职人员
+    RECOMMEND = "recommend"  # 推荐与相似
+    DISCOVER = "discover"  # 发现与榜单
+    SCRAPE = "scrape"  # 图片与 NFO 刮削
+
+    def __str__(self) -> str:
+        """返回可直接用于 API 的规范值。"""
+        return self.value
+
+
 def media_type_to_agent(value) -> Optional[str]:
     """将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。"""
     if isinstance(value, MediaType):

@@ -30,6 +30,7 @@ from app.runtime.extensions.declaration import (
     declaration_filter_rule_identity,
     declaration_impl,
     declaration_media_source_identity,
+    declaration_media_source_methods,
     declaration_media_types,
     declaration_methods,
     declaration_schedule_identity,
@@ -38,6 +39,7 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_identity,
 )
 from app.runtime.extensions.auth_entries import list_auth_entries
+from app.runtime.extensions.module.media_source_faces import media_source_capabilities
 from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
 from app.runtime.extensions.plugin.agent_tool_capabilities import (
     agent_tool_declaration_name,
@@ -1111,17 +1113,24 @@ class PluginProjection:
     def _declared_media_source(extension_id: str, item: Any) -> Dict[str, Any]:
         """把单条已通过契约校验的媒体数据源声明投影为描述字典。
 
+        能力面按声明交出的方法名推导，不取声明方另填的字段：宿主已经知道这条声明
+        挂了哪些方法，让作者再写一遍只会多出一处可写漏的地方。
+
         :param extension_id: 插件实例键
         :param item: 已通过契约校验的媒体数据源声明
-        :return: 含 name、media_source、plugin_id 的描述字典，声明了 media_types
-            时另含该字段
+        :return: 含 name、media_source、plugin_id、capabilities 的描述字典，声明了
+            media_types 时另含该字段
         """
         media_source, name = declaration_media_source_identity(item)
         media_types = declaration_media_types(item)
+        methods = declaration_media_source_methods(item) or {}
         entry: Dict[str, Any] = {
             "name": name,
             "media_source": media_source,
             "plugin_id": extension_id,
+            "capabilities": [
+                capability.value for capability in media_source_capabilities(methods)
+            ],
         }
         if media_types is not None:
             entry["media_types"] = list(media_types)
