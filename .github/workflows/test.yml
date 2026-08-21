@@ -19,6 +19,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    name: Architecture Contract Gate
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check host architecture contracts
+        run: |
+          uv run --locked --no-sync pytest \
+            tests/test_architecture_dependencies.py \
+            tests/test_architecture_contract_baseline.py \
+            tests/test_architecture_baseline_cli.py -q
+          uv run --locked --no-sync python \
+            scripts/architecture/baseline.py --check-host
+
   pytest:
     runs-on: ubuntu-latest
     name: Unit Tests (${{ matrix.shard }})

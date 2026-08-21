@@ -80,6 +80,17 @@ def test_architecture_diagnostics_only_support_host_check(capsys):
     assert "只能与 --check-host" in capsys.readouterr().err
 
 
+def test_architecture_report_only_supports_check_operations(capsys, tmp_path: Path):
+    """审查报告不能与 fixture 写操作混用。"""
+    with pytest.raises(SystemExit) as error:
+        architecture_baseline.parse_args(
+            ["--write-host", "--report", str(tmp_path / "report.json")]
+        )
+
+    assert error.value.code == 2
+    assert "只能与检查操作" in capsys.readouterr().err
+
+
 def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Path):
     """旧 fixture 的行号变化不影响门禁，重复调用次数仍属于语义。"""
     baseline_path = tmp_path / "runtime-contract-baseline.json"
@@ -270,6 +281,66 @@ def test_architecture_write_plugins_only_updates_plugin_file(
     assert plugin_path.is_file()
     assert not dependency_path.exists()
     assert not runtime_path.exists()
+
+
+def test_architecture_plugin_check_writes_review_report_only_when_requested(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """跨仓检查失败时应产出语义差异报告，并保持 fixture 不变。"""
+    plugin_repo = tmp_path / "MoviePilot-Plugins"
+    plugin_repo.mkdir()
+    baseline_path = tmp_path / "official-plugin-baseline.json"
+    report_path = tmp_path / "report.json"
+    expected = {
+        "schema_version": 3,
+        "scope": {"repository": "MoviePilot-Plugins", "roots": ["plugins.v3"]},
+        "provenance": {
+            "head": "a" * 40,
+            "python_file_count": 1,
+            "source_sha256": "a" * 64,
+        },
+        "imports": {},
+        "hooks": {},
+        "api_routes": {},
+    }
+    actual = json.loads(json.dumps(expected))
+    actual["provenance"]["head"] = "b" * 40
+    actual["imports"] = {
+        "app.sdk.logging": {"file_count": 1, "files": ["plugins.v3/demo.py"]}
+    }
+    baseline_path.write_text(json.dumps(expected), encoding="utf-8")
+    content_before = baseline_path.read_bytes()
+    monkeypatch.setattr(
+        architecture_baseline,
+        "PLUGIN_BASELINE_PATH",
+        baseline_path,
+    )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "collect_official_plugin_baseline",
+        lambda _repository: actual,
+    )
+
+    assert architecture_baseline.main(
+        [
+            "--check-plugins",
+            "--plugin-repo",
+            str(plugin_repo),
+            "--report",
+            str(report_path),
+        ]
+    ) == 1
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert baseline_path.read_bytes() == content_before
+    assert report["checks"][0]["semantic_match"] is False
+    assert report["checks"][0]["added"] == [
+        {
+            "path": "$.imports.app.sdk.logging",
+            "value": {"file_count": 1, "files": ["plugins.v3/demo.py"]},
+        }
+    ]
 
 
 def test_performance_default_print_does_not_write_fixture(

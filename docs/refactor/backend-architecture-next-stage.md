@@ -6,6 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
+> 实施进度：阶段 0（ARCH-201～203）已完成，后续阶段按任务 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -105,6 +106,10 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 另一个风险是 `scripts/startup/performance.py` 在不传 `--output` 时会直接覆盖已提交基线。其他 AI 在只想读取当前数据时，很容易制造未审查的基线变更。
 
 **本次审计没有更新任何基线文件。**上述意外写入已恢复，最终工作树只包含本文和文档索引改动。
+
+阶段 0 实施后，宿主与插件基线已使用独立 check/write 入口；运行契约行号只进入按需诊断，
+插件 commit、源码摘要和文件数只作为 provenance。当前宿主和官方插件语义检查均通过，CI 会在
+主仓 PR/push 执行宿主硬门禁，并在定时/手工工作流中上传最新插件仓的语义差异报告。
 
 ## 3. 优秀 Python 后端实践对标
 

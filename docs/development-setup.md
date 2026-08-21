@@ -181,6 +181,20 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
    参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。覆盖率报告
    按需通过 `Unit Tests` workflow 的手动触发串行生成，不阻塞常规 PR / push 门禁。
 
+4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
+   任何检查命令都不会写入 fixture。
+
+   ```bash
+   uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
+   uv run --locked --no-sync python scripts/architecture/baseline.py \
+     --check-plugins --plugin-repo ../MoviePilot-Plugins \
+     --report official-plugin-architecture-report.json
+   uv run --locked --no-sync pylint app/
+   ```
+
+   GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构与 Pylint 门禁；最新官方插件仓
+   通过每周或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)

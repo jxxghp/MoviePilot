@@ -1,11 +1,20 @@
 name: Pylint Code Quality Check
 
 on:
-  # 允许手动触发
+  pull_request:
+    branches:
+      - v3
+  push:
+    branches:
+      - v3
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: pylint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pylint:

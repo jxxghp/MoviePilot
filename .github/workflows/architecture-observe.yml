@@ -1,0 +1,69 @@
+name: Official Plugin Architecture Observation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: official-plugin-architecture-observation
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    name: Compare latest official plugin contracts
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout MoviePilot
+        uses: actions/checkout@v5
+        with:
+          path: MoviePilot
+
+      - name: Checkout MoviePilot-Plugins
+        uses: actions/checkout@v5
+        with:
+          repository: jxxghp/MoviePilot-Plugins
+          ref: main
+          path: MoviePilot-Plugins
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: |
+            MoviePilot/pyproject.toml
+            MoviePilot/uv.lock
+
+      - name: Install dependencies
+        working-directory: MoviePilot
+        run: uv sync --locked
+
+      - name: Compare plugin contracts without updating fixtures
+        id: compare
+        continue-on-error: true
+        working-directory: MoviePilot
+        run: |
+          uv run --locked --no-sync python scripts/architecture/baseline.py \
+            --check-plugins \
+            --plugin-repo ../MoviePilot-Plugins \
+            --report official-plugin-architecture-report.json
+
+      - name: Upload semantic comparison report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: official-plugin-architecture-report
+          path: MoviePilot/official-plugin-architecture-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail when plugin contracts changed
+        if: steps.compare.outcome == 'failure'
+        run: exit 1

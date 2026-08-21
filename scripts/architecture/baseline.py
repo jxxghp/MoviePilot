@@ -862,6 +862,72 @@ def semantic_baseline(path: Path, value: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def _compare_semantic_values(
+    expected: Any,
+    actual: Any,
+    path: str,
+    report: dict[str, list[dict[str, Any]]],
+) -> None:
+    """递归比较语义 JSON，把增删改记录为可审查条目。"""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        for key in sorted(expected_keys - actual_keys):
+            report["removed"].append(
+                {"path": f"{path}.{key}", "value": expected[key]}
+            )
+        for key in sorted(actual_keys - expected_keys):
+            report["added"].append(
+                {"path": f"{path}.{key}", "value": actual[key]}
+            )
+        for key in sorted(expected_keys & actual_keys):
+            _compare_semantic_values(
+                expected[key],
+                actual[key],
+                f"{path}.{key}",
+                report,
+            )
+        return
+    if isinstance(expected, list) and isinstance(actual, list):
+        expected_items = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+            for item in expected
+        }
+        actual_items = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+            for item in actual
+        }
+        for key in sorted(expected_items.keys() - actual_items.keys()):
+            report["removed"].append({"path": path, "value": expected_items[key]})
+        for key in sorted(actual_items.keys() - expected_items.keys()):
+            report["added"].append({"path": path, "value": actual_items[key]})
+        return
+    if expected != actual:
+        report["changed"].append(
+            {"path": path, "expected": expected, "actual": actual}
+        )
+
+
+def build_comparison_report(path: Path, actual: dict[str, Any]) -> dict[str, Any]:
+    """生成包含语义增删改和 provenance 的机器可读审查报告。"""
+    expected = json.loads(path.read_text(encoding="utf-8"))
+    expected_semantic = semantic_baseline(path, expected)
+    actual_semantic = semantic_baseline(path, actual)
+    differences: dict[str, list[dict[str, Any]]] = {
+        "added": [],
+        "removed": [],
+        "changed": [],
+    }
+    _compare_semantic_values(expected_semantic, actual_semantic, "$", differences)
+    return {
+        "baseline": str(_display_path(path)),
+        "semantic_match": expected_semantic == actual_semantic,
+        "expected_provenance": expected.get("provenance"),
+        "actual_provenance": actual.get("provenance"),
+        **differences,
+    }
+
+
 def check_json(
     path: Path,
     actual: dict[str, Any],
@@ -912,6 +978,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="随宿主检查打印当前运行契约源码位置",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="将检查结果写为独立 JSON 报告，不修改任何 fixture",
+    )
     args = parser.parse_args(argv)
     if args.check or args.write:
         if not args.scope:
@@ -932,6 +1003,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         parser.error("--plugin-repo 只能用于插件基线操作")
     if args.diagnostics and not args.check_host:
         parser.error("--diagnostics 只能与 --check-host 一起使用")
+    if args.report and not (args.check_host or args.check_plugins):
+        parser.error("--report 只能与检查操作一起使用")
     return args
 
 
@@ -966,6 +1039,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         check_json(path, baseline, write_hint=write_hint)
         for path, baseline in baselines
     ]
+    if args.report:
+        report_path = args.report.resolve()
+        report_value = {
+            "schema_version": 1,
+            "checks": [
+                build_comparison_report(path, baseline)
+                for path, baseline in baselines
+            ],
+        }
+        print(f"即将写入报告：{_display_path(report_path)}")
+        write_json(report_path, report_value)
+        print(f"已写入报告：{_display_path(report_path)}")
     if args.diagnostics:
         print(json.dumps(collect_runtime_diagnostics(), ensure_ascii=False, indent=2))
     return 0 if all(checks) else 1
