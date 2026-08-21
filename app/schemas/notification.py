@@ -1,5 +1,6 @@
 """通知渠道能力与 API 输出模型。"""
 
+import threading as _threading
 from dataclasses import dataclass
 from enum import Enum
 from typing import Annotated, Dict, Iterable, Optional, Set, Union
@@ -123,6 +124,20 @@ class ChannelCapabilities:
     # 单条消息最大长度（0 表示不限制），用于流式输出时自动分段
     max_message_length: int = 0
     fallback_enabled: bool = True
+
+
+@dataclass(frozen=True)
+class ChannelCapabilityHandover:
+    """一次登记引起的渠道能力归属变更。
+
+    :param identity: 发生归属变更的渠道标识
+    :param previous_owner: 变更前该标识的生效登记方；此前无人登记时为 None
+    :param current_owner: 变更后该标识的生效登记方；已无人登记时为 None
+    """
+
+    identity: str
+    previous_owner: Optional[str]
+    current_owner: Optional[str]
 
 
 class ChannelCapabilityManager:
@@ -303,34 +318,75 @@ class ChannelCapabilityManager:
         ),
     }
 
+    # 每个渠道标识上按登记先后排列的全部扩展登记，末位即当前生效的那一份。
+    # 保留被压住的登记是为了让覆盖方停用后能把渠道还给它，而不是直接留下空位
+    _extension_registrations: Dict[str, list] = {}
     # 扩展登记的渠道能力，按渠道标识索引；内建静态表未命中时查此表
     _extension_capabilities: Dict[str, ChannelCapabilities] = {}
     # 渠道标识到登记方的映射，用于按登记方整体撤销其登记
     _extension_owners: Dict[str, str] = {}
+    # 登记表的多步改写要整体可见：开发模式下的插件热重载与主线程并发走同一入口
+    _registration_lock = _threading.RLock()
 
     @classmethod
     def register_extension_capabilities(
         cls, owner: str, capabilities: Iterable[ChannelCapabilities]
-    ) -> None:
-        """按登记方整体替换其登记的渠道能力。
+    ) -> tuple[ChannelCapabilityHandover, ...]:
+        """按登记方整体替换其登记的渠道能力，并裁决同一渠道标识上的多方登记。
 
-        同一登记方重复调用即为覆盖，传入空集合即为撤销，扩展重载与停用
-        走同一入口，不会残留上一次登记。
+        同一登记方重复调用即为覆盖，传入空集合即为撤销，扩展重载与停用走同一入口，
+        不会残留上一次登记。
 
-        :param owner: 登记方标识，通常为扩展 ID
+        渠道标识指称的是同一个外部渠道，因此不同登记方声明同一标识按「后登记覆盖」
+        处置：本次登记排到该标识的末位并即刻生效。被压住的那一份不丢弃而是留在表内，
+        覆盖方撤销后由它重新接手——它描述的渠道仍然存在，没有理由随覆盖方一起消失。
+
+        内建渠道的静态能力表不参与本裁决：取用侧内建优先，扩展登记只在内建未命中时
+        才被查到。
+
+        :param owner: 登记方标识，通常为扩展实例键
         :param capabilities: 该登记方声明的渠道能力集合
+        :return: 本次登记引起归属变更的渠道条目；无变更时为空元组
+        """
+        with cls._registration_lock:
+            before = dict(cls._extension_owners)
+            for identity, stack in list(cls._extension_registrations.items()):
+                kept = [entry for entry in stack if entry[0] != owner]
+                if kept:
+                    cls._extension_registrations[identity] = kept
+                else:
+                    cls._extension_registrations.pop(identity, None)
+            for item in capabilities or ():
+                identity = channel_identity(item.channel)
+                if not identity:
+                    continue
+                cls._extension_registrations.setdefault(identity, []).append((owner, item))
+            cls._rebuild_effective_registrations()
+            after = cls._extension_owners
+            return tuple(
+                ChannelCapabilityHandover(
+                    identity=identity,
+                    previous_owner=before.get(identity),
+                    current_owner=after.get(identity),
+                )
+                for identity in sorted(set(before) | set(after))
+                if before.get(identity) != after.get(identity)
+            )
+
+    @classmethod
+    def _rebuild_effective_registrations(cls) -> None:
+        """按各渠道标识的登记末位重建生效视图。
+
         :return: 无
         """
-        for identity, registered_owner in list(cls._extension_owners.items()):
-            if registered_owner == owner:
-                cls._extension_owners.pop(identity, None)
-                cls._extension_capabilities.pop(identity, None)
-        for item in capabilities or ():
-            identity = channel_identity(item.channel)
-            if not identity:
+        cls._extension_capabilities.clear()
+        cls._extension_owners.clear()
+        for identity, stack in cls._extension_registrations.items():
+            if not stack:
                 continue
+            registered_owner, item = stack[-1]
             cls._extension_capabilities[identity] = item
-            cls._extension_owners[identity] = owner
+            cls._extension_owners[identity] = registered_owner
 
     @classmethod
     def get_capabilities(cls, channel: Optional[ChannelRef]) -> Optional[ChannelCapabilities]:

@@ -30,11 +30,17 @@ def plugin_manager() -> Iterator[PluginManager]:
 @pytest.fixture(autouse=True)
 def _reset_extension_capability_registry() -> Iterator[None]:
     """快照并复原扩展渠道能力登记表，避免测试间相互污染。"""
+    original_registrations = {
+        identity: list(stack)
+        for identity, stack in ChannelCapabilityManager._extension_registrations.items()
+    }
     original_capabilities = dict(ChannelCapabilityManager._extension_capabilities)
     original_owners = dict(ChannelCapabilityManager._extension_owners)
     try:
         yield
     finally:
+        ChannelCapabilityManager._extension_registrations.clear()
+        ChannelCapabilityManager._extension_registrations.update(original_registrations)
         ChannelCapabilityManager._extension_capabilities.clear()
         ChannelCapabilityManager._extension_capabilities.update(original_capabilities)
         ChannelCapabilityManager._extension_owners.clear()

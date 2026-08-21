@@ -5,7 +5,7 @@ from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import Depends, Header, HTTPException, Security
+from fastapi import Depends, Header, HTTPException, Query, Security
 from fastapi.concurrency import run_in_threadpool
 from starlette import status
 from starlette.responses import StreamingResponse
@@ -724,24 +724,32 @@ def plugin_dashboard_by_key(
     plugin_id: str,
     key: str,
     user_agent: Annotated[str | None, Header()] = None,
+    service_instance: str = Query(default="", description="该仪表盘作用的服务实例名"),
     _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> Optional[_SchemaPluginDashboard]:
     """
     根据插件ID获取插件仪表板
+
+    ``service_instance`` 只对声明了服务实例作用对象的仪表盘有意义：用户在仪表盘上选中
+    哪台服务实例随请求带上来，宿主解析后交给取数实现。未声明作用对象的仪表盘忽略该参数，
+    取数形状与它存在之前一字不改。
     """
-    return PluginManager().get_plugin_dashboard(plugin_id, key, user_agent)
+    return PluginManager().get_plugin_dashboard(
+        plugin_id, key, user_agent, service_instance or None
+    )
 
 
 @router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
 def plugin_dashboard(
     plugin_id: str,
     user_agent: Annotated[str | None, Header()] = None,
+    service_instance: str = Query(default="", description="该仪表盘作用的服务实例名"),
     _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> Optional[_SchemaPluginDashboard]:
     """
     根据插件ID获取插件仪表板
     """
-    return plugin_dashboard_by_key(plugin_id, "", user_agent)
+    return plugin_dashboard_by_key(plugin_id, "", user_agent, service_instance)
 
 
 @router.get(

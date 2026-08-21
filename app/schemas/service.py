@@ -149,6 +149,55 @@ class ServiceConfigProviderIssue(BaseModel):
     )
 
 
+class ServiceInstanceCandidateInfo(BaseModel):
+    """一条可供扩展点选择的服务实例。
+
+    不带 ``config``：候选列表是给用户挑选用的，而配置载荷里装着 token 与密码，随
+    选择器下发即等于把凭据摊给每一个能编辑工作流的人。
+
+    停用的实例照样列出并标注启用态：用户看到「配了但停用了」才知道该去启用哪一条，
+    整个藏起来只会让人以为配置丢了。
+    """
+
+    type: str = Field(description="类型标识")
+    name: str = Field(description="实例名，扩展点选中的即此取值")
+    enabled: bool = Field(description="该实例是否已启用")
+    is_default_target: bool = Field(description="该实例是否为本族的默认调用目标")
+
+
+class ServiceInstanceSelection(BaseModel):
+    """某个扩展点当前可选的服务实例，以及已选实例的现状。
+
+    ``family_registered`` 与空候选列表分开回答两件事：族没登记意味着提供它的扩展不
+    在场，处置是装回扩展；族登记了却没有候选意味着用户一份配置都还没建，处置是去
+    设置页新建。合成一句「没有可选实例」会让这两种完全不同的处境看起来一样。
+
+    ``issue`` 只给稳定的成因代码，措辞由前端按当前语言渲染，与「提供方已消失」那条
+    通路同一记账口径——两者方向相反：那条回答「配置还在、提供方没了」，本字段回答
+    「引用还在、被引用的实例没了」。
+    """
+
+    capability: str = Field(description="能力标签")
+    family_registered: bool = Field(description="该能力标签当前是否为已登记的服务族")
+    supports_default_target: bool = Field(
+        description="该族有没有默认调用目标，为 False 时调用必须显式指定实例"
+    )
+    candidates: list[ServiceInstanceCandidateInfo] = Field(
+        default_factory=list, description="可选实例列表，按类型标识与实例名升序"
+    )
+    selected: Optional[str] = Field(
+        default=None, description="查询时给出的已选实例名，未给出时为 None"
+    )
+    issue: Optional[str] = Field(
+        default=None,
+        description=(
+            "已选实例的失效成因代码：family_absent 该族未登记，instance_absent 实例配置"
+            "已不存在，instance_disabled 实例配置已停用，type_excluded 实例类型不在声明"
+            "收窄的范围内；引用成立时为 None"
+        ),
+    )
+
+
 class ServiceInstanceConfigPayload(BaseModel):
     """服务实例配置的写入载荷，新增与更新共用。
 

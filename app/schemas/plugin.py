@@ -224,6 +224,20 @@ class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigD
     """插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。"""
 
 
+class ServiceInstanceRequirementInfo(BaseModel):
+    """一个扩展点作用于哪一族服务实例的坐标。
+
+    前端据此渲染实例选择器：``capability`` 指出候选从哪一族的配置列表来，``types``
+    非空时只有类型落在其中的实例才是候选。不含实例名——选哪一台是用户的选择，声明
+    期不存在，宿主只负责把选择项交给他。
+    """
+
+    capability: str = Field(description="能力标签，候选实例取自该族的配置列表")
+    types: list[str] = Field(
+        default_factory=list, description="收窄到的类型标识，为空表示该族任意类型都可选"
+    )
+
+
 class PluginDashboardMetaItem(BaseModel):
     """插件仪表板入口摘要。"""
 
@@ -234,6 +248,8 @@ class PluginDashboardMetaItem(BaseModel):
     instance_id: Optional[str] = None
     # 实例键，默认实例的实例键等于插件 ID
     instance_key: Optional[str] = None
+    # 本仪表盘作用于哪一族服务实例，未声明时为 None
+    requires_service_instance: Optional[ServiceInstanceRequirementInfo] = None
 
 
 class PluginInstanceInfo(BaseModel):

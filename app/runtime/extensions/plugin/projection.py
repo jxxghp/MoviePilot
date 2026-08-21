@@ -38,6 +38,7 @@ from app.runtime.extensions.declaration import (
     declaration_schedule_kwargs,
     declaration_schedule_trigger,
     declaration_service_instance_identity,
+    declaration_service_instance_requirement,
 )
 from app.runtime.extensions.auth_entries import list_auth_entries
 from app.runtime.extensions.module.media_source_faces import media_source_capabilities
@@ -76,6 +77,9 @@ from app.runtime.extensions.plugin.schedule_capabilities import (
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
+)
+from app.runtime.extensions.service_instance_requirement import (
+    projected_service_instance_requirement,
 )
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
@@ -1293,17 +1297,27 @@ class PluginProjection:
     def _declared_action(item: Any) -> Dict[str, Any]:
         """把单条已通过契约校验的动作声明投影为与 `get_actions()` 一致的描述字典。
 
+        声明了服务实例作用对象时附带该坐标，供工作流编辑器渲染实例选择器；未声明时
+        整个键都不出现，描述字典与该字段存在之前逐键相同。
+
         :param item: 已通过契约校验的动作声明
-        :return: 含 action_id、name、func、kwargs 的动作描述字典
+        :return: 含 action_id、name、func、kwargs 的动作描述字典，声明了作用对象时
+            另含 requires_service_instance
         """
         action_id, name = declaration_action_identity(item)
         kwargs = declaration_action_kwargs(item)
-        return {
+        descriptor = {
             "action_id": action_id,
             "name": name,
             "func": declaration_action_impl(item),
             "kwargs": dict(kwargs) if kwargs else {},
         }
+        requirement = projected_service_instance_requirement(
+            declaration_service_instance_requirement(item)
+        )
+        if requirement is not None:
+            descriptor["requires_service_instance"] = requirement
+        return descriptor
 
     def _legacy_actions(
         self, extension: PluginExtension, extension_id: str, plugin: Any
@@ -2111,11 +2125,15 @@ class PluginProjection:
         vue 模式下声明了 config_component 时附带该组件所在的联邦远程入口描述，
         与存储、认证提供方两族的 vue 模式配置组件描述同一形状。
 
+        声明了服务实例作用对象时附带该坐标，供前端渲染实例选择器；未声明时整个键
+        都不出现，元信息与该字段存在之前逐键相同。
+
         :param extension_id: 插件实例键
         :param plugin: 运行态插件实例
         :param item: 已通过契约校验的仪表盘声明
         :return: 含 id、name、key、instance_id、instance_key 的元信息字典，
-            vue 模式声明了 config_component 时另含 component 与 remote
+            vue 模式声明了 config_component 时另含 component 与 remote，声明了
+            作用对象时另含 requires_service_instance
         """
         key, name = declaration_dashboard_identity(item)
         entry: Dict[str, Any] = {
@@ -2125,6 +2143,11 @@ class PluginProjection:
             "instance_id": split_instance_key(extension_id)[1],
             "instance_key": extension_id,
         }
+        requirement = projected_service_instance_requirement(
+            declaration_service_instance_requirement(item)
+        )
+        if requirement is not None:
+            entry["requires_service_instance"] = requirement
         component = declaration_config_component(item)
         if component:
             _, dist_path = plugin.get_render_mode()

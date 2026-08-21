@@ -12,21 +12,28 @@
 - 分身级（不去重）：工作流动作、仪表盘、分身级旧钩子声明的登录入口
 """
 
+import ast
+import re
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 import pytest
 
 from app.agent.tools.base import MoviePilotTool
 from app.modules._base.storage import StorageBase
+from app.plugins import _PluginBase
 from app.runtime.extensions.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
     DashboardDeclaration,
     MediaSourceDeclaration,
+    ModuleDeclaration,
     ServiceInstanceDeclaration,
 )
 from app.runtime.extensions.plugin import agent_tool_capabilities, extension_scoped
+from app.runtime.extensions.plugin import projection as projection_module
 from app.runtime.extensions.plugin.projection import PluginProjection
+from app.schemas.notification import ChannelCapabilities
 
 
 class _DemoStorage(StorageBase):
@@ -164,6 +171,14 @@ class _DeclaringPlugin:
     def get_auth_providers(self):
         """返回预置的分身级登录入口描述。"""
         return self._declarations.get("auth_providers")
+
+    def provides_modules(self):
+        """返回预置的模块方法表声明。"""
+        return self._declarations.get("modules")
+
+    def provides_channel_capabilities(self):
+        """返回预置的消息渠道能力声明。"""
+        return self._declarations.get("channel_capabilities")
 
     def get_dashboard(self, key=None, **kwargs):
         """仪表盘取用钩子，元信息投影只检查它是否存在。"""
@@ -451,3 +466,139 @@ def test_instance_precedence_orders_default_instance_first():
         "Demo@alt",
         "Demo@work",
     ]
+
+
+def test_modules_are_not_deduplicated_across_siblings():
+    """模块方法表挂的是分身的绑定方法，两个分身各挂一份即两套各自成立的实现。"""
+    log = _RecordingLogger()
+    projection = _siblings(
+        "modules",
+        [ModuleDeclaration(methods={"media_detail": _demo_detail})],
+        [ModuleDeclaration(methods={"media_detail": _demo_detail})],
+        log=log,
+    )
+
+    declared = projection.provided_modules()
+
+    assert _counts(declared) == {"DemoPlugin": 1, "DemoPlugin@home": 1}
+    assert log.warnings == []
+
+
+def test_module_tables_stay_keyed_by_instance():
+    """两个分身的方法表在聚合结果里各占一条，键含实例键因此不会互相覆盖。"""
+    projection = _siblings(
+        "modules",
+        [ModuleDeclaration(methods={"media_detail": _demo_detail})],
+        [ModuleDeclaration(methods={"media_detail": _demo_detail})],
+    )
+
+    modules = projection.modules()
+
+    assert [key[0] for key in modules] == ["DemoPlugin", "DemoPlugin@home"]
+
+
+def test_channel_capabilities_are_not_deduplicated_across_siblings():
+    """渠道能力登记按分身的生命周期驱动，分身之间不做扩展级去重。"""
+    log = _RecordingLogger()
+    projection = _siblings(
+        "channel_capabilities",
+        [ChannelCapabilities(channel="demo_bridge", capabilities=set())],
+        [ChannelCapabilities(channel="demo_bridge", capabilities=set())],
+        log=log,
+    )
+
+    declared = projection.provided_channel_capabilities()
+
+    assert _counts(declared) == {"DemoPlugin": 1, "DemoPlugin@home": 1}
+    assert log.warnings == []
+
+
+def test_channel_capabilities_stay_keyed_by_instance():
+    """两个分身各自的渠道能力在聚合结果里按实例键分开列出。"""
+    projection = _siblings(
+        "channel_capabilities",
+        [ChannelCapabilities(channel="demo_bridge", capabilities=set())],
+        [ChannelCapabilities(channel="demo_bridge", capabilities=set())],
+    )
+
+    assert sorted(projection.channel_capabilities()) == [
+        "DemoPlugin",
+        "DemoPlugin@home",
+    ]
+
+
+# §7.3 归属表所在文档，表格与代码实际行为须逐族对齐
+_ARCHITECTURE_DOC = (
+    Path(__file__).resolve().parent.parent
+    / "docs"
+    / "plugin-extension-architecture.md"
+)
+
+
+def _documented_family_levels() -> Dict[str, str]:
+    """解析 §7.3 归属表，取出每个声明钩子被文档记为哪一级。
+
+    一行里写了多个钩子时逐个展开；同一钩子出现在多行时各行记法须一致。
+
+    :return: 声明钩子名到级别文案的映射
+    """
+    levels: Dict[str, str] = {}
+    for line in _ARCHITECTURE_DOC.read_text(encoding="utf-8").splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if len(cells) < 4 or cells[2] not in {"扩展级", "分身级"}:
+            continue
+        for hook in re.findall(r"provides_\w+", cells[1]):
+            assert levels.setdefault(hook, cells[2]) == cells[2], (
+                f"{hook} 在 §7.3 归属表里被记成了两种级别"
+            )
+    return levels
+
+
+def _code_family_levels() -> Dict[str, str]:
+    """按投影实现判定每个声明钩子实际落在哪一级。
+
+    走扩展级裁决即扩展级，否则按实例键各自成立即分身级。
+
+    :return: 声明钩子名到级别文案的映射
+    """
+    source = Path(projection_module.__file__).read_text(encoding="utf-8")
+    lines = source.splitlines()
+    levels: Dict[str, str] = {}
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("provided_"):
+            continue
+        body = "\n".join(lines[node.lineno - 1:node.end_lineno])
+        scoped = any(
+            marker in body
+            for marker in (
+                "elect_extension_scoped",
+                "_collect_extension_scoped",
+                "_extension_scope",
+            )
+        )
+        levels[node.name.replace("provided_", "provides_", 1)] = (
+            "扩展级" if scoped else "分身级"
+        )
+    return levels
+
+
+def test_architecture_doc_lists_every_declaration_family():
+    """§7.3 归属表不得漏族：基类上的每个 `provides_*` 钩子都要在表里有一行。"""
+    documented = set(_documented_family_levels())
+    declared = {
+        name
+        for name in dir(_PluginBase)
+        if name.startswith("provides_") and callable(getattr(_PluginBase, name))
+    }
+
+    assert declared - documented == set()
+
+
+def test_architecture_doc_levels_match_projection_behaviour():
+    """§7.3 归属表记的级别必须与投影实现的实际行为逐族一致。"""
+    documented = _documented_family_levels()
+    actual = _code_family_levels()
+
+    assert {
+        hook: level for hook, level in documented.items() if hook in actual
+    } == actual

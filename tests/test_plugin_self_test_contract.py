@@ -1,9 +1,12 @@
 """插件连通性自检契约测试：三态语义、异常吞掉与返回值形状校验。"""
 
+import ast
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
+import app.plugins as plugins_package
 from app.plugins import _PluginBase
 from app.runtime.extensions.contract import supports_extension_hook
 from app.runtime.extensions.plugin import projection as projection_module
@@ -143,3 +146,44 @@ def test_base_plugin_empty_test_implementation_is_not_treated_as_implemented():
 
     stub_extension = PluginExtension(_BasePluginStub(), "BasePluginStub")
     assert stub_extension.supports_hook("test") is False
+
+
+def _base_method_definition_lines() -> dict:
+    """按源码统计 `_PluginBase` 类体内每个方法名各被定义在哪些行。
+
+    类对象只保留最后一次定义，重复定义在运行期查不出来，因此按源码的抽象语法树统计。
+
+    :return: 方法名到其全部定义行号列表的映射
+    """
+    source = Path(plugins_package.__file__).read_text(encoding="utf-8")
+    definitions: dict = {}
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.ClassDef) or node.name != "_PluginBase":
+            continue
+        for member in node.body:
+            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                definitions.setdefault(member.name, []).append(member.lineno)
+    return definitions
+
+
+def test_base_plugin_defines_each_method_only_once():
+    """`_PluginBase` 类体内不得重复定义同名方法。
+
+    Python 后定义覆盖先定义，重复定义里靠前的那一份是永不生效的死代码：它既不会
+    报错，也无法从类对象上察觉，只会让读钩子清单的人以为自己看的是生效的那一份。
+    """
+    duplicated = {
+        name: lines
+        for name, lines in _base_method_definition_lines().items()
+        if len(lines) > 1
+    }
+
+    assert duplicated == {}
+
+
+@pytest.mark.parametrize("hook", ["test", "get_media_source"])
+def test_base_plugin_keeps_one_definition_of_previously_duplicated_hooks(hook):
+    """曾各被定义两次的两个钩子在类体内只剩一份定义，且仍然挂在基类上。"""
+    assert _base_method_definition_lines().get(hook) == [
+        getattr(_PluginBase, hook).__code__.co_firstlineno
+    ]
