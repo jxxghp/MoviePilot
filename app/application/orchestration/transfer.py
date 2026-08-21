@@ -36,6 +36,7 @@ from app.schemas.event import StorageOperSelectionEventData
 from app.schemas.transfer import TransferInfo
 from app.schemas.message import Message
 from app.schemas.transfer import EpisodeFormat
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferJob
@@ -584,7 +585,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         is_dir = src_path.endswith("/")
         path = Path(src_path)
         size, modify_time = None, None
-        if storage == "local":
+        if FileURI.is_local(storage):
             try:
                 file_stat = path.stat()
                 size, modify_time = file_stat.st_size, file_stat.st_mtime
@@ -1179,7 +1180,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             # 如果没有下载器监控的目录则不处理
             if not any(
-                    dir_info.monitor_type == "downloader" and dir_info.storage == "local"
+                    dir_info.monitor_type == "downloader" and FileURI.is_local(dir_info.storage)
                     for dir_info in download_dirs
             ):
                 if progress_callback:

@@ -12,6 +12,7 @@ from app.application.orchestration.media import MediaChain
 from app.application.orchestration.scraping import ScrapingChain
 from app.runtime.config import settings
 from app.runtime.log import logger
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.types import (
     MUSIC_ENTITY_ARTIST,
@@ -89,7 +90,7 @@ class ScrapeMetadataTool(MoviePilotTool):
         media_type = kwargs.get("media_type")
 
         message = f"刮削媒体元数据: {path}"
-        if storage != "local":
+        if not FileURI.is_local(storage):
             message += f" [存储: {storage}]"
         if overwrite:
             message += " [覆盖模式]"
@@ -158,7 +159,7 @@ class ScrapeMetadataTool(MoviePilotTool):
             )
 
             # 检查本地存储路径是否存在
-            if storage == "local":
+            if FileURI.is_local(storage):
                 if not Path(path).exists():
                     return json.dumps(
                         {"success": False, "message": f"刮削路径不存在: {path}"},

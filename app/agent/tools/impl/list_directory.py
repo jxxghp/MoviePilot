@@ -11,7 +11,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.orchestration.storage import StorageChain
 from app.runtime.log import logger
-from app.schemas.file import FileItem
+from app.schemas.file import FileItem, FileURI
 from app.foundation import size as size_tools
 from app.foundation import text as text_tools
 
@@ -65,7 +65,7 @@ class ListDirectoryTool(MoviePilotTool):
         storage = kwargs.get("storage", "local")
         
         message = f"查询目录: {path}"
-        if storage != "local":
+        if not FileURI.is_local(storage):
             message += f" [存储: {storage}]"
         
         return message
@@ -84,7 +84,7 @@ class ListDirectoryTool(MoviePilotTool):
         if not path:
             return "错误：路径不能为空"
 
-        if storage == "local":
+        if FileURI.is_local(storage):
             if not path.startswith("/") and not (len(path) > 1 and path[1] == ":"):
                 path = str(Path(path).resolve())
         elif not path.startswith("/"):

@@ -19,6 +19,7 @@ from app.application.history import (
 )
 from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.types import MediaType
 
@@ -161,7 +162,7 @@ class TransferDispatcher:
             dir_info
             for dir_info in DirectoryHelper().get_download_dirs()
             if dir_info.monitor_type == "monitor"
-            and dir_info.storage == storage
+            and FileURI.is_same_storage(dir_info.storage, storage)
             and event_path.is_relative_to(Path(dir_info.download_path))
         ]
         if not matching_dirs:
@@ -279,7 +280,7 @@ class TransferDispatcher:
             file_size = item["file_size"]
             file_modify_time = item.get("file_modify_time")
             fileid = item.get("fileid")
-            if file_size is None and storage == "local":
+            if file_size is None and FileURI.is_local(storage):
                 # 因读取失败入队的事件没有大小，重试时必须重新读取
                 file_size, file_modify_time, exists = self._resolve_file_state(event_path)
                 if not exists:

@@ -34,7 +34,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.log import logger
-from app.schemas.file import FileItem
+from app.schemas.file import FileItem, FileURI
 from app.schemas.history import DownloadHistory
 from app.schemas.media import OptionalMediaIdentityMixin, resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
@@ -868,7 +868,7 @@ class JobManager:
                     if task.fileitem.size is not None
                     else (
                         SystemUtils.get_directory_size(Path(task.fileitem.path))
-                        if task.fileitem.storage == "local"
+                        if FileURI.is_local(task.fileitem.storage)
                         else 0
                     )
                     for task in self._job_view[__mediaid__].tasks

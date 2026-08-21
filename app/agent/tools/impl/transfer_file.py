@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.types import MediaType
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource
@@ -141,7 +142,7 @@ class TransferFileTool(MoviePilotTool):
         if not file_path:
             return "错误：必须提供文件或目录路径"
 
-        if storage == "local":
+        if FileURI.is_local(storage):
             if not file_path.startswith("/") and not (
                 len(file_path) > 1 and file_path[1] == ":"
             ):

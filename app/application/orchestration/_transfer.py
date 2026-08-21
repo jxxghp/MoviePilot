@@ -34,6 +34,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -180,7 +181,7 @@ class FileFilterMixin:
         按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
         """
         # 目录级匹配需要读取本地音频时长，远端存储文件无法参与
-        if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
+        if file_meta.media_id or not FileURI.is_local(getattr(file_item, "storage", "local")):
             return file_meta, None
         try:
             matched = MediaChain().recognize_music_album_directory(file_path.parent)
@@ -396,7 +397,7 @@ class FileFilterMixin:
         """
         if delete_mounted_local_disk_empty_dirs:
             return True
-        if task.fileitem.storage != "local":
+        if not FileURI.is_local(task.fileitem.storage):
             return True
 
         source_directory = (

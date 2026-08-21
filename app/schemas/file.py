@@ -101,6 +101,71 @@ class FileURI(BaseModel):
         return bool(value) and bool(_STORAGE_INSTANCE_PATTERN.match(value))
 
     @classmethod
+    def storage_parts(cls, storage: Optional[str]) -> Optional[tuple[str, Optional[str]]]:
+        """
+        拆分存储令牌用于比较，无效令牌不参与任何相等判断
+
+        :param storage: 存储令牌，如 u115 或 u115@work
+        :return: (存储标识, 实例名) 二元组；令牌为空或写法非法时为 None
+        """
+        if not storage:
+            return None
+        try:
+            return cls.split_storage(storage)
+        except ValueError:
+            return None
+
+    @classmethod
+    def storage_type(cls, storage: Optional[str]) -> str:
+        """
+        取存储令牌的类型部分，实例名不参与
+
+        令牌为空或写法非法时给出空串而非退回令牌原文，非法令牌因此不会与任何存储类型相等。
+
+        :param storage: 存储令牌，如 u115 或 u115@work
+        :return: 存储标识；令牌为空或写法非法时为空串
+        """
+        parts = cls.storage_parts(storage)
+        return parts[0] if parts else ""
+
+    @classmethod
+    def is_local(cls, storage: Optional[str]) -> bool:
+        """
+        判断存储令牌是否指向本地存储类型，具名实例同样成立
+
+        :param storage: 存储令牌，如 local 或 local@nas
+        :return: 类型部分为本地存储时为 True
+        """
+        return cls.storage_type(storage) == StorageSchema.Local.value
+
+    @classmethod
+    def is_same_storage_type(cls, left: Optional[str], right: Optional[str]) -> bool:
+        """
+        判断两个存储令牌是否属于同一存储类型，实例名不参与
+
+        :param left: 存储令牌
+        :param right: 存储令牌
+        :return: 两侧类型部分相同且均有效时为 True
+        """
+        left_type = cls.storage_type(left)
+        return bool(left_type) and left_type == cls.storage_type(right)
+
+    @classmethod
+    def is_same_storage(cls, left: Optional[str], right: Optional[str]) -> bool:
+        """
+        判断两个存储令牌是否指向同一存储实例
+
+        裸令牌指该类型的默认实例，与同类型的具名令牌算作不同实例：u115 与 u115@work
+        之间的转移是跨实例转移，而非同一存储内的移动。
+
+        :param left: 存储令牌
+        :param right: 存储令牌
+        :return: 存储标识与实例名均相同且两侧令牌都有效时为 True
+        """
+        left_parts = cls.storage_parts(left)
+        return left_parts is not None and left_parts == cls.storage_parts(right)
+
+    @classmethod
     def join_storage(cls, storage_id: str, instance: Optional[str] = None) -> str:
         """
         把存储标识与实例名拼成存储令牌

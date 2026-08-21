@@ -14,6 +14,7 @@ from app.schemas.context import MediaSeason as _SchemaMediaSeason
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import Context as _SchemaContext
+from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
@@ -480,7 +481,7 @@ def scrape(
         return _SchemaResponse(success=False, message="刮削失败，无法识别媒体信息")
     if media_source:
         media_info.scrape_source = media_source
-    if storage == "local":
+    if _SchemaFileURI.is_local(storage):
         if not Path(fileitem.path).exists():
             return _SchemaResponse(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)

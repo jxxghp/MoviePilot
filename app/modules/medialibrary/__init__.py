@@ -17,6 +17,7 @@ from app.schemas.transfer import TransferInfo
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.system import TransferDirectoryConf
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 from app.adapters.system.host import SystemUtils
@@ -87,19 +88,19 @@ class MediaLibraryModule(_ModuleBase):
             download_path = d.download_path
             if not download_path:
                 return False, f"{d.name} 的下载目录未设置"
-            if d.storage == "local" and not Path(download_path).exists():
+            if FileURI.is_local(d.storage) and not Path(download_path).exists():
                 return False, f"{d.name} 的下载目录 {download_path} 不存在"
             # 仅在启用整理时检查媒体库目录
             library_path = d.library_path
             if d.transfer_type:
                 if not library_path:
                     return False, f"{d.name} 的媒体库目录未设置"
-                if d.library_storage == "local" and not Path(library_path).exists():
+                if FileURI.is_local(d.library_storage) and not Path(library_path).exists():
                     return False, f"{d.name} 的媒体库目录 {library_path} 不存在"
                 # 硬链接
                 if d.transfer_type == "link" \
-                        and d.storage == "local" \
-                        and d.library_storage == "local" \
+                        and FileURI.is_local(d.storage) \
+                        and FileURI.is_local(d.library_storage) \
                         and not SystemUtils.is_same_disk(Path(download_path), Path(library_path)):
                     return False, f"{d.name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法硬链接"
             # 存储
@@ -172,7 +173,7 @@ class MediaLibraryModule(_ModuleBase):
         """
         handler = media_transfer_port.resolve()
         # 检查目录路径
-        if fileitem.storage == "local" and not Path(fileitem.path).exists():
+        if FileURI.is_local(fileitem.storage) and not Path(fileitem.path).exists():
             return TransferInfo(success=False,
                                 fileitem=fileitem,
                                 message=f"{fileitem.path} 不存在")

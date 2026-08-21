@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
+from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.application.orchestration import ChainBase
 from app.application.orchestration.lrclib import LrclibChain
@@ -1249,7 +1250,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 else "disabled"
             ),
         )
-        if fileitem.storage == "local":
+        if _SchemaFileURI.is_local(fileitem.storage):
             local_path = storage.download_file(fileitem)
             if not local_path:
                 return download_failure
@@ -1332,7 +1333,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             album_info=album_info,
         )
 
-        if fileitem.storage != "local" and metadata_requested and metadata_success:
+        if not _SchemaFileURI.is_local(fileitem.storage) and metadata_requested and metadata_success:
             parent = self.storagechain.get_parent_item(fileitem)
             if not parent:
                 logger.warning(f"无法获取远端音频父目录：{fileitem.path}")
@@ -1551,7 +1552,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         target_name = target_path.name
         temp_path: Optional[Path] = None
         try:
-            if fileitem.storage == "local":
+            if _SchemaFileURI.is_local(fileitem.storage):
                 with NamedTemporaryFile(
                         mode="w",
                         encoding="utf-8",

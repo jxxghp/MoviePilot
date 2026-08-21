@@ -18,6 +18,7 @@ from app.application.directory import DirectoryHelper
 from app.schemas.transfer import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.system import TransferDirectoryConf
+from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
 from app.schemas.event import TransferInterceptEventData
 from app.schemas.event import TransferOverwriteCheckEventData
@@ -144,7 +145,7 @@ class TransHandler:
         target_path = Path(target_item.path) if target_item.path else None
         if (
                 target_path
-                and (target_item.storage or "local") == "local"
+                and FileURI.is_local(target_item.storage or "local")
                 and target_path.is_file()
         ):
             target_music = AudioMetadataHelper.read(target_path)
@@ -487,7 +488,7 @@ class TransHandler:
                     if target_item:
                         # 目标文件已存在
                         target_file = new_file
-                        if target_storage == "local" and new_file.is_symlink():
+                        if FileURI.is_local(target_storage) and new_file.is_symlink():
                             target_file = new_file.readlink()
                             if not target_file.exists():
                                 overflag = True
@@ -740,14 +741,15 @@ class TransHandler:
             )
             return __build_remote_targetitem(_source_item, _path)
 
+        # 两侧都不是本地存储时只支持同一存储实例内的整理，同类型的不同实例算跨实例转移
         if (
-            fileitem.storage != target_storage
-            and fileitem.storage != "local"
-            and target_storage != "local"
+            not FileURI.is_same_storage(fileitem.storage, target_storage)
+            and not FileURI.is_local(fileitem.storage)
+            and not FileURI.is_local(target_storage)
         ):
             return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
 
-        if fileitem.storage == "local" and target_storage == "local":
+        if FileURI.is_local(fileitem.storage) and FileURI.is_local(target_storage):
             # 创建目录
             if not target_file.parent.exists():
                 target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -766,7 +768,7 @@ class TransHandler:
                 return __get_targetitem(target_file), ""
             else:
                 return None, f"{fileitem.path} {transfer_type} 失败"
-        elif fileitem.storage == "local" and target_storage != "local":
+        elif FileURI.is_local(fileitem.storage) and not FileURI.is_local(target_storage):
             # 本地到网盘
             filepath = Path(fileitem.path)
             if not filepath.exists():
@@ -809,7 +811,7 @@ class TransHandler:
                         None,
                         f"【{target_storage}】{target_file.parent} 目录获取失败",
                     )
-        elif fileitem.storage != "local" and target_storage == "local":
+        elif not FileURI.is_local(fileitem.storage) and FileURI.is_local(target_storage):
             # 网盘到本地
             if target_file.exists():
                 logger.warn(f"文件已存在：{target_file}")
@@ -832,7 +834,7 @@ class TransHandler:
                     return __get_targetitem(target_file), ""
                 else:
                     return None, f"{fileitem.path} {fileitem.storage} 下载失败"
-        elif fileitem.storage == target_storage:
+        elif FileURI.is_same_storage(fileitem.storage, target_storage):
             # 同一网盘
             if not source_oper.is_support_transtype(transfer_type):
                 return None, f"存储 {fileitem.storage} 不支持 {transfer_type} 整理方式"
@@ -1112,7 +1114,7 @@ class TransHandler:
                     f"Reason: {event_data.reason}"
                 )
                 return None, event_data.reason
-        if target_storage == "local" and (
+        if FileURI.is_local(target_storage) and (
             target_file.exists() or target_file.is_symlink()
         ):
             if not over_flag:

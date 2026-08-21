@@ -17,6 +17,7 @@ from app.monitor.recovery import RecoveryExecutor, RecoveryState, probe_path
 from app.monitor.snapshot import SnapshotStore
 from app.monitor.syslimits import decide_monitor_mode, get_system_optimization_tips
 from app.monitor.watcher import LocalDirectoryWatcher
+from app.schemas.file import FileURI
 from app.schemas.types import SystemConfigKey
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
@@ -188,7 +189,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 continue
 
             # 启动监控
-            if mon_dir.storage == "local":
+            if FileURI.is_local(mon_dir.storage):
                 if self.__start_local_monitor(mon_path=mon_path, monitor_mode=mon_dir.monitor_mode):
                     local_started += 1
                 else:

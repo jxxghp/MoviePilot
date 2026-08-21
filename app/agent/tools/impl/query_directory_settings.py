@@ -9,6 +9,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
+from app.schemas.file import FileURI
 
 
 class QueryDirectorySettingsInput(BaseModel):
@@ -75,24 +76,24 @@ class QueryDirectorySettingsTool(MoviePilotTool):
         filtered_dirs = []
         for d in dirs:
             if storage_type == "local":
-                if directory_type == "download" and d.storage != "local":
+                if directory_type == "download" and not FileURI.is_local(d.storage):
                     continue
-                if directory_type == "library" and d.library_storage != "local":
+                if directory_type == "library" and not FileURI.is_local(d.library_storage):
                     continue
                 if directory_type == "all":
-                    if d.download_path and d.storage != "local":
+                    if d.download_path and not FileURI.is_local(d.storage):
                         continue
-                    if d.library_path and d.library_storage != "local":
+                    if d.library_path and not FileURI.is_local(d.library_storage):
                         continue
             elif storage_type == "remote":
-                if directory_type == "download" and d.storage == "local":
+                if directory_type == "download" and FileURI.is_local(d.storage):
                     continue
-                if directory_type == "library" and d.library_storage == "local":
+                if directory_type == "library" and FileURI.is_local(d.library_storage):
                     continue
                 if directory_type == "all":
-                    if d.download_path and d.storage == "local":
+                    if d.download_path and FileURI.is_local(d.storage):
                         continue
-                    if d.library_path and d.library_storage == "local":
+                    if d.library_path and FileURI.is_local(d.library_storage):
                         continue
 
             if name and d.name and name.lower() not in d.name.lower():

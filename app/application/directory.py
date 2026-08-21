@@ -40,7 +40,7 @@ class DirectoryHelper:
         """
         获取所有本地的可下载目录
         """
-        return [d for d in self.get_download_dirs() if d.storage == "local"]
+        return [d for d in self.get_download_dirs() if _SchemaFileURI.is_local(d.storage)]
 
     def get_download_dir_by_save_path(
             self,
@@ -69,7 +69,8 @@ class DirectoryHelper:
             if not root:
                 continue
             root_storage, root_style, root_path = root
-            if storage != root_storage or target_style != root_style or target_path != root_path:
+            if (not _SchemaFileURI.is_same_storage(storage, root_storage)
+                    or target_style != root_style or target_path != root_path):
                 continue
             if not media_type or not dir_info.media_type:
                 return dir_info
@@ -89,7 +90,7 @@ class DirectoryHelper:
         """
         获取所有本地的媒体库目录
         """
-        return [d for d in self.get_library_dirs() if d.library_storage == "local"]
+        return [d for d in self.get_library_dirs() if _SchemaFileURI.is_local(d.library_storage)]
 
     def get_dir(self, media: Optional[MediaInfo], include_unsorted: Optional[bool] = False,
                 storage: Optional[str] = None, src_path: Path = None,
@@ -120,11 +121,11 @@ class DirectoryHelper:
             # 没有启用整理的目录
             if not d.monitor_type and not include_unsorted:
                 continue
-            # 源存储类型不匹配
-            if storage and d.storage != storage:
+            # 源存储实例不匹配
+            if storage and not _SchemaFileURI.is_same_storage(d.storage, storage):
                 continue
-            # 目标存储类型不匹配
-            if target_storage and d.library_storage != target_storage:
+            # 目标存储实例不匹配
+            if target_storage and not _SchemaFileURI.is_same_storage(d.library_storage, target_storage):
                 continue
             # 有目标目录时，目标目录不匹配媒体库目录
             if dest_path and dest_path != Path(d.library_path):
@@ -156,16 +157,16 @@ class DirectoryHelper:
         """
         判断源目录和目标目录是否在同一存储盘
 
-        :param src: 源目录路径和存储类型
-        :param tar: 目标目录路径和存储类型
+        :param src: 源目录路径和存储令牌
+        :param tar: 目标目录路径和存储令牌
         :return: 是否在同一存储盘
         """
         src_path, src_storage = src
         tar_path, tar_storage = tar
-        if "local" == tar_storage == src_storage:
+        if _SchemaFileURI.is_local(src_storage) and _SchemaFileURI.is_local(tar_storage):
             return SystemUtils.is_same_disk(src_path, tar_path)
-        # 网络存储，直接比较类型
-        return src_storage == tar_storage
+        # 网络存储，比较到实例，同类型的不同实例不算同一存储盘
+        return _SchemaFileURI.is_same_storage(src_storage, tar_storage)
 
     @staticmethod
     def get_media_root_path(
@@ -245,7 +246,7 @@ def _normalize_download_path(raw_path: str, storage: str) -> Tuple[str, PurePath
     按存储类型解析下载路径，本地允许 POSIX 或已配置的 Windows drive，远端保持 FileURI POSIX 语义。
     """
     path_value = str(raw_path or "").strip()
-    if storage == "local" and WINDOWS_DRIVE_PREFIX_PATTERN.match(path_value):
+    if _SchemaFileURI.is_local(storage) and WINDOWS_DRIVE_PREFIX_PATTERN.match(path_value):
         return "windows", _normalize_safe_windows_path(path_value)
     return "posix", _normalize_safe_posix_path(path_value)
 
@@ -253,11 +254,10 @@ def _normalize_download_path(raw_path: str, storage: str) -> Tuple[str, PurePath
 def _download_path_uri(storage: str, path: PurePath) -> str:
     """
     生成可传给下载器的 save_path，保持 /download/paths 暴露的本地和远端路径风格。
+
+    只有默认本地实例的裸令牌省略存储前缀，具名本地实例保留前缀，否则回解析时会丢掉实例名。
     """
-    path_value = path.as_posix()
-    if storage == "local":
-        return path_value
-    return _SchemaFileURI(storage=storage, path=path_value).uri
+    return _SchemaFileURI(storage=storage, path=path.as_posix()).uri
 
 
 def _normalize_download_root(dir_info: _SchemaTransferDirectoryConf) -> Optional[Tuple[str, str, PurePath]]:
@@ -295,7 +295,7 @@ def validate_download_save_path(save_path: str) -> str:
             download_roots.append(root)
 
     for root_storage, root_style, root_path in download_roots:
-        if storage != root_storage:
+        if not _SchemaFileURI.is_same_storage(storage, root_storage):
             continue
         if target_style != root_style:
             continue
@@ -307,7 +307,7 @@ def validate_download_save_path(save_path: str) -> str:
             and storage == StorageSchema.Local.value
             and target_style == "posix"):
         for root_storage, root_style, root_path in download_roots:
-            if root_storage == StorageSchema.Local.value or target_style != root_style:
+            if _SchemaFileURI.is_local(root_storage) or target_style != root_style:
                 continue
             if target_path == root_path or target_path.is_relative_to(root_path):
                 return _download_path_uri(root_storage, target_path)
