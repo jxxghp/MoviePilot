@@ -801,10 +801,27 @@ def collect_runtime_baseline() -> dict[str, Any]:
     return {
         "schema_version": 2,
         "run_module": collect_run_module_contracts(),
+        "module_method_specs": collect_module_method_specs(),
         "events": collect_event_contracts(),
         "sdk_exports": collect_sdk_exports(),
         "compat_manifest": collect_compat_manifest(),
     }
+
+
+def collect_module_method_specs() -> dict[str, Any]:
+    """加载无运行资源副作用的 Module Contract V2 清单。"""
+    path = APP_ROOT / "runtime" / "extensions" / "module" / "contracts.py"
+    spec = importlib.util.spec_from_file_location("architecture_module_contracts", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载模块契约清单：{path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        contracts = module.list_explicit_module_contracts()
+        return json_compatible(contracts)
+    finally:
+        sys.modules.pop(spec.name, None)
 
 
 def collect_runtime_diagnostics() -> dict[str, Any]:

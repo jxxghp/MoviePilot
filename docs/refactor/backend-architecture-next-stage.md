@@ -553,6 +553,17 @@ ModuleMethodSpec(
 
 **量化目标**：legacy 方法数从 96 开始只降不升；新增宿主调用必须先有显式 spec。
 
+**实施记录（2026-08-21）**：
+
+- `ModuleMethodContract` 已升级为 V2，显式记录 version、input/result contract、aggregation、
+  execution、timeout、error、plugin visibility 与基础签名要求；首批 22 个识别、搜索、媒体服务器、
+  存储、消息和调度/集成能力完成登记。
+- `run_module()` 与插件优先、短路、列表顺序合并、空值和异常隔离算法保持不变。Dispatcher 在真实
+  provider 调用边界执行基础签名诊断；旧插件不匹配只写可读 warning，不拒绝加载或执行，未知自定义
+  方法继续使用 legacy contract。
+- runtime contract baseline 现包含稳定的 `module_method_specs`，后续字段或显式方法变化必须审查；
+  `ModuleCapability` Protocol 为宿主和新插件提供静态声明入口，但不替换字符串 dispatcher ABI。
+
 #### ARCH-241：Event Contract Registry
 
 **目标**：为每个 EventType/ChainEventType 明确 payload、可见范围、投递和可靠性，不改变旧装饰器 API。

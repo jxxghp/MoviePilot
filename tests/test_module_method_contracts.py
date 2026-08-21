@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 
 from app.runtime.extensions.module.contracts import (
+    ModuleErrorPolicy,
+    ModuleExecutionMode,
     ModuleResultAggregation,
+    diagnose_module_callable,
     get_module_method_contract,
     is_explicit_module_method,
+    list_explicit_module_contracts,
 )
 
 
@@ -23,7 +27,7 @@ def test_all_scanned_module_methods_resolve_a_contract() -> None:
     assert methods
     for method in methods:
         contract = get_module_method_contract(method)
-        assert contract.aggregation is ModuleResultAggregation.LEGACY
+        assert isinstance(contract.aggregation, ModuleResultAggregation)
         assert contract.plugin_short_circuit is True
 
 
@@ -53,3 +57,38 @@ def test_unknown_plugin_method_keeps_legacy_compatibility() -> None:
     assert contract.family == "legacy"
     assert contract.supports_sync is True
     assert contract.supports_async is True
+
+
+def test_contract_v2_freezes_at_least_twenty_high_value_methods() -> None:
+    """首批能力必须具备可生成文档和诊断的完整 V2 字段。"""
+    contracts = list_explicit_module_contracts()
+
+    assert len(contracts) >= 20
+    for contract in contracts.values():
+        assert contract.version == 1
+        assert contract.input_contract != "legacy_args"
+        assert contract.result_contract
+        assert contract.execution is ModuleExecutionMode.SYNC_OR_ASYNC
+        assert contract.timeout_policy == "caller_budget"
+        assert contract.error_policy is ModuleErrorPolicy.ISOLATE_PROVIDER
+        assert contract.public_to_plugins is True
+
+
+def test_signature_diagnostics_do_not_reject_legacy_callable() -> None:
+    """无法检查的旧插件 callable 只产生诊断，仍由 dispatcher 决定是否执行。"""
+    class _OpaqueCallable:
+        """模拟 inspect 无法解析签名的第三方 callable。"""
+
+        @property
+        def __signature__(self):
+            """模拟扩展对象不提供 Python signature。"""
+            raise ValueError("opaque")
+
+        def __call__(self):
+            """保留可调用行为。"""
+            return "ok"
+
+    assert diagnose_module_callable("recognize_media", _OpaqueCallable()) == (
+        "signature-unavailable",
+    )
+    assert _OpaqueCallable()() == "ok"

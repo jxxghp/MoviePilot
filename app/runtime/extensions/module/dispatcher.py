@@ -9,7 +9,10 @@ from typing import Any, Protocol
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.runtime.extensions.module.contracts import get_module_method_contract
+from app.runtime.extensions.module.contracts import (
+    diagnose_module_callable,
+    get_module_method_contract,
+)
 from app.schemas.exception import RateLimitExceededException
 
 
@@ -108,6 +111,7 @@ class ModuleInvocationDispatcher:
                 func = module_dict.get(method)
                 if not func:
                     continue
+                self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
@@ -154,6 +158,7 @@ class ModuleInvocationDispatcher:
                 func = module_dict.get(method)
                 if not func:
                     continue
+                self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)
@@ -199,6 +204,7 @@ class ModuleInvocationDispatcher:
             module_name = self._module_name(module, module_id)
             try:
                 func = getattr(module, method)
+                self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
                 elif ObjectUtils.check_signature(func, result):
@@ -245,6 +251,7 @@ class ModuleInvocationDispatcher:
             module_name = self._module_name(module, module_id)
             try:
                 func = getattr(module, method)
+                self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)
                 elif ObjectUtils.check_signature(func, result):
@@ -272,6 +279,22 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
         return result
+
+    @staticmethod
+    def _diagnose_callable(
+        method: str,
+        callback: Callable[..., Any],
+        owner: str,
+    ) -> None:
+        """记录 Contract V2 签名偏差，兼容阶段不阻断旧插件执行。"""
+        problems = diagnose_module_callable(method, callback)
+        if problems:
+            logger.warning(
+                "%s 的模块方法 %s 与契约不一致：%s；当前仅诊断",
+                owner,
+                method,
+                ", ".join(problems),
+            )
 
     async def _async_call(
         self,
