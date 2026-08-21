@@ -20,24 +20,13 @@ class ExtensionDeclaration:
     """
     扩展声明的公共部分
 
-    ``capabilities`` 的指称对象是方法表，因此它只在带方法表的两种声明里成立：
-    `ModuleDeclaration` 与 `MediaSourceDeclaration` 的 ``methods`` 是那张表，承诺的
-    方法名须落在表的键集里，出现表里没有的名字即整条声明被拒。反向不作要求——宿主
-    挂载的是整张表，承诺写窄了只是作者自己少报，别的声明不受影响。
+    「提供了什么」由各声明自身的数据字段回答：带方法表的两种声明由 ``methods`` 的键
+    回答，其余声明由自己的标识回答（``job_id``、``cmd``、``action_id``、工具名）。
+    公共部分只承载「用什么提供」。
 
-    该字段可省略：省略即由 ``methods`` 的键回答。不要求两处写成相等，相等意味着这
-    字段一点信息都不携带，却要作者把同一份内容写两遍还得写对。
-
-    其余九种声明各带一个 ``impl``，「提供了什么」由声明自身的标识回答
-    （``job_id``、``cmd``、``action_id``、工具名），本字段在那里没有指称对象，宿主
-    不对它作任何判定。
-
-    :param capabilities: 本声明承诺提供的能力方法名，须落在 ``methods`` 的键集内；
-        省略时由方法表的键回答，无方法表的声明不使用本字段
     :param impl: 实现该声明的对象，进程内直接使用；跨进程时不参与传输
     """
 
-    capabilities: Tuple[str, ...] = ()
     impl: Optional[Any] = None
 
 
@@ -493,22 +482,6 @@ def declaration_methods(declaration: Any) -> Optional[Mapping[str, Any]]:
         return declaration
     methods = getattr(declaration, "methods", None)
     return methods if isinstance(methods, Mapping) else None
-
-
-def declaration_capabilities(declaration: Any) -> Any:
-    """
-    读取声明承诺提供的能力方法名
-
-    按原值返回而不做形状归一：取值合法性由契约校验判定，此处先归一会把错误取值悄悄
-    变成一个合法答案。映射形态的声明一律返回 None——插件直接交出的方法表字典里，键就
-    是方法名，其中名为 ``capabilities`` 的键指的是一个叫这个名字的方法，不是承诺清单。
-
-    :param declaration: 扩展声明，或插件直接交出的方法表字典
-    :return: capabilities 字段的原始值；字段缺失或声明为映射时为 None
-    """
-    if isinstance(declaration, Mapping):
-        return None
-    return getattr(declaration, "capabilities", None)
 
 
 def declaration_impl(declaration: Any) -> Optional[Any]:

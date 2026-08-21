@@ -1,11 +1,11 @@
-"""扩展声明的两条能力契约测试：能力承诺与方法表的关系、服务实例的族级必填方法。
+"""扩展声明的能力契约测试：能力面即方法表的键、服务实例的族级必填方法。
 
-两条契约回答的不是同一个问题。`ExtensionDeclaration.capabilities` 的指称对象是方法
-表，因此只在带方法表的声明里成立，判定是「承诺不得超出方法表」；服务实例的必填方法
-定在宿主把实例交出去之后族级取用链上的无保护直调上，判定是「这几个名字必须在场」。
+带方法表的声明不另行声明能力面——宿主本就知道表里挂了哪些方法，让作者再写一遍只会
+多出一处能写错、且写错也无人消费的数据；服务实例的必填方法则定在宿主把实例交出去之
+后族级取用链上的无保护直调上，判定是「这几个名字必须在场」。
 
 本文件同时锁住两条边界：必填集之外的方法缺席不算违约（缺席即弃权，不必写空桩），
-以及新契约不得改变单播的弃权协议（None 未认领、空列表已认领）。
+以及能力契约不得改变单播的弃权协议（None 未认领、空列表已认领）。
 """
 
 from types import SimpleNamespace
@@ -15,15 +15,15 @@ import pytest
 
 from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.extensions.declaration import (
-    AgentToolDeclaration,
     MediaSourceDeclaration,
     ModuleDeclaration,
-    ScheduleDeclaration,
     ServiceInstanceDeclaration,
-    declaration_capabilities,
+    declaration_methods,
 )
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin.method_table import capability_promise_violation
+from app.runtime.extensions.plugin.media_source_capabilities import (
+    media_source_declaration_violation,
+)
 from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
@@ -192,126 +192,34 @@ def transient_service_family() -> Iterator[str]:
 
 
 # ---------------------------------------------------------------------------
-# capabilities 与 methods 的子集关系
+# 能力面即方法表的键
 # ---------------------------------------------------------------------------
 
 
-def test_promise_beyond_method_table_is_rejected_and_names_the_missing() -> None:
-    """承诺里出现方法表没有的名字时整条声明被拒，且点名缺哪几个。"""
+def test_method_table_alone_answers_what_the_declaration_provides() -> None:
+    """只写方法表的声明照常登记，宿主看到的能力面就是表的键集。"""
     declaration = ModuleDeclaration(
-        methods={"recognize": _handler},
-        capabilities=["recognize", "obtain_images", "scrape_metadata"],
-    )
-
-    violation = module_declaration_violation(declaration)
-
-    assert violation is not None
-    assert "obtain_images" in violation
-    assert "scrape_metadata" in violation
-    assert "recognize" in violation
-
-
-def test_promise_missing_names_are_deduplicated_and_sorted() -> None:
-    """点名的缺失项按去重后升序给出，重复承诺不重复报。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler},
-        capabilities=["zeta", "alpha", "zeta"],
-    )
-
-    violation = module_declaration_violation(declaration)
-
-    assert violation is not None
-    assert violation.index("'alpha'") < violation.index("'zeta'")
-    assert violation.count("'zeta'") == 1
-
-
-def test_promise_narrower_than_method_table_is_accepted() -> None:
-    """承诺写窄了不算违约，宿主挂载的仍是整张方法表。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler, "obtain_images": _handler},
-        capabilities=["recognize"],
+        methods={"recognize": _handler, "obtain_images": _handler}
     )
 
     assert module_declaration_violation(declaration) is None
+    assert set(declaration_methods(declaration)) == {"recognize", "obtain_images"}
 
 
-@pytest.mark.parametrize(
-    "capabilities",
-    [None, (), [], set()],
-    ids=["none", "empty_tuple", "empty_list", "empty_set"],
-)
-def test_promise_may_be_omitted(capabilities) -> None:
-    """能力承诺可省略，省略即由方法表的键回答。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler}, capabilities=capabilities
-    )
-
-    assert module_declaration_violation(declaration) is None
+def test_declaration_carries_no_second_place_to_name_its_methods() -> None:
+    """声明面不留第二处写方法名的位置，写了即构造失败而不是被静默忽略。"""
+    with pytest.raises(TypeError):
+        ModuleDeclaration(methods={"recognize": _handler}, capabilities=["recognize"])
 
 
-def test_promise_written_as_bare_string_is_rejected() -> None:
-    """裸字符串不是方法名序列，逐字符比对只会给出无从理解的失败。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler}, capabilities="recognize"
-    )
+def test_media_source_shares_the_same_method_table_rule() -> None:
+    """媒体数据源与模块声明共用同一张方法表判定，同一份畸形方法表两边都被拒。"""
+    malformed = {"search_medias": "not-callable"}
 
-    violation = module_declaration_violation(declaration)
-
-    assert violation is not None
-    assert "recognize" in violation
-
-
-@pytest.mark.parametrize(
-    "capabilities",
-    [123, {"recognize": _handler}, object()],
-    ids=["integer", "mapping", "opaque_object"],
-)
-def test_promise_that_is_not_a_sequence_is_rejected(capabilities) -> None:
-    """能力承诺不是方法名序列的声明必须被拒。"""
-    declaration = ModuleDeclaration(
-        methods={"recognize": _handler}, capabilities=capabilities
-    )
-
-    assert module_declaration_violation(declaration) is not None
-
-
-@pytest.mark.parametrize(
-    "promised",
-    [["recognize", 1], ["recognize", ""], ["recognize", "   "], ["recognize", None]],
-    ids=["integer_item", "empty_item", "blank_item", "none_item"],
-)
-def test_promise_items_must_be_non_blank_strings(promised) -> None:
-    """承诺里的元素不是非空字符串的声明必须被拒。"""
-    declaration = ModuleDeclaration(methods={"recognize": _handler}, capabilities=promised)
-
-    assert module_declaration_violation(declaration) is not None
-
-
-def test_media_source_method_table_shares_the_same_promise_rule() -> None:
-    """媒体数据源与模块声明共用同一张方法表判定，承诺规则随之相同。"""
-    declaration = MediaSourceDeclaration(
-        media_source="demo",
-        name="演示来源",
-        methods={"search_medias": _handler},
-        capabilities=["search_medias"],
-    )
-
-    assert capability_promise_violation(
-        declaration.capabilities, declaration.methods
-    ) is None
-
-
-@pytest.mark.parametrize(
-    "declaration",
-    [
-        AgentToolDeclaration(name="my_tool", description="说明", impl=object),
-        ScheduleDeclaration(job_id="demo", name="演示任务", trigger="interval"),
-    ],
-    ids=["agent_tool", "schedule"],
-)
-def test_declarations_without_method_table_do_not_use_the_field(declaration) -> None:
-    """无方法表的声明本字段没有指称对象，缺省值即为空，宿主不对它判定。"""
-    assert declaration_capabilities(declaration) == ()
+    assert module_declaration_violation(ModuleDeclaration(methods=malformed)) is not None
+    assert media_source_declaration_violation(
+        MediaSourceDeclaration(media_source="demo", name="演示来源", methods=malformed)
+    ) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -319,18 +227,17 @@ def test_declarations_without_method_table_do_not_use_the_field(declaration) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_bare_method_table_does_not_read_capabilities_as_a_promise() -> None:
-    """裸方法表字典里名为 capabilities 的键是一个方法，不是承诺清单。"""
-    assert declaration_capabilities({"capabilities": _handler}) is None
+def test_bare_method_table_named_capabilities_is_dispatched_as_a_method() -> None:
+    """裸方法表字典里名为 capabilities 的键是一个可被分发的方法。"""
+    projection = PluginProjection(
+        {"DemoModule": _CapableModulePlugin([{"capabilities": _handler}])}
+    )
+
+    assert _dispatcher(projection).unicast("capabilities") == "ok"
 
 
-def test_bare_method_table_named_capabilities_is_accepted() -> None:
-    """插件把方法命名为 capabilities 时，声明照常通过契约校验。"""
-    assert module_declaration_violation({"capabilities": _handler, "recognize": _handler}) is None
-
-
-def test_bare_method_table_with_non_callable_capabilities_fails_on_the_table_rule() -> None:
-    """裸字典里 capabilities 对应值不可调用时，按方法表规则被拒而不是按承诺规则。"""
+def test_bare_method_table_with_non_callable_value_fails_on_the_table_rule() -> None:
+    """裸字典里的值不可调用时按方法表规则被拒。"""
     violation = module_declaration_violation({"capabilities": ["recognize"]})
 
     assert violation is not None
@@ -436,10 +343,10 @@ def test_constructor_violation_still_wins_over_shape_violation() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_bad_module_promise_only_skips_its_own_declaration() -> None:
-    """承诺超出方法表的声明只跳过它自己，同一插件的其余声明照常登记。"""
-    good = ModuleDeclaration(methods={"recognize": _handler}, capabilities=["recognize"])
-    bad = ModuleDeclaration(methods={"obtain_images": _handler}, capabilities=["not_there"])
+def test_bad_module_method_table_only_skips_its_own_declaration() -> None:
+    """方法表不合契约的声明只跳过它自己，同一插件的其余声明照常登记。"""
+    good = ModuleDeclaration(methods={"recognize": _handler})
+    bad = ModuleDeclaration(methods={"obtain_images": "not-callable"})
     projection = PluginProjection({"DemoModule": _CapableModulePlugin([bad, good])})
 
     assert projection.provided_modules()["DemoModule"] == [good]
@@ -499,14 +406,12 @@ def _dispatcher(projection: PluginProjection) -> ModuleInvocationDispatcher:
 
 
 def test_empty_list_answer_still_claims_and_short_circuits_unicast() -> None:
-    """带能力承诺的声明返回空列表仍算已认领，单播在此短路。"""
+    """声明式方法表返回空列表仍算已认领，单播在此短路。"""
     claiming = _CapableModulePlugin(
-        [ModuleDeclaration(methods={"search_medias": lambda: []}, capabilities=["search_medias"])]
+        [ModuleDeclaration(methods={"search_medias": lambda: []})]
     )
     later = _CapableModulePlugin(
-        [ModuleDeclaration(
-            methods={"search_medias": lambda: ["后来者"]}, capabilities=["search_medias"]
-        )]
+        [ModuleDeclaration(methods={"search_medias": lambda: ["后来者"]})]
     )
     dispatcher = _dispatcher(PluginProjection({"AClaiming": claiming, "BLater": later}))
 
@@ -514,16 +419,12 @@ def test_empty_list_answer_still_claims_and_short_circuits_unicast() -> None:
 
 
 def test_none_answer_abstains_and_lets_the_next_provider_answer() -> None:
-    """带能力承诺的声明返回 None 才算未认领，单播继续问下一个。"""
+    """声明式方法表返回 None 才算未认领，单播继续问下一个。"""
     abstaining = _CapableModulePlugin(
-        [ModuleDeclaration(
-            methods={"search_medias": lambda: None}, capabilities=["search_medias"]
-        )]
+        [ModuleDeclaration(methods={"search_medias": lambda: None})]
     )
     later = _CapableModulePlugin(
-        [ModuleDeclaration(
-            methods={"search_medias": lambda: ["后来者"]}, capabilities=["search_medias"]
-        )]
+        [ModuleDeclaration(methods={"search_medias": lambda: ["后来者"]})]
     )
     dispatcher = _dispatcher(PluginProjection({"AAbstaining": abstaining, "BLater": later}))
 

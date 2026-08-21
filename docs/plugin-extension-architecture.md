@@ -179,7 +179,7 @@ def provides_service_instances(self):
 
 ### 4.3 与跨进程形态的关系
 
-表单是 Vuetify 组件树加默认数据，是纯数据结构，与 ``schema``、``capabilities``
+表单是 Vuetify 组件树加默认数据，是纯数据结构，与 ``config_schema``、``trigger_args``
 一样能序列化。因此它放在声明里不破坏 §3.3 的约束：跨进程时随声明原样成为握手
 报文的一部分，只有 ``impl`` 不过界。
 

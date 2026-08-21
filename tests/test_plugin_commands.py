@@ -315,7 +315,6 @@ def test_declaration_data_fields_survive_json_round_trip():
         if field.name != "impl"
     }
     payload["data"] = dict(payload["data"])
-    payload["capabilities"] = list(payload["capabilities"])
     restored = json.loads(json.dumps(payload))
 
     assert restored == {
@@ -326,11 +325,9 @@ def test_declaration_data_fields_survive_json_round_trip():
         "data": {"scope": "all"},
         "show": False,
         "overrides_builtin": True,
-        "capabilities": [],
     }
-    rebuilt = CommandDeclaration(impl=print, **{
-        key: value for key, value in restored.items() if key != "capabilities"
-    })
+    rebuilt = CommandDeclaration(impl=print, **restored)
+    assert rebuilt == declaration
     assert command_declaration_violation(rebuilt) is None
 
 

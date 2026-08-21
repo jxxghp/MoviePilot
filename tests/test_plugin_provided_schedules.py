@@ -431,7 +431,6 @@ def test_declaration_survives_json_round_trip_except_impl():
         trigger="cron",
         trigger_args={"crontab": "0 1 * * *"},
         kwargs={"full": True},
-        capabilities=("sync",),
         impl=_full_sync,
     )
 
@@ -442,12 +441,12 @@ def test_declaration_survives_json_round_trip_except_impl():
     }
     payload["trigger_args"] = dict(payload["trigger_args"])
     payload["kwargs"] = dict(payload["kwargs"])
-    payload["capabilities"] = list(payload["capabilities"])
 
     restored = json.loads(json.dumps(payload))
 
     assert restored == payload
     rebuilt = ScheduleDeclaration(**restored, impl=_full_sync)
+    assert rebuilt == declaration
     assert PluginProjection(
         {"Demo": _SchedulePlugin(declarations=[rebuilt])}
     ).provided_schedules()["Demo"] == [rebuilt]

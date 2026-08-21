@@ -124,7 +124,6 @@ def test_projection_accepts_valid_declaration():
             AgentToolDeclaration(
                 name="valid_tool",
                 description="A valid demo tool.",
-                capabilities=("valid_tool",),
                 impl=_ValidTool,
             )
         ]

@@ -144,10 +144,7 @@ def test_projection_accepts_valid_declaration() -> None:
     """契约合规的声明应被接受，字段原样保留。"""
     plugin = _CapableModulePlugin(
         declarations=[
-            ModuleDeclaration(
-                methods={"recognize": _handler},
-                capabilities=("recognize",),
-            )
+            ModuleDeclaration(methods={"recognize": _handler})
         ]
     )
     projection = PluginProjection({"DemoModule": plugin})

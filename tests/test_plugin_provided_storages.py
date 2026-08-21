@@ -236,7 +236,6 @@ def test_projection_accepts_valid_declaration():
             _storage_declaration(
                 "demo_storage",
                 impl=_ValidPluginStorage,
-                capabilities=("list", "upload"),
             )
         ]
     )
