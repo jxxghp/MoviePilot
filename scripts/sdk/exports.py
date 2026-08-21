@@ -2,6 +2,8 @@
 """生成并校验 ``app.sdk`` 必须提供的兼容清单投影。"""
 
 import argparse
+import ast
+import difflib
 import importlib
 import sys
 import types
@@ -51,13 +53,52 @@ HOST_INTERNAL_EXPORTS = {
 }
 
 
+def stub_surface(module_name: str) -> list[str] | None:
+    """
+    返回随仓库提交的 ``.pyi`` 声明的公开符号名。
+
+    二进制扩展模块由独立仓库拉取，运行期是真实构建产物还是测试垫片取决于环境，
+    其 ``vars()`` 不构成可复现的事实；``.pyi`` 是该模块宿主接口的版本化声明。
+
+    :param module_name: canonical 模块全名
+    :return: ``.pyi`` 声明的公开符号名；无 ``.pyi`` 时返回 ``None``
+    """
+    stub_path = PROJECT_ROOT.joinpath(*module_name.split(".")).with_suffix(".pyi")
+    if not stub_path.is_file():
+        return None
+    tree = ast.parse(stub_path.read_text(encoding="utf-8"), filename=str(stub_path))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        ):
+            return sorted(
+                element.value
+                for element in getattr(node.value, "elts", ())
+                if isinstance(element, ast.Constant)
+                and isinstance(element.value, str)
+                and not element.value.startswith("_")
+            )
+    return sorted(
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and not node.name.startswith("_")
+    )
+
+
 def public_surface(module: types.ModuleType) -> list[str]:
     """
     返回模块对外承诺的公开符号名。
 
     :param module: canonical 模块对象
-    :return: 声明的 ``__all__``；未声明时返回本模块定义的公开类与函数
+    :return: ``.pyi`` 声明、``__all__`` 或本模块定义的公开类与函数，按此优先级取用
     """
+    declared = stub_surface(module.__name__)
+    if declared is not None:
+        return declared
     declared = getattr(module, "__all__", None)
     if declared is not None:
         return sorted(name for name in declared if not name.startswith("_"))
@@ -204,10 +245,16 @@ def main() -> int:
     current = OUTPUT_PATH.read_text(encoding="utf-8")
     if current == rendered:
         return 0
-    print(
-        "兼容清单对 SDK 的导出要求已变化；补齐 app/sdk 后运行 "
-        "scripts/sdk/exports.py --write",
-    )
+    print("[清单陈旧] 源码导出要求与 app/sdk/_exports.py 不一致：")
+    for line in difflib.unified_diff(
+        current.splitlines(),
+        rendered.splitlines(),
+        fromfile="app/sdk/_exports.py",
+        tofile="源码推导结果",
+        lineterm="",
+    ):
+        print(line)
+    print("修复：运行 python scripts/sdk/exports.py --write")
     return 1
 
 

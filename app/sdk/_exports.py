@@ -97,6 +97,7 @@ SDK_REQUIRED_EXPORTS = {
         'RequestUtils': [('app.adapters.network.http', 'RequestUtils')],
         'RssHelper': [('app.application.rss', 'RssHelper')],
         'SiteUtils': [('app.domain.site', 'SiteUtils')],
+        'SitesHelper': [('app.application.site.sites', 'SitesHelper')],
         'UrlUtils': [('app.foundation.url', 'UrlUtils')],
         'WebUtils': [('app.adapters.external.location', 'WebUtils')],
         'base_url': [('app.foundation.url', 'base_url')],

@@ -2,11 +2,17 @@
 
 弃用告警把插件作者导向 ``app.sdk.X``，而运行期解析走的是 ``target``。两者是否落到
 同一个对象、SDK 是否真的提供了被承诺的符号，只能由本文件的断言保证。
+
+清单与门面之间有两种独立失配：``app/sdk/_exports.py`` 相对源码陈旧，与门面未导出
+清单承诺的符号。两者各由自己的用例判定，判据分别取自源码推导结果与门面实际属性，
+任一方出错都不会遮蔽另一方。
 """
 import importlib
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -22,8 +28,54 @@ from app.testing.bootstrap import prepare_backend
 
 PROJECT_ROOT = Path(__file__).parents[1]
 SDK_PREFIX = "app.sdk"
+GENERATOR_PATH = PROJECT_ROOT / "scripts" / "sdk" / "exports.py"
+REGENERATE_HINT = "运行 python scripts/sdk/exports.py --write"
+BINARY_MODULE = "app.application.site.sites"
 
 prepare_backend()
+
+
+def load_generator() -> ModuleType:
+    """
+    以模块形式载入 SDK 清单生成脚本，供用例直接取用其推导函数。
+
+    :return: 生成脚本模块对象
+    """
+    spec = importlib.util.spec_from_file_location("sdk_exports_generator", GENERATOR_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+GENERATOR = load_generator()
+
+
+def flatten(required: dict[str, dict[str, list]]) -> dict[tuple[str, str], tuple]:
+    """
+    把嵌套的导出要求摊平为可直接比较的映射。
+
+    :param required: ``{SDK 模块: {符号: [(来源模块, 来源符号), ...]}}``
+    :return: ``{(SDK 模块, 符号): ((来源模块, 来源符号), ...)}``
+    """
+    return {
+        (sdk_name, name): tuple(sorted(map(tuple, sources)))
+        for sdk_name, symbols in required.items()
+        for name, sources in symbols.items()
+    }
+
+
+def facade_path(sdk_name: str) -> str:
+    """
+    返回 SDK 门面模块的仓库相对路径，用于报错时直指待改文件。
+
+    :param sdk_name: SDK 模块全名
+    :return: 形如 ``app/sdk/network.py`` 的相对路径
+    """
+    return f"app/sdk/{sdk_name.rpartition('.')[2]}.py"
+
+
+LIVE_REQUIRED_EXPORTS = GENERATOR.collect_required_exports()
+LIVE_EXPORTS = sorted(flatten(LIVE_REQUIRED_EXPORTS).items())
 
 
 def sdk_module_aliases() -> list[tuple[str, object]]:
@@ -56,24 +108,49 @@ def sdk_symbol_aliases() -> list[tuple[str, str, object]]:
     return sorted(collected, key=lambda item: (item[0], item[1]))
 
 
-REQUIRED_EXPORTS = sorted(
-    (sdk_name, name, tuple(map(tuple, sources)))
-    for sdk_name, symbols in SDK_REQUIRED_EXPORTS.items()
-    for name, sources in symbols.items()
-)
+def test_sdk_manifest_is_current():
+    """源码推导出的导出要求变化后，生成清单必须同步刷新。"""
+    live = flatten(LIVE_REQUIRED_EXPORTS)
+    recorded = flatten(SDK_REQUIRED_EXPORTS)
+    problems = []
+    for sdk_name, name in sorted(live.keys() - recorded.keys()):
+        sources = list(live[(sdk_name, name)])
+        problems.append(f"源码新增、清单未登记：{sdk_name}.{name}（来源 {sources}）")
+    for sdk_name, name in sorted(recorded.keys() - live.keys()):
+        problems.append(f"清单残留、源码已无：{sdk_name}.{name}")
+    for sdk_name, name in sorted(live.keys() & recorded.keys()):
+        key = (sdk_name, name)
+        if live[key] != recorded[key]:
+            problems.append(
+                f"来源已变更：{sdk_name}.{name} 清单记 {list(recorded[key])}，"
+                f"源码为 {list(live[key])}"
+            )
+    if dict(GENERATOR.HOST_INTERNAL_EXPORTS) != dict(SDK_HOST_INTERNAL_EXPORTS):
+        problems.append("宿主自用符号名单与生成脚本不一致")
+
+    assert not problems, "\n".join(
+        ["[清单陈旧] app/sdk/_exports.py 与源码推导结果不一致：", *problems, REGENERATE_HINT]
+    )
 
 
 @pytest.mark.parametrize(
-    ("sdk_name", "name", "sources"),
-    REQUIRED_EXPORTS,
-    ids=[f"{sdk_name}.{name}" for sdk_name, name, _ in REQUIRED_EXPORTS],
+    ("key", "sources"),
+    LIVE_EXPORTS,
+    ids=[f"{sdk_name}.{name}" for (sdk_name, name), _ in LIVE_EXPORTS],
 )
-def test_sdk_provides_promised_symbol_from_canonical_source(sdk_name, name, sources):
-    """SDK 必须提供清单承诺的符号，且与 canonical 来源是同一个对象。"""
+def test_sdk_facade_exports_required_symbol(key, sources):
+    """SDK 门面必须公开源码承诺的符号，且与 canonical 来源是同一个对象。"""
+    sdk_name, name = key
     sdk_module = importlib.import_module(sdk_name)
+    target = facade_path(sdk_name)
 
     assert hasattr(sdk_module, name), (
-        f"{sdk_name} 缺少清单承诺的符号 {name}，来源 {list(sources)}"
+        f"[门面缺符号] {sdk_name} 未导出承诺的 {name}（来源 {list(sources)}）；"
+        f"在 {target} 补 import 与 __all__ 条目"
+    )
+    assert name in getattr(sdk_module, "__all__", ()), (
+        f"[门面缺符号] {sdk_name}.{name} 未列入 __all__，对插件不可见；"
+        f"在 {target} 的 __all__ 补 {name!r}"
     )
     for source_module_name, source_name in sources:
         source_module = importlib.import_module(source_module_name)
@@ -81,8 +158,28 @@ def test_sdk_provides_promised_symbol_from_canonical_source(sdk_name, name, sour
             f"{source_module_name} 不再提供 {source_name}"
         )
         assert getattr(sdk_module, name) is getattr(source_module, source_name), (
-            f"{sdk_name}.{name} 与 {source_module_name}.{source_name} 不是同一个对象"
+            f"[门面串对象] {sdk_name}.{name} 与 "
+            f"{source_module_name}.{source_name} 不是同一个对象"
         )
+
+
+def test_binary_module_extra_symbols_stay_out_of_requirements():
+    """二进制扩展模块的导出要求取自随仓库提交的 ``.pyi``，不随构建产物增减。"""
+    probe = ModuleType(BINARY_MODULE)
+    probe.__spec__ = importlib.util.spec_from_loader(BINARY_MODULE, None)
+    for name in ("SitesHelper", "SiteSingleton", "SiteRateLimiter"):
+        setattr(probe, name, type(name, (), {"__module__": BINARY_MODULE}))
+    original = sys.modules[BINARY_MODULE]
+    sys.modules[BINARY_MODULE] = probe
+    try:
+        observed = GENERATOR.collect_required_exports()
+    finally:
+        sys.modules[BINARY_MODULE] = original
+
+    assert observed == LIVE_REQUIRED_EXPORTS, (
+        f"{BINARY_MODULE} 的运行期符号影响了导出要求推导，"
+        "生成清单会随构建产物是否就位而漂移"
+    )
 
 
 def test_every_sdk_replacement_module_is_importable():
@@ -136,9 +233,9 @@ def test_sdk_exports_never_shadow_canonical_objects():
 def test_host_internal_symbols_stay_out_of_sdk_requirements():
     """宿主自用装配与生命周期入口不进入 SDK 必备导出。"""
     required_names = {
-        (source_module_name, source_name)
-        for _, _, sources in REQUIRED_EXPORTS
-        for source_module_name, source_name in sources
+        source
+        for _, sources in LIVE_EXPORTS
+        for source in sources
     }
 
     for path in SDK_HOST_INTERNAL_EXPORTS:
