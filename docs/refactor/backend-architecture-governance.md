@@ -1352,8 +1352,10 @@ done_when: []
 当前可复现命令：
 
 ```bash
-./.venv/bin/python scripts/startup/performance.py --repeat 3
-./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
+./.venv/bin/python scripts/startup/performance.py --write --repeat 3
+./.venv/bin/python scripts/architecture/baseline.py --check-host
+./.venv/bin/python scripts/architecture/baseline.py \
+  --check-plugins --plugin-repo ../MoviePilot-Plugins
 ```
 
 ### 11.4 2026-08-18 当前验证快照（收口批次）
@@ -1361,7 +1363,7 @@ done_when: []
 | 范围 | 命令 | 结果 |
 | --- | --- | --- |
 | 后端完整门禁 | `./.venv/bin/python tests/run.py` | 4,914 passed、2 failed、3 skipped（2026-08-18）；失败为未修改的 Agent 图片能力测试，架构专项不受影响 |
-| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
+| 架构与插件快照 | 分别运行 `--check-host` 与 `--check-plugins --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
 | 前端联邦 API 客户端 | `yarn test:run src/api/__tests__/client.spec.ts src/api/__tests__/index.spec.ts` | 36 passed |
 | 前端类型检查 | `yarn typecheck` | 通过 |
 | V3 插件契约与版本门禁 | `../MoviePilot/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q` | 16 passed |

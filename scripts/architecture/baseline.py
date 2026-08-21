@@ -668,53 +668,101 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     )
 
 
-def check_json(path: Path, actual: dict[str, Any]) -> bool:
-    """比较当前扫描结果和已提交基线并输出可执行提示。"""
+def _display_path(path: Path) -> Path:
+    try:
+        return path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return path
+
+
+def check_json(
+    path: Path,
+    actual: dict[str, Any],
+    *,
+    write_hint: str,
+) -> bool:
+    """比较当前扫描结果和已提交基线并输出限定范围的更新提示。"""
     expected = json.loads(path.read_text(encoding="utf-8"))
     if expected == actual:
         return True
     print(
-        f"架构基线已变化：{path.relative_to(PROJECT_ROOT)}；"
-        "确认变更符合边界后运行 scripts/architecture/baseline.py --write",
+        f"架构基线已变化：{_display_path(path)}；"
+        f"确认变更符合边界后运行 scripts/architecture/baseline.py {write_hint}",
         file=sys.stderr,
     )
     return False
 
 
-def parse_args() -> argparse.Namespace:
-    """解析基线写入、校验和外部插件仓参数。"""
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """解析限定宿主或插件范围的基线操作参数。"""
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
-    action.add_argument("--write", action="store_true", help="写入当前架构基线")
-    action.add_argument("--check", action="store_true", help="校验当前架构基线")
+    action.add_argument("--check-host", action="store_true", help="校验宿主架构基线")
+    action.add_argument("--check-plugins", action="store_true", help="校验官方插件基线")
+    action.add_argument("--write-host", action="store_true", help="写入宿主架构基线")
+    action.add_argument("--write-plugins", action="store_true", help="写入官方插件基线")
+    action.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
+    action.add_argument("--write", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--scope",
+        choices=("host", "plugins"),
+        help="旧 --check/--write 的必填兼容范围",
+    )
     parser.add_argument(
         "--plugin-repo",
         type=Path,
-        help="可选的独立 MoviePilot-Plugins 仓路径",
+        help="官方插件操作所需的独立 MoviePilot-Plugins 仓路径",
     )
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.check or args.write:
+        if not args.scope:
+            parser.error("旧 --check/--write 已弃用，必须同时指定 --scope host|plugins")
+        replacement = f"--{'check' if args.check else 'write'}-{args.scope}"
+        print(
+            f"警告：--{'check' if args.check else 'write'} --scope {args.scope} "
+            f"已弃用，请改用 {replacement}",
+            file=sys.stderr,
+        )
+        setattr(args, f"{'check' if args.check else 'write'}_{args.scope}", True)
+    plugin_action = args.check_plugins or args.write_plugins
+    if plugin_action and not args.plugin_repo:
+        parser.error("插件基线操作必须指定 --plugin-repo")
+    if not plugin_action and args.plugin_repo:
+        parser.error("--plugin-repo 只能用于插件基线操作")
+    return args
 
 
-def main() -> int:
-    """执行本仓基线以及可选官方插件基线的写入或校验。"""
-    args = parse_args()
-    baselines = [
-        (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
-        (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
-    ]
-    if args.plugin_repo:
+def main(argv: Optional[list[str]] = None) -> int:
+    """只对显式选择的宿主或插件基线执行检查或写入。"""
+    args = parse_args(argv)
+    host_action = args.check_host or args.write_host
+    if host_action:
+        baselines = [
+            (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
+            (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
+        ]
+        write_hint = "--write-host"
+    else:
         plugin_repo = args.plugin_repo.resolve()
         if not plugin_repo.is_dir():
             raise SystemExit(f"插件仓不存在：{plugin_repo}")
-        baselines.append(
+        baselines = [
             (PLUGIN_BASELINE_PATH, collect_official_plugin_baseline(plugin_repo))
+        ]
+        write_hint = f"--write-plugins --plugin-repo {plugin_repo}"
+    if args.write_host or args.write_plugins:
+        display_paths = ", ".join(
+            str(_display_path(path)) for path, _baseline in baselines
         )
-    if args.write:
+        print(f"即将写入：{display_paths}")
         for path, baseline in baselines:
             write_json(path, baseline)
-            print(f"已写入 {path.relative_to(PROJECT_ROOT)}")
+            print(f"已写入 {_display_path(path)}")
         return 0
-    checks = [check_json(path, baseline) for path, baseline in baselines]
+    checks = [
+        check_json(path, baseline, write_hint=write_hint)
+        for path, baseline in baselines
+    ]
     return 0 if all(checks) else 1
 
 

@@ -10,7 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +28,8 @@ IMPORT_TARGETS = (
 )
 RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
+PERFORMANCE_FACTOR = 2.0
+PERFORMANCE_SLACK_MS = 500.0
 
 
 def measure_import(target: str) -> dict[str, Any]:
@@ -231,31 +233,129 @@ def collect_baseline(repeat: int) -> dict[str, Any]:
     }
 
 
-def parse_args() -> argparse.Namespace:
-    """解析输出路径和采样次数。"""
+def check_baseline(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> list[str]:
+    """比较稳定资源契约与宽松耗时预算，返回所有不符合项。"""
+    errors: list[str] = []
+    expected_targets = expected.get("targets", {})
+    actual_targets = actual.get("targets", {})
+    if set(expected_targets) != set(actual_targets):
+        errors.append("冷导入目标集合已变化")
+    for target in sorted(set(expected_targets) & set(actual_targets)):
+        expected_target = expected_targets[target]
+        actual_target = actual_targets[target]
+        if (
+            actual_target["loaded_module_count"]
+            != expected_target["loaded_module_count"]
+        ):
+            errors.append(
+                f"{target} 加载模块数变化："
+                f"{expected_target['loaded_module_count']} -> "
+                f"{actual_target['loaded_module_count']}"
+            )
+        budget_ms = max(
+            expected_target["max_ms"] * PERFORMANCE_FACTOR,
+            expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
+        )
+        if actual_target["median_ms"] > budget_ms:
+            errors.append(
+                f"{target} 冷导入中位数 {actual_target['median_ms']}ms "
+                f"超过预算 {round(budget_ms, 3)}ms"
+            )
+    expected_modes = expected.get("lifecycle", {}).get("modes", {})
+    actual_modes = actual.get("lifecycle", {}).get("modes", {})
+    if set(expected_modes) != set(actual_modes):
+        errors.append("生命周期模式集合已变化")
+    for mode_name in sorted(set(expected_modes) & set(actual_modes)):
+        expected_mode = expected_modes[mode_name]
+        actual_mode = actual_modes[mode_name]
+        if (
+            actual_mode["enabled_component_count"]
+            != expected_mode["enabled_component_count"]
+        ):
+            errors.append(
+                f"{mode_name} 模式组件数变化："
+                f"{expected_mode['enabled_component_count']} -> "
+                f"{actual_mode['enabled_component_count']}"
+            )
+        for sample in actual_mode.get("samples", []):
+            if sample["threads_after"] != sample["threads_before"]:
+                errors.append(f"{mode_name} 模式存在未释放线程")
+            if sample["tasks_after"] != sample["tasks_before"]:
+                errors.append(f"{mode_name} 模式存在未释放异步任务")
+            if sample["database_connections_started"] != 0:
+                errors.append(f"{mode_name} 模式隔离采样建立了数据库连接")
+    return errors
+
+
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """解析只读打印、检查或显式写入操作。"""
     parser = argparse.ArgumentParser(description=__doc__)
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument(
+        "--print",
+        dest="operation",
+        action="store_const",
+        const="print",
+        help="打印本次采样且不写文件（默认）",
+    )
+    action.add_argument(
+        "--check",
+        dest="operation",
+        action="store_const",
+        const="check",
+        help="按已提交基线检查资源契约和宽松性能预算",
+    )
+    action.add_argument(
+        "--write",
+        dest="operation",
+        action="store_const",
+        const="write",
+        help="显式写入采样基线",
+    )
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    return parser.parse_args()
+    parser.set_defaults(operation="print")
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    """执行冷导入采样并写入 JSON 基线。"""
-    args = parse_args()
+def _display_path(path: Path) -> Path:
+    try:
+        return path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return path
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """采样关键入口，并按显式操作打印、检查或写入结果。"""
+    args = parse_args(argv)
     if args.repeat < 1:
         raise SystemExit("--repeat 必须大于等于 1")
+    baseline = collect_baseline(args.repeat)
     output = args.output.resolve()
+    if args.operation == "print":
+        print(json.dumps(baseline, ensure_ascii=False, indent=2))
+        return 0
+    if args.operation == "check":
+        if not output.is_file():
+            raise SystemExit(f"性能基线不存在：{output}")
+        expected = json.loads(output.read_text(encoding="utf-8"))
+        errors = check_baseline(expected, baseline)
+        if errors:
+            for error in errors:
+                print(f"性能基线检查失败：{error}", file=sys.stderr)
+            return 1
+        print(f"性能基线检查通过：{_display_path(output)}")
+        return 0
+    print(f"即将写入：{_display_path(output)}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(collect_baseline(args.repeat), ensure_ascii=False, indent=2)
-        + "\n",
+        json.dumps(baseline, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    try:
-        display_path = output.relative_to(PROJECT_ROOT)
-    except ValueError:
-        display_path = output
-    print(f"已写入 {display_path}")
+    print(f"已写入：{_display_path(output)}")
     return 0
 
 

@@ -13,8 +13,16 @@ BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 
 def test_architecture_contract_baselines_match_current_source():
     """宿主依赖图和公开运行契约变化必须显式刷新基线。"""
+    baseline_paths = (
+        BASELINE_ROOT / "dependency-baseline.json",
+        BASELINE_ROOT / "runtime-contract-baseline.json",
+    )
+    contents_before = {
+        path: path.read_bytes()
+        for path in baseline_paths
+    }
     result = subprocess.run(
-        [sys.executable, "scripts/architecture/baseline.py", "--check"],
+        [sys.executable, "scripts/architecture/baseline.py", "--check-host"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -22,6 +30,10 @@ def test_architecture_contract_baselines_match_current_source():
     )
 
     assert result.returncode == 0, result.stderr
+    assert {
+        path: path.read_bytes()
+        for path in baseline_paths
+    } == contents_before
 
 
 def test_official_plugin_baseline_records_external_source():
