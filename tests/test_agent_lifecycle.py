@@ -5,7 +5,11 @@ import pytest
 
 import app.agent.orchestrator as agent_module
 from app.agent import AgentManager
-from app.agent.orchestrator import AgentManagerUnavailableError
+from app.agent.orchestrator import (
+    AGENT_SESSION_QUEUE_MAX_SIZE,
+    AgentManagerQueueFullError,
+    AgentManagerUnavailableError,
+)
 from app.agent.memory import MemoryManager
 from app.startup import agent_initializer, modules_initializer
 
@@ -183,6 +187,261 @@ async def test_agent_manager_acceptance_gate_rejects_stale_references(
         await manager.process_message("after-close", "1", "hello")
     assert manager._session_queues == {}
     assert manager._session_workers == {}
+    assert manager.active_agents == {}
+
+
+@pytest.mark.anyio
+async def test_agent_manager_rejects_messages_when_session_queue_is_full(
+        monkeypatch,
+) -> None:
+    """会话达到待处理容量后应立即拒绝，不得在生命周期锁内无限等待。"""
+    manager = AgentManager()
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    started = asyncio.Event()
+
+    async def block_current(_task):
+        started.set()
+        await asyncio.Event().wait()
+
+    manager._process_message_internal = block_current
+    await manager.initialize()
+    current = asyncio.create_task(
+        manager.process_message(
+            "bounded",
+            "1",
+            "current",
+            wait_for_completion=True,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    queued = [
+        asyncio.create_task(
+            manager.process_message(
+                "bounded",
+                "1",
+                f"queued-{index}",
+                wait_for_completion=True,
+            )
+        )
+        for index in range(AGENT_SESSION_QUEUE_MAX_SIZE)
+    ]
+    await asyncio.sleep(0)
+
+    with pytest.raises(AgentManagerQueueFullError) as error_info:
+        await manager.process_message(
+            "bounded",
+            "1",
+            "rejected",
+            wait_for_completion=True,
+        )
+    assert error_info.value.code == "agent_manager_queue_full"
+
+    status = manager.get_session_status("bounded")
+    assert status["pending_messages"] == AGENT_SESSION_QUEUE_MAX_SIZE
+    assert status["queue_capacity"] == AGENT_SESSION_QUEUE_MAX_SIZE
+    assert status["queue_saturated"] is True
+    assert status["queue_rejections"] == 1
+
+    await manager.close()
+    results = await asyncio.gather(current, *queued, return_exceptions=True)
+    assert all(isinstance(result, AgentManagerUnavailableError) for result in results)
+
+
+@pytest.mark.anyio
+async def test_agent_manager_records_queue_wait_time(monkeypatch) -> None:
+    """任务开始执行后应保留最近一次排队等待的可观测值。"""
+    manager = AgentManager()
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    started = asyncio.Event()
+
+    async def process(_task):
+        started.set()
+        return "done"
+
+    manager._process_message_internal = process
+    await manager.initialize()
+    assert await manager.process_message(
+        "queue-observe",
+        "1",
+        "message",
+        wait_for_completion=True,
+    ) == "done"
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    status = manager.get_session_status("queue-observe")
+    assert status["last_queue_wait_ms"] >= 0
+    await manager.close()
+
+
+@pytest.mark.anyio
+async def test_agent_manager_rejects_new_messages_while_worker_shutdown_is_pending(
+        monkeypatch,
+) -> None:
+    """worker 未在关停上限内收敛时，同一会话必须保持停止态。"""
+    manager = AgentManager()
+    manager._shutdown_timeout = 0.01
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def ignore_cancellation(_task):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    manager._process_message_internal = ignore_cancellation
+    await manager.initialize()
+    execution = asyncio.create_task(
+        manager.process_message(
+            "shutdown-boundary",
+            "1",
+            "current",
+            wait_for_completion=True,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    assert await manager.stop_current_task("shutdown-boundary") is True
+    status = manager.get_session_status("shutdown-boundary")
+    assert status["shutdown_pending"] is True
+    with pytest.raises(AgentManagerUnavailableError):
+        await manager.process_message(
+            "shutdown-boundary",
+            "1",
+            "late",
+        )
+
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(execution, timeout=1)
+    for _ in range(20):
+        if not manager.get_session_status("shutdown-boundary")["shutdown_pending"]:
+            break
+        await asyncio.sleep(0)
+    assert manager.get_session_status("shutdown-boundary")["shutdown_pending"] is False
+    await manager.close()
+
+
+@pytest.mark.anyio
+async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
+        monkeypatch,
+) -> None:
+    """clear_session 超时期间不得清理仍被 worker 使用的 Agent 和记忆。"""
+    manager = AgentManager()
+    manager._shutdown_timeout = 0.01
+    memory_manager = MemoryManager()
+    memory_manager.clear_memory = MagicMock()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cleanup_called = asyncio.Event()
+
+    class BlockingAgent:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def process(self, _message, **_kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await release.wait()
+
+        async def cleanup(self):
+            cleanup_called.set()
+
+        def get_session_status(self):
+            return {}
+
+    await manager.initialize()
+    execution = asyncio.create_task(
+        manager.process_message(
+            "clear-timeout",
+            "1",
+            "current",
+            agent_factory=BlockingAgent,
+            wait_for_completion=True,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    await manager.clear_session("clear-timeout", "1")
+    assert not cleanup_called.is_set()
+    assert memory_manager.clear_memory.call_count == 0
+    assert "clear-timeout" in manager.active_agents
+    assert manager.get_session_status("clear-timeout")["shutdown_pending"] is True
+
+    release.set()
+    await asyncio.wait_for(cleanup_called.wait(), timeout=1)
+    with pytest.raises(asyncio.CancelledError):
+        await execution
+    for _ in range(20):
+        if "clear-timeout" not in manager.active_agents:
+            break
+        await asyncio.sleep(0)
+    assert "clear-timeout" not in manager.active_agents
+    assert memory_manager.clear_memory.call_count == 1
+    await manager.close()
+
+
+@pytest.mark.anyio
+async def test_close_defers_shared_agent_teardown_after_worker_timeout(
+        monkeypatch,
+) -> None:
+    """管理器关闭超时后，旧 worker 收敛前不得拆除共享 Agent 资源。"""
+    manager = AgentManager()
+    manager._shutdown_timeout = 0.01
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cleanup_called = asyncio.Event()
+
+    class BlockingAgent:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def process(self, _message, **_kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await release.wait()
+
+        async def cleanup(self):
+            cleanup_called.set()
+
+    await manager.initialize()
+    execution = asyncio.create_task(
+        manager.process_message(
+            "close-timeout",
+            "1",
+            "current",
+            agent_factory=BlockingAgent,
+            wait_for_completion=True,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    await manager.close()
+    assert not cleanup_called.is_set()
+    assert "close-timeout" in manager.active_agents
+    assert manager._close_finalizer_task is not None
+
+    release.set()
+    await asyncio.wait_for(cleanup_called.wait(), timeout=1)
+    with pytest.raises(asyncio.CancelledError):
+        await execution
+    for _ in range(20):
+        if manager._close_finalizer_task is None:
+            break
+        await asyncio.sleep(0)
     assert manager.active_agents == {}
 
 

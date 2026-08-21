@@ -346,6 +346,11 @@ def _is_manager_unavailable(error: BaseException) -> bool:
     return getattr(error, "code", None) == "agent_manager_unavailable"
 
 
+def _is_manager_queue_full(error: BaseException) -> bool:
+    """识别 Agent 会话排队已满，供兼容 API 返回可重试状态。"""
+    return getattr(error, "code", None) == "agent_manager_queue_full"
+
+
 async def _run_managed_agent(
     *,
     manager,
@@ -552,6 +557,13 @@ async def chat_completions(
                 error_type="server_error",
                 code="ai_agent_unavailable",
             )
+        if _is_manager_queue_full(exc):
+            return _error_response(
+                str(exc),
+                429,
+                error_type="rate_limit_error",
+                code="ai_agent_queue_full",
+            )
         return _error_response(
             str(exc),
             500,
@@ -651,6 +663,13 @@ async def responses(
                 503,
                 error_type="server_error",
                 code="ai_agent_unavailable",
+            )
+        if _is_manager_queue_full(exc):
+            return _error_response(
+                str(exc),
+                429,
+                error_type="rate_limit_error",
+                code="ai_agent_queue_full",
             )
         return _error_response(
             str(exc),
