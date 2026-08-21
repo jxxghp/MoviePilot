@@ -786,6 +786,17 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 4. CI 先检查严格目录；每次迁移扩大 include 范围。
 5. 类型错误不能用无界 `Any`、`cast(Any, ...)` 或全文件 ignore 消音。
 
+**实施记录（2026-08-21）**：
+
+- 选定 mypy 1.18.x 并写入 `pyproject.toml`/`uv.lock`，仓库只保留这一套新增类型门禁；CI architecture job
+  使用锁定环境运行 `mypy --config-file mypy.ini`。
+- 首批 strict 清单包含 4 个已满足合同的 Domain value 文件、correlation/observation、Event Contract V2、
+  Module Contract V2、typed HostRuntime startup context 和 API context，共 10 个 canonical 文件。
+- `mypy.ini` 不包含 `app.* = ignore_errors`、全文件 ignore、无界 `Any` 或 `cast(Any, ...)` 消音；历史
+  `domain/meta` 动态模型只有在逐文件修正后才可加入清单，当前错误不能被 baseline 当作“已通过”。
+- 配置约束测试会检查 strict、关键合同文件和至少一个 Domain 文件均在清单中，并实际启动锁定版本 mypy；
+  当前 10 个源文件零错误通过。
+
 #### ARCH-271：复杂度和端点预算 ratchet
 
 **目标**：阻止大方法继续增长，并让拆分对应真实阶段，而不是机械 helper 化。

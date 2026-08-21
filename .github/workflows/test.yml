@@ -50,6 +50,9 @@ jobs:
           uv run --locked --no-sync python \
             scripts/architecture/baseline.py --check-host
 
+      - name: Check governed Python types
+        run: uv run --locked --no-sync mypy --config-file mypy.ini
+
   pytest:
     runs-on: ubuntu-latest
     name: Unit Tests (${{ matrix.shard }})

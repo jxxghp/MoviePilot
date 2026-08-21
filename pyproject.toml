@@ -103,6 +103,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "cython~=3.2.5",
+    "mypy~=1.18.2",
     "pylint~=4.0.6",
     "pytest~=9.0.3",
     "pytest-asyncio~=1.4.0",
