@@ -413,7 +413,25 @@
     "内建识别": "內建識別",
     "内建识别环由宿主固定执行，无法启停": "內建識別環由宿主固定執行，無法啟停",
     "内建识别环由宿主固定执行，无法排定顺序": "內建識別環由宿主固定執行，無法排定順序",
-    "名称解析环标识不能为空": "名稱解析環標識不能為空"
+    "名称解析环标识不能为空": "名稱解析環標識不能為空",
+    "登录入口不存在或未启用": "登入入口不存在或未啟用",
+    "登录入口的配置不可用": "登入入口的設定不可用",
+    "登录入口的授权回调地址配置有误": "登入入口的授權回呼位址設定有誤",
+    "授权请求已失效，请重新发起登录": "授權請求已失效，請重新發起登入",
+    "该 GitHub 账号不属于允许登录的组织": "該 GitHub 帳號不屬於允許登入的組織",
+    "该 GitHub 账号尚未绑定本项目用户，请先登录后在设置页完成绑定": "該 GitHub 帳號尚未綁定本專案使用者，請先登入後在設定頁完成綁定",
+    "GitHub 授权未完成": "GitHub 授權未完成",
+    "GitHub 未交回授权码": "GitHub 未交回授權碼",
+    "GitHub 登录出错，请稍后重试": "GitHub 登入發生錯誤，請稍後重試",
+    "GitHub OAuth App 的 Client ID 与 Client Secret 均不可为空": "GitHub OAuth App 的 Client ID 與 Client Secret 均不可為空",
+    "授权回调地址须是完整的 http 或 https 地址": "授權回呼位址須是完整的 http 或 https 位址",
+    "兑换 GitHub 访问令牌": "兌換 GitHub 存取權杖",
+    "读取 GitHub 账号信息": "讀取 GitHub 帳號資訊",
+    "读取 GitHub 所属组织": "讀取 GitHub 所屬組織",
+    "兑换 GitHub 访问令牌失败：对端返回的不是对象": "兌換 GitHub 存取權杖失敗：對端回傳的不是物件",
+    "读取 GitHub 账号信息失败：对端返回的不是对象": "讀取 GitHub 帳號資訊失敗：對端回傳的不是物件",
+    "读取 GitHub 账号信息失败：对端未返回账号标识": "讀取 GitHub 帳號資訊失敗：對端未回傳帳號識別碼",
+    "读取 GitHub 所属组织失败：对端返回的不是组织列表": "讀取 GitHub 所屬組織失敗：對端回傳的不是組織清單"
   },
   "message_patterns": [
     {
@@ -1443,6 +1461,22 @@
     {
       "source": "服务能力 {capability} 没有默认调用目标",
       "target": "服務能力 {capability} 沒有預設呼叫目標"
+    },
+    {
+      "source": "{action}失败：GitHub 服务不可达",
+      "target": "{action_i18n}失敗：GitHub 服務無法連線"
+    },
+    {
+      "source": "{action}失败：GitHub 返回状态码 {status}",
+      "target": "{action_i18n}失敗：GitHub 回傳狀態碼 {status}"
+    },
+    {
+      "source": "{action}失败：响应内容不是 JSON（{reason}）",
+      "target": "{action_i18n}失敗：回應內容不是 JSON（{reason}）"
+    },
+    {
+      "source": "兑换 GitHub 访问令牌失败：{reason}",
+      "target": "兌換 GitHub 存取權杖失敗：{reason}"
     },
     {
       "source": "服务能力 {capability} 不是已登记的服务族，无法确定作用的实例",

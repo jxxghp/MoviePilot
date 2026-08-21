@@ -417,7 +417,25 @@
     "内建识别": "Built-in Recognition",
     "内建识别环由宿主固定执行，无法启停": "The built-in recognition stage is run by the host and cannot be switched on or off",
     "内建识别环由宿主固定执行，无法排定顺序": "The built-in recognition stage is run by the host and cannot be reordered",
-    "名称解析环标识不能为空": "A name parsing stage identifier cannot be empty"
+    "名称解析环标识不能为空": "A name parsing stage identifier cannot be empty",
+    "登录入口不存在或未启用": "The sign-in entry does not exist or is not enabled",
+    "登录入口的配置不可用": "The sign-in entry configuration is unavailable",
+    "登录入口的授权回调地址配置有误": "The sign-in entry has a misconfigured authorization callback URL",
+    "授权请求已失效，请重新发起登录": "The authorization request has expired, please start the sign-in again",
+    "该 GitHub 账号不属于允许登录的组织": "This GitHub account does not belong to an allowed organization",
+    "该 GitHub 账号尚未绑定本项目用户，请先登录后在设置页完成绑定": "This GitHub account is not linked to a local user yet, sign in first and complete the link on the settings page",
+    "GitHub 授权未完成": "The GitHub authorization was not completed",
+    "GitHub 未交回授权码": "GitHub did not return an authorization code",
+    "GitHub 登录出错，请稍后重试": "GitHub sign-in failed, please try again later",
+    "GitHub OAuth App 的 Client ID 与 Client Secret 均不可为空": "The GitHub OAuth App Client ID and Client Secret must not be empty",
+    "授权回调地址须是完整的 http 或 https 地址": "The authorization callback URL must be an absolute http or https URL",
+    "兑换 GitHub 访问令牌": "exchange the GitHub access token",
+    "读取 GitHub 账号信息": "read the GitHub account information",
+    "读取 GitHub 所属组织": "read the GitHub organizations",
+    "兑换 GitHub 访问令牌失败：对端返回的不是对象": "Failed to exchange the GitHub access token: the peer did not return an object",
+    "读取 GitHub 账号信息失败：对端返回的不是对象": "Failed to read the GitHub account information: the peer did not return an object",
+    "读取 GitHub 账号信息失败：对端未返回账号标识": "Failed to read the GitHub account information: the peer did not return an account id",
+    "读取 GitHub 所属组织失败：对端返回的不是组织列表": "Failed to read the GitHub organizations: the peer did not return an organization list"
   },
   "message_patterns": [
     {
@@ -1447,6 +1465,22 @@
     {
       "source": "服务能力 {capability} 没有默认调用目标",
       "target": "Service capability {capability} has no default call target"
+    },
+    {
+      "source": "{action}失败：GitHub 服务不可达",
+      "target": "Failed to {action_i18n}: the GitHub service is unreachable"
+    },
+    {
+      "source": "{action}失败：GitHub 返回状态码 {status}",
+      "target": "Failed to {action_i18n}: GitHub returned status code {status}"
+    },
+    {
+      "source": "{action}失败：响应内容不是 JSON（{reason}）",
+      "target": "Failed to {action_i18n}: the response body is not JSON ({reason})"
+    },
+    {
+      "source": "兑换 GitHub 访问令牌失败：{reason}",
+      "target": "Failed to exchange the GitHub access token: {reason}"
     },
     {
       "source": "服务能力 {capability} 不是已登记的服务族，无法确定作用的实例",
