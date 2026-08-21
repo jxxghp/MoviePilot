@@ -28,11 +28,36 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.plugin.extension_scoped import instance_precedence
 from app.runtime.log import logger as default_logger
+
+# 标识种类：筛选规则
+RULE_KIND = "rule"
+
+# 标识种类：筛选规则组
+RULE_GROUP_KIND = "rule_group"
+
+
+@dataclass(frozen=True, slots=True)
+class FilterRuleClaim:
+    """插件对一个规则标识或规则组名的声明及其裁决结果。
+
+    :param kind: 标识种类，取 `RULE_KIND` 或 `RULE_GROUP_KIND`
+    :param identity: 规则标识或规则组名
+    :param plugins: 声明该标识的插件标识，已排序
+    :param owners: 与 `plugins` 一一对应的实例键
+    :param effective: 该标识的插件声明是否生效，被多个插件声明时为 False
+    """
+
+    kind: str
+    identity: str
+    plugins: Tuple[str, ...]
+    owners: Tuple[str, ...]
+    effective: bool
 
 
 class PluginFilterRuleRegistry:
@@ -148,29 +173,47 @@ class PluginFilterRuleRegistry:
         with self._lock:
             return tuple(dict.fromkeys((*self._rules, *self._groups)))
 
+    def claims(self) -> Tuple[FilterRuleClaim, ...]:
+        """列出插件对各标识的声明及其裁决结果。
+
+        冲突失效的标识同样交出：用户只在日志里见过一次告警，端点要能回答「这个标识
+        为什么不生效、涉及哪些插件」。结果按种类与标识排序，与登记先后无关。
+
+        :return: 按 (种类, 标识) 排序的声明元组
+        """
+        with self._lock:
+            snapshots = (
+                (RULE_KIND, dict(self._rules)),
+                (RULE_GROUP_KIND, dict(self._groups)),
+            )
+        claims: List[FilterRuleClaim] = []
+        for kind, table in snapshots:
+            for identity, owners_by_plugin in self._collect_claimants(table).items():
+                plugins = tuple(sorted(owners_by_plugin))
+                claims.append(FilterRuleClaim(
+                    kind=kind,
+                    identity=identity,
+                    plugins=plugins,
+                    owners=tuple(owners_by_plugin[plugin] for plugin in plugins),
+                    effective=len(plugins) == 1,
+                ))
+        return tuple(sorted(claims, key=lambda claim: (claim.kind, claim.identity)))
+
     def diagnose(self) -> List[Dict[str, Any]]:
         """输出只读的登记诊断信息。
 
         :return: 每条登记的标识种类、标识、声明方实例键与是否因跨插件冲突失效
         """
-        with self._lock:
-            snapshots = (
-                ("rule", dict(self._rules)),
-                ("rule_group", dict(self._groups)),
-            )
-        entries: List[Dict[str, Any]] = []
-        for kind, table in snapshots:
-            claimants = self._collect_claimants(table)
-            for identity, owners_by_plugin in claimants.items():
-                conflicted = len(owners_by_plugin) > 1
-                for owner in owners_by_plugin.values():
-                    entries.append({
-                        "kind": kind,
-                        "identity": identity,
-                        "owner": owner,
-                        "effective": not conflicted,
-                    })
-        return entries
+        return [
+            {
+                "kind": claim.kind,
+                "identity": claim.identity,
+                "owner": owner,
+                "effective": claim.effective,
+            }
+            for claim in self.claims()
+            for owner in claim.owners
+        ]
 
     def _resolve(
         self, table: Dict[str, Dict[str, dict]], *, subject: str, hook: str

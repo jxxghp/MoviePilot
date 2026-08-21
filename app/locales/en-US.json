@@ -413,9 +413,21 @@
     "订阅资源匹配完成": "Subscription resource matching completed",
     "订阅元数据更新完成": "Subscription metadata update completed",
     "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
-    "订阅日历预缓存完成": "Subscription calendar precache completed"
+    "订阅日历预缓存完成": "Subscription calendar precache completed",
+    "内建识别": "Built-in Recognition",
+    "内建识别环由宿主固定执行，无法启停": "The built-in recognition stage is run by the host and cannot be switched on or off",
+    "内建识别环由宿主固定执行，无法排定顺序": "The built-in recognition stage is run by the host and cannot be reordered",
+    "名称解析环标识不能为空": "A name parsing stage identifier cannot be empty"
   },
   "message_patterns": [
+    {
+      "source": "名称解析环 {parser} 未登记",
+      "target": "Name parsing stage {parser} is not registered"
+    },
+    {
+      "source": "名称解析环 {parser} 在顺序里出现了多次",
+      "target": "Name parsing stage {parser} appears more than once in the order"
+    },
     {
       "source": "工具 '{tool}' 未找到",
       "target": "Tool '{tool}' was not found"

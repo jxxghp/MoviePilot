@@ -214,3 +214,53 @@ class MetaParserOrderEntry(BaseModel):
     parser: str
     # 是否参与解析，为 False 时该环整体不执行
     enabled: bool = True
+
+
+class MetaParserRing(BaseModel):
+    """名称解析管道中一环的呈现。
+
+    解析环标识是 `实例键#声明标识` 的合成串，单看它认不出是哪个插件的哪个分身
+    贡献的哪一环，因此三段各自拆成独立字段；标识本身保留，供顺序与启停接口按原样
+    回传。
+    """
+
+    # 解析环标识，形如 AIMetaPlugin@alt#llm；内建环为 builtin
+    parser: str
+    # 声明标识，即扩展在自己命名空间内给这一环起的名字
+    parser_id: str
+    # 展示名称
+    name: str
+    # 登记方实例键，形如 AIMetaPlugin@alt；内建环为 None
+    owner: Optional[str] = None
+    # 登记方的扩展标识，即哪个插件；内建环为 None
+    extension_id: Optional[str] = None
+    # 登记方的实例标识，即哪个分身；内建环为 None
+    instance_id: Optional[str] = None
+    # 声明的默认顺序，只在用户未排到该环时决定它排在哪
+    priority: int = 0
+    # 该环是否参与解析
+    enabled: bool = True
+    # 该环在最终生效顺序中的位次，停用的环仍占住位次但不执行
+    order: int = 0
+    # 用户是否显式排过该环，为 False 表示按声明 priority 追加在末尾
+    configured: bool = False
+    # 登记方的发行方式
+    distribution: str = "builtin"
+    # 位次与启停是否由宿主固定，内建环恒为 True
+    pinned: bool = False
+
+
+class MetaParserPipeline(BaseModel):
+    """名称解析管道当前的最终生效顺序。"""
+
+    # 按最终生效顺序排列的解析环
+    rings: List[MetaParserRing] = Field(default_factory=list)
+
+
+class MetaParserToggle(BaseModel):
+    """单独启停一个解析环的请求。"""
+
+    # 解析环标识
+    parser: str
+    # 目标启停状态
+    enabled: bool

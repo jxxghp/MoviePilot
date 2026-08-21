@@ -115,6 +115,20 @@ class MetaParserEntry:
     owner: Optional[str] = None
 
 
+@dataclass(frozen=True, slots=True)
+class MetaParserArbitration:
+    """一条登记在顺序裁决中的位次归属与启停。
+
+    :param entry: 被裁决的登记项
+    :param enabled: 该环是否参与执行，停用的环仍占住自己的位次
+    :param configured: 该环是否出现在用户排定的顺序里，为 False 表示按声明 priority 追加
+    """
+
+    entry: MetaParserEntry
+    enabled: bool
+    configured: bool
+
+
 class MetaParserRegistry:
     """按解析器标识登记解析环，并按用户顺序串成管道。"""
 
@@ -216,34 +230,52 @@ class MetaParserRegistry:
         with self._lock:
             return len(self._entries)
 
-    def resolved_entries(self) -> Tuple[MetaParserEntry, ...]:
+    def arbitrated_entries(self) -> Tuple[MetaParserArbitration, ...]:
         """
-        按用户顺序配置裁决本次执行的解析环及其先后
+        按用户顺序配置裁决全部登记项的先后与启停
 
-        用户配置里排到的解析器按配置顺序执行，标记为停用的整环不执行；配置里没有
-        的解析器按声明的 priority 追加在末尾，priority 相同再按标识排序，因此结果
-        与登记先后无关。
+        用户配置里排到的解析器按配置顺序排列；配置里没有的解析器按声明的 priority
+        追加在末尾，priority 相同再按标识排序，因此结果与登记先后无关。停用的环留在
+        自己的位次上并标记为停用，用户因而看得到它排在哪、也改得回来。
 
-        :return: 按执行顺序排列的登记项元组
+        :return: 按位次排列的裁决结果元组
         """
         entries = {entry.parser: entry for entry in self.entries()}
-        ordered: List[MetaParserEntry] = []
+        ordered: List[MetaParserArbitration] = []
         seen: set[str] = set()
-        for item in self._configured_order():
+        for item in self.configured_order():
             entry = entries.get(item.parser)
             if entry is None or item.parser in seen:
                 continue
             seen.add(item.parser)
-            if item.enabled:
-                ordered.append(entry)
+            ordered.append(MetaParserArbitration(
+                entry=entry, enabled=item.enabled, configured=True
+            ))
         remaining = sorted(
             (entry for parser, entry in entries.items() if parser not in seen),
             key=lambda entry: (entry.priority, entry.parser),
         )
-        return tuple([*ordered, *remaining])
+        return tuple([
+            *ordered,
+            *(
+                MetaParserArbitration(entry=entry, enabled=True, configured=False)
+                for entry in remaining
+            ),
+        ])
+
+    def resolved_entries(self) -> Tuple[MetaParserEntry, ...]:
+        """
+        按用户顺序配置裁决本次执行的解析环及其先后
+
+        与 `arbitrated_entries` 同一份裁决，只滤掉停用的环，两者不会因各算一遍而
+        对不上。
+
+        :return: 按执行顺序排列的登记项元组
+        """
+        return tuple(item.entry for item in self.arbitrated_entries() if item.enabled)
 
     @staticmethod
-    def _configured_order() -> Tuple[MetaParserOrderEntry, ...]:
+    def configured_order() -> Tuple[MetaParserOrderEntry, ...]:
         """
         读取并校验用户排定的解析器顺序
 

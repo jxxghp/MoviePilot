@@ -1,7 +1,9 @@
 import re
-from typing import Any, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.schemas.common import JsonData
 
 
 class CustomRule(BaseModel):
@@ -36,6 +38,55 @@ class FilterRuleGroup(BaseModel):
     media_type: Optional[str] = None
     # 适用媒体类别 None-全部 对应二级分类
     category: Optional[str] = None
+
+
+class FilterRuleLayer(BaseModel):
+    """一条筛选规则或规则组在某一层的来源。
+
+    三层的合并次序是内置 < 插件 < 用户，用户自定义永远赢；插件那一层还要指出是哪个
+    插件的哪个分身，否则用户看到「来自插件」也不知道该去停用谁。
+    """
+
+    # 来源层：builtin 内置、plugin 插件、user 用户自定义
+    layer: str
+    # 插件实例键，形如 DemoPlugin@alt；内置与用户自定义层为 None
+    owner: Optional[str] = None
+    # 插件标识；内置与用户自定义层为 None
+    extension_id: Optional[str] = None
+    # 插件分身标识；内置与用户自定义层为 None
+    instance_id: Optional[str] = None
+
+
+class FilterRuleConflict(BaseModel):
+    """一个标识被多个插件同时声明而使插件声明整体失效的呈现。
+
+    规则是数据不是实现，两个插件各自的同名规则只是两套互不相干的语义争同一个名字，
+    宿主无从裁决谁对，因此双方一并失效。用户据此知道该让哪一方改标识或停用谁。
+    """
+
+    # 声明该标识的插件标识，已排序
+    plugins: List[str] = Field(default_factory=list)
+    # 与 plugins 一一对应的插件实例键
+    owners: List[str] = Field(default_factory=list)
+
+
+class FilterRuleOrigin(BaseModel):
+    """一个筛选规则标识或规则组名在运行期规则集中的来源分层。"""
+
+    # 规则标识或规则组名
+    id: str
+    # 标识种类：rule 筛选规则、rule_group 筛选规则组
+    kind: str
+    # 该标识当前是否出现在运行期规则集中
+    effective: bool = False
+    # 交出当前生效定义的那一层
+    source: Optional[FilterRuleLayer] = None
+    # 被上层压住、当前不生效的下层来源，按内置到插件的次序排列
+    shadowed: List[FilterRuleLayer] = Field(default_factory=list)
+    # 该标识的插件声明因跨插件同名而整体失效时的详情
+    conflict: Optional[FilterRuleConflict] = None
+    # 当前生效的定义内容，不生效时为 None
+    definition: JsonData = None
 
 
 # 一条规则项承载匹配条件的字段名，规则至少要给出其中之一才有筛选意义
