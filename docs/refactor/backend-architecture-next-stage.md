@@ -620,6 +620,15 @@ ModuleMethodSpec(
 
 质量清单只约束新模块和被修改模块；历史模块以 `legacy`/`exempt + reason` 进入，不允许一次性阻断全部功能。
 
+**实施记录（2026-08-21）**：
+
+- `app/runtime/extensions/module/quality.py` 提供十项统一规则、`legacy/assessed` 等级、owner、已验证
+  规则和精确豁免原因；所有存量模块均能生成有 owner/原因的 legacy 视图，不一次性阻断。
+- 本轮修改的 `bangumi` 首个进入 assessed：fake client、零真实网络、sync/async 边界、reload/stop、
+  Contract V2、敏感日志和 owner 已登记；限流/并发继续复用通用 HTTP adapter 并明确豁免范围。
+- 详细规则和验收证据见 `docs/refactor/module-quality-scale.md`；自动测试阻止 profile 使用未登记规则，
+  并要求今后修改模块时将对应 profile 纳入同一提交。
+
 ### 阶段 5：定义后台可靠性，不先引入分布式队列
 
 #### ARCH-250：后台动作可靠性分类 ADR

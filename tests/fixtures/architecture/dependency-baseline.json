@@ -6225,7 +6225,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 772,
+  "module_count": 773,
   "modules": [
     "app",
     "app.adapters",
@@ -6868,6 +6868,7 @@
     "app.runtime.extensions.module",
     "app.runtime.extensions.module.contracts",
     "app.runtime.extensions.module.dispatcher",
+    "app.runtime.extensions.module.quality",
     "app.runtime.extensions.module_manager",
     "app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.access",
