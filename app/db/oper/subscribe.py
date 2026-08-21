@@ -8,9 +8,13 @@
 留在这一层的只有列类型强转与建库时间戳——它们跟着订阅表的列走，换谁来调都一样。
 """
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, Tuple, List, Optional
 
-from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import delete as sqlalchemy_delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.application.subscription.delete import SubscribeDeletionCandidate
 from app.db.base import DbOper
@@ -19,6 +23,18 @@ from app.db.models.subscribehistory import SubscribeHistory
 from app.schemas.types import MediaSource
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
+
+AfterCommitEffect = Callable[[int], None]
+AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class SubscribeStageResult:
+    """Oper 暂存结果，按 Application 端口需要暴露最小只读状态。"""
+
+    subscribe_id: int
+    message: str
+    created: bool
 
 
 def _normalize_integer_flags(payload: dict, fields: Tuple[str, ...] = INTEGER_FLAG_FIELDS) -> dict:
@@ -67,6 +83,25 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
+    @staticmethod
+    def _identity_statement(identity: dict, username: Optional[str] = None):
+        """构造订阅查重语句，SQL 所有权收口在 Oper。"""
+        condition = Subscribe._identity_condition(  # pylint: disable=protected-access
+            identity.get("media_source"),
+            identity.get("media_id"),
+            identity.get("music_type"),
+        )
+        if condition is None or username == "":
+            return None
+        statement = select(Subscribe).where(condition)
+        if username:
+            statement = statement.where(Subscribe.username == username)
+        if identity.get("season") is not None:
+            statement = statement.where(Subscribe.season == identity["season"])
+        return statement.where(
+            Subscribe.episode_group == identity.get("episode_group")
+        )
+
     def _exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
         """
         按身份查重。
@@ -74,8 +109,18 @@ class SubscribeOper(DbOper):
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
         """
+        if isinstance(self._db, Session):
+            statement = self._identity_statement(identity, username)
+            if statement is None:
+                return None
+            return self._db.execute(statement).scalars().first()
+        # 旧 SDK 允许无会话构造 Oper；保留其自动短会话行为，但规范入口不得走这里。
         if username:
-            return Subscribe.exists_by_username(self._db, username=username, **identity)
+            return Subscribe.exists_by_username(
+                self._db,
+                username=username,
+                **identity,
+            )
         return Subscribe.exists(self._db, **identity)
 
     async def _async_exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
@@ -85,12 +130,70 @@ class SubscribeOper(DbOper):
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
         """
+        if isinstance(self._db, AsyncSession):
+            statement = self._identity_statement(identity, username)
+            if statement is None:
+                return None
+            result = await self._db.execute(statement)
+            return result.scalars().first()
+        # 同步路径一样只为无会话旧入口保留 Model 的自动短会话兼容。
         if username:
-            return await Subscribe.async_exists_by_username(self._db, username=username, **identity)
+            return await Subscribe.async_exists_by_username(
+                self._db,
+                username=username,
+                **identity,
+            )
         return await Subscribe.async_exists(self._db, **identity)
 
+    def stage_add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> SubscribeStageResult:
+        """暂存同步新增并 flush 主键，不提交调用方拥有的事务。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("同步订阅新增需要调用方提供 Session")
+        subscribe = self._exists(identity, username)
+        if subscribe:
+            return SubscribeStageResult(
+                subscribe_id=subscribe.id,
+                message="订阅已存在",
+                created=False,
+            )
+        subscribe = Subscribe(**_persistable(payload))
+        self._db.add(subscribe)
+        self._db.flush()
+        if not subscribe.id:
+            return SubscribeStageResult(0, "新增订阅失败", True)
+        return SubscribeStageResult(subscribe.id, "新增订阅成功", True)
+
+    async def async_stage_add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> SubscribeStageResult:
+        """暂存异步新增并 flush 主键，不提交调用方拥有的事务。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("异步订阅新增需要调用方提供 AsyncSession")
+        subscribe = await self._async_exists(identity, username)
+        if subscribe:
+            return SubscribeStageResult(
+                subscribe_id=subscribe.id,
+                message="订阅已存在",
+                created=False,
+            )
+        subscribe = Subscribe(**_persistable(payload))
+        self._db.add(subscribe)
+        await self._db.flush()
+        if not subscribe.id:
+            return SubscribeStageResult(0, "新增订阅失败", True)
+        return SubscribeStageResult(subscribe.id, "新增订阅成功", True)
+
     def add(self, identity: dict, payload: dict,
-            username: Optional[str] = None) -> Tuple[int, str]:
+            username: Optional[str] = None,
+            after_commit: Optional[AfterCommitEffect] = None) -> Tuple[int, str]:
         """
         新增订阅：命中既有订阅则原样返回，否则落库后回读。
 
@@ -99,33 +202,44 @@ class SubscribeOper(DbOper):
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
         :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
+        :param after_commit: 兼容旧调用方的提交后副作用；新入口由 Application Command 调用
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """
         subscribe = self._exists(identity, username)
         if subscribe:
+            if after_commit:
+                after_commit(subscribe.id)
             return subscribe.id, "订阅已存在"
         Subscribe(**_persistable(payload)).create(self._db)
         subscribe = self._exists(identity, username)
         if not subscribe:
             return 0, "新增订阅失败"
+        if after_commit:
+            after_commit(subscribe.id)
         return subscribe.id, "新增订阅成功"
 
     async def async_add(self, identity: dict, payload: dict,
-                        username: Optional[str] = None) -> Tuple[int, str]:
+                        username: Optional[str] = None,
+                        after_commit: Optional[AsyncAfterCommitEffect] = None) -> Tuple[int, str]:
         """
         异步新增订阅，语义与 add 完全一致。
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
         :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
+        :param after_commit: 兼容旧调用方的异步提交后副作用
         :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
         """
         subscribe = await self._async_exists(identity, username)
         if subscribe:
+            if after_commit:
+                await after_commit(subscribe.id)
             return subscribe.id, "订阅已存在"
         await Subscribe(**_persistable(payload)).async_create(self._db)
         subscribe = await self._async_exists(identity, username)
         if not subscribe:
             return 0, "新增订阅失败"
+        if after_commit:
+            await after_commit(subscribe.id)
         return subscribe.id, "新增订阅成功"
 
     def exists(
@@ -143,7 +257,7 @@ class SubscribeOper(DbOper):
             "season": season,
             "episode_group": episode_group,
         }
-        return bool(Subscribe.exists(self._db, **identity_params))
+        return bool(self._exists(identity_params, username=None))
 
     async def async_exists(
             self, media_source: MediaSource, media_id: str,
@@ -151,13 +265,15 @@ class SubscribeOper(DbOper):
             music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
         """异步按媒体身份、季号及可选剧集组读取命中的订阅。"""
-        return await Subscribe.async_exists(
-            self._db,
-            media_source=media_source,
-            media_id=media_id,
-            music_type=music_type,
-            season=season,
-            episode_group=episode_group,
+        return await self._async_exists(
+            {
+                "media_source": media_source,
+                "media_id": media_id,
+                "music_type": music_type,
+                "season": season,
+                "episode_group": episode_group,
+            },
+            username=None,
         )
 
     def get(self, sid: int) -> Optional[Subscribe]:

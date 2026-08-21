@@ -361,8 +361,11 @@ flowchart LR
   归 `app/application/`（见 `application/subscription/write.py`、`application/history.py`）。
   订阅新增、查询、变更、删除、身份和搜索契约已经统一收口在 `application/subscription/`，
   不再保留主题包之外的第二个写入入口。
-- Oper 只 stage mutation，不创建独立 Session、不提交；Application Command 通过请求或任务
-  入口注入的 UnitOfWork 统一 `commit/rollback`，事件、刷新和上报只在 commit 成功后执行。
+- 规范写入口中的 Oper 只 stage mutation，不创建独立 Session、不提交；Application Command
+  通过请求或任务入口注入的 UnitOfWork 统一 `commit/rollback`，事件、刷新和上报只在 commit
+  成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
+  `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
+  只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
   `transaction-debt-baseline.json` 将存量 178 个 Model 事务装饰器冻结为只降不增低水位。
 - 每次表结构变更必须新增 `database/versions/` 下的 Alembic 迁移。
 - 运行期业务配置使用 `SystemConfigKey` 枚举 + `SystemConfigOper`，禁止裸字符串键；

@@ -61,7 +61,13 @@ from app.adapters.external.server import (
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
-from app.db.session import close_database, get_async_db, get_db
+from app.db.session import (
+    SessionFactory,
+    async_session_scope,
+    close_database,
+    get_async_db,
+    get_db,
+)
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.agentchat import AgentChatOper
@@ -90,6 +96,7 @@ from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
 )
+from app.startup.subscription import TransactionalSubscribeWriter
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
@@ -465,7 +472,12 @@ async def init_modules():
         workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
-    configure_subscribe_writer(lambda: SubscribeOper())
+    configure_subscribe_writer(
+        lambda: TransactionalSubscribeWriter(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    )
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。

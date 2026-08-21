@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）与 ARCH-220 已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）与 ARCH-220～221 已完成，后续任务按 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -372,6 +372,20 @@ flowchart TB
 - 不让事件失败回滚已经提交的数据库事务并伪装成“数据库未写入”。
 
 **完成标准**：一个业务动作只有一个事务所有者；任意入口都不会因内部 Model 方法提前 commit 而产生部分写入。
+
+**实施记录（2026-08-21）**：
+
+- `app/startup/subscription.py` 为每次规范新增创建独占同步/异步 Session；
+  `CreateSubscriptionCommand` / `AsyncCreateSubscriptionCommand` 持有 UoW，Oper 只执行
+  查重、`add` 与 `flush`。
+- `SubscribeOper.stage_add()` 的查重 SQL 已收口到 Oper，不再调用 Model 自动会话装饰器；
+  无会话构造 `SubscribeOper()` 的旧 SDK 路径保留原自动短会话和返回值，未扩散为规范入口。
+- Chain 把原有“成功消息 → `SubscribeAdded` 事件 → Server 统计”作为显式 post-commit
+  回调交给 Command；commit/flush 失败回滚，事件或上报失败只传播原异常，不回滚已提交记录。
+- 同步/异步 `SubscribeChain.add` 方法长度从各 203 行降至 183/186 行；新增 9 个事务边界测试，
+  覆盖成功顺序、commit/flush 失败、重复请求、Oper 不提交、事件失败、上报失败与真实落库。
+- Model 装饰器总数仍为 178：本切片绕开了继承自 `Base.create/async_create` 的自动提交，
+  但为保留既有 Model/旧 SDK 查询兼容未机械删除查询装饰器；ratchet 保持不增，后续切片继续下降。
 
 #### ARCH-222：按风险迁移其余写用例
 

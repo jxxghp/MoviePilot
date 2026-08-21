@@ -30,13 +30,19 @@ def configure_plugin_system_services():
     from app.api.data import configure_api_data_ports
     from app.application.configuration import SystemConfigService, configure_system_config
     from app.application.service import configure_service_directory
-    from app.db.session import get_async_db, get_db
+    from app.db.session import (
+        SessionFactory,
+        async_session_scope,
+        get_async_db,
+        get_db,
+    )
     from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
     from app.db.oper.systemconfig import SystemConfigOper
 
     configure_token_codec(create_access_token, decode_access_token)
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     from app.application.chain.data import configure_chain_data_ports
+    from app.application.subscription.write import configure_subscribe_writer
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.application.module import configure_module_runtime
     from app.application.chain.context import (
@@ -73,6 +79,7 @@ def configure_plugin_system_services():
     from app.db.oper.workflow import WorkflowOper
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
+    from app.startup.subscription import TransactionalSubscribeWriter
 
     configure_api_data_ports(
         sync_session=get_db,
@@ -99,6 +106,12 @@ def configure_plugin_system_services():
             "async": SqlAlchemyAsyncUnitOfWork,
             "sync": SqlAlchemyUnitOfWork,
         },
+    )
+    configure_subscribe_writer(
+        lambda: TransactionalSubscribeWriter(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
     )
 
     configure_chain_data_ports(

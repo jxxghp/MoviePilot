@@ -99,6 +99,11 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
 - A synchronous Session is private to one worker thread. An AsyncSession is
   private to one asyncio task/operation; neither may be stored in a process
   singleton or reused by concurrent work.
+- Subscription creation is the reference slice: `app/startup/subscription.py`
+  creates an exclusive Session, `app/application/subscription/write.py` owns the
+  UoW and post-commit callback, and `SubscribeOper.stage_add()` only queries,
+  adds, and flushes. Preserve `SubscribeOper.add()` only for legacy SDK callers;
+  new host code must not use that auto-commit compatibility path.
 
 Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
 persistence changes. A deliberate debt reduction may refresh the low-water mark
@@ -214,4 +219,4 @@ When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cac
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-08-14*
+*Last Updated: 2026-08-21*
