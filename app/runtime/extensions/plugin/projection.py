@@ -17,6 +17,10 @@ from app.runtime.extensions.declaration import (
     declaration_action_identity,
     declaration_action_impl,
     declaration_action_kwargs,
+    declaration_command_data,
+    declaration_command_identity,
+    declaration_command_presentation,
+    declaration_command_show,
     declaration_config_component,
     declaration_config_schema,
     declaration_dashboard_identity,
@@ -41,6 +45,9 @@ from app.runtime.extensions.plugin.agent_tool_capabilities import (
 )
 from app.runtime.extensions.plugin.channel_capabilities import (
     channel_capability_declaration_violation,
+)
+from app.runtime.extensions.plugin.command_capabilities import (
+    command_declaration_violation,
 )
 from app.runtime.extensions.plugin.dashboard_capabilities import dashboard_declaration_violation
 from app.runtime.extensions.plugin.extension_scoped import elect_extension_scoped
@@ -193,6 +200,10 @@ _undeclared_media_source_hints_seen: set[tuple[str, str]] = set()
 # 组合，去重理由同上。
 _schedule_source_overlap_hints_seen: set[tuple[str, str]] = set()
 
+# 已就「同一实例的两条命令来源声明同一命令词」告警过的 (实例键, 命令词) 组合，
+# 去重理由同上。
+_command_source_overlap_warned: set[tuple[str, str]] = set()
+
 
 def _service_instance_identity(declaration: Any) -> Optional[tuple]:
     """取服务实例声明在扩展级裁决中的标识。
@@ -231,6 +242,16 @@ def _agent_tool_identity(declaration: Any) -> Optional[tuple]:
     """
     name = agent_tool_declaration_name(declaration)
     return (name,) if name else None
+
+
+def _command_identity(declaration: Any) -> Optional[tuple]:
+    """取命令声明在扩展级裁决中的标识。
+
+    :param declaration: 已通过契约校验的命令声明
+    :return: (命令词,)；命令词为空时为 None
+    """
+    cmd, _name = declaration_command_identity(declaration)
+    return (cmd,) if cmd else None
 
 
 def _filter_rule_identity(declaration: Any) -> Optional[tuple]:
@@ -505,22 +526,130 @@ class PluginProjection:
             key: items for key, items in declared.items() if matches_extension(key, pid)
         }
 
+    def provided_commands(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的远程命令。
+
+        命令词是扩展级事实：它是用户在聊天窗口里手打的全局标识，进的是按命令词建键的
+        全局命令表，也是外部渠道菜单里的命令名，用户敲它时不带任何实例限定符，宿主无从
+        把同一个词分派给「第二个分身」。因此同插件多实例声明同一命令词只登记一次；各
+        实例声明不同命令词互不影响。
+
+        单条声明不合契约只跳过该条，既不影响同一实例的其余命令，也不影响其它实例；
+        单个实例取声明时抛异常同理只跳过该实例。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 实例键到其命令声明列表的映射，仅含通过契约校验且在同插件多实例裁决中
+            胜出的条目
+        """
+        return self._collect_extension_scoped(
+            pid,
+            hook="provides_commands",
+            violation_of=command_declaration_violation,
+            identity_of=_command_identity,
+            subject="命令",
+            unique_within_instance=True,
+        )
+
+    @staticmethod
+    def declared_command(item: Any) -> Dict[str, Any]:
+        """把单条已通过契约校验的命令声明投影为命令描述字典。
+
+        描述字典的 `cmd`、`desc`、`category`、`data` 与 `get_command()` 返回项同名同义，
+        命令中枢与查询插件能力的调用方按同一份形状消费；`impl` 与 `args_description` 是
+        声明式专有的字段，不带 `event` 表示本条命令由宿主直接调用实现而不转发事件。
+
+        :param item: 已通过契约校验的命令声明
+        :return: 命令描述字典
+        """
+        cmd, name = declaration_command_identity(item)
+        category, args_description = declaration_command_presentation(item)
+        show = declaration_command_show(item)
+        data = declaration_command_data(item)
+        return {
+            "cmd": cmd,
+            "desc": name,
+            "category": category,
+            "args_description": args_description,
+            "show": True if show is None else bool(show),
+            "data": dict(data) if data else {},
+            "impl": declaration_impl(item),
+        }
+
+    def _legacy_commands(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> List[Dict[str, Any]]:
+        """取用插件 `get_command()` 声明的命令，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 命令描述字典列表；未声明该钩子、废弃阶段已默认关闭或返回空值时为空列表
+        """
+        if not extension.supports_hook("get_command"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_command"):
+            return []
+        try:
+            declared = plugin.get_command()
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 命令出错：{str(error)}")
+            return []
+        if not declared:
+            return []
+        deprecation_warn("plugin.get_command", context=extension_id)
+        return [dict(item) for item in declared if isinstance(item, Mapping)]
+
     def commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件命令并补充插件 ID。"""
+        """聚合启用插件的远程命令并标注归属实例键。
+
+        聚合两条来源：`provides_commands()` 声明式登记（经契约校验与同插件多实例裁决）
+        与 `get_command()` 裸列表（已进入废弃期，触达即告警一次）。同一实例两条来源
+        声明同一命令词时声明式生效，与 `provides_modules()` 对 `get_module()` 的口径一致。
+
+        跨插件同命令词的处置不在这里：本方法回答「谁声明了什么」，哪一条最终生效由命令
+        注册表按登记内容裁决。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 命令描述列表，每项的 `pid` 字段为声明来源的实例键
+        """
         commands: list[dict] = []
+        declared_by_instance = self.provided_commands(pid)
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.supports_hook("get_command"):
+            if not extension.is_enabled():
                 continue
-            try:
-                if not extension.is_enabled():
+            declared = [
+                self.declared_command(item)
+                for item in declared_by_instance.get(extension_id, [])
+            ]
+            taken = {item["cmd"] for item in declared}
+            for command in declared:
+                commands.append({**command, "pid": extension_id})
+            for command in self._legacy_commands(extension, extension_id, plugin):
+                word = command.get("cmd")
+                if word in taken:
+                    self._warn_command_source_overlap(extension_id, word)
                     continue
-                for command in plugin.get_command() or []:
-                    command["pid"] = extension_id
-                    commands.append(command)
-            except Exception as error:
-                self._logger.error(f"获取插件命令出错：{str(error)}")
+                commands.append({**command, "pid": extension_id})
         return commands
+
+    def _warn_command_source_overlap(self, extension_id: str, cmd: Any) -> None:
+        """就同一实例两条来源声明同一命令词打一次提示。
+
+        :param extension_id: 插件实例键
+        :param cmd: 被两条来源同时声明的命令词
+        :return: 无返回值
+        """
+        seen = (extension_id, str(cmd))
+        if seen in _command_source_overlap_warned:
+            return
+        _command_source_overlap_warned.add(seen)
+        self._logger.warning(
+            f"插件[{extension_id}]的命令 {cmd} 同时由 provides_commands() 与 "
+            f"get_command() 声明，声明式登记生效，get_command() 的同名条目已忽略"
+        )
 
     def apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合插件 API 并补充宿主路径、默认认证方式，并把路由处理函数绑定到声明它的实例。
@@ -1834,6 +1963,7 @@ class PluginProjection:
         violation_of: Callable[[Any], Optional[str]],
         identity_of: Callable[[Any], Optional[tuple]],
         subject: str,
+        unique_within_instance: bool = False,
     ) -> Dict[str, List[Any]]:
         """收集一族扩展级声明：取用、契约校验、同插件多实例裁决。
 
@@ -1842,6 +1972,8 @@ class PluginProjection:
         :param violation_of: 单条声明的契约校验函数，合规时返回 None
         :param identity_of: 从单条声明推导扩展级标识的函数，推导不出时返回 None
         :param subject: 标识在日志文案里的称呼
+        :param unique_within_instance: 为真时同一实例内重复声明同一标识只保留第一条，
+            其余跳过并报错；标识在实例内本就是键的族须开启，否则后一条会静默盖掉前一条
         :return: 实例键到其声明列表的映射，仅含通过契约校验且在裁决中胜出的条目
         """
         result: Dict[str, List[Any]] = {}
@@ -1857,6 +1989,7 @@ class PluginProjection:
                 )
                 continue
             accepted: List[Any] = []
+            claimed: set = set()
             for item in declared:
                 violation = violation_of(item)
                 if violation:
@@ -1865,6 +1998,16 @@ class PluginProjection:
                         f"已跳过：{violation}"
                     )
                     continue
+                identity = identity_of(item) if unique_within_instance else None
+                if identity is not None and identity in claimed:
+                    self._logger.error(
+                        f"插件[{extension_id}]在同一实例内重复声明了{subject} "
+                        f"{'/'.join(str(part) for part in identity)}，"
+                        f"该标识在实例内唯一，后一条声明已跳过"
+                    )
+                    continue
+                if identity is not None:
+                    claimed.add(identity)
                 accepted.append(item)
             result[extension_id] = accepted
         return self._narrow_to_query(

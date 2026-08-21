@@ -19,6 +19,7 @@ from app.runtime.events import EventManager
 from app.runtime.extensions.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
+    CommandDeclaration,
     DashboardDeclaration,
     FilterRuleDeclaration,
     FilterRuleGroupDeclaration,
@@ -285,6 +286,45 @@ class _PluginBase(metaclass=ABCMeta):
             "category": "分类，需要注册到Wechat时必须有分类",
             "data": {}
         }]
+
+        本钩子只报描述字典，命令词不经文法校验：不合文法的命令词在登记时看不出问题，
+        要到用户敲这条命令、或渠道菜单整批注册失败时才暴露。替代它的
+        ``provides_commands()`` 在登记时即校验命令词并把实现收进声明。
+        """
+        pass
+
+    def provides_commands(self) -> Optional[List[CommandDeclaration]]:
+        """
+        声明本插件提供的远程命令
+
+        返回示例：
+        [CommandDeclaration(
+            cmd="/acme_sync",                    # 命令词，须以 / 开头，其后为 1 到 32 个
+                                                  # 小写字母、数字或下划线；含大写字母、
+                                                  # 连字符或空格的命令词会被拒绝登记
+            name="同步 Acme 网盘",                # 展示名称，同时是渠道菜单上的按钮文案
+            category="管理",                      # 命令分类；企业微信菜单只收录带分类的命令
+            args_description="可选，指定目录路径",  # 参数描述，供智能助手与帮助文案说明用法
+            data={"scope": "all"},               # 附加静态数据，调用时与上下文合并
+            show=True,                           # 是否在渠道菜单与命令列表中展示
+            impl=self.remote_sync,               # 命令实现
+        )]
+
+        宿主以 ``impl(data=...)`` 调用实现，``data`` 由声明的 ``data`` 与本次调用的
+        ``channel``、``source``、``user``、``arg_str`` 合并而成；不接受参数的实现按无参调用。
+        本钩子不提供「发一个事件」这条路径：命令要有归属、要能在登记时判定实现可调用，
+        而广播事件再指望某处有监听者，宿主既校验不了也记不了账。
+
+        命令词是扩展级标识——用户在聊天窗口里手打的就是它，命令表按它建键，渠道菜单里
+        也是它，敲它时不带任何实例限定符。因此同一插件的多个实例声明同一命令词只登记
+        一次（默认实例优先），各实例声明不同命令词互不影响。同一命令词被**不同插件**
+        声明时双方一并失效并告警：两个插件的同名命令做的并不是同一件事，宿主无从裁决
+        该把它交给谁，按加载顺序取其一会让同一个词的行为随插件加载顺序变化。
+
+        同一实例内命令词唯一，重复声明的后一条会被拒绝；与 ``get_command()`` 同时声明
+        同一命令词时本钩子生效。
+
+        :return: `CommandDeclaration` 列表；插件不提供远程命令时无需实现
         """
         pass
 

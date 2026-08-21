@@ -287,6 +287,36 @@ class ScheduleDeclaration(ExtensionDeclaration):
 
 
 @dataclass(frozen=True, slots=True)
+class CommandDeclaration(ExtensionDeclaration):
+    """
+    远程命令声明
+
+    ``impl`` 是命令的实现函数，宿主以 ``impl(data=...)`` 调用它，``data`` 由本声明的
+    ``data`` 字段与本次调用的渠道、来源、用户与参数串合并而成；不接受参数的实现按无参
+    调用。声明不提供事件类型这条路径——命令要有归属、要能在登记时判定「实现可调用」，
+    而广播一个事件再指望某处有监听者，宿主无从校验也无从记账。
+
+    ``cmd`` 是用户在聊天窗口里手打的那个词，它同时是宿主命令表的键与外部渠道菜单的
+    命令名，必须合命令词文法，否则登记时看不出问题，要到用户敲这条命令、或渠道菜单
+    整批注册失败时才炸。
+
+    :param cmd: 命令词，以 ``/`` 开头，须合命令词文法
+    :param name: 命令展示名称，同时用作渠道菜单上的按钮文案
+    :param category: 命令分类，为空表示不分类；企业微信菜单只收录带分类的命令
+    :param args_description: 参数描述，供智能助手与帮助文案说明该命令接受什么参数
+    :param data: 调用实现时附加传递的静态数据，与本次调用的上下文合并后交给实现
+    :param show: 是否在渠道菜单与命令列表中展示
+    """
+
+    cmd: str = ""
+    name: str = ""
+    category: Optional[str] = None
+    args_description: Optional[str] = None
+    data: Mapping[str, Any] = MappingProxyType({})
+    show: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class FilterRuleDeclaration(ExtensionDeclaration):
     """
     筛选规则声明
@@ -686,6 +716,56 @@ def declaration_service_instance_constructor(
         _declared_field(declaration, "impl"),
         _declared_field(declaration, "factory"),
     )
+
+
+def declaration_command_identity(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取命令声明自报的命令词与展示名称
+
+    :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
+    :return: (命令词, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "cmd"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_command_presentation(
+    declaration: Any,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取命令声明的分类与参数描述原始值
+
+    :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
+    :return: (分类, 参数描述) 二元组；对应字段缺失时该位为 None
+    """
+    return (
+        _declared_field(declaration, "category"),
+        _declared_field(declaration, "args_description"),
+    )
+
+
+def declaration_command_data(declaration: Any) -> Any:
+    """
+    读取命令声明附加传递的静态数据原始值
+
+    :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
+    :return: data 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "data")
+
+
+def declaration_command_show(declaration: Any) -> Any:
+    """
+    读取命令声明的菜单展示开关原始值
+
+    :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
+    :return: show 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "show")
 
 
 def declaration_filter_rule_identity(

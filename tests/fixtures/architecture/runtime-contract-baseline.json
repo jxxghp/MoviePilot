@@ -1593,19 +1593,23 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2274
+        "line": 2282
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2315
+        "line": 2323
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2388
+        "line": 2396
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2432
+        "line": 2440
+      },
+      {
+        "caller": "app.runtime.extensions.plugin_manager",
+        "line": 2476
       },
       {
         "caller": "app.runtime.extensions.service_family_registry",
@@ -1715,7 +1719,7 @@
       },
       {
         "caller": "app.command",
-        "line": 483
+        "line": 504
       },
       {
         "caller": "app.modules._base.mediaserver",
@@ -1758,7 +1762,7 @@
         "producers": [
           {
             "caller": "app.command",
-            "line": 300
+            "line": 301
           },
           {
             "caller": "app.modules._base.notification",
@@ -1977,7 +1981,7 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 485
+            "line": 506
           }
         ],
         "producers": [
@@ -1987,7 +1991,7 @@
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 444
+            "line": 445
           }
         ]
       },
@@ -2061,7 +2065,7 @@
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 688
+            "line": 689
           }
         ]
       },
@@ -2087,7 +2091,7 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 519
+            "line": 540
           }
         ],
         "producers": []
@@ -2115,7 +2119,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1551
+            "line": 1559
           }
         ]
       },
@@ -2302,7 +2306,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.message",
-            "line": 506
+            "line": 507
           }
         ]
       },
