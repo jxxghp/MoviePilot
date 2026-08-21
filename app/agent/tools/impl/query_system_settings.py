@@ -16,7 +16,10 @@ from app.agent.tools.impl._system_setting_utils import (
     should_redact_setting,
 )
 from app.runtime.config import settings
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import (
+    SystemConfigReader,
+    get_configured_system_config as SystemConfigOper,
+)
 from app.runtime.log import logger
 
 
@@ -84,6 +87,23 @@ class QuerySystemSettingsTool(MoviePilotTool):
     require_admin: bool = True
     args_schema: Type[BaseModel] = QuerySystemSettingsInput
     _secret_read_confirmed: bool = PrivateAttr(default=False)
+    _system_config: Optional[SystemConfigReader] = PrivateAttr(default=None)
+
+    def __init__(
+        self,
+        session_id: str,
+        user_id: str,
+        *,
+        system_config: Optional[SystemConfigReader] = None,
+        **kwargs,
+    ) -> None:
+        """注入授权范围内的配置读取端口，并兼容组合根默认服务。"""
+        super().__init__(session_id=session_id, user_id=user_id, **kwargs)
+        self._system_config = system_config
+
+    def _get_system_config(self) -> SystemConfigReader:
+        """返回显式注入端口，旧构造形态则延迟读取组合根服务。"""
+        return self._system_config or SystemConfigOper()
 
     async def _run_confirmed(self, **kwargs) -> str:
         """仅供宿主在消费有效确认后执行一次未脱敏读取。"""
@@ -105,12 +125,11 @@ class QuerySystemSettingsTool(MoviePilotTool):
             return f"筛选系统设置: {group} / {keyword}"
         return f"查询系统设置分组: {group}"
 
-    @staticmethod
-    def _load_setting_value(spec: SettingSpec):
+    def _load_setting_value(self, spec: SettingSpec):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
             return getattr(settings, spec.key)
-        return SystemConfigOper().get(spec.systemconfig_key)
+        return self._get_system_config().get(spec.systemconfig_key)
 
     @staticmethod
     def _summarize_value(value, *, redacted: bool = False) -> dict:

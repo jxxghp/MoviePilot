@@ -20,6 +20,7 @@ BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 DEPENDENCY_BASELINE_PATH = BASELINE_ROOT / "dependency-baseline.json"
 RUNTIME_BASELINE_PATH = BASELINE_ROOT / "runtime-contract-baseline.json"
 TRANSACTION_BASELINE_PATH = BASELINE_ROOT / "transaction-debt-baseline.json"
+CONFIGURATION_BASELINE_PATH = BASELINE_ROOT / "configuration-debt-baseline.json"
 PLUGIN_BASELINE_PATH = BASELINE_ROOT / "official-plugin-baseline.json"
 PLUGIN_HOOKS = (
     "get_actions",
@@ -58,6 +59,12 @@ SESSION_FACTORY_NAMES = {
     "get_session_factory",
 }
 
+CONFIGURATION_EXCLUDED_ROOTS = (
+    APP_ROOT / "plugins",
+    APP_ROOT / "sdk",
+    APP_ROOT / "runtime" / "compat",
+)
+
 
 def discover_modules() -> dict[str, Path]:
     """返回宿主 Python 模块与源码路径，排除运行时插件副本。"""
@@ -76,6 +83,58 @@ def discover_modules() -> dict[str, Path]:
 def parse_source(path: Path) -> ast.Module:
     """以仓库统一编码解析 Python 源码。"""
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+
+
+def collect_configuration_debt_baseline() -> dict[str, Any]:
+    """收集宿主 canonical 代码直接读取 settings 和构造数据库配置适配器的债务。"""
+    settings_files: list[str] = []
+    oper_calls: list[dict[str, Any]] = []
+    for path in sorted(APP_ROOT.rglob("*.py")):
+        if any(path.is_relative_to(root) for root in CONFIGURATION_EXCLUDED_ROOTS):
+            continue
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        tree = parse_source(path)
+        direct_oper_names: set[str] = set()
+        imports_settings = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module == "app.runtime.config" and any(
+                alias.name == "settings" for alias in node.names
+            ):
+                imports_settings = True
+            if node.module == "app.db.oper.systemconfig":
+                direct_oper_names.update(
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "SystemConfigOper"
+                )
+        if imports_settings:
+            settings_files.append(relative)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id in direct_oper_names:
+                oper_calls.append({"file": relative, "name": node.func.id})
+    return {
+        "schema_version": 1,
+        "scope": {
+            "root": "app",
+            "excluded": [
+                "app/plugins",
+                "app/sdk",
+                "app/runtime/compat",
+            ],
+        },
+        "settings_imports": {
+            "count": len(settings_files),
+            "files": settings_files,
+        },
+        "system_config_oper_constructions": {
+            "count": len(oper_calls),
+            "calls": oper_calls,
+        },
+    }
 
 
 def iter_import_candidates(
@@ -1052,6 +1111,37 @@ def transaction_ratchet_matches(
     )
 
 
+def configuration_ratchet_matches(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    """配置债务只允许删除既有文件或构造点，不允许新增直接依赖。"""
+    if expected.get("schema_version") != actual.get("schema_version"):
+        return False
+    if expected.get("scope") != actual.get("scope"):
+        return False
+    sections = (
+        ("settings_imports", "files"),
+        ("system_config_oper_constructions", "calls"),
+    )
+    for section, entries_key in sections:
+        expected_section = expected.get(section, {})
+        actual_section = actual.get(section, {})
+        if actual_section.get("count", 0) > expected_section.get("count", 0):
+            return False
+        expected_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in expected_section.get(entries_key, [])
+        }
+        actual_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in actual_section.get(entries_key, [])
+        }
+        if not actual_entries.issubset(expected_entries):
+            return False
+    return True
+
+
 def _compare_semantic_values(
     expected: Any,
     actual: Any,
@@ -1112,6 +1202,8 @@ def build_comparison_report(path: Path, actual: dict[str, Any]) -> dict[str, Any
     semantic_match = expected_semantic == actual_semantic
     if path.name == TRANSACTION_BASELINE_PATH.name:
         semantic_match = transaction_ratchet_matches(expected, actual)
+    elif path.name == CONFIGURATION_BASELINE_PATH.name:
+        semantic_match = configuration_ratchet_matches(expected, actual)
     return {
         "baseline": str(_display_path(path)),
         "semantic_match": semantic_match,
@@ -1141,6 +1233,21 @@ def check_json(
         print(
             f"事务债务出现新增：{_display_path(path)}；"
             "Model 自动事务、直接 commit/rollback 或 Oper 自建 Session 不得增长",
+            file=sys.stderr,
+        )
+        return False
+    if path.name == CONFIGURATION_BASELINE_PATH.name:
+        if configuration_ratchet_matches(expected, actual):
+            if expected != actual:
+                print(
+                    "配置债务已下降；门禁继续通过，可在本任务提交中显式运行 "
+                    "scripts/architecture/baseline.py --write-host 固化新低水位",
+                    file=sys.stderr,
+                )
+            return True
+        print(
+            f"配置债务出现新增：{_display_path(path)}；"
+            "宿主直接 settings 导入或 SystemConfigOper 构造不得增长",
             file=sys.stderr,
         )
         return False
@@ -1225,6 +1332,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
             (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
             (TRANSACTION_BASELINE_PATH, collect_transaction_debt_baseline()),
+            (CONFIGURATION_BASELINE_PATH, collect_configuration_debt_baseline()),
         ]
         write_hint = "--write-host"
     else:

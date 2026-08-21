@@ -35,7 +35,12 @@ from app.application.messaging.message import (
     MessageQueueManager,
     stop_message,
 )
-from app.application.configuration import SystemConfigService, configure_system_config
+from app.application.configuration import (
+    SystemConfigService,
+    TransferRetryConfig,
+    configure_system_config,
+    configure_transfer_retry_config,
+)
 from app.application.database import configure_database_governance
 from app.application.service import configure_service_directory
 from app.application.plugin.runtime import configure_plugin_runtime
@@ -449,6 +454,11 @@ async def init_modules() -> HostRuntime:
         user=lambda: UserOper(),
     )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_transfer_retry_config(
+        lambda: TransferRetryConfig(
+            max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
+        )
+    )
     configure_database_governance(build_database_governance())
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
     configure_user_lookups(

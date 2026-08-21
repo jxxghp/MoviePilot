@@ -67,6 +67,28 @@ def _transaction_sample(methods: list[dict[str, str]]) -> dict:
     }
 
 
+def _configuration_sample(
+    settings_files: list[str],
+    oper_calls: list[dict[str, str]],
+) -> dict:
+    """构造最小配置债务 fixture，供单向 ratchet 行为测试。"""
+    return {
+        "schema_version": 1,
+        "scope": {
+            "root": "app",
+            "excluded": ["app/plugins", "app/sdk", "app/runtime/compat"],
+        },
+        "settings_imports": {
+            "count": len(settings_files),
+            "files": settings_files,
+        },
+        "system_config_oper_constructions": {
+            "count": len(oper_calls),
+            "calls": oper_calls,
+        },
+    }
+
+
 def test_architecture_legacy_action_requires_scope(capsys):
     """旧操作未明确宿主或插件范围时必须拒绝执行。"""
     with pytest.raises(SystemExit) as error:
@@ -256,6 +278,29 @@ def test_transaction_ratchet_allows_removal_but_rejects_new_method() -> None:
     assert not architecture_baseline.transaction_ratchet_matches(
         expected,
         _transaction_sample([second]),
+    )
+
+
+def test_configuration_ratchet_allows_removal_but_rejects_new_access() -> None:
+    """配置债务低水位允许下降，但新增或换位置的直接访问必须失败。"""
+    existing_call = {"file": "app/startup/demo.py", "name": "SystemConfigOper"}
+    new_call = {"file": "app/application/demo.py", "name": "SystemConfigOper"}
+    expected = _configuration_sample(["app/application/old.py"], [existing_call])
+
+    assert architecture_baseline.configuration_ratchet_matches(
+        expected,
+        _configuration_sample([], []),
+    )
+    assert not architecture_baseline.configuration_ratchet_matches(
+        expected,
+        _configuration_sample(
+            ["app/application/old.py", "app/application/new.py"],
+            [existing_call],
+        ),
+    )
+    assert not architecture_baseline.configuration_ratchet_matches(
+        expected,
+        _configuration_sample(["app/application/old.py"], [new_call]),
     )
 
 

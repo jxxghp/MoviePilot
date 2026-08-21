@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与 ARCH-230～231 已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与阶段 3（ARCH-230～232）已完成，后续任务按 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -501,6 +501,21 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 4. 长生命周期 Module 在初始化/配置变更时接收配置快照，不在每个方法中全局读取。
 5. Agent tool 通过注入的设置服务读取可授权字段，不直接构造 Oper。
 6. 保留 `app.sdk.config.settings` 给旧插件；宿主 canonical 新代码不得因此继续扩大直接依赖。
+
+**实施记录（2026-08-21）**：
+
+- 新增 `configuration-debt-baseline.json` 与单向 ratchet。基线排除 `app/plugins`、`app/sdk` 和
+  `app/runtime/compat`，当前 canonical 宿主为 169 个直接导入 `settings` 的文件、15 个真实
+  `app.db.oper.systemconfig.SystemConfigOper` 构造点；删除旧债务继续通过，新增或换位置均失败。
+- `SystemConfigReader` / `SystemConfigWriter` 已成为持久用户配置的窄端口；`SystemConfigService`
+  支持分别注入 reader/writer，同时保留 `repository=` 兼容装配。Agent 系统设置查询与修改工具支持
+  显式注入授权配置端口，旧工具构造签名与密钥确认/脱敏行为不变。
+- 整理失败重试从 Application 直接读取全局 `settings` 改为 `TransferRetryConfig` frozen snapshot；
+  启动组合根和测试组合根负责生成每次用例快照，reload 后新调用读取新 generation，旧调用不漂移。
+- Bangumi 模块作为长生命周期样板，在 `init_module()` / `on_config_changed()` 时更新不可变网络快照，
+  `test()` 不再逐次读取全局代理。该模式先验证后推广，不批量改写 169 个存量调用方。
+- 219 个架构、配置、Agent 安全、整理重试、Module reload 专项测试通过，Pylint 10/10；依赖基线
+  仅把 `app.application.history -> app.runtime.config` 替换为窄配置端口边，禁止边不变。
 
 ### 阶段 4：把动态模块和事件变成可演进契约
 

@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6203,
-  "edge_sha256": "75ac7a20854abb707ea6c851326a183873a64e93f67053ffcd79ca5b01a105f6",
+  "edge_count": 6204,
+  "edge_sha256": "9a988284502bb26fae5266321765fbf0e10b9fe608fd448c6868e67a824ea862",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2464,6 +2464,8 @@
     "app.application.formatting -> app.schemas",
     "app.application.formatting -> app.schemas.transfer",
     "app.application.formatting -> app.schemas.workflow",
+    "app.application.history -> app.application",
+    "app.application.history -> app.application.configuration",
     "app.application.history -> app.domain",
     "app.application.history -> app.domain.context",
     "app.application.history -> app.domain.meta",
@@ -2473,7 +2475,6 @@
     "app.application.history -> app.foundation.text",
     "app.application.history -> app.runtime",
     "app.application.history -> app.runtime.cache",
-    "app.application.history -> app.runtime.config",
     "app.application.history -> app.runtime.log",
     "app.application.history -> app.schemas",
     "app.application.history -> app.schemas.history",

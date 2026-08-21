@@ -1,6 +1,8 @@
 import asyncio
+from unittest.mock import MagicMock, patch
 
 from app.modules.bangumi import BangumiModule
+from app.runtime.config import settings
 
 
 class _FakeBangumiApi:
@@ -68,3 +70,22 @@ def test_async_bangumi_person_detail_normalizes_numeric_birthday():
     person = asyncio.run(module.async_bangumi_person_detail(1002))
 
     assert person.birthday == "19"
+
+
+def test_bangumi_test_uses_generation_snapshot_until_reload(monkeypatch):
+    """长生命周期模块应在 init/reload 时换快照，而不是每次调用读取全局配置。"""
+    module = BangumiModule()
+    monkeypatch.setattr(settings, "PROXY_HOST", "http://old-proxy")
+    module.init_module()
+    old_proxy = settings.PROXY
+    monkeypatch.setattr(settings, "PROXY_HOST", "http://new-proxy")
+    new_proxy = settings.PROXY
+
+    with patch("app.modules.bangumi.RequestUtils") as request_utils:
+        request_utils.return_value.get_res.return_value = MagicMock(status_code=200)
+        module.test()
+        assert request_utils.call_args.kwargs["proxies"] == old_proxy
+
+        module.on_config_changed()
+        module.test()
+        assert request_utils.call_args.kwargs["proxies"] == new_proxy

@@ -4,7 +4,7 @@ import copy
 import json
 from typing import Any, Literal, Optional, Type, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
@@ -18,7 +18,10 @@ from app.agent.tools.impl._system_setting_utils import (
 )
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import (
+    SystemConfigService,
+    get_configured_system_config as SystemConfigOper,
+)
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
@@ -74,6 +77,8 @@ class UpdateSystemSettingsInput(BaseModel):
 
 
 class UpdateSystemSettingsTool(MoviePilotTool):
+    """通过授权配置服务修改可登记系统设置。"""
+
     name: str = "update_system_settings"
     tags: list[str] = [
         ToolTag.Write,
@@ -87,6 +92,23 @@ class UpdateSystemSettingsTool(MoviePilotTool):
     )
     require_admin: bool = True
     args_schema: Type[BaseModel] = UpdateSystemSettingsInput
+    _system_config: Optional[SystemConfigService] = PrivateAttr(default=None)
+
+    def __init__(
+        self,
+        session_id: str,
+        user_id: str,
+        *,
+        system_config: Optional[SystemConfigService] = None,
+        **kwargs,
+    ) -> None:
+        """注入配置读写服务，并兼容组合根默认装配。"""
+        super().__init__(session_id=session_id, user_id=user_id, **kwargs)
+        self._system_config = system_config
+
+    def _get_system_config(self) -> SystemConfigService:
+        """返回显式注入服务，旧构造形态则延迟读取组合根服务。"""
+        return self._system_config or SystemConfigOper()
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据更新参数生成友好的提示消息。"""
@@ -101,12 +123,11 @@ class UpdateSystemSettingsTool(MoviePilotTool):
         }
         return f"{action_map.get(operation, '更新系统设置')}: {setting_key}"
 
-    @staticmethod
-    def _load_setting_value(spec: SettingSpec):
+    def _load_setting_value(self, spec: SettingSpec):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
             return getattr(settings, spec.key)
-        return SystemConfigOper().get(spec.systemconfig_key)
+        return self._get_system_config().get(spec.systemconfig_key)
 
     @staticmethod
     def _normalize_systemconfig_value(value: Any):
@@ -266,7 +287,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
             else:
                 normalized_value = self._normalize_systemconfig_value(next_value)
                 event_value = normalized_value
-                success = await SystemConfigOper().async_set(
+                success = await self._get_system_config().async_set(
                     spec.systemconfig_key,
                     normalized_value,
                 )

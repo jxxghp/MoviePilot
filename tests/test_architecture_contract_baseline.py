@@ -17,6 +17,7 @@ def test_architecture_contract_baselines_match_current_source():
         BASELINE_ROOT / "dependency-baseline.json",
         BASELINE_ROOT / "runtime-contract-baseline.json",
         BASELINE_ROOT / "transaction-debt-baseline.json",
+        BASELINE_ROOT / "configuration-debt-baseline.json",
     )
     contents_before = {
         path: path.read_bytes()
@@ -130,6 +131,25 @@ def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
     assert baseline["model_session_factories"] == {"count": 0, "calls": []}
     assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}
     assert baseline["oper_session_factories"] == {"count": 0, "calls": []}
+
+
+def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
+    """配置债务基线必须排除插件兼容面，并冻结两个可下降的直接访问集合。"""
+    baseline_path = BASELINE_ROOT / "configuration-debt-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["scope"]["excluded"] == [
+        "app/plugins",
+        "app/sdk",
+        "app/runtime/compat",
+    ]
+    assert baseline["settings_imports"]["count"] == len(
+        baseline["settings_imports"]["files"]
+    )
+    assert baseline["system_config_oper_constructions"]["count"] == len(
+        baseline["system_config_oper_constructions"]["calls"]
+    )
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():
