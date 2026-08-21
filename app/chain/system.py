@@ -79,6 +79,12 @@ class SystemChain(ChainBase):
 
             # 确保备份目录存在
             backup_dir.mkdir(parents=True, exist_ok=True)
+            pending_file = backup_dir / SystemChain._plugin_restore_pending_file
+            pending_items = (
+                SystemChain.__read_plugin_restore_pending(pending_file)
+                if pending_file.exists()
+                else None
+            )
             # 需要排除的文件和目录
             exclude_items = {"__init__.py", "__pycache__", ".DS_Store"}
 
@@ -87,6 +93,12 @@ class SystemChain(ChainBase):
             # 遍历插件目录，备份除排除项外的所有内容
             for item in plugins_dir.iterdir():
                 if item.name in exclude_items:
+                    continue
+                # 失败项目的原快照是下一次恢复的唯一材料，关停备份不能覆盖它。
+                if pending_file.exists() and (
+                    pending_items is None or item.name in pending_items
+                ):
+                    logger.debug(f"插件 {item.name} 有待重试恢复标记，保留原快照")
                     continue
                 target_path = backup_dir / item.name
 
@@ -232,6 +244,7 @@ class SystemChain(ChainBase):
         suffix = uuid.uuid4().hex
         staging = target.with_name(f".{target.name}.tmp-{suffix}")
         previous = target.with_name(f".{target.name}.old-{suffix}")
+        previous_available = False
         published = False
         try:
             if source.is_dir():
@@ -248,21 +261,20 @@ class SystemChain(ChainBase):
                     # 先复制旧目标保留恢复材料，再删除旧目录继续发布快照。
                     if target.is_dir():
                         shutil.copytree(target, previous, symlinks=True)
-                        shutil.rmtree(target)
                     else:
                         shutil.copy2(target, previous, follow_symlinks=False)
-                        target.unlink()
+                    previous_available = True
+                    SystemChain.__remove_snapshot_path(target)
+                else:
+                    previous_available = True
             staging.replace(target)
             published = True
         except Exception:
-            if previous.exists() and not published:
+            if previous_available and not published:
                 try:
-                    if target.exists():
-                        if target.is_dir():
-                            shutil.rmtree(target)
-                        else:
-                            target.unlink()
+                    SystemChain.__remove_snapshot_path(target)
                     previous.replace(target)
+                    previous_available = False
                 except Exception as rollback_error:
                     logger.error(
                         f"恢复旧快照失败，已保留恢复材料 {previous}: "
@@ -279,6 +291,14 @@ class SystemChain(ChainBase):
                     shutil.rmtree(previous, ignore_errors=True)
                 else:
                     previous.unlink(missing_ok=True)
+
+    @staticmethod
+    def __remove_snapshot_path(path: Path) -> None:
+        """删除待替换目标，保留失败回滚所需的旧快照副本。"""
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
 
     def __get_version_message(self) -> str:
         """

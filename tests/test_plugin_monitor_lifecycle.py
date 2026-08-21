@@ -348,6 +348,30 @@ def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp
     reload_plugin.assert_not_called()
 
 
+def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:
+    """同一插件的重叠写入必须等最后一个事务退出后才解除监控抑制。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.settings",
+        SimpleNamespace(
+            DEV=False,
+            PLUGIN_AUTO_RELOAD=False,
+            ROOT_PATH=MagicMock(),
+        ),
+    )
+    manager = PluginManager()
+
+    with manager.suppress_plugin_monitor("DemoPlugin"):
+        assert manager.is_plugin_monitor_suppressed("demoplugin") is True
+        with manager.suppress_plugin_monitor("demoplugin"):
+            assert manager.is_plugin_monitor_suppressed("DemoPlugin") is True
+        assert manager.is_plugin_monitor_suppressed("DemoPlugin") is True
+
+    assert manager.is_plugin_monitor_suppressed("DemoPlugin") is False
+    _reset_plugin_manager()
+
+
 def test_config_change_reloads_monitor(monkeypatch) -> None:
     """配置热更新继续使用重建语义，不复用首次启动入口。"""
     _reset_plugin_manager()

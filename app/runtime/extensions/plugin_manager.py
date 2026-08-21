@@ -164,7 +164,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 本地插件同步写入运行目录后的短时忽略窗口
         self._recent_local_sync: Dict[str, float] = {}
         self._monitor_suppression_lock = threading.Lock()
-        self._suppressed_monitor_plugins: set[str] = set()
+        self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._plugin_paths = PluginPathResolver(
             runtime_root=settings.ROOT_PATH / "app" / "plugins",
             running=lambda: self._running_plugins,
@@ -479,17 +479,23 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
         normalized_id = plugin_id.lower()
         with self._monitor_suppression_lock:
-            self._suppressed_monitor_plugins.add(normalized_id)
+            self._suppressed_monitor_plugins[normalized_id] = (
+                self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+            )
         try:
             yield
         finally:
             with self._monitor_suppression_lock:
-                self._suppressed_monitor_plugins.discard(normalized_id)
+                count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+                if count <= 1:
+                    self._suppressed_monitor_plugins.pop(normalized_id, None)
+                else:
+                    self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
         """判断指定插件是否处于安装或替换写入阶段。"""
         with self._monitor_suppression_lock:
-            return plugin_id.lower() in self._suppressed_monitor_plugins
+            return self._suppressed_monitor_plugins.get(plugin_id.lower(), 0) > 0
 
     def remove_plugin(self, plugin_id: str):
         """

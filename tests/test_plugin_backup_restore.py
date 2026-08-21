@@ -287,6 +287,23 @@ def test_backup_keeps_restore_retry_marker(monkeypatch, tmp_path):
     assert pending.exists()
 
 
+def test_backup_does_not_overwrite_failed_restore_snapshot(monkeypatch, tmp_path):
+    """待重试项目的原快照必须跨关停保留，避免恢复材料被当前目录覆盖。"""
+    runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
+    backup_dir = tmp_path / "config" / "plugins_backup"
+    pending = backup_dir / SystemChain._plugin_restore_pending_file
+    pending.parent.mkdir(parents=True)
+    pending.write_text(
+        '{"failed_items": {"demo": false}}', encoding="utf-8"
+    )
+    _write_plugin(runtime_dir, "demo", "plugin.py", "reinstalled")
+    _write_plugin(backup_dir, "demo", "plugin.py", "recoverable")
+
+    SystemChain.backup_plugins()
+
+    assert (backup_dir / "demo" / "plugin.py").read_text(encoding="utf-8") == "recoverable"
+
+
 def test_market_refresh_replaces_snapshot_and_removes_stale_files(monkeypatch, tmp_path):
     """插件更新成功后应刷新对应持久化快照。"""
     plugin_root, backup_root = _patch_market_paths(monkeypatch, tmp_path)
