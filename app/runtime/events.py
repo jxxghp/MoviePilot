@@ -20,7 +20,7 @@ from app.runtime.event.binding import (
 from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
-from app.runtime.event.contracts import validate_event_payload
+from app.runtime.event.contracts import normalize_event_type, validate_event_payload
 from app.runtime.correlation import get_correlation_id
 from app.runtime.observability import record_metric
 
@@ -35,7 +35,7 @@ class Event:
     事件类，封装事件的基本信息
     """
 
-    def __init__(self, event_type: Union[EventType, ChainEventType],
+    def __init__(self, event_type: Union[EventType, ChainEventType, str],
                  event_data: Optional[Union[Dict, ChainEventData]] = None,
                  priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
                  correlation_id: Optional[str] = None):
@@ -45,11 +45,12 @@ class Event:
         :param priority: 可选，事件的优先级，默认为 10
         :param correlation_id: 生产事件时固化的请求关联 ID
         """
+        event_type = normalize_event_type(event_type)
         payload_problems = validate_event_payload(event_type, event_data)
         if payload_problems:
             logger.warning(
                 "事件 %s payload 与登记契约不一致：%s；当前保留旧 payload 继续投递",
-                event_type.value,
+                getattr(event_type, "value", event_type),
                 "; ".join(payload_problems),
             )
         self.event_id = str(uuid.uuid4())  # 事件ID
@@ -63,7 +64,8 @@ class Event:
         重写 __repr__ 方法，用于返回事件的详细信息，包括事件类型、事件ID和优先级
         """
         event_kind = Event.get_event_kind(self.event_type)
-        return f"<{event_kind}: {self.event_type.value}, ID: {self.event_id}, Priority: {self.priority}>"
+        event_name = getattr(self.event_type, "value", self.event_type)
+        return f"<{event_kind}: {event_name}, ID: {self.event_id}, Priority: {self.priority}>"
 
     def __lt__(self, other):
         """
@@ -73,7 +75,7 @@ class Event:
         return self.priority < other.priority
 
     @staticmethod
-    def get_event_kind(event_type: Union[EventType, ChainEventType]) -> str:
+    def get_event_kind(event_type: Union[EventType, ChainEventType, str]) -> str:
         """
         根据事件类型判断事件是广播事件还是链式事件
         :param event_type: 事件类型，支持 EventType 或 ChainEventType

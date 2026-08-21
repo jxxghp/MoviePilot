@@ -130,17 +130,40 @@ EVENT_CONTRACTS = {
 }
 
 
-def get_event_contract(event_type: EventType | ChainEventType) -> EventContract:
-    """返回 enum 事件的完整登记契约。"""
-    return EVENT_CONTRACTS[event_type]
+def normalize_event_type(
+    event_type: EventType | ChainEventType | str,
+) -> EventType | ChainEventType | str:
+    """把旧 SDK 传入的已知字符串恢复为 enum，未知扩展值保持原样。"""
+    if not isinstance(event_type, str):
+        return event_type
+    for enum_type in (EventType, ChainEventType):
+        try:
+            return enum_type(event_type)
+        except ValueError:
+            continue
+    return event_type
+
+
+def get_event_contract(
+    event_type: EventType | ChainEventType | str,
+) -> EventContract:
+    """返回已登记事件的完整契约，兼容传入 enum value 字符串。"""
+    normalized = normalize_event_type(event_type)
+    if isinstance(normalized, str):
+        raise KeyError(normalized)
+    return EVENT_CONTRACTS[normalized]
 
 
 def validate_event_payload(
-    event_type: EventType | ChainEventType,
+    event_type: EventType | ChainEventType | str,
     payload: Any,
 ) -> tuple[str, ...]:
     """在发送边界诊断首批 typed payload，保持原对象和插件 dict 形状不变。"""
-    model = get_event_contract(event_type).payload_model
+    try:
+        model = get_event_contract(event_type).payload_model
+    except KeyError:
+        # 动态插件在旧 ABI 下可能使用宿主枚举之外的字符串事件。
+        return ()
     if model is None or payload is None:
         return ()
     if isinstance(payload, model):

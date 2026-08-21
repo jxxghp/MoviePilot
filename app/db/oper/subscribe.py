@@ -9,7 +9,6 @@
 """
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any, Tuple, List, Optional
 
 from sqlalchemy import delete as sqlalchemy_delete, select
@@ -28,13 +27,31 @@ AfterCommitEffect = Callable[[int], None]
 AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
 
 
-@dataclass(frozen=True, slots=True)
 class SubscribeStageResult:
     """Oper 暂存结果，按 Application 端口需要暴露最小只读状态。"""
 
-    subscribe_id: int
-    message: str
-    created: bool
+    __slots__ = ("_subscribe_id", "_message", "_created")
+
+    def __init__(self, subscribe_id: int, message: str, created: bool) -> None:
+        """保存写入后的订阅 ID、消息和是否创建标志。"""
+        self._subscribe_id = subscribe_id
+        self._message = message
+        self._created = created
+
+    @property
+    def subscribe_id(self) -> int:
+        """返回已暂存或已存在的订阅 ID。"""
+        return self._subscribe_id
+
+    @property
+    def message(self) -> str:
+        """返回暂存结果的人类可读消息。"""
+        return self._message
+
+    @property
+    def created(self) -> bool:
+        """返回本次暂存是否创建了新记录。"""
+        return self._created
 
 
 def _normalize_integer_flags(payload: dict, fields: Tuple[str, ...] = INTEGER_FLAG_FIELDS) -> dict:
