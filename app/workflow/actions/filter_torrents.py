@@ -37,20 +37,9 @@ class FilterTorrentsAction(BaseAction):
         super().__init__(action_id)
         self._torrents = []
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "过滤资源"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "对资源列表数据进行过滤"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return FilterTorrentsParams().model_dump()
+    name = "过滤资源"
+    description = "对资源列表数据进行过滤"
+    data = FilterTorrentsParams().model_dump()
 
     @property
     def success(self) -> bool:

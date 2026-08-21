@@ -3,7 +3,10 @@
 FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
 
 
-FROM python:3.12.13-slim-bookworm AS base
+FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548 AS rclone
+
+
+FROM python:3.14.7-slim-trixie@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS base
 
 
 # 准备外部制品所需的最小工具集
@@ -45,7 +48,7 @@ RUN apt-get update \
     -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && chmod 0644 /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && printf '%s\n' \
-    'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+    'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main' \
     > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -78,7 +81,6 @@ RUN apt-get update \
     libchromaprint-tools \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
-    && curl https://rclone.org/install.sh | bash \
     && ln -s /usr/lib/*-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
     && apt-get autoremove -y \
     && apt-get clean \
@@ -220,6 +222,7 @@ ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
 # 引入支持 amr 编码的静态 ffmpeg
 COPY --from=mwader/static-ffmpeg:8.1.1 /ffmpeg /usr/local/bin/
 COPY --from=mwader/static-ffmpeg:8.1.1 /ffprobe /usr/local/bin/
+COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
 # python 环境
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}

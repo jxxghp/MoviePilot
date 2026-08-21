@@ -9,20 +9,9 @@ class NoteAction(BaseAction):
 
     contract = {}
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "备注"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "给工作流添加备注"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return {}
+    name = "备注"
+    description = "给工作流添加备注"
+    data = {}
 
     @property
     def success(self) -> bool:

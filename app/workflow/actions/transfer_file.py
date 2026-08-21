@@ -41,20 +41,9 @@ class TransferFileAction(BaseAction):
         self._fileitems = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str:  # noqa
-        return "整理文件"
-
-    @classmethod
-    @property
-    def description(cls) -> str:  # noqa
-        return "整理队列中的文件"
-
-    @classmethod
-    @property
-    def data(cls) -> dict:  # noqa
-        return TransferFileParams().model_dump()
+    name = "整理文件"
+    description = "整理队列中的文件"
+    data = TransferFileParams().model_dump()
 
     @property
     def success(self) -> bool:

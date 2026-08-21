@@ -2,7 +2,7 @@
 name = "moviepilot"
 # MoviePilot 不作为 Python 包发布，产品版本继续由 version.py 管理。
 version = "0"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "aiofiles~=25.1.0",
     "aioshutil~=1.6",

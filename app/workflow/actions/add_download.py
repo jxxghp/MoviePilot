@@ -40,20 +40,9 @@ class AddDownloadAction(BaseAction):
         self._added_downloads = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str:  # noqa
-        return "添加下载"
-
-    @classmethod
-    @property
-    def description(cls) -> str:  # noqa
-        return "根据资源列表添加下载任务"
-
-    @classmethod
-    @property
-    def data(cls) -> dict:  # noqa
-        return AddDownloadParams().model_dump()
+    name = "添加下载"
+    description = "根据资源列表添加下载任务"
+    data = AddDownloadParams().model_dump()
 
     @property
     def success(self) -> bool:

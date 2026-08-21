@@ -65,12 +65,12 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         with patch.object(module, "get_python_version", return_value=(3, 15, 0)):
             module.ensure_supported_python("python3.15")
 
-    def test_supported_python_rejects_versions_below_3_12(self):
+    def test_supported_python_rejects_versions_below_3_14(self):
         module = load_local_setup_module()
 
-        with patch.object(module, "get_python_version", return_value=(3, 11, 9)):
-            with self.assertRaisesRegex(RuntimeError, r"Python 3\.12\+"):
-                module.ensure_supported_python("python3.11")
+        with patch.object(module, "get_python_version", return_value=(3, 13, 9)):
+            with self.assertRaisesRegex(RuntimeError, r"Python 3\.14\+"):
+                module.ensure_supported_python("python3.13")
 
     def test_install_deps_installs_browser_runtime(self):
         module = load_local_setup_module()
