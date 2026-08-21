@@ -105,6 +105,30 @@ def test_plugin_manager_projects_dependency_classification_to_runtime_status() -
     _reset_plugin_manager()
 
 
+def test_plugin_manager_promotes_running_dependency_after_recovery() -> None:
+    """依赖恢复后，运行中的插件状态必须允许后台流程触发重载。"""
+    _reset_plugin_manager()
+    manager = PluginManager()
+    manager._plugin_registry.running["DependencyRecovered"] = object()
+    manager._plugin_registry.set_runtime_status(
+        "DependencyRecovered",
+        PluginRuntimeStatus.DEPENDENCY_PENDING,
+    )
+
+    manager.apply_plugin_dependency_classification(
+        PluginDependencyClassification(
+            ready=("DependencyRecovered",),
+            missing_dependencies=(),
+            missing_source=(),
+        )
+    )
+
+    assert manager.get_plugin_runtime_statuses()["DependencyRecovered"] is (
+        PluginRuntimeStatus.READY
+    )
+    _reset_plugin_manager()
+
+
 def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
     """隔离后台执行器并返回动态路由注册替身。"""
     async def execute(_loop, task_func, _task_name):
@@ -115,6 +139,7 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", register)
+    manager.get_plugin_runtime_statuses.return_value = {}
     return register
 
 
@@ -198,6 +223,34 @@ async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) ->
     manager.reload_plugin.assert_called_once_with("UpdatedPlugin")
     manager.start.assert_not_called()
     register.assert_called_once_with("UpdatedPlugin")
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_reloads_running_plugin_after_dependency_recovery(
+    monkeypatch,
+) -> None:
+    """依赖恢复后，已运行的旧实例必须切换到新源码。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=["demo>=1"], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("DependencyRecovered",),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {"DependencyRecovered": object()}
+    register = _patch_sync_plugins(monkeypatch, manager)
+    manager.get_plugin_runtime_statuses.return_value = {
+        "DependencyRecovered": PluginRuntimeStatus.DEPENDENCY_PENDING,
+    }
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    manager.reload_plugin.assert_called_once_with("DependencyRecovered")
+    manager.start.assert_not_called()
+    register.assert_called_once_with("DependencyRecovered")
 
 
 @pytest.mark.asyncio

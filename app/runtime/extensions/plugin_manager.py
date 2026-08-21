@@ -576,7 +576,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 PluginRuntimeStatus.DEPENDENCY_PENDING,
             )
         for plugin_id in classification.ready:
-            if plugin_id in running_ids:
+            current_status = self._plugin_registry.runtime_status(plugin_id)
+            if (
+                plugin_id in running_ids
+                and current_status is not PluginRuntimeStatus.DEPENDENCY_PENDING
+            ):
                 continue
             self._plugin_registry.set_runtime_status(
                 plugin_id,

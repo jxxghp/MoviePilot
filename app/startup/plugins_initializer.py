@@ -43,6 +43,7 @@ from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.log import logger
 from app.foundation.version import compare_version
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 
@@ -140,6 +141,7 @@ async def sync_plugins() -> bool:
         if not isinstance(dependency_result, PluginDependencyInstallResult):
             logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
             return False
+        previous_statuses = plugin_manager.get_plugin_runtime_statuses()
         classification = plugin_manager.classify_plugins()
         plugin_manager.apply_plugin_dependency_classification(classification)
         if not dependency_result.success:
@@ -150,6 +152,7 @@ async def sync_plugins() -> bool:
                 plugin_manager,
                 classification.ready,
                 sync_result or [],
+                previous_statuses,
             ),
             "插件运行态激活",
         )
@@ -178,13 +181,18 @@ def _activate_ready_plugins(
     plugin_manager: PluginManager,
     ready_ids: tuple[str, ...],
     synced_ids: list[str],
+    previous_statuses: dict[str, PluginRuntimeStatus],
 ) -> list[str]:
     """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
     running_ids = set(plugin_manager.running_plugins)
     synced = set(synced_ids)
     changed_ids: list[str] = []
     for plugin_id in ready_ids:
-        if plugin_id in synced and plugin_id in running_ids:
+        dependency_recovered = (
+            previous_statuses.get(plugin_id)
+            is PluginRuntimeStatus.DEPENDENCY_PENDING
+        )
+        if plugin_id in running_ids and (plugin_id in synced or dependency_recovered):
             plugin_manager.reload_plugin(plugin_id)
             changed_ids.append(plugin_id)
             continue
