@@ -21,9 +21,11 @@ from app.agent.prompt.transfer_redo import (
 )
 from app.runtime.config import settings, global_vars
 from app.adapters.web.security.access import verify_token
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
+)
+from app.api.dependencies.history import (
     get_download_history_mutation_command,
     get_history_query_service,
     get_transfer_history_mutation_command,

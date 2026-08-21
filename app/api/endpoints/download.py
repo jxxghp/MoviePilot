@@ -28,7 +28,8 @@ from app.application.site.query import (
     SiteQueryService,
     get_configured_site_query_service,
 )
-from app.api.deps import get_current_active_user, get_site_sync_query_service
+from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.site import get_site_sync_query_service
 from app.application.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,

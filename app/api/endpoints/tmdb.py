@@ -14,7 +14,7 @@ from app.chain.tmdb import TmdbChain
 from app.runtime.config import settings
 from app.adapters.web.security.access import verify_token
 from app.application.configuration import get_configured_system_config
-from app.api.deps import get_current_active_superuser_async
+from app.api.dependencies.auth import get_current_active_superuser_async
 from app.schemas.types import MediaType, SystemConfigKey
 
 router = ResponseAPIRouter()

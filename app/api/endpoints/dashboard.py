@@ -18,7 +18,8 @@ from app.chain.dashboard import DashboardChain
 from app.chain.storage import StorageChain
 from app.runtime.config import settings
 from app.adapters.web.security.access import verify_apitoken
-from app.api.deps import get_current_active_superuser, get_dashboard_query_service
+from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.history import get_dashboard_query_service
 from app.application.dashboard import DashboardQueryService
 from app.schemas.types import StorageAction
 from app.application.directory import DirectoryHelper

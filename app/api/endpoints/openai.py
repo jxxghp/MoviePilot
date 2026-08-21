@@ -1,12 +1,11 @@
 import asyncio
-import json
 import time
 import uuid
 from threading import Lock
 from typing import AsyncIterator, List, Optional, Tuple
 
 from fastapi import APIRouter, Request, Security
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.schemas.openai import OpenAIChatCompletionResponse as _SchemaOpenAIChatCompletionResponse
@@ -26,6 +25,7 @@ from app.api.openai_utils import (
     build_responses_input,
     build_session_id,
 )
+from app.api.presentation.sse import build_sse_response, encode_data_event
 from app.agent.runtime_loader import (
     get_moviepilot_agent_type,
     get_running_agent_manager,
@@ -216,7 +216,8 @@ def _get_collecting_agent_type() -> type:
 
 
 def _sse_payload(data: dict) -> str:
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+    """保留旧测试入口并委托独立 OpenAI SSE wire mapper。"""
+    return encode_data_event(data)
 
 
 async def _stream_response(
@@ -519,7 +520,7 @@ async def chat_completions(
     session_id = build_session_id(session_key, SESSION_PREFIX)
     username = str(payload.user or "openai-client")
     if payload.stream:
-        return StreamingResponse(
+        return build_sse_response(
             _stream_response(
                 manager=manager,
                 session_id=session_id,
@@ -529,12 +530,6 @@ async def chat_completions(
                 images=images,
                 cleanup_session=not use_server_session,
             ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
         )
 
     collected_messages = []

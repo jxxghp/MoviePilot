@@ -36,9 +36,11 @@ from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
 from app.application.configuration import get_configured_system_config
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_user,
     get_current_active_user_async,
+)
+from app.api.dependencies.subscription import (
     get_delete_subscribe_command,
     get_delete_subscriptions_by_identity_command,
     get_search_subscriptions_command,

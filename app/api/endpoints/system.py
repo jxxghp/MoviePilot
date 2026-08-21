@@ -42,7 +42,11 @@ from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
-from app.api.deps import get_current_active_superuser, get_current_active_superuser_async, get_current_active_user_async
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+    get_current_active_user_async,
+)
 from app.application.image import ImageHelper
 from app.runtime.localization import LocaleHelper
 from app.adapters.external.market import (

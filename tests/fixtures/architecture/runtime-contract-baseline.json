@@ -1317,7 +1317,7 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.api.deps",
+            "caller": "app.api.dependencies.plugin",
             "count": 1
           }
         ]
@@ -1514,7 +1514,7 @@
         ],
         "producers": [
           {
-            "caller": "app.api.deps",
+            "caller": "app.api.dependencies.history",
             "count": 1
           }
         ]
@@ -1598,7 +1598,7 @@
         ],
         "producers": [
           {
-            "caller": "app.api.deps",
+            "caller": "app.api.dependencies.site",
             "count": 1
           }
         ]
@@ -1625,7 +1625,7 @@
             "count": 1
           },
           {
-            "caller": "app.api.deps",
+            "caller": "app.api.dependencies.site",
             "count": 1
           },
           {
@@ -1660,7 +1660,7 @@
             "count": 1
           },
           {
-            "caller": "app.api.deps",
+            "caller": "app.api.dependencies.subscription",
             "count": 1
           }
         ]

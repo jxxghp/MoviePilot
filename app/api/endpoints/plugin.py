@@ -46,9 +46,11 @@ from app.adapters.web.security.access import (
 )
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
+)
+from app.api.dependencies.plugin import (
     get_plugin_config_command,
 )
 from app.adapters.external.server import MoviePilotServerHelper

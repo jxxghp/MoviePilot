@@ -8,7 +8,7 @@ from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.application.security.auth import AuthService, consume_plugin_auth_ticket
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
-from app.api.deps import get_auth_service
+from app.api.dependencies.auth import get_auth_service
 
 router = ResponseAPIRouter()
 

@@ -1,10 +1,9 @@
 import asyncio
-import json
 import uuid
 from typing import AsyncIterator, List, Optional
 
 from fastapi import APIRouter, Header, Security
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
 from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
@@ -21,6 +20,7 @@ from app.api.openai_utils import (
     build_prompt,
     build_session_id,
 )
+from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.agent.runtime_loader import get_running_agent_manager
 from app.runtime.config import settings
 from app.adapters.web.security.access import anthropic_api_key_header
@@ -97,26 +97,71 @@ async def _stream_anthropic_response(
 
     task = asyncio.create_task(_run_agent())
     try:
-        yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': MODEL_ID, 'stop_reason': None, 'stop_sequence': None, 'usage': {'input_tokens': 0, 'output_tokens': 0}}}, ensure_ascii=False)}\n\n"
-        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}}, ensure_ascii=False)}\n\n"
+        yield encode_named_event(
+            "message_start",
+            {
+                "type": "message_start",
+                "message": {
+                    "id": message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": MODEL_ID,
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+            },
+        )
+        yield encode_named_event(
+            "content_block_start",
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""},
+            },
+        )
         while True:
             item = await event_queue.get()
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):
-                yield (
-                    "event: error\n"
-                    f"data: {json.dumps({'type': 'error', 'error': {'type': 'api_error', 'message': str(item['error'])}}, ensure_ascii=False)}\n\n"
+                yield encode_named_event(
+                    "error",
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": "api_error",
+                            "message": str(item["error"]),
+                        },
+                    },
                 )
-                yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'}, ensure_ascii=False)}\n\n"
+                yield encode_named_event("message_stop", {"type": "message_stop"})
                 return
             text = str(item or "")
             if not text:
                 continue
-            yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': text}}, ensure_ascii=False)}\n\n"
-        yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0}, ensure_ascii=False)}\n\n"
-        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}}, ensure_ascii=False)}\n\n"
-        yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'}, ensure_ascii=False)}\n\n"
+            yield encode_named_event(
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": text},
+                },
+            )
+        yield encode_named_event(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": 0},
+        )
+        yield encode_named_event(
+            "message_delta",
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                "usage": {"output_tokens": 0},
+            },
+        )
+        yield encode_named_event("message_stop", {"type": "message_stop"})
     finally:
         await manager.clear_session(session_id=session_id, user_id=user_id)
         if not task.done():
@@ -172,7 +217,7 @@ async def messages(
     session_seed = anthropic_version or "anthropic"
     session_id = build_session_id(f"{session_seed}:{uuid.uuid4().hex}", SESSION_PREFIX)
     if payload.stream:
-        return StreamingResponse(
+        return build_sse_response(
             _stream_anthropic_response(
                 manager=manager,
                 session_id=session_id,
@@ -180,12 +225,6 @@ async def messages(
                 prompt=prompt,
                 images=images,
             ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
         )
 
     collected_messages = []

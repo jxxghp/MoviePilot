@@ -15,7 +15,7 @@ from app.chain.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.adapters.web.security.access import verify_token
-from app.api.deps import get_current_active_superuser_async
+from app.api.dependencies.auth import get_current_active_superuser_async
 from app.chain.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,

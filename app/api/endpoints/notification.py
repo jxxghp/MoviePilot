@@ -6,7 +6,7 @@ from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.chain.notification import NotificationChain
-from app.api.deps import get_current_active_superuser
+from app.api.dependencies.auth import get_current_active_superuser
 
 router = ResponseAPIRouter()
 

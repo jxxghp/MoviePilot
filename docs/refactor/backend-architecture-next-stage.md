@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与 ARCH-230 已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与 ARCH-230～231 已完成，后续任务按 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -472,6 +472,22 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 5. SSE 端点拆为请求校验、执行 service、event → wire mapper、disconnect/cancel 清理。
 
 **优先切片**：`manual_transfer()`、`web_agent_stream()`、OpenAI/Anthropic streaming adapter。
+
+**实施记录（2026-08-21）**：
+
+- `app/api/deps.py` 已由 524 行集中装配点收敛为 88 行兼容聚合入口；认证、Agent、订阅、站点、
+  工作流、历史和插件依赖分别由 `app/api/dependencies/` 下的领域模块拥有。宿主 API 端点全部改为
+  直接导入领域依赖，旧入口只为外部兼容消费者保留。
+- 新增 `app/api/presentation/sse.py`，统一 non-buffered SSE transport 策略，并分别提供 unnamed data
+  与 named event wire mapper。WebAgent、OpenAI 和 Anthropic 继续保留各自协议 payload 与错误结构，
+  不进入通用 `Response` 包装。
+- `manual_transfer()` 已缩为 HTTP/鉴权/依赖入口，历史恢复、批量预览和旧 `TransferChain` 参数兼容
+  由内部处理器承接；WebAgent 的拒绝响应、stream headers 与协议映射已从主控制流抽离。长生命周期
+  generator 仍保留在端点模块，因为它直接拥有 request disconnect、后台 task cancel 与敏感结果关闭时序，
+  后续只能在保持现有取消测试的前提下继续下沉。
+- 125 个鉴权、手动整理、WebAgent、OpenAI/Anthropic 生命周期、API 响应和 typed runtime 专项测试通过；
+  61 个架构/基线 CLI 测试通过。依赖基线变化只反映集中边拆为领域边，runtime contract 变化只反映
+  dependency callable 的新模块路径；禁止边与插件 raw API 均未变化。
 
 #### ARCH-232：配置快照与窄配置端口
 

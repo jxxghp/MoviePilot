@@ -33,6 +33,7 @@ from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRe
 from app.schemas.message import Message as _SchemaMessage
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
+from app.api.presentation.sse import build_sse_error_response, build_sse_response
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
@@ -45,7 +46,8 @@ from app.command import Command
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal
-from app.api.deps import get_agent_chat_service, get_current_active_user
+from app.api.dependencies.agent import get_agent_chat_service
+from app.api.dependencies.auth import get_current_active_user
 from app.application.messaging.chat import (
     AgentChatRecord,
     AgentChatService,
@@ -692,6 +694,21 @@ def _build_web_agent_sse(
             message, locale=locale
         )
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_web_agent_error_response(
+    message: str,
+    *,
+    locale: Optional[str],
+) -> StreamingResponse:
+    """Map a rejected WebAgent request to one terminal SSE error event."""
+    return build_sse_error_response(
+        _build_web_agent_sse(
+            "error",
+            {"message": message},
+            locale=locale,
+        )
+    )
 
 
 def _sanitize_web_agent_upload_name(
@@ -1965,15 +1982,9 @@ async def web_agent_stream(
         getattr(request, "headers", {}).get("X-MoviePilot-Agent-Interaction") == "1"
     )
     if is_secret_confirmation_control and not protected_transport_supported:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "当前客户端不支持安全交付敏感设置，未执行操作。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "当前客户端不支持安全交付敏感设置，未执行操作。",
+            locale=locale,
         )
     is_traditional_message = (
         _is_web_agent_traditional_message(prompt)
@@ -1982,27 +1993,15 @@ async def web_agent_stream(
     if is_traditional_message:
         denied_message = _ensure_web_agent_command_allowed(current_user)
         if denied_message:
-            return StreamingResponse(
-                iter([
-                    _build_web_agent_sse(
-                        "error",
-                        {"message": denied_message},
-                        locale=locale,
-                    )
-                ]),
-                media_type="text/event-stream",
+            return _build_web_agent_error_response(
+                denied_message,
+                locale=locale,
             )
         unknown_command_message = _get_web_agent_unknown_command_message(prompt)
         if unknown_command_message:
-            return StreamingResponse(
-                iter([
-                    _build_web_agent_sse(
-                        "error",
-                        {"message": unknown_command_message},
-                        locale=locale,
-                    )
-                ]),
-                media_type="text/event-stream",
+            return _build_web_agent_error_response(
+                unknown_command_message,
+                locale=locale,
             )
 
         user_attachments = _build_web_agent_input_attachments(
@@ -2089,39 +2088,19 @@ async def web_agent_stream(
                     return
             yield _build_web_agent_sse("done", {}, locale=locale)
 
-        return StreamingResponse(
-            traditional_event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+        return build_sse_response(traditional_event_generator())
 
     if not settings.AI_AGENT_ENABLE:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "智能助手未启用，请先在系统设置中开启。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "智能助手未启用，请先在系统设置中开启。",
+            locale=locale,
         )
 
     manager = get_running_agent_manager()
     if manager is None:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "智能助手服务尚未就绪，请稍后重试。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "智能助手服务尚未就绪，请稍后重试。",
+            locale=locale,
         )
 
     transcript = _transcribe_web_agent_audio_refs(payload.audio_refs or [])
@@ -2129,26 +2108,14 @@ async def web_agent_stream(
     display_prompt = _merge_web_agent_prompt_with_transcript(display_prompt, transcript)
     has_audio_input = bool(transcript)
     if not prompt and payload.audio_refs and not payload.images and not payload.files:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "语音识别失败，请稍后重试。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "语音识别失败，请稍后重试。",
+            locale=locale,
         )
     if not prompt and not payload.images and not payload.files and not payload.audio_refs:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "请输入要发送给智能助手的内容或选择附件。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "请输入要发送给智能助手的内容或选择附件。",
+            locale=locale,
         )
 
     MessageChain().bind_user_session(str(current_user.id), session_id)
@@ -2314,13 +2281,9 @@ async def web_agent_stream(
             await event_publisher.aclose()
             # 客户端断线后保留 Agent 继续执行；发布器关闭后不再接受受保护结果。
 
-    return StreamingResponse(
+    return build_sse_response(
         event_generator(),
-        media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
             **(
                 {"X-MoviePilot-Agent-Control": "secret-confirmation"}
                 if is_secret_confirmation_control

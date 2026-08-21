@@ -16,7 +16,7 @@ from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.config import settings
 from app.api.principal import ApiPrincipal
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
 )

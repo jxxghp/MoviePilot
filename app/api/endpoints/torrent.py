@@ -12,7 +12,10 @@ from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.api.deps import get_current_active_superuser, get_current_active_superuser_async
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+)
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
