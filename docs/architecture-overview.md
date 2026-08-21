@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-18*
+> *Last Updated: 2026-08-21*
 
 ---
 
@@ -602,6 +602,8 @@ flowchart LR
 详细的迁移批次、风险、验证命令和插件兼容矩阵见
 [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) 与
 [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md)。
+第一阶段分层收口后的进程拓扑、事务所有权、类型化运行时契约、后台可靠性和可观测性路线见
+[`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md)。
 
 ---
 
@@ -619,3 +621,4 @@ flowchart LR
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
 | [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) | 分阶段架构治理、边界门禁与迁移验收 |
 | [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md) | 模块迁移与插件兼容层实施矩阵 |
+| [`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md) | 对标优秀 Python 后端后的二阶段任务、验收与回滚方案 |
