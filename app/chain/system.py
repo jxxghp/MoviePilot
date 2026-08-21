@@ -232,6 +232,7 @@ class SystemChain(ChainBase):
         suffix = uuid.uuid4().hex
         staging = target.with_name(f".{target.name}.tmp-{suffix}")
         previous = target.with_name(f".{target.name}.old-{suffix}")
+        published = False
         try:
             if source.is_dir():
                 shutil.copytree(source, staging, ignore=ignore)
@@ -252,13 +253,15 @@ class SystemChain(ChainBase):
                         shutil.copy2(target, previous, follow_symlinks=False)
                         target.unlink()
             staging.replace(target)
-            if previous.is_dir():
-                shutil.rmtree(previous, ignore_errors=True)
-            elif previous.exists():
-                previous.unlink(missing_ok=True)
+            published = True
         except Exception:
-            if not target.exists() and previous.exists():
+            if previous.exists() and not published:
                 try:
+                    if target.exists():
+                        if target.is_dir():
+                            shutil.rmtree(target)
+                        else:
+                            target.unlink()
                     previous.replace(target)
                 except Exception as rollback_error:
                     logger.error(
@@ -271,10 +274,10 @@ class SystemChain(ChainBase):
                 shutil.rmtree(staging, ignore_errors=True)
             elif staging.exists():
                 staging.unlink(missing_ok=True)
-            if target.exists():
+            if published and previous.exists():
                 if previous.is_dir():
                     shutil.rmtree(previous, ignore_errors=True)
-                elif previous.exists():
+                else:
                     previous.unlink(missing_ok=True)
 
     def __get_version_message(self) -> str:

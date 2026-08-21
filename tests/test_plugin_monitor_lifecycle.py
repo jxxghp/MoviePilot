@@ -119,23 +119,28 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_sync_plugins_skips_reinitialization_when_dependencies_fail(
+async def test_sync_plugins_activates_ready_plugins_when_dependencies_fail(
     monkeypatch,
 ) -> None:
-    """依赖恢复失败时不得用不完整环境重复初始化插件。"""
+    """依赖恢复失败时仍激活无关的已就绪插件。"""
     manager = MagicMock()
     manager.sync.return_value = ["demo"]
     manager.install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=["demo>=1"], success=False)
     )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("ReadyPlugin",),
+        missing_dependencies=("DependencyPending",),
+        missing_source=(),
+    )
     manager.running_plugins = {}
     register = _patch_sync_plugins(monkeypatch, manager)
 
-    assert await plugins_initializer.sync_plugins() is False
+    assert await plugins_initializer.sync_plugins() is True
 
-    manager.start.assert_not_called()
+    manager.start.assert_called_once_with("ReadyPlugin")
     manager.reload_plugin.assert_not_called()
-    register.assert_not_called()
+    register.assert_called_once_with("ReadyPlugin")
 
 
 @pytest.mark.asyncio

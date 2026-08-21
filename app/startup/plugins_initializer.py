@@ -140,13 +140,10 @@ async def sync_plugins() -> bool:
         if not isinstance(dependency_result, PluginDependencyInstallResult):
             logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
             return False
-        if not dependency_result.success:
-            classification = plugin_manager.classify_plugins()
-            plugin_manager.apply_plugin_dependency_classification(classification)
-            logger.error("缺失依赖项安装未完成，跳过插件重新初始化")
-            return False
         classification = plugin_manager.classify_plugins()
         plugin_manager.apply_plugin_dependency_classification(classification)
+        if not dependency_result.success:
+            logger.error("缺失依赖项安装未完成，将继续激活当前已就绪插件")
         changed_ids = await execute_task(
             loop,
             lambda: _activate_ready_plugins(
@@ -165,7 +162,12 @@ async def sync_plugins() -> bool:
 
         for plugin_id in changed_ids:
             register_plugin_api(plugin_id)
-        logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
+        if dependency_result.success:
+            logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
+        else:
+            logger.warning(
+                f"缺失依赖项仍未全部恢复，已激活 {len(changed_ids)} 个就绪插件"
+            )
         return True
     except Exception as e:
         logger.error(f"插件初始化过程中出现异常: {e}")

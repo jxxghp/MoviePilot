@@ -230,6 +230,49 @@ def test_restore_plugins_falls_back_when_overlay_rename_returns_exdev(
     assert not backup_dir.exists()
 
 
+def test_restore_plugins_restores_previous_after_partial_overlay_removal(
+    monkeypatch,
+    tmp_path,
+):
+    """overlayfs 删除旧目录部分失败时仍恢复完整旧快照。"""
+    runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
+    _write_plugin(runtime_dir, "DemoPlugin", "plugin.py", "runtime-old")
+    _write_plugin(runtime_dir, "DemoPlugin", "settings.json", "settings-old")
+    backup_dir = tmp_path / "config" / "plugins_backup"
+    _write_plugin(backup_dir, "DemoPlugin", "plugin.py", "backup-new")
+
+    original_replace = Path.replace
+    original_rmtree = system_module.shutil.rmtree
+    removal_attempts = 0
+
+    def exdev_for_existing_target(self, target):
+        if self == runtime_dir / "DemoPlugin":
+            raise OSError(errno.EXDEV, "cross-device link")
+        return original_replace(self, target)
+
+    def fail_after_partial_removal(path, *args, **kwargs):
+        nonlocal removal_attempts
+        if Path(path) == runtime_dir / "DemoPlugin" and removal_attempts == 0:
+            removal_attempts += 1
+            (runtime_dir / "DemoPlugin" / "plugin.py").unlink()
+            raise OSError("directory removal interrupted")
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", exdev_for_existing_target)
+    monkeypatch.setattr(system_module.shutil, "rmtree", fail_after_partial_removal)
+
+    SystemChain.restore_plugins()
+
+    assert (runtime_dir / "DemoPlugin" / "plugin.py").read_text(
+        encoding="utf-8"
+    ) == "runtime-old"
+    assert (runtime_dir / "DemoPlugin" / "settings.json").read_text(
+        encoding="utf-8"
+    ) == "settings-old"
+    assert backup_dir.exists()
+    assert (backup_dir / SystemChain._plugin_restore_pending_file).exists()
+
+
 def test_backup_keeps_restore_retry_marker(monkeypatch, tmp_path):
     """关停备份不得清除尚未完成的恢复标记。"""
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
