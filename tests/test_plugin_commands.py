@@ -12,6 +12,7 @@ import pytest
 from app.command import Command
 from app.modules.discord.discord import Discord
 from app.runtime.deprecation import policy as deprecation_policy
+from app.runtime.extensions.command_arbitration import BuiltinCommandArbiter
 from app.runtime.extensions.command_registry import (
     PluginCommandRegistry,
     plugin_command_registry,
@@ -90,14 +91,27 @@ def _declaration(cmd: str, plugin: Optional[_CommandPlugin] = None, **kwargs):
     return CommandDeclaration(cmd=cmd, name=kwargs.pop("name", "示例"), impl=impl, **kwargs)
 
 
-def _build_command_chain() -> Command:
-    """构造只挂内建命令与插件命令注册表的命令中枢测试对象。"""
+def _build_command_chain(warnings: Optional[List[str]] = None) -> Command:
+    """构造只挂内建命令与插件命令注册表的命令中枢测试对象。
+
+    :param warnings: 收集裁决告警的列表，为空时告警丢弃
+    :return: 命令中枢测试对象
+    """
     chain = object.__new__(Command)
     chain._preset_commands = {
-        "/version": {"func": lambda: None, "description": "当前版本", "data": {}}
+        "/version": {
+            "func": lambda: None,
+            "description": "当前版本",
+            "category": "管理",
+            "data": {},
+        }
     }
     chain._plugin_commands = {}
+    chain._declined_plugin_commands = {}
     chain._plugin_command_revision = -1
+    chain._builtin_arbiter = BuiltinCommandArbiter(
+        log=SimpleNamespace(warning=(warnings.append if warnings is not None else (lambda _: None)))
+    )
     chain._other_commands = {}
     chain._commands = {}
     chain._rlock = threading.RLock()
@@ -250,6 +264,11 @@ def test_declaration_without_callable_impl_is_rejected():
         ({"category": 1}, "字段 category 必须是字符串，实际是 int"),
         ({"args_description": []}, "字段 args_description 必须是字符串，实际是 list"),
         ({"show": "yes"}, "字段 show 必须是布尔值，实际是 str"),
+        (
+            {"overrides_builtin": "yes"},
+            "字段 overrides_builtin 必须是布尔值，实际是 str",
+        ),
+        ({"overrides_builtin": 1}, "字段 overrides_builtin 必须是布尔值，实际是 int"),
         ({"data": [1, 2]}, "字段 data 必须是字典，实际是 list"),
         ({"data": {1: "a"}}, "字段 data 的键必须是字符串，实际含 int"),
     ],
@@ -286,6 +305,7 @@ def test_declaration_data_fields_survive_json_round_trip():
         args_description="可选目录",
         data={"scope": "all"},
         show=False,
+        overrides_builtin=True,
         impl=print,
     )
 
@@ -305,6 +325,7 @@ def test_declaration_data_fields_survive_json_round_trip():
         "args_description": "可选目录",
         "data": {"scope": "all"},
         "show": False,
+        "overrides_builtin": True,
         "capabilities": [],
     }
     rebuilt = CommandDeclaration(impl=print, **{
@@ -465,6 +486,114 @@ def test_conflict_diagnosis_marks_both_sides_ineffective():
     assert [entry["effective"] for entry in registry.diagnose()] == [False, False]
 
 
+def test_claims_are_ordered_independently_of_registration_order():
+    """声明清单按命令词排序交出，与登记先后无关，可见性入口才有确定的列举。"""
+    first = PluginCommandRegistry(log=SimpleNamespace(warning=lambda _: None))
+    first.register("BetaPlugin", [("/sync", {"pid": "BetaPlugin"})])
+    first.register("AlphaPlugin", [("/alpha", {"pid": "AlphaPlugin"}),
+                                   ("/sync", {"pid": "AlphaPlugin"})])
+    second = PluginCommandRegistry(log=SimpleNamespace(warning=lambda _: None))
+    second.register("AlphaPlugin", [("/sync", {"pid": "AlphaPlugin"}),
+                                    ("/alpha", {"pid": "AlphaPlugin"})])
+    second.register("BetaPlugin", [("/sync", {"pid": "BetaPlugin"})])
+
+    assert first.claims() == second.claims()
+    assert [claim.cmd for claim in first.claims()] == ["/alpha", "/sync"]
+    assert first.claims()[1].plugins == ("AlphaPlugin", "BetaPlugin")
+    assert first.claims()[1].effective is False
+
+
+# ------------------------------------------------- 插件与内建同词：接管意图须显式声明
+
+
+def _plugin_definition(cmd: str, pid: str = "AcmePlugin", **kwargs) -> dict:
+    """构造一条已投影的插件命令定义。
+
+    :param cmd: 命令词
+    :param pid: 声明方实例键
+    :param kwargs: 覆盖默认字段的取值
+    :return: 命令定义字典
+    """
+    definition = {
+        "cmd": cmd,
+        "desc": "插件同步",
+        "category": "插件",
+        "show": True,
+        "data": {},
+        "impl": print,
+        "overrides_builtin": False,
+        "pid": pid,
+    }
+    definition.update(kwargs)
+    return definition
+
+
+def test_plugin_command_colliding_with_builtin_is_declined_without_override_intent():
+    """未声明接管意图的同名插件命令作废，内建命令不受影响。"""
+    arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None))
+
+    result = arbiter.arbitrate({"/version": _plugin_definition("/version")}, ["/version"])
+
+    assert result.effective == {}
+    assert set(result.declined) == {"/version"}
+    assert result.overriding == ()
+
+
+def test_plugin_command_with_declared_override_intent_takes_over_the_builtin():
+    """声明了接管意图的插件命令生效，用插件增强内建命令是正当诉求。"""
+    arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None))
+    definition = _plugin_definition("/version", overrides_builtin=True)
+
+    result = arbiter.arbitrate({"/version": definition}, ["/version"])
+
+    assert result.effective == {"/version": definition}
+    assert result.overriding == ("/version",)
+    assert result.declined == {}
+
+
+def test_override_intent_on_a_word_the_host_does_not_own_changes_nothing():
+    """没有同名内建命令时接管意图不产生任何差别，插件命令照常生效。"""
+    arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None))
+    plain = _plugin_definition("/acme_sync")
+    claiming = _plugin_definition("/acme_pull", overrides_builtin=True)
+
+    result = arbiter.arbitrate(
+        {"/acme_sync": plain, "/acme_pull": claiming}, ["/version"]
+    )
+
+    assert set(result.effective) == {"/acme_sync", "/acme_pull"}
+    assert result.overriding == ()
+    assert result.declined == {}
+
+
+def test_declined_collision_warns_once_and_names_the_remedy():
+    """撞车只告警一次，且说清该声明接管意图还是改命令词。"""
+    warnings: List[str] = []
+    arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=warnings.append))
+    table = {"/version": _plugin_definition("/version")}
+
+    arbiter.arbitrate(table, ["/version"])
+    arbiter.arbitrate(table, ["/version"])
+
+    assert len(warnings) == 1
+    assert "/version" in warnings[0]
+    assert "AcmePlugin" in warnings[0]
+    assert "overrides_builtin" in warnings[0]
+
+
+def test_arbitration_result_does_not_depend_on_declaration_iteration_order():
+    """裁决只看声明内容，同一批声明换个次序结果一致。"""
+    arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None))
+    claiming = _plugin_definition("/version", pid="AlphaPlugin", overrides_builtin=True)
+    other = _plugin_definition("/acme_sync", pid="BetaPlugin")
+
+    forward = arbiter.arbitrate({"/version": claiming, "/acme_sync": other}, ["/version"])
+    backward = arbiter.arbitrate({"/acme_sync": other, "/version": claiming}, ["/version"])
+
+    assert forward.effective == backward.effective
+    assert forward.overriding == backward.overriding == ("/version",)
+
+
 # ---------------------------------------------------------------- 两条来源：声明式优先
 
 
@@ -622,3 +751,137 @@ def test_builtin_command_survives_plugin_conflict_fallback():
     chain = _build_command_chain()
 
     assert chain.get("/version")["description"] == "当前版本"
+
+
+# ------------------------------------------------- 命令中枢：插件与内建同词的两向处置
+
+
+def _register_plugin_command(cmd: str, plugin: _CommandPlugin, **kwargs) -> None:
+    """把一条插件命令登记进全局注册表。
+
+    :param cmd: 命令词
+    :param plugin: 提供实现的插件桩
+    :param kwargs: 覆盖默认字段的取值，含声明方实例键 pid
+    :return: 无返回值
+    """
+    pid = kwargs.pop("pid", "AcmePlugin")
+    definition = {
+        "cmd": cmd,
+        "desc": "插件版本",
+        "category": "插件",
+        "show": True,
+        "data": {},
+        "impl": plugin.handle,
+        "overrides_builtin": False,
+        "pid": pid,
+    }
+    definition.update(kwargs)
+    plugin_command_registry.register(pid, [(cmd, definition)])
+
+
+def test_plugin_command_does_not_silently_shadow_the_builtin_one():
+    """未声明接管意图时敲内建命令词仍走内建，不会静默调进插件。"""
+    plugin = _CommandPlugin()
+    _register_plugin_command("/version", plugin)
+    chain = _build_command_chain()
+    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
+
+    chain.execute(cmd="/version", userid="u1")
+
+    assert chain.get("/version")["description"] == "当前版本"
+    assert chain.get("/version").get("pid") is None
+    assert plugin.calls == []
+
+
+def test_declared_override_hands_the_builtin_command_word_to_the_plugin():
+    """声明了接管意图时该命令词交给插件，敲它执行插件实现。"""
+    plugin = _CommandPlugin()
+    _register_plugin_command("/version", plugin, overrides_builtin=True)
+    chain = _build_command_chain()
+    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
+
+    chain.execute(cmd="/version", userid="u1")
+
+    assert chain.get("/version")["pid"] == "AcmePlugin"
+    assert chain.get("/version")["description"] == "插件版本"
+    assert plugin.calls == [{"channel": None, "source": None, "user": "u1"}]
+
+
+def test_declined_plugin_command_is_reported_once_to_the_user_facing_log():
+    """撞车只在日志里说一次，且指出该声明接管意图还是改命令词。"""
+    warnings: List[str] = []
+    plugin = _CommandPlugin()
+    _register_plugin_command("/version", plugin)
+    chain = _build_command_chain(warnings)
+
+    chain.get("/version")
+    chain.get("/version")
+
+    assert len(warnings) == 1
+    assert "/version" in warnings[0] and "overrides_builtin" in warnings[0]
+
+
+def test_builtin_command_returns_when_the_overriding_plugin_stops():
+    """接管方停用后内建命令立刻回来，用户敲它又得到内建行为。"""
+    plugin = _CommandPlugin()
+    _register_plugin_command("/version", plugin, overrides_builtin=True)
+    chain = _build_command_chain()
+    assert chain.get("/version")["pid"] == "AcmePlugin"
+
+    plugin_command_registry.unregister_owner("AcmePlugin")
+
+    assert chain.get("/version")["description"] == "当前版本"
+    assert chain.get("/version").get("pid") is None
+
+
+def test_two_plugins_claiming_a_builtin_word_both_lose_even_with_override_intent():
+    """跨插件裁决在前：都声称要接管同一个内建命令词时双方仍一并失效。"""
+    alpha, beta = _CommandPlugin(), _CommandPlugin()
+    _register_plugin_command("/version", alpha, pid="AlphaPlugin", overrides_builtin=True)
+    _register_plugin_command("/version", beta, pid="BetaPlugin", overrides_builtin=True)
+    chain = _build_command_chain()
+
+    assert chain.get("/version")["description"] == "当前版本"
+    assert chain.get("/version").get("pid") is None
+
+
+def test_legacy_hook_command_cannot_take_over_a_builtin_command():
+    """废弃钩子报不出接管意图，其同名命令按撞车处置，内建命令保持生效。"""
+    plugin = _CommandPlugin(legacy=[{"cmd": "/version", "desc": "旧写法", "data": {}}])
+    projection = PluginProjection({"AcmePlugin": plugin})
+    for command in projection.commands():
+        plugin_command_registry.register("AcmePlugin", [(command["cmd"], command)])
+    chain = _build_command_chain()
+
+    assert chain.get("/version")["description"] == "当前版本"
+
+
+def test_override_intent_does_not_exempt_the_command_word_from_grammar():
+    """接管意图不放宽命令词文法，不合文法的声明照样在登记时被拒。"""
+    declaration = CommandDeclaration(
+        cmd="/Version", name="接管版本", impl=print, overrides_builtin=True
+    )
+
+    violation = command_declaration_violation(declaration)
+
+    assert violation is not None
+    assert COMMAND_WORD_GRAMMAR_HINT in violation
+
+
+def test_command_table_staleness_is_decided_only_by_the_registry_revision():
+    """命令表的过期判据只有登记版本号一条，没有第二条通路。"""
+    plugin = _CommandPlugin()
+    _register_plugin_command("/acme_sync", plugin)
+    chain = _build_command_chain()
+    assert chain.get("/acme_sync")
+
+    revision = plugin_command_registry.revision
+    plugin_command_registry._commands["AcmePlugin"] = {}
+
+    assert plugin_command_registry.revision == revision
+    assert chain.get("/acme_sync")
+
+    plugin_command_registry.unregister_owner("AcmePlugin")
+
+    assert plugin_command_registry.revision != revision
+    assert chain.get("/acme_sync") == {}

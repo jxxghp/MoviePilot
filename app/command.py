@@ -2,7 +2,7 @@ import copy
 import threading
 import traceback
 from concurrent.futures import Future
-from typing import Any, Union, Dict, Optional
+from typing import Any, List, Union, Dict, Optional
 
 from app.application.orchestration import ChainBase
 from app.application.orchestration.download import DownloadChain
@@ -12,12 +12,20 @@ from app.application.orchestration.subscribe import SubscribeChain
 from app.application.orchestration.system import SystemChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.runtime.extensions.command_registry import plugin_command_registry
+from app.runtime.extensions.command_arbitration import (
+    BUILTIN_LAYER,
+    OTHER_LAYER,
+    PLUGIN_LAYER,
+    BuiltinCommandArbiter,
+)
+from app.runtime.extensions.command_registry import CommandClaim, plugin_command_registry
+from app.runtime.extensions.instance import split_instance_key
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.scheduler import Scheduler
+from app.schemas.command import CommandConflict, CommandLayer, CommandOrigin
 from app.schemas.message import Message
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import EventType, NotificationChannel, ChainEventType
@@ -61,6 +69,26 @@ class CommandChain:
         编辑已发送的命令回复消息，参数透传给消息分发设施
         """
         return self._chain.edit_message(**kwargs)
+
+
+def _command_layer(layer: str, entry: Dict[str, Any]) -> CommandLayer:
+    """
+    把一条命令表条目投影为来源分层条目
+
+    :param layer: 来源层标识
+    :param entry: 命令表条目
+    :return: 来源分层条目，插件层附带实例键的反解结果
+    """
+    owner = entry.get("pid")
+    extension_id, instance_id = split_instance_key(owner) if owner else (None, None)
+    return CommandLayer(
+        layer=layer,
+        owner=owner,
+        extension_id=extension_id,
+        instance_id=instance_id,
+        description=entry.get("description"),
+        category=entry.get("category"),
+    )
 
 
 def _finish_command_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -174,8 +202,12 @@ class Command(metaclass=Singleton):
         }
         # 插件命令集合
         self._plugin_commands = {}
+        # 与内建命令同名却未声明接管意图、已作废的插件命令集合
+        self._declined_plugin_commands = {}
         # 插件命令集合对应的注册表版本号，-1 表示尚未按注册表组装过
         self._plugin_command_revision = -1
+        # 插件与内建同命令词的裁决器
+        self._builtin_arbiter = BuiltinCommandArbiter()
         # 其他命令集合
         self._other_commands = {}
         # 初始化锁
@@ -305,11 +337,28 @@ class Command(metaclass=Singleton):
         """
         构建插件命令
 
-        命令来源是插件命令注册表，同插件多实例与跨插件的同命令词裁决都已在表内完成，
-        本方法只做形状转换：带实现的命令直接调用实现，其余仍按事件转发。
+        命令来源是插件命令注册表，同插件多实例与跨插件的同命令词裁决都已在表内完成。
+        与内建命令的同词争用只有本方法看得见——内建命令表是命令中枢自己持有的，注册表
+        看不到它——因此在这里按接管意图裁决一次，未声明接管的同名插件命令不进命令表，
+        用户敲这个词仍得到内建行为。
+
+        :param _: 插件标识，命令表按注册表整体重建，不按插件裁剪
+        :return: 命令词到命令表条目的映射，仅含通过裁决的插件命令
         """
+        definitions = plugin_command_registry.command_definitions()
+        arbitration = self._builtin_arbiter.arbitrate(
+            definitions, self._preset_commands
+        )
+        self._declined_plugin_commands = {
+            cmd: {
+                "pid": command.get("pid"),
+                "description": command.get("desc"),
+                "category": command.get("category"),
+            }
+            for cmd, command in arbitration.declined.items()
+        }
         plugin_commands = {}
-        for cmd, command in plugin_command_registry.command_definitions().items():
+        for cmd, command in arbitration.effective.items():
             impl = command.get("impl")
             data = command.get("data") or {}
             if callable(impl):
@@ -328,6 +377,77 @@ class Command(metaclass=Singleton):
                 "data": payload,
             }
         return plugin_commands
+
+    def command_origins(self) -> List[CommandOrigin]:
+        """
+        列出全部命令词的来源分层
+
+        命令表是内建 < 插件 < 其它三处来源合并出的一张平表，合并完就看不出一条命令归谁；
+        插件声明因跨插件同名或撞上内建而失效时，此前只在服务端日志里留过一次告警，用户
+        敲了没反应也无从得知原因。本方法把合并前的分层与两类失效原样交出。
+
+        :return: 按命令词排序的来源条目
+        """
+        self._refresh_plugin_commands()
+        with self._rlock:
+            preset = dict(self._preset_commands)
+            plugin = dict(self._plugin_commands)
+            declined = dict(self._declined_plugin_commands)
+            other = dict(self._other_commands)
+        claims = {claim.cmd: claim for claim in plugin_command_registry.claims()}
+        words = set(preset) | set(plugin) | set(declined) | set(other) | set(claims)
+        return [
+            self.__command_origin(cmd, preset, plugin, declined, other, claims.get(cmd))
+            for cmd in sorted(words)
+        ]
+
+    @staticmethod
+    def __command_origin(
+        cmd: str,
+        preset: Dict[str, dict],
+        plugin: Dict[str, dict],
+        declined: Dict[str, dict],
+        other: Dict[str, dict],
+        claim: Optional[CommandClaim],
+    ) -> CommandOrigin:
+        """
+        判定一个命令词的生效来源、被压住的下层与失效的插件声明
+
+        :param cmd: 命令词
+        :param preset: 内建命令表
+        :param plugin: 通过裁决的插件命令表
+        :param declined: 撞上内建且未声明接管意图而作废的插件命令表
+        :param other: 单独注册的命令表
+        :param claim: 插件对该命令词的声明及跨插件裁决结果，无插件声明时为 None
+        :return: 该命令词的来源条目
+        """
+        layers: List[CommandLayer] = []
+        if cmd in preset:
+            layers.append(_command_layer(BUILTIN_LAYER, preset[cmd]))
+        if cmd in plugin:
+            layers.append(_command_layer(PLUGIN_LAYER, plugin[cmd]))
+        if cmd in other:
+            layers.append(_command_layer(OTHER_LAYER, other[cmd]))
+        conflict = (
+            CommandConflict(plugins=list(claim.plugins), owners=list(claim.owners))
+            if claim is not None and not claim.effective
+            else None
+        )
+        rejected = (
+            [_command_layer(PLUGIN_LAYER, declined[cmd])] if cmd in declined else []
+        )
+        if not layers:
+            return CommandOrigin(
+                cmd=cmd, effective=False, declined=rejected, conflict=conflict
+            )
+        return CommandOrigin(
+            cmd=cmd,
+            effective=True,
+            source=layers[-1],
+            shadowed=layers[:-1],
+            declined=rejected,
+            conflict=conflict,
+        )
 
     def __run_command(
         self,
