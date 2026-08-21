@@ -11,7 +11,7 @@ from app.application.orchestration.subscribe import SubscribeChain
 from app.application.orchestration.system import SystemChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.runtime.extensions.command_registry import plugin_command_registry
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
@@ -80,7 +80,6 @@ class Command(metaclass=Singleton):
     """
 
     def __init__(self):
-        # 插件管理器
         super().__init__()
         # 注册的命令集合
         self._registered_commands = {}
@@ -174,12 +173,12 @@ class Command(metaclass=Singleton):
         }
         # 插件命令集合
         self._plugin_commands = {}
+        # 插件命令集合对应的注册表版本号，-1 表示尚未按注册表组装过
+        self._plugin_command_revision = -1
         # 其他命令集合
         self._other_commands = {}
         # 初始化锁
         self._rlock = threading.RLock()
-        # 插件管理
-        self.pluginmanager = PluginManager()
         # 定时服务管理
         self.scheduler = Scheduler()
         # 消息管理器
@@ -201,7 +200,9 @@ class Command(metaclass=Singleton):
         try:
             with self._rlock:
                 logger.debug("Acquired lock for initializing commands in background.")
+                revision = plugin_command_registry.revision
                 self._plugin_commands = self.__build_plugin_commands(pid)
+                self._plugin_command_revision = revision
                 self._commands = {
                     **self._preset_commands,
                     **self._plugin_commands,
@@ -304,31 +305,27 @@ class Command(metaclass=Singleton):
         """
         构建插件命令
 
-        命令字符串是命令表的唯一键，先到者胜：同一命令字符串被多个插件（或同一
-        插件的多个实例）声明时，只有登记顺序中第一个生效，其余的会被跳过并告警。
+        命令来源是插件命令注册表，同插件多实例与跨插件的同命令词裁决都已在表内完成，
+        本方法只做形状转换：带实现的命令直接调用实现，其余仍按事件转发。
         """
-        # 为了保证命令顺序的一致性，目前这里没有直接使用 pid 获取单一插件命令，后续如果存在性能问题，可以考虑优化这里的逻辑
         plugin_commands = {}
-        for command in self.pluginmanager.get_plugin_commands():
-            cmd = command.get("cmd")
-            if not cmd:
-                continue
-            if cmd in plugin_commands:
-                logger.warning(
-                    f"插件命令 {cmd!r} 已被 {plugin_commands[cmd].get('pid')!r} 注册，"
-                    f"{command.get('pid')!r} 的重复声明已跳过"
-                )
-                continue
+        for cmd, command in plugin_command_registry.command_definitions().items():
+            impl = command.get("impl")
+            data = command.get("data") or {}
+            if callable(impl):
+                func, payload = impl, {"data": data}
+            else:
+                func, payload = self.send_plugin_event, {
+                    "etype": command.get("event"),
+                    "data": data,
+                }
             plugin_commands[cmd] = {
                 "pid": command.get("pid"),
-                "func": self.send_plugin_event,
+                "func": func,
                 "description": command.get("desc"),
                 "category": command.get("category"),
                 "show": command.get("show", True),
-                "data": {
-                    "etype": command.get("event"),
-                    "data": command.get("data"),
-                },
+                "data": payload,
             }
         return plugin_commands
 
@@ -392,10 +389,33 @@ class Command(metaclass=Singleton):
                 # 没有参数
                 command["func"]()
 
+    def _refresh_plugin_commands(self) -> None:
+        """
+        插件命令登记发生变化时重新组装命令表
+
+        插件停用或卸载后其命令必须立刻从命令表里消失，而广播注册是异步的、也未必每次
+        都被触发。命令表是注册表某一版本的快照，版本号变了即代表快照过期，在查表前对
+        齐一次，用户敲已卸载插件的命令就得到「命令不存在」而不是调用到已卸载的代码。
+        """
+        if plugin_command_registry.revision == self._plugin_command_revision:
+            return
+        with self._rlock:
+            revision = plugin_command_registry.revision
+            if revision == self._plugin_command_revision:
+                return
+            self._plugin_commands = self.__build_plugin_commands()
+            self._plugin_command_revision = revision
+            self._commands = {
+                **self._preset_commands,
+                **self._plugin_commands,
+                **self._other_commands,
+            }
+
     def get_commands(self):
         """
         获取命令列表
         """
+        self._refresh_plugin_commands()
         if not self._commands:
             with self._rlock:
                 if not self._commands:
@@ -410,6 +430,7 @@ class Command(metaclass=Singleton):
         """
         获取命令
         """
+        self._refresh_plugin_commands()
         return self._commands.get(cmd, {})
 
     def register(

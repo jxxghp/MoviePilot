@@ -65,6 +65,7 @@ from app.runtime.extensions.plugin.projection import PluginExtension, PluginProj
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.command_registry import plugin_command_registry
 from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.extensions.meta_parser_registry import meta_parser_registry
@@ -772,6 +773,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._sync_plugin_meta_parsers(key)
             # 同步插件声明的筛选规则与筛选规则组
             self._sync_plugin_filter_rules(key)
+            # 同步插件声明的远程命令
+            self._sync_plugin_commands(key)
             # 启用的实例才设置事件注册状态可用
             if extension.is_enabled():
                 eventmanager.enable_event_handler(plugin_class, key)
@@ -907,6 +910,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._sync_plugin_meta_parsers(key)
         # 筛选规则声明同理，重新同步规则登记
         self._sync_plugin_filter_rules(key)
+        # 命令声明同理，重新同步命令登记
+        self._sync_plugin_commands(key)
         self.clear_plugin_agent_tools_cache()
 
     def clear_plugin_agent_tools_cache(self) -> None:
@@ -962,6 +967,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._revoke_plugin_meta_parsers(key)
             # 实例停止后撤销其筛选规则登记，不留残留
             self._revoke_plugin_filter_rules(key)
+            # 实例停止后撤销其命令登记，不留残留
+            self._revoke_plugin_commands(key)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -1024,7 +1031,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def _reelect_extension_registrations(self, plugin_id: str) -> None:
         """在实例停止后按存活实例重新裁决扩展级声明的登记归属
 
-        存储标识、服务实例类型与筛选规则标识只登记一次，归属落在裁决胜出的那个实例。
+        存储标识、服务实例类型、筛选规则标识与命令词只登记一次，归属落在裁决胜出的那个实例。
         胜出实例停止后，仍在运行且声明同一标识的兄弟实例应当接手，否则该标识会随一个
         实例的停止整体消失——它描述的是「本宿主提供这个标识」，而宿主里还有实例提供它。
         最后一个实例停止后没有存活实例可裁决，登记在各自的撤销里已经清干净。
@@ -1036,6 +1043,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return
         self._sync_plugin_service_types(survivors[0])
         self._sync_plugin_filter_rules(survivors[0])
+        self._sync_plugin_commands(survivors[0])
 
     @staticmethod
     def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
@@ -2445,6 +2453,47 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except Exception as error:
             logger.error(f"同步插件实例 {key} 筛选规则登记出错：{str(error)}")
 
+    def _sync_plugin_commands(self, key: str) -> None:
+        """按插件当前全部运行实例的声明重建其在命令注册表中的登记。
+
+        命令词是扩展级事实，同步粒度与筛选规则同理是整个插件而不是单个实例，胜出方由
+        投影按稳定规则裁决。两条声明来源（声明式与废弃期的裸列表）在投影处已合并，
+        因此两者都进同一张表、受同一套跨插件裁决。
+
+        :param key: 触发本次同步的实例键
+        :return: 无返回值
+        """
+        try:
+            projection = self._plugin_projection()
+            plugin_id = extension_id_of(key)
+            declared: Dict[str, List[Tuple[str, dict]]] = {}
+            for command in projection.commands(plugin_id):
+                owner, cmd = command.get("pid"), command.get("cmd")
+                if owner and cmd:
+                    declared.setdefault(owner, []).append((cmd, command))
+            for owner in self._extension_registration_owners(key):
+                try:
+                    plugin_command_registry.register(owner, declared.get(owner, []))
+                except Exception as error:
+                    logger.error(f"登记插件实例 {owner} 的命令声明出错：{str(error)}")
+        except Exception as error:
+            logger.error(f"同步插件实例 {key} 命令登记出错：{str(error)}")
+
+    @staticmethod
+    def _revoke_plugin_commands(key: str) -> None:
+        """撤销插件实例登记的远程命令。
+
+        实例停止后其命令实现不再可信，须直接清空登记：命令表在下一次组装时就不再含有
+        它们，用户再敲该命令得到「命令不存在」，而不是调用到已卸载的代码。
+
+        :param key: 实例键
+        :return: 无返回值
+        """
+        try:
+            plugin_command_registry.unregister_owner(key)
+        except Exception as error:
+            logger.error(f"撤销插件实例 {key} 命令登记出错：{str(error)}")
+
     @staticmethod
     def _revoke_plugin_filter_rules(key: str) -> None:
         """撤销插件实例登记的筛选规则与筛选规则组。
@@ -2482,11 +2531,16 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件命令
+
+        聚合 provides_commands() 声明式登记与废弃期的 get_command() 裸列表，前者的条目
+        带 impl 与 args_description，后者的条目带 event；两者的 cmd、desc、category、
+        data 与 pid 同名同义。
         [{
             "cmd": "/xx",
-            "event": EventType.xx,
             "desc": "xxxx",
+            "category": "xxxx",
             "data": {},
+            "impl": callable,
             "pid": "",
         }]
         """

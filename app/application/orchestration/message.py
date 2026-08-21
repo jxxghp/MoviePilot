@@ -31,6 +31,7 @@ from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.runtime.log import logger
+from app.schemas.command import AI_COMMAND_PREFIX
 from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
@@ -44,7 +45,7 @@ class MessageChain(ChainBase):
     外来消息处理链
     """
 
-    _ai_prefix = "/ai"
+    _ai_prefix = AI_COMMAND_PREFIX
     _no_ai_prefix = "/noai"
     # 用户会话信息 {userid: (session_id, last_time)}
     _user_sessions: Dict[Union[str, int], tuple] = {}

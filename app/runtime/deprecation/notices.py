@@ -79,6 +79,16 @@ NOTICES: Mapping[str, DeprecationNotice] = {
         replacement="provides_agent_tools()",
         reason="返回裸工具类列表，无契约校验、无归属记账、卸载不可回收",
     ),
+    "plugin.get_command": DeprecationNotice(
+        key="plugin.get_command",
+        subject="_PluginBase.get_command()",
+        stage=DeprecationStage.WARN,
+        since="v3.1.0",
+        remove_in="v3.3.0",
+        replacement="provides_commands()",
+        reason="返回裸描述字典列表，命令词不经文法校验，不合文法的命令词要到用户敲它或"
+               "渠道菜单整批注册失败时才暴露；重名只能按加载顺序取其一",
+    ),
     "plugin.get_channel_capabilities": DeprecationNotice(
         key="plugin.get_channel_capabilities",
         subject="_PluginBase.get_channel_capabilities()",
