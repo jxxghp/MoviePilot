@@ -58,7 +58,7 @@ class SearchSubscribeTool(MoviePilotTool):
         try:
             # 先验证订阅是否存在
             subscribe_oper = SubscribeOper()
-            subscribe = subscribe_oper.get(subscribe_id)
+            subscribe = await subscribe_oper.async_get(subscribe_id)
 
             if not subscribe:
                 return json.dumps({
@@ -93,7 +93,10 @@ class SearchSubscribeTool(MoviePilotTool):
 
             # 如果提供了 filter_groups 参数，先更新订阅的规则组
             if filter_groups is not None:
-                subscribe_oper.update(subscribe_id, {"filter_groups": filter_groups})
+                await subscribe_oper.async_update(
+                    subscribe_id,
+                    {"filter_groups": filter_groups},
+                )
                 logger.info(f"更新订阅 #{subscribe_id} 的规则组为: {filter_groups}")
 
             # 订阅搜索会触发大量同步站点访问，统一走 subscribe 线程池。
@@ -106,7 +109,7 @@ class SearchSubscribeTool(MoviePilotTool):
             )
 
             # 重新获取订阅信息以获取更新后的状态
-            updated_subscribe = subscribe_oper.get(subscribe_id)
+            updated_subscribe = await subscribe_oper.async_get(subscribe_id)
             if updated_subscribe:
                 subscribe_info.update({
                     "state": updated_subscribe.state,
