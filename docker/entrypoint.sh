@@ -577,13 +577,26 @@ render_nginx_config
 cd /
 if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]; then
     source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"
-    run_moviepilot_update
+    if ! recover_pending_update; then
+        ERROR "→ 上一次容器更新未能恢复，容器将保持运行以便执行 moviepilot doctor。"
+        diagnostic_keepalive 1
+    fi
+    if [ "${UPDATE_RECOVERY_COMPLETED:-false}" = "true" ]; then
+        INFO "→ 已恢复到更新前版本，本次启动跳过自动更新。"
+    else
+        run_moviepilot_update
+    fi
     export MOVIEPILOT_BOOTSTRAP_UPDATE_DONE=1
 else
     MOVIEPILOT_UPDATE_RESULT="noop"
 fi
 if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
     MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
+fi
+
+if [ "${UPDATE_RECOVERY_REQUIRED:-false}" = "true" ]; then
+    ERROR "→ 容器更新回滚未完成，容器将保持运行以便执行 moviepilot doctor。"
+    diagnostic_keepalive 1
 fi
 
 maybe_reexec_control_bundle
