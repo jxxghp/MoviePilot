@@ -1066,6 +1066,47 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
     )
 
 
+def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    pending_file = config_dir / "temp" / "__update_pending__"
+    log_file = tmp_path / "cleanup.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        UPDATE_PENDING_FILE="$2"
+        UPDATE_PREVIOUS_APP="$3"
+        UPDATE_PREVIOUS_PUBLIC="$4"
+        source {UPDATER!s}
+        cleanup_previous_payload() {{
+            if [[ -f "${{UPDATE_PENDING_FILE}}" ]]; then
+                printf 'marker-present\n' > {shlex.quote(str(log_file))}
+            fi
+            return 1
+        }}
+        set_update_pending committed
+        finalize_update_transaction || true
+        printf '%s\n' "$([[ -f "${{UPDATE_PENDING_FILE}}" ]] && printf present || printf missing)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "transaction-finalize-test",
+            str(config_dir),
+            str(tmp_path / "previous-app"),
+            str(tmp_path / "previous-public"),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "present\n"
+    assert log_file.read_text(encoding="utf-8") == "marker-present\n"
+
+
 def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path: Path) -> None:
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
