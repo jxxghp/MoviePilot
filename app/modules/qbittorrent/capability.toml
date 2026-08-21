@@ -9,6 +9,9 @@ name = "Qbittorrent"
 service_capability = "downloader"
 priority = 1
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["Downloaders"]

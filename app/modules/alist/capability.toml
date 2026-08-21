@@ -9,6 +9,11 @@ name = "Alist"
 subtype = "Alist"
 priority = 2
 
+[metadata.service_instance]
+capability = "storage"
+type = "alist"
+multi_instance = true
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

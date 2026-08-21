@@ -4,6 +4,7 @@ from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callabl
 from pathlib import Path
 
 from app.runtime.extensions.instance import describe_instance_candidates
+from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     create_service_instance,
@@ -175,12 +176,17 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         按本族能力标签读取用户配置，只保留类型与本模块一致、已启用且具名的配置。
         三族的差别只在能力标签，筛选规则不逐族重复。
 
+        本类型能配几份取自本模块 `capability.toml` 的声明，与扩展声明的类型同规格：
+        清单没声明的类型按多实例处置，与该字段出现之前的行为一致。
+
         :return: 返回配置字典 ``{配置名称: 配置}``
         """
+        declared = builtin_multi_instance(self.SERVICE_CAPABILITY, self._service_name)
         return select_instance_configs(
             service_capability_configs(self.SERVICE_CAPABILITY),
             self._service_name,
             capability=self.SERVICE_CAPABILITY,
+            multi_instance=True if declared is None else declared,
         )
 
     def get_config(self, name: Optional[str] = None) -> Optional[TConf]:

@@ -9,6 +9,11 @@ name = "AListGo"
 subtype = "AlistGo"
 priority = 3
 
+[metadata.service_instance]
+capability = "storage"
+type = "alistgo"
+multi_instance = true
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

@@ -10,6 +10,9 @@ service_capability = "notification"
 subtype = "Telegram"
 priority = 0
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications"]

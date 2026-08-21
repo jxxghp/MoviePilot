@@ -7,6 +7,7 @@ depends_on = []
 [metadata]
 name = "豆瓣"
 priority = 2
+media_sources = ["douban", "doubanmusic"]
 
 [activation]
 policy = "bootstrap"

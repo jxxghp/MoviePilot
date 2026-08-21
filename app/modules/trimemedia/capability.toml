@@ -9,6 +9,9 @@ name = "飞牛影视"
 service_capability = "mediaserver"
 priority = 4
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["MediaServers"]

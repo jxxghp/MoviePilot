@@ -9,6 +9,9 @@ name = "Emby"
 service_capability = "mediaserver"
 priority = 1
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["MediaServers"]

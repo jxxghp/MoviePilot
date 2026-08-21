@@ -10,6 +10,9 @@ service_capability = "notification"
 subtype = "Discord"
 priority = 4
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications"]

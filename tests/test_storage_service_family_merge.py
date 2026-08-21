@@ -23,16 +23,10 @@ from app.application.service_config import (
 from app.application.storage import StorageHelper
 from app.application.storage_config import select_storage_config
 from app.modules._base.storage import StorageBase
-from app.modules.alipan.alipan import AliPan
-from app.modules.alist.alist import Alist
-from app.modules.alistgo.alistgo import AlistGo
-from app.modules.localstorage.local import LocalStorage
-from app.modules.rclone.rclone import Rclone
-from app.modules.smb.smb import SMB
-from app.modules.u115.u115 import U115Pan
 from app.plugins import _PluginBase
 from app.runtime.deprecation.notices import NOTICES
 from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
@@ -321,19 +315,19 @@ def test_storage_instances_have_no_enable_switch():
     assert sorted(selected) == ["乙", "甲"]
 
 
-@pytest.mark.parametrize("backend,multi_instance", [
-    (LocalStorage, False),
-    (AliPan, True),
-    (Alist, True),
-    (AlistGo, True),
-    (Rclone, True),
-    (SMB, True),
-    (U115Pan, True),
+@pytest.mark.parametrize("storage_id,multi_instance", [
+    ("local", False),
+    ("alipan", True),
+    ("alist", True),
+    ("alistgo", True),
+    ("rclone", True),
+    ("smb", True),
+    ("u115", True),
 ])
-def test_builtin_storage_types_declare_their_own_instance_count(backend, multi_instance):
-    """七个内建存储各自声明能配几份：网盘与挂载多份，本地文件系统只有一份。"""
-    assert backend.multi_instance is multi_instance
-    assert StorageBase.multi_instance is True
+def test_builtin_storage_types_declare_their_own_instance_count(storage_id, multi_instance):
+    """七个内建存储各自在清单里声明能配几份：网盘与挂载多份，本地文件系统只有一份。"""
+    assert builtin_multi_instance(STORAGE_CAPABILITY, storage_id) is multi_instance
+    assert not hasattr(StorageBase, "multi_instance")
 
 
 def test_storage_is_a_registered_service_family():

@@ -9,6 +9,11 @@ name = "SMB"
 subtype = "SMB"
 priority = 6
 
+[metadata.service_instance]
+capability = "storage"
+type = "smb"
+multi_instance = true
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

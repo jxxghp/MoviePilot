@@ -9,6 +9,11 @@ name = "115网盘"
 subtype = "U115"
 priority = 7
 
+[metadata.service_instance]
+capability = "storage"
+type = "u115"
+multi_instance = true
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

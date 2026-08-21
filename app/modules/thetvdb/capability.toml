@@ -7,6 +7,7 @@ depends_on = []
 [metadata]
 name = "TheTvDb"
 priority = 4
+media_sources = ["tvdb"]
 
 [activation]
 policy = "bootstrap"

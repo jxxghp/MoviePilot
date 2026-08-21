@@ -9,6 +9,9 @@ name = "Jellyfin"
 service_capability = "mediaserver"
 priority = 2
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["MediaServers"]

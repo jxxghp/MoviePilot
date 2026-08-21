@@ -9,6 +9,11 @@ name = "本地存储"
 subtype = "Local"
 priority = 4
 
+[metadata.service_instance]
+capability = "storage"
+type = "local"
+multi_instance = false
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

@@ -9,6 +9,11 @@ name = "阿里云盘"
 subtype = "Alipan"
 priority = 1
 
+[metadata.service_instance]
+capability = "storage"
+type = "alipan"
+multi_instance = true
+
 [activation]
 policy = "bootstrap"
 watch = ["Storages"]

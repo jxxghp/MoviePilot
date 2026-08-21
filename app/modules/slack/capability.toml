@@ -10,6 +10,9 @@ service_capability = "notification"
 subtype = "Slack"
 priority = 3
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications"]

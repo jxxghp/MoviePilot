@@ -19,6 +19,7 @@ from app.application.storage import StorageHelper
 from app.modules.localstorage import LocalStorageModule
 from app.modules.localstorage.local import LocalStorage
 from app.modules.u115 import U115Module
+from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.service_config_validation import service_config_records
 from app.runtime.extensions.storage_registry import (
@@ -159,7 +160,7 @@ def test_single_instance_storage_type_keeps_only_its_default_target(storage_conf
 
     module = _started(LocalStorageModule)
     try:
-        assert LocalStorage.multi_instance is False
+        assert builtin_multi_instance(STORAGE_CAPABILITY, "local") is False
         assert list(module._storages) == ["主盘"]  # noqa: SLF001
         assert module._claim("local@备份盘") is None  # noqa: SLF001
         assert module._claim("local").storage_token == "local"  # noqa: SLF001
@@ -319,9 +320,10 @@ def test_builtin_storage_fans_out_configured_instances(
         {"type": storage_id, "name": "副号", "config": {"k": "b"}},
     ])
 
+    multi_instance = builtin_multi_instance(STORAGE_CAPABILITY, storage_id)
     module = _started(module_class)
     try:
-        expected = {"主号", "副号"} if backend.multi_instance else {"主号"}
+        expected = {"主号", "副号"} if multi_instance else {"主号"}
         assert set(module._storages) == expected  # noqa: SLF001
 
         primary = module._claim(storage_id)  # noqa: SLF001
@@ -331,7 +333,7 @@ def test_builtin_storage_fans_out_configured_instances(
         assert primary.get_conf() == {"k": "a"}
 
         secondary = module._claim(f"{storage_id}@副号")  # noqa: SLF001
-        if not backend.multi_instance:
+        if not multi_instance:
             assert secondary is None
         else:
             assert secondary.storage_token == f"{storage_id}@副号"

@@ -23,8 +23,6 @@ class LocalStorage(StorageBase):
 
     # 存储类型
     schema = StorageSchema.Local
-    # 本地存储只有一个文件系统，第二份配置指的仍是同一个盘，因此只认一份
-    multi_instance = False
     # 支持的整理方式
     transtype = {
         "copy": "复制",

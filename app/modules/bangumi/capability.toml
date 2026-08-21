@@ -7,6 +7,7 @@ depends_on = []
 [metadata]
 name = "Bangumi"
 priority = 3
+media_sources = ["bangumi"]
 
 [activation]
 policy = "bootstrap"

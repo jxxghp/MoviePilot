@@ -5,10 +5,11 @@
 存储令牌自筛，令牌的类型部分不属于本存储、或该类型下没有令牌指定的实例时返回
 ``None`` 让给下一个模块。
 
-要扇出哪些实例由该存储类型的配置决定，一份配置一个实例；能配几份由该类型的
-``multi_instance`` 声明回答，不由存储族推定。筛选与单实例裁决和下载器、媒体服务器、
-消息渠道共用一份实现，默认调用目标也同规格；存储只是额外带一个裸令牌兼容指针，
-用来回答存量路径缺实例段时落到哪一份。
+要扇出哪些实例由该存储类型的配置决定，一份配置一个实例；能配几份由该类型在自己
+`capability.toml` 里的 ``multi_instance`` 声明回答，不由存储族推定，也不由后端类的
+类属性回答——前端要在渲染配置列表时就知道这件事，那时后端类还没被导入。筛选与单实例
+裁决和下载器、媒体服务器、消息渠道共用一份实现，默认调用目标也同规格；存储只是额外
+带一个裸令牌兼容指针，用来回答存量路径缺实例段时落到哪一份。
 
 一份配置都没有的存储类型仍持有一个未具名实例位，因此未配置的存储照样可以浏览与登录。
 """
@@ -28,6 +29,7 @@ from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.modules import _ModuleBase
 from app.runtime.progress import ProgressHelper
 from app.runtime.storages import storage_config_port
+from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import (
     STORAGE_CAPABILITY,
     select_instance_configs,
@@ -129,14 +131,12 @@ class StorageBase(metaclass=StorageBackendMeta):
     存储类型的裸令牌。承接裸令牌的实例以裸标识寻址，因此它产出的文件项与读写的
     配置都用裸存储标识，与该存储类型只有一份配置时完全一致。
 
-    ``multi_instance`` 回答「用户能为这个存储类型配几份」，取值由该类型自己声明而不
-    由存储族推定：网盘、挂载与中转服务都要多份（多个账号、多个 remote），而本地存储
-    只有一个文件系统，配第二份指的仍是同一个盘。缺省为多实例，与三族一致。
+    「用户能为这个存储类型配几份」不在此处回答：那是类型的事实而不是后端对象的事实，
+    由该类型的 `capability.toml` 声明，取用见 `_StorageModuleBase._instance_configs`。
     """
     schema = None
     transtype = {}
     snapshot_check_folder_modtime = True
-    multi_instance: bool = True
     storage_instance: Optional[str] = None
     storage_is_bare_token: bool = False
 
@@ -610,7 +610,8 @@ class _StorageModuleBase(_ModuleBase):
         读取指定存储类型应当扇出实例的配置
 
         筛选与单实例裁决和三族共用一份实现：同一个存储类型下有几条配置就有几个具名
-        实例，声明为单实例的类型按族级默认调用目标裁出唯一那一份。
+        实例，声明为单实例的类型按族级默认调用目标裁出唯一那一份。能配几份读该类型
+        在清单里的声明，清单没声明时按多实例处置，与该字段出现之前的行为一致。
 
         读不到配置时按「尚未配置」处理：配置来源不可用不应让整个存储模块随之失效，该
         存储仍以未具名实例位提供服务；单实例类型裁决不出目标时同理只是不产出具名实例。
@@ -618,12 +619,13 @@ class _StorageModuleBase(_ModuleBase):
         :param storage_id: 存储标识
         :return: 该存储类型的实例配置；读取失败或裁决不出目标时为空列表
         """
+        declared = builtin_multi_instance(STORAGE_CAPABILITY, storage_id)
         try:
             selected = select_instance_configs(
                 service_capability_configs(STORAGE_CAPABILITY),
                 storage_id,
                 capability=STORAGE_CAPABILITY,
-                multi_instance=getattr(self.storage_class, "multi_instance", True),
+                multi_instance=True if declared is None else declared,
             )
         except Exception as err:
             logger.error(f"【存储】读取 {storage_id} 的实例配置失败，按未配置处理：{err}")

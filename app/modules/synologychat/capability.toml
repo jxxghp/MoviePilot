@@ -10,6 +10,9 @@ service_capability = "notification"
 subtype = "SynologyChat"
 priority = 5
 
+[metadata.service_instance]
+multi_instance = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications"]

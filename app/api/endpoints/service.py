@@ -24,6 +24,7 @@ from app.application.service_config import get_configured_service_instance_confi
 from app.db.models.serviceconfig import BUILTIN_PROVIDER
 from app.db.oper.serviceconfig import ServiceConfigNameConflictError
 from app.runtime.extensions.instance import extension_id_of
+from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import service_supports_default_target
 from app.runtime.extensions.service_config_validation import (
     service_config_record,
@@ -79,8 +80,10 @@ def config_form(
     的回答，前端据此沿用内建渲染方式。
 
     本端点同时下发 ``multi_instance``：前端要决定该类型的配置列表上要不要给出
-    新增第二份的入口，而只有登记表知道这件事。未登记的类型答 True，与内建类型
-    一律可配多份、以及声明缺省即多实例两处口径一致。
+    新增第二份的入口。扩展声明的类型读登记表，内建类型读各自 `capability.toml`
+    的声明——本地存储只有一个文件系统，第二份配置指的仍是同一个盘，它在清单里
+    声明为单实例，前端据此不给出新增入口。两处都问不到时答 True，与声明缺省即
+    多实例的口径一致。
 
     ``config_schema`` 与 ``available`` 各自独立下发：契约描述配置形状，界面描述
     配置呈现，声明方可以只给其一。只声明契约的类型 ``available`` 仍为 False，
@@ -96,10 +99,11 @@ def config_form(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"服务能力 {capability} 不支持声明服务实例",
         )
+    declared = builtin_multi_instance(capability, service_type)
     empty = {
         "available": False,
         "name": None,
-        "multi_instance": True,
+        "multi_instance": True if declared is None else declared,
         "conf": None,
         "model": None,
         "component": None,
