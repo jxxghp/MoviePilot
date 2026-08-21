@@ -4,6 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.foundation.singleton import Singleton
+from app.runtime.extensions.plugin.dependency import (
+    PluginDependencyClassification,
+    PluginDependencyInstallResult,
+)
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
@@ -45,10 +49,15 @@ def test_plugin_manager_constructor_does_not_start_monitor_before_runtime(
 
 
 def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> None:
-    """插件运行时和动态路由就绪后，启动层才允许文件监控接收变化。"""
+    """启动阶段只加载依赖已就绪的插件，再开放路由和文件监控。"""
     order: list[str] = []
     manager = MagicMock()
-    manager.start.side_effect = lambda: order.append("plugins")
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("ReadyPlugin",),
+        missing_dependencies=("DependencyPending",),
+        missing_source=("SourcePending",),
+    )
+    manager.start.side_effect = lambda plugin_id: order.append(f"plugin:{plugin_id}")
     manager.start_monitor.side_effect = lambda: order.append("monitor")
     monkeypatch.setattr(
         plugins_initializer,
@@ -64,7 +73,120 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
 
     plugins_initializer.init_plugins()
 
-    assert order == ["services", "plugins", "routes", "monitor"]
+    assert order == ["services", "plugin:ReadyPlugin", "routes", "monitor"]
+
+
+def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
+    """隔离后台执行器并返回动态路由注册替身。"""
+    async def execute(_loop, task_func, _task_name):
+        return task_func()
+
+    register = MagicMock()
+    monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "execute_task", execute)
+    monkeypatch.setattr(plugins_initializer, "register_plugin_api", register)
+    return register
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_skips_reinitialization_when_dependencies_fail(
+    monkeypatch,
+) -> None:
+    """依赖恢复失败时不得用不完整环境重复初始化插件。"""
+    manager = MagicMock()
+    manager.sync.return_value = ["demo"]
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=["demo>=1"], success=False)
+    )
+    manager.running_plugins = {}
+    register = _patch_sync_plugins(monkeypatch, manager)
+
+    assert await plugins_initializer.sync_plugins() is False
+
+    manager.start.assert_not_called()
+    manager.reload_plugin.assert_not_called()
+    register.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_loads_only_plugins_that_become_ready(
+    monkeypatch,
+) -> None:
+    """后台依赖恢复后只启动尚未运行且当前已就绪的插件。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=["demo>=1"], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("ReadyPlugin", "DependencyRecovered"),
+        missing_dependencies=(),
+        missing_source=("SourcePending",),
+    )
+    running = {"ReadyPlugin": object()}
+    manager.running_plugins = running
+
+    def start(plugin_id: str) -> None:
+        running[plugin_id] = object()
+
+    manager.start.side_effect = start
+    register = _patch_sync_plugins(monkeypatch, manager)
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    manager.start.assert_called_once_with("DependencyRecovered")
+    manager.reload_plugin.assert_not_called()
+    register.assert_called_once_with("DependencyRecovered")
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) -> None:
+    """源码同步只重载对应运行实例，不重启其他插件。"""
+    manager = MagicMock()
+    manager.sync.return_value = ["UpdatedPlugin"]
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("StablePlugin", "UpdatedPlugin"),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {
+        "StablePlugin": object(),
+        "UpdatedPlugin": object(),
+    }
+    register = _patch_sync_plugins(monkeypatch, manager)
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    manager.reload_plugin.assert_called_once_with("UpdatedPlugin")
+    manager.start.assert_not_called()
+    register.assert_called_once_with("UpdatedPlugin")
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_keeps_runtime_when_nothing_changed(monkeypatch) -> None:
+    """源码和依赖均无变化时保留首次初始化结果。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("ReadyPlugin",),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {"ReadyPlugin": object()}
+    register = _patch_sync_plugins(monkeypatch, manager)
+
+    assert await plugins_initializer.sync_plugins() is False
+
+    manager.start.assert_not_called()
+    manager.reload_plugin.assert_not_called()
+    register.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -11,6 +11,7 @@ from app.agent.tools.impl.query_market_plugins import QueryMarketPluginsTool
 from app.agent.tools.impl.query_plugin_config import QueryPluginConfigTool
 from app.agent.tools.impl.query_plugin_data import QueryPluginDataTool
 from app.agent.tools.impl.reload_plugin import ReloadPluginTool
+from app.schemas.plugin import PluginRuntimeStatus
 from app.agent.tools.impl.uninstall_plugin import UninstallPluginTool
 from app.agent.tools.impl.update_plugin_config import UpdatePluginConfigTool
 
@@ -215,12 +216,34 @@ def test_reload_plugin_triggers_runtime_refresh() -> None:
             "app.agent.tools.impl.reload_plugin.reload_plugin_runtime"
         ) as reload_plugin_runtime,
     ):
+        reload_plugin_runtime.return_value = PluginRuntimeStatus.ACTIVE
         result = asyncio.run(tool.run(plugin_id="DemoPlugin"))
 
     payload = json.loads(result)
     assert payload["success"]
     assert not payload["state"]
     reload_plugin_runtime.assert_called_once_with("DemoPlugin")
+
+
+def test_reload_plugin_reports_runtime_failure() -> None:
+    """重载未进入 active 时不得继续向智能体报告成功。"""
+    tool = ReloadPluginTool(session_id="session-1", user_id="10001")
+
+    with (
+        patch(
+            "app.agent.tools.impl.reload_plugin.get_plugin_snapshot",
+            side_effect=[_plugin_snapshot(), _plugin_snapshot(state=False)],
+        ),
+        patch(
+            "app.agent.tools.impl.reload_plugin.reload_plugin_runtime",
+            return_value=PluginRuntimeStatus.LOAD_FAILED,
+        ),
+    ):
+        result = asyncio.run(tool.run(plugin_id="DemoPlugin"))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["runtime_status"] == "load_failed"
 
 
 def test_install_plugin_installs_market_candidate() -> None:

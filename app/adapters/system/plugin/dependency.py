@@ -297,6 +297,39 @@ class PluginDependencyInstaller:
             logger.error(f"收集所有需要安装或更新的依赖项时发生错误：{err}")
             return []
 
+    def classify_plugins(self) -> tuple[list[str], list[str], list[str]]:
+        """按源码和依赖状态划分已安装插件。"""
+        ready: list[str] = []
+        missing_dependencies: list[str] = []
+        missing_source: list[str] = []
+        installed_packages = self._installed_packages()
+
+        for plugin_id in self._installed_plugins_provider() or []:
+            plugin_dir = self._plugin_dir / plugin_id.lower()
+            if not plugin_dir.is_dir():
+                missing_source.append(plugin_id)
+                continue
+            try:
+                manifest = load_dependency_manifest(plugin_dir)
+                requirements = [] if manifest is None else [
+                    requirement
+                    for requirement in manifest.dependencies
+                    if not requirement.marker or requirement.marker.evaluate()
+                ]
+            except PluginDependencyManifestError as error:
+                logger.error(f"插件 {plugin_id} 依赖清单无效：{error}")
+                missing_dependencies.append(plugin_id)
+                continue
+            if all(
+                self._requirement_satisfied(requirement, installed_packages)
+                for requirement in requirements
+            ):
+                ready.append(plugin_id)
+            else:
+                missing_dependencies.append(plugin_id)
+
+        return ready, missing_dependencies, missing_source
+
     def _wheels_dirs(self) -> list[Path]:
         """收集已安装插件附带的本地 wheels 目录。"""
         result = []

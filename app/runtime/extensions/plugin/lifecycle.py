@@ -6,6 +6,8 @@ import traceback
 from collections.abc import Callable
 from typing import Any, Optional
 
+from app.schemas.plugin import PluginRuntimeStatus
+
 
 class PluginLifecycle:
     """管理插件发现、初始化、启停和热重载，不持有市场或 HTTP 路由职责。"""
@@ -23,6 +25,7 @@ class PluginLifecycle:
         clear_tools: Callable[[], None],
         enable_events: Callable[[Any], None],
         disable_events: Callable[[Any], None],
+        runtime_status_writer: Callable[[str, PluginRuntimeStatus], None],
         log: Any,
         event_sender: Callable[..., Any],
     ) -> None:
@@ -37,12 +40,19 @@ class PluginLifecycle:
         self._clear_tools = clear_tools
         self._enable_events = enable_events
         self._disable_events = disable_events
+        self._runtime_status_writer = runtime_status_writer
         self._logger = log
         self._event_sender = event_sender
 
-    def start(self, plugin_id: Optional[str] = None) -> None:
-        """加载并初始化指定插件或全部已安装插件。"""
+    def start(
+        self,
+        plugin_id: Optional[str] = None,
+    ) -> dict[str, PluginRuntimeStatus]:
+        """加载并初始化插件，返回每个目标的明确运行结果。"""
         installed_plugins = self._installed_plugins()
+        results: dict[str, PluginRuntimeStatus] = {}
+        if plugin_id:
+            self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
 
         def check_module(module: Any) -> bool:
             """判断模块是否具备宿主插件最小生命周期钩子。"""
@@ -58,6 +68,9 @@ class PluginLifecycle:
                 if not self._auth_checker(plugin):
                     if current_id in self._classes:
                         self._classes[current_id] = plugin
+                    status = PluginRuntimeStatus.BLOCKED_BY_POLICY
+                    self._runtime_status_writer(current_id, status)
+                    results[current_id] = status
                     continue
                 self._classes[current_id] = plugin
                 instance = plugin()
@@ -70,11 +83,22 @@ class PluginLifecycle:
                     self._enable_events(plugin)
                 else:
                     self._disable_events(plugin)
+                status = PluginRuntimeStatus.ACTIVE
+                self._runtime_status_writer(current_id, status)
+                results[current_id] = status
             except Exception as error:  # noqa: BLE001
+                status = PluginRuntimeStatus.LOAD_FAILED
+                self._runtime_status_writer(current_id, status)
+                results[current_id] = status
                 self._logger.error(
                     f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                 )
+        if plugin_id and plugin_id not in results:
+            status = PluginRuntimeStatus.LOAD_FAILED
+            self._runtime_status_writer(plugin_id, status)
+            results[plugin_id] = status
         self._clear_tools()
+        return results
 
     def initialize(self, plugin_id: str, config: dict) -> None:
         """重新应用指定插件配置并刷新事件注册状态。"""
@@ -115,11 +139,17 @@ class PluginLifecycle:
         self._clear_tools()
         self._logger.info("插件停止完成")
 
-    def reload(self, plugin_id: str, reload_event: Any) -> None:
-        """重启指定插件并广播插件重载事件。"""
+    def reload(
+        self,
+        plugin_id: str,
+        reload_event: Any,
+    ) -> PluginRuntimeStatus:
+        """重启指定插件并返回本次加载结果。"""
+        self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
         self.stop(plugin_id)
-        self.start(plugin_id)
+        status = self.start(plugin_id)[plugin_id]
         self._event_sender(reload_event, data={"plugin_id": plugin_id})
+        return status
 
     def _stop_plugin(self, plugin: Any) -> None:
         """按插件旧 ABI 顺序关闭资源和服务。"""

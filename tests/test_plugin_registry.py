@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.schemas.plugin import PluginRuntimeStatus
 
 
 def test_registry_owns_classes_instances_and_stable_snapshots():
@@ -36,3 +37,24 @@ def test_registry_clear_preserves_compatibility_mapping_identity():
     assert registry.running is running
     assert classes == {}
     assert running == {}
+
+
+def test_registry_tracks_runtime_status_generation_and_settling():
+    """状态与后台收敛变化只在真实改变时推进刷新代次。"""
+    registry = PluginRegistry()
+
+    registry.set_runtime_status("Demo", PluginRuntimeStatus.READY)
+    first_generation = registry.generation
+    registry.set_runtime_status("Demo", PluginRuntimeStatus.READY)
+    registry.set_settling(True)
+
+    assert registry.runtime_status("Demo") is PluginRuntimeStatus.READY
+    assert registry.runtime_status_snapshot() == {
+        "Demo": PluginRuntimeStatus.READY,
+    }
+    assert registry.generation == first_generation + 1
+    assert registry.settling is True
+
+    registry.remove("Demo")
+
+    assert registry.runtime_status("Demo") is None

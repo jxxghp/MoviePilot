@@ -7,6 +7,7 @@ from watchfiles import watch
 
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
+from app.schemas.plugin import PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
@@ -34,7 +35,11 @@ from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.paths import PluginPathResolver
-from app.runtime.extensions.plugin.dependency import PluginDependencyService
+from app.runtime.extensions.plugin.dependency import (
+    PluginDependencyClassification,
+    PluginDependencyInstallResult,
+    PluginDependencyService,
+)
 from app.runtime.extensions.plugin.storage import PluginConfigStore
 from app.schemas.types import EventType, SystemConfigKey
 
@@ -151,6 +156,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             map_plugin=lambda **kwargs: self._process_plugin_info(**kwargs),
             auth_checker=lambda **kwargs: self.__set_and_check_auth_level(**kwargs),
             plugin_attr=lambda pid, attr: self.get_plugin_attr(pid, attr),
+            runtime_status=self._plugin_registry.runtime_status,
             log=logger,
         )
         # 本地插件同步写入运行目录后的短时忽略窗口
@@ -205,6 +211,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             clear_tools=self.clear_plugin_agent_tools_cache,
             enable_events=eventmanager.enable_event_handler,
             disable_events=eventmanager.disable_event_handler,
+            runtime_status_writer=self._plugin_registry.set_runtime_status,
             log=logger,
             event_sender=eventmanager.send_event,
         )
@@ -298,17 +305,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """按最新系统配置完整重启插件。"""
         # 停止已有插件
         self.stop()
-        # 启动插件
-        self.start()
+        classification = self.classify_plugins()
+        self.apply_plugin_dependency_classification(classification)
+        for plugin_id in classification.ready:
+            self.start(plugin_id)
 
-    def start(self, pid: Optional[str] = None):
+    def start(self, pid: Optional[str] = None) -> Dict[str, PluginRuntimeStatus]:
         """
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
         """
 
         _legacy_diagnostics_configurator(enabled=settings.DEBUG, emitter=logger.warning)
-        self._plugin_lifecycle.start(pid)
+        return self._plugin_lifecycle.start(pid)
 
     def init_plugin(self, plugin_id: str, conf: dict):
         """
@@ -460,13 +469,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         """
         self._plugin_lifecycle.stop(plugin_id)
+        self._plugin_registry.remove(plugin_id)
 
-    def reload_plugin(self, plugin_id: str):
+    def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
         将一个插件重新加载到内存
         :param plugin_id: 插件ID
         """
-        self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
+        return self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
 
     @staticmethod
     def _clear_plugin_modules(plugin_id: Optional[str] = None):
@@ -498,6 +508,62 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             system=get_plugin_system,
             log=logger,
         ).install_missing()
+
+    @staticmethod
+    def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
+        """安装插件缺失依赖并返回缺失项及安装成功状态。"""
+        return PluginDependencyService(
+            system=get_plugin_system,
+            log=logger,
+        ).install_missing_with_status()
+
+    @staticmethod
+    def classify_plugins() -> PluginDependencyClassification:
+        """按源码和依赖是否就绪划分已安装插件。"""
+        return PluginDependencyService(
+            system=get_plugin_system,
+            log=logger,
+        ).classify_plugins()
+
+    def apply_plugin_dependency_classification(
+        self,
+        classification: PluginDependencyClassification,
+    ) -> None:
+        """把源码和依赖分类写入运行状态，已激活插件保持当前结果。"""
+        running_ids = set(self._plugin_registry.running_ids())
+        for plugin_id in classification.source_missing:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.SOURCE_MISSING,
+            )
+        for plugin_id in classification.missing_dependencies:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.DEPENDENCY_PENDING,
+            )
+        for plugin_id in classification.ready:
+            if plugin_id in running_ids:
+                continue
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.READY,
+            )
+
+    def set_plugin_settling(self, settling: bool) -> None:
+        """更新启动后的插件恢复任务状态。"""
+        self._plugin_registry.set_settling(settling)
+
+    def get_plugin_runtime_statuses(self) -> Dict[str, PluginRuntimeStatus]:
+        """返回插件运行状态快照。"""
+        return self._plugin_registry.runtime_status_snapshot()
+
+    def get_plugin_runtime_generation(self) -> int:
+        """返回插件状态变化代次。"""
+        return self._plugin_registry.generation
+
+    def is_plugin_settling(self) -> bool:
+        """返回插件源码和依赖是否仍在后台恢复。"""
+        return self._plugin_registry.settling
 
     def get_plugin_config(self, pid: str) -> dict:
         """
@@ -776,6 +842,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         获取所有本地已下载的插件信息
         """
         return self._plugin_catalog_view.local()
+
+    def get_installed_plugins(self) -> List[_SchemaPlugin]:
+        """按安装清单返回插件，即使运行时尚未加载也保留卡片。"""
+        return self._plugin_catalog_view.installed()
 
     def get_local_plugin_version(self, pid: str) -> Optional[str]:
         """

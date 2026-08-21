@@ -11,6 +11,7 @@ from app.application.configuration import get_configured_system_config as System
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。
@@ -79,10 +80,11 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
     register_plugin_api(plugin_id)
 
 
-def reload_plugin_runtime(plugin_id: str) -> None:
+def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    get_plugin_manager().reload_plugin(plugin_id)
+    runtime_status = get_plugin_manager().reload_plugin(plugin_id)
     refresh_plugin_registrations(plugin_id)
+    return runtime_status
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:

@@ -11,7 +11,7 @@ from app.runtime.config import settings
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.storage import PluginStorage
 from app.runtime.extensions.plugin.system import PluginSystemServices
-from app.schemas.plugin import Plugin
+from app.schemas.plugin import Plugin, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 
@@ -31,6 +31,7 @@ class PluginCatalogFacade:
         map_plugin: Callable[..., Optional[Plugin]],
         auth_checker: Callable[..., bool],
         plugin_attr: Callable[[str, str], Any],
+        runtime_status: Callable[[str], Optional[PluginRuntimeStatus]],
         log: Any,
     ) -> None:
         """保存注册表、目录服务和插件外部系统端口。"""
@@ -44,6 +45,7 @@ class PluginCatalogFacade:
         self._map_plugin = map_plugin
         self._auth_checker = auth_checker
         self._plugin_attr = plugin_attr
+        self._runtime_status = runtime_status
         self._logger = log
 
     def online(self, force: bool = False) -> list[Plugin]:
@@ -70,6 +72,7 @@ class PluginCatalogFacade:
                 id=plugin_id,
                 installed=plugin_id in installed,
                 state=self._safe_state(plugin_id, plugin_instance),
+                runtime_status=self._runtime_status(plugin_id),
                 has_page=supports_plugin_hook(plugin_class, "get_page"),
                 plugin_public_key=getattr(plugin_class, "plugin_public_key", None),
                 plugin_name=getattr(plugin_class, "plugin_name", None),
@@ -87,6 +90,30 @@ class PluginCatalogFacade:
             plugins.append(plugin)
         plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
         return plugins
+
+    def installed(self) -> list[Plugin]:
+        """按安装清单投影插件，未加载项目仍返回可观察占位卡片。"""
+        installed_ids = self._storage().read(SystemConfigKey.UserInstalledPlugins) or []
+        local_by_id = {
+            plugin.id: plugin
+            for plugin in self.local()
+            if plugin.installed and plugin.id
+        }
+        result = []
+        for plugin_id in installed_ids:
+            plugin = local_by_id.get(plugin_id)
+            if plugin:
+                result.append(plugin)
+                continue
+            result.append(Plugin(
+                id=plugin_id,
+                plugin_name=plugin_id,
+                installed=True,
+                state=False,
+                runtime_status=self._runtime_status(plugin_id),
+                is_local=True,
+            ))
+        return result
 
     def local_version(self, plugin_id: str) -> Optional[str]:
         """读取指定已安装插件版本，不触发全量目录投影。"""
