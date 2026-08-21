@@ -19,6 +19,7 @@ APP_ROOT = PROJECT_ROOT / "app"
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 DEPENDENCY_BASELINE_PATH = BASELINE_ROOT / "dependency-baseline.json"
 RUNTIME_BASELINE_PATH = BASELINE_ROOT / "runtime-contract-baseline.json"
+TRANSACTION_BASELINE_PATH = BASELINE_ROOT / "transaction-debt-baseline.json"
 PLUGIN_BASELINE_PATH = BASELINE_ROOT / "official-plugin-baseline.json"
 PLUGIN_HOOKS = (
     "get_actions",
@@ -37,6 +38,25 @@ PLUGIN_HOOKS = (
     "init_plugin",
     "stop_service",
 )
+MODEL_TRANSACTION_DECORATORS = {
+    "async_db_query",
+    "async_db_update",
+    "db_query",
+    "db_update",
+}
+SESSION_FACTORY_NAMES = {
+    "AsyncSession",
+    "AsyncSessionFactory",
+    "ScopedSession",
+    "Session",
+    "SessionFactory",
+    "async_session_scope",
+    "get_async_db",
+    "get_async_session_factory",
+    "get_db",
+    "get_scoped_session",
+    "get_session_factory",
+}
 
 
 def discover_modules() -> dict[str, Path]:
@@ -250,6 +270,137 @@ def collect_dependency_baseline() -> dict[str, Any]:
     }
 
 
+def _expression_name(node: ast.AST) -> str:
+    """返回调用或装饰器表达式的点分名称，无法静态解析时返回空串。"""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _expression_name(node.value)
+        return ".".join(part for part in (prefix, node.attr) if part)
+    if isinstance(node, ast.Call):
+        return _expression_name(node.func)
+    return ""
+
+
+def _iter_owned_functions(tree: ast.Module) -> list[tuple[str, ast.AST]]:
+    """收集模块函数与类方法的稳定限定名，不记录易漂移源码行号。"""
+    methods: list[tuple[str, ast.AST]] = []
+
+    def visit_class(node: ast.ClassDef, parents: tuple[str, ...]) -> None:
+        """递归访问嵌套类，并收集直接定义的方法。"""
+        class_path = (*parents, node.name)
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                methods.append((".".join((*class_path, child.name)), child))
+            elif isinstance(child, ast.ClassDef):
+                visit_class(child, class_path)
+
+    for statement in tree.body:
+        if isinstance(statement, ast.ClassDef):
+            visit_class(statement, ())
+        elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            methods.append((statement.name, statement))
+    return methods
+
+
+def _collect_method_calls(
+    root: Path,
+    *,
+    operations: set[str],
+) -> list[dict[str, str]]:
+    """按文件、方法和操作收集指定调用，作为只降不增的事务债务清单。"""
+    calls: list[dict[str, str]] = []
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        for method, node in _iter_owned_functions(parse_source(path)):
+            for call in ast.walk(node):
+                if not isinstance(call, ast.Call):
+                    continue
+                expression = _expression_name(call.func)
+                operation = expression.rsplit(".", 1)[-1]
+                if operation in operations:
+                    calls.append(
+                        {
+                            "file": relative,
+                            "method": method,
+                            "operation": operation,
+                        }
+                    )
+    return sorted(
+        calls,
+        key=lambda item: (item["file"], item["method"], item["operation"]),
+    )
+
+
+def collect_transaction_debt_baseline() -> dict[str, Any]:
+    """记录 Model 自动事务和 Oper 会话所有权债务，供 CI 执行单向 ratchet。"""
+    model_root = APP_ROOT / "db" / "models"
+    oper_root = APP_ROOT / "db" / "oper"
+    decorated_methods: list[dict[str, str]] = []
+    for path in sorted(model_root.rglob("*.py")):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        for method, node in _iter_owned_functions(parse_source(path)):
+            for decorator in node.decorator_list:
+                decorator_name = _expression_name(decorator).rsplit(".", 1)[-1]
+                if decorator_name in MODEL_TRANSACTION_DECORATORS:
+                    decorated_methods.append(
+                        {
+                            "decorator": decorator_name,
+                            "file": relative,
+                            "method": method,
+                        }
+                    )
+    decorated_methods.sort(
+        key=lambda item: (item["file"], item["method"], item["decorator"])
+    )
+    model_transaction_calls = _collect_method_calls(
+        model_root,
+        operations={"commit", "rollback"},
+    )
+    model_session_factories = _collect_method_calls(
+        model_root,
+        operations=SESSION_FACTORY_NAMES,
+    )
+    oper_transaction_calls = _collect_method_calls(
+        oper_root,
+        operations={"commit", "rollback"},
+    )
+    oper_session_factories = _collect_method_calls(
+        oper_root,
+        operations=SESSION_FACTORY_NAMES,
+    )
+    decorator_counts = {
+        decorator: sum(
+            item["decorator"] == decorator
+            for item in decorated_methods
+        )
+        for decorator in sorted(MODEL_TRANSACTION_DECORATORS)
+    }
+    return {
+        "schema_version": 1,
+        "scope": "app/db/models and app/db/oper transaction ownership debt",
+        "model_decorators": {
+            "count": len(decorated_methods),
+            "by_kind": decorator_counts,
+            "methods": decorated_methods,
+        },
+        "model_transaction_calls": {
+            "count": len(model_transaction_calls),
+            "calls": model_transaction_calls,
+        },
+        "model_session_factories": {
+            "count": len(model_session_factories),
+            "calls": model_session_factories,
+        },
+        "oper_transaction_calls": {
+            "count": len(oper_transaction_calls),
+            "calls": oper_transaction_calls,
+        },
+        "oper_session_factories": {
+            "count": len(oper_session_factories),
+            "calls": oper_session_factories,
+        },
+    }
 def _collect_run_module_locations() -> tuple[
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
@@ -862,6 +1013,45 @@ def semantic_baseline(path: Path, value: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def transaction_ratchet_matches(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    """事务债务只允许删除既有条目，不允许新增或提高任一分类计数。"""
+    if expected.get("schema_version") != actual.get("schema_version"):
+        return False
+    if expected.get("scope") != actual.get("scope"):
+        return False
+    sections = (
+        ("model_decorators", "methods"),
+        ("model_transaction_calls", "calls"),
+        ("model_session_factories", "calls"),
+        ("oper_transaction_calls", "calls"),
+        ("oper_session_factories", "calls"),
+    )
+    for section, entries_key in sections:
+        expected_section = expected.get(section, {})
+        actual_section = actual.get(section, {})
+        if actual_section.get("count", 0) > expected_section.get("count", 0):
+            return False
+        expected_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in expected_section.get(entries_key, [])
+        }
+        actual_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in actual_section.get(entries_key, [])
+        }
+        if not actual_entries.issubset(expected_entries):
+            return False
+    expected_kinds = expected.get("model_decorators", {}).get("by_kind", {})
+    actual_kinds = actual.get("model_decorators", {}).get("by_kind", {})
+    return all(
+        count <= expected_kinds.get(decorator, 0)
+        for decorator, count in actual_kinds.items()
+    )
+
+
 def _compare_semantic_values(
     expected: Any,
     actual: Any,
@@ -919,9 +1109,12 @@ def build_comparison_report(path: Path, actual: dict[str, Any]) -> dict[str, Any
         "changed": [],
     }
     _compare_semantic_values(expected_semantic, actual_semantic, "$", differences)
+    semantic_match = expected_semantic == actual_semantic
+    if path.name == TRANSACTION_BASELINE_PATH.name:
+        semantic_match = transaction_ratchet_matches(expected, actual)
     return {
         "baseline": str(_display_path(path)),
-        "semantic_match": expected_semantic == actual_semantic,
+        "semantic_match": semantic_match,
         "expected_provenance": expected.get("provenance"),
         "actual_provenance": actual.get("provenance"),
         **differences,
@@ -936,6 +1129,21 @@ def check_json(
 ) -> bool:
     """比较当前扫描结果和已提交基线并输出限定范围的更新提示。"""
     expected = json.loads(path.read_text(encoding="utf-8"))
+    if path.name == TRANSACTION_BASELINE_PATH.name:
+        if transaction_ratchet_matches(expected, actual):
+            if expected != actual:
+                print(
+                    "事务债务已下降；门禁继续通过，可在本任务提交中显式运行 "
+                    "scripts/architecture/baseline.py --write-host 固化新低水位",
+                    file=sys.stderr,
+                )
+            return True
+        print(
+            f"事务债务出现新增：{_display_path(path)}；"
+            "Model 自动事务、直接 commit/rollback 或 Oper 自建 Session 不得增长",
+            file=sys.stderr,
+        )
+        return False
     expected_semantic = semantic_baseline(path, expected)
     actual_semantic = semantic_baseline(path, actual)
     if expected_semantic == actual_semantic:
@@ -1016,6 +1224,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         baselines = [
             (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
             (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
+            (TRANSACTION_BASELINE_PATH, collect_transaction_debt_baseline()),
         ]
         write_hint = "--write-host"
     else:

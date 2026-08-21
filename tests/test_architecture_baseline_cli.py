@@ -45,6 +45,28 @@ def _performance_sample(*, loaded_module_count: int = 10) -> dict:
     }
 
 
+def _transaction_sample(methods: list[dict[str, str]]) -> dict:
+    """构造最小事务债务 fixture，供单向 ratchet 行为测试。"""
+    return {
+        "schema_version": 1,
+        "scope": "app/db/models and app/db/oper transaction ownership debt",
+        "model_decorators": {
+            "count": len(methods),
+            "by_kind": {
+                "async_db_query": 0,
+                "async_db_update": 0,
+                "db_query": 0,
+                "db_update": len(methods),
+            },
+            "methods": methods,
+        },
+        "model_transaction_calls": {"count": 0, "calls": []},
+        "model_session_factories": {"count": 0, "calls": []},
+        "oper_transaction_calls": {"count": 0, "calls": []},
+        "oper_session_factories": {"count": 0, "calls": []},
+    }
+
+
 def test_architecture_legacy_action_requires_scope(capsys):
     """旧操作未明确宿主或插件范围时必须拒绝执行。"""
     with pytest.raises(SystemExit) as error:
@@ -209,6 +231,34 @@ def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
     ) == architecture_baseline.semantic_baseline(baseline_path, new_value)
 
 
+def test_transaction_ratchet_allows_removal_but_rejects_new_method() -> None:
+    """事务债务低水位允许下降，替换或新增 Model 自动事务仍必须失败。"""
+    first = {
+        "decorator": "db_update",
+        "file": "app/db/models/demo.py",
+        "method": "Demo.save",
+    }
+    second = {
+        "decorator": "db_update",
+        "file": "app/db/models/demo.py",
+        "method": "Demo.delete",
+    }
+    expected = _transaction_sample([first])
+
+    assert architecture_baseline.transaction_ratchet_matches(
+        expected,
+        _transaction_sample([]),
+    )
+    assert not architecture_baseline.transaction_ratchet_matches(
+        expected,
+        _transaction_sample([first, second]),
+    )
+    assert not architecture_baseline.transaction_ratchet_matches(
+        expected,
+        _transaction_sample([second]),
+    )
+
+
 def test_architecture_write_host_only_updates_host_files(
     tmp_path: Path,
     monkeypatch,
@@ -217,6 +267,7 @@ def test_architecture_write_host_only_updates_host_files(
     """宿主写操作不得连带覆盖官方插件 fixture。"""
     dependency_path = tmp_path / "dependency.json"
     runtime_path = tmp_path / "runtime.json"
+    transaction_path = tmp_path / "transaction.json"
     plugin_path = tmp_path / "plugin.json"
     monkeypatch.setattr(
         architecture_baseline,
@@ -227,6 +278,11 @@ def test_architecture_write_host_only_updates_host_files(
         architecture_baseline,
         "RUNTIME_BASELINE_PATH",
         runtime_path,
+    )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "TRANSACTION_BASELINE_PATH",
+        transaction_path,
     )
     monkeypatch.setattr(architecture_baseline, "PLUGIN_BASELINE_PATH", plugin_path)
     monkeypatch.setattr(
@@ -239,16 +295,25 @@ def test_architecture_write_host_only_updates_host_files(
         "collect_runtime_baseline",
         lambda: {"scope": "host-runtime"},
     )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "collect_transaction_debt_baseline",
+        lambda: {"scope": "host-transaction"},
+    )
 
     assert architecture_baseline.main(["--write-host"]) == 0
 
     assert json.loads(dependency_path.read_text()) == {"scope": "host-dependency"}
     assert json.loads(runtime_path.read_text()) == {"scope": "host-runtime"}
+    assert json.loads(transaction_path.read_text()) == {
+        "scope": "host-transaction"
+    }
     assert not plugin_path.exists()
     output = capsys.readouterr().out
     assert "即将写入" in output
     assert "dependency.json" in output
     assert "runtime.json" in output
+    assert "transaction.json" in output
 
 
 def test_architecture_write_plugins_only_updates_plugin_file(
@@ -261,6 +326,7 @@ def test_architecture_write_plugins_only_updates_plugin_file(
     (plugin_repo / "plugins.v3").mkdir()
     dependency_path = tmp_path / "dependency.json"
     runtime_path = tmp_path / "runtime.json"
+    transaction_path = tmp_path / "transaction.json"
     plugin_path = tmp_path / "plugin.json"
     monkeypatch.setattr(
         architecture_baseline,
@@ -272,6 +338,11 @@ def test_architecture_write_plugins_only_updates_plugin_file(
         "RUNTIME_BASELINE_PATH",
         runtime_path,
     )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "TRANSACTION_BASELINE_PATH",
+        transaction_path,
+    )
     monkeypatch.setattr(architecture_baseline, "PLUGIN_BASELINE_PATH", plugin_path)
 
     assert architecture_baseline.main(
@@ -281,6 +352,7 @@ def test_architecture_write_plugins_only_updates_plugin_file(
     assert plugin_path.is_file()
     assert not dependency_path.exists()
     assert not runtime_path.exists()
+    assert not transaction_path.exists()
 
 
 def test_architecture_plugin_check_writes_review_report_only_when_requested(

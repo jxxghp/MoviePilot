@@ -16,6 +16,7 @@ def test_architecture_contract_baselines_match_current_source():
     baseline_paths = (
         BASELINE_ROOT / "dependency-baseline.json",
         BASELINE_ROOT / "runtime-contract-baseline.json",
+        BASELINE_ROOT / "transaction-debt-baseline.json",
     )
     contents_before = {
         path: path.read_bytes()
@@ -54,6 +55,18 @@ def test_official_plugin_baseline_records_external_source():
         not path.startswith("app/plugins/")
         for path in baseline["api_routes"]
     )
+
+
+def test_dependency_baseline_records_nonempty_host_graph() -> None:
+    """宿主依赖 fixture 不得因收集器提前返回而被静默写成空值。"""
+    baseline_path = BASELINE_ROOT / "dependency-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["module_count"] == len(baseline["modules"])
+    assert baseline["edge_count"] == len(baseline["edges"])
+    assert baseline["module_count"] > 0
+    assert baseline["edge_count"] > 0
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
@@ -103,6 +116,20 @@ def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
 
     assert baseline["schema_version"] == 2
     assert '"line"' not in json.dumps(baseline)
+
+
+def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
+    """事务 fixture 必须冻结存量 Model 自动提交，并保持 Oper 自提交为零。"""
+    baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["model_decorators"]["count"] == 178
+    assert sum(baseline["model_decorators"]["by_kind"].values()) == 178
+    assert baseline["model_transaction_calls"] == {"count": 0, "calls": []}
+    assert baseline["model_session_factories"] == {"count": 0, "calls": []}
+    assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}
+    assert baseline["oper_session_factories"] == {"count": 0, "calls": []}
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():

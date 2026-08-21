@@ -342,13 +342,18 @@ SQLAlchemy 查询。`models/` 与 `oper/` 按文件一一镜像（站点族聚�
 
 ```mermaid
 flowchart LR
-    Caller["Chain / Application / 端点 / Module"]
+    Entry["API / Scheduler / Agent<br/>逻辑操作入口"]
+    Command["Application Command<br/>事务所有者"]
+    UoW["app/db/uow.py<br/>commit / rollback"]
     Oper["app/db/oper/*.py<br/>SubscribeOper / TransferHistoryOper ..."]
     Models["app/db/models/*.py<br/>SQLAlchemy 模型"]
     Engine["app/db/engine.py<br/>同步 + 异步引擎"]
     DB[("PostgreSQL / SQLite")]
 
-    Caller --> Oper --> Models --> Engine --> DB
+    Entry --> Command --> Oper --> Models --> Engine --> DB
+    Entry --> UoW --> Engine
+    Command -.提交或回滚.-> UoW
+    Command -.commit 后副作用.-> Effects["Event / Scheduler / Report"]
     Models -.before_insert/before_update.-> Norm["_identity.py<br/>media_source/media_id 归一化"]
 ```
 
@@ -356,6 +361,9 @@ flowchart LR
   归 `app/application/`（见 `application/subscription/write.py`、`application/history.py`）。
   订阅新增、查询、变更、删除、身份和搜索契约已经统一收口在 `application/subscription/`，
   不再保留主题包之外的第二个写入入口。
+- Oper 只 stage mutation，不创建独立 Session、不提交；Application Command 通过请求或任务
+  入口注入的 UnitOfWork 统一 `commit/rollback`，事件、刷新和上报只在 commit 成功后执行。
+  `transaction-debt-baseline.json` 将存量 178 个 Model 事务装饰器冻结为只降不增低水位。
 - 每次表结构变更必须新增 `database/versions/` 下的 Alembic 迁移。
 - 运行期业务配置使用 `SystemConfigKey` 枚举 + `SystemConfigOper`，禁止裸字符串键；
   用户级配置使用 `UserConfigOper`。

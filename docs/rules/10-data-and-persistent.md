@@ -81,6 +81,29 @@ the stub.
 Oper classes accept and return persistence values. Turning a `MediaInfo` or
 `MetaBase` into a row is business logic and lives in `app/application/`.
 
+### Transaction ownership ratchet
+
+- `tests/fixtures/architecture/transaction-debt-baseline.json` records the
+  existing Model transaction decorators. The current 178 legacy decorators are
+  migration debt: they may decrease but must never increase or move to a new
+  Model method.
+- New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
+  `async_db_update`, create a Session, or call `commit()` / `rollback()`.
+- Oper receives a caller-owned Session and may query, add, update, delete, or
+  flush. A composable Oper method must not create its own Session and must not
+  commit or roll back.
+- The API, Scheduler, Agent, or another logical operation entry creates the
+  Session and adapts it through `app/db/uow.py`. Application command code owns
+  `commit()` / `rollback()`; events, scheduling refresh, reports, and other
+  external effects run only after a successful commit.
+- A synchronous Session is private to one worker thread. An AsyncSession is
+  private to one asyncio task/operation; neither may be stored in a process
+  singleton or reused by concurrent work.
+
+Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
+persistence changes. A deliberate debt reduction may refresh the low-water mark
+with `--write-host`; never refresh it to accept newly introduced debt.
+
 **Standard Oper method conventions:**
 
 ```python
