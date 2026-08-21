@@ -142,7 +142,7 @@ class BluRayTest(TestCase):
 
             # 测试手动刮削
             logger.debug(f"测试手动刮削 {path}")
-            mock_metadata_nfo.call_count = 0
+            mock_metadata_nfo.reset_mock()
             ScrapingChain().scrape_metadata(
                 fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=True
             )
@@ -151,7 +151,7 @@ class BluRayTest(TestCase):
 
             # 测试自动刮削
             logger.debug(f"测试自动刮削 {path}")
-            mock_metadata_nfo.call_count = 0
+            mock_metadata_nfo.reset_mock()
             ScrapingChain().scrape_metadata_event(
                 Event(
                     event_type=EventType.MetadataScrape,

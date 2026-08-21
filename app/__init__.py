@@ -9,6 +9,12 @@ def _filter_third_party_startup_warnings() -> None:
     """
     warnings.filterwarnings(
         "ignore",
+        message=r"'_UnionGenericAlias' is deprecated and slated for removal in Python 3\.17",
+        category=DeprecationWarning,
+        module=r"google\.genai\.types",
+    )
+    warnings.filterwarnings(
+        "ignore",
         message=r"invalid escape sequence '\\&'",
         category=SyntaxWarning,
     )
