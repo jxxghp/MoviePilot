@@ -104,6 +104,10 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
   UoW and post-commit callback, and `SubscribeOper.stage_add()` only queries,
   adds, and flushes. Preserve `SubscribeOper.add()` only for legacy SDK callers;
   new host code must not use that auto-commit compatibility path.
+- The same rule applies to `SiteMutationCommand`, history/workflow commands,
+  `AgentChatService.delete()`, and `DeletePluginDataCommand`: bind the repository
+  and UoW to one request/operation Session. Legacy plugin-facing Oper methods may
+  remain temporarily, but a new endpoint or startup workflow must call `stage_*`.
 
 Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
 persistence changes. A deliberate debt reduction may refresh the low-water mark

@@ -1,5 +1,8 @@
 from typing import Any, Optional
 
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
 from app.db.models.plugindata import PluginData
 
@@ -81,6 +84,15 @@ class PluginDataOper(DbOper):
             PluginData.del_plugin_data_by_key(self._db, plugin_id, key)
         else:
             PluginData.del_plugin_data(self._db, plugin_id)
+
+    def stage_delete(self, plugin_id: str) -> None:
+        """暂存目标插件全部数据删除并 flush，不提交调用方事务。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("插件数据暂存删除需要调用方提供 Session")
+        self._db.execute(
+            delete(PluginData).where(PluginData.plugin_id == plugin_id)
+        )
+        self._db.flush()
 
     def truncate(self):
         """

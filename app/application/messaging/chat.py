@@ -45,6 +45,14 @@ class AsyncAgentChatRepository(Protocol):
         """删除指定服务端会话。"""
         ...
 
+    async def async_stage_delete(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """暂存删除指定服务端会话，不提交调用方事务。"""
+        ...
+
     def get(self, session_id: str, user_id: Optional[str] = None) -> Optional[Any]:
         """同步读取服务端会话。"""
         ...
@@ -83,12 +91,29 @@ class AgentChatRecord:
     messages: list[dict]
 
 
+class AsyncUnitOfWork(Protocol):
+    """Agent 会话异步写用例所需的最小事务端口。"""
+
+    async def commit(self) -> None:
+        """提交当前请求事务。"""
+        ...
+
+    async def rollback(self) -> None:
+        """回滚当前请求事务。"""
+        ...
+
+
 class AgentChatService:
     """统一执行 Agent 会话查询、访问控制和删除。"""
 
-    def __init__(self, repository: AsyncAgentChatRepository) -> None:
-        """保存异步会话持久化端口。"""
+    def __init__(
+        self,
+        repository: AsyncAgentChatRepository,
+        unit_of_work: Optional[AsyncUnitOfWork] = None,
+    ) -> None:
+        """保存会话持久化端口和可选请求级事务。"""
         self._repository = repository
+        self._unit_of_work = unit_of_work
 
     async def list(
         self,
@@ -137,7 +162,18 @@ class AgentChatService:
         record = await self.get_accessible(session_id, principal)
         if record is None:
             return False
-        return await self._repository.async_delete(session_id=session_id)
+        if self._unit_of_work is None:
+            return await self._repository.async_delete(session_id=session_id)
+        try:
+            deleted = await self._repository.async_stage_delete(
+                session_id=session_id
+            )
+            if deleted:
+                await self._unit_of_work.commit()
+            return deleted
+        except Exception:
+            await self._unit_of_work.rollback()
+            raise
 
     def get_sync(self, session_id: str) -> Optional[AgentChatRecord]:
         """同步读取会话投影，供同步 Agent 编排路径使用。"""

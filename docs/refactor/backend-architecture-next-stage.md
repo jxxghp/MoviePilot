@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）与 ARCH-220～221 已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）与阶段 2（ARCH-220～222）已完成，后续任务按 ID 独立提交和回滚
 
 ## 1. 结论先行
 
@@ -398,6 +398,20 @@ flowchart TB
 5. 插件配置与安装状态。
 
 每个切片沿用 ARCH-221，不允许批量移动全部 Model 方法。查询方法可在写边界稳定后再迁移。
+
+**实施记录（2026-08-21）**：
+
+| 风险域 | 规范事务入口 | 结果 |
+| --- | --- | --- |
+| 站点配置 | `SiteMutationCommand` + Async UoW | create/update/priorities/delete/reset 均先 stage 再 commit |
+| 下载/整理历史 | `DownloadHistoryMutationCommand`、`TransferHistoryMutationCommand` + Sync UoW | 多表删除与文件副作用顺序已有聚焦回归 |
+| 工作流 | `WorkflowMutationCommand`、`WorkflowDefinitionCommand` + Sync/Async UoW | 定义写入提交后才刷新 timer/event |
+| Agent chat | `AgentChatService` + 请求级 Async UoW | API 会话删除改为 `async_stage_delete()`；失败回滚、缺失不提交 |
+| 插件数据重置 | `DeletePluginDataCommand` + 独占 Sync Session/UoW | `PluginDataOper.stage_delete()` 只 DELETE/flush；重置链由 startup 装配 |
+
+旧插件与宿主存量代码直接构造 `PluginDataOper`、`AgentChatOper` 的行为继续保留；新 API 和插件
+重置链不得回退到这些自动提交兼容方法。五类矩阵聚焦测试共 57 项通过，事务 ratchet 仍为
+178 且没有新增或搬移 Model 装饰器。
 
 ### 阶段 3：类型化运行时装配，减少全局服务定位
 

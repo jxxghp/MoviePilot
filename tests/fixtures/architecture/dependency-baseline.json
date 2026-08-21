@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6092,
-  "edge_sha256": "1935d43d8d3c0c3e3687109f0b81a4e56cbc4bc2ed4763a706e2b0d7c119f378",
+  "edge_count": 6095,
+  "edge_sha256": "06c09c175ac007c7ef891e2a25f5036c8bc3993a817837c03824bb591168ea73",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5890,12 +5890,15 @@
     "app.startup.plugins_initializer -> app.application",
     "app.startup.plugins_initializer -> app.application.plugin",
     "app.startup.plugins_initializer -> app.application.plugin.catalog",
+    "app.startup.plugins_initializer -> app.application.plugin.data",
     "app.startup.plugins_initializer -> app.application.plugin.routes",
     "app.startup.plugins_initializer -> app.application.site",
     "app.startup.plugins_initializer -> app.db",
     "app.startup.plugins_initializer -> app.db.oper",
     "app.startup.plugins_initializer -> app.db.oper.plugindata",
     "app.startup.plugins_initializer -> app.db.oper.systemconfig",
+    "app.startup.plugins_initializer -> app.db.session",
+    "app.startup.plugins_initializer -> app.db.uow",
     "app.startup.plugins_initializer -> app.foundation",
     "app.startup.plugins_initializer -> app.foundation.version",
     "app.startup.plugins_initializer -> app.runtime",
@@ -6109,7 +6112,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 757,
+  "module_count": 758,
   "modules": [
     "app",
     "app.adapters",
@@ -6379,6 +6382,7 @@
     "app.application.plugin",
     "app.application.plugin.catalog",
     "app.application.plugin.config",
+    "app.application.plugin.data",
     "app.application.plugin.folders",
     "app.application.plugin.install",
     "app.application.plugin.routes",

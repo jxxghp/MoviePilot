@@ -18,6 +18,7 @@ from app.runtime.extensions.plugin_manager import (
 )
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.application.plugin.catalog import PluginCatalogService
+from app.application.plugin.data import DeletePluginDataCommand
 from app.adapters.external.plugin.client import PluginMarketClient
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
@@ -41,6 +42,8 @@ from app.adapters.system.plugin.package import PluginPackageManager
 from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import SessionFactory
+from app.db.uow import SqlAlchemyUnitOfWork
 from app.runtime.log import logger
 from app.foundation.version import compare_version
 from app.schemas.plugin import PluginRuntimeStatus
@@ -50,6 +53,18 @@ from app.schemas.types import SystemConfigKey
 async def _async_write_plugin_config(key, value):
     """通过数据库操作器异步保存插件运行时配置。"""
     return await SystemConfigOper().async_set(key, value)
+
+
+def _delete_plugin_data(plugin_id: str) -> None:
+    """用独占同步会话执行插件重置的数据删除事务。"""
+    session = SessionFactory()
+    try:
+        DeletePluginDataCommand(
+            repository=PluginDataOper(session),
+            unit_of_work=SqlAlchemyUnitOfWork(session),
+        ).execute(plugin_id)
+    finally:
+        session.close()
 
 
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
@@ -98,7 +113,7 @@ def configure_plugin_services() -> None:
         write=lambda key, value: SystemConfigOper().set(key, value),
         async_write=_async_write_plugin_config,
         delete=lambda key: SystemConfigOper().delete(key),
-        delete_data=lambda plugin_id: PluginDataOper().del_data(plugin_id),
+        delete_data=_delete_plugin_data,
     ))
 
 

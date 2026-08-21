@@ -307,7 +307,10 @@ def get_agent_chat_service(
         db: AsyncSession = Depends(get_async_db),
 ) -> AgentChatService:
     """组装 Agent 会话历史查询和删除服务。"""
-    return AgentChatService(repository=_repository("agent_chat", db))
+    return AgentChatService(
+        repository=_repository("agent_chat", db),
+        unit_of_work=_transaction("async", db),
+    )
 
 
 def get_mediaserver_query_service(
