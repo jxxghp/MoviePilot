@@ -61,7 +61,10 @@ uv sync --locked --no-dev --no-install-project
 ./scripts/start-local.sh logs --follow
 ```
 
-默认会使用 `DEBUG=true` 和 `DEV=true`，与 IDE 开发启动保持一致；如果不需要热重载，可以这样启动以降低资源占用：
+默认会使用 `DEBUG=true` 和 `DEV=true`，与 IDE 开发启动保持一致。开发热重载通过
+`app.factory:create_app` 的 import string/factory 入口运行，文件变化后由 Uvicorn 重新创建
+应用结构；不会尝试在 reload 进程间传递已经实例化的 FastAPI 对象。如果不需要热重载，
+可以这样启动以降低资源占用：
 
 ```bash
 DEV=false ./scripts/start-local.sh
@@ -192,8 +195,9 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
    uv run --locked --no-sync pylint app/
    ```
 
-   GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构与 Pylint 门禁；最新官方插件仓
-   通过每周或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
+   GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构门禁，并对本次改动的 Python
+   文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
+   或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
 
 ### 7. 参考资源
 

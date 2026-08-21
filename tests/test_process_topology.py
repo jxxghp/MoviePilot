@@ -61,7 +61,7 @@ def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
     monkeypatch.setattr(main.signal, "signal", signal_handler)
     monkeypatch.setattr(main, "start_tray", start_tray)
     monkeypatch.setattr(main, "prepare_database", prepare_database)
-    monkeypatch.setattr(main.Server, "run", server_run)
+    monkeypatch.setattr(main, "run_api_server", server_run)
 
     with pytest.raises(UnsupportedProcessTopologyError):
         main.run_application()

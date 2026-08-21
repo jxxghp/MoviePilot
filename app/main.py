@@ -30,6 +30,7 @@ import setproctitle
 import signal
 import threading
 from pathlib import Path
+from typing import Optional
 
 import uvicorn as uvicorn
 from PIL import Image
@@ -55,7 +56,10 @@ elif SystemUtils.is_frozen():
 
 from app.factory import app
 from app.runtime.config import global_vars, settings
-from app.runtime.topology import validate_process_topology
+from app.runtime.topology import (
+    UnsupportedProcessTopologyError,
+    validate_process_topology,
+)
 from app.startup.database_initializer import prepare_database
 
 setproctitle.setproctitle(settings.PROJECT_NAME)
@@ -69,15 +73,58 @@ class MoviePilotServer(uvicorn.Server):
         super().handle_exit(sig, frame)
 
 
-Server = MoviePilotServer(Config(app, host=settings.HOST, port=settings.PORT,
-                                 reload=settings.DEV, workers=settings.API_WORKERS,
-                                 timeout_graceful_shutdown=60))
+APP_FACTORY = "app.factory:create_app"
+Server: Optional[MoviePilotServer] = None
+
+
+def create_server() -> MoviePilotServer:
+    """创建不带 reload/multiprocess supervisor 的单进程生产服务器。"""
+    server = MoviePilotServer(
+        Config(
+            app,
+            host=settings.HOST,
+            port=settings.PORT,
+            reload=False,
+            workers=1,
+            timeout_graceful_shutdown=60,
+        )
+    )
+    # 数据库准备阶段收到的信号早于 Server 物化，创建后必须继承既有停止意图。
+    if global_vars.is_system_stopped:
+        server.should_exit = True
+    return server
+
+
+def run_api_server() -> None:
+    """按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。"""
+    global Server
+    supervised = settings.DEV or settings.API_WORKERS > 1
+    if supervised:
+        if settings.DEV and settings.API_WORKERS > 1:
+            raise UnsupportedProcessTopologyError(
+                "Uvicorn reload 与多 worker 不能同时启用；"
+                "开发模式请设置 API_WORKERS=1。"
+            )
+        Server = None
+        uvicorn.run(
+            APP_FACTORY,
+            factory=True,
+            host=settings.HOST,
+            port=settings.PORT,
+            reload=settings.DEV,
+            workers=settings.API_WORKERS,
+            timeout_graceful_shutdown=60,
+        )
+        return
+    Server = create_server()
+    Server.run()
 
 
 def request_shutdown() -> None:
     """发布协作停止标志并请求 Uvicorn 退出"""
     global_vars.stop_system()
-    Server.should_exit = True
+    if Server is not None:
+        Server.should_exit = True
 
 
 def start_tray():
@@ -143,7 +190,7 @@ def run_application() -> None:
 
     start_tray()
     prepare_database()
-    Server.run()
+    run_api_server()
 
 
 if __name__ == '__main__':

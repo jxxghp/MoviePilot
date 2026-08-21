@@ -435,7 +435,7 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         "prepare_database",
         lambda: calls.append("prepare_database"),
     )
-    monkeypatch.setattr(main.Server, "run", lambda: calls.append("server"))
+    monkeypatch.setattr(main, "run_api_server", lambda: calls.append("server"))
 
     main.run_application()
 
@@ -469,7 +469,7 @@ def test_application_does_not_start_server_after_migration_failure(monkeypatch):
         "prepare_database",
         MagicMock(side_effect=migration_error),
     )
-    monkeypatch.setattr(main.Server, "run", server_run)
+    monkeypatch.setattr(main, "run_api_server", server_run)
 
     with pytest.raises(RuntimeError) as raised:
         main.run_application()

@@ -235,6 +235,9 @@ sequenceDiagram
 
 - **缓存装配先于业务导入**：缓存装饰器会在业务模块 import 时创建后端，
   因此 `configure_cache_dependencies()` 在 `lifecycle.py` 顶部即执行。
+- **Uvicorn 入口分流**：生产单 worker 使用带协作停止语义的 `MoviePilotServer`；开发 reload
+  和安全模式多 worker 使用 `app.factory:create_app` import string/factory，由 supervisor
+  创建应用实例。`app.factory:app` 继续保留给既有 ASGI supervisor 和测试使用。
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
