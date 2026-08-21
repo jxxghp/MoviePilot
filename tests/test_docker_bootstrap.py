@@ -106,6 +106,50 @@ def test_launcher_prefers_complete_trusted_source_bundle(tmp_path: Path) -> None
     assert result.stdout == "source\n"
 
 
+def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    image = tmp_path / "image"
+    previous = tmp_path / "previous-app"
+    config = tmp_path / "config"
+    _write_bundle(source, "new")
+    _write_bundle(image, "image")
+    _write_bundle(previous / "docker", "old")
+    (config / "temp").mkdir(parents=True)
+    (config / "temp" / "__update_pending__").write_text("prepared\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {LAUNCHER!s}
+        SOURCE_CONTROL_DIR="$1"
+        IMAGE_CONTROL_DIR="$2"
+        RUNTIME_ROOT="$3"
+        UPDATE_PENDING_FILE="$4"
+        UPDATE_PREVIOUS_APP="$5"
+        source_bundle_is_trusted() {{ control_bundle_generation "$1" >/dev/null; }}
+        launcher_main
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "pending-launcher-test",
+            str(source),
+            str(image),
+            str(tmp_path / "run"),
+            str(config / "temp" / "__update_pending__"),
+            str(previous),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "old\n"
+
+
 @pytest.mark.parametrize("missing_file", BASE_CONTROL_FILES)
 def test_launcher_falls_back_when_source_bundle_is_incomplete(
     tmp_path: Path, missing_file: str
@@ -843,15 +887,37 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
     uv_bin = tmp_path / "bin" / "uv"
     uv_bin.parent.mkdir(parents=True)
     uv_bin.write_text(
-        "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"${UV_LOG}\"\nexit 1\n",
+        "#!/bin/bash\n"
+        "count_file=\"${UV_COUNT_FILE}\"\n"
+        "count=$(cat \"${count_file}\" 2>/dev/null || printf '0')\n"
+        "count=$((count + 1))\n"
+        "printf '%s' \"${count}\" > \"${count_file}\"\n"
+        "printf '%s\\n' \"$*\" >> \"${UV_LOG}\"\n"
+        "[ \"${count}\" -gt 1 ]\n",
         encoding="utf-8",
     )
     uv_bin.chmod(0o755)
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    (live_app / "app" / "plugins").mkdir(parents=True)
+    (live_app / "app" / "application" / "site").mkdir(parents=True)
+    live_public.mkdir()
+    (live_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (live_app / "app" / "plugins" / "plugin.py").write_text("plugin", encoding="utf-8")
+    (live_app / "app" / "application" / "site" / "user.sites.v3.bin").write_text(
+        "sites", encoding="utf-8"
+    )
+    (live_app / "pyproject.toml").write_text("old-project", encoding="utf-8")
+    (live_app / "uv.lock").write_text("old-lock", encoding="utf-8")
+    (live_public / "index.html").write_text("old-front", encoding="utf-8")
+
     update_tree = tmp_path / "update" / "App"
-    update_tree.mkdir(parents=True)
+    (update_tree / "app" / "plugins").mkdir(parents=True)
     (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
     (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
-    copy_log = tmp_path / "copies.log"
+    (update_tree / "version.py").write_text("FRONTEND_VERSION = 'v3.0.1'\n", encoding="utf-8")
+    (tmp_path / "update" / "dist").mkdir()
+    (tmp_path / "update" / "dist" / "index.html").write_text("new-front", encoding="utf-8")
     uv_log = tmp_path / "uv.log"
     script = textwrap.dedent(
         f"""\
@@ -859,21 +925,39 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
         VENV_PATH="$2"
         TMP_PATH="$3"
         UV_BIN="$4"
-        COPY_LOG="$5"
         PIP_PROXY= PROXY_HOST=
+        GITHUB_PROXY= CURL_OPTIONS=
         source {UPDATER!s}
+        APP_DIR="$5"
+        PUBLIC_DIR="$6"
+        UPDATE_PREVIOUS_APP="${{APP_DIR}}.__update_previous__"
+        UPDATE_PREVIOUS_PUBLIC="${{PUBLIC_DIR}}.__update_previous__"
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
         download_and_unzip() {{ return 0; }}
+        curl() {{
+            local output=""
+            while [ "$#" -gt 0 ]; do
+                if [ "$1" = "-o" ]; then
+                    output="$2"
+                    shift 2
+                else
+                    shift
+                fi
+            done
+            printf 'resource\n' > "${{output}}"
+        }}
         cmp() {{ return 1; }}
-        cp() {{ printf '%s\n' "$*" >> "${{COPY_LOG}}"; }}
+        sed() {{
+            if [[ "$*" == *version.py* ]]; then printf 'v3.0.1\\n'; else command sed "$@"; fi
+        }}
         configure_package_route() {{ PACKAGE_LOG=test; PACKAGE_ENV=(); UV_OPTIONS=(); }}
-        install_backend_and_download_resources tags/v3.0.1.zip || true
+        install_backend_and_download_resources tags/v3.0.1.zip
         """
     )
 
-    subprocess.run(
+    result = subprocess.run(
         [
             "bash",
             "-c",
@@ -883,19 +967,255 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
             str(tmp_path / "venv"),
             str(tmp_path / "update"),
             str(uv_bin),
-            str(copy_log),
+            str(live_app),
+            str(live_public),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={
+            **os.environ,
+            "UV_LOG": str(uv_log),
+            "UV_COUNT_FILE": str(tmp_path / "uv-count"),
+        },
+    )
+
+    assert result.returncode != 0
+    assert (live_app / "app" / "old.py").exists()
+    assert (live_public / "index.html").read_text(encoding="utf-8") == "old-front"
+    assert not (tmp_path / "config" / "temp" / "__update_pending__").exists()
+    assert uv_log.exists(), f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert uv_log.read_text(encoding="utf-8").splitlines() == [
+        f"sync --project {update_tree} --locked --inexact --no-dev "
+        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}",
+        f"sync --project {live_app} --locked --inexact --no-dev "
+        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}",
+    ]
+
+
+def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    previous_app = tmp_path / "previous-app"
+    previous_public = tmp_path / "previous-public"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (previous_app / "app").mkdir(parents=True)
+    previous_public.mkdir()
+    (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (live_public / "index.html").write_text("new-front", encoding="utf-8")
+    (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (previous_app / "pyproject.toml").write_text("old-project", encoding="utf-8")
+    (previous_app / "uv.lock").write_text("old-lock", encoding="utf-8")
+    (previous_public / "index.html").write_text("old-front", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    (config_dir / "temp").mkdir(parents=True)
+    (config_dir / "temp" / "__update_pending__").write_text("dependencies\n", encoding="utf-8")
+    uv_bin = tmp_path / "uv"
+    uv_log = tmp_path / "uv.log"
+    uv_bin.write_text(
+        f"#!/bin/bash\nprintf '%s\\n' \"$*\" >> {shlex.quote(str(uv_log))}\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        UV_BIN="$7"
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$3"
+        PUBLIC_DIR="$4"
+        UPDATE_PREVIOUS_APP="$5"
+        UPDATE_PREVIOUS_PUBLIC="$6"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        configure_package_route() {{ PACKAGE_ENV=(); UV_OPTIONS=(); }}
+        recover_pending_update
+        printf '%s|%s|%s|%s\\n' \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf old || printf missing)" \\
+            "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \\
+            "$([[ -f "${{CONFIG_DIR}}/temp/__update_pending__" ]] && printf present || printf cleared)" \\
+            "${{UPDATE_RECOVERY_COMPLETED}}"
+        """
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "pending-recovery-test",
+            str(config_dir),
+            str(tmp_path / "venv"),
+            str(live_app),
+            str(live_public),
+            str(previous_app),
+            str(previous_public),
+            str(uv_bin),
         ],
         text=True,
         capture_output=True,
         check=True,
-        env={**os.environ, "UV_LOG": str(uv_log)},
     )
 
-    assert not copy_log.exists()
-    assert uv_log.read_text(encoding="utf-8") == (
-        f"sync --project {update_tree} --locked --inexact --no-dev "
-        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}\n"
+    assert result.stdout == "old|old-front|cleared|true\n"
+    assert uv_log.read_text(encoding="utf-8").startswith(
+        f"sync --project {live_app} --locked --inexact --no-dev"
     )
+
+
+def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    previous_app = tmp_path / "previous-app"
+    previous_public = tmp_path / "previous-public"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (previous_app / "app").mkdir(parents=True)
+    previous_public.mkdir()
+    (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (live_public / "index.html").write_text("new-front", encoding="utf-8")
+    (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (previous_public / "index.html").write_text("old-front", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {UPDATER!s}
+        APP_DIR="$1"
+        PUBLIC_DIR="$2"
+        UPDATE_PREVIOUS_APP="$3"
+        UPDATE_PREVIOUS_PUBLIC="$4"
+        CONFIG_DIR="$5"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        rm() {{
+            if [[ "$*" == *"${{APP_DIR}}"* ]]; then return 1; fi
+            command rm "$@"
+        }}
+        restore_previous_payload || true
+        printf '%s|%s|%s|%s\n' \\
+            "$([[ -f "${{APP_DIR}}/app/new.py" ]] && printf current || printf missing)" \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf restored || printf absent)" \\
+            "$([[ -d "${{UPDATE_PREVIOUS_APP}}" ]] && printf retained || printf moved)" \\
+            "$([[ -f "${{APP_DIR}}/${{UPDATE_PREVIOUS_APP##*/}}/app/old.py" ]] && printf nested || printf clean)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "rollback-removal-failure-test",
+            str(live_app),
+            str(live_public),
+            str(previous_app),
+            str(previous_public),
+            str(tmp_path / "config"),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "current|absent|retained|clean\n"
+
+
+def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "stage" / "sites.bin"
+    fallback = tmp_path / "live" / "sites.bin"
+    destination.parent.mkdir()
+    fallback.parent.mkdir()
+    fallback.write_text("old-resource\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        curl() {{ return 0; }}
+        download_staged_resource https://resources.example/sites.bin \\
+            "$1" "$2" sites.bin
+        cat "$1"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "resource-download-test",
+            str(destination),
+            str(fallback),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "old-resource\n"
+
+
+def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    stage_app = tmp_path / "stage" / "App"
+    stage_public = tmp_path / "stage" / "dist"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (stage_app / "app").mkdir(parents=True)
+    stage_public.mkdir(parents=True)
+    (live_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (live_public / "index.html").write_text("old-front", encoding="utf-8")
+    (stage_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (stage_public / "index.html").write_text("new-front", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    uv_log = tmp_path / "uv.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        TMP_PATH="$2"
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$3"
+        PUBLIC_DIR="$4"
+        UPDATE_PREVIOUS_APP="${{APP_DIR}}.__update_previous__"
+        UPDATE_PREVIOUS_PUBLIC="${{PUBLIC_DIR}}.__update_previous__"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        mv() {{
+            if [[ "$*" == *"${{TMP_PATH}}/dist"* ]]; then return 1; fi
+            command mv "$@"
+        }}
+        set_update_pending prepared
+        swap_staged_payload || rollback_update_transaction
+        printf '%s|%s|%s\\n' \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf old || printf missing)" \\
+            "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \\
+            "$([[ -f "${{UPDATE_PENDING_FILE}}" ]] && printf present || printf cleared)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "payload-swap-test",
+            str(config_dir),
+            str(tmp_path / "stage"),
+            str(live_app),
+            str(live_public),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "old|old-front|cleared\n"
 
 
 def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
