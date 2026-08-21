@@ -811,6 +811,16 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 
 优先拆分对象：`do_transfer`、`batch_download`、`SubscribeChain.match`、`web_agent_stream`、`Scheduler.init`。先提取 phase object/DTO/port，再缩短入口；不创建一批互相读写同一个大 dict 的私有函数来“达标”。
 
+**实施记录（2026-08-21）**：
+
+- 新增 `scripts/architecture/complexity.py`，通过 AST 只统计 API HTTP endpoint、Application public method
+  和 Chain public use-case，预算分别为 80/150/150 行；嵌套 helper 不会被机械重复计数。
+- `complexity-baseline.json` 只保存当前超限入口和行数，不把达标方法写成永久快照。check 允许缩短、达标或删除，
+  精确拒绝既有超限增长和任何新增超限；CI architecture job 每次执行。
+- 当前债务清单明确包含 `web_agent_stream`、`batch_download`、`SubscribeChain.match`、`do_transfer`；
+  `Scheduler.init` 已在 ARCH-252 通过 JobSpec/catalog 拆分退出超限清单，调度专项测试是该代表性拆分的回归证据。
+- 单元测试覆盖删除/缩短放行和增长/新增拒绝，当前仓库 baseline check 通过。
+
 #### ARCH-272：异步阻塞检测
 
 **目标**：对新 API/Agent/Application async 路径检测 `open`、文件遍历、同步 HTTP、阻塞 sleep 和重 CPU 解析。
