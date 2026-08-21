@@ -21,6 +21,7 @@ from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
 from app.runtime.event.contracts import validate_event_payload
+from app.runtime.correlation import get_correlation_id
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
@@ -35,11 +36,13 @@ class Event:
 
     def __init__(self, event_type: Union[EventType, ChainEventType],
                  event_data: Optional[Union[Dict, ChainEventData]] = None,
-                 priority: Optional[int] = DEFAULT_EVENT_PRIORITY):
+                 priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+                 correlation_id: Optional[str] = None):
         """
         :param event_type: 事件的类型，支持 EventType 或 ChainEventType
         :param event_data: 可选，事件携带的数据，默认为空字典
         :param priority: 可选，事件的优先级，默认为 10
+        :param correlation_id: 生产事件时固化的请求关联 ID
         """
         payload_problems = validate_event_payload(event_type, event_data)
         if payload_problems:
@@ -52,6 +55,7 @@ class Event:
         self.event_type = event_type  # 事件类型
         self.event_data = event_data or {}  # 事件数据
         self.priority = priority  # 事件优先级
+        self.correlation_id = correlation_id or get_correlation_id()
 
     def __repr__(self) -> str:
         """

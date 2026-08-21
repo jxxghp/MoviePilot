@@ -12,6 +12,7 @@ from app.runtime.event.binding import EventBindingResolver
 from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.runtime.correlation import correlation_scope
 from app.schemas.types import EventType
 
 
@@ -114,6 +115,7 @@ class EventDispatcher:
                 event_type=event.event_type,
                 event_data=event_data,
                 priority=event.priority,
+                correlation_id=event.correlation_id,
             )
             if inspect.iscoroutinefunction(handler):
                 asyncio.run_coroutine_threadsafe(
@@ -143,16 +145,17 @@ class EventDispatcher:
         if not resolved:
             return
         method, binding, class_name, method_name = resolved
-        try:
-            method(event)
-        except Exception as err:
-            self._error_handler(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=err,
-            )
+        with correlation_scope(event.correlation_id):
+            try:
+                method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
 
     async def invoke_async(self, handler: Callable, event: Any) -> None:
         """解析实例绑定，并按处理器类型选择协程、线程池或同步调用。"""
@@ -160,21 +163,22 @@ class EventDispatcher:
         if not resolved:
             return
         method, binding, class_name, method_name = resolved
-        try:
-            if inspect.iscoroutinefunction(method):
-                await method(event)
-            elif binding.run_sync_in_threadpool or not class_name:
-                await run_in_threadpool(method, event)
-            else:
-                method(event)
-        except Exception as err:
-            self._error_handler(
-                event=event,
-                module_name=binding.owner_name,
-                class_name=class_name,
-                method_name=method_name,
-                e=err,
-            )
+        with correlation_scope(event.correlation_id):
+            try:
+                if inspect.iscoroutinefunction(method):
+                    await method(event)
+                elif binding.run_sync_in_threadpool or not class_name:
+                    await run_in_threadpool(method, event)
+                else:
+                    method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
 
     @staticmethod
     def should_dispatch_to_target_plugin(

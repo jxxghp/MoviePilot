@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
+from app.adapters.web.correlation import CorrelationIdMiddleware
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
@@ -19,8 +20,9 @@ from app.adapters.web.security.access import (
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.config import settings
+from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
-from app.runtime.log import logger
+from app.runtime.log import configure_correlation_id_provider, logger
 from app.schemas.openai import (
     AnthropicErrorDetail,
     AnthropicErrorResponse,
@@ -291,6 +293,7 @@ def create_app() -> FastAPI:
     """
     创建并配置 FastAPI 应用实例。
     """
+    configure_correlation_id_provider(get_correlation_id)
     _app = FastAPI(
         title=settings.PROJECT_NAME,
         version=APP_VERSION,
@@ -317,6 +320,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    _app.add_middleware(CorrelationIdMiddleware)
 
     @_app.middleware("http")
     async def locale_context_middleware(

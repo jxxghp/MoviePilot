@@ -45,6 +45,7 @@ from app.runtime.gc import get_memory_usage
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
 from app.runtime.scheduling import TimerUtils
+from app.runtime.correlation import call_with_correlation, get_correlation_id
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
@@ -856,7 +857,10 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 deferred_finish = __start_coro(func(*args, **kwargs))
             elif run_in_process:
                 # 多进程运行
-                p = multiprocessing.Process(target=func, args=args, kwargs=kwargs)
+                p = multiprocessing.Process(
+                    target=call_with_correlation,
+                    args=(get_correlation_id(), func, args, kwargs),
+                )
                 p.start()
                 p.join()
             else:

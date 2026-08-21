@@ -17,6 +17,8 @@ from requests import Response, Session
 from urllib3.exceptions import InsecureRequestWarning
 from urllib.parse import unquote, quote
 
+from app.runtime.correlation import with_correlation_header
+
 
 urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -418,7 +420,9 @@ class RequestUtils:
             req_method = requests.request
         else:
             req_method = self._session.request
-        kwargs.setdefault("headers", self._headers)
+        kwargs["headers"] = with_correlation_header(
+            kwargs.get("headers", self._headers)
+        )
         kwargs.setdefault("cookies", self._cookies)
         kwargs.setdefault("proxies", self._proxies)
         kwargs.setdefault("timeout", self._timeout)
@@ -1195,7 +1199,9 @@ class AsyncRequestUtils:
         """
         执行实际的异步请求
         """
-        kwargs.setdefault("headers", self._headers)
+        kwargs["headers"] = with_correlation_header(
+            kwargs.get("headers", self._headers)
+        )
         # 共享池下 client 自带默认 timeout，这里用每请求 timeout 覆盖以尊重实例配置
         kwargs.setdefault("timeout", self._timeout)
         # Cookie 在 request() 入口已按 path 处理：
@@ -1329,7 +1335,9 @@ class AsyncRequestUtils:
         :return: 上下文管理器，进入后 yield httpx.Response（出错时 yield None）
         """
         cookies_dict: Optional[dict] = self._cookies if isinstance(self._cookies, dict) else None
-        kwargs.setdefault("headers", self._headers)
+        kwargs["headers"] = with_correlation_header(
+            kwargs.get("headers", self._headers)
+        )
 
         # 与 _make_request 保持一致：复用 keep-alive 时偶遇对端 FIN 的连接，
         # 流式 GET 是幂等的，单次重试即可

@@ -731,6 +731,17 @@ app/scheduler.py # APScheduler 兼容 Facade
 4. 日志 formatter 增加结构字段，不在消息字符串中到处手拼。
 5. 外部请求可传标准 trace headers 或项目 correlation header，但不得泄露用户 token。
 
+**实施记录（2026-08-21）**：
+
+- 新增受 64 字符安全字符集约束的 `moviepilot_correlation_id` ContextVar 和纯 ASGI middleware；合法
+  `X-Request-ID` 原样使用，非法值重新生成，`request.state`、普通响应和 SSE 握手响应回写同一个 ID。
+- 平台日志 formatter 以独立 `correlation_id` 字段输出；`app.runtime.execution`、共享 `ThreadHelper`、
+  Event 生产/消费均显式复制或恢复上下文。Event 在生产时固化 ID，广播线程不能用自己的空上下文覆盖它。
+- Scheduler 多进程入口把关联 ID 作为显式可序列化参数传入，不依赖 fork 继承；`RequestUtils` 和
+  `AsyncRequestUtils` 在调用方未指定时传播 `X-Request-ID`，不读取或复制任何鉴权 token。
+- 并发请求、非法头、线程池、事件处理、SSE、同步/异步外呼和显式外呼头覆盖均有专项测试；原 API
+  响应、健康探针、日志和搜索流式测试保持通过。
+
 #### ARCH-261：指标与可选 OpenTelemetry Adapter
 
 先定义内部观测端口和低基数指标：

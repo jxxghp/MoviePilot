@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import time
+from contextvars import copy_context
 from functools import partial, wraps
 from typing import Any, Callable
 
@@ -16,7 +17,8 @@ async def run_in_threadpool(
     """在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。"""
     if kwargs:
         func = partial(func, **kwargs)
-    return await run_sync(func, *args)
+    context = copy_context()
+    return await run_sync(context.run, func, *args)
 
 
 def retry(ExceptionToCheck: Any,

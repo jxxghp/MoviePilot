@@ -12,11 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Callable, Dict, Optional, Protocol
 
 import click
 from pydantic import BaseModel, ConfigDict
-
 
 class LogConfigModel(BaseModel):
     """描述日志级别、格式和文件写入策略。"""
@@ -28,8 +27,12 @@ class LogConfigModel(BaseModel):
     LOG_LEVEL: str = "INFO"
     LOG_MAX_FILE_SIZE: int = 5
     LOG_BACKUP_COUNT: int = 10
-    LOG_CONSOLE_FORMAT: str = "%(leveltext)s[%(name)s] %(asctime)s %(message)s"
-    LOG_FILE_FORMAT: str = "【%(levelname)s】%(asctime)s - %(message)s"
+    LOG_CONSOLE_FORMAT: str = (
+        "%(leveltext)s[%(name)s] %(asctime)s [%(correlation_id)s] %(message)s"
+    )
+    LOG_FILE_FORMAT: str = (
+        "【%(levelname)s】%(asctime)s [%(correlation_id)s] - %(message)s"
+    )
     ASYNC_FILE_QUEUE_SIZE: int = 1000
     ASYNC_FILE_WORKERS: int = 2
     BATCH_WRITE_SIZE: int = 50
@@ -60,6 +63,7 @@ class LogEntry:
         self.message = message
         self.file_path = file_path
         self.timestamp = timestamp or datetime.now()
+        self.correlation_id = _get_log_correlation_id()
 
 
 class LogWriter(Protocol):
@@ -73,6 +77,18 @@ class LogWriter(Protocol):
 
 
 log_settings = LogSettings()
+_correlation_id_provider: Callable[[], str | None] = lambda: None
+
+
+def configure_correlation_id_provider(provider: Callable[[], str | None]) -> None:
+    """由组合根注入日志关联 ID 读取端口，保持日志模块为依赖叶节点。"""
+    global _correlation_id_provider
+    _correlation_id_provider = provider
+
+
+def _get_log_correlation_id() -> str:
+    """读取当前关联 ID；未装配或无请求上下文时返回稳定占位符。"""
+    return _correlation_id_provider() or "-"
 
 
 class NonBlockingFileHandler:
@@ -169,7 +185,7 @@ class NonBlockingFileHandler:
     @staticmethod
     def _to_record(entry: LogEntry) -> logging.LogRecord:
         """把日志条目转换为标准库日志记录。"""
-        return logging.LogRecord(
+        record = logging.LogRecord(
             name="",
             level=getattr(logging, entry.level.upper(), logging.INFO),
             pathname="",
@@ -179,6 +195,8 @@ class NonBlockingFileHandler:
             exc_info=None,
             created=entry.timestamp.timestamp(),
         )
+        record.correlation_id = entry.correlation_id
+        return record
 
     def _batch_writer(self) -> None:
         """持续收集队列日志，并在停止哨兵后排空已有批次。"""
@@ -258,6 +276,7 @@ class CustomFormatter(logging.Formatter):
         separator = " " * max(8 - len(record.levelname), 0)
         colorizer = _LEVEL_NAME_COLORS.get(record.levelno, str)
         record.leveltext = colorizer(record.levelname + ":") + separator
+        record.correlation_id = _get_log_correlation_id()
         return super().format(record)
 
 
