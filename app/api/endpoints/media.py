@@ -22,6 +22,7 @@ from app.application.orchestration.media import MediaChain
 from app.application.orchestration.scraping import ScrapingChain
 from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.config import settings
+from app.runtime.extensions.module.media_source_faces import ordered_capabilities
 from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -31,33 +32,73 @@ from app.api.deps import get_current_active_user, get_current_active_superuser
 from app.schemas.category import CategoryConfig
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+from app.schemas.types import MediaSourceCapability as _SchemaMediaSourceCapability
 from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
 from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
 
 
+# TMDB、豆瓣、Bangumi、AniList 四个综合来源各自实现了当前划分出的每一个能力面。
+# 逐项列出而非取枚举全集：新增能力面时须逐个来源核对实现后再加入，否则会凭空多出
+# 一个选得到却无人应答的选项。
+_ALL_ROUND_CAPABILITIES = (
+    _SchemaMediaSourceCapability.RECOGNIZE,
+    _SchemaMediaSourceCapability.SEARCH,
+    _SchemaMediaSourceCapability.DETAIL,
+    _SchemaMediaSourceCapability.RECOMMEND,
+    _SchemaMediaSourceCapability.DISCOVER,
+    _SchemaMediaSourceCapability.SCRAPE,
+)
+
+# 内建来源的能力面。插件来源的能力面由宿主从声明交出的方法表推导，内建实现挂在模块
+# 类上而非声明里，模块与来源之间也没有可供反查的绑定——DoubanModule 一个类同时服务
+# 豆瓣与豆瓣音乐两个来源，两者能力面还不同——故内建侧的这项事实只能记在这张表上。
+# 不带能力面的来源在内建侧没有任何实现，实现由插件补上，能力面随插件声明推导后并入。
 _BUILTIN_MEDIA_SOURCES = (
-    _SchemaMediaSourceInfo(name="TheMovieDb", media_source=MediaSource.TMDB),
-    _SchemaMediaSourceInfo(name="豆瓣", media_source=MediaSource.Douban),
-    _SchemaMediaSourceInfo(name="Bangumi", media_source=MediaSource.Bangumi),
-    _SchemaMediaSourceInfo(name="AniList", media_source=MediaSource.AniList),
+    _SchemaMediaSourceInfo(
+        name="TheMovieDb",
+        media_source=MediaSource.TMDB,
+        capabilities=list(_ALL_ROUND_CAPABILITIES),
+    ),
+    _SchemaMediaSourceInfo(
+        name="豆瓣",
+        media_source=MediaSource.Douban,
+        capabilities=list(_ALL_ROUND_CAPABILITIES),
+    ),
+    _SchemaMediaSourceInfo(
+        name="Bangumi",
+        media_source=MediaSource.Bangumi,
+        capabilities=list(_ALL_ROUND_CAPABILITIES),
+    ),
+    _SchemaMediaSourceInfo(
+        name="AniList",
+        media_source=MediaSource.AniList,
+        capabilities=list(_ALL_ROUND_CAPABILITIES),
+    ),
     _SchemaMediaSourceInfo(name="IMDb", media_source=MediaSource.IMDb),
-    _SchemaMediaSourceInfo(name="TVDB", media_source=MediaSource.TVDB),
+    _SchemaMediaSourceInfo(
+        name="TVDB",
+        media_source=MediaSource.TVDB,
+        capabilities=[_SchemaMediaSourceCapability.DETAIL],
+    ),
     _SchemaMediaSourceInfo(
         name="MusicBrainz",
         media_source=MediaSource.MusicBrainz,
         media_types=[MediaType.MUSIC],
+        capabilities=[_SchemaMediaSourceCapability.RECOGNIZE],
     ),
     _SchemaMediaSourceInfo(
         name="TheAudioDB",
         media_source=MediaSource.TheAudioDB,
         media_types=[MediaType.MUSIC],
+        capabilities=[_SchemaMediaSourceCapability.RECOGNIZE],
     ),
     _SchemaMediaSourceInfo(
         name="豆瓣音乐",
         media_source=MediaSource.DoubanMusic,
         media_types=[MediaType.MUSIC],
+        capabilities=[_SchemaMediaSourceCapability.RECOGNIZE],
     ),
     _SchemaMediaSourceInfo(name="哔哩哔哩", media_source=MediaSource.Bilibili),
     _SchemaMediaSourceInfo(name="芒果TV", media_source=MediaSource.MangoTV),
@@ -67,21 +108,44 @@ _BUILTIN_MEDIA_SOURCES = (
 )
 
 
+def _merged_media_source(
+        registered: _SchemaMediaSourceInfo, incoming: _SchemaMediaSourceInfo,
+) -> _SchemaMediaSourceInfo:
+    """把后到来源的能力面并入同标识的已登记来源
+
+    展示信息仍以先到者为准，只有能力面取并集：内建表里的占位来源本就没有实现，
+    实现由插件补上，丢掉插件推导出的能力面会让该来源在任何选择器里都无从出现。
+
+    :param registered: 已在列表中的来源描述
+    :param incoming: 同一来源标识的后续描述
+    :return: 能力面取并集后的新描述；并集与原值相同时原样返回先到者
+    """
+    merged = ordered_capabilities([*registered.capabilities, *incoming.capabilities])
+    if merged == tuple(registered.capabilities):
+        return registered
+    return registered.model_copy(update={"capabilities": list(merged)})
+
+
 def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
-    """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
+    """合并内置与启用插件声明的媒体来源，按来源标识去重并合并能力面。
+
+    :return: 媒体数据源描述列表，内置来源在前，插件新增来源按登记顺序在后
+    """
     from app.application.plugin.runtime import get_plugin_manager
 
     result = list(_BUILTIN_MEDIA_SOURCES)
-    seen = {source.media_source for source in result}
+    positions = {source.media_source: index for index, source in enumerate(result)}
     for raw_source in get_plugin_manager().get_media_sources():
         try:
             source = _SchemaMediaSourceInfo.model_validate(raw_source)
         except Exception:
             continue
-        if source.media_source in seen:
+        index = positions.get(source.media_source)
+        if index is None:
+            positions[source.media_source] = len(result)
+            result.append(source)
             continue
-        result.append(source)
-        seen.add(source.media_source)
+        result[index] = _merged_media_source(result[index], source)
     return result
 
 
@@ -380,7 +444,7 @@ async def search(
     response_model=list[_SchemaMediaSourceInfo],
 )
 def source(_: _SchemaTokenPayload = Depends(verify_token)) -> list[_SchemaMediaSourceInfo]:
-    """返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。"""
+    """返回内置及启用插件注册的媒体数据源与各自的能力面，供前端按用途构造来源选项。"""
     return _registered_media_sources()
 
 

@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6573,
-  "edge_sha256": "027053ae6afc17da65c4f204511e1ab5dfd28162c4fee27dd70b1499245ab33a",
+  "edge_count": 6580,
+  "edge_sha256": "d94d4e73daeff6de0913503c6b165b542ec57cb593e0632b0289f0be1bef0816",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1814,6 +1814,9 @@
     "app.api.endpoints.media -> app.domain.metainfo",
     "app.api.endpoints.media -> app.runtime",
     "app.api.endpoints.media -> app.runtime.config",
+    "app.api.endpoints.media -> app.runtime.extensions",
+    "app.api.endpoints.media -> app.runtime.extensions.module",
+    "app.api.endpoints.media -> app.runtime.extensions.module.media_source_faces",
     "app.api.endpoints.media -> app.schemas",
     "app.api.endpoints.media -> app.schemas.category",
     "app.api.endpoints.media -> app.schemas.context",
@@ -5614,6 +5617,8 @@
     "app.runtime.extensions.module.dispatcher -> app.runtime.log",
     "app.runtime.extensions.module.dispatcher -> app.schemas",
     "app.runtime.extensions.module.dispatcher -> app.schemas.exception",
+    "app.runtime.extensions.module.media_source_faces -> app.schemas",
+    "app.runtime.extensions.module.media_source_faces -> app.schemas.types",
     "app.runtime.extensions.module_manager -> app.foundation",
     "app.runtime.extensions.module_manager -> app.foundation.singleton",
     "app.runtime.extensions.module_manager -> app.runtime",
@@ -5695,6 +5700,8 @@
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.contract",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.declaration",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.instance",
+    "app.runtime.extensions.plugin.projection -> app.runtime.extensions.module",
+    "app.runtime.extensions.plugin.projection -> app.runtime.extensions.module.media_source_faces",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.action_capabilities",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin.agent_tool_capabilities",
@@ -6640,7 +6647,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 838,
+  "module_count": 839,
   "modules": [
     "app",
     "app.adapters",
@@ -7323,6 +7330,7 @@
     "app.runtime.extensions.module",
     "app.runtime.extensions.module.contracts",
     "app.runtime.extensions.module.dispatcher",
+    "app.runtime.extensions.module.media_source_faces",
     "app.runtime.extensions.module_manager",
     "app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.action_capabilities",

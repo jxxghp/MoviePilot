@@ -192,6 +192,7 @@ SCHEMA_EXPORTS = {
     'MediaServerPlayItem': ('app.schemas.mediaserver', 'MediaServerPlayItem'),
     'MediaServerSeasonInfo': ('app.schemas.mediaserver', 'MediaServerSeasonInfo'),
     'MediaSource': ('app.schemas.transfer', 'MediaSource'),
+    'MediaSourceCapability': ('app.schemas.event', 'MediaSourceCapability'),
     'MediaSourceInfo': ('app.schemas.event', 'MediaSourceInfo'),
     'MediaType': ('app.schemas.subscribe', 'MediaType'),
     'Message': ('app.schemas.message', 'Message'),

@@ -222,6 +222,7 @@ def test_complete_declaration_feeds_both_source_list_and_dispatch_table() -> Non
             "name": "Acme Video",
             "media_source": "acme.video",
             "plugin_id": "Demo",
+            "capabilities": ["detail"],
             "media_types": ["电影", "电视剧"],
         }
     ]
