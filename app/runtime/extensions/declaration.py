@@ -245,6 +245,48 @@ class ActionDeclaration(ExtensionDeclaration):
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduleDeclaration(ExtensionDeclaration):
+    """
+    定时任务声明
+
+    ``impl`` 是到点执行的实现：宿主按 ``impl(**kwargs)`` 调用它，同步函数与协程
+    函数都接受。返回 ``(False, 失败原因)`` 二元组时宿主按执行失败记账，与既有
+    ``get_service()`` 交出的回调完全一致。
+
+    调度本身是**纯数据**：``trigger`` 说清是哪一类调度，``trigger_args`` 给出该类
+    调度的参数。这与 ``get_service()`` 直接交出一个构造好的 ``CronTrigger`` 对象
+    是两回事——触发器对象过不了进程边界，而「cron 加五段表达式」这样的数据过得去，
+    异语言宿主拿到同一份报文即可自行建出等价调度。同理，表达式写错在登记那一刻
+    就被判出来，不必等到该跑的那一刻。
+
+    ``trigger`` 的取值与各自的 ``trigger_args``：
+
+    - ``"cron"``：``crontab`` 给五段表达式（``分 时 日 月 周``），或按
+      ``minute``/``hour``/``day``/``month``/``day_of_week``/``week``/``year``/
+      ``second`` 逐字段给出，两种写法互斥
+    - ``"interval"``：``weeks``/``days``/``hours``/``minutes``/``seconds``
+    - ``"date"``：``run_date`` 给 ISO 8601 时间字符串
+
+    ``trigger_args`` 只描述调度，不承载宿主的任务选项；它必须能 JSON 序列化往返，
+    因此时间一律写成字符串而不是 ``datetime`` 对象。
+
+    :param job_id: 任务标识，取值须形如 ``[A-Za-z0-9][A-Za-z0-9._-]{0,63}``；同一
+        扩展的多个分身各声明一次即多个各自成立的任务，宿主按实例键为其分别编号，
+        因此标识只需在声明它的实例内唯一
+    :param name: 任务展示名称，出现在后台任务列表里
+    :param trigger: 调度类型，取值为 cron、interval 或 date
+    :param trigger_args: 该调度类型的参数，纯数据，须能 JSON 序列化往返
+    :param kwargs: 调用实现时附加传递的静态参数
+    """
+
+    job_id: str = ""
+    name: str = ""
+    trigger: str = ""
+    trigger_args: Mapping[str, Any] = MappingProxyType({})
+    kwargs: Mapping[str, Any] = MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
 class FilterRuleDeclaration(ExtensionDeclaration):
     """
     筛选规则声明
@@ -544,6 +586,45 @@ def declaration_action_kwargs(declaration: Any) -> Any:
     读取声明自带的动作附加参数原始值
 
     :param declaration: `ActionDeclaration` 实例，或插件直接交出的描述字典
+    :return: kwargs 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "kwargs")
+
+
+def declaration_schedule_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    读取声明自报的任务标识与展示名称
+
+    :param declaration: `ScheduleDeclaration` 实例
+    :return: (任务标识, 展示名称) 二元组；对应字段缺失、非字符串或为空白时该位为 None
+    """
+    return (
+        _declared_field_text(declaration, "job_id"),
+        _declared_field_text(declaration, "name"),
+    )
+
+
+def declaration_schedule_trigger(declaration: Any) -> Tuple[Any, Any]:
+    """
+    读取声明自报的调度类型与调度参数
+
+    按原值返回而不做归一：取值合法性由契约校验判定，此处先归一会把错误取值悄悄
+    变成一个合法答案。
+
+    :param declaration: `ScheduleDeclaration` 实例
+    :return: (调度类型, 调度参数) 二元组的原始值；对应字段缺失时该位为 None
+    """
+    return (
+        _declared_field(declaration, "trigger"),
+        _declared_field(declaration, "trigger_args"),
+    )
+
+
+def declaration_schedule_kwargs(declaration: Any) -> Any:
+    """
+    读取声明自带的实现调用参数原始值
+
+    :param declaration: `ScheduleDeclaration` 实例
     :return: kwargs 字段的原始值；字段缺失时为 None
     """
     return _declared_field(declaration, "kwargs")

@@ -134,6 +134,16 @@ NOTICES: Mapping[str, DeprecationNotice] = {
         reason="没有配置契约时宿主判定不了该类型的配置形状，畸形配置只能存下去、"
                "留到构造实例时才失败",
     ),
+    "plugin.get_service": DeprecationNotice(
+        key="plugin.get_service",
+        subject="_PluginBase.get_service()",
+        stage=DeprecationStage.WARN,
+        since="v3.1.0",
+        remove_in="v3.3.0",
+        replacement="provides_schedules()",
+        reason="交出的是活的触发器对象与方法对象，过不了进程边界，且调度表达式写错"
+               "要等到该任务本该触发的那一刻才失败",
+    ),
     "plugin.get_dashboard_meta": DeprecationNotice(
         key="plugin.get_dashboard_meta",
         subject="_PluginBase.get_dashboard_meta()",

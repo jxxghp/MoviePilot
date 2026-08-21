@@ -2508,7 +2508,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件服务
+        获取插件定时任务
+
+        聚合 `provides_schedules()` 声明式登记与 `get_service()` 裸列表两条来源，
+        同一实例的同一任务标识以声明式为准。
+
         [{
             "id": "服务ID",
             "name": "服务名称",
@@ -2516,7 +2520,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             "func": self.xxx,
             "kwargs": {} # 定时器参数,
             "func_kwargs": {} # 方法参数
+            "pid": "" # 归属实例键
         }]
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 任务描述列表
         """
         return self._plugin_projection().services(pid)
 

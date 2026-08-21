@@ -25,6 +25,7 @@ from app.runtime.extensions.declaration import (
     MediaSourceDeclaration,
     MetaParserDeclaration,
     ModuleDeclaration,
+    ScheduleDeclaration,
     ServiceInstanceDeclaration,
 )
 from app.runtime.extensions.instance import (
@@ -337,6 +338,47 @@ class _PluginBase(metaclass=ABCMeta):
             "func": self.xxx,
             "kwargs": {} # 定时器参数
         }]
+
+        本钩子交出的是活的触发器对象与方法对象，两者都过不了进程边界，且调度表达式
+        写错要等到该任务本该触发的那一刻才失败。替代它的 ``provides_schedules()`` 把
+        调度写成纯数据，登记时即可判定表达式是否成立。
+        """
+        pass
+
+    def provides_schedules(self) -> Optional[List[ScheduleDeclaration]]:
+        """
+        声明本插件提供的定时任务
+
+        返回示例：
+        [ScheduleDeclaration(
+            job_id="sync",                       # 任务标识，须形如
+                                                  # [A-Za-z0-9][A-Za-z0-9._-]{0,63}；
+                                                  # 只需在本插件实例内唯一
+            name="定时同步",                      # 展示名称，出现在后台任务列表里
+            trigger="cron",                      # 调度类型，取值为 cron、interval
+                                                  # 或 date
+            trigger_args={"crontab": self._cron},
+                                                 # 该调度类型的参数，纯数据
+            impl=self.sync,                      # 到点执行的实现，同步函数与协程
+                                                  # 函数都可以
+            kwargs={},                           # 调用实现时附加传递的静态参数，可选
+        )]
+
+        三种调度类型的 `trigger_args`：
+
+        - cron：`{"crontab": "0 1 * * *"}` 给五段表达式（分 时 日 月 周），或按
+          `{"hour": 1, "minute": 0}` 逐字段给出，两种写法互斥
+        - interval：`{"hours": 6}`、`{"minutes": 30}` 等
+        - date：`{"run_date": "2026-07-19 20:30:00"}`，时间写成 ISO 8601 字符串
+
+        调度参数只描述调度、不承载宿主的任务选项，且必须能 JSON 序列化往返——跨进程
+        时它原样成为握手报文，触发器对象与 `datetime` 这类只在进程内成立的形状过不去。
+        表达式建不出触发器、实现不可调用或接不住声明的 kwargs、任务标识缺失或在本实例
+        内重复，都会让整条声明被拒绝登记，一条坏声明只跳过它自己。
+
+        同一实例的同一任务标识若同时由 `get_service()` 挂载，以本钩子为准。
+
+        :return: `ScheduleDeclaration` 列表；插件不提供定时任务时无需实现
         """
         pass
 

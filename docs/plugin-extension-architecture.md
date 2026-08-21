@@ -357,6 +357,7 @@ REMOVED   触达即报错并给出迁移指引
 | 工作流动作 `provides_actions` | 分身级 | `impl` 通常是分身的绑定方法，同一 `action_id` 在两个分身上做的是两件事 |
 | 名称解析器 `provides_meta_parsers` | 分身级 | 解析环绑在声明它的分身上，两个分身各配一份模型即两个各自成立的环 |
 | 仪表盘 `provides_dashboards` | 分身级 | 取用走 `(实例键, key)`，每个分身各有一块是正当配置 |
+| 定时任务 `provides_schedules` | 分身级 | 任务 id 由宿主拼成 `实例键_任务标识`，回调按实例键包装后日志落到该分身；两个分身各配一份 cron 即两份各自成立的调度 |
 | 登录入口类型 `provides_service_instances`（`capability="auth"`） | 扩展级 | 与其余服务实例类型同条，判据见 §7.8 |
 | 登录入口旧钩子 `get_auth_providers` | 分身级 | 该钩子本身就是分身级写法，废弃期内维持原语义不变 |
 

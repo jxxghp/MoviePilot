@@ -24,9 +24,13 @@ from app.runtime.extensions.declaration import (
     declaration_filter_rule_group_identity,
     declaration_filter_rule_group_scope,
     declaration_filter_rule_identity,
+    declaration_impl,
     declaration_media_source_identity,
     declaration_media_types,
     declaration_methods,
+    declaration_schedule_identity,
+    declaration_schedule_kwargs,
+    declaration_schedule_trigger,
     declaration_service_instance_identity,
 )
 from app.runtime.extensions.auth_entries import list_auth_entries
@@ -55,6 +59,10 @@ from app.runtime.extensions.plugin.meta_parser_capabilities import (
     meta_parser_declaration_violation,
 )
 from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
+from app.runtime.extensions.plugin.schedule_capabilities import (
+    schedule_declaration_violation,
+    schedule_trigger_args,
+)
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
@@ -180,6 +188,10 @@ _module_source_overlap_warnings_seen: set[tuple[str, str, str, tuple[str, ...]]]
 # 已就「挂了多来源契约方法却没声明任何媒体数据源」提示过的 (实例键, 方法名) 组合，
 # 去重理由同上。
 _undeclared_media_source_hints_seen: set[tuple[str, str]] = set()
+
+# 已就「同一实例的定时任务标识被新旧两条来源同时挂载」提示过的 (实例键, 任务标识)
+# 组合，去重理由同上。
+_schedule_source_overlap_hints_seen: set[tuple[str, str]] = set()
 
 
 def _service_instance_identity(declaration: Any) -> Optional[tuple]:
@@ -539,28 +551,164 @@ class PluginProjection:
                 self._logger.error(f"获取插件 {extension_id} API出错：{str(error)}")
         return apis
 
-    def services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件的定时服务并标注归属实例键。
+    def provided_schedules(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
+        """投影启用插件声明且通过登记契约校验的定时任务。
 
-        同一插件的多个实例可能声明相同的服务 id，调用方须按 `pid` 字段区分
-        归属实例才能构造不冲突的定时任务标识。
+        单条声明不合契约只跳过该条，既不影响同一实例的其余任务，也不影响其它
+        实例；单个实例取声明时抛异常同理只跳过该实例。
+
+        任务标识在声明它的实例内唯一：同一实例把同一个标识声明两次时保留先声明
+        的那一条、拒绝后一条。这与「绝不取第一个」不冲突——那条规则管的是在多个
+        各自成立的候选里替用户挑一个，这里两条声明指的是同一个任务，后一条是重复
+        表达而不是另一个候选。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 服务声明列表，每项的 `pid` 字段被改写为声明来源的实例键
+        :return: 实例键到其定时任务声明列表的映射，仅含通过契约校验的条目
         """
-        services: list[dict] = []
+        result: Dict[str, List[Any]] = {}
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.supports_hook("get_service"):
+            if not extension.is_enabled() or not extension.supports_hook(
+                    "provides_schedules"
+            ):
                 continue
             try:
-                if extension.is_enabled():
-                    for service in plugin.get_service() or []:
-                        service["pid"] = extension_id
-                        services.append(service)
+                declared = plugin.provides_schedules() or []
             except Exception as error:
-                self._logger.error(f"获取插件 {extension_id} 服务出错：{str(error)}")
+                self._logger.error(
+                    f"获取插件 {extension_id} 定时任务声明出错：{str(error)}"
+                )
+                continue
+            accepted: List[Any] = []
+            claimed: set[str] = set()
+            for item in declared:
+                violation = schedule_declaration_violation(item)
+                if violation is None:
+                    job_id, _name = declaration_schedule_identity(item)
+                    if job_id in claimed:
+                        violation = f"任务标识 {job_id!r} 在本实例内重复声明"
+                    else:
+                        claimed.add(job_id)
+                if violation:
+                    self._logger.error(
+                        f"插件[{extension_id}]声明的定时任务 {item!r} 不合登记契约，"
+                        f"已跳过：{violation}"
+                    )
+                    continue
+                accepted.append(item)
+            result[extension_id] = accepted
+        return result
+
+    @staticmethod
+    def _declared_schedule(extension_id: str, item: Any) -> Dict[str, Any]:
+        """把单条已通过契约校验的定时任务声明投影为与 `get_service()` 一致的描述字典。
+
+        `trigger` 与 `kwargs` 交出的是调度类型与调度参数这两样纯数据，触发器由调度器
+        自行按其时区建；在此处先建好会让触发器带上本进程的本地时区，覆盖掉宿主为整个
+        调度器配置的那一个。
+
+        :param extension_id: 插件实例键
+        :param item: 已通过契约校验的定时任务声明
+        :return: 含 id、name、trigger、kwargs、func、func_kwargs、pid 的任务描述字典
+        """
+        job_id, name = declaration_schedule_identity(item)
+        trigger, trigger_args = declaration_schedule_trigger(item)
+        kwargs = declaration_schedule_kwargs(item)
+        return {
+            "id": job_id,
+            "name": name,
+            "trigger": trigger,
+            "kwargs": schedule_trigger_args(trigger, trigger_args),
+            "func": declaration_impl(item),
+            "func_kwargs": dict(kwargs) if kwargs else {},
+            "pid": extension_id,
+        }
+
+    def _legacy_services(
+        self, extension: PluginExtension, extension_id: str, plugin: Any
+    ) -> List[Dict[str, Any]]:
+        """取用插件 `get_service()` 声明的定时服务，并按既有规则记录废弃告警。
+
+        :param extension: 插件扩展视图
+        :param extension_id: 插件实例键
+        :param plugin: 插件运行实例
+        :return: 服务描述列表，每项补上归属实例键；未声明该钩子、废弃阶段已默认
+            关闭或返回空值时为空列表
+        """
+        if not extension.supports_hook("get_service"):
+            return []
+        # 废弃阶段推进到默认关闭后，该钩子整体不再生效，按未声明处理；标识列入
+        # DEPRECATION_ENABLED 可临时恢复，用于观察真实依赖方
+        if not deprecation_is_active("plugin.get_service"):
+            return []
+        try:
+            plugin_services = plugin.get_service()
+        except Exception as error:
+            self._logger.error(f"获取插件 {extension_id} 服务出错：{str(error)}")
+            return []
+        if not plugin_services:
+            return []
+        deprecation_warn("plugin.get_service", context=extension_id)
+        services: List[Dict[str, Any]] = []
+        for service in plugin_services:
+            service["pid"] = extension_id
+            services.append(service)
         return services
+
+    def services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """聚合启用插件的定时任务并标注归属实例键。
+
+        聚合两条来源：`provides_schedules()` 声明式登记（经契约校验）与
+        `get_service()` 裸列表（后者已进入废弃期，触达即告警一次）；同一实例的
+        同一任务标识被两条来源同时挂载时声明式生效，与 `provides_modules()` 对
+        `get_module()` 的口径一致。
+
+        同一插件的多个实例可能声明相同的任务标识，调用方须按 `pid` 字段区分归属
+        实例才能构造不冲突的定时任务标识。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 任务描述列表，每项的 `pid` 字段为声明来源的实例键
+        """
+        services: list[dict] = []
+        declared_by_instance = self.provided_schedules(pid)
+        for extension in self._extensions(pid):
+            extension_id, plugin = extension.extension_id, extension.instance
+            if not extension.is_enabled():
+                continue
+            declared = [
+                self._declared_schedule(extension_id, item)
+                for item in declared_by_instance.get(extension_id, [])
+            ]
+            declared_ids = {service["id"] for service in declared}
+            legacy = [
+                service
+                for service in self._legacy_services(extension, extension_id, plugin)
+                if not self._shadowed_by_declaration(extension_id, service, declared_ids)
+            ]
+            services.extend(declared + legacy)
+        return services
+
+    def _shadowed_by_declaration(
+        self, extension_id: str, service: Dict[str, Any], declared_ids: set[str]
+    ) -> bool:
+        """判断旧钩子交出的任务是否已被同实例的声明式登记接管，并就重叠提示一次。
+
+        :param extension_id: 插件实例键
+        :param service: `get_service()` 交出的任务描述
+        :param declared_ids: 该实例经声明式登记的任务标识集合
+        :return: 已被接管为 True
+        """
+        job_id = service.get("id")
+        if job_id not in declared_ids:
+            return False
+        key = (extension_id, str(job_id))
+        if key not in _schedule_source_overlap_hints_seen:
+            _schedule_source_overlap_hints_seen.add(key)
+            self._logger.info(
+                f"插件[{extension_id}]的任务 {job_id!r} 同时由 get_service() 与 "
+                f"provides_schedules() 挂载，以声明式登记为准"
+            )
+        return True
 
     def provided_modules(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
         """投影启用插件声明且通过登记契约校验的模块方法表。
