@@ -7,6 +7,7 @@ from app.runtime.compat.diagnostics import (
 )
 from app.runtime.compat.plugin_version_readiness import scan_plugin_version_readiness
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
+from app.application.plugin.routes import register_plugin_api
 from app.runtime.config import global_vars
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import (
@@ -20,6 +21,9 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_resource_import_preparer,
     _configure_plugin_version_switch_notifier,
     configure_site_auth_level_provider,
+)
+from app.runtime.extensions.plugin.dependency_status import (
+    PluginDependencyInstallResult,
 )
 from app.application.messaging.message import MessageHelper
 from app.application.plugin.catalog import PluginCatalogService
@@ -50,6 +54,7 @@ from app.adapters.system.plugin.dependency import (
     find_version_dependency_conflicts,
     read_requirement_specifiers,
 )
+from app.adapters.system.plugin.manifest import dependency_manifest_status
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.runtime.extensions.plugin.layout import (
     plugin_version_dirs,
@@ -66,6 +71,7 @@ from app.runtime.log import (
     set_plugin_instance_log_level,
 )
 from app.foundation.version import compare_version
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 
@@ -327,6 +333,7 @@ def configure_plugin_services() -> None:
             ) or [],
             plugin_dir=Path(settings.ROOT_PATH) / "app" / "plugins",
         ),
+        dependency_manifest_status=dependency_manifest_status,
         compatible_flags=lambda flag: (
             [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
             if flag else []
@@ -382,32 +389,86 @@ async def sync_plugins() -> bool:
     """
     初始化安装插件，并动态注册后台任务及API
     """
+    plugin_manager = None
     try:
         configure_plugin_services()
         loop = global_vars.loop
         plugin_manager = PluginManager()
+        plugin_manager.set_plugin_settling(True)
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
-        resolved_dependencies = await execute_task(loop, plugin_manager.install_plugin_missing_dependencies,
-                                                   "缺失依赖项安装")
-        # 判断是否需要进行插件初始化
-        if not sync_result and not resolved_dependencies:
-            logger.debug("没有新的插件同步到本地或缺失依赖项需要安装")
+        dependency_result = await execute_task(
+            loop,
+            plugin_manager.install_plugin_missing_dependencies_with_status,
+            "缺失依赖项安装",
+        )
+        if dependency_result is None:
+            return False
+        if not isinstance(dependency_result, PluginDependencyInstallResult):
+            logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
+            return False
+        previous_statuses = plugin_manager.get_plugin_runtime_statuses()
+        classification = plugin_manager.classify_plugins()
+        plugin_manager.apply_plugin_dependency_classification(classification)
+        if not dependency_result.success:
+            logger.error("缺失依赖项安装未完成，将继续激活当前已就绪插件")
+        changed_ids = await execute_task(
+            loop,
+            lambda: _activate_ready_plugins(
+                plugin_manager,
+                classification.ready,
+                sync_result or [],
+                previous_statuses,
+            ),
+            "插件运行态激活",
+        )
+        if changed_ids is None:
             return False
 
-        # 继续执行后续的插件初始化步骤
-        logger.info("正在重新初始化插件")
-        # 重新初始化插件
-        plugin_manager.init_config()
-        # 预热已配置的实例日志等级覆盖
+        if not changed_ids:
+            logger.debug("没有新的插件进入可运行状态")
+            return False
+
+        # 预热本轮新进入运行态的实例日志等级覆盖
         _seed_plugin_instance_log_levels()
-        # 重新注册插件API
-        register_plugin_api()
-        logger.info("所有插件初始化完成")
+        for plugin_id in changed_ids:
+            register_plugin_api(plugin_id)
+        if dependency_result.success:
+            logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
+        else:
+            logger.warning(
+                f"缺失依赖项仍未全部恢复，已激活 {len(changed_ids)} 个就绪插件"
+            )
         return True
     except Exception as e:
         logger.error(f"插件初始化过程中出现异常: {e}")
         return False
+
+
+def _activate_ready_plugins(
+    plugin_manager: PluginManager,
+    ready_ids: tuple[str, ...],
+    synced_ids: list[str],
+    previous_statuses: dict[str, PluginRuntimeStatus],
+) -> list[str]:
+    """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
+    # 运行态按实例键登记，这里比对的是插件族，取按族去重后的插件ID
+    running_ids = set(plugin_manager.get_running_plugin_ids())
+    synced = set(synced_ids)
+    changed_ids: list[str] = []
+    for plugin_id in ready_ids:
+        dependency_recovered = (
+            previous_statuses.get(plugin_id)
+            is PluginRuntimeStatus.DEPENDENCY_PENDING
+        )
+        if plugin_id in running_ids and (plugin_id in synced or dependency_recovered):
+            plugin_manager.reload_plugin(plugin_id)
+            changed_ids.append(plugin_id)
+            continue
+        if plugin_id not in running_ids:
+            plugin_manager.start(plugin_id)
+            changed_ids.append(plugin_id)
+    return changed_ids
 
 
 async def execute_task(loop, task_func, task_name):
@@ -416,22 +477,20 @@ async def execute_task(loop, task_func, task_name):
     """
     try:
         result = await loop.run_in_executor(None, task_func)
-        if isinstance(result, list) and result:
-            logger.debug(f"{task_name} 已完成，共处理 {len(result)} 个项目")
+        if isinstance(result, PluginDependencyInstallResult):
+            processed_count = len(result.missing)
+        elif isinstance(result, list):
+            processed_count = len(result)
+        else:
+            processed_count = 0
+        if processed_count:
+            logger.debug(f"{task_name} 已完成，共处理 {processed_count} 个项目")
         else:
             logger.debug(f"没有新的 {task_name} 需要处理")
         return result
     except Exception as e:
         logger.error(f"{task_name} 时发生错误：{e}", exc_info=True)
-        return []
-
-
-def register_plugin_api():
-    """
-    插件启动后注册插件API
-    """
-    from app.api.endpoints import plugin
-    plugin.register_plugin_api()
+        return None
 
 
 def init_plugins():
@@ -439,15 +498,26 @@ def init_plugins():
     初始化插件
     """
     configure_plugin_services()
-    PluginManager().start()
+    plugin_manager = PluginManager()
+    classification = plugin_manager.classify_plugins()
+    plugin_manager.apply_plugin_dependency_classification(classification)
+    plugin_manager.set_plugin_settling(True)
+    for plugin_id in classification.ready:
+        plugin_manager.start(plugin_id)
     # 预热已配置的实例日志等级覆盖，避免进程重启后临时调高的排障等级静默丢失
     _seed_plugin_instance_log_levels()
     register_plugin_api()
+    plugin_manager.start_monitor()
+    logger.info(
+        f"插件启动分类：立即加载={len(classification.ready)}，"
+        f"等待依赖={len(classification.missing_dependencies)}，"
+        f"等待源码={len(classification.missing_source)}"
+    )
     # 回收没有实例引用、不在保留窗口内的旧版本目录。只有插件加载完成后才能读到
     # 全部实例的版本绑定，因此固定放在启动流程末尾；安装流程不做这件事，避免
     # 与用户正打算回退到旧版本的意图冲突。失败不阻断启动，只记错误日志
     try:
-        PluginManager().recycle_plugin_versions()
+        plugin_manager.recycle_plugin_versions()
     except Exception as err:
         logger.error(f"插件版本回收出错：{err}")
 
@@ -458,7 +528,9 @@ def stop_plugins():
     """
     try:
         plugin_manager = PluginManager()
-        plugin_manager.stop()
-        plugin_manager.stop_monitor()
+        try:
+            plugin_manager.stop_monitor()
+        finally:
+            plugin_manager.stop()
     except Exception as e:
         logger.error(f"停止插件时发生错误：{e}", exc_info=True)

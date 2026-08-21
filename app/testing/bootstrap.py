@@ -2,8 +2,8 @@
 
 主程序 ``tests/conftest.py`` 与各插件仓的极薄 shim（``tests/_bootstrap.py``，仅负责把
 后端定位并加入 ``sys.path``）都委托到这里，使「隔离 CONFIG_DIR / 建表 / 注入插件目录 /
-按目录打 v1·v2 marker / 退出清理」等引导逻辑只在主程序维护一处，所有消费方行为与修复一致。
-其中 :func:`isolate_config_dir` 为主程序与插件仓共用，``prepare_v1/v2_backend`` 与
+按目录打 v1·v2·v3 marker / 退出清理」等引导逻辑只在主程序维护一处，所有消费方行为与修复一致。
+其中 :func:`isolate_config_dir` 为主程序与插件仓共用，``prepare_v1/v2/v3_backend`` 与
 :func:`mark_plugin_generation` 为插件仓专用。
 
 本模块只依赖标准库，``import`` 期不触发 ``app.*``：调用方可安全地「先 import 本模块、
@@ -112,11 +112,14 @@ def isolate_config_dir() -> str:
     return tmp
 
 
-def _prepend_sys_path(path: Path) -> None:
-    """把目录前置到 ``sys.path``（去重），使其内顶层包可被导入。"""
+def _expose_plugin_source(path: Path) -> None:
+    """让插件仓源码通过生产运行时的 ``app.plugins.<id>`` 命名空间导入。"""
+    from importlib import import_module
+
+    plugins_package = import_module("app.plugins")
     value = str(path)
-    if value not in sys.path:
-        sys.path.insert(0, value)
+    if value not in plugins_package.__path__:
+        plugins_package.__path__.insert(0, value)
 
 
 def ensure_sites_stub() -> None:
@@ -195,7 +198,7 @@ def prepare_backend() -> None:
 
 
 def prepare_v2_backend(plugins_repo: Path) -> None:
-    """v2 插件单测引导：``prepare_backend`` + 把 ``<repo>/plugins.v2`` 注入 ``sys.path``。
+    """v2 插件单测引导：准备后端并暴露 ``<repo>/plugins.v2`` 源码。
 
     与 :func:`prepare_v1_backend` 互斥：v1/v2 存在同名插件包，同一进程同时加载会相互覆盖，
     须在各自独立的 pytest 会话中运行。
@@ -203,11 +206,11 @@ def prepare_v2_backend(plugins_repo: Path) -> None:
     :param plugins_repo: 插件仓根目录（由调用方 shim 传入）
     """
     prepare_backend()
-    _prepend_sys_path(Path(plugins_repo) / "plugins.v2")
+    _expose_plugin_source(Path(plugins_repo) / "plugins.v2")
 
 
 def prepare_v3_backend(plugins_repo: Path) -> None:
-    """v3 插件单测引导：``prepare_backend`` + 把 ``<repo>/plugins.v3`` 注入 ``sys.path``。
+    """v3 插件单测引导：准备后端并暴露 ``<repo>/plugins.v3`` 源码。
 
     v3 插件与旧代插件可能存在同名包，必须在独立 pytest 会话中加载，避免 Python 模块
     缓存把其它代际实现复用到当前测试进程。
@@ -215,16 +218,16 @@ def prepare_v3_backend(plugins_repo: Path) -> None:
     :param plugins_repo: 插件仓根目录（由调用方 shim 传入）
     """
     prepare_backend()
-    _prepend_sys_path(Path(plugins_repo) / "plugins.v3")
+    _expose_plugin_source(Path(plugins_repo) / "plugins.v3")
 
 
 def prepare_v1_backend(plugins_repo: Path) -> None:
-    """v1 插件单测引导：``prepare_backend`` + 把 ``<repo>/plugins`` 注入 ``sys.path``（与 v2 互斥）。
+    """v1 插件单测引导：准备后端并暴露 ``<repo>/plugins`` 源码（与 v2 互斥）。
 
     :param plugins_repo: 插件仓根目录（由调用方 shim 传入）
     """
     prepare_backend()
-    _prepend_sys_path(Path(plugins_repo) / "plugins")
+    _expose_plugin_source(Path(plugins_repo) / "plugins")
 
 
 def mark_plugin_generation(items, pytest_module) -> None:

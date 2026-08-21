@@ -10,14 +10,17 @@ LICENSE
 
 # Development files
 .pylintrc
-*.pyc
-__pycache__/
-*.pyo
-*.pyd
+**/*.pyc
+**/__pycache__/
+**/*.pyo
+**/*.pyd
 .Python
-*.so
+**/*.so
 .pytest_cache/
+.ruff_cache/
 .coverage
+coverage.json
+coverage.xml
 htmlcov/
 .tox/
 .nox/
@@ -27,11 +30,29 @@ htmlcov/
 dmypy.json
 
 # Virtual environments
+.venv/
+.worktrees/
 venv/
 env/
 ENV/
 env.bak/
 venv.bak/
+
+# Runtime state and locally synchronized payloads
+.build/
+.agent-work/
+.runtime/
+.tmp/
+node_modules/
+public/
+.moviepilot.env
+.env
+.env.*
+config/*
+!config/category.yaml
+app/plugins/**
+!app/plugins/__init__.py
+app/application/site/*.bin
 
 # IDE
 .vscode/

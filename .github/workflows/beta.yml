@@ -14,11 +14,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+
+      - name: Verify dependency lock
+        run: uv lock --check
+
       - name: Release version
         id: release_version
         run: |
           app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+          frontend_version=$(sed -ne "s/FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/gp" version.py)
           echo "app_version=$app_version" >> $GITHUB_ENV
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "frontend_version=$frontend_version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve External Payload Revisions
+        id: payloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_VERSION: ${{ steps.release_version.outputs.frontend_version }}
+        run: |
+          plugins_revision=$(git ls-remote https://github.com/jxxghp/MoviePilot-Plugins.git refs/heads/main | awk '{print $1}')
+          resources_revision=$(git ls-remote https://github.com/jxxghp/MoviePilot-Resources.git refs/heads/main | awk '{print $1}')
+          frontend_digest=$(gh api "repos/jxxghp/MoviePilot-Frontend/releases/tags/${FRONTEND_VERSION}" \
+            --jq '.assets[] | select(.name == "dist.zip") | .digest')
+
+          [[ "$plugins_revision" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$resources_revision" =~ ^[0-9a-f]{40}$ ]]
+          case "$frontend_digest" in
+            sha256:*) frontend_sha256=${frontend_digest#sha256:} ;;
+            *) echo "dist.zip 缺少 SHA-256 摘要" >&2; exit 1 ;;
+          esac
+          [[ "$frontend_sha256" =~ ^[0-9a-f]{64}$ ]]
+
+          echo "plugins_revision=$plugins_revision" >> "$GITHUB_OUTPUT"
+          echo "resources_revision=$resources_revision" >> "$GITHUB_OUTPUT"
+          echo "frontend_digest=$frontend_digest" >> "$GITHUB_OUTPUT"
+          echo "frontend_sha256=$frontend_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Wiki Plugin Market
         uses: actions/checkout@v4
@@ -40,6 +75,7 @@ jobs:
           echo "wiki_commit=$wiki_commit" >> "$GITHUB_OUTPUT"
 
       - name: Download models.dev catalog
+        id: models_catalog
         run: |
           temp_file=$(mktemp app/agent/llm/models.json.XXXXXX)
           trap 'rm -f "$temp_file"' EXIT
@@ -50,6 +86,7 @@ jobs:
           # Git keeps only a small placeholder; the beta image receives the current catalog.
           chmod 644 "$temp_file"
           mv "$temp_file" app/agent/llm/models.json
+          echo "digest=sha256:$(sha256sum app/agent/llm/models.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "Downloaded models.dev catalog ($(wc -c < app/agent/llm/models.json) bytes)"
 
       - name: Docker Meta
@@ -91,8 +128,20 @@ jobs:
             linux/arm64/v8
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
+            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
+            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
+            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
           labels: |
             ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ env.SOURCE_COMMIT }}
+            org.moviepilot.source-revision=${{ env.SOURCE_COMMIT }}
+            org.moviepilot.frontend-version=${{ steps.release_version.outputs.frontend_version }}
+            org.moviepilot.frontend-digest=${{ steps.payloads.outputs.frontend_digest }}
+            org.moviepilot.plugins-revision=${{ steps.payloads.outputs.plugins_revision }}
+            org.moviepilot.resources-revision=${{ steps.payloads.outputs.resources_revision }}
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
+            org.moviepilot.models-catalog-digest=${{ steps.models_catalog.outputs.digest }}
           cache-from: type=gha,scope=moviepilot-v3-docker,version=2
           cache-to: type=gha,scope=moviepilot-v3-docker,mode=max,version=2

@@ -1593,23 +1593,23 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2282
+        "line": 2489
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2323
+        "line": 2530
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2396
+        "line": 2603
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2440
+        "line": 2647
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2476
+        "line": 2683
       },
       {
         "caller": "app.runtime.extensions.service_family_registry",
@@ -2119,7 +2119,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1559
+            "line": 1675
           }
         ]
       },

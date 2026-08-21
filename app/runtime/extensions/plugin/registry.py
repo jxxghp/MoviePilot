@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from app.runtime.extensions.instance import extension_id_of
+from app.schemas.plugin import PluginRuntimeStatus
 
 
 class PluginRegistry:
@@ -16,6 +17,9 @@ class PluginRegistry:
         """创建彼此独立但生命周期一致的类表和实例表。"""
         self._classes: Dict[str, Any] = {}
         self._running: Dict[str, Any] = {}
+        self._runtime_statuses: Dict[str, PluginRuntimeStatus] = {}
+        self._settling = False
+        self._generation = 0
 
     @property
     def classes(self) -> Dict[str, Any]:
@@ -97,19 +101,58 @@ class PluginRegistry:
         """复制运行实例表，避免插件重载期间迭代失效。"""
         return dict(self._running)
 
+    def set_runtime_status(
+        self,
+        plugin_id: str,
+        status: PluginRuntimeStatus,
+    ) -> None:
+        """记录插件当前状态，并在实际变化时推进前端刷新代次。"""
+        if self._runtime_statuses.get(plugin_id) == status:
+            return
+        self._runtime_statuses[plugin_id] = status
+        self._generation += 1
+
+    def runtime_status(self, plugin_id: str) -> Optional[PluginRuntimeStatus]:
+        """读取指定插件状态。"""
+        return self._runtime_statuses.get(plugin_id)
+
+    def runtime_status_snapshot(self) -> Dict[str, PluginRuntimeStatus]:
+        """复制插件状态表，避免后台加载期间迭代失效。"""
+        return dict(self._runtime_statuses)
+
+    def set_settling(self, settling: bool) -> None:
+        """标记启动后的插件源码与依赖收敛任务是否仍在执行。"""
+        if self._settling == settling:
+            return
+        self._settling = settling
+        self._generation += 1
+
+    @property
+    def settling(self) -> bool:
+        """返回插件后台收敛任务是否仍在执行。"""
+        return self._settling
+
+    @property
+    def generation(self) -> int:
+        """返回状态变化代次，供读取方识别刷新边界。"""
+        return self._generation
+
     def remove_instance(self, key: str) -> None:
-        """移除单个运行实例，该插件再无实例在运行时一并移除其类。
+        """移除单个运行实例，该插件再无实例在运行时一并移除其类与运行状态。
 
         :param key: 实例键
         :return: 无返回值
         """
         self._running.pop(key, None)
         plugin_id = extension_id_of(key)
-        if not self.instance_keys(plugin_id):
-            self._classes.pop(plugin_id, None)
+        if self.instance_keys(plugin_id):
+            return
+        self._classes.pop(plugin_id, None)
+        if self._runtime_statuses.pop(plugin_id, None) is not None:
+            self._generation += 1
 
     def remove(self, plugin_id: str) -> None:
-        """移除指定插件类及其全部运行实例。
+        """移除指定插件类、其全部运行实例及运行状态。
 
         :param plugin_id: 插件标识
         :return: 无返回值
@@ -117,8 +160,13 @@ class PluginRegistry:
         self._classes.pop(plugin_id, None)
         for key in self.instance_keys(plugin_id):
             self._running.pop(key, None)
+        if self._runtime_statuses.pop(plugin_id, None) is not None:
+            self._generation += 1
 
     def clear(self) -> None:
         """原地清空注册表，保持外部持有的兼容字典引用有效。"""
         self._classes.clear()
         self._running.clear()
+        if self._runtime_statuses:
+            self._runtime_statuses.clear()
+            self._generation += 1

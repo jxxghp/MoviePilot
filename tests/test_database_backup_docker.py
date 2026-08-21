@@ -44,7 +44,11 @@ def test_runtime_image_keeps_pgdg_setup_architecture_neutral_and_cleans_apt_cach
     assert len(pgdg_sources) == 1
     pgdg_source = pgdg_sources[0]
     assert "arch=" not in pgdg_source
-    assert "/var/lib/apt/lists/*" in dockerfile
-    assert dockerfile.index("postgresql-client-18") < dockerfile.index(
+    runtime_packages = dockerfile[
+        dockerfile.index("FROM base AS prepare_package") :
+        dockerfile.index("FROM base AS prepare_venv")
+    ]
+    assert "/var/lib/apt/lists/*" in runtime_packages
+    assert runtime_packages.index("postgresql-client-18") < runtime_packages.index(
         "/var/lib/apt/lists/*"
     )

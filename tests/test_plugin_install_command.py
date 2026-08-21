@@ -60,6 +60,8 @@ async def test_install_failure_stops_before_report_persistence_and_reload():
     assert result.failure_stage == "package_install"
     assert result.rollback.file_restored is True
     assert result.rollback.dependency_supported is False
+    assert "插件文件已恢复" not in result.message
+    assert "Python依赖变更不支持自动回滚" not in result.message
     rollback.assert_awaited_once()
     reporter.assert_not_awaited()
     writer.assert_not_awaited()

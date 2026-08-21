@@ -329,7 +329,6 @@ def _best_effort_auto_update() -> None:
     update_env = os.environ.copy()
     package_cache_root = Path(update_env.get("PACKAGE_CACHE_ROOT", "").strip() or settings.PACKAGE_CACHE_PATH)
     update_env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
-    update_env.setdefault("PIP_CACHE_DIR", str(package_cache_root / "pip"))
     update_env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
     if settings.PIP_PROXY:
         update_env["PIP_PROXY"] = settings.PIP_PROXY

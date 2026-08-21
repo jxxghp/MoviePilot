@@ -436,6 +436,8 @@ class AgentImageSupportTest(unittest.TestCase):
 
         with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             settings, "LLM_SUPPORT_IMAGE_INPUT", False
+        ), patch(
+            "app.chain.message.supports_image_input", return_value=False
         ), patch.object(chain, "_get_or_create_session_id", return_value="session-1"), patch.object(
             chain, "_download_attachments_to_data_urls"
         ) as download_images, patch.object(

@@ -6,54 +6,41 @@
 
 在开始之前，请确保您的系统已安装以下软件：
 
-- **Python 3.11 或更高版本**
-- **pip** (Python 包管理器)
+- **Python 3.12+**
+- **uv 0.12.5**（Python 版本、虚拟环境和依赖锁定工具）
 - **Git** (用于版本控制)
 - **RAR 解压工具**：本地开发如需测试或使用 `.rar` 字幕包解压，请安装 `unar`、`unrar`、`7z` 或 `bsdtar` 之一；Docker 镜像会内置 `unar`。
 
 Rust 加速扩展通过 `moviepilot-rust` PyPI 包安装，主项目本地开发不再需要 Rust toolchain。需要修改或发布 Rust 扩展时，请在 `MoviePilot-Rust` 仓库中构建。
 
-### 1. 创建虚拟环境
+### 1. 创建锁定环境
 
-在项目根目录下创建并激活虚拟环境：
+仓库通过 `pyproject.toml` 声明直接依赖，并提交统一的 `uv.lock`。在项目根目录执行：
 
-- 在 Windows 上：
+```bash
+uv sync --locked
+```
 
-  ```bash
-  python -m venv venv
-  .\venv\Scripts\activate
-  ```
+`uv` 会创建或更新 `.venv`，并安装运行时与默认 `dev` 依赖组。命令中的
+`--locked` 会在 `pyproject.toml` 与 `uv.lock` 不一致时直接失败，避免开发环境静默解析出一套
+未提交的依赖结果。只需要生产运行依赖时使用：
 
-- 在 macOS/Linux 上：
+```bash
+uv sync --locked --no-dev --no-install-project
+```
 
-  ```bash
-  python3 -m venv venv
-  source venv/bin/activate
-  ```
+### 2. 依赖分层与事实源
 
-虚拟环境确保项目的依赖项与系统全局环境隔离，防止冲突。
+主程序只维护以下依赖事实源：
 
-### 2. 依赖分层与安装
-
-主程序依赖按使用场景分层，避免运行时镜像携带只在开发、测试或构建时需要的工具：
-
-| 文件 | 用途 | 典型安装场景 |
+| 位置 | 用途 | 维护方式 |
 | --- | --- | --- |
-| `requirements.in` | 主程序运行时依赖。只放启动、后台任务、插件运行框架和内置功能在生产环境需要导入的包。 | Docker 镜像、CLI 本地运行、运行时依赖自愈。 |
-| `requirements-dev.in` | 开发、测试、静态检查和源码构建辅助依赖。 | CI 单测、本地跑测、Pylint、显式源码构建。 |
-| `requirements.txt` | 兼容入口，默认只委托到 `requirements.in`。它不是跨平台完整锁文件，不应在本地开发机上直接维护一份平台相关锁定结果。 | 旧脚本、Docker 运行时恢复、CLI 安装入口。 |
+| `pyproject.toml` 的 `[project].dependencies` | 主程序生产运行依赖。 | 开发者按直接依赖的兼容范围维护。 |
+| `pyproject.toml` 的 `[dependency-groups].dev` | pytest、覆盖率、Pylint 和源码构建等开发工具。 | 不进入 Docker 生产运行环境。 |
+| `uv.lock` | Python 3.12+ 和受支持平台共享的完整解析结果。 | 修改 `pyproject.toml` 后由 `uv lock` 更新并提交。 |
 
-运行主程序只需要安装运行时依赖：
-
-```bash
-pip install -r requirements.txt
-```
-
-开发、测试、静态检查或执行源码编译时安装开发依赖入口：
-
-```bash
-pip install -r requirements-dev.in
-```
+主程序不再维护 `requirements.in`、`requirements-dev.in` 或 `requirements.txt`，也不生成
+平台专属的 requirements 锁文件。Docker、CLI 和 CI 都以提交的 `uv.lock` 为安装输入。
 
 ### 2.1 本地启动脚本
 
@@ -96,10 +83,41 @@ chmod +x scripts/start-local.sh
 
 新增或升级依赖时，先确认依赖属于哪个层级：
 
-1. **运行时依赖**：被 `app/` 生产代码直接导入，或是生产功能、后台任务、插件框架启动必需，写入 `requirements.in`。
-2. **开发 / 测试 / 静态检查 / 构建依赖**：只用于单测、覆盖率、lint 辅助、源码构建等，不应进入生产运行时，写入 `requirements-dev.in`。
-3. **工具依赖**：`pip-tools`、`uv`、`safety` 这类安装或审计工具不属于主程序运行依赖，按脚本或 CI 场景显式安装。
-4. **插件依赖**：由插件声明并在插件安装阶段处理，不直接并入主程序 `requirements.in`。
+1. **运行时依赖**：被 `app/` 生产代码直接导入，或是生产功能、后台任务、插件框架启动必需，写入 `[project].dependencies`。
+2. **开发 / 测试 / 静态检查 / 构建依赖**：只用于单测、覆盖率、lint 辅助、源码构建等，写入 `[dependency-groups].dev`。
+3. **工具依赖**：仓库要求使用 `uv 0.12.5`；不应为了安装工具而把它加入主程序运行依赖。
+4. **插件依赖**：由插件清单声明并在插件安装阶段处理，不直接并入主程序依赖。
+
+修改后更新并校验锁文件：
+
+```bash
+uv lock
+uv lock --check
+uv sync --locked
+uv pip check
+```
+
+`uv.lock` 同时覆盖 Linux x86_64/arm64、macOS x86_64/arm64 和 Windows x64。统一锁文件只
+固定解析结果，不能替代这些平台的真实安装门禁；平台条件依赖变更必须通过对应 CI 环境验证。
+
+### 3.1 插件依赖清单
+
+新插件可以在插件根目录使用 `pyproject.toml`，宿主只读取 `[project].dependencies` 作为运行依赖：
+
+```toml
+[project]
+name = "example-plugin"
+version = "1.0.0"
+dependencies = ["example-package>=1,<2"]
+```
+
+插件依赖遵循以下合同：
+
+- `pyproject.toml` 优先于历史 `requirements.txt`；两者同时存在时只读取前者；
+- `[dependency-groups]` 属于插件自身的开发、测试或构建环境，宿主不安装其中内容；
+- `pyproject.toml` 存在但格式或依赖声明无效时直接报错，不回退到 `requirements.txt`；
+- 仅有 `requirements.txt` 的历史插件继续按原方式安装；
+- 宿主不消费插件自己的 `uv.lock`，因为多个插件共享同一主程序环境，不能分别同步独立锁文件。
 
 ### 4. 准备资源与插件目录
 
@@ -131,44 +149,41 @@ python -m scripts.generate_plugin_market_default \
 
 ### 5. 运行安全检查
 
-我们使用 `safety` 工具检查依赖项中是否存在已知安全漏洞。更新运行时依赖后，应至少检查运行时入口；更新开发测试依赖时，也应覆盖开发入口。
-
-#### 安装 safety
-
-您可以使用以下命令安装 `safety`：
-
-```bash
-pip install safety
-```
+我们使用 `safety` 工具检查 `pyproject.toml` 与 `uv.lock` 中是否存在已知安全漏洞。该检查是
+依赖变更的人工门禁，当前不属于自动 CI。
 
 #### 执行安全检查
 
-运行以下命令检查运行时入口：
+可以通过 `uvx` 在隔离工具环境中运行 `safety`，无需把它加入主程序依赖：
 
 ```bash
-safety check -r requirements.txt --policy-file=safety.policy.yml > safety_report.txt
+uvx safety scan --target . --policy-file safety.policy.yml
 ```
 
-这将生成一个名为 `safety_report.txt` 的报告文件，您可以查看其中的漏洞报告并进行相应处理。
+Safety 直接识别项目清单和锁文件，不需要生成或维护 requirements 文件。
 
 ### 6. 提交代码前的检查
 
 在提交代码之前，请确保完成以下步骤：
 
-1. **确认依赖分层正确**：运行时包进入 `requirements.in`；测试、覆盖率、静态检查和构建辅助进入 `requirements-dev.in`；插件依赖不并入主程序运行时依赖。
+1. **确认依赖分层正确**：运行时包进入 `[project].dependencies`；测试、覆盖率、静态检查和构建辅助进入 `[dependency-groups].dev`；插件依赖不并入主程序运行时依赖。
 
 2. **运行安全检查**：确保 `safety` 检查通过，没有新的安全漏洞。
 
 3. **运行测试**：如果项目中包含测试，请确保所有测试都通过。运行以下命令以执行测试：
 
    ```bash
-   pytest
+   uv run --locked --no-sync pytest
    ```
+
+   `python tests/run.py` 在本地默认把排序后的测试文件按向上取整的连续区间切成 4 片，
+   并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
+   参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。覆盖率报告
+   按需通过 `Unit Tests` workflow 的手动触发串行生成，不阻塞常规 PR / push 门禁。
 
 ### 7. 参考资源
 
-- [pip-tools 官方文档](https://github.com/jazzband/pip-tools)
 - [uv 官方文档](https://docs.astral.sh/uv/)
-- [safety 官方文档](https://pyup.io/safety/)
+- [Safety CLI 官方文档](https://docs.safetycli.com/)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)

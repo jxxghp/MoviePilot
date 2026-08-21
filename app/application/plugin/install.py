@@ -356,27 +356,9 @@ class PluginInstallCommand:
             dependency_supported=False,
             errors=tuple(errors),
         )
-        rollback_message = []
-        rollback_message.append("插件文件已恢复" if file_restored else "插件文件恢复失败")
-        if installed_list_persisted:
-            rollback_message.append(
-                "已安装列表已恢复"
-                if installed_list_restored
-                else "已安装列表恢复失败"
-            )
-        if runtime_touched:
-            rollback_message.append(
-                "旧运行态已恢复" if runtime_restored else "旧运行态恢复失败"
-            )
-            rollback_message.append(
-                "旧路由和服务注册已恢复"
-                if registrations_restored
-                else "旧路由和服务注册恢复失败"
-            )
-        rollback_message.append("Python依赖变更不支持自动回滚")
         return PluginInstallResult(
             success=False,
-            message=f"{message}；{'；'.join(rollback_message)}",
+            message=message,
             package_installed=package_installed,
             installed_list_persisted=installed_list_persisted,
             failure_stage=stage,

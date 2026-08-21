@@ -1,3 +1,5 @@
+from concurrent.futures import Future
+
 from app.application.commands import register_command_class
 from app.command import Command
 
@@ -19,8 +21,8 @@ def stop_command():
     pass
 
 
-def restart_command():
+def restart_command() -> Future:
     """
-    重启命令
+    重建命令并返回完成信号。
     """
-    Command().init_commands()
+    return Command().init_commands()

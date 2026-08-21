@@ -12,6 +12,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     reload_plugin_runtime,
 )
 from app.runtime.log import logger
+from app.schemas.plugin import PluginRuntimeStatus
 
 
 class ReloadPluginInput(BaseModel):
@@ -57,8 +58,25 @@ class ReloadPluginTool(MoviePilotTool):
                 ensure_ascii=False,
             )
 
-        reload_plugin_runtime(plugin_id)
+        runtime_status = reload_plugin_runtime(plugin_id)
         refreshed_plugin = get_plugin_snapshot(plugin_id) or plugin_info
+
+        if runtime_status is not PluginRuntimeStatus.ACTIVE:
+            return json.dumps(
+                {
+                    "success": False,
+                    **refreshed_plugin,
+                    "runtime_status": runtime_status,
+                    "message": (
+                        "未通过用户认证，请查看日志"
+                        if runtime_status is PluginRuntimeStatus.BLOCKED_BY_POLICY
+                        else "插件加载失败，请查看插件日志"
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
 
         return json.dumps(
             {

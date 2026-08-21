@@ -270,6 +270,8 @@ SCHEMA_EXPORTS = {
     'PluginReleaseData': ('app.schemas.plugin', 'PluginReleaseData'),
     'PluginReleaseItem': ('app.schemas.plugin', 'PluginReleaseItem'),
     'PluginRemoteInfo': ('app.schemas.storage', 'PluginRemoteInfo'),
+    'PluginRuntimeStatus': ('app.schemas.plugin', 'PluginRuntimeStatus'),
+    'PluginRuntimeSummary': ('app.schemas.plugin', 'PluginRuntimeSummary'),
     'PluginSidebarNavItem': ('app.schemas.plugin', 'PluginSidebarNavItem'),
     'PluginVersionOverview': ('app.schemas.plugin', 'PluginVersionOverview'),
     'PluginVersionRecycleResult': ('app.schemas.plugin', 'PluginVersionRecycleResult'),

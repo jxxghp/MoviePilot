@@ -10,6 +10,7 @@ import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Type, Union, Callable, Tuple
 
@@ -19,6 +20,7 @@ from watchfiles import watch
 
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
+from app.schemas.plugin import PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
 from app.foundation.paths import ensure_path_segment
 from app.foundation.singleton import Singleton
@@ -73,6 +75,10 @@ from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.storage_registry import (
     storage_backend_registry,
     storage_instance_factory,
+)
+from app.runtime.extensions.plugin.dependency_status import (
+    PluginDependencyClassification,
+    PluginDependencyInstallResult,
 )
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, SystemConfigKey
@@ -340,14 +346,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_agent_tools_cache: Dict[str, List[Dict[str, Any]]] = {}
         self._plugin_agent_tools_cache_lock = threading.Lock()
         self._plugin_agent_tools_revision: int = 0
+        # 插件包写入期间的监控抑制计数，按插件标识引用计数
+        self._monitor_suppression_lock = threading.Lock()
+        self._suppressed_monitor_plugins: Dict[str, int] = {}
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
             self.resolve_event_handler_instance,
         )
-        # 开发者模式监测插件修改
-        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
-            self.__start_monitor()
 
     def resolve_event_handler_instance(
             self,
@@ -383,14 +389,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """按最新系统配置完整重启插件。"""
         # 停止已有插件
         self.stop()
-        # 启动插件
-        self.start()
+        classification = self.classify_plugins()
+        self.apply_plugin_dependency_classification(classification)
+        for plugin_id in classification.ready:
+            self.start(plugin_id)
 
-    def start(self, pid: Optional[str] = None, instance_id: Optional[str] = None):
+    def start(
+        self,
+        pid: Optional[str] = None,
+        instance_id: Optional[str] = None,
+    ) -> Dict[str, PluginRuntimeStatus]:
         """
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
         :param instance_id: 实例标识，为空时加载该插件已登记的全部实例
+        :return: 本次涉及的插件ID到其运行状态的映射
         """
 
         _legacy_diagnostics_configurator(
@@ -411,6 +424,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         target_instance_id = instance_id
         if pid and not target_instance_id and pid != target_plugin_id:
             target_instance_id = split_instance_key(pid)[1]
+        results: Dict[str, PluginRuntimeStatus] = {}
+        # 指名加载时先落 ready，导入期间的读取方看到的是准备中而不是状态缺失
+        if target_plugin_id:
+            self._plugin_registry.set_runtime_status(target_plugin_id, PluginRuntimeStatus.READY)
         # 已安装插件
         installed_plugins = get_plugin_storage().read(SystemConfigKey.UserInstalledPlugins) or []
         # 扫描插件目录，只加载符合条件的插件
@@ -427,6 +444,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     # 如果是插件热更新实例，这里则进行替换
                     if plugin_id in self._plugins:
                         self._plugins[plugin_id] = plugin
+                    results[plugin_id] = self._record_runtime_status(
+                        plugin_id, PluginRuntimeStatus.BLOCKED_BY_POLICY
+                    )
                     continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
@@ -437,9 +457,39 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 for target in instance_ids:
                     self._start_instance_with_version(plugin, plugin_id, target)
                 self._sync_family_event_state(plugin_id, plugin)
+                # 一族里只要还有实例在运行就算激活，个别实例失败不改变整族状态
+                results[plugin_id] = self._record_runtime_status(
+                    plugin_id,
+                    PluginRuntimeStatus.ACTIVE
+                    if self._plugin_registry.instance_keys(plugin_id)
+                    else PluginRuntimeStatus.LOAD_FAILED,
+                )
             except Exception as err:
+                results[plugin_id] = self._record_runtime_status(
+                    plugin_id, PluginRuntimeStatus.LOAD_FAILED
+                )
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
+        # 指名加载的插件没有产出任何可用类时按加载失败对外可见
+        if target_plugin_id and target_plugin_id not in results:
+            results[target_plugin_id] = self._record_runtime_status(
+                target_plugin_id, PluginRuntimeStatus.LOAD_FAILED
+            )
         self.clear_plugin_agent_tools_cache()
+        return results
+
+    def _record_runtime_status(
+        self,
+        plugin_id: str,
+        status: PluginRuntimeStatus,
+    ) -> PluginRuntimeStatus:
+        """写入插件运行状态并回传，便于调用方同时记录本轮结果。
+
+        :param plugin_id: 插件ID
+        :param status: 本次判定的运行状态
+        :return: 写入的运行状态
+        """
+        self._plugin_registry.set_runtime_status(plugin_id, status)
+        return status
 
     def start_instance(self, pid: str, instance_id: str) -> None:
         """
@@ -1160,16 +1210,30 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """返回配置重载日志使用的功能名称。"""
         return "插件文件修改监测"
 
+    def _monitor_enabled(self) -> bool:
+        """判断当前是否允许运行插件文件修改监测。
+
+        后台恢复期间源码与依赖仍在写入，监测开着会把半成品目录反复导入。
+        :return: 允许运行监测时为 True
+        """
+        return (
+            not self.is_plugin_settling()
+            and bool(settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+        )
+
+    def start_monitor(self):
+        """按当前配置启动插件文件修改监测。"""
+        if self._monitor_enabled():
+            self.__start_monitor()
+
     def reload_monitor(self):
         """
         重新加载插件文件修改监测
         """
-        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
-            # 先关闭已有监测，再重新启动
-            self.stop_monitor()
+        # 先关闭已有监测；仍允许运行时再重新启动
+        self.stop_monitor()
+        if self._monitor_enabled():
             self.__start_monitor()
-        else:
-            self.stop_monitor()
 
     def __start_monitor(self):
         """
@@ -1223,87 +1287,115 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             # 如果收到停止事件，退出循环
             if not changes:
                 continue
+            self._process_watch_changes(changes)
 
-            # 处理变化事件
-            plugins_to_reload = set()
-            local_plugins_to_sync = {}
-            for _change_type, path_str in changes:
-                event_path = Path(path_str)
+    def _process_watch_changes(self, changes: Any) -> None:
+        """
+        处理一批插件目录文件变化事件
+        :param changes: watchfiles 返回的 `(变化类型, 路径)` 集合
+        :return: 无返回值
+        """
+        plugins_to_reload = set()
+        local_plugins_to_sync = {}
+        for _change_type, path_str in changes:
+            event_path = Path(path_str)
 
-                # 跳过 pycache 目录中的文件
-                if "__pycache__" in event_path.parts:
-                    continue
+            # 跳过 pycache 目录中的文件
+            if "__pycache__" in event_path.parts:
+                continue
 
-                if event_path.name == "requirements.txt":
-                    candidate = self._get_local_plugin_candidate_from_path(event_path)
-                    if candidate:
-                        if candidate.get("compatible") is False:
-                            logger.info(
-                                f"检测到本地插件 {candidate.get('id')} 依赖文件变化，"
-                                f"但跳过处理：{candidate.get('skip_reason')}"
-                            )
-                            continue
-                        logger.warn(f"检测到本地插件 {candidate.get('id')} 依赖文件变化，请重新安装本地插件以安装依赖")
-                    continue
+            manifest_status = get_plugin_system().dependency_manifest_status(event_path)
+            if manifest_status is not None:
+                self._handle_dependency_manifest_change(event_path, active=manifest_status)
+                continue
 
-                federated_change = self._get_federated_plugin_change(event_path)
-                if federated_change:
-                    pid, candidate, remote_entry_ready = federated_change
-                    # 运行目录由构建方直接写入；外部本地仓库只在入口完整时同步运行副本。
-                    if candidate and remote_entry_ready:
-                        if candidate.get("compatible") is False:
-                            logger.info(
-                                f"检测到本地插件 {pid} 联邦构建产物变化，"
-                                f"但跳过同步：{candidate.get('skip_reason')}"
-                            )
-                        elif pid not in local_plugins_to_sync:
-                            local_plugins_to_sync[pid] = (candidate, event_path, False)
-                    continue
-
-                # 跳过非 .py 文件
-                if not event_path.name.endswith(".py"):
-                    continue
-
-                # 解析插件ID与所属版本目录
-                runtime_target = self._get_plugin_target_from_path(event_path)
-                runtime_pid = runtime_target[0] if runtime_target else None
-                local_candidate = self._get_local_plugin_candidate_from_path(event_path) if not runtime_pid else None
-                if runtime_pid:
-                    last_sync_time = self._recent_local_sync.get(runtime_pid)
-                    if last_sync_time and time.time() - last_sync_time < 2:
-                        continue
-                    # 运行目录变化只重载，不能反向触发本地同步。
-                    logger.debug(
-                        f"插件 {runtime_pid} 版本目录 {runtime_target[1] or '存量布局'} 源码变化"
-                    )
-                    plugins_to_reload.add(runtime_pid)
-                elif local_candidate:
-                    if local_candidate.get("compatible") is False:
-                        package_version = local_candidate.get("package_version")
-                        source_root = f"plugins.{package_version}" if package_version else "plugins"
+            federated_change = self._get_federated_plugin_change(event_path)
+            if federated_change:
+                pid, candidate, remote_entry_ready = federated_change
+                # 运行目录由构建方直接写入；外部本地仓库只在入口完整时同步运行副本。
+                if candidate and remote_entry_ready:
+                    if candidate.get("compatible") is False:
                         logger.info(
-                            f"检测到本地插件 {local_candidate.get('id')} 文件变化，来源：{source_root}，"
-                            f"文件：{event_path}，但跳过同步：{local_candidate.get('skip_reason')}"
+                            f"检测到本地插件 {pid} 联邦构建产物变化，"
+                            f"但跳过同步：{candidate.get('skip_reason')}"
                         )
-                        continue
-                    local_plugins_to_sync[local_candidate.get("id")] = (local_candidate, event_path, True)
+                    elif pid not in local_plugins_to_sync:
+                        local_plugins_to_sync[pid] = (candidate, event_path, False)
+                continue
 
-            for pid, (candidate, event_path, should_reload) in local_plugins_to_sync.items():
-                package_version = candidate.get("package_version")
-                source_root = f"plugins.{package_version}" if package_version else "plugins"
-                change_name = "Python 文件" if should_reload else "联邦构建产物"
-                logger.info(f"检测到本地插件 {pid} {change_name}变化，来源：{source_root}，文件：{event_path}")
-                if self._sync_local_plugin_if_installed(pid, candidate) and should_reload:
-                    plugins_to_reload.add(pid)
+            # 跳过非 .py 文件
+            if not event_path.name.endswith(".py"):
+                continue
 
-            # 触发重载
-            if plugins_to_reload:
-                logger.info(f"检测到插件文件变化，准备重载: {list(plugins_to_reload)}")
-                for pid in plugins_to_reload:
-                    try:
-                        self.reload_plugin(pid)
-                    except Exception as e:
-                        logger.error(f"插件 {pid} 热重载失败: {e}", exc_info=True)
+            # 解析插件ID与所属版本目录
+            runtime_target = self._get_plugin_target_from_path(event_path)
+            runtime_pid = runtime_target[0] if runtime_target else None
+            # 安装或替换正在写入该插件目录时，半成品源码不得被抢先导入
+            if runtime_pid and self.is_plugin_monitor_suppressed(runtime_pid):
+                logger.debug(f"插件 {runtime_pid} 正在写入，跳过本批文件监控重载")
+                continue
+            local_candidate = self._get_local_plugin_candidate_from_path(event_path) if not runtime_pid else None
+            if runtime_pid:
+                last_sync_time = self._recent_local_sync.get(runtime_pid)
+                if last_sync_time and time.time() - last_sync_time < 2:
+                    continue
+                # 运行目录变化只重载，不能反向触发本地同步。
+                logger.debug(
+                    f"插件 {runtime_pid} 版本目录 {runtime_target[1] or '存量布局'} 源码变化"
+                )
+                plugins_to_reload.add(runtime_pid)
+            elif local_candidate:
+                if local_candidate.get("compatible") is False:
+                    package_version = local_candidate.get("package_version")
+                    source_root = f"plugins.{package_version}" if package_version else "plugins"
+                    logger.info(
+                        f"检测到本地插件 {local_candidate.get('id')} 文件变化，来源：{source_root}，"
+                        f"文件：{event_path}，但跳过同步：{local_candidate.get('skip_reason')}"
+                    )
+                    continue
+                local_plugins_to_sync[local_candidate.get("id")] = (local_candidate, event_path, True)
+
+        for pid, (candidate, event_path, should_reload) in local_plugins_to_sync.items():
+            package_version = candidate.get("package_version")
+            source_root = f"plugins.{package_version}" if package_version else "plugins"
+            change_name = "Python 文件" if should_reload else "联邦构建产物"
+            logger.info(f"检测到本地插件 {pid} {change_name}变化，来源：{source_root}，文件：{event_path}")
+            if self._sync_local_plugin_if_installed(pid, candidate) and should_reload:
+                plugins_to_reload.add(pid)
+
+        # 触发重载
+        if plugins_to_reload:
+            logger.info(f"检测到插件文件变化，准备重载: {list(plugins_to_reload)}")
+            for pid in plugins_to_reload:
+                try:
+                    self.reload_plugin(pid)
+                except Exception as e:
+                    logger.error(f"插件 {pid} 热重载失败: {e}", exc_info=True)
+
+    def _handle_dependency_manifest_change(self, event_path: Path, *, active: bool) -> None:
+        """
+        记录本地插件依赖清单变化，不在监控线程中隐式安装依赖
+        :param event_path: 发生变化的依赖清单路径
+        :param active: 该文件是否为插件当前生效的依赖清单
+        :return: 无返回值
+        """
+        candidate = self._get_local_plugin_candidate_from_path(event_path)
+        if not candidate:
+            return
+        if candidate.get("compatible") is False:
+            logger.info(
+                f"检测到本地插件 {candidate.get('id')} 依赖文件变化，"
+                f"但跳过处理：{candidate.get('skip_reason')}"
+            )
+            return
+        if not active:
+            logger.debug(
+                f"检测到本地插件 {candidate.get('id')} 非生效依赖文件变化：{event_path.name}"
+            )
+            return
+        logger.warning(
+            f"检测到本地插件 {candidate.get('id')} 依赖文件变化，请重新安装本地插件以安装依赖"
+        )
 
     def _get_federated_plugin_change(
         self,
@@ -1539,6 +1631,29 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except Exception as e:
             logger.warn(f"停止插件 {extension.display_name} 时发生错误: {str(e)}")
 
+    @contextmanager
+    def suppress_plugin_monitor(self, plugin_id: str):
+        """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
+        normalized_id = plugin_id.lower()
+        with self._monitor_suppression_lock:
+            self._suppressed_monitor_plugins[normalized_id] = (
+                self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+            )
+        try:
+            yield
+        finally:
+            with self._monitor_suppression_lock:
+                count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+                if count <= 1:
+                    self._suppressed_monitor_plugins.pop(normalized_id, None)
+                else:
+                    self._suppressed_monitor_plugins[normalized_id] = count - 1
+
+    def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
+        """判断指定插件是否处于安装或替换写入阶段。"""
+        with self._monitor_suppression_lock:
+            return self._suppressed_monitor_plugins.get(plugin_id.lower(), 0) > 0
+
     def remove_plugin(self, plugin_id: str):
         """
         从内存中移除一个插件
@@ -1546,17 +1661,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         self.stop(plugin_id)
 
-    def reload_plugin(self, plugin_id: str):
+    def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
         将一个插件重新加载到内存
         :param plugin_id: 插件ID
+        :return: 重新加载后的插件运行状态
         """
         # 先移除插件实例
         self.stop(plugin_id)
         # 重新加载
-        self.start(plugin_id)
+        results = self.start(plugin_id)
         # 广播事件
         eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
+        return results.get(extension_id_of(plugin_id), PluginRuntimeStatus.LOAD_FAILED)
 
     @staticmethod
     def _clear_plugin_modules(plugin_id: Optional[str] = None, version_dir: Optional[str] = None):
@@ -1623,10 +1740,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     logger.error(f"插件 {plugin.plugin_name} 的版本号不可用于版本目录，拒绝安装：{err}")
                     failed_plugins.append(plugin.id)
                     return
+            # 后台自动更新保留旧版本备份，下载或依赖安装失败时由安装器还原
             state, msg = get_plugin_system().package.install(
                 plugin_id=plugin.id,
                 repo_url=plugin.repo_url,
-                force_install=True,
+                force_install=False,
                 version_dir=version_dir,
             )
             elapsed_time = time.time() - start_time
@@ -1694,23 +1812,112 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def install_plugin_missing_dependencies() -> List[str]:
         """
         安装插件中缺失或不兼容的依赖项
+        :return: 本轮检查到的缺失依赖项
+        """
+        return PluginManager.install_plugin_missing_dependencies_with_status().missing
+
+    @staticmethod
+    def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
+        """
+        安装插件中缺失或不兼容的依赖项，并给出安装器的明确结果
+        :return: 缺失依赖项与本次安装是否全部成功
         """
         dependency_installer = get_plugin_system().dependency
         # 第一步：获取需要安装的依赖项列表
         missing_dependencies = dependency_installer.find_missing()
         if not missing_dependencies:
-            return missing_dependencies
+            return PluginDependencyInstallResult(missing=[], success=True)
         logger.debug(f"检测到缺失的依赖项: {missing_dependencies}")
         logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
         # 第二步：安装依赖项并返回结果
         total_start_time = time.time()
-        success, message = dependency_installer.install(missing_dependencies)
+        success, _message = dependency_installer.install(missing_dependencies)
         total_elapsed_time = time.time() - total_start_time
         if success:
             logger.info(f"已完成 {len(missing_dependencies)} 个依赖项安装，总耗时：{total_elapsed_time:.2f} 秒")
         else:
             logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
-        return missing_dependencies
+        return PluginDependencyInstallResult(
+            missing=missing_dependencies,
+            success=bool(success),
+        )
+
+    @staticmethod
+    def classify_plugins() -> PluginDependencyClassification:
+        """
+        按源码和依赖是否就绪划分已安装插件
+        :return: 就绪、等待依赖和等待源码三类插件ID
+        """
+        ready, missing_dependencies, missing_source = (
+            get_plugin_system().dependency.classify_plugins()
+        )
+        return PluginDependencyClassification(
+            ready=tuple(ready),
+            missing_dependencies=tuple(missing_dependencies),
+            missing_source=tuple(missing_source),
+        )
+
+    def apply_plugin_dependency_classification(
+        self,
+        classification: PluginDependencyClassification,
+    ) -> None:
+        """
+        把源码和依赖分类写入运行状态，已激活插件保持当前结果
+        :param classification: 本轮源码与依赖分类
+        :return: 无返回值
+        """
+        running_ids = set(self._plugin_registry.running_plugin_ids())
+        for plugin_id in classification.missing_source:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.SOURCE_MISSING,
+            )
+        for plugin_id in classification.missing_dependencies:
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.DEPENDENCY_PENDING,
+            )
+        for plugin_id in classification.ready:
+            current_status = self._plugin_registry.runtime_status(plugin_id)
+            # 已在运行且不是依赖刚恢复的插件保持现状，避免把 active 改回 ready
+            if (
+                plugin_id in running_ids
+                and current_status is not PluginRuntimeStatus.DEPENDENCY_PENDING
+            ):
+                continue
+            self._plugin_registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.READY,
+            )
+
+    def set_plugin_settling(self, settling: bool) -> None:
+        """
+        更新启动后的插件恢复任务状态
+        :param settling: 后台源码与依赖恢复任务是否仍在执行
+        :return: 无返回值
+        """
+        self._plugin_registry.set_settling(settling)
+
+    def get_plugin_runtime_statuses(self) -> Dict[str, PluginRuntimeStatus]:
+        """
+        返回插件运行状态快照
+        :return: 插件ID到运行状态的映射
+        """
+        return self._plugin_registry.runtime_status_snapshot()
+
+    def get_plugin_runtime_generation(self) -> int:
+        """
+        返回插件状态变化代次
+        :return: 自进程启动以来的状态变化次数
+        """
+        return self._plugin_registry.generation
+
+    def is_plugin_settling(self) -> bool:
+        """
+        返回插件源码和依赖是否仍在后台恢复
+        :return: 后台恢复任务仍在执行时为 True
+        """
+        return self._plugin_registry.settling
 
     def get_plugin_config(self, pid: str, instance_id: Optional[str] = None) -> dict:
         """
@@ -2949,6 +3156,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             plugin.state = any(
                 self._instance_state(key, instance) for key, instance in instances
             )
+            # 源码、依赖和加载状态
+            plugin.runtime_status = self._plugin_registry.runtime_status(pid)
             # 是否有详情页面
             if hasattr(plugin_class, "get_page"):
                 plugin.has_page = supports_extension_hook(plugin_class, "get_page")
@@ -2988,6 +3197,35 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 根据加载排序重新排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         return plugins
+
+    def get_installed_plugins(self) -> List[_SchemaPlugin]:
+        """
+        按安装清单投影插件，缺依赖或缺源码而未加载的条目保留可观察占位卡片
+
+        条目顺序取自持久化安装清单，占位卡片出现或后台恢复完成都不改变用户看到的位置。
+        :return: 与安装清单同序的插件信息列表
+        """
+        installed_ids = get_plugin_storage().read(SystemConfigKey.UserInstalledPlugins) or []
+        local_by_id = {
+            plugin.id: plugin
+            for plugin in self.get_local_plugins()
+            if plugin.installed and plugin.id
+        }
+        result: List[_SchemaPlugin] = []
+        for plugin_id in installed_ids:
+            plugin = local_by_id.get(plugin_id)
+            if plugin:
+                result.append(plugin)
+                continue
+            result.append(_SchemaPlugin(
+                id=plugin_id,
+                plugin_name=plugin_id,
+                installed=True,
+                state=False,
+                runtime_status=self._plugin_registry.runtime_status(plugin_id),
+                is_local=True,
+            ))
+        return result
 
     def get_local_plugin_version(self, pid: str) -> Optional[str]:
         """

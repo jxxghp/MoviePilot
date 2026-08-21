@@ -27,12 +27,31 @@ def _write_bundle(path: Path, label: str, *, extra_files: tuple[str, ...] = ()) 
 def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "-exec cp -f -t /usr/local/lib/moviepilot/control {} +" in dockerfile
-    assert "bash -n /entrypoint.sh" in dockerfile
+    assert (
+        "FROM ghcr.io/astral-sh/uv:0.12.5@sha256:"
+        "e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv"
+        in dockerfile
+    )
+    assert "COPY --from=uv /uv /usr/local/bin/uv" in dockerfile
+    assert "COPY pyproject.toml uv.lock ./" in dockerfile
+    assert "python3 -m venv --without-pip ${VENV_PATH}" in dockerfile
+    assert "UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync" in dockerfile
+    for option in ("--locked", "--no-dev", "--no-install-project"):
+        assert option in dockerfile
+    assert "uv-pip-compat" not in dockerfile
+    assert "requirements.in" not in dockerfile
+    assert "${VENV_PATH}/bin/pip" not in dockerfile
+    assert "FROM prepare_payload AS prepare_control" in dockerfile
+    assert "-exec cp -f -t /bundle/control {} +" in dockerfile
+    assert "bash -n /bundle/entrypoint.sh" in dockerfile
+    assert (
+        "COPY --from=prepare_control /bundle/control "
+        "/usr/local/lib/moviepilot/control" in dockerfile
+    )
     assert 'ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]' in dockerfile
     assert "CMD /usr/bin/curl -fsS" in dockerfile
     assert (
-        'for control_script in /usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done'
+        'for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done'
         in dockerfile
     )
 
@@ -85,6 +104,50 @@ def test_launcher_prefers_complete_trusted_source_bundle(tmp_path: Path) -> None
 
     assert result.returncode == 0
     assert result.stdout == "source\n"
+
+
+def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    image = tmp_path / "image"
+    previous = tmp_path / "previous-app"
+    config = tmp_path / "config"
+    _write_bundle(source, "new")
+    _write_bundle(image, "image")
+    _write_bundle(previous / "docker", "old")
+    (config / "temp").mkdir(parents=True)
+    (config / "temp" / "__update_pending__").write_text("prepared\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {LAUNCHER!s}
+        SOURCE_CONTROL_DIR="$1"
+        IMAGE_CONTROL_DIR="$2"
+        RUNTIME_ROOT="$3"
+        UPDATE_PENDING_FILE="$4"
+        UPDATE_PREVIOUS_APP="$5"
+        source_bundle_is_trusted() {{ control_bundle_generation "$1" >/dev/null; }}
+        launcher_main
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "pending-launcher-test",
+            str(source),
+            str(image),
+            str(tmp_path / "run"),
+            str(config / "temp" / "__update_pending__"),
+            str(previous),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "old\n"
 
 
 @pytest.mark.parametrize("missing_file", BASE_CONTROL_FILES)
@@ -540,7 +603,7 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
         source {UPDATER!s}
         set_package_proxy_env
         printf '%s|%s|%s|%s\\n' "${{HTTP_PROXY-unset}}" "${{HTTPS_PROXY-unset}}" "${{http_proxy-unset}}" "${{https_proxy-unset}}"
-        printf '%s\\n' "${{PIP_ENV[*]}}"
+        printf '%s\\n' "${{PACKAGE_ENV[*]}}"
         """
     )
     env = dict(os.environ)
@@ -578,7 +641,7 @@ def test_updater_exposes_explicit_result(
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        test_connectivity_pip() {{ PIP_LOG=test; return 0; }}
+        test_connectivity_package() {{ PACKAGE_LOG=test; return 0; }}
         test_connectivity_github() {{ GITHUB_LOG=test; return 0; }}
         install_backend_and_download_resources() {{
             if [ "${{INSTALL_RESULT}}" = success ]; then
@@ -605,7 +668,7 @@ def test_updater_exposes_explicit_result(
 def test_release_noop_preserves_prerelease_selection_without_probing_package_index(
     tmp_path: Path,
 ) -> None:
-    pip_probe = tmp_path / "pip-probe"
+    package_probe = tmp_path / "package-probe"
     curl_log = tmp_path / "curl.log"
     comparison_log = tmp_path / "comparison.log"
     script = textwrap.dedent(
@@ -613,14 +676,14 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
         CONFIG_DIR="$1"
         MOVIEPILOT_AUTO_UPDATE=release
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
-        PIP_PROBE="$2"
+        PACKAGE_PROBE="$2"
         CURL_LOG="$3"
         COMPARISON_LOG="$4"
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        test_connectivity_pip() {{ touch "${{PIP_PROBE}}"; return 0; }}
+        test_connectivity_package() {{ touch "${{PACKAGE_PROBE}}"; return 0; }}
         test_connectivity_github() {{ CURL_OPTIONS=-sL; GITHUB_LOG=test; return 0; }}
         compare_versions() {{ printf '%s|%s\n' "$1" "$2" > "${{COMPARISON_LOG}}"; return 1; }}
         grep() {{
@@ -653,7 +716,7 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
             script,
             "release-noop-test",
             str(tmp_path / "config"),
-            str(pip_probe),
+            str(package_probe),
             str(curl_log),
             str(comparison_log),
         ],
@@ -663,7 +726,7 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
     )
 
     assert result.stdout == "noop\n"
-    assert not pip_probe.exists()
+    assert not package_probe.exists()
     curl_args = curl_log.read_text(encoding="utf-8")
     assert "/releases" in curl_args
     assert "/releases/latest" not in curl_args
@@ -675,51 +738,68 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
 
 
 @pytest.mark.parametrize(
-    ("dependencies_changed", "expected_route_calls", "expected_install_calls"),
-    ((False, 0, 0), (True, 1, 1)),
+    ("pyproject_changed", "lock_changed", "expected_route_calls", "expected_sync_calls"),
+    (
+        (False, False, 0, 0),
+        (True, False, 1, 1),
+        (False, True, 1, 1),
+        (True, True, 1, 1),
+    ),
 )
 def test_package_route_is_only_configured_for_changed_dependencies(
     tmp_path: Path,
-    dependencies_changed: bool,
+    pyproject_changed: bool,
+    lock_changed: bool,
     expected_route_calls: int,
-    expected_install_calls: int,
+    expected_sync_calls: int,
 ) -> None:
-    venv_bin = tmp_path / "venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    pip_log = tmp_path / "pip.log"
+    uv_bin = tmp_path / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_log = tmp_path / "uv.log"
     route_log = tmp_path / "route.log"
-    for executable in ("pip", "pip-compile"):
-        path = venv_bin / executable
-        path.write_text(
-            "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"${PIP_TEST_LOG}\"\n",
-            encoding="utf-8",
-        )
-        path.chmod(0o755)
+    uv_bin.write_text(
+        "#!/bin/bash\n"
+        "printf '%s|%s\\n' \"${UV_PROJECT_ENVIRONMENT:-}\" \"$*\" >> \"${UV_TEST_LOG}\"\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
     update_tree = tmp_path / "update" / "App"
     update_tree.mkdir(parents=True)
-    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
-    (update_tree / "version.py").write_text("FRONTEND_VERSION = ''\n", encoding="utf-8")
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         TMP_PATH="$3"
         ROUTE_LOG="$4"
-        DEPENDENCIES_CHANGED="$5"
+        PYPROJECT_CHANGED="$5"
+        LOCK_CHANGED="$6"
+        UV_BIN="$7"
         PIP_PROXY= PROXY_HOST=
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        download_and_unzip() {{ return 0; }}
-        cmp() {{ [ "${{DEPENDENCIES_CHANGED}}" = false ]; }}
-        cp() {{ return 0; }}
-        configure_pip_route() {{ printf 'route\n' >> "${{ROUTE_LOG}}"; PIP_LOG=test; }}
-        install_backend_and_download_resources tags/v3.0.1.zip || true
+        cmp() {{
+            case "$2" in
+                */pyproject.toml) [ "${{PYPROJECT_CHANGED}}" = false ] ;;
+                */uv.lock) [ "${{LOCK_CHANGED}}" = false ] ;;
+            esac
+        }}
+        configure_package_route() {{
+            printf 'route\n' >> "${{ROUTE_LOG}}"
+            PACKAGE_LOG=test
+            PACKAGE_ENV=()
+            UV_OPTIONS=()
+        }}
+        if dependency_manifests_changed; then
+            sync_project_dependencies
+        fi
         """
     )
 
-    env = {**os.environ, "PIP_TEST_LOG": str(pip_log)}
+    env = {**os.environ, "UV_TEST_LOG": str(uv_log)}
     result = subprocess.run(
         [
             "bash",
@@ -730,7 +810,9 @@ def test_package_route_is_only_configured_for_changed_dependencies(
             str(tmp_path / "venv"),
             str(tmp_path / "update"),
             str(route_log),
-            str(dependencies_changed).lower(),
+            str(pyproject_changed).lower(),
+            str(lock_changed).lower(),
+            str(uv_bin),
         ],
         text=True,
         capture_output=True,
@@ -740,72 +822,44 @@ def test_package_route_is_only_configured_for_changed_dependencies(
 
     assert result.stderr == ""
     route_calls = route_log.read_text(encoding="utf-8").splitlines() if route_log.exists() else []
-    install_calls = pip_log.read_text(encoding="utf-8").splitlines() if pip_log.exists() else []
+    sync_calls = uv_log.read_text(encoding="utf-8").splitlines() if uv_log.exists() else []
     assert len(route_calls) == expected_route_calls
-    compile_calls = [call for call in install_calls if not call.startswith("install ")]
-    package_install_calls = [call for call in install_calls if call.startswith("install ")]
-    assert len(package_install_calls) == expected_install_calls
-    if dependencies_changed:
-        assert compile_calls == [
-            f"{update_tree / 'requirements.in'} -o {tmp_path / 'update' / 'requirements.txt'}"
-        ]
-        assert package_install_calls == [
-            f"install -r {tmp_path / 'update' / 'requirements.txt'}"
+    assert len(sync_calls) == expected_sync_calls
+    if expected_sync_calls:
+        assert sync_calls == [
+            f"{tmp_path / 'venv'}|sync --project {update_tree} "
+            f"--locked --inexact --no-dev --no-install-project "
+            f"--python {tmp_path / 'venv' / 'bin' / 'python3'}"
         ]
 
 
-@pytest.mark.parametrize("failure", ("compile", "install", "post_install"))
-def test_failed_dependency_update_does_not_overwrite_current_manifests(
+@pytest.mark.parametrize("missing_manifest", ("pyproject.toml", "uv.lock"))
+def test_dependency_update_requires_complete_uv_manifests(
     tmp_path: Path,
-    failure: str,
+    missing_manifest: str,
 ) -> None:
-    venv_bin = tmp_path / "venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    command_log = tmp_path / "commands.log"
-    copy_log = tmp_path / "copies.log"
-    for executable in ("pip", "pip-compile"):
-        path = venv_bin / executable
-        path.write_text(
-            "#!/bin/bash\n"
-            'printf \'%s|%s\\n\' "$(basename "$0")" "$*" >> "${COMMAND_LOG}"\n'
-            f'[[ "$(basename "$0")" == "pip-compile" && "{failure}" == "compile" ]] && exit 1\n'
-            f'[[ "$(basename "$0")" == "pip" && "{failure}" == "install" ]] && exit 1\n'
-            "exit 0\n",
-            encoding="utf-8",
-        )
-        path.chmod(0o755)
     update_tree = tmp_path / "update" / "App"
     update_tree.mkdir(parents=True)
-    (update_tree / "requirements.in").write_text("new-package==1\n", encoding="utf-8")
-    (update_tree / "version.py").write_text(
-        "FRONTEND_VERSION = 'v3.0.0'\n",
-        encoding="utf-8",
-    )
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (update_tree / missing_manifest).unlink()
+    route_marker = tmp_path / "route-called"
+    copy_marker = tmp_path / "copy-called"
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
-        VENV_PATH="$2"
-        TMP_PATH="$3"
-        COPY_LOG="$4"
+        TMP_PATH="$2"
+        ROUTE_MARKER="$3"
+        COPY_MARKER="$4"
         PIP_PROXY= PROXY_HOST=
-        FAILURE={failure}
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
-        download_and_unzip() {{
-            if [[ "${{FAILURE}}" = post_install ]] && [[ "$2" = dist ]]; then
-                return 1
-            fi
-            return 0
-        }}
-        cmp() {{ return 1; }}
-        cp() {{ printf '%s\n' "$*" >> "${{COPY_LOG}}"; }}
-        configure_pip_route() {{ PIP_LOG=test; }}
-        install_backend_and_download_resources tags/v3.0.1.zip || true
-        if [[ "${{FAILURE}}" = post_install ]]; then
-            install_backend_and_download_resources tags/v3.0.1.zip || true
-        fi
+        download_and_unzip() {{ return 0; }}
+        configure_package_route() {{ touch "${{ROUTE_MARKER}}"; }}
+        cp() {{ touch "${{COPY_MARKER}}"; }}
+        ! install_backend_and_download_resources tags/v3.0.1.zip
         """
     )
 
@@ -814,42 +868,395 @@ def test_failed_dependency_update_does_not_overwrite_current_manifests(
             "bash",
             "-c",
             script,
-            "dependency-failure-test",
+            "incomplete-manifest-test",
             str(tmp_path / "config"),
-            str(tmp_path / "venv"),
             str(tmp_path / "update"),
-            str(copy_log),
+            str(route_marker),
+            str(copy_marker),
         ],
         text=True,
         capture_output=True,
         check=True,
-        env={**os.environ, "COMMAND_LOG": str(command_log)},
     )
 
-    assert not copy_log.exists()
-    commands = command_log.read_text(encoding="utf-8").splitlines()
-    assert commands[0] == (
-        f"pip-compile|{update_tree / 'requirements.in'} "
-        f"-o {tmp_path / 'update' / 'requirements.txt'}"
+    assert not route_marker.exists()
+    assert not copy_marker.exists()
+
+
+def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -> None:
+    uv_bin = tmp_path / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_bin.write_text(
+        "#!/bin/bash\n"
+        "count_file=\"${UV_COUNT_FILE}\"\n"
+        "count=$(cat \"${count_file}\" 2>/dev/null || printf '0')\n"
+        "count=$((count + 1))\n"
+        "printf '%s' \"${count}\" > \"${count_file}\"\n"
+        "printf '%s\\n' \"$*\" >> \"${UV_LOG}\"\n"
+        "[ \"${count}\" -gt 1 ]\n",
+        encoding="utf-8",
     )
-    assert all("/app/requirements" not in command for command in commands)
-    if failure == "compile":
-        assert len(commands) == 1
-    elif failure == "install":
-        assert commands[1] == f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}"
-    else:
-        assert commands == [
-            (
-                f"pip-compile|{update_tree / 'requirements.in'} "
-                f"-o {tmp_path / 'update' / 'requirements.txt'}"
-            ),
-            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
-            (
-                f"pip-compile|{update_tree / 'requirements.in'} "
-                f"-o {tmp_path / 'update' / 'requirements.txt'}"
-            ),
-            f"pip|install -r {tmp_path / 'update' / 'requirements.txt'}",
-        ]
+    uv_bin.chmod(0o755)
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    (live_app / "app" / "plugins").mkdir(parents=True)
+    (live_app / "app" / "application" / "site").mkdir(parents=True)
+    live_public.mkdir()
+    (live_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (live_app / "app" / "plugins" / "plugin.py").write_text("plugin", encoding="utf-8")
+    (live_app / "app" / "application" / "site" / "user.sites.v3.bin").write_text(
+        "sites", encoding="utf-8"
+    )
+    (live_app / "pyproject.toml").write_text("old-project", encoding="utf-8")
+    (live_app / "uv.lock").write_text("old-lock", encoding="utf-8")
+    (live_public / "index.html").write_text("old-front", encoding="utf-8")
+
+    update_tree = tmp_path / "update" / "App"
+    (update_tree / "app" / "plugins").mkdir(parents=True)
+    (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (update_tree / "version.py").write_text("FRONTEND_VERSION = 'v3.0.1'\n", encoding="utf-8")
+    (tmp_path / "update" / "dist").mkdir()
+    (tmp_path / "update" / "dist" / "index.html").write_text("new-front", encoding="utf-8")
+    uv_log = tmp_path / "uv.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        TMP_PATH="$3"
+        UV_BIN="$4"
+        PIP_PROXY= PROXY_HOST=
+        GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$5"
+        PUBLIC_DIR="$6"
+        UPDATE_PREVIOUS_APP="${{APP_DIR}}.__update_previous__"
+        UPDATE_PREVIOUS_PUBLIC="${{PUBLIC_DIR}}.__update_previous__"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        download_and_unzip() {{ return 0; }}
+        curl() {{
+            local output=""
+            while [ "$#" -gt 0 ]; do
+                if [ "$1" = "-o" ]; then
+                    output="$2"
+                    shift 2
+                else
+                    shift
+                fi
+            done
+            printf 'resource\n' > "${{output}}"
+        }}
+        cmp() {{ return 1; }}
+        sed() {{
+            if [[ "$*" == *version.py* ]]; then printf 'v3.0.1\\n'; else command sed "$@"; fi
+        }}
+        configure_package_route() {{ PACKAGE_LOG=test; PACKAGE_ENV=(); UV_OPTIONS=(); }}
+        install_backend_and_download_resources tags/v3.0.1.zip
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "dependency-failure-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(tmp_path / "update"),
+            str(uv_bin),
+            str(live_app),
+            str(live_public),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={
+            **os.environ,
+            "UV_LOG": str(uv_log),
+            "UV_COUNT_FILE": str(tmp_path / "uv-count"),
+        },
+    )
+
+    assert result.returncode != 0
+    assert (live_app / "app" / "old.py").exists()
+    assert (live_public / "index.html").read_text(encoding="utf-8") == "old-front"
+    assert not (tmp_path / "config" / "temp" / "__update_pending__").exists()
+    assert uv_log.exists(), f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert uv_log.read_text(encoding="utf-8").splitlines() == [
+        f"sync --project {update_tree} --locked --inexact --no-dev "
+        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}",
+        f"sync --project {live_app} --locked --inexact --no-dev "
+        f"--no-install-project --python {tmp_path / 'venv' / 'bin' / 'python3'}",
+    ]
+
+
+def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    previous_app = tmp_path / "previous-app"
+    previous_public = tmp_path / "previous-public"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (previous_app / "app").mkdir(parents=True)
+    previous_public.mkdir()
+    (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (live_public / "index.html").write_text("new-front", encoding="utf-8")
+    (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (previous_app / "pyproject.toml").write_text("old-project", encoding="utf-8")
+    (previous_app / "uv.lock").write_text("old-lock", encoding="utf-8")
+    (previous_public / "index.html").write_text("old-front", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    (config_dir / "temp").mkdir(parents=True)
+    (config_dir / "temp" / "__update_pending__").write_text("dependencies\n", encoding="utf-8")
+    uv_bin = tmp_path / "uv"
+    uv_log = tmp_path / "uv.log"
+    uv_bin.write_text(
+        f"#!/bin/bash\nprintf '%s\\n' \"$*\" >> {shlex.quote(str(uv_log))}\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        UV_BIN="$7"
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$3"
+        PUBLIC_DIR="$4"
+        UPDATE_PREVIOUS_APP="$5"
+        UPDATE_PREVIOUS_PUBLIC="$6"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        configure_package_route() {{ PACKAGE_ENV=(); UV_OPTIONS=(); }}
+        recover_pending_update
+        printf '%s|%s|%s|%s\\n' \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf old || printf missing)" \\
+            "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \\
+            "$([[ -f "${{CONFIG_DIR}}/temp/__update_pending__" ]] && printf present || printf cleared)" \\
+            "${{UPDATE_RECOVERY_COMPLETED}}"
+        """
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "pending-recovery-test",
+            str(config_dir),
+            str(tmp_path / "venv"),
+            str(live_app),
+            str(live_public),
+            str(previous_app),
+            str(previous_public),
+            str(uv_bin),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "old|old-front|cleared|true\n"
+    assert uv_log.read_text(encoding="utf-8").startswith(
+        f"sync --project {live_app} --locked --inexact --no-dev"
+    )
+
+
+def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    pending_file = config_dir / "temp" / "__update_pending__"
+    log_file = tmp_path / "cleanup.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        UPDATE_PENDING_FILE="$2"
+        UPDATE_PREVIOUS_APP="$3"
+        UPDATE_PREVIOUS_PUBLIC="$4"
+        source {UPDATER!s}
+        cleanup_previous_payload() {{
+            if [[ -f "${{UPDATE_PENDING_FILE}}" ]]; then
+                printf 'marker-present\n' > {shlex.quote(str(log_file))}
+            fi
+            return 1
+        }}
+        set_update_pending committed
+        finalize_update_transaction || true
+        printf '%s\n' "$([[ -f "${{UPDATE_PENDING_FILE}}" ]] && printf present || printf missing)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "transaction-finalize-test",
+            str(config_dir),
+            str(tmp_path / "previous-app"),
+            str(tmp_path / "previous-public"),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "present\n"
+    assert log_file.read_text(encoding="utf-8") == "marker-present\n"
+
+
+def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    previous_app = tmp_path / "previous-app"
+    previous_public = tmp_path / "previous-public"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (previous_app / "app").mkdir(parents=True)
+    previous_public.mkdir()
+    (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (live_public / "index.html").write_text("new-front", encoding="utf-8")
+    (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (previous_public / "index.html").write_text("old-front", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {UPDATER!s}
+        APP_DIR="$1"
+        PUBLIC_DIR="$2"
+        UPDATE_PREVIOUS_APP="$3"
+        UPDATE_PREVIOUS_PUBLIC="$4"
+        CONFIG_DIR="$5"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        rm() {{
+            if [[ "$*" == *"${{APP_DIR}}"* ]]; then return 1; fi
+            command rm "$@"
+        }}
+        restore_previous_payload || true
+        printf '%s|%s|%s|%s\n' \\
+            "$([[ -f "${{APP_DIR}}/app/new.py" ]] && printf current || printf missing)" \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf restored || printf absent)" \\
+            "$([[ -d "${{UPDATE_PREVIOUS_APP}}" ]] && printf retained || printf moved)" \\
+            "$([[ -f "${{APP_DIR}}/${{UPDATE_PREVIOUS_APP##*/}}/app/old.py" ]] && printf nested || printf clean)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "rollback-removal-failure-test",
+            str(live_app),
+            str(live_public),
+            str(previous_app),
+            str(previous_public),
+            str(tmp_path / "config"),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "current|absent|retained|clean\n"
+
+
+def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "stage" / "sites.bin"
+    fallback = tmp_path / "live" / "sites.bin"
+    destination.parent.mkdir()
+    fallback.parent.mkdir()
+    fallback.write_text("old-resource\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        curl() {{ return 0; }}
+        download_staged_resource https://resources.example/sites.bin \\
+            "$1" "$2" sites.bin
+        cat "$1"
+        """
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "resource-download-test",
+            str(destination),
+            str(fallback),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "old-resource\n"
+
+
+def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path) -> None:
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    stage_app = tmp_path / "stage" / "App"
+    stage_public = tmp_path / "stage" / "dist"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (stage_app / "app").mkdir(parents=True)
+    stage_public.mkdir(parents=True)
+    (live_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (live_public / "index.html").write_text("old-front", encoding="utf-8")
+    (stage_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (stage_public / "index.html").write_text("new-front", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    uv_log = tmp_path / "uv.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        TMP_PATH="$2"
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$3"
+        PUBLIC_DIR="$4"
+        UPDATE_PREVIOUS_APP="${{APP_DIR}}.__update_previous__"
+        UPDATE_PREVIOUS_PUBLIC="${{PUBLIC_DIR}}.__update_previous__"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        mv() {{
+            if [[ "$*" == *"${{TMP_PATH}}/dist"* ]]; then return 1; fi
+            command mv "$@"
+        }}
+        set_update_pending prepared
+        swap_staged_payload || rollback_update_transaction
+        printf '%s|%s|%s\\n' \\
+            "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf old || printf missing)" \\
+            "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \\
+            "$([[ -f "${{UPDATE_PENDING_FILE}}" ]] && printf present || printf cleared)"
+        """
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "payload-swap-test",
+            str(config_dir),
+            str(tmp_path / "stage"),
+            str(live_app),
+            str(live_public),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "old|old-front|cleared\n"
 
 
 def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
@@ -859,11 +1266,12 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         TIMEOUT_LOG="$3"
+        UV_BIN="$4"
         PIP_PROXY=https://packages.example/simple
         PROXY_HOST=
         source {UPDATER!s}
         timeout() {{ printf '%s\n' "$*" > "${{TIMEOUT_LOG}}"; return 124; }}
-        test_connectivity_pip 0 || true
+        test_connectivity_package 0 || true
         """
     )
 
@@ -876,6 +1284,7 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
             str(tmp_path / "config"),
             str(tmp_path / "venv"),
             str(timeout_log),
+            "/fake/uv",
         ],
         text=True,
         capture_output=True,
@@ -885,13 +1294,12 @@ def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
     command = timeout_log.read_text(encoding="utf-8")
     assert command.startswith("--kill-after=2s 10s env ")
     assert "UV_NO_CACHE=1" in command
-    assert "PIP_NO_CACHE_DIR=1" in command
     assert "UV_HTTP_TIMEOUT=5" in command
-    assert "PIP_DEFAULT_TIMEOUT=5" in command
     assert "UV_HTTP_RETRIES=0" in command
-    assert "PIP_RETRIES=0" in command
-    assert "pip install --target " in command
-    assert " --no-deps -i https://packages.example/simple pip-hello-world" in command
+    assert "/fake/uv pip install --target " in command
+    assert (
+        " --no-deps --default-index https://packages.example/simple pip-hello-world" in command
+    )
     assert "uninstall" not in command
     probe_dir = Path(command.split("--target ", 1)[1].split(" ", 1)[0])
     assert not probe_dir.exists()

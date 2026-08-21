@@ -1,9 +1,21 @@
 from datetime import datetime
+from enum import Enum as _Enum
 from typing import Optional, List, Dict, Union
 
 from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.common import JsonData
+
+
+class PluginRuntimeStatus(str, _Enum):
+    """插件从源码准备到运行激活的六类状态。"""
+
+    SOURCE_MISSING = "source_missing"
+    DEPENDENCY_PENDING = "dependency_pending"
+    READY = "ready"
+    ACTIVE = "active"
+    BLOCKED_BY_POLICY = "blocked_by_policy"
+    LOAD_FAILED = "load_failed"
 
 
 class Plugin(BaseModel):
@@ -35,6 +47,8 @@ class Plugin(BaseModel):
     installed: Optional[bool] = False
     # 运行状态
     state: Optional[bool] = False
+    # 插件源码、依赖和运行时加载状态
+    runtime_status: Optional[PluginRuntimeStatus] = None
     # 是否有详情页面
     has_page: Optional[bool] = False
     # 是否有新版本
@@ -59,6 +73,15 @@ class Plugin(BaseModel):
     add_time: Optional[int] = 0
     # 插件公钥
     plugin_public_key: Optional[str] = None
+
+
+class PluginRuntimeSummary(BaseModel):
+    """插件后台收敛状态和前端刷新代次。"""
+
+    ready: bool = Field(description="本轮插件源码、依赖和加载是否已收敛")
+    generation: int = Field(description="插件运行状态变化代次")
+    pending_count: int = Field(description="仍处于准备阶段的插件数量")
+    failed_count: int = Field(description="加载失败或被策略阻止的插件数量")
 
 
 class PluginDashboard(Plugin):

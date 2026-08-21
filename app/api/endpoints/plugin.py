@@ -29,6 +29,8 @@ from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
 from app.schemas.plugin import PluginReleaseData as _SchemaPluginReleaseData
 from app.schemas.plugin import PluginRemoteInfo as _SchemaPluginRemoteInfo
+from app.schemas.plugin import PluginRuntimeStatus as _SchemaPluginRuntimeStatus
+from app.schemas.plugin import PluginRuntimeSummary as _SchemaPluginRuntimeSummary
 from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -274,7 +276,7 @@ async def all_plugins(
     # 已安装插件
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
     if state == "installed":
-        return installed_plugins
+        return plugin_manager.get_installed_plugins()
 
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
@@ -324,6 +326,34 @@ async def installed(_: ApiPrincipal = Depends(get_current_active_superuser_async
     查询用户已安装插件清单
     """
     return get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
+
+
+@router.get(
+    "/runtime",
+    summary="插件运行时收敛状态",
+    response_model=_SchemaPluginRuntimeSummary,
+)
+async def runtime_status(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaPluginRuntimeSummary:
+    """返回插件页轮询所需的轻量状态摘要。"""
+    plugin_manager = PluginManager()
+    statuses = plugin_manager.get_plugin_runtime_statuses()
+    pending = {
+        _SchemaPluginRuntimeStatus.SOURCE_MISSING,
+        _SchemaPluginRuntimeStatus.DEPENDENCY_PENDING,
+        _SchemaPluginRuntimeStatus.READY,
+    }
+    failed = {
+        _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY,
+        _SchemaPluginRuntimeStatus.LOAD_FAILED,
+    }
+    return _SchemaPluginRuntimeSummary(
+        ready=not plugin_manager.is_plugin_settling(),
+        generation=plugin_manager.get_plugin_runtime_generation(),
+        pending_count=sum(status in pending for status in statuses.values()),
+        failed_count=sum(status in failed for status in statuses.values()),
+    )
 
 
 @router.get("/history/{plugin_id}", summary="获取插件更新说明", response_model=_SchemaPlugin)
@@ -494,10 +524,19 @@ def reload_plugin(
     重新加载插件
     """
     # 重新加载插件
-    PluginManager().reload_plugin(plugin_id)
+    runtime_status = PluginManager().reload_plugin(plugin_id)
     # 注册插件服务
     register_plugin(plugin_id)
-    return _SchemaResponse(success=True)
+    if runtime_status is _SchemaPluginRuntimeStatus.ACTIVE:
+        return _SchemaResponse(success=True)
+    return _SchemaResponse(
+        success=False,
+        message=(
+            "未通过用户认证，请查看日志"
+            if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY
+            else "插件加载失败，请查看插件日志"
+        ),
+    )
 
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=_SchemaResponse[None])
@@ -513,6 +552,7 @@ async def install(
     """
     plugin_helper = PluginHelper()
     package_manager = PluginPackageManager(plugin_helper)
+    plugin_manager = PluginManager()
 
     async def save_installed_plugins(plugin_ids: List[str]) -> object:
         """保存安装用例确认后的插件列表。"""
@@ -563,12 +603,13 @@ async def install(
         plugin_reloader=reload_runtime,
         registration_refresher=refresh_registrations,
     )
-    result = await command.execute(
-        plugin_id=plugin_id,
-        repo_url=repo_url,
-        release_version=release_version,
-        force=bool(force),
-    )
+    with plugin_manager.suppress_plugin_monitor(plugin_id):
+        result = await command.execute(
+            plugin_id=plugin_id,
+            repo_url=repo_url,
+            release_version=release_version,
+            force=bool(force),
+        )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
     return _SchemaResponse(success=True)

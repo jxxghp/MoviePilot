@@ -4,8 +4,9 @@
 
 | Item | Detail |
 |---|---|
-| Language | Python 3.11+ |
-| CI Python version | Python 3.12 |
+| Language | Python 3.12+ |
+| Primary CI Python version | Python 3.12 |
+| Dependency compatibility CI | Supported platform matrix on Python 3.12, plus newer interpreter coverage on Linux x86_64 |
 | Async runtime | asyncio (native), integrated with FastAPI/Uvicorn |
 
 ---
@@ -104,11 +105,12 @@
 
 | Item | Detail |
 |---|---|
-| Runtime source | `requirements.in` — production/runtime dependencies only |
-| Dev/test/lint/build source | `requirements-dev.in` — includes runtime plus pytest, coverage tooling, pylint, and build support |
-| Compatibility entry | `requirements.txt` — delegates to `requirements.in`; not a committed cross-platform lock |
-| Runtime install | `pip install -r requirements.txt` |
-| Dev/test/lint/build install | `pip install -r requirements-dev.in` |
+| Project metadata | `pyproject.toml` — runtime dependencies in `[project].dependencies`, development tooling in `[dependency-groups].dev` |
+| Lock | `uv.lock` — committed resolution for Python 3.12+ and supported platforms |
+| Package manager | uv 0.12.5 |
+| Runtime install | `uv sync --locked --no-dev --no-install-project` |
+| Dev/test/lint/build install | `uv sync --locked` |
+| Supported platforms | Linux x86_64/arm64, macOS x86_64/arm64, Windows x64 |
 
 ---
 
@@ -127,9 +129,10 @@
 
 | Tool | Purpose | Command |
 |---|---|---|
-| pytest | Test runner | `pytest tests/test_xxx.py` |
-| pylint | Static analysis | `pylint app/` |
-| safety | Dependency vulnerability scan | `safety check -r requirements.txt --policy-file=safety.policy.yml` |
+| pytest | Test runner | `uv run --locked --no-sync pytest tests/test_xxx.py` |
+| pylint | Static analysis | `uv run --locked --no-sync pylint app/` |
+| uv | Lock and environment consistency | `uv lock --check && uv pip check` |
+| safety | Manual dependency vulnerability scan | `uvx safety scan --target . --policy-file safety.policy.yml` |
 
 ---
 
@@ -142,4 +145,4 @@
 | Frontend | Vue/TypeScript SPA served from `public/`; source in `MoviePilot-Frontend` repo |
 | Frontend proxy | Local Node `service.js` proxies `/api` and `/cookiecloud` to the backend |
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-19*

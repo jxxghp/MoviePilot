@@ -460,11 +460,171 @@ def test_local_requirements_change_still_does_not_sync_or_reload(
     reload_spy = Mock()
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
     monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
     sync_spy.assert_not_called()
     reload_spy.assert_not_called()
+    log.warning.assert_called_once()
+
+
+def test_local_pyproject_change_prompts_reinstall_without_sync_or_reload(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """生效的现代依赖清单变化只提示重新安装。"""
+    repo_path, source_file = _build_local_plugin_repo(tmp_path)
+    pyproject_file = source_file.parent / "pyproject.toml"
+    pyproject_file.write_text(
+        '[project]\ndependencies = ["example==1.0.0"]\n',
+        encoding="utf-8",
+    )
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        repo_path,
+        {(Change.modified, str(pyproject_file))},
+    )
+    monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
+    sync_spy = Mock()
+    reload_spy = Mock()
+    monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
+    monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+
+    plugin_manager._run_file_watcher()
+
+    sync_spy.assert_not_called()
+    reload_spy.assert_not_called()
+    log.warning.assert_called_once()
+
+
+def test_local_inactive_requirements_change_is_debug_only(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """现代清单生效时，旧 requirements 变化不提示重新安装。"""
+    repo_path, source_file = _build_local_plugin_repo(tmp_path)
+    (source_file.parent / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["example==1.0.0"]\n',
+        encoding="utf-8",
+    )
+    requirements_file = source_file.parent / "requirements.txt"
+    requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        repo_path,
+        {(Change.modified, str(requirements_file))},
+    )
+    monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
+    sync_spy = Mock()
+    reload_spy = Mock()
+    monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
+    monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+
+    plugin_manager._run_file_watcher()
+
+    sync_spy.assert_not_called()
+    reload_spy.assert_not_called()
+    log.warning.assert_not_called()
+    log.debug.assert_called_once()
+
+
+def test_deleting_active_pyproject_prompts_for_requirements_takeover(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """删除现代清单后旧清单接管时必须提示重新安装。"""
+    repo_path, source_file = _build_local_plugin_repo(tmp_path)
+    requirements_file = source_file.parent / "requirements.txt"
+    requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
+    pyproject_file = source_file.parent / "pyproject.toml"
+    pyproject_file.write_text(
+        '[project]\nname = "demo"\nversion = "1.0.0"\n'
+        'dependencies = ["modern==2.0.0"]\n',
+        encoding="utf-8",
+    )
+    pyproject_file.unlink()
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        repo_path,
+        {(Change.deleted, str(pyproject_file))},
+    )
+    monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+
+    plugin_manager._run_file_watcher()
+
+    log.warning.assert_called_once()
+    log.debug.assert_not_called()
+
+
+def test_deleting_only_active_requirements_prompts_reinstall(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """删除唯一生效的旧清单时必须提示依赖集合已变化。"""
+    repo_path, source_file = _build_local_plugin_repo(tmp_path)
+    requirements_file = source_file.parent / "requirements.txt"
+    requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
+    requirements_file.unlink()
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        repo_path,
+        {(Change.deleted, str(requirements_file))},
+    )
+    monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+
+    plugin_manager._run_file_watcher()
+
+    log.warning.assert_called_once()
+    log.debug.assert_not_called()
+
+
+def test_deleting_inactive_requirements_is_debug_only(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """现代清单仍生效时，删除旧清单不得提示重新安装。"""
+    repo_path, source_file = _build_local_plugin_repo(tmp_path)
+    (source_file.parent / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "1.0.0"\n'
+        'dependencies = ["modern==2.0.0"]\n',
+        encoding="utf-8",
+    )
+    requirements_file = source_file.parent / "requirements.txt"
+    requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
+    requirements_file.unlink()
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        repo_path,
+        {(Change.deleted, str(requirements_file))},
+    )
+    monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.11"))
+    log = Mock()
+    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+
+    plugin_manager._run_file_watcher()
+
+    log.warning.assert_not_called()
+    log.debug.assert_called_once()
 
 
 def test_local_python_change_still_syncs_and_reloads_plugin(

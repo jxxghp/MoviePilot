@@ -6,11 +6,14 @@ from app import schemas
 from app.api.endpoints.plugin import plugin_history
 from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
+from app.api.endpoints.plugin import reload_plugin
+from app.api.endpoints.plugin import runtime_status
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.event import PluginDataResetEventData
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import ChainEventType
 from app.foundation.singleton import Singleton
 
@@ -46,6 +49,42 @@ def test_plugin_history_merges_remote_metadata():
     assert result.history == {"v1.1.0": "- 新增更新说明"}
     assert result.system_version == ">=2.0.0"
     assert result.has_update
+
+
+def test_runtime_status_reports_pending_and_terminal_counts():
+    """插件页摘要区分后台收敛、准备态和终态失败。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_runtime_statuses.return_value = {
+        "SourcePending": PluginRuntimeStatus.SOURCE_MISSING,
+        "DependencyPending": PluginRuntimeStatus.DEPENDENCY_PENDING,
+        "ActivePlugin": PluginRuntimeStatus.ACTIVE,
+        "FailedPlugin": PluginRuntimeStatus.LOAD_FAILED,
+    }
+    plugin_manager.is_plugin_settling.return_value = True
+    plugin_manager.get_plugin_runtime_generation.return_value = 7
+
+    with patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager):
+        result = asyncio.run(runtime_status(None))
+
+    assert result.ready is False
+    assert result.generation == 7
+    assert result.pending_count == 2
+    assert result.failed_count == 1
+
+
+def test_reload_endpoint_reports_load_failure(monkeypatch):
+    """插件重载失败时接口返回失败，同时仍刷新旧注册投影。"""
+    plugin_manager = MagicMock()
+    plugin_manager.reload_plugin.return_value = PluginRuntimeStatus.LOAD_FAILED
+    register = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "register_plugin", register)
+
+    result = reload_plugin("DemoPlugin", None)
+
+    assert result.success is False
+    assert result.message == "插件加载失败，请查看插件日志"
+    register.assert_called_once_with("DemoPlugin")
 
 
 def test_plugin_history_returns_installed_plugin_when_remote_missing():

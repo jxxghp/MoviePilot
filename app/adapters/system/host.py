@@ -97,23 +97,23 @@ class SystemUtils:
 
     @staticmethod
     def execute_with_subprocess(
-            pip_command: list,
+            command: list,
             env: Optional[dict[str, str]] = None,
             safe_command: Optional[list[str]] = None,
     ) -> Tuple[bool, str]:
         """
         执行命令并捕获标准输出和错误输出，记录日志。
 
-        :param pip_command: 要执行的命令，以列表形式提供
+        :param command: 要执行的命令，以列表形式提供
         :param env: 传递给子进程的环境变量
         :param safe_command: 用于错误信息展示的脱敏命令
         :return: (命令是否成功, 输出信息或错误信息)
         """
-        display_command = safe_command or pip_command
+        display_command = safe_command or command
         try:
             # 使用 subprocess.run 捕获标准输出和标准错误
             result = subprocess.run(
-                pip_command,
+                command,
                 check=True,
                 text=True,
                 stdout=subprocess.PIPE,

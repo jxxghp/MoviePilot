@@ -10,6 +10,7 @@ from app.application.configuration import get_configured_system_config as System
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。
@@ -78,10 +79,11 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
     register_plugin_api(plugin_id)
 
 
-def reload_plugin_runtime(plugin_id: str) -> None:
+def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    get_plugin_manager().reload_plugin(plugin_id)
+    runtime_status = get_plugin_manager().reload_plugin(plugin_id)
     refresh_plugin_registrations(plugin_id)
+    return runtime_status
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:
@@ -348,30 +350,31 @@ async def install_plugin_runtime(
             target_id,
         )
 
-    result = await PluginInstallCommand(
-        installed_plugins_reader=lambda: SystemConfigOper().get(
-            SystemConfigKey.UserInstalledPlugins
-        ) or [],
-        installed_plugins_writer=save_installed_plugins,
-        plugin_ids_provider=plugin_manager.get_plugin_ids,
-        compatibility_checker=skip_compatibility_check,
-        package_installer=install_package,
-        package_checkpointer=package_manager.async_checkpoint,
-        package_committer=package_manager.async_commit,
-        package_rollback=package_manager.async_rollback,
-        install_reporter=lambda target_id, target_repo: (
-            MoviePilotServerHelper.async_install_plugin_reg(
-                plugin_id=target_id,
-                repo_url=target_repo,
-            )
-        ),
-        plugin_reloader=reload_runtime,
-        registration_refresher=refresh_registrations,
-    ).execute(
-        plugin_id=plugin_id,
-        repo_url=repo_url,
-        force=force,
-    )
+    with plugin_manager.suppress_plugin_monitor(plugin_id):
+        result = await PluginInstallCommand(
+            installed_plugins_reader=lambda: SystemConfigOper().get(
+                SystemConfigKey.UserInstalledPlugins
+            ) or [],
+            installed_plugins_writer=save_installed_plugins,
+            plugin_ids_provider=plugin_manager.get_plugin_ids,
+            compatibility_checker=skip_compatibility_check,
+            package_installer=install_package,
+            package_checkpointer=package_manager.async_checkpoint,
+            package_committer=package_manager.async_commit,
+            package_rollback=package_manager.async_rollback,
+            install_reporter=lambda target_id, target_repo: (
+                MoviePilotServerHelper.async_install_plugin_reg(
+                    plugin_id=target_id,
+                    repo_url=target_repo,
+                )
+            ),
+            plugin_reloader=reload_runtime,
+            registration_refresher=refresh_registrations,
+        ).execute(
+            plugin_id=plugin_id,
+            repo_url=repo_url,
+            force=force,
+        )
     return result.success, result.message, result.refreshed_only
 
 

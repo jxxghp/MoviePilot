@@ -78,6 +78,40 @@ def test_unloaded_module_class_handler_is_skipped() -> None:
         sys.modules.pop(fake_name, None)
 
 
+def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
+    """装饰器包装的类方法限定名含 <locals>，模块卸载后也必须跳过而非直调。"""
+    fake_name = "tests._fake_unloaded_decorated_plugin"
+    fake_module = types.ModuleType(fake_name)
+    sys.modules[fake_name] = fake_module
+    try:
+        exec(
+            "def _deco(f):\n"
+            "    def wrapper(self, event):\n"
+            "        return f(self, event)\n"
+            "    return wrapper\n"
+            "class _DecoratedPlugin:\n"
+            "    @_deco\n"
+            "    def send_msg(self, event):\n"
+            "        raise AssertionError('residual handler must not run')\n",
+            fake_module.__dict__,
+        )
+        residual_handler = fake_module._DecoratedPlugin.send_msg
+        # 装饰器包装后限定名含 <locals>，不能因此被误判为自由函数
+        assert "<locals>" in residual_handler.__qualname__
+        del sys.modules[fake_name]
+
+        binding = EventBindingResolver(
+            lock=threading.Lock(),
+            resolvers=lambda: {},
+        )
+        assert binding.resolve(residual_handler) is None
+        assert binding.unresolved_handlers() == (
+            "unknown_module._deco.<locals>.wrapper",
+        )
+    finally:
+        sys.modules.pop(fake_name, None)
+
+
 def test_free_function_handler_still_invoked_directly() -> None:
     """自由函数处理器不属于类声明，保持直调路径不被新跳过逻辑影响。"""
     binding = EventBindingResolver(

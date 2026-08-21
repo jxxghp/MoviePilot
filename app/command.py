@@ -1,6 +1,7 @@
 import copy
 import threading
 import traceback
+from concurrent.futures import Future
 from typing import Any, Union, Dict, Optional
 
 from app.application.orchestration import ChainBase
@@ -186,12 +187,11 @@ class Command(metaclass=Singleton):
         # 初始化命令
         self.init_commands()
 
-    def init_commands(self, pid: Optional[str] = None) -> None:
+    def init_commands(self, pid: Optional[str] = None) -> Future:
         """
-        初始化菜单命令
+        提交菜单命令重建任务，并返回可等待的完成信号。
         """
-        # 使用线程池提交后台任务，避免引起阻塞
-        ThreadHelper().submit(self.__init_commands_background, pid)
+        return ThreadHelper().submit(self.__init_commands_background, pid)
 
     def __init_commands_background(self, pid: Optional[str] = None) -> None:
         """

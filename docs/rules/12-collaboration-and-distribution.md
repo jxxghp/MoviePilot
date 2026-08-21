@@ -101,10 +101,10 @@ ci: improve docker build cache
 
 When updating a dependency:
 
-1. Decide the dependency layer: runtime packages go to `requirements.in`; test, coverage, lint, and explicit build tooling go to `requirements-dev.in`.
-2. Keep `requirements.txt` as the compatibility entry that delegates to `requirements.in`; do not commit a locally generated cross-platform lock file.
-3. Run `safety check -r requirements.txt --policy-file=safety.policy.yml`; include the dev dependency entry when `requirements-dev.in` changed.
-4. Run the full test suite: `pytest`.
+1. Decide the dependency layer: runtime packages go to `[project].dependencies`; test, coverage, lint, and explicit build tooling go to `[dependency-groups].dev`.
+2. Run `uv lock`, commit the updated `uv.lock`, and verify it with `uv lock --check`.
+3. Run `uv sync --locked`, `uv pip check`, and the manual `uvx safety scan --target . --policy-file safety.policy.yml` check.
+4. Run the full test suite: `uv run --locked --no-sync pytest`.
 
 ---
 
@@ -120,4 +120,4 @@ moviepilot update frontend
 
 Bootstrap installer changes live in `scripts/bootstrap-local.sh`. Only modify this script if the task explicitly involves the bootstrap flow.
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-19*
