@@ -1,5 +1,6 @@
 """插件持久化备份与 Docker 重置恢复合同测试。"""
 
+import errno
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -194,6 +195,33 @@ def test_restore_plugins_retries_existing_target_after_copy_failure(
 
     reset_state["value"] = False
     monkeypatch.setattr(system_module.shutil, "copytree", original_copytree)
+    SystemChain.restore_plugins()
+
+    assert (runtime_dir / "DemoPlugin" / "plugin.py").read_text(
+        encoding="utf-8"
+    ) == "backup-new"
+    assert not backup_dir.exists()
+
+
+def test_restore_plugins_falls_back_when_overlay_rename_returns_exdev(
+    monkeypatch,
+    tmp_path,
+):
+    """镜像层目录拒绝 rename 时仍能完成可恢复的快照替换。"""
+    runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
+    _write_plugin(runtime_dir, "DemoPlugin", "plugin.py", "runtime-old")
+    backup_dir = tmp_path / "config" / "plugins_backup"
+    _write_plugin(backup_dir, "DemoPlugin", "plugin.py", "backup-new")
+
+    original_replace = Path.replace
+
+    def exdev_for_existing_target(self, target):
+        if self == runtime_dir / "DemoPlugin":
+            raise OSError(errno.EXDEV, "cross-device link")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", exdev_for_existing_target)
+
     SystemChain.restore_plugins()
 
     assert (runtime_dir / "DemoPlugin" / "plugin.py").read_text(

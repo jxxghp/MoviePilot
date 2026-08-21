@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict], bool]]]
 RuntimePluginResolver = Callable[[Path], Optional[str]]
+MonitorSuppression = Callable[[str], bool]
 LocalCandidateResolver = Callable[[Path], Optional[dict]]
 LocalPluginSync = Callable[[str, Optional[dict]], bool]
 PluginReloader = Callable[[str], Any]
@@ -80,6 +81,7 @@ class PluginChangeMonitor:
         dependency_manifest_status: DependencyManifestStatus,
         watch: WatchFunction,
         log: Any,
+        monitor_suppressed: Optional[MonitorSuppression] = None,
     ) -> None:
         """保存监控路径、变化解析器和副作用回调。"""
         self._runtime_root = runtime_root
@@ -88,6 +90,7 @@ class PluginChangeMonitor:
         self._recent_sync = recent_sync
         self._federated_change = federated_change
         self._runtime_plugin = runtime_plugin
+        self._monitor_suppressed = monitor_suppressed or (lambda _plugin_id: False)
         self._local_candidate = local_candidate
         self._sync_local = sync_local
         self._reload_plugin = reload_plugin
@@ -150,6 +153,11 @@ class PluginChangeMonitor:
             if event_path.suffix != ".py":
                 continue
             runtime_plugin_id = self._runtime_plugin(event_path)
+            if runtime_plugin_id and self._monitor_suppressed(runtime_plugin_id):
+                self._logger.debug(
+                    f"插件 {runtime_plugin_id} 正在写入，跳过本批文件监控重载"
+                )
+                continue
             candidate = (
                 self._local_candidate(event_path)
                 if not runtime_plugin_id

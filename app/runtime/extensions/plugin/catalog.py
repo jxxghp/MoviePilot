@@ -113,6 +113,8 @@ class PluginCatalogFacade:
                 runtime_status=self._runtime_status(plugin_id),
                 is_local=True,
             ))
+        # 展示顺序由持久化安装清单保留，避免后台恢复或占位卡片出现后改变用户看到的位置。
+        # 前端可用用户级 PluginOrder 覆盖，plugin_order 只用于运行期插件发现顺序。
         return result
 
     def local_version(self, plugin_id: str) -> Optional[str]:

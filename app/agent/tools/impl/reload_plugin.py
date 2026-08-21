@@ -68,7 +68,7 @@ class ReloadPluginTool(MoviePilotTool):
                     **refreshed_plugin,
                     "runtime_status": runtime_status,
                     "message": (
-                        "插件被运行策略阻止"
+                        "未通过用户认证，请查看日志"
                         if runtime_status is PluginRuntimeStatus.BLOCKED_BY_POLICY
                         else "插件加载失败，请查看插件日志"
                     ),

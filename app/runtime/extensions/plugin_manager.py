@@ -1,5 +1,7 @@
 import asyncio
 import posixpath
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
 
@@ -161,6 +163,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         )
         # 本地插件同步写入运行目录后的短时忽略窗口
         self._recent_local_sync: Dict[str, float] = {}
+        self._monitor_suppression_lock = threading.Lock()
+        self._suppressed_monitor_plugins: set[str] = set()
         self._plugin_paths = PluginPathResolver(
             runtime_root=settings.ROOT_PATH / "app" / "plugins",
             running=lambda: self._running_plugins,
@@ -428,6 +432,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             recent_sync=self._recent_local_sync,
             federated_change=self._get_federated_plugin_change,
             runtime_plugin=self._get_plugin_id_from_path,
+            monitor_suppressed=self.is_plugin_monitor_suppressed,
             local_candidate=self._get_local_plugin_candidate_from_path,
             sync_local=self._sync_local_plugin_if_installed,
             reload_plugin=self.reload_plugin,
@@ -468,6 +473,23 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         已安装本地插件源码变化时，同步到运行目录
         """
         return self._local_plugin_sync.sync(pid, candidate)
+
+    @contextmanager
+    def suppress_plugin_monitor(self, plugin_id: str):
+        """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
+        normalized_id = plugin_id.lower()
+        with self._monitor_suppression_lock:
+            self._suppressed_monitor_plugins.add(normalized_id)
+        try:
+            yield
+        finally:
+            with self._monitor_suppression_lock:
+                self._suppressed_monitor_plugins.discard(normalized_id)
+
+    def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
+        """判断指定插件是否处于安装或替换写入阶段。"""
+        with self._monitor_suppression_lock:
+            return plugin_id.lower() in self._suppressed_monitor_plugins
 
     def remove_plugin(self, plugin_id: str):
         """

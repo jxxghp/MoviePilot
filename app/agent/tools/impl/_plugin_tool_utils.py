@@ -351,30 +351,31 @@ async def install_plugin_runtime(
             target_id,
         )
 
-    result = await PluginInstallCommand(
-        installed_plugins_reader=lambda: SystemConfigOper().get(
-            SystemConfigKey.UserInstalledPlugins
-        ) or [],
-        installed_plugins_writer=save_installed_plugins,
-        plugin_ids_provider=plugin_manager.get_plugin_ids,
-        compatibility_checker=skip_compatibility_check,
-        package_installer=install_package,
-        package_checkpointer=package_manager.async_checkpoint,
-        package_committer=package_manager.async_commit,
-        package_rollback=package_manager.async_rollback,
-        install_reporter=lambda target_id, target_repo: (
-            MoviePilotServerHelper.async_install_plugin_reg(
-                plugin_id=target_id,
-                repo_url=target_repo,
-            )
-        ),
-        plugin_reloader=reload_runtime,
-        registration_refresher=refresh_registrations,
-    ).execute(
-        plugin_id=plugin_id,
-        repo_url=repo_url,
-        force=force,
-    )
+    with plugin_manager.suppress_plugin_monitor(plugin_id):
+        result = await PluginInstallCommand(
+            installed_plugins_reader=lambda: SystemConfigOper().get(
+                SystemConfigKey.UserInstalledPlugins
+            ) or [],
+            installed_plugins_writer=save_installed_plugins,
+            plugin_ids_provider=plugin_manager.get_plugin_ids,
+            compatibility_checker=skip_compatibility_check,
+            package_installer=install_package,
+            package_checkpointer=package_manager.async_checkpoint,
+            package_committer=package_manager.async_commit,
+            package_rollback=package_manager.async_rollback,
+            install_reporter=lambda target_id, target_repo: (
+                MoviePilotServerHelper.async_install_plugin_reg(
+                    plugin_id=target_id,
+                    repo_url=target_repo,
+                )
+            ),
+            plugin_reloader=reload_runtime,
+            registration_refresher=refresh_registrations,
+        ).execute(
+            plugin_id=plugin_id,
+            repo_url=repo_url,
+            force=force,
+        )
     return result.success, result.message, result.refreshed_only
 
 

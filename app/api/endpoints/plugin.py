@@ -512,7 +512,7 @@ def reload_plugin(
     return _SchemaResponse(
         success=False,
         message=(
-            "插件被运行策略阻止"
+            "未通过用户认证，请查看日志"
             if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY
             else "插件加载失败，请查看插件日志"
         ),
@@ -532,6 +532,7 @@ async def install(
     """
     plugin_helper = PluginHelper()
     package_manager = PluginPackageManager(plugin_helper)
+    plugin_manager = PluginManager()
 
     async def save_installed_plugins(plugin_ids: List[str]) -> object:
         """保存安装用例确认后的插件列表。"""
@@ -582,12 +583,13 @@ async def install(
         plugin_reloader=reload_runtime,
         registration_refresher=refresh_registrations,
     )
-    result = await command.execute(
-        plugin_id=plugin_id,
-        repo_url=repo_url,
-        release_version=release_version,
-        force=bool(force),
-    )
+    with plugin_manager.suppress_plugin_monitor(plugin_id):
+        result = await command.execute(
+            plugin_id=plugin_id,
+            repo_url=repo_url,
+            release_version=release_version,
+            force=bool(force),
+        )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
     return _SchemaResponse(success=True)

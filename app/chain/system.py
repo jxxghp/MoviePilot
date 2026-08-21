@@ -1,3 +1,4 @@
+import errno
 import json
 import re
 import shutil
@@ -237,7 +238,19 @@ class SystemChain(ChainBase):
             else:
                 shutil.copy2(source, staging)
             if target.exists():
-                target.replace(previous)
+                try:
+                    target.replace(previous)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    # overlayfs 可能拒绝把镜像层目录直接 rename 到可写层，
+                    # 先复制旧目标保留恢复材料，再删除旧目录继续发布快照。
+                    if target.is_dir():
+                        shutil.copytree(target, previous, symlinks=True)
+                        shutil.rmtree(target)
+                    else:
+                        shutil.copy2(target, previous, follow_symlinks=False)
+                        target.unlink()
             staging.replace(target)
             if previous.is_dir():
                 shutil.rmtree(previous, ignore_errors=True)

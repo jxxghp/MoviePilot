@@ -11,7 +11,10 @@ from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
 )
-from app.runtime.extensions.plugin.monitor import PluginMonitorController
+from app.runtime.extensions.plugin.monitor import (
+    PluginChangeMonitor,
+    PluginMonitorController,
+)
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
@@ -314,6 +317,30 @@ def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
 
     start.assert_called_once_with()
     _reset_plugin_manager()
+
+
+def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp_path) -> None:
+    """安装替换目录期间，文件事件不得抢先导入未完成的插件包。"""
+    reload_plugin = MagicMock()
+    monitor = PluginChangeMonitor(
+        runtime_root=tmp_path,
+        local_roots=lambda: [],
+        stop_event=threading.Event(),
+        recent_sync={},
+        federated_change=lambda _path: None,
+        runtime_plugin=lambda _path: "DemoPlugin",
+        local_candidate=lambda _path: None,
+        sync_local=MagicMock(),
+        reload_plugin=reload_plugin,
+        dependency_manifest_status=lambda _path: None,
+        watch=lambda *_args, **_kwargs: (),
+        log=MagicMock(),
+        monitor_suppressed=lambda plugin_id: plugin_id.lower() == "demoplugin",
+    )
+
+    monitor._process_changes({("modified", str(tmp_path / "demo" / "plugin.py"))})
+
+    reload_plugin.assert_not_called()
 
 
 def test_config_change_reloads_monitor(monkeypatch) -> None:
