@@ -6,12 +6,12 @@
 文件名只写实体，角色由包名表达，因此这里不再有 `_oper` 后缀。
 
 本文件只做符号解析，不在 import 期执行任何动作——没有建引擎、没有连库、
-也不会把十六个 Oper 模块一并拉起。`from app.db.oper import SubscribeOper`
+也不会把全部 Oper 模块一并拉起。`from app.db.oper import SubscribeOper`
 经下方 __getattr__ 惰性解析，只导入被点名的那一个模块。
 
 这一点不是洁癖：多处测试靠往 sys.modules 塞桩来隔离单个 Oper（例如
 app.db.oper.systemconfig），若本文件改成 models/__init__.py 那样的即时
-re-export，导入任意一个 Oper 都会连带把其余十五个真正拉起来，桩就被绕过了。
+re-export，导入任意一个 Oper 都会连带把其余全部真正拉起来，桩就被绕过了。
 按模块直连（from app.db.oper.subscribe import SubscribeOper）仍是仓库内的
 首选写法，本入口是给「只想要一个类名」的调用方备的门面。
 """
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from app.db.oper.message import MessageOper
     from app.db.oper.pluginconfig import PluginConfigOper
     from app.db.oper.plugindata import PluginDataOper
+    from app.db.oper.serviceconfig import ServiceConfigOper
     from app.db.oper.site import SiteOper
     from app.db.oper.subscribe import SubscribeOper
     from app.db.oper.subscribehistory import SubscribeHistoryOper
@@ -48,6 +49,7 @@ _OPER_MODULES = {
     "MessageOper": "message",
     "PluginConfigOper": "pluginconfig",
     "PluginDataOper": "plugindata",
+    "ServiceConfigOper": "serviceconfig",
     "SiteOper": "site",
     "SubscribeHistoryOper": "subscribehistory",
     "SubscribeOper": "subscribe",
@@ -91,6 +93,7 @@ __all__ = [
     "MessageOper",
     "PluginConfigOper",
     "PluginDataOper",
+    "ServiceConfigOper",
     "SiteOper",
     "SubscribeHistoryOper",
     "SubscribeOper",

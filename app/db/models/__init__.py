@@ -18,6 +18,7 @@ _MODEL_EXPORTS = {
     "PassKey": ("app.db.models.passkey", "PassKey"),
     "PluginConfig": ("app.db.models.pluginconfig", "PluginConfig"),
     "PluginData": ("app.db.models.plugindata", "PluginData"),
+    "ServiceConfig": ("app.db.models.serviceconfig", "ServiceConfig"),
     "Site": ("app.db.models.site", "Site"),
     "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),
     "SiteStatistic": ("app.db.models.sitestatistic", "SiteStatistic"),
