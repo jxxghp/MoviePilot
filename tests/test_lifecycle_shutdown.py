@@ -245,6 +245,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",
+        "数据端口装配",
         "路由",
         "模块服务",
         "插件备份恢复",
@@ -270,6 +271,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",
+        "数据端口装配",
         "路由",
         "模块服务",
     }
