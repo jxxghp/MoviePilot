@@ -9,11 +9,10 @@ from typing import Any, List, Optional
 
 from app.application.service_config import get_configured_service_instance_configs
 from app.application.storage_config import (
-    STORAGE_CAPABILITY,
     parse_storage_configs,
     select_storage_config,
-    storage_config_records,
 )
+from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.log import logger
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import StorageConf as _SchemaStorageConf
@@ -98,8 +97,9 @@ class StorageHelper:
         :param value: 整族存储实例配置，接受配置对象或配置字典，为 None 时视为清空
         :return: 配置内容是否发生变化
         """
-        return get_configured_service_instance_configs().save_records(
-            STORAGE_CAPABILITY, storage_config_records(parse_storage_configs(value))
+        return get_configured_service_instance_configs().save(
+            STORAGE_CAPABILITY,
+            [conf.model_dump() for conf in parse_storage_configs(value)],
         )
 
     def _write_config(self, storage: str, conf: dict) -> None:

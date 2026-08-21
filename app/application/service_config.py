@@ -16,14 +16,8 @@ import threading
 from typing import Any, Dict, List, Optional, Protocol
 
 from app.application.configuration import get_configured_system_config
-from app.application.storage_config import (
-    STORAGE_CAPABILITY,
-    parse_storage_configs,
-    storage_config_records,
-)
 from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_records
-from app.schemas.types import SystemConfigKey
 
 
 class ServiceConfigRepository(Protocol):
@@ -131,9 +125,9 @@ def read_system_setting(key: Any) -> Any:
     """
     按配置键读取系统设置值。
 
-    三族服务实例配置与存储实例配置的事实源已是服务实例配置表，systemconfig 上的同名键
-    只停写不删，留作回退用的历史快照，读到的是切表当时的内容。凡是按配置键取值的入口
-    都要走这里分流，否则一部分入口读表、另一部分读快照，用户会看到两份互相矛盾的配置。
+    服务实例配置的事实源已是服务实例配置表，systemconfig 上的同名键只停写不删，留作
+    回退用的历史快照，读到的是切表当时的内容。凡是按配置键取值的入口都要走这里分流，
+    否则一部分入口读表、另一部分读快照，用户会看到两份互相矛盾的配置。
 
     :param key: 配置键，接受 `SystemConfigKey` 成员或其取值字符串
     :return: 配置值
@@ -142,9 +136,6 @@ def read_system_setting(key: Any) -> Any:
     capability = service_capability(key_value)
     if capability:
         return get_configured_service_instance_configs().read(capability)
-    if key_value == SystemConfigKey.Storages.value:
-        payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
-        return [conf.model_dump() for conf in parse_storage_configs(payloads)]
     return get_configured_system_config().get(key)
 
 
@@ -160,8 +151,4 @@ async def async_write_system_setting(key: Any, value: Any) -> bool:
     capability = service_capability(key_value)
     if capability:
         return get_configured_service_instance_configs().save(capability, value)
-    if key_value == SystemConfigKey.Storages.value:
-        return get_configured_service_instance_configs().save_records(
-            STORAGE_CAPABILITY, storage_config_records(parse_storage_configs(value))
-        )
     return await get_configured_system_config().async_set(key, value) is True

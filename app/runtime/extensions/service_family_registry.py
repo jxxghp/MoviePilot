@@ -5,8 +5,9 @@
 
 本表登记的是族本身的元数据：能力标签、展示名称与归属。族里有哪些类型、每个类型
 按配置扇出几个实例，由 `app.runtime.extensions.service_instance_registry` 承载，
-两张表回答的不是同一个问题。「这一族配置存放在 systemconfig 的哪个键里」同样不在
-本表，它是宿主内部实现，收在 `app.runtime.extensions.service_config`。
+两张表回答的不是同一个问题。「这一族配置存放在哪个配置键下、默认标记的作用域是族
+还是类型」同样不在本表，它们是宿主内部实现，收在
+`app.runtime.extensions.service_config`。
 
 内建族在本模块导入时登记，因此任何取用本表的路径看见的族集合都相同，不取决于组合
 根有没有跑过——契约校验与配置界面端点都按本表回答，它们在组合根之外也会被调用。
@@ -30,6 +31,7 @@ _BUILTIN_SERVICE_FAMILIES: Tuple[Tuple[str, str], ...] = (
     (ModuleType.Downloader.value, "下载器"),
     (ModuleType.MediaServer.value, "媒体服务器"),
     (ModuleType.Notification.value, "消息通知"),
+    (ModuleType.Storage.value, "存储"),
 )
 
 

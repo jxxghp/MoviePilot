@@ -1,10 +1,10 @@
 """宿主服务配置的读取端口，以及「一份服务类型按配置扇出多个具名实例」的唯一实现。
 
-下载器、媒体服务器与消息通知按「一份配置扇出一个具名实例」消费，声明面只出现
-能力标签（``downloader``/``mediaserver``/``notification``）；这三族配置存在哪张表、
-按哪个模型校验，是宿主内部实现，只在本模块落地。
+下载器、媒体服务器、消息通知与存储按「一份配置扇出一个具名实例」消费，声明面只出现
+能力标签（``downloader``/``mediaserver``/``notification``/``storage``）；这四族配置存在
+哪张表、按哪个模型校验、默认标记落在哪一级，是宿主内部实现，只在本模块落地。
 
-这三族的实例配置由服务实例配置表承载，按能力标签整族读取；其余服务相关配置键
+这四族的实例配置由服务实例配置表承载，按能力标签整族读取；其余服务相关配置键
 （通知场景开关等）仍在 systemconfig 上，两条来源各有一个读取端口，由配置键属不属于
 服务实例族决定走哪一条。
 
@@ -15,8 +15,10 @@
 """
 
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Type
+from typing import Any, Dict, List, Mapping, Optional, Type
 
 from pydantic import ValidationError
 
@@ -27,28 +29,92 @@ from app.schemas.system import DownloaderConf
 from app.schemas.system import MediaServerConf
 from app.schemas.system import NotificationConf
 from app.schemas.system import NotificationSwitchConf
+from app.schemas.system import StorageConf
 from app.schemas.types import MessageType, ModuleType, SystemConfigKey
 
 
 ServiceConfigReader = Callable[[SystemConfigKey], Any]
 ServiceInstanceConfigReader = Callable[[str], Any]
 
-# 服务能力标签到「配置存放位置，配置模型」的映射
-_SERVICE_CONFIGS: Mapping[str, Tuple[SystemConfigKey, Type]] = MappingProxyType({
-    ModuleType.Downloader.value: (SystemConfigKey.Downloaders, DownloaderConf),
-    ModuleType.MediaServer.value: (SystemConfigKey.MediaServers, MediaServerConf),
-    ModuleType.Notification.value: (SystemConfigKey.Notifications, NotificationConf),
+
+class DefaultTargetScope(Enum):
+    """默认标记的唯一性作用域。
+
+    作用域由「调用地址里还剩什么没指定」决定，不由业务族决定：
+
+    - ``FAMILY``：调用地址是空的（「发个通知」「下载这个种子」既不带类型也不带实例），
+      因此要在整族候选里选一个，一族至多一个。标记落 ``serviceconfig`` 的
+      ``is_default_target`` 专列，条件唯一索引替宿主判定这条唯一性。
+    - ``TYPE``：调用地址已经写死了类型（存储令牌 ``u115:/media``），缺的只有实例段，
+      因此每个类型各要一个——``u115`` 与 ``alipan`` 必须同时指得到实例。标记落该族配置
+      模型上的实例级字段，随宿主载荷 ``host_config`` 落库。
+
+    两者不是同一个问题的两个粒度：族级默认要在**类型之间**做选择，类型级默认只在
+    **同类型的实例之间**做选择。合成一列等于宣称「一族至多一个类型能有默认实例」，
+    对存储直接是错的；把索引放宽到 (族, 类型) 则让三族失去「一族至多一个默认调用
+    目标」的数据库保证，而那是并发写入下唯一的守门人。
+    """
+
+    FAMILY = "family"
+    TYPE = "type"
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceFamilySpec:
+    """一族服务实例配置在宿主内部的落点与整形规则。
+
+    :param config_key: 该族配置的稳定标识，模块清单按它声明监听哪一族
+    :param conf_type: 该族的配置模型
+    :param default_scope: 默认标记的唯一性作用域
+    :param name_defaults_to_type: 实例名缺省时是否回落为类型标识
+    """
+
+    config_key: SystemConfigKey
+    conf_type: Type
+    default_scope: DefaultTargetScope = DefaultTargetScope.FAMILY
+    name_defaults_to_type: bool = False
+
+
+# 存储族的能力标签
+STORAGE_CAPABILITY = ModuleType.Storage.value
+
+# 族级默认调用目标在族配置模型上的字段名，取值映射自 is_default_target 列
+_FAMILY_DEFAULT_FIELD = "default"
+
+# 类型级默认实例在族配置模型上的字段名，取值随宿主载荷 host_config 落库
+_TYPE_DEFAULT_FIELD = "is_default"
+
+# 服务能力标签到该族在宿主内部的落点与整形规则的映射
+_SERVICE_CONFIGS: Mapping[str, ServiceFamilySpec] = MappingProxyType({
+    ModuleType.Downloader.value: ServiceFamilySpec(
+        SystemConfigKey.Downloaders, DownloaderConf
+    ),
+    ModuleType.MediaServer.value: ServiceFamilySpec(
+        SystemConfigKey.MediaServers, MediaServerConf
+    ),
+    ModuleType.Notification.value: ServiceFamilySpec(
+        SystemConfigKey.Notifications, NotificationConf
+    ),
+    # 存储实例名是后加的：切表前存储配置根本没有名字这一列，无名条目的含义是
+    # 「该类型的那一份」而不是残缺数据，因此回落为类型标识而不是丢弃
+    STORAGE_CAPABILITY: ServiceFamilySpec(
+        SystemConfigKey.Storages,
+        StorageConf,
+        default_scope=DefaultTargetScope.TYPE,
+        name_defaults_to_type=True,
+    ),
 })
 
 # 配置存放位置到服务能力标签的反查表，供按存放位置取用的宿主内部路径使用
 _SERVICE_CAPABILITIES: Mapping[str, str] = MappingProxyType({
-    config_key.value: capability
-    for capability, (config_key, _conf_type) in _SERVICE_CONFIGS.items()
+    spec.config_key.value: capability
+    for capability, spec in _SERVICE_CONFIGS.items()
 })
 
 # 由宿主持有的外壳字段：实例身份、启用态、类型专属配置载荷与默认调用目标标记。
 # 族配置模型上除这些之外的顶层字段都是宿主自己消费的实例级字段（路径映射、场景开关、
-# 同步媒体库与同步间隔），按字段名逐个列举会在模型加字段时漏配，故按差集推导。
+# 同步媒体库、同步间隔与类型级默认标记），按字段名逐个列举会在模型加字段时漏配，
+# 故按差集推导。
 _INSTANCE_SHELL_FIELDS: frozenset = frozenset({"name", "type", "enabled", "config", "default"})
 
 
@@ -88,16 +154,96 @@ def configure_service_instance_config_reader(
     return previous
 
 
-def service_host_fields(capability: Optional[str]) -> Tuple[str, ...]:
+def service_family_spec(capability: Optional[str]) -> Optional[ServiceFamilySpec]:
+    """返回服务能力标签对应的族落点规则。
+
+    :param capability: 服务能力标签
+    :return: 该族的落点规则；标签不属于任何服务族时为 None
+    """
+    return _SERVICE_CONFIGS.get(capability) if capability else None
+
+
+def service_host_fields(capability: Optional[str]) -> tuple[str, ...]:
     """返回该族由宿主消费的实例级字段名。
 
     :param capability: 服务能力标签
     :return: 字段名元组，按字段名升序；标签不属于任何服务族时为空元组
     """
-    entry = _SERVICE_CONFIGS.get(capability) if capability else None
-    if entry is None:
+    spec = service_family_spec(capability)
+    if spec is None:
         return ()
-    return tuple(sorted(set(entry[1].model_fields) - _INSTANCE_SHELL_FIELDS))
+    return tuple(sorted(set(spec.conf_type.model_fields) - _INSTANCE_SHELL_FIELDS))
+
+
+def service_default_scope(capability: Optional[str]) -> Optional[DefaultTargetScope]:
+    """返回该族默认标记的唯一性作用域。
+
+    :param capability: 服务能力标签
+    :return: 作用域；标签不属于任何服务族时为 None
+    """
+    spec = service_family_spec(capability)
+    return spec.default_scope if spec else None
+
+
+def service_default_field(capability: Optional[str]) -> Optional[str]:
+    """返回该族默认标记在族配置模型上的字段名。
+
+    :param capability: 服务能力标签
+    :return: 字段名；标签不属于任何服务族时为 None
+    """
+    scope = service_default_scope(capability)
+    if scope is None:
+        return None
+    return _TYPE_DEFAULT_FIELD if scope is DefaultTargetScope.TYPE else _FAMILY_DEFAULT_FIELD
+
+
+def service_instance_default(capability: Optional[str], conf: Any) -> bool:
+    """读取一条实例配置自带的默认标记。
+
+    读哪个字段由该族的默认作用域决定：族级默认落外壳字段，类型级默认落宿主载荷字段。
+
+    :param capability: 服务能力标签
+    :param conf: 单条实例配置，接受配置对象或配置字典
+    :return: 该实例是否被标记为其作用域内的默认目标
+    """
+    field = service_default_field(capability) or _FAMILY_DEFAULT_FIELD
+    if isinstance(conf, Mapping):
+        return bool(conf.get(field))
+    return bool(getattr(conf, field, False))
+
+
+def service_instance_enabled(capability: Optional[str], conf: Any) -> bool:
+    """判定一条实例配置的启用态。
+
+    族配置模型没有启用开关字段时该族「配了即生效」，一律判为已启用——存储实例正属
+    此列，它的开关一直是「有没有这条配置」本身。
+
+    :param capability: 服务能力标签
+    :param conf: 单条实例配置，接受配置对象或配置字典
+    :return: 该实例是否已启用
+    """
+    spec = service_family_spec(capability)
+    if spec is not None and "enabled" not in spec.conf_type.model_fields:
+        return True
+    if isinstance(conf, Mapping):
+        return bool(conf.get("enabled"))
+    return bool(getattr(conf, "enabled", True))
+
+
+def service_instance_name(capability: Optional[str], name: Any, service_type: Any) -> Optional[str]:
+    """归一一条实例配置的实例名。
+
+    :param capability: 服务能力标签
+    :param name: 配置自带的实例名
+    :param service_type: 该配置的类型标识，供实例名可回落的族取用
+    :return: 去除首尾空白后的实例名；取不到时为 None
+    """
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    spec = service_family_spec(capability)
+    if spec is None or not spec.name_defaults_to_type:
+        return None
+    return service_type.strip() if isinstance(service_type, str) and service_type.strip() else None
 
 
 def resolve_service_config_key(config_key: Any) -> SystemConfigKey:
@@ -122,8 +268,8 @@ def service_config_key(capability: Optional[str]) -> Optional[SystemConfigKey]:
     :param capability: 服务能力标签
     :return: 该族的配置键；标签不属于任何服务族时为 None
     """
-    entry = _SERVICE_CONFIGS.get(capability) if capability else None
-    return entry[0] if entry else None
+    spec = service_family_spec(capability)
+    return spec.config_key if spec else None
 
 
 def service_capability(config_key: Optional[str]) -> Optional[str]:
@@ -141,51 +287,58 @@ def service_capability_configs(capability: Optional[str]) -> List:
     :param capability: 服务能力标签
     :return: 配置列表；标签不属于任何服务族时为空列表
     """
-    entry = _SERVICE_CONFIGS.get(capability) if capability else None
-    if entry is None:
+    spec = service_family_spec(capability)
+    if spec is None:
         return []
-    config_key, conf_type = entry
-    return ServiceConfigHelper.get_configs(config_key, conf_type)
+    return ServiceConfigHelper.get_configs(spec.config_key, spec.conf_type)
 
 
 def select_instance_configs(
     configs: Iterable[Any],
     service_type: Optional[str],
     *,
+    capability: Optional[str] = None,
     multi_instance: bool = True,
 ) -> Dict[str, Any]:
     """按类型标识与启用态筛出一个服务类型应当扇出实例的配置。
 
     只认已启用、具名且类型一致的配置：取不到实例名的配置产出的实例既无法被显式
-    指定，也无法被默认配置裁决选中，留着只会让实例数与可用实例数对不上。
+    指定，也无法被默认配置裁决选中，留着只会让实例数与可用实例数对不上。没有启用
+    开关的族一律视为已启用，判据见 `service_instance_enabled`。
 
-    单实例类型被配了多份时按默认调用目标裁决：有显式默认则用它，没有默认或默认已
-    停用则报错并列出候选，绝不取第一个。配置存进服务实例配置表后没有顺序列，「列表
-    里排在最前的一份」不再是用户看得见也改得动的规则，因此不能再按顺序挑；报错而不是
-    静默挑一个，是为了让用户看到的实例与他自己指定的目标始终一致。
+    单实例类型被配了多份时按该族作用域内的默认标记裁决：有显式默认则用它，没有默认
+    或默认已停用则报错并列出候选，绝不取第一个。配置存进服务实例配置表后没有顺序列，
+    「列表里排在最前的一份」不再是用户看得见也改得动的规则，因此不能再按顺序挑；报错
+    而不是静默挑一个，是为了让用户看到的实例与他自己指定的目标始终一致。
 
     :param configs: 该族全部已通过结构校验的配置
     :param service_type: 类型标识，为空时不产出任何实例配置
+    :param capability: 服务能力标签，决定读哪一级的默认标记与有无启用开关
     :param multi_instance: 该类型能否接受多份配置，为 False 时至多产出一个实例
     :return: 实例名到配置的映射
-    :raises LookupError: 单实例类型有多份已启用配置，且裁决不出唯一的默认调用目标
+    :raises LookupError: 单实例类型有多份已启用配置，且裁决不出唯一的默认目标
     """
     if not service_type:
         return {}
+    typed = [
+        conf for conf in configs
+        if getattr(conf, "name", None) and conf.type == service_type
+    ]
     enabled = {
         conf.name: conf
-        for conf in configs
-        if getattr(conf, "name", None) and conf.type == service_type and conf.enabled
+        for conf in typed
+        if service_instance_enabled(capability, conf)
     }
     if multi_instance or len(enabled) <= 1:
         return enabled
-    targets = [name for name, conf in enabled.items() if getattr(conf, "default", False)]
+    targets = [
+        name for name, conf in enabled.items()
+        if service_instance_default(capability, conf)
+    ]
     if len(targets) == 1:
         return {targets[0]: enabled[targets[0]]}
     candidates = describe_instance_candidates(
-        (conf.name, bool(getattr(conf, "enabled", True)))
-        for conf in configs
-        if getattr(conf, "name", None) and conf.type == service_type
+        (conf.name, service_instance_enabled(capability, conf)) for conf in typed
     )
     raise LookupError(
         f"服务类型 {service_type} 只接受一份配置，当前已启用 {len(enabled)} 份，"
@@ -234,13 +387,13 @@ def create_service_instance(
 
 
 class ServiceConfigHelper:
-    """读取并校验通知、下载器和媒体服务器的宿主配置。"""
+    """读取并校验通知、下载器、媒体服务器和存储的宿主配置。"""
 
     @staticmethod
     def get_configs(config_key: SystemConfigKey, conf_type: Type) -> List:
         """按指定 Schema 过滤单条非法配置，避免影响同组其它服务。
 
-        三族实例配置按能力标签从服务实例配置表整族取，其余配置键仍从 systemconfig 取；
+        四族实例配置按能力标签从服务实例配置表整族取，其余配置键仍从 systemconfig 取；
         两条来源之后共用同一段逐条校验，一条坏配置只跳过它自己，不影响同族其它服务。
 
         :param config_key: 服务配置键，接受 `SystemConfigKey` 成员或其取值字符串
@@ -283,6 +436,11 @@ class ServiceConfigHelper:
     def get_notification_configs() -> List[NotificationConf]:
         """返回已通过结构校验的通知配置。"""
         return service_capability_configs(ModuleType.Notification.value)
+
+    @staticmethod
+    def get_storage_configs() -> List[StorageConf]:
+        """返回已通过结构校验的存储实例配置。"""
+        return service_capability_configs(STORAGE_CAPABILITY)
 
     @staticmethod
     def get_notification_switches() -> List[NotificationSwitchConf]:

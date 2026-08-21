@@ -16,14 +16,29 @@ from app.application.service_config import (
     read_system_setting,
 )
 from app.application.storage import StorageHelper
-from app.application.storage_config import storage_config_records
 from app.modules.localstorage import LocalStorageModule
 from app.modules.localstorage.local import LocalStorage
 from app.modules.u115 import U115Module
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.service_config import STORAGE_CAPABILITY
+from app.runtime.extensions.service_config_validation import service_config_records
+from app.runtime.extensions.storage_registry import (
+    create_storage_backend,
+    storage_backend_registry,
+)
 from app.schemas.system import StorageConf
 from app.schemas.types import SystemConfigKey
 from tests.test_storage_backend_registry import BUILTIN_STORAGE_MODULES
+
+
+def storage_config_records(confs) -> list:
+    """把存储实例配置整形为服务实例配置表的行，与写入端走同一份实现。
+
+    :param confs: 存储实例配置对象序列
+    :return: 服务实例配置表的行
+    """
+    return service_config_records(
+        STORAGE_CAPABILITY, [conf.model_dump() for conf in confs]
+    )
 
 
 @pytest.fixture
@@ -86,7 +101,57 @@ def test_default_instance_keeps_addressing_itself_with_the_bare_identity(storage
 
 
 def test_named_instance_addresses_itself_with_its_token(storage_config):
-    """具名实例产出的文件项带实例名，后续操作因此不会落回默认实例。"""
+    """具名实例按自己的令牌寻址，裸令牌仍归默认实例。"""
+    storage_config.save_storagies([
+        {"type": "u115", "name": "主号", "is_default": True, "config": {}},
+        {"type": "u115", "name": "副号", "config": {}},
+    ])
+
+    module = _started(U115Module)
+    try:
+        secondary = module._claim("u115@副号")  # noqa: SLF001
+
+        assert secondary.storage_token == "u115@副号"
+        assert module._claim("u115").storage_token == "u115"  # noqa: SLF001
+    finally:
+        module.stop()
+
+
+def test_named_instance_stamps_its_token_on_the_file_items_it_produces():
+    """具名实例产出的文件项带实例名，后续删除或移动因此不会落回默认实例。"""
+    backup = create_storage_backend(LocalStorage, "备份盘", False)
+
+    assert backup.storage_token == "local@备份盘"
+    assert backup.get_item(Path("/")).storage == "local@备份盘"
+
+
+def test_multiple_configs_fan_out_one_backend_per_instance(storage_config):
+    """配几份实例就扇出几个后端对象，各自登记为独立实例位且互不串用。"""
+    storage_config.save_storagies([
+        {"type": "u115", "name": "主号", "is_default": True, "config": {"k": "a"}},
+        {"type": "u115", "name": "副号", "config": {"k": "b"}},
+        {"type": "u115", "name": "归档号", "config": {"k": "c"}},
+    ])
+
+    module = _started(U115Module)
+    try:
+        assert set(module._storages) == {"主号", "副号", "归档号"}  # noqa: SLF001
+
+        primary = module._claim("u115@主号")  # noqa: SLF001
+        secondary = module._claim("u115@副号")  # noqa: SLF001
+
+        assert primary is not secondary
+        assert primary.get_conf() == {"k": "a"}
+        assert secondary.get_conf() == {"k": "b"}
+        assert {
+            entry.storage for entry in storage_backend_registry.instances("u115")
+        } == {"u115@主号", "u115@副号", "u115@归档号"}
+    finally:
+        module.stop()
+
+
+def test_single_instance_storage_type_keeps_only_its_default_instance(storage_config):
+    """声明为单实例的存储类型只认默认实例那一份，多出来的配置忽略而不删除。"""
     storage_config.save_storagies([
         {"type": "local", "name": "主盘", "is_default": True, "config": {}},
         {"type": "local", "name": "备份盘", "config": {}},
@@ -94,54 +159,32 @@ def test_named_instance_addresses_itself_with_its_token(storage_config):
 
     module = _started(LocalStorageModule)
     try:
-        backup = module._claim("local@备份盘")  # noqa: SLF001
-
-        assert backup.storage_token == "local@备份盘"
-        assert backup.get_item(Path("/")).storage == "local@备份盘"
+        assert LocalStorage.multi_instance is False
+        assert list(module._storages) == ["主盘"]  # noqa: SLF001
+        assert module._claim("local@备份盘") is None  # noqa: SLF001
         assert module._claim("local").storage_token == "local"  # noqa: SLF001
     finally:
         module.stop()
 
-
-def test_multiple_configs_fan_out_one_backend_per_instance(storage_config):
-    """配几份实例就扇出几个后端对象，各自登记为独立实例位且互不串用。"""
-    storage_config.save_storagies([
-        {"type": "local", "name": "主盘", "is_default": True, "config": {"root": "/a"}},
-        {"type": "local", "name": "备份盘", "config": {"root": "/b"}},
-        {"type": "local", "name": "归档盘", "config": {"root": "/c"}},
-    ])
-
-    module = _started(LocalStorageModule)
-    try:
-        assert set(module._storages) == {"主盘", "备份盘", "归档盘"}  # noqa: SLF001
-
-        primary = module._claim("local@主盘")  # noqa: SLF001
-        backup = module._claim("local@备份盘")  # noqa: SLF001
-
-        assert primary is not backup
-        assert primary.get_conf() == {"root": "/a"}
-        assert backup.get_conf() == {"root": "/b"}
-        assert {
-            entry.storage for entry in storage_backend_registry.instances("local")
-        } == {"local@主盘", "local@备份盘", "local@归档盘"}
-    finally:
-        module.stop()
+    assert [conf.name for conf in storage_config.list_storages("local")] == [
+        "主盘", "备份盘"
+    ]
 
 
 def test_named_operations_land_only_on_that_instance(storage_config):
     """指名实例的操作只落在该实例上，写配置不会波及同类型其它实例。"""
     storage_config.save_storagies([
-        {"type": "local", "name": "主盘", "is_default": True, "config": {"root": "/a"}},
-        {"type": "local", "name": "备份盘", "config": {"root": "/b"}},
+        {"type": "u115", "name": "主号", "is_default": True, "config": {"k": "a"}},
+        {"type": "u115", "name": "副号", "config": {"k": "b"}},
     ])
 
-    module = _started(LocalStorageModule)
+    module = _started(U115Module)
     try:
-        module._claim("local@备份盘").set_config({"root": "/b2"})  # noqa: SLF001
+        module._claim("u115@副号").set_config({"k": "b2"})  # noqa: SLF001
 
-        assert storage_config.get_storage("local@备份盘").config == {"root": "/b2"}
-        assert storage_config.get_storage("local@主盘").config == {"root": "/a"}
-        assert storage_config.get_storage("local").config == {"root": "/a"}
+        assert storage_config.get_storage("u115@副号").config == {"k": "b2"}
+        assert storage_config.get_storage("u115@主号").config == {"k": "a"}
+        assert storage_config.get_storage("u115").config == {"k": "a"}
     finally:
         module.stop()
 
@@ -165,16 +208,16 @@ def test_absent_named_instance_is_still_yielded(storage_config):
 def test_bare_token_is_yielded_when_the_config_decides_no_default(storage_config, marks):
     """配置里无默认或多份自称默认时裸令牌让出，绝不按顺序取第一份。"""
     storage_config.save_storagies([
-        StorageConf(type="local", name="甲"),
-        StorageConf(type="local", name="乙"),
+        StorageConf(type="u115", name="甲"),
+        StorageConf(type="u115", name="乙"),
     ])
     _force_default_marks(storage_config, {"甲": marks[0], "乙": marks[1]})
 
-    module = _started(LocalStorageModule)
+    module = _started(U115Module)
     try:
-        assert module._claim("local") is None  # noqa: SLF001
-        assert module.get_file_item("local", Path("/")) is None
-        assert module._claim("local@甲") is not None  # noqa: SLF001
+        assert module._claim("u115") is None  # noqa: SLF001
+        assert module.get_file_item("u115", Path("/")) is None
+        assert module._claim("u115@甲") is not None  # noqa: SLF001
     finally:
         module.stop()
 
@@ -187,30 +230,26 @@ def _force_default_marks(helper: StorageHelper, marks: dict) -> None:
     :return: 无返回值
     """
     from app.application.service_config import get_configured_service_instance_configs
-    from app.application.storage_config import (
-        DEFAULT_INSTANCE_FIELD,
-        STORAGE_CAPABILITY,
-    )
 
     records = storage_config_records(helper.get_storagies())
     for record in records:
-        record["host_config"] = {DEFAULT_INSTANCE_FIELD: marks.get(record["name"], False)}
+        record["host_config"] = {"is_default": marks.get(record["name"], False)}
     get_configured_service_instance_configs().save_records(STORAGE_CAPABILITY, records)
 
 
 def test_one_broken_config_only_takes_down_its_own_instance(storage_config):
     """一份坏配置只影响该实例，同类型其余实例照常建立并登记。"""
     storage_config.save_storagies([
-        {"type": "local", "name": "主盘", "is_default": True, "config": {}},
-        {"type": "local", "name": "坏 实 例", "config": {}},
-        {"type": "local", "name": "备份盘", "config": {}},
+        {"type": "u115", "name": "主号", "is_default": True, "config": {}},
+        {"type": "u115", "name": "坏 实 例", "config": {}},
+        {"type": "u115", "name": "副号", "config": {}},
     ])
 
-    module = _started(LocalStorageModule)
+    module = _started(U115Module)
     try:
-        assert set(module._storages) == {"主盘", "备份盘"}  # noqa: SLF001
-        assert module._claim("local") is not None  # noqa: SLF001
-        assert module._claim("local@备份盘") is not None  # noqa: SLF001
+        assert set(module._storages) == {"主号", "副号"}  # noqa: SLF001
+        assert module._claim("u115") is not None  # noqa: SLF001
+        assert module._claim("u115@副号") is not None  # noqa: SLF001
     finally:
         module.stop()
 
@@ -274,7 +313,7 @@ def test_unconfigured_builtin_storage_keeps_its_unnamed_default_slot(
 def test_builtin_storage_fans_out_configured_instances(
     storage_config, storage_id, module_class, backend
 ):
-    """七个内建存储逐条按配置扇出实例，默认实例仍以裸标识读写配置。"""
+    """七个内建存储逐条按配置扇出实例，份数按各自声明，默认实例仍以裸标识读写配置。"""
     storage_config.save_storagies([
         {"type": storage_id, "name": "主号", "is_default": True, "config": {"k": "a"}},
         {"type": storage_id, "name": "副号", "config": {"k": "b"}},
@@ -282,16 +321,21 @@ def test_builtin_storage_fans_out_configured_instances(
 
     module = _started(module_class)
     try:
-        assert set(module._storages) == {"主号", "副号"}  # noqa: SLF001
+        expected = {"主号", "副号"} if backend.multi_instance else {"主号"}
+        assert set(module._storages) == expected  # noqa: SLF001
 
         primary = module._claim(storage_id)  # noqa: SLF001
-        secondary = module._claim(f"{storage_id}@副号")  # noqa: SLF001
 
         assert type(primary) is backend
         assert primary.storage_token == storage_id
         assert primary.get_conf() == {"k": "a"}
-        assert secondary.storage_token == f"{storage_id}@副号"
-        assert secondary.get_conf() == {"k": "b"}
+
+        secondary = module._claim(f"{storage_id}@副号")  # noqa: SLF001
+        if not backend.multi_instance:
+            assert secondary is None
+        else:
+            assert secondary.storage_token == f"{storage_id}@副号"
+            assert secondary.get_conf() == {"k": "b"}
     finally:
         module.stop()
 
@@ -370,8 +414,8 @@ def test_builtin_storage_modules_watch_the_storage_config(
 def test_records_give_every_storage_type_exactly_one_default_instance():
     """整形后每个存储类型恰好一个默认实例，裸令牌始终指得到实例。"""
     records = storage_config_records([
-        StorageConf(type="local", name="甲"),
-        StorageConf(type="local", name="乙"),
+        StorageConf(type="alist", name="甲"),
+        StorageConf(type="alist", name="乙"),
         StorageConf(type="u115", name="丙"),
         StorageConf(type="u115", name="丁", is_default=True),
         StorageConf(name="没有类型"),
@@ -383,7 +427,7 @@ def test_records_give_every_storage_type_exactly_one_default_instance():
         if record["host_config"]["is_default"]
     }
 
-    assert defaults == {"local": "甲", "u115": "丁"}
+    assert defaults == {"alist": "甲", "u115": "丁"}
     assert [record["name"] for record in records] == ["甲", "乙", "丙", "丁"]
 
 

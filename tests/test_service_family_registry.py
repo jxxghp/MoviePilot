@@ -27,8 +27,11 @@ from app.runtime.extensions.service_family_registry import (
 )
 from app.schemas.types import ModuleType
 
-# 内建服务族的能力标签，取值与本次改动前的可声明标签集合逐字相同
-_BUILTIN_CAPABILITIES = ("downloader", "mediaserver", "notification")
+# 内建服务族的能力标签，取值与 `ModuleType` 成员逐字相同
+_BUILTIN_CAPABILITIES = ("downloader", "mediaserver", "notification", "storage")
+
+# 可经 `ServiceInstanceDeclaration` 声明的族，存储另有专用钩子故不在其列
+_DECLARABLE_CAPABILITIES = ("downloader", "mediaserver", "notification")
 
 
 class _DemoDownloader:
@@ -51,12 +54,13 @@ def isolated_registry() -> Iterator[None]:
 
 
 def test_builtin_families_are_registered_and_vocabulary_is_unchanged() -> None:
-    """可声明服务实例的标签集合恰好是内建三族，取值与 `ModuleType` 成员一致。"""
+    """内建族的标签集合恰好是四族，取值与 `ModuleType` 成员一致。"""
     assert service_family_registry.capabilities() == _BUILTIN_CAPABILITIES
     assert _BUILTIN_CAPABILITIES == (
         ModuleType.Downloader.value,
         ModuleType.MediaServer.value,
         ModuleType.Notification.value,
+        ModuleType.Storage.value,
     )
 
 
@@ -71,9 +75,9 @@ def test_builtin_families_carry_display_name_and_builtin_ownership() -> None:
         assert entry.owner is None, capability
 
 
-@pytest.mark.parametrize("capability", _BUILTIN_CAPABILITIES)
+@pytest.mark.parametrize("capability", _DECLARABLE_CAPABILITIES)
 def test_declaration_is_accepted_for_every_builtin_family(capability: str) -> None:
-    """内建三族的标签都被契约校验接受。"""
+    """可声明的内建族标签都被契约校验接受。"""
     declaration = ServiceInstanceDeclaration(
         capability=capability, type="demo_type", name="演示类型", impl=_DemoDownloader
     )
@@ -83,10 +87,10 @@ def test_declaration_is_accepted_for_every_builtin_family(capability: str) -> No
 
 @pytest.mark.parametrize(
     "capability",
-    ["storage", "Downloaders", "downloaders", "subtitleserver", "不存在"],
+    ["Downloaders", "downloaders", "subtitleserver", "不存在"],
 )
 def test_declaration_is_rejected_for_unregistered_capability(capability: str) -> None:
-    """未登记的能力标签仍被契约校验拒绝，拒绝信息列出当前已登记的族。"""
+    """未登记的能力标签仍被契约校验拒绝，拒绝信息列出当前可声明的族。"""
     declaration = ServiceInstanceDeclaration(
         capability=capability, type="demo_type", name="演示类型", impl=_DemoDownloader
     )
@@ -95,7 +99,7 @@ def test_declaration_is_rejected_for_unregistered_capability(capability: str) ->
 
     assert violation is not None
     assert "不是可声明服务实例的能力标签" in violation
-    assert str(list(_BUILTIN_CAPABILITIES)) in violation
+    assert str(list(_DECLARABLE_CAPABILITIES)) in violation
 
 
 def test_rejection_message_reflects_the_registry_at_call_time(
@@ -115,7 +119,7 @@ def test_rejection_message_reflects_the_registry_at_call_time(
     assert violation is not None
     assert "'subtitleserver'" in violation
     assert service_family_registry.capabilities() == (
-        "downloader", "mediaserver", "notification", "subtitleserver",
+        "downloader", "mediaserver", "notification", "storage", "subtitleserver",
     )
 
 
@@ -216,7 +220,7 @@ def test_unregister_owner_reclaims_only_its_own_families() -> None:
         "bookserver", "subtitleserver",
     )
     assert registry.capabilities() == (
-        "downloader", "mediaserver", "notification", "photoserver",
+        "downloader", "mediaserver", "notification", "photoserver", "storage",
     )
     assert registry.unregister_owner("DemoPlugin@default") == ()
 

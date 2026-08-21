@@ -122,7 +122,7 @@ def test_endpoint_reports_unavailable_for_builtin_type():
     }
 
 
-@pytest.mark.parametrize("capability", ["storage", "Downloaders"])
+@pytest.mark.parametrize("capability", ["subtitleserver", "Downloaders"])
 def test_endpoint_raises_404_for_capability_outside_service_families(capability):
     """不支持声明服务实例的能力标签视为请求出错，而非「无自带界面」。
 

@@ -180,6 +180,7 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         return select_instance_configs(
             service_capability_configs(self.SERVICE_CAPABILITY),
             self._service_name,
+            capability=self.SERVICE_CAPABILITY,
         )
 
     def get_config(self, name: Optional[str] = None) -> Optional[TConf]:

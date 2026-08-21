@@ -533,12 +533,19 @@ class _PluginBase(metaclass=ABCMeta):
 
     def provides_storages(self) -> Optional[List[StorageDeclaration]]:
         """
-        声明本插件提供的存储后端
+        声明本插件提供的存储类型
+
+        存储的实例配置与下载器、媒体服务器、消息渠道同族同表：用户在存储设置页为该
+        类型配几份，宿主就扇出几个具名实例。存储仍有专用钩子，是因为构造协议不同——
+        存储后端按实例归属构造、配置由后端自己按存储令牌懒读，`provides_service_instances()`
+        的两条构造路径都表达不了它。
 
         返回示例：
         [StorageDeclaration(
             schema="u115",                      # 存储标识，同一标识重复登记以最新一次
                                                   # 为准，与内建标识相同即构成覆盖
+            name="115网盘",                      # 类型展示名称，可选
+            multi_instance=True,                 # 用户能否为该类型配多份，缺省为可以
             capabilities=["list", "upload"],     # 承诺提供的能力方法名
             impl=U115Storage,                    # 存储后端实现类，须继承
                                                   # app.modules._base.storage.StorageBase
@@ -547,6 +554,9 @@ class _PluginBase(metaclass=ABCMeta):
             config_form=([...], {...}),          # 该存储类型的专属配置界面（vuetify
                                                   # 模式），形状与 get_form() 相同；
                                                   # 与 config_component 互斥，可选
+            config_schema={...},                 # 该类型配置内容的契约，JSON Schema
+                                                  # 受控子集；声明后畸形配置在写入端
+                                                  # 即被退回，可选
         )]
 
         vue 模式改用 `config_component="U115StorageConfig"`——本插件联邦远程中承载

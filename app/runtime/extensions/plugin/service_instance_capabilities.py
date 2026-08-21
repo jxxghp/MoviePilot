@@ -13,7 +13,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional
+from types import MappingProxyType
+from typing import Any, Mapping, Optional
 
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.extensions.config_schema import config_schema_violation
@@ -27,10 +28,18 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.service_family_registry import service_family_registry
 
 # 构造实例时由宿主固定填入的关键字参数名，其余关键字均来自用户配置内容
 _INSTANCE_NAME_KEYWORD = "name"
+
+# 配置面已并入服务实例族、但构造协议另有一套因而保留专用声明钩子的族。
+# 存储后端按实例归属构造、配置由后端自己按令牌懒读，本声明的两条构造路径都表达不了它，
+# 放行只会登记出一个永远不会被存储令牌取到的类型。
+_HOOK_SPECIFIC_FAMILIES: Mapping[str, str] = MappingProxyType({
+    STORAGE_CAPABILITY: "provides_storages()",
+})
 
 # 「服务实例类型声明不带配置契约」的废弃标识，阶段推进即把契约从可选变为必填
 SERVICE_INSTANCE_SCHEMA_DEPRECATION = "plugin.service_instance_without_config_schema"
@@ -73,10 +82,13 @@ def service_instance_declaration_violation(
         return f"读取服务实例声明出错：{error}"
     if not capability:
         return "未声明非空的能力标签 capability"
+    hook = _HOOK_SPECIFIC_FAMILIES.get(capability)
+    if hook:
+        return f"capability {capability!r} 的类型须经 {hook} 声明，其构造协议与本声明不同"
     if not service_family_registry.is_registered(capability):
         return (
             f"capability {capability!r} 不是可声明服务实例的能力标签，"
-            f"可选值为 {list(service_family_registry.capabilities())}"
+            f"可选值为 {_declarable_capabilities()}"
         )
     if not service_type:
         return "未声明非空的类型标识 type"
@@ -91,6 +103,18 @@ def service_instance_declaration_violation(
     if schema_violation:
         return schema_violation
     return config_interface_violation(config_form, config_component, render_mode=render_mode)
+
+
+def _declarable_capabilities() -> list:
+    """
+    列出可经本声明使用的能力标签
+
+    :return: 已登记且没有专用声明钩子的能力标签列表，按标签升序
+    """
+    return [
+        capability for capability in service_family_registry.capabilities()
+        if capability not in _HOOK_SPECIFIC_FAMILIES
+    ]
 
 
 def _config_schema_violation(config_schema: Any, impl: Any) -> Optional[str]:

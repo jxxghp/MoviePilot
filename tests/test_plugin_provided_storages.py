@@ -7,11 +7,18 @@ import pytest
 from app.foundation.singleton import Singleton
 from app.modules._base.storage import StorageBase
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import StorageDeclaration
+from app.runtime.extensions.declaration import (
+    ServiceInstanceDeclaration,
+    StorageDeclaration,
+)
 from app.runtime.extensions.plugin import extension_scoped, storage_capabilities
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.service_instance_registry import (
+    service_instance_registry,
+)
 from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.schemas.system import StorageConf
 
 
 class _ValidPluginStorage(StorageBase):
@@ -692,3 +699,129 @@ def test_siblings_declaring_distinct_storage_identities_keep_both(
         storage_backend_registry.find("home_fanout_storage").owner
         == f"{plugin_id}@home"
     )
+
+
+class _StorageAndServicePlugin:
+    """同时声明存储类型与服务实例类型的插件桩。"""
+
+    plugin_name = "双族插件"
+    plugin_version = "1.0.0"
+
+    def __init__(self):
+        self.enabled = True
+
+    def init_plugin(self, config: dict = None) -> None:
+        """生效配置信息，测试桩不使用配置内容。"""
+
+    def get_state(self) -> bool:
+        """返回插件启用状态。"""
+        return self.enabled
+
+    def get_name(self) -> str:
+        """返回插件名称。"""
+        return self.plugin_name
+
+    def provides_storages(self) -> Optional[List[StorageDeclaration]]:
+        """声明一个带展示名、份数与配置契约的存储类型。"""
+        return [StorageDeclaration(
+            schema="catalog_storage",
+            name="目录存储",
+            multi_instance=False,
+            impl=_ValidPluginStorage,
+            config_schema={"type": "object", "properties": {"token": {"type": "string"}}},
+        )]
+
+    def provides_service_instances(self):
+        """声明一个下载器类型，用于验证两族登记互不覆盖。"""
+        return [ServiceInstanceDeclaration(
+            capability="downloader",
+            type="catalog_downloader",
+            name="目录下载器",
+            impl=_CatalogDownloader,
+        )]
+
+    def close(self) -> None:
+        """释放测试桩持有的资源，测试桩无资源可释放。"""
+
+    def stop_service(self) -> None:
+        """停止测试桩后台服务，测试桩无后台服务。"""
+
+
+class _CatalogDownloader:
+    """契约合规的服务实例实现桩。"""
+
+    def __init__(self, name: Optional[str] = None, **kwargs):
+        """记录宿主传入的实例名。"""
+        self.name = name
+
+
+def _start_catalog_plugin(monkeypatch, plugin_manager: PluginManager) -> str:
+    """启动同时声明两族类型的插件桩。
+
+    :param monkeypatch: pytest 的猴子补丁夹具
+    :param plugin_manager: 插件管理器
+    :return: 插件实例键
+    """
+    plugin_id = _StorageAndServicePlugin.__name__
+    monkeypatch.setattr(
+        plugin_manager,
+        "_load_selective_plugins",
+        lambda pid, installed, check: [_StorageAndServicePlugin],
+    )
+    monkeypatch.setattr(plugin_manager, "get_plugin_config", lambda pid: {})
+    plugin_manager.start(pid=plugin_id)
+    return plugin_id
+
+
+def test_plugin_storage_declaration_also_enters_the_service_type_catalog(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """存储声明同时进类型目录：提供方、份数、契约与界面都按声明落账。"""
+    plugin_id = _start_catalog_plugin(monkeypatch, plugin_manager)
+    try:
+        entry = service_instance_registry.find("storage", "catalog_storage")
+
+        assert entry is not None
+        assert entry.owner == plugin_id
+        assert entry.name == "目录存储"
+        assert entry.multi_instance is False
+        assert entry.config_schema == {
+            "type": "object", "properties": {"token": {"type": "string"}}
+        }
+        assert entry.factory is not None
+    finally:
+        plugin_manager.stop(plugin_id)
+
+    assert service_instance_registry.find("storage", "catalog_storage") is None
+
+
+def test_two_family_registrations_survive_one_sync(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """存储与服务实例两族共用一张类型目录，一次同步后两条登记都在。"""
+    plugin_id = _start_catalog_plugin(monkeypatch, plugin_manager)
+    try:
+        assert service_instance_registry.find("storage", "catalog_storage") is not None
+        assert service_instance_registry.find(
+            "downloader", "catalog_downloader"
+        ) is not None
+        assert storage_backend_registry.find("catalog_storage") is not None
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_catalog_factory_builds_the_backend_for_the_declared_instance(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """类型目录里的工厂按单条配置构造该实例的存储对象，归属随配置而来。"""
+    plugin_id = _start_catalog_plugin(monkeypatch, plugin_manager)
+    try:
+        entry = service_instance_registry.find("storage", "catalog_storage")
+
+        storage = entry.factory(StorageConf(type="catalog_storage", name="工作号"))
+
+        assert isinstance(storage, _ValidPluginStorage)
+        assert storage.storage_instance == "工作号"
+        assert storage.storage_is_default is False
+    finally:
+        plugin_manager.stop(plugin_id)

@@ -341,7 +341,9 @@ def test_host_fields_are_derived_from_the_family_model():
         "sync_interval", "sync_libraries",
     )
     assert service_host_fields(ModuleType.Notification.value) == ("switchs",)
-    assert service_host_fields("storage") == ()
+    # 存储的类型级默认标记同样是宿主消费的实例级字段，因此按同一条差集规则落进宿主载荷
+    assert service_host_fields(ModuleType.Storage.value) == ("is_default",)
+    assert service_host_fields("不是服务族") == ()
 
 
 def test_records_keep_type_payload_and_host_payload_apart():

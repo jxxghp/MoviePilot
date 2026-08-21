@@ -156,6 +156,7 @@ class ServiceInstanceAdapter:
             selected = select_instance_configs(
                 configs,
                 self._entry.service_type,
+                capability=self._entry.capability,
                 multi_instance=self._entry.multi_instance,
             )
         except LookupError as error:

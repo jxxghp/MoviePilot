@@ -61,6 +61,28 @@ def create_storage_backend(backend: Any, instance: Optional[str] = None,
     return storage
 
 
+def storage_instance_factory(backend: Any) -> Any:
+    """
+    把存储后端类包成服务实例类型目录接受的实例工厂
+
+    存储的构造协议与三族都不同：配置不经构造参数传入，后端按自己的实例归属懒读配置。
+    工厂由宿主包出来而不是要求扩展自己写，是为了让归属交付这条规则只有一处实现。
+
+    :param backend: 存储后端类
+    :return: 接收单条实例配置并返回存储操作对象的工厂
+    """
+
+    def factory(conf: Any) -> Any:
+        """按单条实例配置构造该实例的存储操作对象。"""
+        return create_storage_backend(
+            backend,
+            (getattr(conf, "name", None) or "").strip() or None,
+            bool(getattr(conf, "is_default", False)),
+        )
+
+    return factory
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBackendEntry:
     """存储后端在注册表中的一条登记。

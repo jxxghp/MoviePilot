@@ -16,7 +16,14 @@ from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from app.runtime.extensions.config_schema import config_value_violations
-from app.runtime.extensions.service_config import service_host_fields
+from app.runtime.extensions.service_config import (
+    DefaultTargetScope,
+    service_default_field,
+    service_default_scope,
+    service_host_fields,
+    service_instance_enabled,
+    service_instance_name,
+)
 from app.runtime.extensions.service_family_registry import service_family_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 
@@ -86,12 +93,16 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
     大对象正是切表要换的东西。``provider`` 按服务实例登记表当下的归属回填，登记表查
     不到该类型时交由持久化层决定。
 
-    取不到实例名或类型标识的条目不产出行：这类条目在切表前就不产出任何实例，也无法被
-    显式指定或被默认调用目标裁决选中，而表按 ``(capability, type, name)`` 定位一行，
-    装不下没有身份的条目。同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
+    取不到类型标识的条目不产出行：表按 ``(capability, type, name)`` 定位一行，装不下没有
+    身份的条目。实例名缺省时是否回落为类型标识由族决定（`service_instance_name`），不回落
+    的族里无名条目同样不产出行——这类条目在切表前就不产出任何实例，也无法被显式指定或被
+    默认标记裁决选中。同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
 
-    ``default`` 为真的条目可能有多条也可能一条都没有，这里裁出至多一条：取顺序上第一条
-    为真的，与运行期原本就取首个默认标记的行为一致，且同一份输入重复整形结果相同。
+    默认标记按该族的作用域裁剪，两种作用域互不落到对方的载体上：族级作用域裁出至多一条
+    ``is_default_target``，取顺序上第一条为真的；类型级作用域为每个类型裁出恰好一条，写进
+    宿主载荷，``is_default_target`` 恒为假，因此这类族在条件唯一索引里一行都不占。类型级
+    裁出「恰好一条」而不是「至多一条」，是因为裸令牌必须始终指得到实例——一份都不标记会让
+    该类型已有的裸路径整体失效。同一份输入重复整形结果相同。
 
     :param capability: 该族的能力标签
     :param value: 整族配置值
@@ -103,26 +114,39 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
     for conf in value if isinstance(value, list) else []:
         if not isinstance(conf, Mapping):
             continue
-        name = conf.get("name")
         service_type = conf.get("type")
-        if not isinstance(name, str) or not name.strip():
-            continue
         if not isinstance(service_type, str) or not service_type.strip():
             continue
-        name = name.strip()
         service_type = service_type.strip()
+        name = service_instance_name(capability, conf.get("name"), service_type)
+        if not name:
+            continue
         host_config = {
             field: conf[field] for field in host_fields if conf.get(field) is not None
         }
         records[(service_type, name)] = {
             "type": service_type,
             "name": name,
-            "enabled": bool(conf.get("enabled")),
+            "enabled": service_instance_enabled(capability, conf),
             "config": conf.get("config") or {},
             "host_config": host_config or None,
             "is_default_target": bool(conf.get("default")),
             "provider": _provider_of(capability, service_type),
         }
+    _trim_default_markers(capability, records)
+    return list(records.values())
+
+
+def _trim_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
+    """把整族配置行的默认标记裁剪到该族作用域允许的份数。
+
+    :param capability: 该族的能力标签
+    :param records: 身份二元组到配置行的映射，原地改写
+    :return: 无返回值
+    """
+    if service_default_scope(capability) is DefaultTargetScope.TYPE:
+        _trim_type_default_markers(capability, records)
+        return
     default_seen = False
     for record in records.values():
         if not record["is_default_target"]:
@@ -131,7 +155,29 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
             record["is_default_target"] = False
             continue
         default_seen = True
-    return list(records.values())
+
+
+def _trim_type_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
+    """为每个类型裁出恰好一个默认实例，标记落宿主载荷。
+
+    有自称默认的取顺序上第一份，一份都没有自称时取该类型顺序上第一份；默认调用目标列
+    一律留空，类型级默认不占用族级的那一行。
+
+    :param capability: 该族的能力标签
+    :param records: 身份二元组到配置行的映射，原地改写
+    :return: 无返回值
+    """
+    field = service_default_field(capability)
+    for record in records.values():
+        record["is_default_target"] = False
+    for service_type in dict.fromkeys(key[0] for key in records):
+        siblings = [record for key, record in records.items() if key[0] == service_type]
+        marked = [item for item in siblings if (item["host_config"] or {}).get(field)]
+        chosen = marked[0] if marked else siblings[0]
+        for record in siblings:
+            host_config = dict(record["host_config"] or {})
+            host_config[field] = record is chosen
+            record["host_config"] = host_config
 
 
 def _provider_of(capability: str, service_type: str) -> Optional[str]:

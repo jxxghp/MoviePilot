@@ -31,10 +31,25 @@ class ExtensionDeclaration:
 @dataclass(frozen=True, slots=True)
 class StorageDeclaration(ExtensionDeclaration):
     """
-    存储后端声明
+    存储类型声明
+
+    存储的**配置面**已并入服务实例族：实例配置与下载器、媒体服务器、消息渠道同一张
+    表、同一套整形、同一套筛选与默认裁决。本声明因此只剩存储族自己的部分。
+
+    与 `ServiceInstanceDeclaration` 保持两条声明的判据不是字段多少，而是**构造协议**：
+    三族的实例由宿主把配置内容展开进构造参数（``impl(name=配置名, **配置内容)``），或
+    整条配置交给 ``factory``；存储后端两条都不是——它按实例归属构造
+    （``后端类(storage_instance=实例名)``），配置由后端自己按存储令牌懒读，因为存储配置
+    要支持运行期改写后重连（``set_config()`` 之后重跑 ``init_storage()``）。把这条协议
+    塞进服务实例声明，只能落成宿主里的一处族分支，或要求每个扩展作者手写一个工厂把宿主
+    本来就会做的归属交付重做一遍。
 
     ``schema`` 是存储标识，同一标识重复登记以最新一次为准，因此扩展提供的标识
     与内建标识相同即构成覆盖。标识允许是普通字符串，不要求登记于内核枚举。
+
+    ``multi_instance`` 回答「用户能为这个存储类型配几份」，语义与
+    `ServiceInstanceDeclaration.multi_instance` 完全相同：由声明该类型的一方回答，
+    缺省为多实例，与「扩展本体是否分身」正交。
 
     该存储类型的专属配置界面二选一，与扩展自身的渲染模式对应：
 
@@ -48,15 +63,26 @@ class StorageDeclaration(ExtensionDeclaration):
     声明它的扩展：扩展同时提供存储与其它能力时，各自的配置界面互不干扰，也
     不会读到扩展自身的 ``get_form()``。
 
+    ``config_schema`` 与配置界面回答的不是同一个问题，语义与
+    `ServiceInstanceDeclaration.config_schema` 相同：界面是呈现，契约是形状，宿主据此
+    在配置写入前拒绝畸形配置。存储的构造不经关键字展开，因此契约没有保留字段名。
+
     :param schema: 存储标识，例如 u115、alipan
+    :param name: 类型展示名称，为空时前端沿用存储标识
+    :param multi_instance: 用户能否为该类型配置多份，默认为 True
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
         ``config_component`` 互斥
     :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    :param config_schema: 该类型配置内容的契约，JSON Schema 受控子集；未声明时宿主
+        不对该类型的配置内容做形状判定
     """
 
     schema: str = ""
+    name: str = ""
+    multi_instance: bool = True
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
+    config_schema: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +414,16 @@ def declaration_schema(declaration: Any) -> Optional[str]:
     if isinstance(schema, str) and schema.strip():
         return schema.strip()
     return None
+
+
+def declaration_storage_name(declaration: Any) -> Optional[str]:
+    """
+    读取存储声明自报的类型展示名称
+
+    :param declaration: `StorageDeclaration` 实例，或插件直接交出的实现类
+    :return: 展示名称；字段缺失、非字符串或为空白时为 None
+    """
+    return _declared_text(declaration, "name")
 
 
 def declaration_config_form(

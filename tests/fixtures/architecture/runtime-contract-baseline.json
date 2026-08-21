@@ -1577,7 +1577,7 @@
       },
       {
         "caller": "app.modules._base.storage",
-        "line": 642
+        "line": 663
       },
       {
         "caller": "app.runtime.events",
@@ -1593,23 +1593,27 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2244
+        "line": 2280
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2315
+        "line": 2288
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2384
+        "line": 2321
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2428
+        "line": 2422
+      },
+      {
+        "caller": "app.runtime.extensions.plugin_manager",
+        "line": 2466
       },
       {
         "caller": "app.runtime.extensions.service_family_registry",
-        "line": 150
+        "line": 152
       },
       {
         "caller": "app.startup.hostport_initializer",
