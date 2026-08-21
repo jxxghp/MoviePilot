@@ -40,16 +40,15 @@ def _load_downloader_base():
         def get_mediaserver_configs():
             return []
 
-    def _select_instance_configs(configs, service_type, *, multi_instance=True, on_overflow=None):
+    def _select_instance_configs(configs, service_type, *, multi_instance=True):
         """按类型标识与启用态筛出实例配置的替身。
 
         :param configs: 该族全部配置
         :param service_type: 类型标识
         :param multi_instance: 该类型能否接受多份配置，本替身不区分
-        :param on_overflow: 单实例类型溢出回调，本替身不触发
         :return: 实例名到配置的映射
         """
-        del multi_instance, on_overflow
+        del multi_instance
         if not service_type:
             return {}
         return {

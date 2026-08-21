@@ -71,11 +71,14 @@ def service_configs(monkeypatch) -> Iterator[Dict[str, list]]:
     """接管服务配置读取端口，用例改写字典即改写用户配置。"""
     values: Dict[str, list] = {}
 
-    def reader(config_key: SystemConfigKey) -> Any:
-        """按配置键返回用例写入的原始配置列表。"""
-        return values.get(config_key.value)
+    def reader(capability: str) -> Any:
+        """按能力标签返回用例写入的原始配置列表。"""
+        config_key = service_config_module.service_config_key(capability)
+        return values.get(config_key.value) if config_key else None
 
-    monkeypatch.setattr(service_config_module, "_service_config_reader", reader)
+    monkeypatch.setattr(
+        service_config_module, "_service_instance_config_reader", reader
+    )
     yield values
 
 
@@ -229,23 +232,57 @@ def test_both_sides_hand_the_whole_config_to_a_factory(
         assert conf.config == {"host": "ok"}
 
 
-def test_select_instance_configs_keeps_the_first_config_for_single_instance_types() -> None:
-    """单实例类型只认用户配置列表里排在最前的一份，并把溢出交给调用方提示。"""
+def test_select_instance_configs_uses_the_default_target_for_single_instance_types() -> None:
+    """单实例类型配了多份时用显式的默认调用目标，与顺序无关。"""
+    configs = [
+        NotificationConf(name="第一", type="wechat", enabled=True),
+        NotificationConf(name="第二", type="wechat", enabled=True, default=True),
+    ]
+
+    selected = select_instance_configs(configs, "wechat", multi_instance=False)
+
+    assert list(selected) == ["第二"]
+
+
+def test_select_instance_configs_refuses_to_guess_without_a_default_target() -> None:
+    """没有默认调用目标时报错并列出候选，绝不取第一个。"""
     configs = [
         NotificationConf(name="第一", type="wechat", enabled=True),
         NotificationConf(name="第二", type="wechat", enabled=True),
     ]
-    overflow: List[tuple] = []
 
-    selected = select_instance_configs(
-        configs,
-        "wechat",
-        multi_instance=False,
-        on_overflow=lambda kept, configured: overflow.append((kept, configured)),
-    )
+    with pytest.raises(LookupError) as raised:
+        select_instance_configs(configs, "wechat", multi_instance=False)
 
-    assert list(selected) == ["第一"]
-    assert overflow == [("第一", ("第一", "第二"))]
+    message = str(raised.value)
+    assert "第一" in message and "第二" in message
+
+
+def test_select_instance_configs_refuses_when_the_default_target_is_disabled() -> None:
+    """默认调用目标已停用等同于没有默认，报错而不是改走另一份配置。"""
+    configs = [
+        NotificationConf(name="停用的默认", type="wechat", enabled=False, default=True),
+        NotificationConf(name="甲", type="wechat", enabled=True),
+        NotificationConf(name="乙", type="wechat", enabled=True),
+    ]
+
+    with pytest.raises(LookupError) as raised:
+        select_instance_configs(configs, "wechat", multi_instance=False)
+
+    message = str(raised.value)
+    assert "停用的默认" in message and "甲" in message and "乙" in message
+
+
+def test_select_instance_configs_ignores_the_default_target_for_multi_instance_types() -> None:
+    """多实例类型按配置逐条扇出，默认标记不裁掉任何一份。"""
+    configs = [
+        NotificationConf(name="第一", type="wechat", enabled=True),
+        NotificationConf(name="第二", type="wechat", enabled=True, default=True),
+    ]
+
+    selected = select_instance_configs(configs, "wechat")
+
+    assert sorted(selected) == ["第一", "第二"]
 
 
 def test_select_instance_configs_needs_a_type() -> None:

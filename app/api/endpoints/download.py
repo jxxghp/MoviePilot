@@ -23,7 +23,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
 from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
+from app.application.service_config import read_system_setting
 from app.application.site.query import (
     SiteQueryService,
     get_configured_site_query_service,
@@ -338,7 +338,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用下载器
     """
-    downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
+    downloaders: List[dict] = read_system_setting(SystemConfigKey.Downloaders)
     if downloaders:
         return [
             {"name": d.get("name"), "type": d.get("type")}

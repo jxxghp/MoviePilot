@@ -15,7 +15,7 @@ BUILTIN_PROVIDER = "host:builtin"
 
 # 允许经通用更新入口改写的列。身份三元组里的 capability/type 换掉即是另一行配置，
 # is_default_target 的「清旧再置新」有专用入口，两者都不放进来。
-UPDATABLE_FIELDS = frozenset({"name", "enabled", "config", "provider"})
+UPDATABLE_FIELDS = frozenset({"name", "enabled", "config", "host_config", "provider"})
 
 
 class ServiceConfig(Base):
@@ -36,6 +36,13 @@ class ServiceConfig(Base):
     ``UNIQUE(capability, type, name)`` 必须跨 provider 生效，否则扩展换个标识重装，
     同名配置就会变成两条，用户会看到两个一模一样的下载器。
 
+    实例级字段按消费方分两列：``config`` 由类型实现自己读，形状归该类型的配置契约管；
+    ``host_config`` 由宿主读（整理逻辑读路径映射、消息路由读场景开关、调度读同步间隔），
+    形状归宿主定义，不进配置契约。宿主侧取一个 JSON 列而不是逐字段建专属列，判据是
+    「将来再多一个宿主消费的实例级字段要不要改表结构」——专属列每加一个字段就是一次
+    迁移，而这类字段随宿主功能演进，不该把表结构绑在上面；同时它们又不能混进 ``config``，
+    否则声明了 ``additionalProperties: false`` 的类型会把宿主自己的字段判为违约。
+
     内建类型的 ``provider`` 取保留值 ``BUILTIN_PROVIDER``，不留空。
     """
     id = get_id_column()
@@ -47,8 +54,10 @@ class ServiceConfig(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     # 该实例是否启用
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # 类型专属配置载荷
+    # 类型专属配置载荷，由类型实现自己消费，形状受该类型声明的配置契约约束
     config: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    # 宿主消费的实例级字段载荷（路径映射、场景开关、同步媒体库与同步间隔等）
+    host_config: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     # 该实例是否为本族的默认调用目标，即外部调用未指定实例时选中的那一行
     is_default_target: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # 提供该类型的扩展标识；内建类型取 BUILTIN_PROVIDER
@@ -254,6 +263,88 @@ class ServiceConfig(Base):
             .where(cls.capability == capability, cls.type == service_type, cls.name == name)
             .values(**values),
         )
+
+    @classmethod
+    @db_update
+    def replace_capability(
+            cls, db: Session, capability: str, records: List[dict]
+    ) -> int:
+        """
+        用给定的整族配置覆盖某族现有配置。
+
+        置位顺序是先清后置：整族的默认置位先清空，逐行写入时一律不置位，最后再置位
+        选中的那一行。反过来做会在写入途中出现两行同时为真，直接撞上条件唯一索引。
+        整个覆盖在一次事务内完成，中途失败不会留下写了一半的族。
+
+        身份未变的行原地更新而不是删了重建：主键稳定，别处按 id 记账时不会因为一次
+        保存就全部失配。
+        :param db: 数据库会话
+        :param capability: 族标识
+        :param records: 该族的全部配置行，每项含 type/name/enabled/config/host_config/
+            is_default_target/provider
+        :return: 覆盖后该族的配置行数
+        """
+        existing = {
+            (row.type, row.name): row
+            for row in db.execute(
+                select(cls).where(cls.capability == capability)
+            ).scalars().all()
+        }
+        desired = {(record["type"], record["name"]): record for record in records}
+        execute_dml(
+            db,
+            update(cls)
+            .where(cls.capability == capability, cls.is_default_target.is_(True))
+            .values(is_default_target=False),
+        )
+        for key, row in existing.items():
+            if key not in desired:
+                execute_dml(db, delete(cls).where(cls.id == row.id))
+        default_target: Optional[tuple] = None
+        for key, record in desired.items():
+            # 调用方本应只交出至多一条置位，多交时取第一条：条件唯一索引只允许一行为真，
+            # 取最后一条会让同一份输入按字典序的偶然顺序落到不同的行上
+            if record.get("is_default_target") and default_target is None:
+                default_target = key
+            row = existing.get(key)
+            # 调用方给不出提供方时沿用该行原有的记账，只有全新的行才落到内建保留值：
+            # 提供该类型的扩展当前未启用时登记表本就查不到它，此时把 provider 抹成内建，
+            # 「提供方已消失」这条提示就再也筛不出这一行——而这正是加这一列的目的
+            values = {
+                "enabled": bool(record.get("enabled")),
+                "config": record.get("config"),
+                "host_config": record.get("host_config"),
+                "provider": (
+                    record.get("provider")
+                    or (row.provider if row is not None else None)
+                    or BUILTIN_PROVIDER
+                ),
+            }
+            if row is not None:
+                execute_dml(db, update(cls).where(cls.id == row.id).values(**values))
+                continue
+            db.add(
+                cls(
+                    capability=capability,
+                    type=key[0],
+                    name=key[1],
+                    is_default_target=False,
+                    **values,
+                )
+            )
+        db.flush()
+        if default_target is not None:
+            execute_dml(
+                db,
+                update(cls)
+                .where(
+                    cls.capability == capability,
+                    cls.type == default_target[0],
+                    cls.name == default_target[1],
+                )
+                .values(is_default_target=True),
+            )
+        return len(desired)
 
     @classmethod
     @db_update

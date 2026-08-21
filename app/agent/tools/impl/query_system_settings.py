@@ -16,7 +16,7 @@ from app.agent.tools.impl._system_setting_utils import (
     should_redact_setting,
 )
 from app.runtime.config import settings
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.service_config import read_system_setting
 from app.runtime.log import logger
 
 
@@ -110,7 +110,7 @@ class QuerySystemSettingsTool(MoviePilotTool):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
             return getattr(settings, spec.key)
-        return SystemConfigOper().get(spec.systemconfig_key)
+        return read_system_setting(spec.systemconfig_key)
 
     @staticmethod
     def _summarize_value(value, *, redacted: bool = False) -> dict:

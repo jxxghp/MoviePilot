@@ -204,8 +204,10 @@ def module_manager_harness(
     monkeypatch.setattr(SystemConfigOper, "get", get_config)
     monkeypatch.setattr(
         service_config_extension,
-        "_service_config_reader",
-        lambda key: SystemConfigOper().get(key),
+        "_service_instance_config_reader",
+        lambda capability: SystemConfigOper().get(
+            service_config_extension.service_config_key(capability)
+        ),
     )
 
     singleton_key = (ModuleManager, (), frozenset())
@@ -412,9 +414,16 @@ watch = []
         config_values = {"Notifications": []}
 
         def get_config(_self, key=None):
-            return config_values.get(key)
+            return config_values.get(getattr(key, "value", key))
 
         monkeypatch.setattr(SystemConfigOper, "get", get_config)
+        monkeypatch.setattr(
+            service_config_extension,
+            "_service_instance_config_reader",
+            lambda capability: SystemConfigOper().get(
+                service_config_extension.service_config_key(capability)
+            ),
+        )
 
         singleton_key = (ModuleManager, (), frozenset())
         previous_manager = Singleton._instances.pop(singleton_key, None)

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.service_config import read_system_setting
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -33,8 +33,8 @@ class QueryDownloadersTool(MoviePilotTool):
 
     @staticmethod
     def _load_downloaders_config():
-        """从内存配置缓存中读取下载器配置。"""
-        return SystemConfigOper().get(SystemConfigKey.Downloaders)
+        """读取下载器实例配置。"""
+        return read_system_setting(SystemConfigKey.Downloaders)
 
     @staticmethod
     def _sanitize_downloaders_config(downloaders_config: list) -> list:

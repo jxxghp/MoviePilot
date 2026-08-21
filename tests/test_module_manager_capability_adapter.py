@@ -25,6 +25,8 @@ from app.runtime.extensions.module_manager import ModuleManager
 
 from app.runtime.extensions.service_config import (
     configure_service_config_reader,
+    configure_service_instance_config_reader,
+    service_config_key,
     service_config_key,
 )
 from app.schemas import ConfigChangeEventData
@@ -254,6 +256,9 @@ def module_manager_harness(
     previous_config_reader = configure_service_config_reader(
         lambda key: SystemConfigOper().get(key)
     )
+    previous_instance_reader = configure_service_instance_config_reader(
+        lambda capability: SystemConfigOper().get(service_config_key(capability))
+    )
 
     singleton_key = (ModuleManager, (), frozenset())
     previous_manager = Singleton._instances.pop(singleton_key, None)
@@ -289,6 +294,7 @@ def module_manager_harness(
         for module_name in ("fixture_sample_module", "fixture_other_module"):
             sys.modules.pop(module_name, None)
         configure_service_config_reader(previous_config_reader)
+        configure_service_instance_config_reader(previous_instance_reader)
         restored = True
 
     try:
@@ -629,7 +635,11 @@ from app.runtime.extensions.host_module_adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service_config import (
+    configure_service_config_reader,
+    configure_service_instance_config_reader,
+    service_config_key,
+)
 from app.schemas import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -684,6 +694,9 @@ def get_config(_self, key=None):
 
 SystemConfigOper.get = get_config
 configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+configure_service_instance_config_reader(
+    lambda capability: SystemConfigOper().get(service_config_key(capability))
+)
 
 from app.runtime.extensions.module_manager import ModuleManager
 

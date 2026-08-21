@@ -34,6 +34,8 @@ class MediaServerConf(BaseModel):
     name: Optional[str] = None
     # 类型 emby/zspace/jellyfin/plex/trimemedia/ugreen/navidrome
     type: Optional[str] = None
+    # 是否为本族的默认调用目标
+    default: Optional[bool] = False
     # 配置
     config: Optional[dict] = Field(default_factory=dict)
     # 是否启用
@@ -92,6 +94,8 @@ class NotificationConf(BaseModel):
     name: Optional[str] = None
     # 类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot
     type: Optional[str] = None
+    # 是否为本族的默认调用目标
+    default: Optional[bool] = False
     # 配置
     config: Optional[dict] = Field(default_factory=dict)
     # 场景开关

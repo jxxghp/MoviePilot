@@ -308,9 +308,9 @@ def test_query_downloaders_hides_sensitive_fields_for_non_admin_user():
     ]
 
     with patch(
-        "app.agent.tools.impl.query_downloaders.SystemConfigOper"
-    ) as system_config_oper:
-        system_config_oper.return_value.get.return_value = downloaders
+        "app.agent.tools.impl.query_downloaders.read_system_setting",
+        return_value=downloaders,
+    ):
         result = asyncio.run(tool.run())
 
     payload = json.loads(result)
@@ -345,9 +345,9 @@ def test_query_downloaders_keeps_full_fields_for_admin_context():
     ]
 
     with patch(
-        "app.agent.tools.impl.query_downloaders.SystemConfigOper"
-    ) as system_config_oper:
-        system_config_oper.return_value.get.return_value = downloaders
+        "app.agent.tools.impl.query_downloaders.read_system_setting",
+        return_value=downloaders,
+    ):
         result = asyncio.run(tool.run())
 
     payload = json.loads(result)

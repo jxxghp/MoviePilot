@@ -414,12 +414,13 @@ def test_oper_delete_removes_only_the_named_instance(db):
     assert oper.get("downloader", "qbittorrent", "mp-test-del-b") is not None
 
 
-def test_existing_capabilities_still_read_from_systemconfig(db):
+def test_capabilities_read_from_the_table_not_from_systemconfig(db):
     """
-    新表建好但三族读路径一行未动：serviceconfig 里的行不参与服务配置读取。
+    三族实例配置的事实源是本表：表里的行读得到，systemconfig 的同名键不再参与。
 
-    切读路径要等配置载荷的校验 schema 落地，在那之前 systemconfig 的三个键仍是生产
-    事实源；新表此刻没有生产读者是预期状态，不是漏接。
+    systemconfig 上那三个键只停写不删，留作回退用的历史快照。快照仍在，因此这条断言
+    必须同时证明「表里的行读得出来」和「快照里的条目读不出来」，只验前者的话，读路径
+    退回快照时用例照样绿。
     """
     from app.runtime.extensions.service_config import (
         configure_service_config_reader,
@@ -427,18 +428,72 @@ def test_existing_capabilities_still_read_from_systemconfig(db):
     )
     from app.schemas.types import SystemConfigKey
 
-    db.add(_conf("downloader", "qbittorrent", "mp-test-not-a-reader", enabled=True))
+    db.add(_conf("downloader", "qbittorrent", "mp-test-table-reader", enabled=True))
 
-    stored = [{"name": "mp-test-systemconfig", "type": "qbittorrent", "enabled": True}]
+    stale = [{"name": "mp-test-systemconfig", "type": "qbittorrent", "enabled": True}]
     previous = configure_service_config_reader(
-        lambda key: stored if key == SystemConfigKey.Downloaders else None
+        lambda key: stale if key == SystemConfigKey.Downloaders else None
     )
     try:
         configs = service_capability_configs("downloader")
     finally:
         configure_service_config_reader(previous)
 
-    assert [conf.name for conf in configs] == ["mp-test-systemconfig"]
+    assert [conf.name for conf in configs] == ["mp-test-table-reader"]
+
+
+def test_host_consumed_fields_survive_the_round_trip(db):
+    """
+    宿主消费的实例级字段进 ``host_config``，读出来仍在配置模型顶层。
+
+    这些字段（路径映射、场景开关、同步媒体库与同步间隔）由宿主而不是类型实现读取，
+    因此不能混进 ``config``——声明了 ``additionalProperties: false`` 的类型会把它们判为
+    违约；也不能各建一列，否则宿主每加一个实例级字段就要改一次表结构。
+    """
+    from app.runtime.extensions.service_config import service_capability_configs
+
+    db.session.add(
+        ServiceConfig(
+            capability="mediaserver",
+            type="emby",
+            name="mp-test-host-fields",
+            enabled=True,
+            config={"host": "h"},
+            host_config={"sync_libraries": ["1", "2"], "sync_interval": 6},
+        )
+    )
+    db.session.commit()
+
+    conf = next(
+        item for item in service_capability_configs("mediaserver")
+        if item.name == "mp-test-host-fields"
+    )
+    assert conf.sync_libraries == ["1", "2"]
+    assert conf.sync_interval == 6
+    assert conf.config == {"host": "h"}
+
+
+def test_host_payload_cannot_hijack_the_row_identity(db):
+    """``host_config`` 是用户可写的 JSON，混进身份键时不得顶掉行本身的身份。"""
+    from app.runtime.extensions.service_config import service_capability_configs
+
+    db.session.add(
+        ServiceConfig(
+            capability="notification",
+            type="telegram",
+            name="mp-test-identity",
+            enabled=True,
+            host_config={"name": "冒名", "type": "slack", "enabled": False},
+        )
+    )
+    db.session.commit()
+
+    conf = next(
+        item for item in service_capability_configs("notification")
+        if item.type == "telegram"
+    )
+    assert conf.name == "mp-test-identity"
+    assert conf.enabled is True
 
 
 def test_oper_writes_one_row_without_reading_the_whole_family(db):

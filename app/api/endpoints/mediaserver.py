@@ -19,7 +19,7 @@ from app.application.orchestration.mediaserver import MediaServerChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
-from app.application.configuration import get_configured_system_config
+from app.application.service_config import read_system_setting
 from app.application.mediaserver import MediaServerHelper, MediaServerQueryService
 from app.api.deps import get_mediaserver_query_service
 from app.schemas.mediaserver import NotExistMediaInfo
@@ -248,7 +248,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可用媒体服务器
     """
-    mediaservers: List[dict] = get_configured_system_config().get(SystemConfigKey.MediaServers)
+    mediaservers: List[dict] = read_system_setting(SystemConfigKey.MediaServers)
     if mediaservers:
         return [
             {"name": d.get("name"), "type": d.get("type")}

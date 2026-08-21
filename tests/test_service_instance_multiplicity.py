@@ -1,9 +1,9 @@
 """服务实例类型能配几份：声明表达实例数，而非按服务族硬编码。
 
 判据见 docs/plugin-extension-architecture.md 第 7.4 节。缺省是多实例，因此不写
-`multi_instance` 的声明与既有三族行为完全一致；写成 False 的类型只认一份用户配置，
-多出来的忽略并告警一次。本文件覆盖声明缺省值、契约校验、扇出裁剪、告警去重、
-登记项携带与端点下发。
+`multi_instance` 的声明与既有三族行为完全一致；写成 False 的类型至多产出一个实例，
+配了多份时按默认调用目标裁决，裁决不出来就整个类型停摆。本文件覆盖声明缺省值、
+契约校验、扇出裁剪、裁决与报错去重、登记项携带与端点下发。
 """
 
 from typing import Any, Dict, Iterator, List, Optional
@@ -17,10 +17,11 @@ from app.runtime.extensions import service_instance_registry as registry_module
 from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service_config import (
+    configure_service_instance_config_reader,
+)
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.schemas.service import ServiceConfigForm
-from app.schemas.types import SystemConfigKey
 
 
 class _DemoDownloader:
@@ -51,16 +52,25 @@ class _RecordingLogger:
         """记录一条信息，用例不关心其内容。"""
 
 
-def _downloader_config(name: str, service_type: str, enabled: bool = True, **config: Any) -> dict:
+def _downloader_config(
+    name: str, service_type: str, enabled: bool = True, default: bool = False, **config: Any
+) -> dict:
     """构造一条下载器配置的原始字典。
 
     :param name: 实例名
     :param service_type: 类型标识
     :param enabled: 是否启用
+    :param default: 是否为本族的默认调用目标
     :param config: 该实例的配置内容
     :return: 与持久化形状一致的配置字典
     """
-    return {"name": name, "type": service_type, "enabled": enabled, "config": config}
+    return {
+        "name": name,
+        "type": service_type,
+        "enabled": enabled,
+        "default": default,
+        "config": config,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -72,14 +82,6 @@ def _isolate_service_instance_registry() -> Iterator[None]:
     finally:
         service_instance_registry._adapters.clear()
         service_instance_registry._adapters.update(original)
-
-
-@pytest.fixture(autouse=True)
-def _clean_overflow_warnings() -> Iterator[None]:
-    """每个用例前后都清空单实例超配告警记录，避免用例间互相掩盖。"""
-    registry_module._single_instance_overflow_warnings_seen.clear()
-    yield
-    registry_module._single_instance_overflow_warnings_seen.clear()
 
 
 @pytest.fixture
@@ -94,13 +96,13 @@ def recording_logger(monkeypatch) -> _RecordingLogger:
 def service_configs() -> Iterator[List[dict]]:
     """接管服务配置读取端口，用例改写列表即改写用户配置。"""
     configs: List[dict] = []
-    previous = configure_service_config_reader(
-        lambda key: configs if key == SystemConfigKey.Downloaders else None
+    previous = configure_service_instance_config_reader(
+        lambda capability: configs if capability == "downloader" else None
     )
     try:
         yield configs
     finally:
-        configure_service_config_reader(previous)
+        configure_service_instance_config_reader(previous)
 
 
 @pytest.fixture
@@ -296,21 +298,58 @@ def test_multi_instance_type_fans_out_every_config(
     assert services["下载器丙"].instance.host == "c"
 
 
-def test_single_instance_type_keeps_only_the_first_config(
+def test_single_instance_type_uses_the_default_target(
     monkeypatch, plugin_manager: PluginManager, service_configs: List[dict]
 ):
-    """单实例类型配了多份时只有配置列表里的第一份生效，其余忽略。"""
+    """单实例类型配了多份时用显式的默认调用目标，与它排第几无关。"""
     service_configs.extend([
-        _downloader_config("首选", "single_downloader", host="a"),
-        _downloader_config("多余甲", "single_downloader", host="b"),
-        _downloader_config("多余乙", "single_downloader", host="c"),
+        _downloader_config("排在最前", "single_downloader", host="a"),
+        _downloader_config("默认目标", "single_downloader", default=True, host="b"),
+        _downloader_config("多余", "single_downloader", host="c"),
     ])
     _start_plugin(monkeypatch, plugin_manager, _SingleInstancePlugin)
 
     services = DownloaderHelper().get_services()
 
-    assert list(services) == ["首选"]
-    assert services["首选"].instance.host == "a"
+    assert list(services) == ["默认目标"]
+    assert services["默认目标"].instance.host == "b"
+
+
+def test_single_instance_type_produces_nothing_without_a_default_target(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict],
+    recording_logger: _RecordingLogger
+):
+    """裁决不出目标时整个类型不产出实例，绝不替用户挑一份跑起来。"""
+    service_configs.extend([
+        _downloader_config("甲", "single_downloader", host="a"),
+        _downloader_config("乙", "single_downloader", host="b"),
+    ])
+    _start_plugin(monkeypatch, plugin_manager, _SingleInstancePlugin)
+
+    services = DownloaderHelper().get_services()
+
+    assert services == {}
+    assert len(recording_logger.errors) == 1
+    message = recording_logger.errors[0]
+    assert "single_downloader" in message
+    assert "甲" in message and "乙" in message
+
+
+def test_single_instance_arbitration_failure_is_reported_once(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict],
+    recording_logger: _RecordingLogger
+):
+    """取服务是热路径，同一份裁决不出目标的配置反复取用也只报错一次。"""
+    service_configs.extend([
+        _downloader_config("甲", "single_downloader", host="a"),
+        _downloader_config("乙", "single_downloader", host="b"),
+    ])
+    _start_plugin(monkeypatch, plugin_manager, _SingleInstancePlugin)
+
+    for _ in range(5):
+        DownloaderHelper().get_services()
+
+    assert len(recording_logger.errors) == 1
 
 
 @pytest.mark.parametrize(
@@ -349,33 +388,11 @@ def test_disabled_configs_do_not_count_toward_the_single_slot(
     assert recording_logger.warnings == []
 
 
-def test_single_instance_overflow_warns_once_across_repeated_lookups(
+def test_multi_instance_type_never_complains_about_the_count(
     monkeypatch, plugin_manager: PluginManager, service_configs: List[dict],
     recording_logger: _RecordingLogger
 ):
-    """取服务是热路径，同一个超配类型反复取用也只告警一次。"""
-    service_configs.extend([
-        _downloader_config("首选", "single_downloader", host="a"),
-        _downloader_config("多余", "single_downloader", host="b"),
-    ])
-    _start_plugin(monkeypatch, plugin_manager, _SingleInstancePlugin)
-
-    for _ in range(5):
-        DownloaderHelper().get_services()
-
-    assert len(recording_logger.warnings) == 1
-    message = recording_logger.warnings[0]
-    assert "single_downloader" in message
-    assert "只接受一份配置" in message
-    assert "首选" in message
-    assert "多余" in message
-
-
-def test_multi_instance_type_never_warns_about_overflow(
-    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict],
-    recording_logger: _RecordingLogger
-):
-    """多实例类型配多少份都是正常用法，不得因份数告警。"""
+    """多实例类型配多少份都是正常用法，不得因份数告警或报错。"""
     service_configs.extend([
         _downloader_config("下载器甲", "demo_downloader", host="a"),
         _downloader_config("下载器乙", "demo_downloader", host="b"),
@@ -385,12 +402,13 @@ def test_multi_instance_type_never_warns_about_overflow(
     DownloaderHelper().get_services()
 
     assert recording_logger.warnings == []
+    assert recording_logger.errors == []
 
 
-def test_overflow_warning_is_deduplicated_per_type_not_globally(
+def test_arbitration_failure_is_reported_per_type_not_globally(
     service_configs: List[dict], recording_logger: _RecordingLogger
 ):
-    """去重键含类型标识：两个不同的超配类型各自告警一次，互不掩盖。"""
+    """两个各自裁决不出目标的类型各报一次，互不掩盖。"""
     service_configs.extend([
         _downloader_config("甲一", "type_a", host="a"),
         _downloader_config("甲二", "type_a", host="b"),
@@ -410,29 +428,7 @@ def test_overflow_warning_is_deduplicated_per_type_not_globally(
     for adapter in service_instance_registry.adapters("downloader"):
         adapter.get_instances()
 
-    assert len(recording_logger.warnings) == 2
-
-
-def test_overflow_warning_survives_a_change_of_owning_sibling(
-    service_configs: List[dict], recording_logger: _RecordingLogger
-):
-    """归属在同扩展分身之间改选是宿主内部裁决，不该让用户再看一遍同一条提示。"""
-    service_configs.extend([
-        _downloader_config("首选", "single_downloader", host="a"),
-        _downloader_config("多余", "single_downloader", host="b"),
-    ])
-    for owner in ("DemoPlugin", "DemoPlugin@home"):
-        service_instance_registry.register(
-            capability="downloader",
-            service_type="single_downloader",
-            name="单份下载器",
-            impl=_DemoDownloader,
-            owner=owner,
-            multi_instance=False,
-        )
-        service_instance_registry.adapters("downloader")[0].get_instances()
-
-    assert len(recording_logger.warnings) == 1
+    assert len(recording_logger.errors) == 2
 
 
 def test_registered_entry_carries_declared_multiplicity(

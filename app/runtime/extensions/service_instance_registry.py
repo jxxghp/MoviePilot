@@ -5,8 +5,8 @@
 声明的类型不进入模块清单，改由本表为每条声明持有一个适配器，适配器实现与内建
 模块同名的 ``get_instances()``，从而与内建模块一起被服务发现取用。
 
-本表全程只认能力标签，「这一族配置存放在 systemconfig 的哪个列表里」是宿主内部
-实现，对照收在 `app.runtime.extensions.service_config`，不向声明面外泄。
+本表全程只认能力标签，「这一族配置存在哪里、按哪个模型校验」是宿主内部实现，对照
+收在 `app.runtime.extensions.service_config`，不向声明面外泄。
 
 登记由扩展实例的生命周期驱动：实例启动或配置生效时按当前声明重建，实例停止时
 按登记方回收。
@@ -19,18 +19,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.service_config import (
     create_service_instance,
     select_instance_configs,
     service_capability_configs,
 )
 from app.runtime.log import logger
-
-# 已就「只认一份配置的类型被配了多份」告警过的 (扩展标识, 能力标签, 类型标识) 组合。
-# 取服务是热路径，每次取用都会重读配置，去重状态挂在模块上而不挂在适配器上：适配器
-# 会因登记内容变化或归属改选而重建，挂在实例上等于每次重建都重新刷一遍屏。
-_single_instance_overflow_warnings_seen: set[Tuple[str, str, str]] = set()
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,32 +72,6 @@ class ServiceInstanceEntry:
     config_schema: Optional[Dict[str, Any]] = None
 
 
-def _warn_single_instance_overflow(
-    entry: ServiceInstanceEntry, kept: str, configured: Tuple[str, ...]
-) -> None:
-    """就「只认一份配置的类型被配了多份」打一次提示。
-
-    去重按 (扩展标识, 能力标签, 类型标识) 而不按登记方实例键：同一扩展的哪个分身
-    持有该类型是宿主裁决的结果，用户对此无感知，按实例键去重会在归属改选后重复
-    提示同一件事。
-
-    :param entry: 该类型的登记项
-    :param kept: 本次生效的配置名
-    :param configured: 本类型下全部已启用配置名，按用户配置列表顺序排列
-    :return: 无返回值
-    """
-    seen = (extension_id_of(entry.owner), entry.capability, entry.service_type)
-    if seen in _single_instance_overflow_warnings_seen:
-        return
-    _single_instance_overflow_warnings_seen.add(seen)
-    logger.warning(
-        f"【服务】扩展 {entry.owner} 声明的 {entry.capability} 类型 {entry.service_type}"
-        f"（{entry.name}）只接受一份配置，当前已启用 {len(configured)} 份："
-        f"{list(configured)}；本次只有排在最前的 {kept} 生效，其余已忽略。"
-        f"请在设置页停用或删除多余的配置"
-    )
-
-
 class ServiceInstanceAdapter:
     """把一条服务实例类型登记投影为服务发现可取用的实例持有者。
 
@@ -123,6 +91,8 @@ class ServiceInstanceAdapter:
         self._instances: Dict[str, Any] = {}
         # 最近一次构造失败的配置，用于让同一条坏配置只报错一次而不是每次取服务都刷屏
         self._failed_configs: Dict[str, Any] = {}
+        # 最近一次配置裁决失败的原因，用于让同一份配置只报错一次
+        self._selection_error: Optional[str] = None
 
     @property
     def entry(self) -> ServiceInstanceEntry:
@@ -167,10 +137,12 @@ class ServiceInstanceAdapter:
     def _desired_configs(self) -> Dict[str, Any]:
         """读取本类型下应当扇出实例的用户配置。
 
-        筛选规则与内建模块共用一份实现，单实例类型的溢出提示由本适配器承担：
-        提示文案要指明是哪个扩展声明的哪个类型，那是登记项才有的信息。
+        筛选与裁决规则与内建模块共用一份实现。单实例类型裁决不出唯一目标时本类型不
+        产出任何实例：宁可整个类型停摆，也不替用户在多份配置里挑一份跑起来——挑错的
+        那份可能正连着另一台服务器。提示文案由本适配器补上是哪个扩展声明的哪个类型，
+        那是登记项才有的信息；取服务是热路径，同一份配置只报错一次。
 
-        :return: 实例名到配置的映射；配置读取出错时为空字典
+        :return: 实例名到配置的映射；配置读取出错或裁决不出目标时为空字典
         """
         try:
             configs = service_capability_configs(self._entry.capability) or []
@@ -180,14 +152,23 @@ class ServiceInstanceAdapter:
                 f"扩展 {self._entry.owner} 声明的 {self._entry.service_type} 实例暂不可用：{error}"
             )
             return {}
-        return select_instance_configs(
-            configs,
-            self._entry.service_type,
-            multi_instance=self._entry.multi_instance,
-            on_overflow=lambda kept, configured: _warn_single_instance_overflow(
-                self._entry, kept, configured
-            ),
-        )
+        try:
+            selected = select_instance_configs(
+                configs,
+                self._entry.service_type,
+                multi_instance=self._entry.multi_instance,
+            )
+        except LookupError as error:
+            reason = str(error)
+            if self._selection_error != reason:
+                self._selection_error = reason
+                logger.error(
+                    f"【服务】扩展 {self._entry.owner} 声明的 {self._entry.capability} "
+                    f"类型 {self._entry.service_type}（{self._entry.name}）暂不可用：{reason}"
+                )
+            return {}
+        self._selection_error = None
+        return selected
 
     def _create_instance(self, name: str, conf: Any) -> Optional[Any]:
         """按单条配置构造一个具名实例。

@@ -46,6 +46,7 @@ from app.application.database import configure_database_governance
 from app.application.module import configure_module_runtime
 from app.application.plugin.runtime import configure_plugin_runtime
 from app.db import close_database
+from app.db.oper.serviceconfig import ServiceConfigOper
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
@@ -66,8 +67,16 @@ from app.application.orchestration.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
+from app.application.service_config import (
+    ServiceInstanceConfigService,
+    configure_service_instance_configs,
+    get_configured_service_instance_configs,
+)
 from app.runtime.extensions.meta_parser_registry import configure_meta_parser_order_reader
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service_config import (
+    configure_service_config_reader,
+    configure_service_instance_config_reader,
+)
 from app.startup.hostport_initializer import (
     configure_dispatch_host_ports,
     configure_host_ports,
@@ -108,6 +117,12 @@ async def _async_get_workflow(workflow_id: int):
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+    configure_service_instance_configs(
+        ServiceInstanceConfigService(repository=ServiceConfigOper())
+    )
+    configure_service_instance_config_reader(
+        lambda capability: get_configured_service_instance_configs().read(capability)
+    )
     configure_meta_parser_order_reader(
         lambda: SystemConfigOper().get(SystemConfigKey.MetaParserOrder)
     )

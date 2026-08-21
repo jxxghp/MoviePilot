@@ -18,8 +18,12 @@ from app.agent.tools.impl._system_setting_utils import (
 )
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
+from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_write_violation
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.service_config import (
+    async_write_system_setting,
+    read_system_setting,
+)
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
@@ -107,7 +111,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
             return getattr(settings, spec.key)
-        return SystemConfigOper().get(spec.systemconfig_key)
+        return read_system_setting(spec.systemconfig_key)
 
     @staticmethod
     def _normalize_systemconfig_value(value: Any):
@@ -268,7 +272,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
                 normalized_value = self._normalize_systemconfig_value(next_value)
                 # 服务实例配置按声明该类型的扩展给出的契约判定，与设置页写入同一道关卡
                 violation = service_config_write_violation(
-                    spec.systemconfig_key, normalized_value
+                    service_capability(spec.key), normalized_value
                 )
                 if violation:
                     return json.dumps(
@@ -276,11 +280,10 @@ class UpdateSystemSettingsTool(MoviePilotTool):
                         ensure_ascii=False,
                     )
                 event_value = normalized_value
-                success = await SystemConfigOper().async_set(
+                changed = await async_write_system_setting(
                     spec.systemconfig_key,
                     normalized_value,
                 )
-                changed = success is True
 
             if changed:
                 await eventmanager.async_send_event(

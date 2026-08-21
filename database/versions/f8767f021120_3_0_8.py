@@ -6,6 +6,8 @@ Revises: 73370ce9bab7
 Create Date: 2026-08-19
 """
 
+import json
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -21,6 +23,15 @@ _SERVICECONFIG_DEFAULT_TARGET_INDEX = "ux_serviceconfig_default_target"
 # 迁移是历史快照，常量自带副本而不是 import 模型：跟着当前代码一起演进会让旧库
 # 重放出与当初不同的取值。
 _BUILTIN_PROVIDER = "host:builtin"
+
+# 三族实例配置在 systemconfig 上的存放键，以及各族由宿主消费、不进类型配置载荷的
+# 实例级字段。同样是历史快照：这两份对照随宿主功能演进，import 当前代码会让旧库
+# 重放出与当初不同的分列结果。
+_SERVICE_FAMILIES = (
+    ("downloader", "Downloaders", ("path_mapping",)),
+    ("mediaserver", "MediaServers", ("sync_interval", "sync_libraries")),
+    ("notification", "Notifications", ("switchs",)),
+)
 
 
 def _inspector() -> sa.Inspector:
@@ -59,7 +70,7 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def upgrade() -> None:
-    """建立插件实例配置表及其唯一约束与索引。
+    """建立插件实例配置表、用户身份绑定表与服务实例配置表，并搬迁存量服务实例配置。
 
     唯一约束随建表一并声明：SQLite 不支持事后 ALTER TABLE 添加约束，只能在
     CREATE TABLE 时一次性带上；这张表没有需要兼容的历史结构，不必再额外处理
@@ -97,6 +108,7 @@ def upgrade() -> None:
 
     _create_useridentity_table()
     _create_serviceconfig_table()
+    _migrate_service_configs()
 
 
 def _create_useridentity_table() -> None:
@@ -160,6 +172,7 @@ def _create_serviceconfig_table() -> None:
             sa.Column("name", sa.String(), nullable=False),
             sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("config", sa.JSON(), nullable=True),
+            sa.Column("host_config", sa.JSON(), nullable=True),
             sa.Column(
                 _SERVICECONFIG_DEFAULT_TARGET_COLUMN,
                 sa.Boolean(),
@@ -187,6 +200,120 @@ def _create_serviceconfig_table() -> None:
             sqlite_where=_default_target_predicate(),
             postgresql_where=_default_target_predicate(),
         )
+
+
+def _serviceconfig_table() -> sa.Table:
+    """返回供数据搬迁使用的服务实例配置表定义。"""
+    return sa.Table(
+        "serviceconfig",
+        sa.MetaData(),
+        sa.Column("capability", sa.String()),
+        sa.Column("type", sa.String()),
+        sa.Column("name", sa.String()),
+        sa.Column("enabled", sa.Boolean()),
+        sa.Column("config", sa.JSON()),
+        sa.Column("host_config", sa.JSON()),
+        sa.Column(_SERVICECONFIG_DEFAULT_TARGET_COLUMN, sa.Boolean()),
+        sa.Column("provider", sa.String()),
+    )
+
+
+def _service_config_rows(capability: str, value, host_fields: tuple) -> list:
+    """把一族存放在 systemconfig 里的配置列表整形为服务实例配置表的行。
+
+    脏数据按四条口径处置，四条都以「与切表前的运行期行为一致」为准，因此搬迁不会
+    改变用户看到的实例：
+
+    - 取不到名称或类型的条目丢弃。这类条目在切表前就不产出任何实例（扇出只认具名且
+      类型一致的配置），也无从被显式指定；而表按 (capability, type, name) 定位一行，
+      根本装不下没有身份的条目。
+    - 同名条目后者覆盖前者。切表前扇出按名字建映射，后写入的同样覆盖先写入的，这里
+      沿用同一条规则，用户看到的那一份不变。
+    - ``default`` 为真的条目可能不止一条，取顺序上第一条。运行期原本就取首个默认标记，
+      且同一份输入重复搬迁得到同一结果；不裁决则直接撞上「每族至多一个默认调用目标」
+      的条件唯一索引。
+    - ``provider`` 一律填内建保留值。存量配置不记提供方，无从还原；该列只用于把「没有
+      这个类型」翻译成「由扩展 X 提供而 X 未启用」，填错只影响提示文案，不影响配置生效。
+
+    :param capability: 族标识
+    :param value: systemconfig 上该族的配置值
+    :param host_fields: 该族由宿主消费的实例级字段名
+    :return: 服务实例配置表的行
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    if not isinstance(value, list):
+        return []
+    records = {}
+    for conf in value:
+        if not isinstance(conf, dict):
+            continue
+        name = conf.get("name")
+        service_type = conf.get("type")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(service_type, str) or not service_type.strip():
+            continue
+        name = name.strip()
+        service_type = service_type.strip()
+        host_config = {
+            field: conf[field] for field in host_fields if conf.get(field) is not None
+        }
+        records[(service_type, name)] = {
+            "capability": capability,
+            "type": service_type,
+            "name": name,
+            "enabled": bool(conf.get("enabled")),
+            "config": conf.get("config") or {},
+            "host_config": host_config or None,
+            _SERVICECONFIG_DEFAULT_TARGET_COLUMN: bool(conf.get("default")),
+            "provider": _BUILTIN_PROVIDER,
+        }
+    default_seen = False
+    for record in records.values():
+        if not record[_SERVICECONFIG_DEFAULT_TARGET_COLUMN]:
+            continue
+        if default_seen:
+            record[_SERVICECONFIG_DEFAULT_TARGET_COLUMN] = False
+            continue
+        default_seen = True
+    return list(records.values())
+
+
+def _migrate_service_configs() -> None:
+    """把 systemconfig 上三族服务实例配置搬进服务实例配置表。
+
+    表里已有任何一行就整体跳过：这一笔只负责首轮搬迁，重复搬迁会与用户此后在表上做的
+    增删改叠加成重复行。跳过判据取「表非空」而不取「本 revision 是否跑过」，因为降级会
+    连表一起删掉，再次升级时 alembic 的版本记录已经回退，只有数据本身能证明搬过没有。
+
+    systemconfig 上那三个键只停写不删，搬迁不动它们：读路径改回去即完成回退。
+    """
+    if not _has_table("serviceconfig") or not _has_table("systemconfig"):
+        return
+    bind = op.get_bind()
+    existing = bind.execute(
+        sa.select(sa.func.count()).select_from(sa.table("serviceconfig"))
+    ).scalar()
+    if existing:
+        return
+    systemconfig = sa.Table(
+        "systemconfig",
+        sa.MetaData(),
+        sa.Column("key", sa.String()),
+        sa.Column("value", sa.JSON()),
+    )
+    rows = []
+    for capability, config_key, host_fields in _SERVICE_FAMILIES:
+        value = bind.execute(
+            sa.select(systemconfig.c.value).where(systemconfig.c.key == config_key)
+        ).scalar()
+        rows.extend(_service_config_rows(capability, value, host_fields))
+    if rows:
+        op.bulk_insert(_serviceconfig_table(), rows)
 
 
 def downgrade() -> None:

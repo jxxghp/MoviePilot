@@ -29,12 +29,27 @@ def configure_plugin_system_services():
     )
     from app.api.data import configure_api_data_ports
     from app.application.configuration import SystemConfigService, configure_system_config
+    from app.application.service_config import (
+        ServiceInstanceConfigService,
+        configure_service_instance_configs,
+        get_configured_service_instance_configs,
+    )
     from app.db.session import get_async_db, get_db
     from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+    from app.db.oper.serviceconfig import ServiceConfigOper
     from app.db.oper.systemconfig import SystemConfigOper
+    from app.runtime.extensions.service_config import (
+        configure_service_instance_config_reader,
+    )
 
     configure_token_codec(create_access_token, decode_access_token)
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_service_instance_configs(
+        ServiceInstanceConfigService(repository=ServiceConfigOper())
+    )
+    configure_service_instance_config_reader(
+        lambda capability: get_configured_service_instance_configs().read(capability)
+    )
     from app.application.orchestration.data import configure_chain_data_ports
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.application.module import configure_module_runtime

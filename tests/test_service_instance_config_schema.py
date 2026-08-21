@@ -9,7 +9,7 @@ import asyncio
 import json
 from dataclasses import replace
 from typing import Any, Dict, Iterator, List, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -32,6 +32,7 @@ from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.service_config import create_service_instance
+from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_write_violation
 from app.runtime.extensions.service_instance_registry import (
     ServiceInstanceAdapter,
@@ -111,11 +112,14 @@ def service_configs(monkeypatch) -> Iterator[Dict[str, list]]:
     """接管服务配置读取端口，用例改写字典即改写用户配置。"""
     values: Dict[str, list] = {}
 
-    def reader(config_key: SystemConfigKey) -> Any:
-        """按配置键返回用例写入的原始配置列表。"""
-        return values.get(config_key.value)
+    def reader(capability: str) -> Any:
+        """按能力标签返回用例写入的原始配置列表。"""
+        config_key = service_config_module.service_config_key(capability)
+        return values.get(config_key.value) if config_key else None
 
-    monkeypatch.setattr(service_config_module, "_service_config_reader", reader)
+    monkeypatch.setattr(
+        service_config_module, "_service_instance_config_reader", reader
+    )
     yield values
 
 
@@ -392,7 +396,7 @@ def test_write_path_rejects_config_violating_declared_schema():
     _register_demo_type(_VALID_SCHEMA)
 
     violation = service_config_write_violation(
-        SystemConfigKey.Notifications,
+        ModuleType.Notification.value,
         [_notification_config("我的通道", port=70000)],
     )
 
@@ -408,7 +412,7 @@ def test_write_path_rejects_undeclared_field_and_nested_violation():
     _register_demo_type(_VALID_SCHEMA)
 
     violation = service_config_write_violation(
-        SystemConfigKey.Notifications,
+        ModuleType.Notification.value,
         [_notification_config("我的通道", host="h", unknown=1, auth={"token": "ab"})],
     )
 
@@ -422,7 +426,7 @@ def test_write_path_accepts_config_matching_schema():
     _register_demo_type(_VALID_SCHEMA)
 
     assert service_config_write_violation(
-        SystemConfigKey.Notifications,
+        ModuleType.Notification.value,
         [
             _notification_config(
                 "我的通道",
@@ -442,7 +446,7 @@ def test_write_path_ignores_types_without_schema():
     _register_demo_type(None)
 
     assert service_config_write_violation(
-        SystemConfigKey.Notifications,
+        ModuleType.Notification.value,
         [_notification_config("我的通道", anything="whatever", port="not-a-number")],
     ) is None
 
@@ -452,10 +456,12 @@ def test_write_path_ignores_unregistered_types_and_other_keys():
     _register_demo_type(_VALID_SCHEMA)
 
     assert service_config_write_violation(
-        SystemConfigKey.Notifications, [_notification_config("别的", "other_channel")]
+        ModuleType.Notification.value, [_notification_config("别的", "other_channel")]
     ) is None
-    assert service_config_write_violation(SystemConfigKey.Directories, ["anything"]) is None
-    assert service_config_write_violation(SystemConfigKey.Notifications, None) is None
+    assert service_config_write_violation(
+        service_capability(SystemConfigKey.Directories.value), ["anything"]
+    ) is None
+    assert service_config_write_violation(ModuleType.Notification.value, None) is None
 
 
 def test_write_path_rejects_whole_write_and_lists_every_offender():
@@ -463,7 +469,7 @@ def test_write_path_rejects_whole_write_and_lists_every_offender():
     _register_demo_type(_VALID_SCHEMA)
 
     violation = service_config_write_violation(
-        SystemConfigKey.Notifications,
+        ModuleType.Notification.value,
         [
             _notification_config("合规的", host="h"),
             _notification_config("坏的甲", port="x"),
@@ -479,11 +485,8 @@ def test_write_path_rejects_whole_write_and_lists_every_offender():
 def test_setting_endpoint_rejects_malformed_service_config(monkeypatch):
     """设置写入端点退回畸形服务配置，不落盘、也不发配置变更事件。"""
     _register_demo_type(_VALID_SCHEMA)
-    system_config = MagicMock()
-    system_config.async_set = AsyncMock(return_value=True)
-    monkeypatch.setattr(
-        "app.api.endpoints.system.get_configured_system_config", lambda: system_config
-    )
+    written = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.api.endpoints.system.async_write_system_setting", written)
     sent = AsyncMock()
     monkeypatch.setattr("app.api.endpoints.system.eventmanager.async_send_event", sent)
 
@@ -496,18 +499,15 @@ def test_setting_endpoint_rejects_malformed_service_config(monkeypatch):
 
     assert response.success is False
     assert "我的通道" in response.message
-    system_config.async_set.assert_not_awaited()
+    written.assert_not_awaited()
     sent.assert_not_awaited()
 
 
 def test_setting_endpoint_writes_config_without_declared_schema(monkeypatch):
     """未声明契约的类型照常写入，端点行为与本判定加入之前一致。"""
     _register_demo_type(None)
-    system_config = MagicMock()
-    system_config.async_set = AsyncMock(return_value=True)
-    monkeypatch.setattr(
-        "app.api.endpoints.system.get_configured_system_config", lambda: system_config
-    )
+    written = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.api.endpoints.system.async_write_system_setting", written)
     monkeypatch.setattr(
         "app.api.endpoints.system.eventmanager.async_send_event", AsyncMock()
     )
@@ -518,22 +518,21 @@ def test_setting_endpoint_writes_config_without_declared_schema(monkeypatch):
     )
 
     assert response.success is True
-    system_config.async_set.assert_awaited_once_with(
-        SystemConfigKey.Notifications.value, value
-    )
+    written.assert_awaited_once_with(SystemConfigKey.Notifications.value, value)
 
 
 def test_agent_setting_tool_rejects_malformed_service_config():
     """智能体的系统设置工具与设置页写入同一道关卡。"""
     _register_demo_type(_VALID_SCHEMA)
     tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
-    config_oper = MagicMock()
-    config_oper.get.return_value = []
-    config_oper.async_set = AsyncMock(return_value=True)
+    written = AsyncMock(return_value=True)
 
     with patch(
-        "app.agent.tools.impl.update_system_settings.SystemConfigOper",
-        return_value=config_oper,
+        "app.agent.tools.impl.update_system_settings.read_system_setting",
+        return_value=[],
+    ), patch(
+        "app.agent.tools.impl.update_system_settings.async_write_system_setting",
+        new=written,
     ), patch(
         "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
         new=AsyncMock(),
@@ -548,7 +547,7 @@ def test_agent_setting_tool_rejects_malformed_service_config():
     payload = json.loads(result)
     assert payload["success"] is False
     assert "我的通道" in payload["message"]
-    config_oper.async_set.assert_not_awaited()
+    written.assert_not_awaited()
 
 
 # ---------------------------------------------------------------- 实例构造路径

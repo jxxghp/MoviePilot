@@ -20,9 +20,9 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
-        ) as system_config_oper:
-            system_config_oper.return_value.get.return_value = [{"name": "qb", "enabled": True}]
+            "app.agent.tools.impl.query_system_settings.read_system_setting"
+        ) as read_setting:
+            read_setting.return_value = [{"name": "qb", "enabled": True}]
             result = asyncio.run(tool.run(setting_key="Downloaders"))
 
         payload = json.loads(result)
@@ -30,18 +30,16 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         self.assertEqual(payload["matched_count"], 1)
         self.assertEqual(payload["settings"][0]["setting_key"], "Downloaders")
         self.assertEqual(payload["settings"][0]["value"][0]["name"], "qb")
-        system_config_oper.return_value.get.assert_called_once_with(
-            SystemConfigKey.Downloaders
-        )
+        read_setting.assert_called_once_with(SystemConfigKey.Downloaders)
 
     def test_query_system_settings_redacts_secret_values_by_default(self):
         """查询系统设置默认应脱敏 API Key、Token、Cookie 等敏感字段。"""
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
-        ) as system_config_oper:
-            system_config_oper.return_value.get.return_value = [
+            "app.agent.tools.impl.query_system_settings.read_system_setting"
+        ) as read_setting:
+            read_setting.return_value = [
                 {
                     "name": "site-a",
                     "apikey": "site-api-key",
@@ -69,9 +67,9 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool.set_agent_context({"is_admin": True})
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
-        ) as system_config_oper:
-            system_config_oper.return_value.get.return_value = [
+            "app.agent.tools.impl.query_system_settings.read_system_setting"
+        ) as read_setting:
+            read_setting.return_value = [
                 {"name": "site-a", "apikey": "site-api-key"}
             ]
             result = asyncio.run(
@@ -141,9 +139,9 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
-        ) as system_config_oper:
-            system_config_oper.return_value.get.return_value = []
+            "app.agent.tools.impl.query_system_settings.read_system_setting"
+        ) as read_setting:
+            read_setting.return_value = []
             result = asyncio.run(tool.run(group="systemconfig"))
 
         payload = json.loads(result)
@@ -208,16 +206,18 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
 
     def test_update_system_settings_merges_dict_and_emits_event(self):
         tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
-        config_oper = MagicMock()
-        config_oper.get.side_effect = [
+        read_setting = MagicMock(side_effect=[
             {"chatgpt": {"enabled": True}},
             {"chatgpt": {"enabled": False}, "gemini": {"enabled": True}},
-        ]
-        config_oper.async_set = AsyncMock(return_value=True)
+        ])
+        write_setting = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
-            return_value=config_oper,
+            "app.agent.tools.impl.update_system_settings.read_system_setting",
+            new=read_setting,
+        ), patch(
+            "app.agent.tools.impl.update_system_settings.async_write_system_setting",
+            new=write_setting,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
             new=AsyncMock(),
@@ -233,7 +233,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         payload = json.loads(result)
         self.assertTrue(payload["success"])
         self.assertTrue(payload["changed"])
-        config_oper.async_set.assert_awaited_once_with(
+        write_setting.assert_awaited_once_with(
             SystemConfigKey.AIAgentConfig,
             {"chatgpt": {"enabled": False}, "gemini": {"enabled": True}},
         )
@@ -241,16 +241,18 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
 
     def test_update_system_settings_upserts_named_list_item(self):
         tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
-        config_oper = MagicMock()
-        config_oper.get.side_effect = [
+        read_setting = MagicMock(side_effect=[
             [{"name": "qb", "enabled": False}],
             [{"name": "qb", "enabled": True}],
-        ]
-        config_oper.async_set = AsyncMock(return_value=True)
+        ])
+        write_setting = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
-            return_value=config_oper,
+            "app.agent.tools.impl.update_system_settings.read_system_setting",
+            new=read_setting,
+        ), patch(
+            "app.agent.tools.impl.update_system_settings.async_write_system_setting",
+            new=write_setting,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
             new=AsyncMock(),
@@ -266,7 +268,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         payload = json.loads(result)
         self.assertTrue(payload["success"])
         self.assertEqual(payload["saved_value"], [{"name": "qb", "enabled": True}])
-        config_oper.async_set.assert_awaited_once_with(
+        write_setting.assert_awaited_once_with(
             SystemConfigKey.Downloaders,
             [{"name": "qb", "enabled": True}],
         )
@@ -274,16 +276,18 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
     def test_update_system_settings_redacts_secret_values_in_response(self):
         """更新敏感系统设置后响应不应回显旧值和新值中的密钥。"""
         tool = UpdateSystemSettingsTool(session_id="session-1", user_id="10001")
-        config_oper = MagicMock()
-        config_oper.get.side_effect = [
+        read_setting = MagicMock(side_effect=[
             [{"name": "site-a", "apikey": "old-key"}],
             [{"name": "site-a", "apikey": "new-key"}],
-        ]
-        config_oper.async_set = AsyncMock(return_value=True)
+        ])
+        write_setting = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
-            return_value=config_oper,
+            "app.agent.tools.impl.update_system_settings.read_system_setting",
+            new=read_setting,
+        ), patch(
+            "app.agent.tools.impl.update_system_settings.async_write_system_setting",
+            new=write_setting,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
             new=AsyncMock(),

@@ -18,11 +18,11 @@ from app.runtime.extensions.plugin import extension_scoped
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
-    configure_service_config_reader,
+    configure_service_instance_config_reader,
     service_capability,
 )
 from app.runtime.extensions.service_instance_registry import service_instance_registry
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import ModuleType
 
 
 class _DemoDownloader:
@@ -108,13 +108,13 @@ def _isolate_service_instance_registry() -> Iterator[None]:
 def service_configs() -> Iterator[List[dict]]:
     """接管服务配置读取端口，用例改写列表即改写用户配置。"""
     configs: List[dict] = []
-    previous = configure_service_config_reader(
-        lambda key: configs if key == SystemConfigKey.Downloaders else None
+    previous = configure_service_instance_config_reader(
+        lambda capability: configs if capability == ModuleType.Downloader.value else None
     )
     try:
         yield configs
     finally:
-        configure_service_config_reader(previous)
+        configure_service_instance_config_reader(previous)
 
 
 @pytest.fixture

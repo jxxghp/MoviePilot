@@ -1423,6 +1423,10 @@
     {
       "source": "{seconds}秒",
       "target": "{seconds}s"
+    },
+    {
+      "source": "服务类型 {type} 只接受一份配置，当前已启用 {count} 份，且没有唯一的默认调用目标；请在设置页把其中一份设为默认调用目标，或停用多余的配置。可选配置：{candidates}",
+      "target": "Service type {type} accepts only one configuration, but {count} are enabled and none is the single default target; set one of them as the default target on the settings page, or disable the extras. Candidates: {candidates}"
     }
   ]
 }

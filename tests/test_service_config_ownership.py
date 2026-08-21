@@ -101,7 +101,19 @@ def service_configs(monkeypatch: pytest.MonkeyPatch) -> Iterator[Dict[str, list]
         "ModuleManager",
         _StubModuleManager,
     )
+    def instance_reader(capability: str):
+        """按能力标签返回内存中的原始配置。
+
+        :param capability: 服务能力标签
+        :return: 原始配置列表
+        """
+        config_key = service_config_key(capability)
+        return values.get(config_key.value) if config_key else None
+
     monkeypatch.setattr(service_config_module, "_service_config_reader", reader)
+    monkeypatch.setattr(
+        service_config_module, "_service_instance_config_reader", instance_reader
+    )
     yield values
 
 

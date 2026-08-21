@@ -39,11 +39,16 @@ from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_write_violation
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
+from app.application.service_config import (
+    async_write_system_setting,
+    read_system_setting,
+)
 from app.api.deps import get_current_active_superuser, get_current_active_superuser_async, get_current_active_user_async
 from app.adapters.media.image import ImageHelper
 from app.runtime.localization import LocaleHelper
@@ -1101,7 +1106,7 @@ async def get_setting(
     if hasattr(settings, key):
         value = getattr(settings, key)
     else:
-        value = get_configured_system_config().get(key)
+        value = read_system_setting(key)
     return _SchemaResponse(success=True, data={"value": value})
 
 
@@ -1131,10 +1136,10 @@ async def set_setting(
             value = value if value else None
         # 服务实例配置按声明该类型的扩展给出的契约判定，畸形配置退回并说明原因，
         # 不落盘、也不留到构造实例时才失败
-        violation = service_config_write_violation(key, value)
+        violation = service_config_write_violation(service_capability(key), value)
         if violation:
             return _SchemaResponse(success=False, message=violation)
-        success = await get_configured_system_config().async_set(key, value)
+        success = await async_write_system_setting(key, value)
         if success:
             # 发送配置变更事件
             await eventmanager.async_send_event(

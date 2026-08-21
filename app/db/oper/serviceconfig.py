@@ -47,6 +47,43 @@ class ServiceConfigOper(DbOper):
         """
         return ServiceConfig.list_by_type(self._db, capability, service_type)
 
+    @staticmethod
+    def to_payload(record: ServiceConfig) -> dict:
+        """
+        把一行实例配置摊平成该族配置模型接受的形状。
+
+        宿主载荷先铺开、身份字段后覆盖：``host_config`` 是用户可写的 JSON，混进
+        ``name``/``type`` 这类键时不能顶掉行本身的身份，否则一行配置读出来会变成另一个实例。
+        :param record: 实例配置行
+        :return: 与该族配置模型字段对应的配置字典
+        """
+        payload = dict(record.host_config or {})
+        payload.update({
+            "name": record.name,
+            "type": record.type,
+            "enabled": bool(record.enabled),
+            "config": record.config or {},
+            "default": bool(record.is_default_target),
+        })
+        return payload
+
+    def list_payloads(self, capability: str) -> List[dict]:
+        """
+        列出某族全部实例配置的摊平形状，按写入先后排列。
+        :param capability: 族标识
+        :return: 该族全部配置字典
+        """
+        return [self.to_payload(record) for record in self.list_by_capability(capability)]
+
+    def replace_capability(self, capability: str, records: List[dict]) -> int:
+        """
+        用给定的整族配置覆盖某族现有配置。
+        :param capability: 族标识
+        :param records: 该族的全部配置行
+        :return: 覆盖后该族的配置行数
+        """
+        return ServiceConfig.replace_capability(self._db, capability, records)
+
     def get(self, capability: str, service_type: str, name: str) -> Optional[ServiceConfig]:
         """
         按 ``(capability, type, name)`` 精确取单条实例配置。
