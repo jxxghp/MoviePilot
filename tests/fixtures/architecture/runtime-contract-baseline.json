@@ -1164,117 +1164,77 @@
     "dynamic_consumers": [
       {
         "caller": "app.adapters.system.fsproxy",
-        "line": 392
+        "count": 1
       },
       {
         "caller": "app.agent.llm.provider",
-        "line": 2253
+        "count": 1
       },
       {
         "caller": "app.chain.transfer",
-        "line": 616
+        "count": 1
       },
       {
         "caller": "app.db.oper.transferpending",
-        "line": 23
+        "count": 1
       },
       {
         "caller": "app.runtime.events",
-        "line": 138
-      },
-      {
-        "caller": "app.runtime.events",
-        "line": 461
-      },
-      {
-        "caller": "app.runtime.events",
-        "line": 465
+        "count": 3
       },
       {
         "caller": "app.testing.bootstrap",
-        "line": 111
+        "count": 1
       },
       {
         "caller": "app.workflow",
-        "line": 311
+        "count": 1
       }
     ],
     "dynamic_producers": [
       {
         "caller": "app.agent.tools.impl._filter_rule_utils",
-        "line": 433
+        "count": 1
       },
       {
         "caller": "app.agent.tools.impl.update_system_settings",
-        "line": 276
+        "count": 1
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 860
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 974
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 1028
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 1042
+        "count": 4
       },
       {
         "caller": "app.chain._messaging",
-        "line": 217
-      },
-      {
-        "caller": "app.chain._messaging",
-        "line": 227
-      },
-      {
-        "caller": "app.chain._messaging",
-        "line": 333
-      },
-      {
-        "caller": "app.chain._messaging",
-        "line": 343
+        "count": 4
       },
       {
         "caller": "app.chain._recognition",
-        "line": 460
-      },
-      {
-        "caller": "app.chain._recognition",
-        "line": 500
+        "count": 2
       },
       {
         "caller": "app.chain.user",
-        "line": 160
-      },
-      {
-        "caller": "app.chain.user",
-        "line": 223
+        "count": 2
       },
       {
         "caller": "app.command",
-        "line": 440
+        "count": 1
       },
       {
         "caller": "app.modules._base.mediaserver",
-        "line": 56
+        "count": 1
       },
       {
         "caller": "app.modules.navidrome",
-        "line": 91
+        "count": 1
       },
       {
         "caller": "app.modules.plex",
-        "line": 99
+        "count": 1
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 238
+        "count": 1
       }
     ],
     "event_count": 53,
@@ -1284,7 +1244,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 1277
+            "count": 1
           }
         ]
       },
@@ -1301,11 +1261,11 @@
         "producers": [
           {
             "caller": "app.command",
-            "line": 267
+            "count": 1
           },
           {
             "caller": "app.modules._base.notification",
-            "line": 92
+            "count": 1
           }
         ]
       },
@@ -1314,7 +1274,7 @@
         "producers": [
           {
             "caller": "app.api.endpoints.discover",
-            "line": 31
+            "count": 1
           }
         ]
       },
@@ -1327,11 +1287,7 @@
         "producers": [
           {
             "caller": "app.chain.media",
-            "line": 1502
-          },
-          {
-            "caller": "app.chain.media",
-            "line": 2048
+            "count": 2
           }
         ]
       },
@@ -1344,11 +1300,7 @@
         "producers": [
           {
             "caller": "app.chain.media",
-            "line": 815
-          },
-          {
-            "caller": "app.chain.media",
-            "line": 1753
+            "count": 2
           }
         ]
       },
@@ -1357,11 +1309,7 @@
         "producers": [
           {
             "caller": "app.chain.media",
-            "line": 753
-          },
-          {
-            "caller": "app.chain.media",
-            "line": 1691
+            "count": 2
           }
         ]
       },
@@ -1370,7 +1318,7 @@
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 384
+            "count": 1
           }
         ]
       },
@@ -1379,11 +1327,11 @@
         "producers": [
           {
             "caller": "app.api.endpoints.recommend",
-            "line": 42
+            "count": 1
           },
           {
             "caller": "app.workflow.actions.fetch_medias",
-            "line": 111
+            "count": 1
           }
         ]
       },
@@ -1392,7 +1340,7 @@
         "producers": [
           {
             "caller": "app.chain.download",
-            "line": 1056
+            "count": 1
           }
         ]
       },
@@ -1401,7 +1349,7 @@
         "producers": [
           {
             "caller": "app.chain.download",
-            "line": 1423
+            "count": 1
           }
         ]
       },
@@ -1410,11 +1358,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 1102
-          },
-          {
-            "caller": "app.chain.transfer",
-            "line": 1118
+            "count": 2
           }
         ]
       },
@@ -1423,7 +1367,7 @@
         "producers": [
           {
             "caller": "app.chain.subscribe",
-            "line": 2824
+            "count": 1
           }
         ]
       },
@@ -1432,11 +1376,7 @@
         "producers": [
           {
             "caller": "app.chain.subscribe",
-            "line": 3567
-          },
-          {
-            "caller": "app.chain.subscribe",
-            "line": 3589
+            "count": 2
           }
         ]
       },
@@ -1445,11 +1385,7 @@
         "producers": [
           {
             "caller": "app.modules.filemanager.transhandler",
-            "line": 983
-          },
-          {
-            "caller": "app.modules.filemanager.transhandler",
-            "line": 1105
+            "count": 2
           }
         ]
       },
@@ -1458,7 +1394,7 @@
         "producers": [
           {
             "caller": "app.modules.filemanager.transhandler",
-            "line": 509
+            "count": 1
           }
         ]
       },
@@ -1467,7 +1403,7 @@
         "producers": [
           {
             "caller": "app.modules.filemanager.transhandler",
-            "line": 1329
+            "count": 1
           }
         ]
       },
@@ -1476,7 +1412,7 @@
         "producers": [
           {
             "caller": "app.modules.filemanager.transhandler",
-            "line": 1308
+            "count": 1
           }
         ]
       },
@@ -1485,7 +1421,7 @@
         "producers": [
           {
             "caller": "app.workflow.actions.send_event",
-            "line": 46
+            "count": 1
           }
         ]
       },
@@ -1494,7 +1430,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 870
+            "count": 1
           }
         ]
       },
@@ -1503,7 +1439,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 396
+            "count": 1
           }
         ]
       },
@@ -1512,7 +1448,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 275
+            "count": 1
           }
         ]
       },
@@ -1520,17 +1456,17 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 442
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.agent.tools.impl.run_slash_command",
-            "line": 90
+            "count": 1
           },
           {
             "caller": "app.chain.message",
-            "line": 443
+            "count": 1
           }
         ]
       },
@@ -1538,15 +1474,15 @@
         "consumers": [
           {
             "caller": "app.runtime.extensions.module_manager",
-            "line": 69
+            "count": 1
           },
           {
             "caller": "app.runtime.reload",
-            "line": 81
+            "count": 1
           },
           {
             "caller": "app.startup.agent_initializer",
-            "line": 107
+            "count": 1
           }
         ],
         "producers": []
@@ -1556,7 +1492,7 @@
         "producers": [
           {
             "caller": "app.chain.download",
-            "line": 1244
+            "count": 1
           }
         ]
       },
@@ -1565,7 +1501,7 @@
         "producers": [
           {
             "caller": "app.chain.download",
-            "line": 2089
+            "count": 1
           }
         ]
       },
@@ -1573,13 +1509,13 @@
         "consumers": [
           {
             "caller": "app.chain.download",
-            "line": 2073
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 370
+            "count": 1
           }
         ]
       },
@@ -1592,19 +1528,11 @@
         "producers": [
           {
             "caller": "app.application.messaging.plugin",
-            "line": 414
-          },
-          {
-            "caller": "app.application.messaging.plugin",
-            "line": 445
-          },
-          {
-            "caller": "app.application.messaging.plugin",
-            "line": 475
+            "count": 3
           },
           {
             "caller": "app.chain.message",
-            "line": 687
+            "count": 1
           }
         ]
       },
@@ -1612,17 +1540,13 @@
         "consumers": [
           {
             "caller": "app.chain.scraping",
-            "line": 597
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.chain._transfer",
-            "line": 464
-          },
-          {
-            "caller": "app.chain._transfer",
-            "line": 639
+            "count": 2
           }
         ]
       },
@@ -1630,7 +1554,7 @@
         "consumers": [
           {
             "caller": "app.command",
-            "line": 476
+            "count": 1
           }
         ],
         "producers": []
@@ -1639,7 +1563,7 @@
         "consumers": [
           {
             "caller": "app.api.endpoints.agent",
-            "line": 1337
+            "count": 1
           }
         ],
         "producers": []
@@ -1652,7 +1576,7 @@
         "consumers": [
           {
             "caller": "app.scheduler",
-            "line": 1148
+            "count": 1
           }
         ],
         "producers": []
@@ -1665,17 +1589,17 @@
         "consumers": [
           {
             "caller": "app.chain.search",
-            "line": 2864
+            "count": 1
           },
           {
             "caller": "app.chain.subscribe",
-            "line": 3044
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.api.deps",
-            "line": 216
+            "count": 1
           }
         ]
       },
@@ -1684,11 +1608,7 @@
         "producers": [
           {
             "caller": "app.chain.site",
-            "line": 75
-          },
-          {
-            "caller": "app.chain.site",
-            "line": 164
+            "count": 2
           }
         ]
       },
@@ -1696,29 +1616,21 @@
         "consumers": [
           {
             "caller": "app.chain.site",
-            "line": 587
-          },
-          {
-            "caller": "app.chain.site",
-            "line": 629
-          },
-          {
-            "caller": "app.chain.site",
-            "line": 652
+            "count": 3
           }
         ],
         "producers": [
           {
             "caller": "app.agent.tools.impl.update_site",
-            "line": 200
+            "count": 1
           },
           {
             "caller": "app.api.deps",
-            "line": 211
+            "count": 1
           },
           {
             "caller": "app.chain.site",
-            "line": 567
+            "count": 1
           }
         ]
       },
@@ -1727,11 +1639,7 @@
         "producers": [
           {
             "caller": "app.chain.subscribe",
-            "line": 1034
-          },
-          {
-            "caller": "app.chain.subscribe",
-            "line": 1238
+            "count": 2
           }
         ]
       },
@@ -1740,7 +1648,7 @@
         "producers": [
           {
             "caller": "app.chain.subscribe",
-            "line": 2862
+            "count": 1
           }
         ]
       },
@@ -1749,11 +1657,11 @@
         "producers": [
           {
             "caller": "app.agent.tools.impl.delete_subscribe",
-            "line": 70
+            "count": 1
           },
           {
             "caller": "app.api.deps",
-            "line": 87
+            "count": 1
           }
         ]
       },
@@ -1762,19 +1670,11 @@
         "producers": [
           {
             "caller": "app.agent.tools.impl.update_subscribe",
-            "line": 316
+            "count": 1
           },
           {
             "caller": "app.api.endpoints.subscribe",
-            "line": 296
-          },
-          {
-            "caller": "app.api.endpoints.subscribe",
-            "line": 329
-          },
-          {
-            "caller": "app.api.endpoints.subscribe",
-            "line": 389
+            "count": 3
           }
         ]
       },
@@ -1783,7 +1683,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 382
+            "count": 1
           }
         ]
       },
@@ -1792,7 +1692,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 261
+            "count": 1
           }
         ]
       },
@@ -1801,19 +1701,15 @@
         "producers": [
           {
             "caller": "app.chain",
-            "line": 137
-          },
-          {
-            "caller": "app.chain",
-            "line": 163
+            "count": 2
           },
           {
             "caller": "app.runtime.events",
-            "line": 114
+            "count": 1
           },
           {
             "caller": "app.scheduler",
-            "line": 768
+            "count": 1
           }
         ]
       },
@@ -1822,7 +1718,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 368
+            "count": 1
           }
         ]
       },
@@ -1831,7 +1727,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "line": 247
+            "count": 1
           }
         ]
       },
@@ -1840,7 +1736,7 @@
         "producers": [
           {
             "caller": "app.chain.message",
-            "line": 505
+            "count": 1
           }
         ]
       },
@@ -1849,7 +1745,7 @@
         "producers": [
           {
             "caller": "app.chain.webhook",
-            "line": 21
+            "count": 1
           }
         ]
       },
@@ -1857,13 +1753,13 @@
         "consumers": [
           {
             "caller": "app.chain.workflow",
-            "line": 1161
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.workflow",
-            "line": 379
+            "count": 1
           }
         ]
       }
@@ -1879,1728 +1775,1633 @@
       "anilist_credits": [
         {
           "caller": "app.chain.anilist",
-          "line": 95,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_discover": [
         {
           "caller": "app.chain.anilist",
-          "line": 77,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_info": [
         {
           "caller": "app.chain.anilist",
-          "line": 20,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_person_credits": [
         {
           "caller": "app.chain.anilist",
-          "line": 164,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_person_detail": [
         {
           "caller": "app.chain.anilist",
-          "line": 144,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_popular_this_season": [
         {
           "caller": "app.chain.anilist",
-          "line": 55,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_recommendations": [
         {
           "caller": "app.chain.anilist",
-          "line": 119,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "anilist_trending": [
         {
           "caller": "app.chain.anilist",
-          "line": 37,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "any_files": [
         {
           "caller": "app.chain.storage",
-          "line": 41,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "async_anilist_credits": [
         {
           "caller": "app.chain.anilist",
-          "line": 107,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_discover": [
         {
           "caller": "app.chain.anilist",
-          "line": 85,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_info": [
         {
           "caller": "app.chain.anilist",
-          "line": 29,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_person_credits": [
         {
           "caller": "app.chain.anilist",
-          "line": 176,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_person_detail": [
         {
           "caller": "app.chain.anilist",
-          "line": 152,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_popular_this_season": [
         {
           "caller": "app.chain.anilist",
-          "line": 67,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_recommendations": [
         {
           "caller": "app.chain.anilist",
-          "line": 131,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_anilist_trending": [
         {
           "caller": "app.chain.anilist",
-          "line": 45,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_calendar": [
         {
           "caller": "app.chain.bangumi",
-          "line": 65,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 560,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_credits": [
         {
           "caller": "app.chain.bangumi",
-          "line": 86,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_discover": [
         {
           "caller": "app.chain.bangumi",
-          "line": 71,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_info": [
         {
           "caller": "app.chain",
-          "line": 456,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.bangumi",
-          "line": 79,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_person_credits": [
         {
           "caller": "app.chain.bangumi",
-          "line": 107,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_person_detail": [
         {
           "caller": "app.chain.bangumi",
-          "line": 100,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_bangumi_recommend": [
         {
           "caller": "app.chain.bangumi",
-          "line": 93,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_discover": [
         {
           "caller": "app.chain.douban",
-          "line": 382,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 606,
-          "mode": "async"
-        },
-        {
-          "caller": "app.chain.recommend",
-          "line": 617,
+          "count": 2,
           "mode": "async"
         }
       ],
       "async_douban_info": [
         {
           "caller": "app.chain",
-          "line": 393,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_movie_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 411,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_movie_recommend": [
         {
           "caller": "app.chain.douban",
-          "line": 425,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_person_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 339,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_person_detail": [
         {
           "caller": "app.chain.douban",
-          "line": 331,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_tv_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 418,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_douban_tv_recommend": [
         {
           "caller": "app.chain.douban",
-          "line": 432,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_identify_music_by_fingerprint": [
         {
           "caller": "app.chain.acoustid",
-          "line": 26,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_match_doubaninfo": [
         {
           "caller": "app.chain",
-          "line": 266,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_match_music_album": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 283,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_match_tmdbinfo": [
         {
           "caller": "app.chain",
-          "line": 308,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_movie_hot": [
         {
           "caller": "app.chain.douban",
-          "line": 397,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 663,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_movie_showing": [
         {
           "caller": "app.chain.douban",
-          "line": 355,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 569,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_movie_top250": [
         {
           "caller": "app.chain.douban",
-          "line": 348,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 627,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_obtain_images": [
         {
           "caller": "app.chain",
-          "line": 330,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_recognize_media": [
         {
           "caller": "app.chain._recognition",
-          "line": 108,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.douban",
-          "line": 70,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.musicbrainz",
-          "line": 63,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_refresh_torrents": [
         {
           "caller": "app.chain",
-          "line": 688,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_search_collections": [
         {
           "caller": "app.chain",
-          "line": 562,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_search_medias": [
         {
           "caller": "app.chain",
-          "line": 510,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_search_persons": [
         {
           "caller": "app.chain",
-          "line": 536,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_search_subtitles": [
         {
           "caller": "app.chain",
-          "line": 646,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_search_torrents": [
         {
           "caller": "app.chain",
-          "line": 629,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_collection": [
         {
           "caller": "app.chain.tmdb",
-          "line": 218,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_discover": [
         {
           "caller": "app.chain.recommend",
-          "line": 498,
-          "mode": "async"
-        },
-        {
-          "caller": "app.chain.recommend",
-          "line": 526,
+          "count": 2,
           "mode": "async"
         },
         {
           "caller": "app.chain.tmdb",
-          "line": 194,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_episodes": [
         {
           "caller": "app.chain.tmdb",
-          "line": 242,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_group_seasons": [
         {
           "caller": "app.chain.tmdb",
-          "line": 232,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_info": [
         {
           "caller": "app.chain",
-          "line": 438,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_movie_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 279,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_movie_recommend": [
         {
           "caller": "app.chain.tmdb",
-          "line": 264,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_movie_similar": [
         {
           "caller": "app.chain.tmdb",
-          "line": 250,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_person_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 302,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_person_detail": [
         {
           "caller": "app.chain.tmdb",
-          "line": 294,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_seasons": [
         {
           "caller": "app.chain.tmdb",
-          "line": 225,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_trending": [
         {
           "caller": "app.chain.recommend",
-          "line": 547,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.tmdb",
-          "line": 211,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_tv_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 287,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_tv_recommend": [
         {
           "caller": "app.chain.tmdb",
-          "line": 271,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tmdb_tv_similar": [
         {
           "caller": "app.chain.tmdb",
-          "line": 257,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tv_animation": [
         {
           "caller": "app.chain.douban",
-          "line": 390,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 654,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tv_hot": [
         {
           "caller": "app.chain.douban",
-          "line": 404,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 672,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tv_weekly_chinese": [
         {
           "caller": "app.chain.douban",
-          "line": 362,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 636,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_tv_weekly_global": [
         {
           "caller": "app.chain.douban",
-          "line": 369,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.recommend",
-          "line": 645,
+          "count": 1,
           "mode": "async"
         }
       ],
       "async_update_recognize_cache": [
         {
           "caller": "app.chain._recognition",
-          "line": 78,
+          "count": 1,
           "mode": "async"
         }
       ],
       "bangumi_calendar": [
         {
           "caller": "app.chain.bangumi",
-          "line": 17,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_credits": [
         {
           "caller": "app.chain.bangumi",
-          "line": 38,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_discover": [
         {
           "caller": "app.chain.bangumi",
-          "line": 23,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_info": [
         {
           "caller": "app.chain",
-          "line": 448,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.bangumi",
-          "line": 31,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_person_credits": [
         {
           "caller": "app.chain.bangumi",
-          "line": 59,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_person_detail": [
         {
           "caller": "app.chain.bangumi",
-          "line": 52,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "bangumi_recommend": [
         {
           "caller": "app.chain.bangumi",
-          "line": 45,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "channel_manage": [
         {
           "caller": "app.chain.notification",
-          "line": 28,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "clear_cache": [
         {
           "caller": "app.chain",
-          "line": 1044,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "create_folder": [
         {
           "caller": "app.chain.storage",
-          "line": 47,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "delete_file": [
         {
           "caller": "app.chain.storage",
-          "line": 77,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "delete_message": [
         {
           "caller": "app.chain._messaging",
-          "line": 410,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_discover": [
         {
           "caller": "app.chain.douban",
-          "line": 277,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_info": [
         {
           "caller": "app.chain",
-          "line": 373,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_movie_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 303,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_movie_recommend": [
         {
           "caller": "app.chain.douban",
-          "line": 317,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_person_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 238,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_person_detail": [
         {
           "caller": "app.chain.douban",
-          "line": 230,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_tv_credits": [
         {
           "caller": "app.chain.douban",
-          "line": 310,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "douban_tv_recommend": [
         {
           "caller": "app.chain.douban",
-          "line": 324,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download": [
         {
           "caller": "app.chain",
-          "line": 733,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_added": [
         {
           "caller": "app.chain",
-          "line": 757,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_discord_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1412,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1742,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_feishu_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1446,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1734,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_feishu_image_to_data_url": [
         {
           "caller": "app.chain.message",
-          "line": 1553,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_file": [
         {
           "caller": "app.chain.storage",
-          "line": 61,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_qq_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1419,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1746,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_slack_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1405,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1738,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_slack_file_to_data_url": [
         {
           "caller": "app.chain.message",
-          "line": 1561,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1759,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_synologychat_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1435,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1754,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_telegram_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1378,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1384,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1699,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1704,
+          "count": 4,
           "mode": "sync"
         }
       ],
       "download_telegram_file_to_base64": [
         {
           "caller": "app.chain.message",
-          "line": 1531,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_vocechat_file_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1426,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1750,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "download_vocechat_image_to_data_url": [
         {
           "caller": "app.chain.message",
-          "line": 1569,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "download_wechat_image_to_data_url": [
         {
           "caller": "app.chain.message",
-          "line": 1545,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1716,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1721,
+          "count": 3,
           "mode": "sync"
         }
       ],
       "download_wechat_media_bytes": [
         {
           "caller": "app.chain.message",
-          "line": 1389,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1396,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1708,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1712,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain.message",
-          "line": 1730,
+          "count": 5,
           "mode": "sync"
         }
       ],
       "downloader_info": [
         {
           "caller": "app.chain.dashboard",
-          "line": 22,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "edit_message": [
         {
           "caller": "app.chain._messaging",
-          "line": 456,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "filter_torrents": [
         {
           "caller": "app.chain",
-          "line": 705,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "finalize_message": [
         {
           "caller": "app.chain._messaging",
-          "line": 488,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "get_file_item": [
         {
           "caller": "app.chain.storage",
-          "line": 101,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "get_folder": [
         {
           "caller": "app.chain.storage",
-          "line": 53,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "get_parent_item": [
         {
           "caller": "app.chain.storage",
-          "line": 107,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "get_search_page_size": [
         {
           "caller": "app.chain",
-          "line": 574,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "get_torrent_trackers": [
         {
           "caller": "app.chain",
-          "line": 951,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "identify_music_by_fingerprint": [
         {
           "caller": "app.chain.acoustid",
-          "line": 15,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "list_files": [
         {
           "caller": "app.chain.storage",
-          "line": 35,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "list_torrents": [
         {
           "caller": "app.chain",
-          "line": 779,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "load_category_config": [
         {
           "caller": "app.chain",
-          "line": 1020,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mark_message_processing_finished": [
         {
           "caller": "app.chain._messaging",
-          "line": 85,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mark_message_processing_started": [
         {
           "caller": "app.chain._messaging",
-          "line": 47,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "match_doubaninfo": [
         {
           "caller": "app.chain",
-          "line": 238,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "match_music_album": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 268,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "match_tmdbinfo": [
         {
           "caller": "app.chain",
-          "line": 290,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "media_category": [
         {
           "caller": "app.chain",
-          "line": 1014,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "media_exists": [
         {
           "caller": "app.chain",
-          "line": 981,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "media_files": [
         {
           "caller": "app.chain",
-          "line": 991,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "media_statistic": [
         {
           "caller": "app.chain.dashboard",
-          "line": 16,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.mediaserver",
-          "line": 163,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_image_cookies": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 269,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_iteminfo": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 177,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_items": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 139,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_items_count": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 150,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_latest": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 205,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_latest_images": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 218,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_librarys": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 92,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_play_url": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 243,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_playing": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 191,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_season_episode_ids": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 255,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "mediaserver_tv_episodes": [
         {
           "caller": "app.chain.mediaserver",
-          "line": 183,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "message_parser": [
         {
           "caller": "app.chain",
-          "line": 472,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "metadata_img": [
         {
           "caller": "app.chain",
-          "line": 1005,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.scraping",
-          "line": 573,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "metadata_nfo": [
         {
           "caller": "app.chain.scraping",
-          "line": 552,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "movie_hot": [
         {
           "caller": "app.chain.douban",
-          "line": 290,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "movie_showing": [
         {
           "caller": "app.chain.douban",
-          "line": 252,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "movie_top250": [
         {
           "caller": "app.chain.douban",
-          "line": 246,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "music_album": [
         {
           "caller": "app.chain.douban",
-          "line": 86,
-          "mode": "sync"
+          "count": 1,
+          "mode": "async"
         },
         {
           "caller": "app.chain.douban",
-          "line": 98,
-          "mode": "async"
-        },
-        {
-          "caller": "app.chain.musicbrainz",
-          "line": 79,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.musicbrainz",
-          "line": 91,
+          "count": 1,
           "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "music_album_related": [
         {
           "caller": "app.chain.douban",
-          "line": 114,
+          "count": 1,
           "mode": "async"
         },
         {
           "caller": "app.chain.musicbrainz",
-          "line": 107,
+          "count": 1,
           "mode": "async"
         }
       ],
       "music_artist": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 120,
+          "count": 1,
           "mode": "async"
         }
       ],
       "music_artist_albums": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 138,
+          "count": 1,
           "mode": "async"
         }
       ],
       "music_artist_related": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 157,
+          "count": 1,
           "mode": "async"
         }
       ],
       "music_cache_clear": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 303,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "music_cache_delete": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 298,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "music_cache_items": [
         {
           "caller": "app.chain.musicbrainz",
-          "line": 293,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "music_chart": [
         {
           "caller": "app.chain.listenbrainz",
-          "line": 34,
-          "mode": "sync"
+          "count": 1,
+          "mode": "async"
         },
         {
           "caller": "app.chain.listenbrainz",
-          "line": 51,
-          "mode": "async"
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "music_discover": [
         {
           "caller": "app.chain.douban",
-          "line": 132,
-          "mode": "sync"
+          "count": 1,
+          "mode": "async"
         },
         {
           "caller": "app.chain.douban",
-          "line": 154,
-          "mode": "async"
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "music_fresh_releases": [
         {
           "caller": "app.chain.listenbrainz",
-          "line": 70,
+          "count": 1,
           "mode": "async"
         }
       ],
       "music_lyrics": [
         {
           "caller": "app.chain.lrclib",
-          "line": 16,
-          "mode": "sync"
+          "count": 1,
+          "mode": "async"
         },
         {
           "caller": "app.chain.lrclib",
-          "line": 26,
-          "mode": "async"
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "obtain_images": [
         {
           "caller": "app.chain",
-          "line": 320,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "obtain_specific_image": [
         {
           "caller": "app.chain",
-          "line": 350,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "recognize_media": [
         {
           "caller": "app.chain._recognition",
-          "line": 99,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.douban",
-          "line": 50,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.musicbrainz",
-          "line": 43,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "recommend_name": [
         {
           "caller": "app.chain._transfer",
-          "line": 672,
-          "mode": "sync"
-        },
-        {
-          "caller": "app.chain._transfer",
-          "line": 679,
+          "count": 2,
           "mode": "sync"
         }
       ],
       "refresh_torrents": [
         {
           "caller": "app.chain",
-          "line": 667,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "refresh_userdata": [
         {
           "caller": "app.chain.site",
-          "line": 69,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "register_commands": [
         {
           "caller": "app.chain",
-          "line": 1032,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "remove_torrents": [
         {
           "caller": "app.chain",
-          "line": 861,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "rename_file": [
         {
           "caller": "app.chain.storage",
-          "line": 83,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "save_category_config": [
         {
           "caller": "app.chain",
-          "line": 1026,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "scheduler_job": [
         {
           "caller": "app.chain",
-          "line": 1038,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_collections": [
         {
           "caller": "app.chain",
-          "line": 549,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_medias": [
         {
           "caller": "app.chain",
-          "line": 497,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_music": [
         {
           "caller": "app.chain.douban",
-          "line": 19,
-          "mode": "sync"
+          "count": 1,
+          "mode": "async"
         },
         {
           "caller": "app.chain.douban",
-          "line": 33,
-          "mode": "async"
-        },
-        {
-          "caller": "app.chain.musicbrainz",
-          "line": 16,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.musicbrainz",
-          "line": 26,
+          "count": 1,
           "mode": "async"
+        },
+        {
+          "caller": "app.chain.musicbrainz",
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "search_persons": [
         {
           "caller": "app.chain",
-          "line": 523,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_subtitles": [
         {
           "caller": "app.chain",
-          "line": 610,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_torrents": [
         {
           "caller": "app.chain",
-          "line": 593,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "search_tvdb": [
         {
           "caller": "app.chain.tvdb",
-          "line": 12,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "send_direct_message": [
         {
           "caller": "app.chain._messaging",
-          "line": 475,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "set_torrents_tag": [
         {
           "caller": "app.chain",
-          "line": 900,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "site_subtitle_links": [
         {
           "caller": "app.chain.download",
-          "line": 571,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "snapshot_storage": [
         {
           "caller": "app.chain.storage",
-          "line": 120,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "start_torrents": [
         {
           "caller": "app.chain",
-          "line": 877,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "stop_torrents": [
         {
           "caller": "app.chain",
-          "line": 888,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "storage_manage": [
         {
           "caller": "app.chain.storage",
-          "line": 28,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_cache_clear": [
         {
           "caller": "app.chain.tmdb",
-          "line": 344,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_cache_delete": [
         {
           "caller": "app.chain.tmdb",
-          "line": 337,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_cache_items": [
         {
           "caller": "app.chain.tmdb",
-          "line": 330,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_collection": [
         {
           "caller": "app.chain.tmdb",
-          "line": 64,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_discover": [
         {
           "caller": "app.chain.tmdb",
-          "line": 40,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_episodes": [
         {
           "caller": "app.chain._transfer",
-          "line": 665,
+          "count": 1,
           "mode": "sync"
         },
         {
           "caller": "app.chain.tmdb",
-          "line": 87,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_group_seasons": [
         {
           "caller": "app.chain.tmdb",
-          "line": 78,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_info": [
         {
           "caller": "app.chain",
-          "line": 426,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_movie_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 123,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_movie_recommend": [
         {
           "caller": "app.chain.tmdb",
-          "line": 108,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_movie_similar": [
         {
           "caller": "app.chain.tmdb",
-          "line": 94,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_person_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 146,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_person_detail": [
         {
           "caller": "app.chain.tmdb",
-          "line": 138,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_seasons": [
         {
           "caller": "app.chain.tmdb",
-          "line": 71,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_trending": [
         {
           "caller": "app.chain.tmdb",
-          "line": 57,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_tv_credits": [
         {
           "caller": "app.chain.tmdb",
-          "line": 131,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_tv_recommend": [
         {
           "caller": "app.chain.tmdb",
-          "line": 115,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tmdb_tv_similar": [
         {
           "caller": "app.chain.tmdb",
-          "line": 101,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "torrent_files": [
         {
           "caller": "app.chain",
-          "line": 966,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "transfer": [
         {
           "caller": "app.chain",
-          "line": 822,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "transfer_completed": [
         {
           "caller": "app.chain",
-          "line": 846,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tv_animation": [
         {
           "caller": "app.chain.douban",
-          "line": 284,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tv_hot": [
         {
           "caller": "app.chain.douban",
-          "line": 296,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tv_weekly_chinese": [
         {
           "caller": "app.chain.douban",
-          "line": 258,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tv_weekly_global": [
         {
           "caller": "app.chain.douban",
-          "line": 264,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tvdb_info": [
         {
           "caller": "app.chain",
-          "line": 406,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "tvdb_slug": [
         {
           "caller": "app.chain",
-          "line": 414,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "update_recognize_cache": [
         {
           "caller": "app.chain._recognition",
-          "line": 62,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "update_torrent": [
         {
           "caller": "app.chain",
-          "line": 927,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "upload_file": [
         {
           "caller": "app.chain.storage",
-          "line": 71,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "user_authenticate": [
         {
           "caller": "app.chain.user",
-          "line": 156,
+          "count": 1,
           "mode": "sync"
         }
       ],
       "webhook_parser": [
         {
           "caller": "app.chain",
-          "line": 486,
+          "count": 1,
           "mode": "sync"
         }
       ]
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "sdk_exports": {
     "app.sdk": [],
     "app.sdk.browser": [

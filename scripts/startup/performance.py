@@ -322,6 +322,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def _display_path(path: Path) -> Path:
+    """优先返回仓库相对路径，便于 CLI 输出稳定可读。"""
     try:
         return path.relative_to(PROJECT_ROOT)
     except ValueError:

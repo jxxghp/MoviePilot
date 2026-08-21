@@ -71,6 +71,133 @@ def test_architecture_plugin_action_requires_repository(capsys):
     assert "必须指定 --plugin-repo" in capsys.readouterr().err
 
 
+def test_architecture_diagnostics_only_support_host_check(capsys):
+    """源码位置诊断不得与写操作或插件扫描混用。"""
+    with pytest.raises(SystemExit) as error:
+        architecture_baseline.parse_args(["--write-host", "--diagnostics"])
+
+    assert error.value.code == 2
+    assert "只能与 --check-host" in capsys.readouterr().err
+
+
+def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Path):
+    """旧 fixture 的行号变化不影响门禁，重复调用次数仍属于语义。"""
+    baseline_path = tmp_path / "runtime-contract-baseline.json"
+    old_value = {
+        "schema_version": 1,
+        "run_module": {
+            "method_count": 1,
+            "call_count": 2,
+            "dynamic_call_count": 0,
+            "methods": {
+                "search": [
+                    {"caller": "app.chain.search", "line": 10, "mode": "sync"},
+                    {"caller": "app.chain.search", "line": 11, "mode": "sync"},
+                ]
+            },
+            "dynamic_calls": [],
+        },
+        "events": {
+            "event_count": 1,
+            "producer_count": 1,
+            "consumer_count": 0,
+            "events": {
+                "EventType.NoticeMessage": {
+                    "producers": [{"caller": "app.chain.message", "line": 20}],
+                    "consumers": [],
+                }
+            },
+            "dynamic_producers": [],
+            "dynamic_consumers": [],
+        },
+        "sdk_exports": {},
+        "compat_manifest": {},
+    }
+    moved_value = json.loads(json.dumps(old_value))
+    moved_value["run_module"]["methods"]["search"][0]["line"] = 1000
+    moved_value["run_module"]["methods"]["search"][1]["line"] = 1001
+    moved_value["events"]["events"]["EventType.NoticeMessage"]["producers"][0][
+        "line"
+    ] = 2000
+
+    old_semantic = architecture_baseline.semantic_baseline(baseline_path, old_value)
+    moved_semantic = architecture_baseline.semantic_baseline(
+        baseline_path,
+        moved_value,
+    )
+
+    assert old_semantic == moved_semantic
+    assert old_semantic["run_module"]["methods"]["search"] == [
+        {"caller": "app.chain.search", "mode": "sync", "count": 2}
+    ]
+
+
+def test_plugin_provenance_does_not_participate_in_semantic_gate(tmp_path: Path):
+    """插件仓 revision 和源码摘要变化不应伪装成 ABI 变化。"""
+    baseline_path = tmp_path / "official-plugin-baseline.json"
+    first = {
+        "schema_version": 3,
+        "scope": {"repository": "MoviePilot-Plugins", "roots": ["plugins.v3"]},
+        "provenance": {
+            "head": "a" * 40,
+            "python_file_count": 1,
+            "source_sha256": "a" * 64,
+        },
+        "imports": {},
+        "hooks": {},
+        "api_routes": {},
+    }
+    second = json.loads(json.dumps(first))
+    second["provenance"] = {
+        "head": "b" * 40,
+        "python_file_count": 2,
+        "source_sha256": "b" * 64,
+    }
+
+    assert architecture_baseline.semantic_baseline(
+        baseline_path,
+        first,
+    ) == architecture_baseline.semantic_baseline(baseline_path, second)
+
+
+def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
+    """旧插件 fixture 应在内存中迁移，不能因 schema 排列变化误报 ABI。"""
+    baseline_path = tmp_path / "official-plugin-baseline.json"
+    old_value = {
+        "schema_version": 2,
+        "source": {
+            "repository": "MoviePilot-Plugins",
+            "head": "a" * 40,
+            "roots": ["plugins.v2", "plugins.v3"],
+            "python_file_count": 1,
+            "source_sha256": "a" * 64,
+        },
+        "imports": {"app.sdk.logging": {"file_count": 1, "files": ["x.py"]}},
+        "hooks": {},
+        "api_routes": {},
+    }
+    new_value = {
+        "schema_version": 3,
+        "scope": {
+            "repository": "MoviePilot-Plugins",
+            "roots": ["plugins.v2", "plugins.v3"],
+        },
+        "provenance": {
+            "head": "b" * 40,
+            "python_file_count": 2,
+            "source_sha256": "b" * 64,
+        },
+        "imports": old_value["imports"],
+        "hooks": {},
+        "api_routes": {},
+    }
+
+    assert architecture_baseline.semantic_baseline(
+        baseline_path,
+        old_value,
+    ) == architecture_baseline.semantic_baseline(baseline_path, new_value)
+
+
 def test_architecture_write_host_only_updates_host_files(
     tmp_path: Path,
     monkeypatch,

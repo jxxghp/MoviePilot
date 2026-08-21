@@ -41,9 +41,10 @@ def test_official_plugin_baseline_records_external_source():
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["source"]["repository"] == "MoviePilot-Plugins"
-    assert len(baseline["source"]["head"]) == 40
-    assert baseline["source"]["roots"] == ["plugins.v2", "plugins.v3"]
+    assert baseline["schema_version"] == 3
+    assert baseline["scope"]["repository"] == "MoviePilot-Plugins"
+    assert baseline["scope"]["roots"] == ["plugins.v2", "plugins.v3"]
+    assert len(baseline["provenance"]["head"]) == 40
     assert all(
         not path.startswith("app/plugins/")
         for contract in (*baseline["imports"].values(), *baseline["hooks"].values())
@@ -93,6 +94,15 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
         assert len(contract["samples_ms"]) == baseline["repeat"]
         assert contract["min_ms"] <= contract["median_ms"] <= contract["max_ms"]
         assert contract["loaded_module_count"] > 0
+
+
+def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
+    """运行契约 fixture 只保存稳定语义，源码位置必须按需诊断。"""
+    baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 2
+    assert '"line"' not in json.dumps(baseline)
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():

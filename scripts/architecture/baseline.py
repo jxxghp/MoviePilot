@@ -250,8 +250,11 @@ def collect_dependency_baseline() -> dict[str, Any]:
     }
 
 
-def collect_run_module_contracts() -> dict[str, Any]:
-    """收集字符串模块调度方法及其同步、异步调用位置。"""
+def _collect_run_module_locations() -> tuple[
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+]:
+    """扫描模块调度调用及其当前源码位置。"""
     calls: dict[str, list[dict[str, Any]]] = defaultdict(list)
     dynamic_calls: list[dict[str, Any]] = []
     for module_name, path in discover_modules().items():
@@ -274,18 +277,53 @@ def collect_run_module_contracts() -> dict[str, Any]:
                 calls[node.args[0].value].append(location)
             else:
                 dynamic_calls.append(location)
+    return calls, dynamic_calls
+
+
+def _aggregate_locations(
+    locations: list[dict[str, Any]],
+    fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """按稳定字段聚合调用位置，排除行号但保留调用次数。"""
+    counts: dict[tuple[Any, ...], int] = defaultdict(int)
+    for location in locations:
+        counts[tuple(location[field] for field in fields)] += 1
+    return [
+        {
+            **dict(zip(fields, values)),
+            "count": count,
+        }
+        for values, count in sorted(counts.items())
+    ]
+
+
+def collect_run_module_contracts() -> dict[str, Any]:
+    """收集不受源码行号变化影响的模块调度语义契约。"""
+    calls, dynamic_calls = _collect_run_module_locations()
     stable_calls = {
-        method: sorted(
-            locations,
-            key=lambda item: (item["caller"], item["line"], item["mode"]),
-        )
+        method: _aggregate_locations(locations, ("caller", "mode"))
         for method, locations in sorted(calls.items())
     }
     return {
         "method_count": len(stable_calls),
-        "call_count": sum(len(locations) for locations in stable_calls.values()),
+        "call_count": sum(len(locations) for locations in calls.values()),
         "dynamic_call_count": len(dynamic_calls),
         "methods": stable_calls,
+        "dynamic_calls": _aggregate_locations(dynamic_calls, ("caller", "mode")),
+    }
+
+
+def collect_run_module_diagnostics() -> dict[str, Any]:
+    """收集模块调度调用的当前源码位置，仅用于人工诊断。"""
+    calls, dynamic_calls = _collect_run_module_locations()
+    return {
+        "methods": {
+            method: sorted(
+                locations,
+                key=lambda item: (item["caller"], item["line"], item["mode"]),
+            )
+            for method, locations in sorted(calls.items())
+        },
         "dynamic_calls": sorted(
             dynamic_calls,
             key=lambda item: (item["caller"], item["line"], item["mode"]),
@@ -330,8 +368,14 @@ def _event_enum_members(enum_name: str) -> tuple[str, ...]:
     )
 
 
-def collect_event_contracts() -> dict[str, Any]:
-    """收集宿主事件枚举的生产者、消费者和动态调用位置。"""
+def _collect_event_locations() -> tuple[
+    list[str],
+    dict[str, list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    """扫描事件枚举及其生产、消费位置，供语义和诊断视图复用。"""
     event_members = _event_enum_members("EventType")
     chain_event_members = _event_enum_members("ChainEventType")
 
@@ -390,28 +434,70 @@ def collect_event_contracts() -> dict[str, Any]:
         *(f"EventType.{member}" for member in event_members),
         *(f"ChainEventType.{member}" for member in chain_event_members),
     ]
+    return (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    )
+
+
+def collect_event_contracts() -> dict[str, Any]:
+    """收集不受源码行号变化影响的宿主事件语义契约。"""
+    (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    ) = _collect_event_locations()
     contracts = {
         name: {
-            "producers": sorted(
+            "producers": _aggregate_locations(
                 producers.get(name, []),
-                key=lambda item: (item["caller"], item["line"]),
+                ("caller",),
             ),
-            "consumers": sorted(
+            "consumers": _aggregate_locations(
                 consumers.get(name, []),
-                key=lambda item: (item["caller"], item["line"]),
+                ("caller",),
             ),
         }
         for name in sorted(enum_names)
     }
     return {
         "event_count": len(contracts),
-        "producer_count": sum(
-            len(item["producers"]) for item in contracts.values()
-        ),
-        "consumer_count": sum(
-            len(item["consumers"]) for item in contracts.values()
-        ),
+        "producer_count": sum(len(items) for items in producers.values()),
+        "consumer_count": sum(len(items) for items in consumers.values()),
         "events": contracts,
+        "dynamic_producers": _aggregate_locations(dynamic_producers, ("caller",)),
+        "dynamic_consumers": _aggregate_locations(dynamic_consumers, ("caller",)),
+    }
+
+
+def collect_event_diagnostics() -> dict[str, Any]:
+    """收集事件生产与消费的当前源码位置，仅用于人工诊断。"""
+    (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    ) = _collect_event_locations()
+    return {
+        "events": {
+            name: {
+                "producers": sorted(
+                    producers.get(name, []),
+                    key=lambda item: (item["caller"], item["line"]),
+                ),
+                "consumers": sorted(
+                    consumers.get(name, []),
+                    key=lambda item: (item["caller"], item["line"]),
+                ),
+            }
+            for name in sorted(enum_names)
+        },
         "dynamic_producers": sorted(
             dynamic_producers,
             key=lambda item: (item["caller"], item["line"]),
@@ -503,11 +589,19 @@ def collect_compat_manifest() -> dict[str, Any]:
 def collect_runtime_baseline() -> dict[str, Any]:
     """生成模块调度、SDK 和兼容层公开契约基线。"""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_module": collect_run_module_contracts(),
         "events": collect_event_contracts(),
         "sdk_exports": collect_sdk_exports(),
         "compat_manifest": collect_compat_manifest(),
+    }
+
+
+def collect_runtime_diagnostics() -> dict[str, Any]:
+    """生成带当前源码行号的运行契约诊断视图，不写入语义 fixture。"""
+    return {
+        "run_module": collect_run_module_diagnostics(),
+        "events": collect_event_diagnostics(),
     }
 
 
@@ -633,11 +727,13 @@ def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
             if hook in defined_names:
                 hook_files[hook].add(relative)
     return {
-        "schema_version": 2,
-        "source": {
+        "schema_version": 3,
+        "scope": {
             "repository": "MoviePilot-Plugins",
-            "head": git_head(plugin_repo),
             "roots": [root.name for root in roots],
+        },
+        "provenance": {
+            "head": git_head(plugin_repo),
             "python_file_count": len(paths),
             "source_sha256": digest.hexdigest(),
         },
@@ -669,10 +765,101 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def _display_path(path: Path) -> Path:
+    """优先返回仓库相对路径，便于 CLI 输出稳定可读。"""
     try:
         return path.relative_to(PROJECT_ROOT)
     except ValueError:
         return path
+
+
+def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
+    """把包含源码行号的 v1 运行契约转换为稳定语义结构。"""
+    if value.get("schema_version") != 1:
+        return value
+    run_module = value["run_module"]
+    events = value["events"]
+    return {
+        "schema_version": 2,
+        "run_module": {
+            **{
+                key: run_module[key]
+                for key in ("method_count", "call_count", "dynamic_call_count")
+            },
+            "methods": {
+                method: _aggregate_locations(locations, ("caller", "mode"))
+                for method, locations in run_module["methods"].items()
+            },
+            "dynamic_calls": _aggregate_locations(
+                run_module["dynamic_calls"],
+                ("caller", "mode"),
+            ),
+        },
+        "events": {
+            **{
+                key: events[key]
+                for key in ("event_count", "producer_count", "consumer_count")
+            },
+            "events": {
+                event_name: {
+                    "producers": _aggregate_locations(
+                        contract["producers"],
+                        ("caller",),
+                    ),
+                    "consumers": _aggregate_locations(
+                        contract["consumers"],
+                        ("caller",),
+                    ),
+                }
+                for event_name, contract in events["events"].items()
+            },
+            "dynamic_producers": _aggregate_locations(
+                events["dynamic_producers"],
+                ("caller",),
+            ),
+            "dynamic_consumers": _aggregate_locations(
+                events["dynamic_consumers"],
+                ("caller",),
+            ),
+        },
+        "sdk_exports": value["sdk_exports"],
+        "compat_manifest": value["compat_manifest"],
+    }
+
+
+def _migrate_plugin_baseline(value: dict[str, Any]) -> dict[str, Any]:
+    """把来源信息混排的 v2 插件基线转换为 scope/provenance 结构。"""
+    if value.get("schema_version") != 2:
+        return value
+    source = value["source"]
+    return {
+        "schema_version": 3,
+        "scope": {
+            "repository": source["repository"],
+            "roots": source["roots"],
+        },
+        "provenance": {
+            "head": source["head"],
+            "python_file_count": source["python_file_count"],
+            "source_sha256": source["source_sha256"],
+        },
+        "imports": value["imports"],
+        "hooks": value["hooks"],
+        "api_routes": value["api_routes"],
+    }
+
+
+def semantic_baseline(path: Path, value: dict[str, Any]) -> dict[str, Any]:
+    """返回参与门禁比较的稳定语义视图，并兼容读取旧 fixture。"""
+    if path.name == RUNTIME_BASELINE_PATH.name:
+        return _migrate_runtime_baseline(value)
+    if path.name == PLUGIN_BASELINE_PATH.name:
+        migrated = _migrate_plugin_baseline(value)
+        return {
+            key: item
+            for key, item in migrated.items()
+            if key != "provenance"
+        }
+    return value
 
 
 def check_json(
@@ -683,7 +870,14 @@ def check_json(
 ) -> bool:
     """比较当前扫描结果和已提交基线并输出限定范围的更新提示。"""
     expected = json.loads(path.read_text(encoding="utf-8"))
-    if expected == actual:
+    expected_semantic = semantic_baseline(path, expected)
+    actual_semantic = semantic_baseline(path, actual)
+    if expected_semantic == actual_semantic:
+        if expected != actual:
+            print(
+                f"基线语义未变化，但 schema/provenance 已变化：{_display_path(path)}",
+                file=sys.stderr,
+            )
         return True
     print(
         f"架构基线已变化：{_display_path(path)}；"
@@ -713,6 +907,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         type=Path,
         help="官方插件操作所需的独立 MoviePilot-Plugins 仓路径",
     )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="随宿主检查打印当前运行契约源码位置",
+    )
     args = parser.parse_args(argv)
     if args.check or args.write:
         if not args.scope:
@@ -724,11 +923,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
             file=sys.stderr,
         )
         setattr(args, f"{'check' if args.check else 'write'}_{args.scope}", True)
+    elif args.scope:
+        parser.error("--scope 只能与旧 --check/--write 一起使用")
     plugin_action = args.check_plugins or args.write_plugins
     if plugin_action and not args.plugin_repo:
         parser.error("插件基线操作必须指定 --plugin-repo")
     if not plugin_action and args.plugin_repo:
         parser.error("--plugin-repo 只能用于插件基线操作")
+    if args.diagnostics and not args.check_host:
+        parser.error("--diagnostics 只能与 --check-host 一起使用")
     return args
 
 
@@ -763,6 +966,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         check_json(path, baseline, write_hint=write_hint)
         for path, baseline in baselines
     ]
+    if args.diagnostics:
+        print(json.dumps(collect_runtime_diagnostics(), ensure_ascii=False, indent=2))
     return 0 if all(checks) else 1
 
 
