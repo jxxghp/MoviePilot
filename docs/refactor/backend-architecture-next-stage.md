@@ -729,6 +729,21 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
 - 66 个订阅/调度专项测试和 40 个数据库、迁移、Session/outbox 测试通过（1 个环境条件 skip）；
   fresh schema 先 create_all 再升级与重复迁移均保持幂等。
 
+**扩展实施记录（2026-08-22）**：
+
+- 宿主自有的 `SubscribeModified`、`SubscribeDeleted` 生产路径已扩展到同一 outbox：订阅行更新/删除与
+  version 1 intent 使用同一 `AsyncSession`、UoW 和 commit；即时广播失败时 intent 保持 pending，恢复
+  dispatcher 分别按 `subscribe.modified`、`subscribe.deleted` topic 重放。
+- API、Agent 更新/删除工具以及按媒体身份批量删除均复用请求级或独占事务作用域。API 中保留的
+  `event_published=False` 分支只服务测试替身和旧依赖注入，不是正式装配路径；正式 `HostRuntime`
+  同时提供订阅 repository、history repository、transaction 与 outbox factory。
+- `SubscribeAddedEventData`、`SubscribeModifiedEventData`、`SubscribeDeletedEventData` 已进入 Event Contract；
+  对插件仍投递原有 dict 字段，只新增可选 `idempotency_key`，不把 Pydantic 实例传给插件。
+- 保证边界只覆盖主仓可追踪的宿主生产者。运行时安装在 `app/plugins/**` 的第三方插件未被主仓改写；
+  插件若自行直接发送同名事件，该发送仍由插件负责，无法与插件自己的数据库写入自动组成原子事务。
+- 订阅外部统计上报仍是 post-commit 副作用，不在事件 intent 的重放 handler 中；因此当前可以宣称三种
+  订阅事件具备宿主级 at-least-once 恢复，但不能宣称订阅通知和所有外部上报均已 durable。
+
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
 #### ARCH-252：Scheduler 拆成声明、执行和状态

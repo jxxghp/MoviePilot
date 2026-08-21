@@ -6,7 +6,18 @@ from typing import cast
 from fastapi import Depends, Request
 
 from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
-from app.startup.context import AgentChatRuntime, HostRuntime
+from app.application.outbox import AsyncOutboxTransaction
+from app.application.subscription.delete import SubscribeDeletionRepository
+from app.application.subscription.identity import SubscribeIdentityDeletionRepository
+from app.application.subscription.mutation import (
+    SubscriptionHistoryMutationRepository,
+    SubscriptionMutationRepository,
+)
+from app.startup.context import (
+    AgentChatRuntime,
+    HostRuntime,
+    SubscriptionRuntime,
+)
 
 
 def get_host_runtime(request: Request) -> HostRuntime:
@@ -46,3 +57,54 @@ def get_agent_chat_transaction(
 ) -> AsyncUnitOfWork:
     """构造绑定当前请求会话的 Agent 会话事务端口。"""
     return cast(AsyncUnitOfWork, runtime.transaction(session))
+
+
+def get_subscription_runtime(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> SubscriptionRuntime:
+    """从完整宿主运行时收窄到订阅写事务能力。"""
+    return runtime.subscription
+
+
+async def get_subscription_session(
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> AsyncGenerator[object, None]:
+    """从订阅运行时生成请求独占的异步会话。"""
+    async for session in runtime.async_session():
+        yield session
+
+
+def get_subscription_repository(
+    session: object = Depends(get_subscription_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> (
+    SubscriptionMutationRepository
+    | SubscribeDeletionRepository
+    | SubscribeIdentityDeletionRepository
+):
+    """构造绑定当前请求会话的订阅仓储。"""
+    return runtime.repository(session)
+
+
+def get_subscription_history_repository(
+    session: object = Depends(get_subscription_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> SubscriptionHistoryMutationRepository:
+    """构造绑定当前请求会话的订阅历史仓储。"""
+    return runtime.history_repository(session)
+
+
+def get_subscription_transaction(
+    session: object = Depends(get_subscription_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> AsyncUnitOfWork:
+    """构造绑定当前订阅请求会话的异步事务端口。"""
+    return cast(AsyncUnitOfWork, runtime.transaction(session))
+
+
+def get_subscription_outbox(
+    session: object = Depends(get_subscription_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> AsyncOutboxTransaction:
+    """构造与订阅写入共享请求会话的 outbox 端口。"""
+    return runtime.outbox(session)

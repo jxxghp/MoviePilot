@@ -54,6 +54,8 @@ class EventContract:
 _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     EventType.ConfigChanged: event_schemas.ConfigChangeEventData,
     EventType.AgentTokensUsage: event_schemas.AgentTokensUsageEventData,
+    EventType.SubscribeAdded: event_schemas.SubscribeAddedEventData,
+    EventType.SubscribeDeleted: event_schemas.SubscribeDeletedEventData,
     EventType.SubscribeModified: event_schemas.SubscribeModifiedEventData,
     ChainEventType.PluginDataReset: event_schemas.PluginDataResetEventData,
     ChainEventType.AuthVerification: event_schemas.AuthCredentials,

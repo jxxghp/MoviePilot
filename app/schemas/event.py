@@ -680,6 +680,7 @@ class SubscribeModifiedEventData(BaseEventData):
     subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="更新后订阅快照")
     scene: str = Field(default="update", description="触发场景：update/status/reset/agent_update")
     fields: List[str] = Field(default_factory=list, description="真实变更字段")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
     @model_validator(mode="after")
     def compute_fields(self):
@@ -700,13 +701,33 @@ class SubscribeModifiedEventData(BaseEventData):
         """
         输出公开事件 payload，避免内部属性被未来扩展意外暴露。
         """
-        return {
+        payload = {
             "subscribe_id": self.subscribe_id,
             "old_subscribe_info": self.old_subscribe_info,
             "subscribe_info": self.subscribe_info,
             "scene": self.scene,
             "fields": list(self.fields),
         }
+        if self.idempotency_key:
+            payload["idempotency_key"] = self.idempotency_key
+        return payload
+
+
+class SubscribeAddedEventData(BaseEventData):
+    """SubscribeAdded 广播事件的可恢复公开 payload。"""
+
+    subscribe_id: int = Field(description="订阅 ID")
+    username: Optional[str] = Field(default=None, description="发起订阅的用户")
+    mediainfo: Dict[str, Any] = Field(default_factory=dict, description="媒体信息快照")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
+
+
+class SubscribeDeletedEventData(BaseEventData):
+    """SubscribeDeleted 广播事件的可恢复公开 payload。"""
+
+    subscribe_id: int = Field(description="订阅 ID")
+    subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="删除前订阅快照")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 
 class SubscribeCompletionCheckEventData(ChainEventData):

@@ -19,6 +19,10 @@ MoviePilot 保持模块化单体，不把所有后台动作迁到分布式队列
 `durable-required` 是目标语义，不代表当前实现已经 durable。ARCH-251 前，Event Registry 中标记该值的
 事件仍应在风险报告中说明崩溃窗口。
 
+截至 2026-08-22，宿主正式装配的 `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted` 广播已由
+业务事务内的 outbox intent 提供 at-least-once 恢复；payload 保持插件 dict ABI，并增加可选幂等键。
+这不覆盖第三方插件自行发送的裸事件，也不代表订阅通知和外部统计上报已经全部 durable。
+
 ## Event 映射
 
 Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同语义分组列出每个事件，不省略事件名。
@@ -93,5 +97,6 @@ pending 状态交由下次启动，不以取消异常写成成功。
 ## 验证与演进
 
 - Event Registry 的 `delivery` 字段与本 ADR 同步进入 runtime baseline。
-- ARCH-251 只实现一个 E2 pilot，并通过 commit 后崩溃、重复 claim、并发 claim 和 dead-letter 测试。
+- ARCH-251 从一个 E2 pilot 扩展到三种订阅生命周期事件，并通过 commit 后崩溃、重复 claim、并发 claim
+  和 dead-letter 测试；下载与整理结果事件仍需逐条迁移。
 - ARCH-252 将 Scheduler 的定义、触发和执行状态拆分，但不提升不需要 durable 的 E0 信号。

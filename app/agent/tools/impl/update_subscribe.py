@@ -7,11 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.events import eventmanager
-from app.application.agentdata import SubscribePort as SubscribeOper
+from app.application.subscription.mutation import (
+    SubscriptionActor,
+    get_subscription_mutation_scope,
+)
 from app.runtime.log import logger
-from app.schemas.event import SubscribeModifiedEventData
-from app.schemas.types import EventType, media_type_to_agent
+from app.schemas.types import media_type_to_agent
 
 
 class UpdateSubscribeInput(BaseModel):
@@ -172,8 +173,9 @@ class UpdateSubscribeTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: subscribe_id={subscribe_id}")
 
         try:
-            subscribe_oper = SubscribeOper()
-            subscribe = await subscribe_oper.async_get(subscribe_id)
+            actor = SubscriptionActor(name="agent", is_superuser=True)
+            async with get_subscription_mutation_scope() as mutation:
+                subscribe = await mutation.get_accessible(subscribe_id, actor)
             if not subscribe:
                 return json.dumps(
                     {"success": False, "message": f"订阅不存在: {subscribe_id}"},
@@ -205,9 +207,6 @@ class UpdateSubscribeTool(MoviePilotTool):
                     {"success": False, "message": "音质等级、音频格式和音频技术参数仅用于音乐订阅"},
                     ensure_ascii=False,
                 )
-
-            # 保存旧数据用于事件
-            old_subscribe_dict = subscribe.to_dict()
 
             # 构建更新字典
             subscribe_dict = {}
@@ -306,24 +305,21 @@ class UpdateSubscribeTool(MoviePilotTool):
                     ensure_ascii=False,
                 )
 
-            # 更新订阅
-            await subscribe_oper.async_update(subscribe_id, subscribe_dict)
-
-            # 重新获取更新后的订阅数据
-            updated_subscribe = await subscribe_oper.async_get(subscribe_id)
-
-            # 发送订阅调整事件
-            await eventmanager.async_send_event(
-                EventType.SubscribeModified,
-                SubscribeModifiedEventData(
-                    subscribe_id=subscribe_id,
-                    old_subscribe_info=old_subscribe_dict,
-                    subscribe_info=updated_subscribe.to_dict()
-                    if updated_subscribe
-                    else {},
+            # Agent 工具没有 FastAPI 请求会话，由组合根提供一次独占事务作用域；
+            # 更新和 durable intent 必须共享同一 AsyncSession。
+            async with get_subscription_mutation_scope() as mutation:
+                change = await mutation.update(
+                    subscribe_id,
+                    subscribe_dict,
+                    actor,
                     scene="agent_update",
-                ).to_dict(),
-            )
+                )
+            if not change:
+                return json.dumps(
+                    {"success": False, "message": f"订阅不存在: {subscribe_id}"},
+                    ensure_ascii=False,
+                )
+            updated_subscribe = change.new
 
             # 构建返回结果
             result = {
@@ -335,23 +331,23 @@ class UpdateSubscribeTool(MoviePilotTool):
 
             if updated_subscribe:
                 result["subscribe"] = {
-                    "id": updated_subscribe.id,
-                    "name": updated_subscribe.name,
-                    "year": updated_subscribe.year,
-                    "type": media_type_to_agent(updated_subscribe.type),
-                    "music_type": updated_subscribe.music_type,
-                    "total_tracks": updated_subscribe.total_tracks,
-                    "media_source": updated_subscribe.media_source,
-                    "media_id": updated_subscribe.media_id,
-                    "season": updated_subscribe.season,
-                    "state": updated_subscribe.state,
-                    "total_episode": updated_subscribe.total_episode,
-                    "manual_total_episode": updated_subscribe.manual_total_episode,
-                    "lack_episode": updated_subscribe.lack_episode,
-                    "start_episode": updated_subscribe.start_episode,
-                    "quality": updated_subscribe.quality,
-                    "resolution": updated_subscribe.resolution,
-                    "effect": updated_subscribe.effect,
+                    "id": updated_subscribe.get("id"),
+                    "name": updated_subscribe.get("name"),
+                    "year": updated_subscribe.get("year"),
+                    "type": media_type_to_agent(updated_subscribe.get("type")),
+                    "music_type": updated_subscribe.get("music_type"),
+                    "total_tracks": updated_subscribe.get("total_tracks"),
+                    "media_source": updated_subscribe.get("media_source"),
+                    "media_id": updated_subscribe.get("media_id"),
+                    "season": updated_subscribe.get("season"),
+                    "state": updated_subscribe.get("state"),
+                    "total_episode": updated_subscribe.get("total_episode"),
+                    "manual_total_episode": updated_subscribe.get("manual_total_episode"),
+                    "lack_episode": updated_subscribe.get("lack_episode"),
+                    "start_episode": updated_subscribe.get("start_episode"),
+                    "quality": updated_subscribe.get("quality"),
+                    "resolution": updated_subscribe.get("resolution"),
+                    "effect": updated_subscribe.get("effect"),
                 }
 
             return json.dumps(result, ensure_ascii=False, indent=2)

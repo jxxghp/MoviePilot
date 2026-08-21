@@ -1581,10 +1581,10 @@
     "EventType.SubscribeAdded": {
       "delivery": "durable_required",
       "error_behavior": "notify",
-      "legacy_reason": "现有插件 payload 尚未收敛为稳定 model，保留原始 dict ABI",
+      "legacy_reason": null,
       "mode": "broadcast",
       "ordering": "priority_queue",
-      "payload_contract": "legacy_dict",
+      "payload_contract": "SubscribeAddedEventData",
       "sensitive_fields": [],
       "visibility": "plugin_public"
     },
@@ -1601,10 +1601,10 @@
     "EventType.SubscribeDeleted": {
       "delivery": "durable_required",
       "error_behavior": "notify",
-      "legacy_reason": "现有插件 payload 尚未收敛为稳定 model，保留原始 dict ABI",
+      "legacy_reason": null,
       "mode": "broadcast",
       "ordering": "priority_queue",
-      "payload_contract": "legacy_dict",
+      "payload_contract": "SubscribeDeletedEventData",
       "sensitive_fields": [],
       "visibility": "plugin_public"
     },
@@ -1958,11 +1958,11 @@
       },
       "ChainEventType.WorkflowExecution": {
         "consumers": [],
-          "producers": [
-            {
-              "caller": "app.workflow.actions.send_event",
-              "count": 1
-            }
+        "producers": [
+          {
+            "caller": "app.workflow.actions.send_event",
+            "count": 1
+          }
         ]
       },
       "EventType.AgentTokensUsage": {
@@ -2200,11 +2200,15 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.agent.tools.impl.delete_subscribe",
+            "caller": "app.api.dependencies.subscription",
             "count": 1
           },
           {
-            "caller": "app.api.dependencies.subscription",
+            "caller": "app.startup.modules_initializer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.subscription",
             "count": 1
           }
         ]
@@ -2213,12 +2217,20 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.agent.tools.impl.update_subscribe",
+            "caller": "app.api.dependencies.subscription",
             "count": 1
           },
           {
             "caller": "app.api.endpoints.subscribe",
             "count": 3
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.subscription",
+            "count": 1
           }
         ]
       },
@@ -2308,7 +2320,7 @@
         ]
       }
     },
-    "producer_count": 67
+    "producer_count": 70
   },
   "module_method_specs": {
     "download_file": {

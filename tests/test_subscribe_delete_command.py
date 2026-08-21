@@ -50,6 +50,25 @@ class _UnitOfWork:
         self.calls.append(("rollback",))
 
 
+class _Outbox:
+    """记录订阅删除 intent 暂存和收口顺序的 outbox 替身。"""
+
+    def __init__(self, calls, stage_error=None):
+        """保存共享调用序列与可选暂存异常。"""
+        self.calls = calls
+        self.stage_error = stage_error
+
+    async def stage(self, intent, _now):
+        """记录 intent，并按需模拟持久化失败。"""
+        self.calls.append(("outbox_stage", intent))
+        if self.stage_error:
+            raise self.stage_error
+
+    async def complete_by_event_key(self, event_key, _completed_at):
+        """记录即时事件成功后的 intent 收口。"""
+        self.calls.append(("outbox_complete", event_key))
+
+
 def _candidate(username="alice"):
     """构造带完整事件身份字段的订阅删除候选。"""
     return SubscribeDeletionCandidate(
@@ -66,11 +85,18 @@ def _candidate(username="alice"):
     )
 
 
-def _command(candidate, calls, commit_error=None, event_error=None, report_error=None):
+def _command(
+    candidate,
+    calls,
+    commit_error=None,
+    event_error=None,
+    report_error=None,
+    outbox=None,
+):
     """构造可观察事件与上报失败的订阅删除用例。"""
-    async def publish(subscribe_id, subscribe_info):
+    async def publish(payload):
         """记录删除事件并按需失败。"""
-        calls.append(("event", subscribe_id, subscribe_info))
+        calls.append(("event", payload["subscribe_id"], payload))
         if event_error:
             raise event_error
 
@@ -85,6 +111,7 @@ def _command(candidate, calls, commit_error=None, event_error=None, report_error
         unit_of_work=_UnitOfWork(calls, commit_error),
         publish_deleted=publish,
         report_deleted=report,
+        outbox=outbox,
     )
 
 
@@ -101,12 +128,9 @@ async def test_owner_delete_commits_before_event_and_report():
 
     assert deleted is True
     assert [call[0] for call in calls] == ["get", "delete", "commit", "event", "report"]
-    assert calls[3][2] == _candidate().event_payload
-    assert calls[4][1] == {
-        "media_source": "tmdb",
-        "media_id": "123",
-        "season": 2,
-    }
+    assert calls[3][2]["subscribe_info"] == _candidate().event_payload
+    assert calls[3][2]["idempotency_key"].startswith("subscribe.deleted:7:")
+    assert calls[4][1] == _candidate().event_payload
 
 
 @pytest.mark.asyncio
@@ -183,6 +207,56 @@ async def test_report_failure_happens_after_commit_and_event():
         )
 
     assert [call[0] for call in calls] == ["get", "delete", "commit", "event", "report"]
+
+
+@pytest.mark.asyncio
+async def test_delete_stages_outbox_before_commit_and_completes_after_event():
+    """订阅删除、intent 与即时事件必须按原子提交和成功收口顺序执行。"""
+    calls = []
+    command = _command(_candidate(), calls, outbox=_Outbox(calls))
+
+    assert await command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
+
+    assert [call[0] for call in calls] == [
+        "get",
+        "delete",
+        "outbox_stage",
+        "commit",
+        "event",
+        "outbox_complete",
+        "report",
+    ]
+    intent = calls[2][1]
+    assert intent.topic == "subscribe.deleted"
+    assert intent.event_key == calls[4][2]["idempotency_key"]
+    assert calls[5][1] == intent.event_key
+
+
+@pytest.mark.asyncio
+async def test_delete_outbox_stage_failure_rolls_back_business_delete():
+    """订阅删除 intent 无法暂存时不得提交业务删除。"""
+    calls = []
+    command = _command(
+        _candidate(),
+        calls,
+        outbox=_Outbox(calls, stage_error=RuntimeError("outbox failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="outbox failed"):
+        await command.execute(
+            7,
+            SubscribeDeletionActor(username="alice", is_superuser=False),
+        )
+
+    assert [call[0] for call in calls] == [
+        "get",
+        "delete",
+        "outbox_stage",
+        "rollback",
+    ]
 
 
 @pytest.mark.asyncio

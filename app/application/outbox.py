@@ -53,6 +53,20 @@ class OutboxRepository(Protocol):
         """记录有限退避或 dead-letter 终态。"""
 
 
+class AsyncOutboxTransaction(Protocol):
+    """异步业务事务暂存并收口 durable intent 的最小端口。"""
+
+    async def stage(self, intent: OutboxIntent, now: datetime) -> None:
+        """把 intent 加入调用方当前事务，但不自行提交。"""
+
+    async def complete_by_event_key(
+        self,
+        event_key: str,
+        completed_at: datetime,
+    ) -> None:
+        """即时投递成功后按稳定幂等键标记 intent 完成。"""
+
+
 class OutboxDispatcher:
     """认领并派发 outbox，按 event key 依赖 handler 幂等。"""
 

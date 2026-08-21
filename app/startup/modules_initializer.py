@@ -55,7 +55,7 @@ from app.application.security.userconfig import (
 )
 from app.application.history import configure_transfer_history_provider
 from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
-from app.startup.outbox import SqlAlchemyOutboxRepository
+from app.startup.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
@@ -103,8 +103,11 @@ from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
 )
-from app.startup.subscription import TransactionalSubscribeWriter
-from app.startup.context import AgentChatRuntime, HostRuntime
+from app.startup.subscription import (
+    TransactionalSubscribeWriter,
+    configure_transactional_subscription_scopes,
+)
+from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
@@ -205,7 +208,15 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             "subscribe.added": lambda message: EventManager().send_event(
                 EventType.SubscribeAdded,
                 message.payload,
-            )
+            ),
+            "subscribe.modified": lambda message: EventManager().send_event(
+                EventType.SubscribeModified,
+                message.payload,
+            ),
+            "subscribe.deleted": lambda message: EventManager().send_event(
+                EventType.SubscribeDeleted,
+                message.payload,
+            ),
         },
         close=session.close,
     )
@@ -455,6 +466,13 @@ async def init_modules() -> HostRuntime:
             repository=AgentChatOper,
             transaction=SqlAlchemyAsyncUnitOfWork,
         ),
+        subscription=SubscriptionRuntime(
+            async_session=get_async_db,
+            repository=SubscribeOper,
+            history_repository=SubscribeHistoryOper,
+            transaction=SqlAlchemyAsyncUnitOfWork,
+            outbox=SqlAlchemyAsyncOutboxStager,
+        ),
         compatibility_api_data=api_data,
     )
     configure_api_data_runtime(host_runtime.compatibility_api_data)
@@ -515,6 +533,7 @@ async def init_modules() -> HostRuntime:
             async_session=async_session_scope,
         )
     )
+    configure_transactional_subscription_scopes()
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。

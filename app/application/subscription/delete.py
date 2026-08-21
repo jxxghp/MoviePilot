@@ -1,7 +1,13 @@
 """订阅删除应用用例及其依赖端口。"""
 
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Mapping, Protocol
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable, Mapping, Protocol, cast
+from uuid import uuid4
+
+from app.application.outbox import AsyncOutboxTransaction, OutboxIntent
+from app.schemas.event import SubscribeDeletedEventData
 
 
 @dataclass(frozen=True)
@@ -48,10 +54,7 @@ class AsyncUnitOfWork(Protocol):
         ...
 
 
-SubscribeDeletedPublisher = Callable[
-    [int, Mapping[str, object]],
-    Awaitable[None],
-]
+SubscribeDeletedPublisher = Callable[[dict[str, Any]], Awaitable[None]]
 SubscribeDeletedReporter = Callable[[Mapping[str, object]], object]
 
 
@@ -64,12 +67,14 @@ class DeleteSubscribeCommand:
         unit_of_work: AsyncUnitOfWork,
         publish_deleted: SubscribeDeletedPublisher,
         report_deleted: SubscribeDeletedReporter,
+        outbox: AsyncOutboxTransaction | None = None,
     ) -> None:
         """注入数据访问、事务与提交后副作用端口。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._publish_deleted = publish_deleted
         self._report_deleted = report_deleted
+        self._outbox = outbox
 
     async def execute(
         self,
@@ -85,23 +90,38 @@ class DeleteSubscribeCommand:
         candidate = await self._repository.get_candidate(subscribe_id)
         if not self._can_delete(candidate, actor):
             return False
+        assert candidate is not None
 
         await self._repository.stage_delete(subscribe_id)
+        event_payload = build_subscribe_deleted_payload(
+            subscribe_id,
+            candidate.event_payload,
+        )
+        event_key = event_payload["idempotency_key"]
         try:
+            if self._outbox:
+                await self._outbox.stage(
+                    OutboxIntent(
+                        event_key=event_key,
+                        topic="subscribe.deleted",
+                        payload=event_payload,
+                    ),
+                    datetime.now(timezone.utc),
+                )
             await self._unit_of_work.commit()
         except Exception:
             await self._unit_of_work.rollback()
             raise
 
-        event_payload = dict(candidate.event_payload)
-        await self._publish_deleted(subscribe_id, event_payload)
-        self._report_deleted(
-            {
-                "media_source": event_payload.get("media_source"),
-                "media_id": event_payload.get("media_id"),
-                "season": event_payload.get("season"),
-            }
-        )
+        await self._publish_deleted(event_payload)
+        if self._outbox:
+            await self._outbox.complete_by_event_key(
+                event_key,
+                datetime.now(timezone.utc),
+            )
+        # 上报适配器会自行白名单过滤公开字段；传完整删除前快照可保留音乐实体维度，
+        # 避免 Agent 与 API 入口收敛后丢失 music_type / total_tracks。
+        self._report_deleted(dict(candidate.event_payload))
         return True
 
     @staticmethod
@@ -115,3 +135,36 @@ class DeleteSubscribeCommand:
         if actor.is_superuser:
             return True
         return bool(candidate.username) and candidate.username == actor.username
+
+
+def build_subscribe_deleted_payload(
+    subscribe_id: int,
+    subscribe_info: Mapping[str, object],
+) -> dict[str, Any]:
+    """构造兼容旧字段并携带幂等键的订阅删除事件快照。"""
+    event_key = f"subscribe.deleted:{subscribe_id}:{uuid4().hex}:v1"
+    return cast(
+        dict[str, Any],
+        SubscribeDeletedEventData(
+            subscribe_id=subscribe_id,
+            subscribe_info=dict(subscribe_info),
+            idempotency_key=event_key,
+        ).model_dump(mode="json"),
+    )
+
+
+DeleteSubscribeScope = Callable[[], AbstractAsyncContextManager[DeleteSubscribeCommand]]
+_configured_delete_scope: DeleteSubscribeScope | None = None
+
+
+def configure_delete_subscribe_scope(provider: DeleteSubscribeScope) -> None:
+    """由启动组合根登记非 HTTP 入口使用的订阅删除事务作用域。"""
+    global _configured_delete_scope
+    _configured_delete_scope = provider
+
+
+def get_delete_subscribe_scope() -> AbstractAsyncContextManager[DeleteSubscribeCommand]:
+    """返回一次独占会话的订阅删除命令作用域。"""
+    if _configured_delete_scope is None:
+        raise RuntimeError("订阅删除事务作用域尚未配置")
+    return _configured_delete_scope()

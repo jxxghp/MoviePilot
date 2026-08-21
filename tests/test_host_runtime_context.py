@@ -17,7 +17,7 @@ from app.api.data import (
     get_api_data_ports,
 )
 from app.startup import lifecycle
-from app.startup.context import AgentChatRuntime, HostRuntime
+from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
 
 
 class _Repository:
@@ -40,6 +40,20 @@ class _UnitOfWork:
 
     async def rollback(self) -> None:
         """模拟回滚。"""
+
+
+class _Outbox:
+    """记录绑定会话的异步 outbox 替身。"""
+
+    def __init__(self, session: object) -> None:
+        """保存与订阅仓储相同的请求会话。"""
+        self.session = session
+
+    async def stage(self, intent, now) -> None:
+        """模拟暂存 durable intent。"""
+
+    async def complete_by_event_key(self, event_key, completed_at) -> None:
+        """模拟收口 durable intent。"""
 
 
 def _runtime() -> HostRuntime:
@@ -65,6 +79,13 @@ def _runtime() -> HostRuntime:
             async_session=async_session,
             repository=_Repository,
             transaction=_UnitOfWork,
+        ),
+        subscription=SubscriptionRuntime(
+            async_session=async_session,
+            repository=_Repository,
+            history_repository=_Repository,
+            transaction=_UnitOfWork,
+            outbox=_Outbox,
         ),
         compatibility_api_data=compatibility,
     )

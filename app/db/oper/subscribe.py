@@ -496,6 +496,22 @@ class SubscribeOper(DbOper):
             await subscribe.async_update(self._db, payload)
         return subscribe
 
+    async def async_stage_update(
+        self,
+        sid: int,
+        payload: dict,
+    ) -> Optional[Subscribe]:
+        """在调用方 AsyncSession 中暂存订阅更新并 flush，不提交事务。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("异步订阅修改需要调用方提供 AsyncSession")
+        subscribe = await self.async_get(sid)
+        if not subscribe:
+            return None
+        for key, value in _normalize_integer_flags(payload).items():
+            setattr(subscribe, key, value)
+        await self._db.flush()
+        return subscribe
+
     async def async_update_filter_groups(
             self, sid: int, filter_groups: List[str]
     ) -> Optional[Subscribe]:
