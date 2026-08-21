@@ -13,6 +13,7 @@ from typing import Any, Mapping, Optional
 from app.runtime.extensions.declaration import (
     declaration_command_data,
     declaration_command_identity,
+    declaration_command_override,
     declaration_command_presentation,
     declaration_command_show,
     declaration_impl,
@@ -25,8 +26,11 @@ def command_declaration_violation(declaration: Any) -> Optional[str]:
     校验命令声明是否满足登记契约
 
     契约要求：命令词非空且合命令词文法；展示名称非空（渠道菜单按它渲染按钮文案）；
-    实现可调用；分类与参数描述是字符串；附加数据是字符串键的字典；菜单展示开关是布尔值。
-    任一不满足都拒绝登记，不留到用户敲这条命令时才失败。
+    实现可调用；分类与参数描述是字符串；附加数据是字符串键的字典；菜单展示开关与接管
+    内建命令的意图是布尔值。任一不满足都拒绝登记，不留到用户敲这条命令时才失败。
+
+    接管内建命令的意图必须是布尔值而不接受真值转换：它决定同名内建命令是被接管还是
+    保持生效，取值含糊会让一次笔误静默改变用户手打某个内建命令的结果。
 
     :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
     :return: 违反契约的描述；声明合规时为 None
@@ -36,6 +40,7 @@ def command_declaration_violation(declaration: Any) -> Optional[str]:
         category, args_description = declaration_command_presentation(declaration)
         data = declaration_command_data(declaration)
         show = declaration_command_show(declaration)
+        overrides_builtin = declaration_command_override(declaration)
         impl = declaration_impl(declaration)
     except Exception as error:
         return f"读取命令声明出错：{error}"
@@ -51,8 +56,9 @@ def command_declaration_violation(declaration: Any) -> Optional[str]:
     for field, value in (("category", category), ("args_description", args_description)):
         if value is not None and not isinstance(value, str):
             return f"字段 {field} 必须是字符串，实际是 {type(value).__name__}"
-    if show is not None and not isinstance(show, bool):
-        return f"字段 show 必须是布尔值，实际是 {type(show).__name__}"
+    for field, value in (("show", show), ("overrides_builtin", overrides_builtin)):
+        if value is not None and not isinstance(value, bool):
+            return f"字段 {field} 必须是布尔值，实际是 {type(value).__name__}"
     return _data_violation(data)
 
 

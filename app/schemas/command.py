@@ -20,7 +20,9 @@
 """
 
 import re
-from typing import Any, Optional
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, Field
 
 # 智能助手前缀。以此开头的消息由消息网关整条交给智能助手处理，不再走命令分发
 AI_COMMAND_PREFIX = "/ai"
@@ -63,3 +65,50 @@ def command_word_violation(cmd: Any) -> Optional[str]:
             f"消息网关会把这类消息整条交给智能助手，该命令永远不会被分发执行"
         )
     return None
+
+
+class CommandLayer(BaseModel):
+    """一个命令词的一处来源。"""
+
+    # 来源层：builtin 内建、plugin 插件、other 单独注册
+    layer: str
+    # 插件实例键，非插件层时为空
+    owner: Optional[str] = None
+    # 插件标识，非插件层时为空
+    extension_id: Optional[str] = None
+    # 插件实例标识，非插件层时为空
+    instance_id: Optional[str] = None
+    # 该来源为这条命令给出的展示名称
+    description: Optional[str] = None
+    # 该来源为这条命令给出的分类
+    category: Optional[str] = None
+
+
+class CommandConflict(BaseModel):
+    """一个命令词被多个插件同时声明而使插件声明整体失效的呈现。
+
+    命令词不指称任何共同对象，两个插件的同名命令做的并不是同一件事，宿主无从裁决该把
+    它交给谁，因此双方一并失效。用户据此知道该让哪一方改命令词或停用谁。
+    """
+
+    # 声明该命令词的插件标识，已排序
+    plugins: List[str] = Field(default_factory=list)
+    # 与 plugins 一一对应的插件实例键
+    owners: List[str] = Field(default_factory=list)
+
+
+class CommandOrigin(BaseModel):
+    """一个命令词在运行期命令表中的来源分层。"""
+
+    # 命令词
+    cmd: str
+    # 该命令词当前是否能被敲出来
+    effective: bool = False
+    # 交出当前生效定义的那一层
+    source: Optional[CommandLayer] = None
+    # 被上层压住、当前不生效的下层来源，按内建到插件的次序排列
+    shadowed: List[CommandLayer] = Field(default_factory=list)
+    # 与内建命令同名却未声明接管意图，因而被拒的插件声明
+    declined: List[CommandLayer] = Field(default_factory=list)
+    # 该命令词的插件声明因跨插件同名而整体失效时的详情
+    conflict: Optional[CommandConflict] = None

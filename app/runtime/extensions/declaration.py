@@ -313,12 +313,18 @@ class CommandDeclaration(ExtensionDeclaration):
     命令名，必须合命令词文法，否则登记时看不出问题，要到用户敲这条命令、或渠道菜单
     整批注册失败时才炸。
 
+    ``overrides_builtin`` 是接管同名内建命令的意图声明。命令词不像存储后端标识那样
+    指称一个共同的外部对象，声明它本身说明不了作者是想接管内建行为还是根本不知道宿主
+    已有同名命令；把意图单列一个字段，两种情形才分得开：声明了即按接管处置，没声明就
+    是撞车，该条插件命令作废、内建命令保持生效。
+
     :param cmd: 命令词，以 ``/`` 开头，须合命令词文法
     :param name: 命令展示名称，同时用作渠道菜单上的按钮文案
     :param category: 命令分类，为空表示不分类；企业微信菜单只收录带分类的命令
     :param args_description: 参数描述，供智能助手与帮助文案说明该命令接受什么参数
     :param data: 调用实现时附加传递的静态数据，与本次调用的上下文合并后交给实现
     :param show: 是否在渠道菜单与命令列表中展示
+    :param overrides_builtin: 是否意在接管同名的内建命令；命令词与内建不撞时该字段无作用
     """
 
     cmd: str = ""
@@ -327,6 +333,7 @@ class CommandDeclaration(ExtensionDeclaration):
     args_description: Optional[str] = None
     data: Mapping[str, Any] = MappingProxyType({})
     show: bool = True
+    overrides_builtin: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -795,6 +802,16 @@ def declaration_command_show(declaration: Any) -> Any:
     :return: show 字段的原始值；字段缺失时为 None
     """
     return _declared_field(declaration, "show")
+
+
+def declaration_command_override(declaration: Any) -> Any:
+    """
+    读取命令声明接管同名内建命令的意图原始值
+
+    :param declaration: `CommandDeclaration` 实例，或插件直接交出的描述字典
+    :return: overrides_builtin 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "overrides_builtin")
 
 
 def declaration_filter_rule_identity(

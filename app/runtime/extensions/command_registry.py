@@ -27,16 +27,36 @@
 两边都不交出还让冲突落回安全态：争的若是内建命令词，插件声明全部作废后该词回落为内建
 命令；争的若是新词，它就不存在，用户敲它得到既有的「命令不存在」提示。冲突只作废争用的
 那一个命令词，双方其余命令照常生效；一方停用后另一方重新参与裁决并接手。
+
+插件与内建同命令词的处置不在本表，见 `app.runtime.extensions.command_arbitration`：
+内建命令表是命令中枢自己的东西，本表看不见它。
 """
 
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.runtime.extensions.instance import extension_id_of
 from app.runtime.extensions.plugin.extension_scoped import instance_precedence
 from app.runtime.log import logger as default_logger
+
+
+@dataclass(frozen=True)
+class CommandClaim:
+    """插件对一个命令词的声明及其跨插件裁决结果。
+
+    :param cmd: 命令词
+    :param plugins: 声明该命令词的插件标识，已排序
+    :param owners: 与 `plugins` 一一对应的实例键
+    :param effective: 该命令词的插件声明是否通过跨插件裁决，被多个插件声明时为 False
+    """
+
+    cmd: str
+    plugins: Tuple[str, ...]
+    owners: Tuple[str, ...]
+    effective: bool
 
 
 class PluginCommandRegistry:
@@ -130,6 +150,29 @@ class PluginCommandRegistry:
             owner = next(iter(owners_by_plugin.values()))
             resolved[cmd] = snapshot[owner][cmd]
         return resolved
+
+    def claims(self) -> Tuple[CommandClaim, ...]:
+        """列出插件对各命令词的声明及其跨插件裁决结果。
+
+        冲突失效的命令词同样交出：用户只在日志里见过一次告警，可见性入口要能回答
+        「这个命令为什么不生效、涉及哪些插件」。结果按命令词排序，与登记先后无关。
+
+        :return: 按命令词排序的声明元组
+        """
+        with self._lock:
+            snapshot = {
+                owner: dict(items) for owner, items in self._commands.items()
+            }
+        claims: List[CommandClaim] = []
+        for cmd, owners_by_plugin in self._collect_claimants(snapshot).items():
+            plugins = tuple(sorted(owners_by_plugin))
+            claims.append(CommandClaim(
+                cmd=cmd,
+                plugins=plugins,
+                owners=tuple(owners_by_plugin[plugin] for plugin in plugins),
+                effective=len(plugins) == 1,
+            ))
+        return tuple(sorted(claims, key=lambda claim: claim.cmd))
 
     def owners(self) -> Tuple[str, ...]:
         """列出当前有登记的全部实例键。

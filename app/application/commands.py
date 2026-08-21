@@ -9,7 +9,7 @@ Command 实现由 startup 组合根在导入期注册，避免 application 层
     agent.tools / api.endpoints -> application.commands <- startup（注册 Command 类）
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Command 类：由 startup/command_initializer 在导入期注册。
 _command_class: Any = None
@@ -38,6 +38,11 @@ def get_commands() -> Dict[str, Any]:
 def get_command(name: str) -> Optional[Any]:
     """按命令名查询注册表。"""
     return get_command_object().get(name)
+
+
+def get_command_origins() -> List[Any]:
+    """返回全部命令词的来源分层，含失效的插件声明。"""
+    return get_command_object().command_origins()
 
 
 def init_commands(plugin_id: Optional[str] = None) -> None:

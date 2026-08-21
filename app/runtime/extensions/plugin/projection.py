@@ -19,6 +19,7 @@ from app.runtime.extensions.declaration import (
     declaration_action_kwargs,
     declaration_command_data,
     declaration_command_identity,
+    declaration_command_override,
     declaration_command_presentation,
     declaration_command_show,
     declaration_config_component,
@@ -557,8 +558,9 @@ class PluginProjection:
         """把单条已通过契约校验的命令声明投影为命令描述字典。
 
         描述字典的 `cmd`、`desc`、`category`、`data` 与 `get_command()` 返回项同名同义，
-        命令中枢与查询插件能力的调用方按同一份形状消费；`impl` 与 `args_description` 是
-        声明式专有的字段，不带 `event` 表示本条命令由宿主直接调用实现而不转发事件。
+        命令中枢与查询插件能力的调用方按同一份形状消费；`impl`、`args_description` 与
+        `overrides_builtin` 是声明式专有的字段，不带 `event` 表示本条命令由宿主直接调用
+        实现而不转发事件。`get_command()` 报不出接管内建命令的意图，其条目因此恒为不接管。
 
         :param item: 已通过契约校验的命令声明
         :return: 命令描述字典
@@ -566,6 +568,7 @@ class PluginProjection:
         cmd, name = declaration_command_identity(item)
         category, args_description = declaration_command_presentation(item)
         show = declaration_command_show(item)
+        overrides_builtin = declaration_command_override(item)
         data = declaration_command_data(item)
         return {
             "cmd": cmd,
@@ -573,6 +576,7 @@ class PluginProjection:
             "category": category,
             "args_description": args_description,
             "show": True if show is None else bool(show),
+            "overrides_builtin": bool(overrides_builtin),
             "data": dict(data) if data else {},
             "impl": declaration_impl(item),
         }
