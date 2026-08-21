@@ -32,20 +32,9 @@ class FilterMediasAction(BaseAction):
         super().__init__(action_id)
         self._medias = []
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "过滤媒体数据"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "对媒体数据列表进行过滤"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return FilterMediasParams().model_dump()
+    name = "过滤媒体数据"
+    description = "对媒体数据列表进行过滤"
+    data = FilterMediasParams().model_dump()
 
     @property
     def success(self) -> bool:
