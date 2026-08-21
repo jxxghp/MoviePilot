@@ -1,4 +1,4 @@
-"""校验 app.sdk 是兼容清单 replacement 文案的受校验投影。
+"""校验 app.sdk 是受校验的插件公开面快照。
 
 弃用告警把插件作者导向 ``app.sdk.X``，而运行期解析走的是 ``target``。两者是否落到
 同一个对象、SDK 是否真的提供了被承诺的符号，只能由本文件的断言保证。
@@ -6,6 +6,10 @@
 清单与门面之间有两种独立失配：``app/sdk/_exports.py`` 相对源码陈旧，与门面未导出
 清单承诺的符号。两者各由自己的用例判定，判据分别取自源码推导结果与门面实际属性，
 任一方出错都不会遮蔽另一方。
+
+快照的两个来源同样各由自己的用例判定：别名推导按兼容清单的 replacement 文案倒推，
+只覆盖有旧路径的符号；门面自报按 SDK 各模块的 ``__all__`` 与 import 来源推导，覆盖
+声明类这类没有任何旧路径别名的新出口。谁陈旧了谁报错，互不遮蔽。
 """
 import importlib
 import importlib.util
@@ -22,7 +26,12 @@ from app.runtime.compat.manifest import (
     PACKAGE_EXPORTS,
     SYMBOL_ALIASES,
 )
-from app.sdk._exports import SDK_HOST_INTERNAL_EXPORTS, SDK_REQUIRED_EXPORTS
+from app.sdk._exports import (
+    SDK_DECLARED_EXPORTS,
+    SDK_HOST_INTERNAL_EXPORTS,
+    SDK_PLUGIN_BASE_SURFACE,
+    SDK_REQUIRED_EXPORTS,
+)
 from app.testing.bootstrap import prepare_backend
 
 
@@ -76,6 +85,12 @@ def facade_path(sdk_name: str) -> str:
 
 LIVE_REQUIRED_EXPORTS = GENERATOR.collect_required_exports()
 LIVE_EXPORTS = sorted(flatten(LIVE_REQUIRED_EXPORTS).items())
+LIVE_DECLARED_EXPORTS = GENERATOR.collect_declared_exports()
+DECLARED_EXPORTS = sorted(
+    ((sdk_name, name), source)
+    for sdk_name, symbols in LIVE_DECLARED_EXPORTS.items()
+    for name, source in symbols.items()
+)
 
 
 def sdk_module_aliases() -> list[tuple[str, object]]:
@@ -130,6 +145,84 @@ def test_sdk_manifest_is_current():
 
     assert not problems, "\n".join(
         ["[清单陈旧] app/sdk/_exports.py 与源码推导结果不一致：", *problems, REGENERATE_HINT]
+    )
+
+
+def test_sdk_declared_manifest_is_current():
+    """SDK 门面自报的导出变化后，生成清单必须同步刷新。
+
+    别名推导覆盖不到没有旧路径的新出口，这一表就是它们唯一的登记处：改了来源、少了
+    条目都会在这里显形，而不是等某个插件在运行期撞上 ImportError。
+    """
+    problems = []
+    live = {
+        (sdk_name, name): source
+        for sdk_name, symbols in LIVE_DECLARED_EXPORTS.items()
+        for name, source in symbols.items()
+    }
+    recorded = {
+        (sdk_name, name): tuple(source)
+        for sdk_name, symbols in SDK_DECLARED_EXPORTS.items()
+        for name, source in symbols.items()
+    }
+    for sdk_name, name in sorted(live.keys() - recorded.keys()):
+        problems.append(f"门面新增、清单未登记：{sdk_name}.{name}（来源 {live[(sdk_name, name)]}）")
+    for sdk_name, name in sorted(recorded.keys() - live.keys()):
+        problems.append(f"清单残留、门面已撤：{sdk_name}.{name}")
+    for key in sorted(live.keys() & recorded.keys()):
+        if live[key] != recorded[key]:
+            problems.append(
+                f"来源已变更：{key[0]}.{key[1]} 清单记 {recorded[key]}，源码为 {live[key]}"
+            )
+
+    assert not problems, "\n".join(
+        ["[清单陈旧] SDK 门面自报的导出与 app/sdk/_exports.py 不一致：", *problems, REGENERATE_HINT]
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "source"),
+    DECLARED_EXPORTS,
+    ids=[f"{sdk_name}.{name}" for (sdk_name, name), _ in DECLARED_EXPORTS],
+)
+def test_sdk_declared_export_binds_recorded_source(key, source):
+    """门面自报的每个导出都必须解析到清单登记的那个对象。"""
+    sdk_name, name = key
+    source_module_name, source_name = source
+    sdk_module = importlib.import_module(sdk_name)
+    source_module = importlib.import_module(source_module_name)
+
+    assert hasattr(sdk_module, name), (
+        f"[门面缺符号] {sdk_name}.{name} 列入了 __all__ 却不可解析；"
+        f"在 {facade_path(sdk_name)} 补 import"
+    )
+    assert getattr(sdk_module, name) is getattr(source_module, source_name), (
+        f"[门面串对象] {sdk_name}.{name} 与 {source_module_name}.{source_name} 不是同一个对象"
+    )
+
+
+def test_plugin_base_surface_matches_the_pinned_snapshot():
+    """扩展基类对扩展可见的公开面必须与登记快照一致。
+
+    基类原样导出给插件，混在其中的冻结契约、扩展点与内部实现三层因此一并可见。快照
+    不替这三层划界，它保证的是任何一层增删都要显式改一次登记，改动在评审里看得见。
+    """
+    live = GENERATOR.collect_plugin_base_surface()
+    recorded = {kind: list(names) for kind, names in SDK_PLUGIN_BASE_SURFACE.items()}
+    problems = []
+    for kind in sorted({*live, *recorded}):
+        added = sorted(set(live.get(kind, ())) - set(recorded.get(kind, ())))
+        removed = sorted(set(recorded.get(kind, ())) - set(live.get(kind, ())))
+        problems.extend(f"{kind} 新增：{name}" for name in added)
+        problems.extend(f"{kind} 移除：{name}" for name in removed)
+
+    assert not problems, "\n".join(
+        [
+            "[清单陈旧] _PluginBase 的公开面与 app/sdk/_exports.py 登记的快照不一致：",
+            *problems,
+            "移除即对存量插件的破坏性变更，新增即向插件多承诺一件事，两者都要确认后再刷新快照。",
+            REGENERATE_HINT,
+        ]
     )
 
 

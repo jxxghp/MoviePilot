@@ -2,6 +2,7 @@
 
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service_instance_registry import declared_service_instances
 from app.runtime.state import SystemHelper
 from app.application.downloader import DownloaderHelper
 from app.application.rules import FilterRuleOriginService, RuleHelper
@@ -29,4 +30,5 @@ __all__ = [
     "ServiceConfigHelper",
     "StorageHelper",
     "SystemHelper",
+    "declared_service_instances",
 ]

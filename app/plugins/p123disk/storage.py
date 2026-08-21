@@ -13,10 +13,10 @@ from pathlib import Path
 from threading import RLock
 from typing import List, Optional, Tuple
 
-from app.modules._base.storage import StorageBase, StorageInstanceSingleton
 from app.schemas import FileItem, StorageQueryError, StorageUsage
 from app.sdk.config import settings
 from app.sdk.logging import logger
+from app.sdk.storage import StorageBase, StorageInstanceSingleton
 
 from . import transfer
 from .api import P123Api

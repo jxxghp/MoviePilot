@@ -16,8 +16,6 @@ from urllib.parse import quote
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from app.application.security.auth import create_plugin_auth_ticket_for_identity
-from app.plugins import _PluginBase
 from app.plugins.githubsso.config_ui import CONFIG_SCHEMA, config_form
 from app.plugins.githubsso.entry import GithubSsoAuthError, GithubSsoEntry
 from app.plugins.githubsso.oauth_state import (
@@ -25,12 +23,16 @@ from app.plugins.githubsso.oauth_state import (
     OAuthStateStore,
     safe_return_path,
 )
-from app.runtime.extensions.auth_entries import AuthEntry, list_auth_entries
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.service_config import AUTH_CAPABILITY
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.sdk.auth import (
+    AuthEntry,
+    create_plugin_auth_ticket_for_identity,
+    list_auth_entries,
+)
 from app.sdk.config import settings
+from app.sdk.declarations import AUTH_CAPABILITY, ServiceInstanceDeclaration
+from app.sdk.extension import _PluginBase
 from app.sdk.logging import logger
+from app.sdk.services import declared_service_instances
 
 # 本插件声明的登录入口类型标识，与用户配置里的 ``type`` 字段取值对应
 SERVICE_TYPE = "github"
@@ -355,14 +357,9 @@ class GithubSso(_PluginBase):
         :param name: 实例名
         :return: 握手实现；登记缺失或该条配置构造失败时为 None
         """
-        adapters = [
-            adapter
-            for adapter in service_instance_registry.adapters(AUTH_CAPABILITY)
-            if adapter.entry.owner == owner and adapter.entry.service_type == SERVICE_TYPE
-        ]
-        if len(adapters) != 1:
-            return None
-        instance = adapters[0].get_instances().get(name)
+        instance = declared_service_instances(
+            AUTH_CAPABILITY, SERVICE_TYPE, owner
+        ).get(name)
         return instance if isinstance(instance, GithubSsoEntry) else None
 
     def _callback_path(self) -> str:

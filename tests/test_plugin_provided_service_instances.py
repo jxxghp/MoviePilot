@@ -21,7 +21,10 @@ from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,
     service_capability,
 )
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.service_instance_registry import (
+    declared_service_instances,
+    service_instance_registry,
+)
 from app.schemas.types import ModuleType
 
 
@@ -1117,3 +1120,33 @@ def test_declared_type_still_serves_configs_after_the_owner_changes(
 
     assert "我的下载器" in services
     assert isinstance(services["我的下载器"].instance, _DemoDownloader)
+
+
+def test_declaring_plugin_reads_back_its_own_instances(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict]
+):
+    """声明方按自己的实例键取回本类型下宿主已构造的具名实例。"""
+    service_configs.extend([
+        _downloader_config("下载器甲", "fake_downloader", host="a"),
+        _downloader_config("下载器乙", "fake_downloader", host="b"),
+    ])
+    plugin_id = _start_plugin(monkeypatch, plugin_manager, _FakeDownloaderPlugin)
+
+    instances = declared_service_instances("downloader", "fake_downloader", plugin_id)
+
+    assert sorted(instances) == ["下载器乙", "下载器甲"]
+    assert instances["下载器甲"].host == "a"
+    assert instances["下载器甲"] is DownloaderHelper().get_services()["下载器甲"].instance
+
+
+def test_reading_back_instances_requires_matching_ownership(
+    monkeypatch, plugin_manager: PluginManager, service_configs: List[dict]
+):
+    """归属、类型或能力标签对不上时交空表，不退而求其次挑一个。"""
+    service_configs.append(_downloader_config("下载器甲", "fake_downloader", host="a"))
+    _start_plugin(monkeypatch, plugin_manager, _FakeDownloaderPlugin)
+
+    assert declared_service_instances("downloader", "fake_downloader", "别的插件") == {}
+    assert declared_service_instances("downloader", "other_downloader", "_FakeDownloaderPlugin") == {}
+    assert declared_service_instances("storage", "fake_downloader", "_FakeDownloaderPlugin") == {}
+    assert declared_service_instances("downloader", "fake_downloader", "") == {}

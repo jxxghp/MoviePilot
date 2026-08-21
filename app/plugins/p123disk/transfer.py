@@ -14,10 +14,10 @@ from typing import Optional
 
 import requests
 
-from app.modules._base.storage import transfer_process
 from app.schemas import FileItem
 from app.sdk.config import global_vars
 from app.sdk.logging import logger
+from app.sdk.storage import transfer_process
 
 from .api import P123Api
 from .client import check_response
