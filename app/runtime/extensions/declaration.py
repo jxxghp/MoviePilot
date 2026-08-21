@@ -13,7 +13,6 @@ from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from app.schemas.rule import RULE_CONDITION_FIELDS
-from app.schemas.types import ModuleType
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,14 +76,6 @@ class AgentToolDeclaration(ExtensionDeclaration):
     description: str = ""
 
 
-# 可声明服务实例的能力标签取值集合，即宿主按「一份配置扇出一个具名实例」消费的服务族
-SERVICE_INSTANCE_CAPABILITIES: Tuple[str, ...] = (
-    ModuleType.Downloader.value,
-    ModuleType.MediaServer.value,
-    ModuleType.Notification.value,
-)
-
-
 @dataclass(frozen=True, slots=True)
 class ModuleDeclaration(ExtensionDeclaration):
     """
@@ -125,8 +116,9 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     了几个分身无关。一个只建了默认分身的扩展照样可以提供多实例类型，一个建了多
     个分身的扩展提供的类型也可以只认一份配置。
 
-    ``capability`` 是该类型属于哪一族服务的语义标签，取值须属于
-    `SERVICE_INSTANCE_CAPABILITIES`。下载器、媒体服务器与消息通知共用这一条声明，
+    ``capability`` 是该类型属于哪一族服务的语义标签，取值须是服务族登记表
+    （`app.runtime.extensions.service_family_registry`）中已登记的族，宿主内建
+    下载器、媒体服务器与消息通知三族。三者共用这一条声明，
     差异只在该标签：三者的取用链是同一条——同一张服务实例表，按「能力标签加类型
     标识」取用，形状没有区别，因此不按业务族拆成三个钩子，差异作为参数声明出来。
 
@@ -150,7 +142,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     没有专属界面，前端沿用内建类型的渲染方式。界面归属这条声明，不归属声明
     它的扩展。
 
-    :param capability: 能力标签，取值须属于 `SERVICE_INSTANCE_CAPABILITIES`
+    :param capability: 能力标签，取值须是服务族登记表中已登记的族
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
     :param name: 类型展示名称
     :param multi_instance: 用户能否为该类型配置多份，默认为 True

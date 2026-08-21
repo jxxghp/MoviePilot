@@ -1608,6 +1608,10 @@
         "line": 2426
       },
       {
+        "caller": "app.runtime.extensions.service_family_registry",
+        "line": 150
+      },
+      {
         "caller": "app.startup.hostport_initializer",
         "line": 92
       },

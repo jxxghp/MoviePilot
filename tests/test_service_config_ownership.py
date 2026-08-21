@@ -7,13 +7,13 @@ import pytest
 from app.modules import ServiceBase, _DownloaderBase
 from app.runtime.extensions import service_config as service_config_module
 from app.runtime.extensions import service_registry as service_registry_module
-from app.runtime.extensions.declaration import SERVICE_INSTANCE_CAPABILITIES
 from app.runtime.extensions.host_module_adapter import build_host_module_registry
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     service_capability,
     service_config_key,
 )
+from app.runtime.extensions.service_family_registry import service_family_registry
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
 from app.schemas.types import ModuleType, SystemConfigKey
@@ -133,18 +133,19 @@ def test_manifest_never_declares_storage_key_as_capability() -> None:
 
 
 def test_declaration_vocabulary_matches_host_storage_mapping() -> None:
-    """声明面的能力标签与宿主内部的存放位置对照必须覆盖同一套取值。"""
+    """已登记服务族的能力标签与宿主内部的存放位置对照必须覆盖同一套取值。"""
+    capabilities = service_family_registry.capabilities()
     mapped = {
         capability
-        for capability in SERVICE_INSTANCE_CAPABILITIES
+        for capability in capabilities
         if service_config_key(capability) is not None
     }
 
-    assert mapped == set(SERVICE_INSTANCE_CAPABILITIES)
+    assert mapped == set(capabilities)
     assert {
         service_capability(service_config_key(capability).value)
-        for capability in SERVICE_INSTANCE_CAPABILITIES
-    } == set(SERVICE_INSTANCE_CAPABILITIES)
+        for capability in capabilities
+    } == set(capabilities)
 
 
 def test_declared_capability_matches_activation_selector() -> None:

@@ -13,7 +13,6 @@ import inspect
 from typing import Any, Optional
 
 from app.runtime.extensions.declaration import (
-    SERVICE_INSTANCE_CAPABILITIES,
     ServiceInstanceDeclaration,
     declaration_config_component,
     declaration_config_form,
@@ -22,6 +21,7 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.service_family_registry import service_family_registry
 
 # 构造实例时由宿主固定填入的关键字参数名，其余关键字均来自用户配置内容
 _INSTANCE_NAME_KEYWORD = "name"
@@ -36,8 +36,8 @@ def service_instance_declaration_violation(
     """
     校验服务实例声明是否满足登记契约
 
-    契约要求声明是 `ServiceInstanceDeclaration` 实例、能力标签属于可声明服务实例的
-    服务族、类型标识与展示名称非空、``multi_instance`` 是布尔值、``impl`` 与
+    契约要求声明是 `ServiceInstanceDeclaration` 实例、能力标签是服务族登记表中已登记
+    的族、类型标识与展示名称非空、``multi_instance`` 是布尔值、``impl`` 与
     ``factory`` 恰好给出其一且该路径的调用签名成立；配置界面二选一，规则与存储声明
     相同。任一不满足都拒绝登记，不留到构造实例时才失败。
 
@@ -58,10 +58,10 @@ def service_instance_declaration_violation(
         return f"读取服务实例声明出错：{error}"
     if not capability:
         return "未声明非空的能力标签 capability"
-    if capability not in SERVICE_INSTANCE_CAPABILITIES:
+    if not service_family_registry.is_registered(capability):
         return (
             f"capability {capability!r} 不是可声明服务实例的能力标签，"
-            f"可选值为 {list(SERVICE_INSTANCE_CAPABILITIES)}"
+            f"可选值为 {list(service_family_registry.capabilities())}"
         )
     if not service_type:
         return "未声明非空的类型标识 type"

@@ -6,7 +6,7 @@ from starlette import status
 from app.api.deps import get_current_active_superuser
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
-from app.runtime.extensions.declaration import SERVICE_INSTANCE_CAPABILITIES
+from app.runtime.extensions.service_family_registry import service_family_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.schemas.service import ServiceConfigForm as _SchemaServiceConfigForm
 
@@ -40,12 +40,13 @@ def config_form(
     本端点同时下发 ``multi_instance``：前端要决定该类型的配置列表上要不要给出
     新增第二份的入口，而只有登记表知道这件事。未登记的类型答 True，与内建类型
     一律可配多份、以及声明缺省即多实例两处口径一致。
-    :param capability: 能力标签，取值为 downloader、mediaserver、notification
+    :param capability: 能力标签，取值为宿主已登记的服务族，内建为 downloader、
+        mediaserver、notification
     :param service_type: 类型标识，即该族配置模型的 type
     :param _: 鉴权
     :return: available 为 False 时该类型没有专属界面，界面相关字段均为 None
     """
-    if capability not in SERVICE_INSTANCE_CAPABILITIES:
+    if not service_family_registry.is_registered(capability):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"服务能力 {capability} 不支持声明服务实例",
