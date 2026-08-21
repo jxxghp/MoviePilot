@@ -20,6 +20,7 @@ from app.runtime.event.binding import (
 from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
+from app.runtime.event.contracts import validate_event_payload
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
@@ -40,6 +41,13 @@ class Event:
         :param event_data: 可选，事件携带的数据，默认为空字典
         :param priority: 可选，事件的优先级，默认为 10
         """
+        payload_problems = validate_event_payload(event_type, event_data)
+        if payload_problems:
+            logger.warning(
+                "事件 %s payload 与登记契约不一致：%s；当前保留旧 payload 继续投递",
+                event_type.value,
+                "; ".join(payload_problems),
+            )
         self.event_id = str(uuid.uuid4())  # 事件ID
         self.event_type = event_type  # 事件类型
         self.event_data = event_data or {}  # 事件数据

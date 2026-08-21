@@ -590,6 +590,17 @@ ModuleMethodSpec(
 5. 报告“宿主无 consumer”时区分插件公开事件、预留事件和真正死事件。
 6. `SystemError` 递归保护继续保留并补 contract；错误通知不能再次构造无限错误链。
 
+**实施记录（2026-08-21）**：
+
+- 新增 `app/runtime/event/contracts.py`，53 个 `EventType` / `ChainEventType` 全量登记 payload、
+  broadcast/chain、可见性、顺序、错误策略、敏感字段和 ephemeral/durable-required 语义；尚未模型化的
+  事件显式记录 legacy dict 原因，不把“未登记”当成兼容策略。
+- 首批 20 个已有 Pydantic payload 的配置、订阅、整理、资源、认证、插件和 Agent 事件绑定具体 model。
+  `Event` 创建边界对 dict/model 做诊断校验，但继续投递原对象，因此插件 dict 形状和链式原地修改语义不变。
+- 订阅变更、下载添加、整理成功/失败等用户副作用标记为 `durable_required`，只表达完成语义要求；
+  在 ARCH-251 pilot 完成前不虚构当前已具备持久投递。SystemError 仍沿用既有递归保护和异常通知路径。
+- runtime contract baseline 新增稳定 `event_specs`，后续 enum 新增必须同步登记，且不比较源码行号。
+
 #### ARCH-242：Module/Integration 质量清单
 
 **目标**：借鉴 Home Assistant Integration Quality Scale，为 `app/modules` 建立可检查但渐进的质量视图。

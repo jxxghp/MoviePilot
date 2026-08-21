@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6204,
-  "edge_sha256": "9a988284502bb26fae5266321765fbf0e10b9fe608fd448c6868e67a824ea862",
+  "edge_count": 6208,
+  "edge_sha256": "a91776a358fc4820d1d6f6dc300b3432491dc6b87a0423a99acd0e6c1366526b",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5345,6 +5345,9 @@
     "app.runtime.event.binding -> app.runtime.event",
     "app.runtime.event.binding -> app.runtime.event.registry",
     "app.runtime.event.binding -> app.runtime.log",
+    "app.runtime.event.contracts -> app.schemas",
+    "app.runtime.event.contracts -> app.schemas.event",
+    "app.runtime.event.contracts -> app.schemas.types",
     "app.runtime.event.dispatch -> app.runtime",
     "app.runtime.event.dispatch -> app.runtime.event",
     "app.runtime.event.dispatch -> app.runtime.event.binding",
@@ -5367,6 +5370,7 @@
     "app.runtime.events -> app.runtime.config",
     "app.runtime.events -> app.runtime.event",
     "app.runtime.events -> app.runtime.event.binding",
+    "app.runtime.events -> app.runtime.event.contracts",
     "app.runtime.events -> app.runtime.event.dispatch",
     "app.runtime.events -> app.runtime.event.errors",
     "app.runtime.events -> app.runtime.event.registry",
@@ -6221,7 +6225,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 771,
+  "module_count": 772,
   "modules": [
     "app",
     "app.adapters",
@@ -6852,6 +6856,7 @@
     "app.runtime.debounce",
     "app.runtime.event",
     "app.runtime.event.binding",
+    "app.runtime.event.contracts",
     "app.runtime.event.dispatch",
     "app.runtime.event.errors",
     "app.runtime.event.registry",

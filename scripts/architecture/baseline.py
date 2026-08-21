@@ -803,6 +803,7 @@ def collect_runtime_baseline() -> dict[str, Any]:
         "run_module": collect_run_module_contracts(),
         "module_method_specs": collect_module_method_specs(),
         "events": collect_event_contracts(),
+        "event_specs": collect_event_specs(),
         "sdk_exports": collect_sdk_exports(),
         "compat_manifest": collect_compat_manifest(),
     }
@@ -822,6 +823,33 @@ def collect_module_method_specs() -> dict[str, Any]:
         return json_compatible(contracts)
     finally:
         sys.modules.pop(spec.name, None)
+
+
+def collect_event_specs() -> dict[str, Any]:
+    """收集全部 enum 事件的稳定 payload、可见性与可靠性登记。"""
+    project_root = str(PROJECT_ROOT)
+    inserted = project_root not in sys.path
+    if inserted:
+        sys.path.insert(0, project_root)
+    try:
+        from app.runtime.event.contracts import EVENT_CONTRACTS
+    finally:
+        if inserted:
+            sys.path.remove(project_root)
+
+    return {
+        contract.event_name: {
+            "payload_contract": contract.payload_contract,
+            "mode": contract.mode,
+            "visibility": contract.visibility.value,
+            "delivery": contract.delivery.value,
+            "error_behavior": contract.error_behavior.value,
+            "ordering": contract.ordering,
+            "sensitive_fields": list(contract.sensitive_fields),
+            "legacy_reason": contract.legacy_reason,
+        }
+        for contract in EVENT_CONTRACTS.values()
+    }
 
 
 def collect_runtime_diagnostics() -> dict[str, Any]:
