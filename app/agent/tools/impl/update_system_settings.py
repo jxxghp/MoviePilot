@@ -18,6 +18,7 @@ from app.agent.tools.impl._system_setting_utils import (
 )
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
+from app.runtime.extensions.service_config_validation import service_config_write_violation
 from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
@@ -265,6 +266,15 @@ class UpdateSystemSettingsTool(MoviePilotTool):
                 changed = success is True
             else:
                 normalized_value = self._normalize_systemconfig_value(next_value)
+                # 服务实例配置按声明该类型的扩展给出的契约判定，与设置页写入同一道关卡
+                violation = service_config_write_violation(
+                    spec.systemconfig_key, normalized_value
+                )
+                if violation:
+                    return json.dumps(
+                        {"success": False, "message": violation},
+                        ensure_ascii=False,
+                    )
                 event_value = normalized_value
                 success = await SystemConfigOper().async_set(
                     spec.systemconfig_key,

@@ -139,7 +139,7 @@ def test_registered_family_is_accepted_by_contract_and_endpoint(
     assert service_instance_declaration_violation(declaration) is None
     assert service_config_form_endpoint("subtitleserver", "demo_type", None) == {
         "available": False, "name": None, "multi_instance": True, "conf": None,
-        "model": None, "component": None, "remote": None,
+        "model": None, "component": None, "remote": None, "config_schema": None,
     }
 
 

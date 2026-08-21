@@ -55,10 +55,14 @@ class ServiceInstanceEntry:
     :param impl: 实例实现类，按 ``impl(name=..., **config)`` 构造
     :param factory: 实例工厂，按 ``factory(配置对象)`` 构造
     :param multi_instance: 用户能否为该类型配置多份
+    ``config_schema`` 是该类型配置内容的契约，宿主据此在构造实例前判定配置形状；
+    未声明时为 None，该类型的配置不做形状判定。
+
     :param config_form: 登记方为该类型声明的专属配置界面，形状为
         (组件树, 默认数据) 二元组
     :param config_component: 登记方为该类型声明的 vue 模式配置组件，形状为
         ``{"component": 组件名, "remote": 联邦远程入口描述}``
+    :param config_schema: 登记方为该类型声明的配置契约，JSON Schema 受控子集
     """
 
     capability: str
@@ -71,6 +75,7 @@ class ServiceInstanceEntry:
     multi_instance: bool = True
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[Dict[str, Any]] = None
+    config_schema: Optional[Dict[str, Any]] = None
 
 
 def _warn_single_instance_overflow(
@@ -196,7 +201,11 @@ class ServiceInstanceAdapter:
         """
         try:
             return create_service_instance(
-                name, conf, impl=self._entry.impl, factory=self._entry.factory
+                name,
+                conf,
+                impl=self._entry.impl,
+                factory=self._entry.factory,
+                config_schema=self._entry.config_schema,
             )
         except Exception as error:
             if self._failed_configs.get(name) != conf:
@@ -226,7 +235,8 @@ class ServiceInstanceRegistry:
                  multi_instance: bool = True,
                  distribution: ExtensionDistribution = ExtensionDistribution.MARKET,
                  config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
-                 config_component: Optional[Dict[str, Any]] = None
+                 config_component: Optional[Dict[str, Any]] = None,
+                 config_schema: Optional[Dict[str, Any]] = None
                  ) -> Optional[str]:
         """登记一个服务实例类型，同「能力标签加类型」重复登记以最新一次为准。
 
@@ -243,6 +253,7 @@ class ServiceInstanceRegistry:
         :param distribution: 提供方的发行方式
         :param config_form: 该类型的专属配置界面（vuetify 模式）
         :param config_component: 该类型的已解析 vue 模式配置组件
+        :param config_schema: 该类型配置内容的契约，为空表示不做形状判定
         :return: 登记成功的类型标识；能力标签、类型标识或构造路径缺失时为 None
         """
         if not capability or not service_type:
@@ -262,6 +273,7 @@ class ServiceInstanceRegistry:
             multi_instance=multi_instance,
             config_form=config_form,
             config_component=config_component,
+            config_schema=config_schema,
         )
         with self._lock:
             existing = self._adapters.get((capability, service_type))

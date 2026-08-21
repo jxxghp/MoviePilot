@@ -118,7 +118,7 @@ def test_endpoint_reports_unavailable_for_builtin_type():
 
     assert result == {
         "available": False, "name": None, "multi_instance": True, "conf": None,
-        "model": None, "component": None, "remote": None,
+        "model": None, "component": None, "remote": None, "config_schema": None,
     }
 
 

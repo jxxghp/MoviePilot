@@ -142,6 +142,13 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     没有专属界面，前端沿用内建类型的渲染方式。界面归属这条声明，不归属声明
     它的扩展。
 
+    ``config_schema`` 与配置界面回答的不是同一个问题：界面是呈现，交给前端；契约是
+    形状，宿主据此在配置写入与实例构造两处拒绝畸形配置。二者并列而不互相推导——vue
+    模式下界面是扩展自带的联邦组件，宿主看不见组件树，推不出配置形状。契约描述的是
+    该类型自己的配置内容，即该族配置模型 ``config`` 字段的形状；``name``/``type``/
+    ``enabled`` 这类外壳字段属于服务族，不由类型描述。取值是 JSON Schema 的一个受控
+    子集，判据与关键字集合见 `app.runtime.extensions.config_schema`。
+
     :param capability: 能力标签，取值须是服务族登记表中已登记的族
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
     :param name: 类型展示名称
@@ -150,6 +157,8 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
         ``config_component`` 互斥
     :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
+    :param config_schema: 该类型配置内容的契约，JSON Schema 受控子集；未声明时宿主
+        不对该类型的配置内容做形状判定
     """
 
     capability: str = ""
@@ -159,6 +168,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     factory: Optional[Any] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
+    config_schema: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +400,19 @@ def declaration_config_form(
     :return: (组件树, 默认数据) 二元组；声明未带配置界面时为 None
     """
     return getattr(declaration, "config_form", None)
+
+
+def declaration_config_schema(declaration: Any) -> Any:
+    """
+    读取声明自带的配置契约
+
+    按原值返回而不做形状归一：取值合法性由契约校验判定，此处先归一会把错误取值悄悄
+    变成一个合法答案。
+
+    :param declaration: 扩展声明
+    :return: config_schema 字段的原始值；字段缺失时为 None
+    """
+    return _declared_field(declaration, "config_schema")
 
 
 def declaration_config_component(declaration: Any) -> Optional[str]:

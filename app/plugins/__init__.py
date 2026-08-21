@@ -580,7 +580,29 @@ class _PluginBase(metaclass=ABCMeta):
             config_form=([...], {...}),          # 该类型的专属配置界面（vuetify
                                                   # 模式），形状与 get_form() 相同；
                                                   # 与 config_component 互斥，可选
+            config_schema={                      # 该类型配置内容的契约，宿主据此
+                "type": "object",                 # 在配置写入与实例构造两处拒绝
+                "properties": {                   # 畸形配置并说明原因
+                    "host": {"type": "string", "title": "服务器地址"},
+                    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+                },
+                "required": ["host"],
+                "additionalProperties": False,
+            },
         )]
+
+        `config_schema` 与配置界面并列而不互相推导：界面是呈现，契约是形状。取值是
+        JSON Schema 的一个受控子集——支持 string/integer/number/boolean/array/object
+        六种类型与 title、description、default、enum、minimum、maximum、minLength、
+        maxLength、pattern、items、minItems、maxItems、properties、required、
+        additionalProperties 这些关键字，子集之外的关键字（`$ref`、`allOf` 等）会让
+        整条声明被拒，因为宿主评估不了它们，悄悄忽略等于给出一份拦不住东西的契约。
+
+        契约描述的是本类型自己的配置内容，即该族配置模型 `config` 字段的形状；`name`、
+        `type`、`enabled` 这类外壳字段属于服务族，不由类型描述。走 `impl` 路径时契约
+        不得声明名为 `name` 的字段——实例名由宿主填入，同名会让构造得到两个 `name`。
+
+        暂不声明契约的类型照常登记，只是宿主不判定其配置形状，并在启动时提示一次。
 
         实现类的构造形状不便迁就宿主时改用 `factory=my_factory`——宿主对每条用户配置
         调用 `factory(配置对象)`，配置对象即该族配置模型的一条记录，怎么落到实例上由

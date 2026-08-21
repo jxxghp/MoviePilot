@@ -33,6 +33,7 @@ from app.runtime.extensions.contract import ExtensionDistribution, supports_exte
 from app.runtime.extensions.declaration import (
     declaration_config_component,
     declaration_config_form,
+    declaration_config_schema,
     declaration_impl,
     declaration_meta_parser_identity,
     declaration_meta_parser_priority,
@@ -2324,6 +2325,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                             config_component=self._resolve_service_instance_config_component(
                                 projection, owner, plugin, item
                             ),
+                            config_schema=declaration_config_schema(item),
                         )
                     except Exception as error:
                         logger.error(f"登记插件实例 {owner} 的服务实例声明出错：{str(error)}")

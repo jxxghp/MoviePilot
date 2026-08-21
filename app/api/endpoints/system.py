@@ -39,6 +39,7 @@ from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.service_config_validation import service_config_write_violation
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
@@ -1128,6 +1129,11 @@ async def set_setting(
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
+        # 服务实例配置按声明该类型的扩展给出的契约判定，畸形配置退回并说明原因，
+        # 不落盘、也不留到构造实例时才失败
+        violation = service_config_write_violation(key, value)
+        if violation:
+            return _SchemaResponse(success=False, message=violation)
         success = await get_configured_system_config().async_set(key, value)
         if success:
             # 发送配置变更事件

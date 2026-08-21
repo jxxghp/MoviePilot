@@ -40,6 +40,10 @@ def config_form(
     本端点同时下发 ``multi_instance``：前端要决定该类型的配置列表上要不要给出
     新增第二份的入口，而只有登记表知道这件事。未登记的类型答 True，与内建类型
     一律可配多份、以及声明缺省即多实例两处口径一致。
+
+    ``config_schema`` 与 ``available`` 各自独立下发：契约描述配置形状，界面描述
+    配置呈现，声明方可以只给其一。只声明契约的类型 ``available`` 仍为 False，
+    前端据契约生成默认表单。
     :param capability: 能力标签，取值为宿主已登记的服务族，内建为 downloader、
         mediaserver、notification
     :param service_type: 类型标识，即该族配置模型的 type
@@ -59,12 +63,14 @@ def config_form(
         "model": None,
         "component": None,
         "remote": None,
+        "config_schema": None,
     }
     entry = service_instance_registry.find(capability, service_type)
     if entry is None:
         return empty
     empty["name"] = entry.name
     empty["multi_instance"] = entry.multi_instance
+    empty["config_schema"] = entry.config_schema
     if entry.config_form is not None:
         layout, defaults = entry.config_form
         return {**empty, "available": True, "conf": layout, "model": defaults}

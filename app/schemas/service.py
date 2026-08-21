@@ -22,6 +22,10 @@ class ServiceConfigForm(BaseModel):
 
     ``multi_instance`` 与界面无关，回答的是「该类型能配几份」：为 False 时该
     类型只接受一份配置，前端据此不提供新增第二份的入口。
+
+    ``config_schema`` 同样与界面无关，回答的是「该类型的配置是什么形状」。它与
+    ``available`` 互不牵连：声明了契约却没有专属界面时 ``available`` 仍为 False，
+    前端据契约生成默认表单；有专属界面时契约照常下发，供前端做提交前校验。
     """
 
     available: bool = Field(description="该服务类型是否有随声明登记的专属配置界面")
@@ -42,4 +46,8 @@ class ServiceConfigForm(BaseModel):
     )
     remote: Optional[PluginRemoteInfo] = Field(
         default=None, description="vue 模式下组件所在的联邦远程入口，非 vue 模式时为 None"
+    )
+    config_schema: Optional[dict[str, JsonData]] = Field(
+        default=None,
+        description="该服务类型配置内容的契约，JSON Schema 受控子集；未声明契约时为 None",
     )

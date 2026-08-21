@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Type
 
 from pydantic import ValidationError
 
+from app.runtime.extensions.config_schema import config_value_violations
 from app.runtime.log import logger
 from app.schemas.system import DownloaderConf
 from app.schemas.system import MediaServerConf
@@ -146,6 +147,7 @@ def create_service_instance(
     *,
     impl: Optional[Any] = None,
     factory: Optional[Any] = None,
+    config_schema: Optional[Any] = None,
 ) -> Any:
     """按单条用户配置构造一个具名服务实例。
 
@@ -153,15 +155,24 @@ def create_service_instance(
     展开配置内容，``factory`` 路径把整条配置对象原样交给声明方。扩展声明的契约
     校验内省的正是这两种形状，两侧共用本函数，校验过的形状即实际构造的形状。
 
+    配置内容在构造前按类型声明的配置契约判定一次。配置写入路径已经拦过一道，这里
+    仍然判定，是因为配置也可能从别的入口进来——旧版本存下的数据、直接改库、宿主
+    自己的迁移，都不经过写入端点。未声明契约的类型不做判定，行为与声明该字段之前
+    完全一致。
+
     构造失败原样抛出，由调用方决定是跳过这一条还是整体失败。
 
     :param name: 实例名
     :param conf: 该实例的用户配置
     :param impl: 实例实现类，与 factory 二选一
     :param factory: 实例工厂，与 impl 二选一
+    :param config_schema: 该类型声明的配置契约，为 None 表示未声明
     :return: 构造出的服务实例
-    :raises ValueError: impl 与 factory 均未给出，没有可用的构造路径
+    :raises ValueError: 配置内容不合该类型声明的契约，或 impl 与 factory 均未给出
     """
+    violations = config_value_violations(config_schema, getattr(conf, "config", None))
+    if violations:
+        raise ValueError(f"服务实例 {name} 的配置不合该类型的契约：{'；'.join(violations)}")
     if factory is not None:
         return factory(conf)
     if impl is None:

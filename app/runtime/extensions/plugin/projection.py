@@ -20,6 +20,7 @@ from app.runtime.extensions.declaration import (
     declaration_auth_provider_fields,
     declaration_config_component,
     declaration_config_form,
+    declaration_config_schema,
     declaration_dashboard_identity,
     declaration_filter_rule_conditions,
     declaration_filter_rule_group_identity,
@@ -60,6 +61,7 @@ from app.runtime.extensions.plugin.meta_parser_capabilities import (
 )
 from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
 from app.runtime.extensions.plugin.service_instance_capabilities import (
+    SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.plugin.storage_capabilities import storage_declaration_violation
@@ -1608,6 +1610,10 @@ class PluginProjection:
                         f"已跳过：{violation}"
                     )
                     continue
+                if declaration_config_schema(item) is None:
+                    deprecation_warn(
+                        SERVICE_INSTANCE_SCHEMA_DEPRECATION, context=extension_id
+                    )
                 accepted.append(item)
             result[extension_id] = accepted
         return self._narrow_to_query(

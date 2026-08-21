@@ -124,6 +124,16 @@ NOTICES: Mapping[str, DeprecationNotice] = {
         replacement="provides_actions()",
         reason="返回裸描述字典列表，无契约校验、无归属记账、卸载不可回收",
     ),
+    "plugin.service_instance_without_config_schema": DeprecationNotice(
+        key="plugin.service_instance_without_config_schema",
+        subject="不带 config_schema 的服务实例类型声明",
+        stage=DeprecationStage.WARN,
+        since="v3.1.0",
+        remove_in="v3.3.0",
+        replacement="在 ServiceInstanceDeclaration 上给出 config_schema",
+        reason="没有配置契约时宿主判定不了该类型的配置形状，畸形配置只能存下去、"
+               "留到构造实例时才失败",
+    ),
     "plugin.get_dashboard_meta": DeprecationNotice(
         key="plugin.get_dashboard_meta",
         subject="_PluginBase.get_dashboard_meta()",

@@ -5,6 +5,9 @@
 判定：``impl`` 路径确认 ``impl(name=配置名, **配置内容)`` 的调用形状在签名上成立，
 ``factory`` 路径确认工厂可调用且能接受单个位置参数。两条路径都只做签名内省，
 不真正构造实例。
+
+声明携带的配置契约在此一并判定：契约本身要落在受支持的子集内，否则宿主评估不了
+它，配置写入与实例构造两处的判定都会失去依据。
 """
 
 from __future__ import annotations
@@ -12,10 +15,13 @@ from __future__ import annotations
 import inspect
 from typing import Any, Optional
 
+from app.runtime.deprecation.policy import is_active as deprecation_is_active
+from app.runtime.extensions.config_schema import config_schema_violation
 from app.runtime.extensions.declaration import (
     ServiceInstanceDeclaration,
     declaration_config_component,
     declaration_config_form,
+    declaration_config_schema,
     declaration_service_instance_constructor,
     declaration_service_instance_identity,
     declaration_service_instance_multi_instance,
@@ -25,6 +31,9 @@ from app.runtime.extensions.service_family_registry import service_family_regist
 
 # 构造实例时由宿主固定填入的关键字参数名，其余关键字均来自用户配置内容
 _INSTANCE_NAME_KEYWORD = "name"
+
+# 「服务实例类型声明不带配置契约」的废弃标识，阶段推进即把契约从可选变为必填
+SERVICE_INSTANCE_SCHEMA_DEPRECATION = "plugin.service_instance_without_config_schema"
 
 # 内省工厂调用签名时填入的占位实参，签名绑定只匹配形参不读取实参内容
 _FACTORY_PROBE_ARGUMENT = object()
@@ -41,6 +50,11 @@ def service_instance_declaration_violation(
     ``factory`` 恰好给出其一且该路径的调用签名成立；配置界面二选一，规则与存储声明
     相同。任一不满足都拒绝登记，不留到构造实例时才失败。
 
+    ``config_schema`` 声明了就必须落在受支持的子集内，声明一份宿主评估不了的契约与
+    不声明是两回事，后者只是没有契约，前者是一份看起来有效、实际拦不住任何东西的
+    契约。是否**必须**声明由废弃阶段决定：当前阶段照常接受未声明契约的声明，阶段
+    推进到默认关闭后同一处即判为违约，无需改动本函数。
+
     :param declaration: `ServiceInstanceDeclaration` 实例
     :param render_mode: 声明该服务实例的扩展当前的渲染模式；为 None 时跳过
         ``config_component`` 与渲染模式的一致性校验
@@ -54,6 +68,7 @@ def service_instance_declaration_violation(
         multi_instance = declaration_service_instance_multi_instance(declaration)
         config_form = declaration_config_form(declaration)
         config_component = declaration_config_component(declaration)
+        config_schema = declaration_config_schema(declaration)
     except Exception as error:
         return f"读取服务实例声明出错：{error}"
     if not capability:
@@ -72,7 +87,30 @@ def service_instance_declaration_violation(
     constructor_violation = _constructor_violation(impl, factory)
     if constructor_violation:
         return constructor_violation
+    schema_violation = _config_schema_violation(config_schema, impl)
+    if schema_violation:
+        return schema_violation
     return config_interface_violation(config_form, config_component, render_mode=render_mode)
+
+
+def _config_schema_violation(config_schema: Any, impl: Any) -> Optional[str]:
+    """
+    校验声明携带的配置契约
+
+    ``impl`` 路径下宿主按 ``impl(name=配置名, **配置内容)`` 构造，实例名由宿主填入，
+    契约再声明同名字段会让构造得到两个 ``name`` 关键字；``factory`` 路径整条配置原样
+    交给扩展，不存在这次填入，因此该保留字只在 ``impl`` 路径下成立。
+
+    :param config_schema: 声明携带的配置契约原始值
+    :param impl: 声明携带的实现类，为 None 表示走 factory 路径
+    :return: 违反契约的描述；契约合规时为 None
+    """
+    if config_schema is None and not deprecation_is_active(
+        SERVICE_INSTANCE_SCHEMA_DEPRECATION
+    ):
+        return "未声明配置契约 config_schema，宿主无从判定该类型的配置形状"
+    reserved = (_INSTANCE_NAME_KEYWORD,) if impl is not None else ()
+    return config_schema_violation(config_schema, reserved_property_names=reserved)
 
 
 def _constructor_violation(impl: Any, factory: Any) -> Optional[str]:
