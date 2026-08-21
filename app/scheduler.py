@@ -29,6 +29,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.database import get_database_governance
+from app.application.outbox import dispatch_pending_outbox
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
@@ -354,6 +355,21 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
 
             self._register_database_backup_job()
+            self._jobs["outbox_dispatch"] = {
+                "name": "恢复待投递副作用",
+                "func": dispatch_pending_outbox,
+                "running": False,
+            }
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="outbox_dispatch",
+                name="恢复待投递副作用",
+                seconds=30,
+                next_run_time=datetime.now(pytz.timezone(settings.TZ)),
+                kwargs={"job_id": "outbox_dispatch"},
+                replace_existing=True,
+            )
 
             # CookieCloud定时同步
             if (

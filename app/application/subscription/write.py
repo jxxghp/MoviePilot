@@ -16,8 +16,10 @@ app/application/history.py 里整理历史的写入路径同构。
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Optional, Protocol, Tuple
 
+from app.application.outbox import OutboxIntent
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
@@ -28,6 +30,20 @@ INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
 
 AfterCommitEffect = Callable[[int], None]
 AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
+
+
+class SubscriptionOutboxStager(Protocol):
+    """同步订阅事务暂存 durable intent 的最小端口。"""
+
+    def stage(self, intent: OutboxIntent, now: datetime) -> None:
+        """把意图加入当前业务事务。"""
+
+
+class AsyncSubscriptionOutboxStager(Protocol):
+    """异步订阅事务暂存 durable intent 的最小端口。"""
+
+    async def stage(self, intent: OutboxIntent, now: datetime) -> None:
+        """把意图加入当前异步业务事务。"""
 
 
 class SubscribeWriter(Protocol):
@@ -124,10 +140,12 @@ class CreateSubscriptionCommand:
         self,
         repository: SubscriptionStagingRepository,
         unit_of_work: UnitOfWork,
+        outbox: SubscriptionOutboxStager | None = None,
     ) -> None:
         """注入无提交仓储和事务所有者。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
+        self._outbox = outbox
 
     def execute(
         self,
@@ -140,6 +158,11 @@ class CreateSubscriptionCommand:
         try:
             staged = self._repository.stage_add(identity, payload, username)
             if staged.created:
+                if self._outbox:
+                    self._outbox.stage(
+                        _subscribe_added_intent(staged.subscribe_id, payload, username),
+                        datetime.now(timezone.utc),
+                    )
                 self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
@@ -156,10 +179,12 @@ class AsyncCreateSubscriptionCommand:
         self,
         repository: SubscriptionStagingRepository,
         unit_of_work: AsyncUnitOfWork,
+        outbox: AsyncSubscriptionOutboxStager | None = None,
     ) -> None:
         """注入无提交异步仓储和事务所有者。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
+        self._outbox = outbox
 
     async def execute(
         self,
@@ -176,6 +201,11 @@ class AsyncCreateSubscriptionCommand:
                 username,
             )
             if staged.created:
+                if self._outbox:
+                    await self._outbox.stage(
+                        _subscribe_added_intent(staged.subscribe_id, payload, username),
+                        datetime.now(timezone.utc),
+                    )
                 await self._unit_of_work.commit()
         except Exception:
             await self._unit_of_work.rollback()
@@ -183,6 +213,32 @@ class AsyncCreateSubscriptionCommand:
         if staged.subscribe_id and after_commit:
             await after_commit(staged.subscribe_id)
         return staged.subscribe_id, staged.message
+
+
+def _subscribe_added_intent(
+    subscribe_id: int,
+    payload: dict,
+    username: str | None,
+) -> OutboxIntent:
+    """构造版本化订阅新增事件，event key 同时作为 handler 幂等键。"""
+    return OutboxIntent(
+        event_key=subscription_added_event_key(subscribe_id, payload),
+        topic="subscribe.added",
+        payload={
+            "subscribe_id": subscribe_id,
+            "username": username,
+            "mediainfo": dict(payload),
+        },
+    )
+
+
+def subscription_added_event_key(subscribe_id: int, payload: dict) -> str:
+    """由订阅 ID 与媒体身份构造重试期间稳定、重建后不碰撞的幂等键。"""
+    return (
+        f"subscribe.added:{subscribe_id}:"
+        f"{payload.get('media_source') or 'unknown'}:"
+        f"{payload.get('media_id') or 'unknown'}:v1"
+    )
 
 
 _configured_subscribe_writer: Callable[[], SubscribeWriter] | None = None

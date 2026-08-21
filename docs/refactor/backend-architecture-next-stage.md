@@ -672,6 +672,21 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
 6. 插件事件 payload 仍按 V3 dict 发送；durability 是宿主内部实现，不改变 SDK。
 7. 先选订阅写入或整理完成中的一个用例，不建立万能消息总线。
 
+**实施记录（2026-08-21）**：
+
+- 新增 `outboxmessage` 表与 Alembic revision `c7d9a1e4f2b6`。订阅新增行和
+  `subscribe.added` version 1 intent 在同一 Session/UoW 中 stage/flush/commit；outbox 写失败会回滚
+  订阅。降级会删除未投递 intent，执行前必须确认 pending/dead 均已处理或备份。
+- event key 由订阅 ID、`media_source`、`media_id` 和 payload version 构成；即时事件 payload 同步
+  暴露 `idempotency_key`。正常 post-commit 编排全部完成后收口 intent；进程在 commit 后崩溃或回调
+  失败时，记录保持 pending，由恢复 dispatcher 重放。
+- SQLAlchemy adapter 使用 attempt 条件更新和 lease 做原子 claim；dispatcher 最多 5 次指数退避，
+  错误截断后持久化，最终进入 `dead`。30 秒 Scheduler job 每批恢复最多 20 条，批次 Session 始终关闭。
+- pilot 只恢复 `SubscribeAdded` 事件；消息和外部统计仍执行旧 post-commit 编排，不能据此宣称所有订阅
+  副作用均 durable。后续 topic 必须另做幂等 handler 与崩溃窗口测试。
+- 66 个订阅/调度专项测试和 40 个数据库、迁移、Session/outbox 测试通过（1 个环境条件 skip）；
+  fresh schema 先 create_all 再升级与重复迁移均保持幂等。
+
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
 #### ARCH-252：Scheduler 拆成声明、执行和状态

@@ -2180,6 +2180,10 @@
           {
             "caller": "app.chain.subscribe",
             "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           }
         ]
       },
@@ -2304,7 +2308,7 @@
         ]
       }
     },
-    "producer_count": 66
+    "producer_count": 67
   },
   "module_method_specs": {
     "download_file": {

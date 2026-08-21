@@ -54,6 +54,8 @@ from app.application.security.userconfig import (
     configure_user_configuration,
 )
 from app.application.history import configure_transfer_history_provider
+from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
+from app.startup.outbox import SqlAlchemyOutboxRepository
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
@@ -94,7 +96,7 @@ from app.db.oper.workflow import WorkflowOper
 from app.command import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import EventType, SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
 from app.startup.database import build_database_governance
 from app.startup.managed_resources_initializer import (
@@ -191,6 +193,21 @@ def configure_runtime_data_providers() -> None:
                 MoviePilotServerHelper._clear_workflow_share_cache
             ),
         ),
+    )
+
+
+def _build_outbox_dispatcher() -> OutboxDispatcher:
+    """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
+    session = SessionFactory()
+    return OutboxDispatcher(
+        repository=SqlAlchemyOutboxRepository(session),
+        handlers={
+            "subscribe.added": lambda message: EventManager().send_event(
+                EventType.SubscribeAdded,
+                message.payload,
+            )
+        },
+        close=session.close,
     )
 
 
@@ -454,6 +471,7 @@ async def init_modules() -> HostRuntime:
         user=lambda: UserOper(),
     )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
             max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,

@@ -924,6 +924,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
         eventmanager.send_event(EventType.SubscribeAdded, {
             "subscribe_id": subscribe_id,
+            "idempotency_key": (
+                f"subscribe.added:{subscribe_id}:"
+                f"{context.media_source}:{context.media_id}:v1"
+            ),
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
@@ -955,6 +959,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
         await eventmanager.async_send_event(EventType.SubscribeAdded, {
             "subscribe_id": subscribe_id,
+            "idempotency_key": (
+                f"subscribe.added:{subscribe_id}:"
+                f"{context.media_source}:{context.media_id}:v1"
+            ),
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
