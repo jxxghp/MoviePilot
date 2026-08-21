@@ -92,7 +92,8 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         # 设置WAL模式。
         # 这是引擎构建里唯一的阻塞 I/O，且发生在 get_engine() 的创建锁内——异步侧因此
         # 移除了对称的那一段（见下方 else 分支）。同步侧保留是因为 journal_mode 必须有人
-        # 设置一次，而同步引擎的首次创建由 init_db() 在启动期单线程完成，不存在一群线程
+        # 设置一次，而同步引擎的首次创建由 lifespan 数据库准备组件中的 init_db() 完成，
+        # 不存在一群线程
         # 等在锁上的场面；即便退化到运行期首次访问，阻塞的也只是本地 SQLite 的一次 PRAGMA。
         _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
         with engine.connect() as connection:

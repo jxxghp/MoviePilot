@@ -92,6 +92,12 @@ MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=false
 
 Dockerfile 同时提供 `HEALTHCHECK`，用于标记容器健康状态。是否自动重启仍由 Docker Compose、NAS 平台或 Docker restart policy 决定。
 
+镜像健康检查与 entrypoint 的后端就绪等待统一访问公开的 `/health/ready`：只有数据库迁移、
+Alembic head 校验和生命周期启动完成后才返回 200；启动失败或关停时返回 503。单纯确认进程
+和事件循环可响应可访问 `/health/live`。这两个探针无需 token，响应只包含最小状态，不提供
+数据库路径、revision、插件名称或异常栈；详细原因应通过本地 `moviepilot doctor`、受控 Agent
+诊断或管理员渠道查看。
+
 ## Issue 反馈集成
 
 `feedback-issue` skill 的诊断收集脚本会自动调用 `moviepilot doctor --json`，并把 doctor 摘要写入预览和最终 Issue 正文。完整 doctor JSON 存在运行时 diagnostics 文件中，默认不会直接贴入 Issue，避免泄露本机路径和过长输出。连续重复的同类日志模板会保留首条、末条和重复次数，避免轮询或等待日志挤掉真正的错误上下文。

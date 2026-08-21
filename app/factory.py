@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
 from app.adapters.web.security.access import (
     configure_token_codec,
@@ -305,6 +306,8 @@ def create_app() -> FastAPI:
     _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
     # 主程序静态路由统一使用 ResponseAPIRoute；动态插件注册时会显式覆盖为原生 APIRoute。
     _app.router.route_class = ResponseAPIRoute
+    # 编排器探针使用原生 APIRoute 和最小响应，不进入业务响应包络或版本前缀。
+    install_health_routes(_app)
 
     # 配置 CORS 中间件
     _app.add_middleware(

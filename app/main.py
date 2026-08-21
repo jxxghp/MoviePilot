@@ -60,7 +60,6 @@ from app.runtime.topology import (
     UnsupportedProcessTopologyError,
     validate_process_topology,
 )
-from app.startup.database_initializer import prepare_database
 
 setproctitle.setproctitle(settings.PROJECT_NAME)
 
@@ -189,7 +188,6 @@ def run_application() -> None:
     signal.signal(signal.SIGINT, signal_handler)
 
     start_tray()
-    prepare_database()
     run_api_server()
 
 

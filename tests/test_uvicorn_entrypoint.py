@@ -8,6 +8,7 @@ import pytest
 
 from app import factory, main
 from app.runtime.topology import UnsupportedProcessTopologyError
+from app.startup import lifecycle
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
@@ -124,3 +125,13 @@ def test_local_launcher_keeps_module_entrypoint():
     )
 
     assert 'exec "$VENV_PYTHON" -m app.main' in script
+
+
+def test_supported_asgi_entries_share_database_lifecycle() -> None:
+    """主程序、factory 与 TestClient 应通过同一 lifespan 准备数据库。"""
+    created = factory.create_app()
+
+    assert factory.app.router.lifespan_context is lifecycle.lifespan
+    assert main.app.router.lifespan_context is lifecycle.lifespan
+    assert created.router.lifespan_context is lifecycle.lifespan
+    assert "prepare_database" not in main.run_application.__code__.co_names

@@ -50,6 +50,8 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     )
     assert 'ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]' in dockerfile
     assert "CMD /usr/bin/curl -fsS" in dockerfile
+    assert '"http://127.0.0.1:${PORT:-3001}/health/ready"' in dockerfile
+    assert "system/global?token=moviepilot" not in dockerfile
     assert (
         'for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done'
         in dockerfile

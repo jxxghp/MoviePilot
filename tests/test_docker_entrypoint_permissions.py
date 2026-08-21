@@ -552,7 +552,7 @@ def test_backend_ready_log_uses_configured_ports(tmp_path: Path) -> None:
     )
 
     assert curl_log.read_text(encoding="utf-8") == (
-        "-fsS --max-time 2 http://127.0.0.1:4321/api/v1/system/global?token=moviepilot\n"
+        "-fsS --max-time 2 http://127.0.0.1:4321/health/ready\n"
     )
     assert "MoviePilot Web 已可访问" in output
     assert "后端就绪耗时" in output

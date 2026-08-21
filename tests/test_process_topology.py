@@ -56,11 +56,9 @@ def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
     monkeypatch.setattr(main.settings, "MOVIEPILOT_SAFE_MODE", False)
     signal_handler = MagicMock()
     start_tray = MagicMock()
-    prepare_database = MagicMock()
     server_run = MagicMock()
     monkeypatch.setattr(main.signal, "signal", signal_handler)
     monkeypatch.setattr(main, "start_tray", start_tray)
-    monkeypatch.setattr(main, "prepare_database", prepare_database)
     monkeypatch.setattr(main, "run_api_server", server_run)
 
     with pytest.raises(UnsupportedProcessTopologyError):
@@ -68,7 +66,6 @@ def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
 
     signal_handler.assert_not_called()
     start_tray.assert_not_called()
-    prepare_database.assert_not_called()
     server_run.assert_not_called()
 
 

@@ -262,5 +262,5 @@ COPY --link --from=prepare_backend /app /app
 
 EXPOSE 3000
 VOLUME [ "${CONFIG_DIR}" ]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD /usr/bin/curl -fsS "http://127.0.0.1:${PORT:-3001}/api/v1/system/global?token=moviepilot" >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD /usr/bin/curl -fsS "http://127.0.0.1:${PORT:-3001}/health/ready" >/dev/null || exit 1
 ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]

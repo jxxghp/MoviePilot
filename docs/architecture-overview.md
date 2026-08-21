@@ -210,10 +210,10 @@ sequenceDiagram
     Factory->>Factory: create_app()：异常处理器 / CORS / 本地化中间件
     Factory->>Init: register_api_app(app) 注入插件路由服务
     Factory-->>Life: lifespan 绑定到 app
-    Main->>Main: init_db() + update_db()（Alembic 迁移）
     Main->>FastAPI: Server.run() 触发 lifespan 启动
 
     Life->>Life: configure_cache_dependencies()<br/>（必须先于业务模块导入）
+    Life->>Init: prepare_database() + revision/head 校验
     Life->>Init: configure_default_user_agent（注入 UA）
     Life->>Init: configure_domain_dependencies（领域层依赖注入）
     Life->>Init: get_engine() / get_global_async_engine() 预热 + fail-fast
@@ -223,6 +223,7 @@ sequenceDiagram
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
     Life->>Init: init_command() / init_workflow()
     Life->>Init: replay_pending_transfers()（后台回放未整理文件）
+    Life->>Life: 发布 database_ready + lifecycle_ready
     Life->>FastAPI: yield，交还控制权
     Note over Life,FastAPI: 运行期……
     FastAPI->>Life: 收到停止信号
@@ -238,10 +239,16 @@ sequenceDiagram
 - **Uvicorn 入口分流**：生产单 worker 使用带协作停止语义的 `MoviePilotServer`；开发 reload
   和安全模式多 worker 使用 `app.factory:create_app` import string/factory，由 supervisor
   创建应用实例。`app.factory:app` 继续保留给既有 ASGI supervisor 和测试使用。
+- **数据库准备唯一入口**：建表、迁移、迁移前备份和 Alembic head 校验统一由 lifespan
+  最早的“数据库准备”组件执行，`app.main` 不再主动迁移。主程序、外部 supervisor、factory
+  和 TestClient 因而共享同一 fail-fast 语义。
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
+- **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
+  到达当前 head 且生命周期完成后返回 200，启动失败或关停阶段返回 503。两者不公开路径、
+  revision、插件和异常详情，深入诊断继续使用 Doctor。
 - **关停隔离**：每个关停步骤由 `run_shutdown_step` 独立捕获异常，保证后续资源仍有机会释放。
 
 ---

@@ -158,7 +158,7 @@ LOCAL_FRONTEND_SERVICE_SCRIPT = textwrap.dedent(
     const backendHost = process.env.MOVIEPILOT_BACKEND_HOST || '127.0.0.1'
     const backendPort = Number(process.env.PORT || 3001)
     const frontendPort = Number(process.env.NGINX_PORT || 3000)
-    const backendHealthPath = '/api/v1/system/global?token=moviepilot'
+    const backendHealthPath = '/health/ready'
     const backendHealthTimeoutMs = Number(process.env.MOVIEPILOT_FRONTEND_HEALTH_TIMEOUT_MS || 3000)
     const backendHealthIntervalMs = Number(process.env.MOVIEPILOT_FRONTEND_HEALTH_INTERVAL_MS || 15000)
     const backendMaxFailures = Math.max(
@@ -2099,7 +2099,7 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.application.site.sites import SitesHelper  # noqa
+    from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 
     auth_sites = SitesHelper().get_authsites() or {}
     definitions: dict[str, Any] = {}
@@ -2440,7 +2440,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         system_config.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
-            from app.application.site.sites import SitesHelper  # noqa
+            from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
 
             status, msg = SitesHelper().check_user(
                 site_auth_item.get("site"), site_auth_item.get("params")
@@ -2472,9 +2472,9 @@ def _ensure_superuser_account_inner() -> None:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.runtime.config import settings
-    from app.application.security.access import get_password_hash
+    from app.application.security.token import get_password_hash
     from app.db.oper.user import UserOper
+    from app.runtime.config import settings
 
     username = str(settings.SUPERUSER or "").strip()
     username_error = _validate_superuser_name(username)

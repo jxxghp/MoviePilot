@@ -66,7 +66,7 @@ function wait_backend_ready() {
     local backend_port="${PORT:-3001}"
     local web_port="${NGINX_PORT:-3000}"
     local timeout="${MOVIEPILOT_BACKEND_READY_TIMEOUT:-300}"
-    local ready_url="http://127.0.0.1:${backend_port}/api/v1/system/global?token=moviepilot"
+    local ready_url="http://127.0.0.1:${backend_port}/health/ready"
     local deadline
     if ! [[ "${timeout}" =~ ^[0-9]+$ ]] || [ "$((10#${timeout}))" -le 0 ]; then
         WARN "→ MOVIEPILOT_BACKEND_READY_TIMEOUT=${timeout} 无效，使用默认 300 秒。"

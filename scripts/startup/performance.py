@@ -105,17 +105,29 @@ async def _async_noop():
     return None
 
 
+def _isolated_start(component, probe_app):
+    # 保留 readiness 所需状态转换，其余真实启动回调替换为空操作。
+    if component.start is None:
+        return None
+    if component.name == '数据库准备':
+        return lambda: lifecycle.get_application_health(
+            probe_app
+        ).mark_database_ready()
+    return _noop
+
+
 async def _probe():
     lifecycle.settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
     lifecycle.init_extra = _async_noop
     lifecycle.global_vars.set_loop = lambda loop: None
     lifecycle.global_vars.stop_system = lambda: None
     lifecycle.LoggerManager.shutdown = lambda: None
-    original_components = lifecycle.build_lifecycle_components(FastAPI())
+    probe_app = FastAPI()
+    original_components = lifecycle.build_lifecycle_components(probe_app)
     isolated_components = tuple(
         dataclasses.replace(
             component,
-            start=_noop if component.start is not None else None,
+            start=_isolated_start(component, probe_app),
             stop=_noop if component.stop is not None else None,
         )
         for component in original_components
@@ -134,7 +146,7 @@ async def _probe():
     before_threads = threading.active_count()
     before_tasks = len(asyncio.all_tasks())
     started = time.perf_counter()
-    async with lifecycle.lifespan(FastAPI()):
+    async with lifecycle.lifespan(probe_app):
         startup_ms = (time.perf_counter() - started) * 1000
         started_threads = threading.active_count()
         started_tasks = len(asyncio.all_tasks())

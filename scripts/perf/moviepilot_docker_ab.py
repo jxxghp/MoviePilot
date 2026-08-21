@@ -800,7 +800,7 @@ def wait_for_ready(container, started_at: float, timeout: float) -> float:
         "-fsS",
         "--max-time",
         "2",
-        "http://127.0.0.1:3001/api/v1/system/global?token=moviepilot",
+        "http://127.0.0.1:3001/health/ready",
     ]
     while time.monotonic() < deadline:
         if not container_running(container):
