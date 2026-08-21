@@ -53,8 +53,20 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
 
 
 def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():
-    """严重 Python 静态错误检查不能继续只依赖手工触发。"""
+    """改动文件应硬门禁，而全仓存量问题只能生成建议性报告。"""
     workflow = _load_workflow("pylint.yml")
+    commands = _step_commands(workflow, "pylint")
 
     assert workflow["on"]["pull_request"]["branches"] == ["v3"]
     assert workflow["on"]["push"]["branches"] == ["v3"]
+    assert "changed-python-files.txt" in commands
+    assert "xargs uv run --locked --no-sync pylint" in commands
+    assert "pylint app/" in commands
+    assert "--output-format=json > pylint-report.json || true" in commands
+
+    full_report_step = next(
+        step
+        for step in workflow["jobs"]["pylint"]["steps"]
+        if step.get("name") == "Generate full advisory report"
+    )
+    assert "|| true" in full_report_step["run"]

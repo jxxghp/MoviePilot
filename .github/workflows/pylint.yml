@@ -23,7 +23,9 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
 
     - name: Set up uv
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -49,29 +51,48 @@ jobs:
           echo "❌ 未找到 .pylintrc 配置文件"
           exit 1
         fi
-    - name: Run pylint
+    - name: Collect changed Python files
+      id: changed
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+        BEFORE_SHA: ${{ github.event.before }}
+        CURRENT_SHA: ${{ github.sha }}
       run: |
-        # 运行pylint，检查主要的Python文件
-        echo "🚀 运行 Pylint 错误检查..."
+        if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          git diff --name-only --diff-filter=ACMRT \
+            "origin/$BASE_REF...HEAD" -- '*.py' > changed-python-files.txt
+        elif [[ "$EVENT_NAME" == "push" ]] \
+          && [[ -n "$BEFORE_SHA" ]] \
+          && [[ ! "$BEFORE_SHA" =~ ^0+$ ]] \
+          && git cat-file -e "$BEFORE_SHA^{commit}"; then
+          git diff --name-only --diff-filter=ACMRT \
+            "$BEFORE_SHA" "$CURRENT_SHA" -- '*.py' > changed-python-files.txt
+        else
+          git diff-tree --no-commit-id --name-only --diff-filter=ACMRT \
+            -r HEAD -- '*.py' > changed-python-files.txt
+        fi
+        sort -u -o changed-python-files.txt changed-python-files.txt
+        if [[ -s changed-python-files.txt ]]; then
+          echo "has_files=true" >> "$GITHUB_OUTPUT"
+          sed -n '1,200p' changed-python-files.txt
+        else
+          echo "has_files=false" >> "$GITHUB_OUTPUT"
+          echo "本次没有改动 Python 文件"
+        fi
 
-        # 检查主要目录 - 只关注错误，如果有错误则退出
-        echo "📂 检查 app/ 目录..."
-        uv run --locked --no-sync pylint app/ --output-format=colorized --reports=yes --score=yes
+    - name: Run pylint on changed Python files
+      if: steps.changed.outputs.has_files == 'true'
+      run: |
+        xargs uv run --locked --no-sync pylint \
+          --output-format=colorized --reports=yes --score=yes \
+          < changed-python-files.txt
 
-        # 检查根目录的Python文件
-        echo "📂 检查根目录 Python 文件..."
-        for file in $(find . -name "*.py" -not -path "./.*" -not -path "./.venv/*" -not -path "./build/*" -not -path "./dist/*" -not -path "./tests/*" -not -path "./docs/*" -not -path "./__pycache__/*" -maxdepth 1); do
-          echo "检查文件: $file"
-          uv run --locked --no-sync pylint "$file" --output-format=colorized || exit 1
-        done
-
-        # 生成详细报告
-        echo "📊 生成 Pylint 详细报告..."
-        uv run --locked --no-sync pylint app/ --output-format=json > pylint-report.json || true
-
-        # 显示评分（仅供参考）
-        echo "📈 Pylint 评分（仅供参考）:"
-        uv run --locked --no-sync pylint app/ --score=yes --reports=no | tail -2 || true
+    - name: Generate full advisory report
+      if: always()
+      run: |
+        uv run --locked --no-sync pylint app/ \
+          --output-format=json > pylint-report.json || true
 
     - name: Upload pylint report
       uses: actions/upload-artifact@v4
@@ -83,5 +104,5 @@ jobs:
     - name: Summary
       run: |
         echo "🎉 Pylint 检查完成！"
-        echo "✅ 没有发现语法错误或严重问题"
-        echo "📊 详细报告已保存为构建工件"
+        echo "✅ 改动 Python 文件没有新增语法错误或严重问题"
+        echo "📊 全仓建议性报告已保存为构建工件"
