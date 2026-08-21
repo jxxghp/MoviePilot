@@ -27,20 +27,9 @@ class SendMessageAction(BaseAction):
     def __init__(self, action_id: str):
         super().__init__(action_id)
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "发送消息"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "发送任务执行消息"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return SendMessageParams().model_dump()
+    name = "发送消息"
+    description = "发送任务执行消息"
+    data = SendMessageParams().model_dump()
 
     @property
     def success(self) -> bool:

@@ -33,8 +33,8 @@ PUBLIC_DIR = ROOT / "public"
 RUNTIME_DIR = ROOT / ".runtime"
 NODE_DIR = RUNTIME_DIR / "node"
 INSTALL_ENV_FILE = ROOT / ".moviepilot.env"
-MIN_PYTHON_VERSION = (3, 12)
-SUPPORTED_PYTHON_TEXT = "Python 3.12+"
+MIN_PYTHON_VERSION = (3, 14)
+SUPPORTED_PYTHON_TEXT = "Python 3.14+"
 UV_VERSION = "0.12.5"
 
 CONFIG_DIR = LEGACY_CONFIG_DIR
@@ -2722,7 +2722,7 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
             venv_dir
         ):
             raise RuntimeError(
-                "重建虚拟环境需要使用 venv 外部的 Python 3.12+ 解释器。"
+                "重建虚拟环境需要使用 venv 外部的 Python 3.14+ 解释器。"
             )
     uv_bin = require_uv()
     temporary_uv_dir: Optional[TemporaryDirectory[str]] = None
@@ -3719,7 +3719,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本",
+        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.14+ 版本",
     )
     install_parser.add_argument(
         "--venv", default=str(ROOT / "venv"), help="虚拟环境目录"
@@ -3781,7 +3781,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本",
+        help="用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.14+ 版本",
     )
     setup_parser.add_argument("--venv", default=str(ROOT / "venv"), help="虚拟环境目录")
     setup_parser.add_argument(
@@ -3853,7 +3853,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument(
         "--python",
         default=DEFAULT_BOOTSTRAP_PYTHON,
-        help="用于安装后端依赖的 Python 解释器，默认自动选择本地 3.12+ 版本",
+        help="用于安装后端依赖的 Python 解释器，默认自动选择本地 3.14+ 版本",
     )
     update_parser.add_argument(
         "--venv", default=str(ROOT / "venv"), help="虚拟环境目录"

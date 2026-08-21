@@ -30,7 +30,7 @@ def test_recreate_commands_use_external_bootstrap_python(tmp_path, arguments):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     record = tmp_path / "record"
-    external_python = bin_dir / "python3.12"
+    external_python = bin_dir / "python3.14"
     external_python.write_text(
         "#!/bin/sh\n"
         "if [ \"$1\" = \"-\" ]; then exit 0; fi\n"
@@ -47,7 +47,7 @@ def test_recreate_commands_use_external_bootstrap_python(tmp_path, arguments):
     )
     venv_python.write_text(venv_script, encoding="utf-8")
     venv_python.chmod(venv_python.stat().st_mode | stat.S_IXUSR)
-    venv_alias = venv_python.with_name("python3.12")
+    venv_alias = venv_python.with_name("python3.14")
     venv_alias.write_text(venv_script, encoding="utf-8")
     venv_alias.chmod(venv_alias.stat().st_mode | stat.S_IXUSR)
 
@@ -117,7 +117,7 @@ def test_recreate_accepts_explicit_external_python(tmp_path):
         ("update", "backend", "--recreate"),
     ],
 )
-@pytest.mark.parametrize("python_option", [(), ("--python", "python3.12")])
+@pytest.mark.parametrize("python_option", [(), ("--python", "python3.14")])
 def test_recreate_excludes_custom_venv_from_external_bootstrap(
     tmp_path, arguments, python_option
 ):
@@ -135,8 +135,8 @@ def test_recreate_excludes_custom_venv_from_external_bootstrap(
     external_bin = tmp_path / "external-bin"
     external_bin.mkdir()
     record = tmp_path / "record"
-    target_python = target_bin / "python3.12"
-    external_python = external_bin / "python3.12"
+    target_python = target_bin / "python3.14"
+    external_python = external_bin / "python3.14"
     for python_path in (target_python, external_python):
         python_path.write_text(
             "#!/bin/sh\n"

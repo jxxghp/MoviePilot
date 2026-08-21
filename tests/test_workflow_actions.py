@@ -192,20 +192,9 @@ def test_execute_with_inputs_maps_contract_inputs_outputs_and_runtime(monkeypatc
             "outputs": [{"name": "downloads", "label": "下载任务", "kind": "list"}],
         }
 
-        @classmethod
-        @property
-        def name(cls) -> str:
-            return "契约动作"
-
-        @classmethod
-        @property
-        def description(cls) -> str:
-            return "测试契约动作"
-
-        @classmethod
-        @property
-        def data(cls) -> dict:
-            return {}
+        name = "契约动作"
+        description = "测试契约动作"
+        data = {}
 
         @property
         def success(self) -> bool:
@@ -254,5 +243,8 @@ def test_workflow_manager_list_actions_exposes_contract():
 
     actions = manager.list_actions()
 
+    assert actions[0]["name"] == "获取RSS资源"
+    assert actions[0]["description"] == "订阅RSS地址获取资源"
+    assert isinstance(actions[0]["data"], dict)
     assert actions[0]["contract"]["outputs"][0]["name"] == "torrents"
     assert actions[0]["contract"]["condition_fields"][0]["label"] == "资源"

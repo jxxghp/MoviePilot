@@ -1958,11 +1958,11 @@
       },
       "ChainEventType.WorkflowExecution": {
         "consumers": [],
-        "producers": [
-          {
-            "caller": "app.workflow.actions.send_event",
-            "count": 1
-          }
+          "producers": [
+            {
+              "caller": "app.workflow.actions.send_event",
+              "count": 1
+            }
         ]
       },
       "EventType.AgentTokensUsage": {

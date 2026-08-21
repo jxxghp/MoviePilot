@@ -27,20 +27,9 @@ class FetchDownloadsAction(BaseAction):
         super().__init__(action_id)
         self._downloads = []
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "获取下载任务"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "获取下载队列中的任务状态"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return FetchDownloadsParams().model_dump()
+    name = "获取下载任务"
+    description = "获取下载队列中的任务状态"
+    data = FetchDownloadsParams().model_dump()
 
     @property
     def success(self) -> bool:
