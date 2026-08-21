@@ -341,8 +341,8 @@ def test_host_fields_are_derived_from_the_family_model():
         "sync_interval", "sync_libraries",
     )
     assert service_host_fields(ModuleType.Notification.value) == ("switchs",)
-    # 存储的类型级默认标记同样是宿主消费的实例级字段，因此按同一条差集规则落进宿主载荷
-    assert service_host_fields(ModuleType.Storage.value) == ("is_default",)
+    # 存储的裸令牌兼容指针同样是宿主消费的实例级字段，因此按同一条差集规则落进宿主载荷
+    assert service_host_fields(ModuleType.Storage.value) == ("bare_token_target",)
     assert service_host_fields("不是服务族") == ()
 
 

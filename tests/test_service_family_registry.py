@@ -26,12 +26,14 @@ from app.runtime.extensions.service_family_registry import (
     service_family_registry,
 )
 from app.schemas.types import ModuleType
+from tests.test_plugin_provided_storages import _ValidPluginStorage
 
 # 内建服务族的能力标签，取值与 `ModuleType` 成员逐字相同
 _BUILTIN_CAPABILITIES = ("downloader", "mediaserver", "notification", "storage")
 
-# 可经 `ServiceInstanceDeclaration` 声明的族，存储另有专用钩子故不在其列
-_DECLARABLE_CAPABILITIES = ("downloader", "mediaserver", "notification")
+# 可经 `ServiceInstanceDeclaration` 声明的族，四族全在其列——存储只是构造协议不同，
+# 不再另设专用钩子
+_DECLARABLE_CAPABILITIES = _BUILTIN_CAPABILITIES
 
 
 class _DemoDownloader:
@@ -77,9 +79,12 @@ def test_builtin_families_carry_display_name_and_builtin_ownership() -> None:
 
 @pytest.mark.parametrize("capability", _DECLARABLE_CAPABILITIES)
 def test_declaration_is_accepted_for_every_builtin_family(capability: str) -> None:
-    """可声明的内建族标签都被契约校验接受。"""
+    """可声明的内建族标签都被契约校验接受，实现按各族的构造协议给。"""
     declaration = ServiceInstanceDeclaration(
-        capability=capability, type="demo_type", name="演示类型", impl=_DemoDownloader
+        capability=capability,
+        type="demo_type",
+        name="演示类型",
+        impl=_ValidPluginStorage if capability == "storage" else _DemoDownloader,
     )
 
     assert service_instance_declaration_violation(declaration) is None

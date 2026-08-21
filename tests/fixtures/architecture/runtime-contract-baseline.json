@@ -1577,7 +1577,7 @@
       },
       {
         "caller": "app.modules._base.storage",
-        "line": 663
+        "line": 664
       },
       {
         "caller": "app.runtime.events",
@@ -1593,23 +1593,19 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2280
+        "line": 2273
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2288
+        "line": 2313
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2321
+        "line": 2386
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2422
-      },
-      {
-        "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2466
+        "line": 2430
       },
       {
         "caller": "app.runtime.extensions.service_family_registry",
@@ -2119,7 +2115,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1552
+            "line": 1550
           }
         ]
       },

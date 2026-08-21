@@ -37,11 +37,9 @@ from app.runtime.extensions.declaration import (
     declaration_impl,
     declaration_meta_parser_identity,
     declaration_meta_parser_priority,
-    declaration_schema,
     declaration_service_instance_constructor,
     declaration_service_instance_identity,
     declaration_service_instance_multi_instance,
-    declaration_storage_name,
 )
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
@@ -2227,80 +2225,26 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         由投影按稳定规则裁决，因此同步粒度是整个插件而不是单个实例——只重建触发方
         一个实例的话，兄弟实例的落选与接手都无从体现。
 
-        存储与服务实例两族共用同一张类型目录，回收因此必须在一次里做完：分成两次做
-        的话，后跑的一方按登记方回收时会把先跑的一方刚建好的登记一并扫掉。
-
         先回收各实例此前登记过的类型，避免声明缩减后残留旧登记；再按当前声明逐条
-        登记，单条声明的注册失败不影响其余声明的登记。
+        登记，单条声明的注册失败不影响其余声明的登记。存储类型两张表各有一条登记，
+        两处的回收与重建都在这一轮里做完：分两轮做的话，后跑的一方按登记方回收时会
+        把先跑的一方刚建好的登记扫掉。
 
         :param key: 触发本次同步的实例键
         :return: 无返回值
         """
         try:
             projection = self._plugin_projection()
-            storages = projection.provided_storages(extension_id_of(key))
             instances = projection.provided_service_instances(extension_id_of(key))
             for owner in self._extension_registration_owners(key):
                 storage_backend_registry.unregister_owner(owner)
                 service_instance_registry.unregister_owner(owner)
                 plugin = self._running_plugins.get(owner)
-                self._register_declared_storages(
-                    projection, owner, plugin, storages.get(owner, [])
-                )
                 self._register_declared_service_instances(
                     projection, owner, plugin, instances.get(owner, [])
                 )
         except Exception as error:
             logger.error(f"同步插件实例 {key} 服务类型登记出错：{str(error)}")
-
-    def _register_declared_storages(
-        self, projection: PluginProjection, owner: str, plugin: Optional[Any],
-        declared: List[Any]
-    ) -> None:
-        """登记一个插件实例声明的全部存储类型。
-
-        一条声明落两处登记：存储后端注册表按存储令牌承担取用，服务实例类型目录承担
-        记账——提供方是谁、能配几份、配置什么形状、界面长什么样。两处回答的不是同一个
-        问题，前者按实例、后者按类型，因此不是同一份登记的两个副本。类型目录里的构造
-        路径由宿主按存储的构造协议包成工厂，扩展不必重写一遍归属交付。
-
-        :param projection: 已绑定当前运行态插件注册表的能力投影服务
-        :param owner: 实例键
-        :param plugin: 运行态插件实例
-        :param declared: 该实例已通过登记契约校验的存储声明
-        :return: 无返回值
-        """
-        for item in declared:
-            try:
-                impl = declaration_impl(item)
-                storage_id = declaration_schema(item)
-                config_component = self._resolve_storage_config_component(
-                    projection, owner, plugin, item
-                )
-                storage_backend_registry.register(
-                    impl,
-                    distribution=ExtensionDistribution.MARKET,
-                    owner=owner,
-                    storage_id=storage_id,
-                    config_form=declaration_config_form(item),
-                    config_component=config_component,
-                )
-                service_instance_registry.register(
-                    capability=STORAGE_CAPABILITY,
-                    service_type=storage_id,
-                    name=declaration_storage_name(item) or storage_id,
-                    owner=owner,
-                    factory=storage_instance_factory(impl),
-                    multi_instance=bool(
-                        declaration_service_instance_multi_instance(item)
-                    ),
-                    distribution=ExtensionDistribution.MARKET,
-                    config_form=declaration_config_form(item),
-                    config_component=config_component,
-                    config_schema=declaration_config_schema(item),
-                )
-            except Exception as error:
-                logger.error(f"登记插件实例 {owner} 的存储声明出错：{str(error)}")
 
     def _register_declared_service_instances(
         self, projection: PluginProjection, owner: str, plugin: Optional[Any],
@@ -2318,6 +2262,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             try:
                 capability, service_type, name = declaration_service_instance_identity(item)
                 impl, factory = declaration_service_instance_constructor(item)
+                config_component = self._resolve_service_instance_config_component(
+                    projection, owner, plugin, item
+                )
+                if capability == STORAGE_CAPABILITY:
+                    impl, factory = self._register_declared_storage_backend(
+                        owner, service_type, impl, factory,
+                        declaration_config_form(item), config_component
+                    )
                 service_instance_registry.register(
                     capability=capability,
                     service_type=service_type,
@@ -2328,13 +2280,45 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     multi_instance=declaration_service_instance_multi_instance(item),
                     distribution=ExtensionDistribution.MARKET,
                     config_form=declaration_config_form(item),
-                    config_component=self._resolve_service_instance_config_component(
-                        projection, owner, plugin, item
-                    ),
+                    config_component=config_component,
                     config_schema=declaration_config_schema(item),
                 )
             except Exception as error:
                 logger.error(f"登记插件实例 {owner} 的服务实例声明出错：{str(error)}")
+
+    @staticmethod
+    def _register_declared_storage_backend(
+        owner: str, storage_id: str, impl: Any, factory: Optional[Any],
+        config_form: Optional[Any], config_component: Optional[Dict[str, Any]]
+    ) -> tuple:
+        """把存储类型的后端登进存储后端注册表，并补上类型目录要用的构造工厂。
+
+        存储类型落两张表：存储后端注册表按令牌回答「``u115@work`` 指的实体是谁」，
+        类型目录按类型回答「谁提供、能配几份、配置什么形状、界面长什么样」。粒度不同，
+        后者也回答不了按实例寻址，因此不是同一份登记的两个副本。
+
+        构造一律走工厂：声明没给工厂时用宿主默认那一个，按实例归属交付后端、配置由
+        后端自己按令牌懒读；给了就用声明自带的。类型目录因此不再持有 ``impl``——存储的
+        ``impl`` 不是「按关键字展开配置构造」的那种实现类，留着会让通用构造路径按错误的
+        协议调用它。
+
+        :param owner: 实例键
+        :param storage_id: 存储标识，即声明的类型标识
+        :param impl: 声明携带的存储后端类
+        :param factory: 声明携带的实例工厂，为 None 表示用宿主默认工厂
+        :param config_form: 该类型的专属配置界面（vuetify 模式）
+        :param config_component: 该类型的已解析 vue 模式配置组件
+        :return: (类型目录用的实现类, 类型目录用的实例工厂) 二元组
+        """
+        storage_backend_registry.register(
+            impl,
+            distribution=ExtensionDistribution.MARKET,
+            owner=owner,
+            storage_id=storage_id,
+            config_form=config_form,
+            config_component=config_component,
+        )
+        return None, factory or storage_instance_factory(impl)
 
     def _extension_registration_owners(self, key: str) -> List[str]:
         """列出一次扩展级同步需要重建登记的实例键。
@@ -2349,26 +2333,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if key not in owners:
             owners.append(key)
         return owners
-
-    @staticmethod
-    def _resolve_storage_config_component(
-        projection: PluginProjection, key: str, plugin: Optional[Any], item: Any
-    ) -> Optional[Dict[str, Any]]:
-        """把存储声明携带的 vue 模式组件名解析为完整的联邦远程描述。
-
-        声明未带组件名、或实例键取不到运行态插件实例时不解析，登记项的
-        ``config_component`` 保持为空，等价于该存储标识没有专属界面。
-
-        :param projection: 已绑定当前运行态插件注册表的能力投影服务
-        :param key: 实例键
-        :param plugin: 运行态插件实例
-        :param item: 已通过登记契约校验的存储声明
-        :return: 含 component 与 remote 的字典；无需解析时为 None
-        """
-        component = declaration_config_component(item)
-        if not component or plugin is None:
-            return None
-        return projection.storage_component_descriptor(key, plugin, component)
 
     @staticmethod
     def _resolve_service_instance_config_component(

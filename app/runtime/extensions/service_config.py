@@ -2,7 +2,12 @@
 
 下载器、媒体服务器、消息通知与存储按「一份配置扇出一个具名实例」消费，声明面只出现
 能力标签（``downloader``/``mediaserver``/``notification``/``storage``）；这四族配置存在
-哪张表、按哪个模型校验、默认标记落在哪一级，是宿主内部实现，只在本模块落地。
+哪张表、按哪个模型校验、有没有裸令牌兼容指针，是宿主内部实现，只在本模块落地。
+
+四族的默认调用目标同规格：每族至多一个，落 ``serviceconfig.is_default_target`` 专列，
+唯一性由条件唯一索引判定。存储另有一个**兼容指针**——它不是默认，只回答「存量路径
+``u115:/media`` 没写实例名时落到哪个实例」，每个存储类型各一份，随宿主载荷落库，
+所有路径补全实例名后即可整体移除。
 
 这四族的实例配置由服务实例配置表承载，按能力标签整族读取；其余服务相关配置键
 （通知场景开关等）仍在 systemconfig 上，两条来源各有一个读取端口，由配置键属不属于
@@ -16,7 +21,6 @@
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from enum import Enum
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Type
 
@@ -37,41 +41,20 @@ ServiceConfigReader = Callable[[SystemConfigKey], Any]
 ServiceInstanceConfigReader = Callable[[str], Any]
 
 
-class DefaultTargetScope(Enum):
-    """默认标记的唯一性作用域。
-
-    作用域由「调用地址里还剩什么没指定」决定，不由业务族决定：
-
-    - ``FAMILY``：调用地址是空的（「发个通知」「下载这个种子」既不带类型也不带实例），
-      因此要在整族候选里选一个，一族至多一个。标记落 ``serviceconfig`` 的
-      ``is_default_target`` 专列，条件唯一索引替宿主判定这条唯一性。
-    - ``TYPE``：调用地址已经写死了类型（存储令牌 ``u115:/media``），缺的只有实例段，
-      因此每个类型各要一个——``u115`` 与 ``alipan`` 必须同时指得到实例。标记落该族配置
-      模型上的实例级字段，随宿主载荷 ``host_config`` 落库。
-
-    两者不是同一个问题的两个粒度：族级默认要在**类型之间**做选择，类型级默认只在
-    **同类型的实例之间**做选择。合成一列等于宣称「一族至多一个类型能有默认实例」，
-    对存储直接是错的；把索引放宽到 (族, 类型) 则让三族失去「一族至多一个默认调用
-    目标」的数据库保证，而那是并发写入下唯一的守门人。
-    """
-
-    FAMILY = "family"
-    TYPE = "type"
-
-
 @dataclass(frozen=True, slots=True)
 class ServiceFamilySpec:
     """一族服务实例配置在宿主内部的落点与整形规则。
 
     :param config_key: 该族配置的稳定标识，模块清单按它声明监听哪一族
     :param conf_type: 该族的配置模型
-    :param default_scope: 默认标记的唯一性作用域
+    :param bare_token_field: 裸令牌兼容指针在该族配置模型上的字段名，不需要兼容指针
+        的族为 None
     :param name_defaults_to_type: 实例名缺省时是否回落为类型标识
     """
 
     config_key: SystemConfigKey
     conf_type: Type
-    default_scope: DefaultTargetScope = DefaultTargetScope.FAMILY
+    bare_token_field: Optional[str] = None
     name_defaults_to_type: bool = False
 
 
@@ -81,8 +64,8 @@ STORAGE_CAPABILITY = ModuleType.Storage.value
 # 族级默认调用目标在族配置模型上的字段名，取值映射自 is_default_target 列
 _FAMILY_DEFAULT_FIELD = "default"
 
-# 类型级默认实例在族配置模型上的字段名，取值随宿主载荷 host_config 落库
-_TYPE_DEFAULT_FIELD = "is_default"
+# 裸令牌兼容指针在存储族配置模型上的字段名，取值随宿主载荷 host_config 落库
+_STORAGE_BARE_TOKEN_FIELD = "bare_token_target"
 
 # 服务能力标签到该族在宿主内部的落点与整形规则的映射
 _SERVICE_CONFIGS: Mapping[str, ServiceFamilySpec] = MappingProxyType({
@@ -96,11 +79,13 @@ _SERVICE_CONFIGS: Mapping[str, ServiceFamilySpec] = MappingProxyType({
         SystemConfigKey.Notifications, NotificationConf
     ),
     # 存储实例名是后加的：切表前存储配置根本没有名字这一列，无名条目的含义是
-    # 「该类型的那一份」而不是残缺数据，因此回落为类型标识而不是丢弃
+    # 「该类型的那一份」而不是残缺数据，因此回落为类型标识而不是丢弃。
+    # 兼容指针只在存储族存在：只有存储的调用地址会出现「写了类型、没写实例」这种
+    # 半指定形态，其余三族的调用地址要么全空要么直接给实例名。
     STORAGE_CAPABILITY: ServiceFamilySpec(
         SystemConfigKey.Storages,
         StorageConf,
-        default_scope=DefaultTargetScope.TYPE,
+        bare_token_field=_STORAGE_BARE_TOKEN_FIELD,
         name_defaults_to_type=True,
     ),
 })
@@ -113,7 +98,7 @@ _SERVICE_CAPABILITIES: Mapping[str, str] = MappingProxyType({
 
 # 由宿主持有的外壳字段：实例身份、启用态、类型专属配置载荷与默认调用目标标记。
 # 族配置模型上除这些之外的顶层字段都是宿主自己消费的实例级字段（路径映射、场景开关、
-# 同步媒体库、同步间隔与类型级默认标记），按字段名逐个列举会在模型加字段时漏配，
+# 同步媒体库、同步间隔与裸令牌兼容指针），按字段名逐个列举会在模型加字段时漏配，
 # 故按差集推导。
 _INSTANCE_SHELL_FIELDS: frozenset = frozenset({"name", "type", "enabled", "config", "default"})
 
@@ -175,41 +160,30 @@ def service_host_fields(capability: Optional[str]) -> tuple[str, ...]:
     return tuple(sorted(set(spec.conf_type.model_fields) - _INSTANCE_SHELL_FIELDS))
 
 
-def service_default_scope(capability: Optional[str]) -> Optional[DefaultTargetScope]:
-    """返回该族默认标记的唯一性作用域。
+def service_bare_token_field(capability: Optional[str]) -> Optional[str]:
+    """返回该族裸令牌兼容指针在族配置模型上的字段名。
+
+    兼容指针不是默认标记：它回答的是「调用地址写了类型、没写实例时落到哪一份」，
+    与「调用没指定目标时用哪一份」互不重叠，因此另占一个字段而不共用默认标记。
 
     :param capability: 服务能力标签
-    :return: 作用域；标签不属于任何服务族时为 None
+    :return: 字段名；该族没有裸令牌兼容指针或标签不属于任何服务族时为 None
     """
     spec = service_family_spec(capability)
-    return spec.default_scope if spec else None
+    return spec.bare_token_field if spec else None
 
 
-def service_default_field(capability: Optional[str]) -> Optional[str]:
-    """返回该族默认标记在族配置模型上的字段名。
+def service_instance_default(conf: Any) -> bool:
+    """读取一条实例配置自带的默认调用目标标记。
 
-    :param capability: 服务能力标签
-    :return: 字段名；标签不属于任何服务族时为 None
-    """
-    scope = service_default_scope(capability)
-    if scope is None:
-        return None
-    return _TYPE_DEFAULT_FIELD if scope is DefaultTargetScope.TYPE else _FAMILY_DEFAULT_FIELD
+    四族共用同一个外壳字段，取值映射自 ``serviceconfig.is_default_target`` 列。
 
-
-def service_instance_default(capability: Optional[str], conf: Any) -> bool:
-    """读取一条实例配置自带的默认标记。
-
-    读哪个字段由该族的默认作用域决定：族级默认落外壳字段，类型级默认落宿主载荷字段。
-
-    :param capability: 服务能力标签
     :param conf: 单条实例配置，接受配置对象或配置字典
-    :return: 该实例是否被标记为其作用域内的默认目标
+    :return: 该实例是否被标记为本族的默认调用目标
     """
-    field = service_default_field(capability) or _FAMILY_DEFAULT_FIELD
     if isinstance(conf, Mapping):
-        return bool(conf.get(field))
-    return bool(getattr(conf, field, False))
+        return bool(conf.get(_FAMILY_DEFAULT_FIELD))
+    return bool(getattr(conf, _FAMILY_DEFAULT_FIELD, False))
 
 
 def service_instance_enabled(capability: Optional[str], conf: Any) -> bool:
@@ -306,14 +280,16 @@ def select_instance_configs(
     指定，也无法被默认配置裁决选中，留着只会让实例数与可用实例数对不上。没有启用
     开关的族一律视为已启用，判据见 `service_instance_enabled`。
 
-    单实例类型被配了多份时按该族作用域内的默认标记裁决：有显式默认则用它，没有默认
-    或默认已停用则报错并列出候选，绝不取第一个。配置存进服务实例配置表后没有顺序列，
-    「列表里排在最前的一份」不再是用户看得见也改得动的规则，因此不能再按顺序挑；报错
-    而不是静默挑一个，是为了让用户看到的实例与他自己指定的目标始终一致。
+    单实例类型被配了多份时按族级默认调用目标裁决：有显式默认则用它，没有默认或默认
+    已停用则报错并列出候选，绝不取第一个。四族共用这一条规则——存储的裸令牌兼容指针
+    回答的是另一个问题（地址里的实例段空着时落到哪一份），不参与本裁决。配置存进服务
+    实例配置表后没有顺序列，「列表里排在最前的一份」不再是用户看得见也改得动的规则，
+    因此不能再按顺序挑；报错而不是静默挑一个，是为了让用户看到的实例与他自己指定的
+    目标始终一致。
 
     :param configs: 该族全部已通过结构校验的配置
     :param service_type: 类型标识，为空时不产出任何实例配置
-    :param capability: 服务能力标签，决定读哪一级的默认标记与有无启用开关
+    :param capability: 服务能力标签，决定该族有无启用开关
     :param multi_instance: 该类型能否接受多份配置，为 False 时至多产出一个实例
     :return: 实例名到配置的映射
     :raises LookupError: 单实例类型有多份已启用配置，且裁决不出唯一的默认目标
@@ -333,7 +309,7 @@ def select_instance_configs(
         return enabled
     targets = [
         name for name, conf in enabled.items()
-        if service_instance_default(capability, conf)
+        if service_instance_default(conf)
     ]
     if len(targets) == 1:
         return {targets[0]: enabled[targets[0]]}

@@ -375,8 +375,8 @@ def test_same_identity_holds_several_named_instances() -> None:
     assert [entry.instance for entry in registry.instances("multi_probe")] == ["home", "work"]
 
 
-def test_unnamed_registration_is_the_default_instance() -> None:
-    """未具名登记占据默认实例位，裸令牌与今天一样直接命中它。"""
+def test_unnamed_registration_serves_the_bare_token() -> None:
+    """未具名登记占据裸令牌位，裸令牌与今天一样直接命中它。"""
     registry = StorageBackendRegistry()
 
     registry.register(_NamedInstanceBackend)
@@ -384,23 +384,23 @@ def test_unnamed_registration_is_the_default_instance() -> None:
 
     assert registry.find("multi_probe").backend is _NamedInstanceBackend
     assert registry.find("multi_probe").instance is None
-    assert registry.default_entry("multi_probe").backend is _NamedInstanceBackend
+    assert registry.bare_token_entry("multi_probe").backend is _NamedInstanceBackend
     assert registry.find("multi_probe@work").backend is _OtherNamedInstanceBackend
 
 
 def test_marked_named_instance_serves_the_bare_token() -> None:
-    """全为具名实例时，被显式标记为默认的那个承接不指定实例的调用。"""
+    """全为具名实例时，自称承接裸令牌的那个接住不指定实例的调用。"""
     registry = StorageBackendRegistry()
 
     registry.register(_NamedInstanceBackend, instance="work")
-    registry.register(_OtherNamedInstanceBackend, instance="home", is_default=True)
+    registry.register(_OtherNamedInstanceBackend, instance="home", bare_token_target=True)
 
     assert registry.find("multi_probe").backend is _OtherNamedInstanceBackend
     assert type(registry.resolve("multi_probe")) is _OtherNamedInstanceBackend
 
 
-def test_missing_default_reports_candidates_instead_of_taking_the_first() -> None:
-    """无默认实例时报错并列出候选，绝不按登记顺序取第一个。"""
+def test_missing_bare_token_target_reports_candidates_instead_of_taking_the_first() -> None:
+    """无人承接裸令牌时报错并列出候选，绝不按登记顺序取第一个。"""
     registry = StorageBackendRegistry()
 
     registry.register(_NamedInstanceBackend, instance="work")
@@ -410,21 +410,21 @@ def test_missing_default_reports_candidates_instead_of_taking_the_first() -> Non
         registry.find("multi_probe")
 
     message = str(excinfo.value)
-    assert "未设置默认实例" in message
+    assert "没有承接裸令牌的实例" in message
     assert "home" in message and "work" in message
 
 
-def test_several_self_claimed_defaults_count_as_no_default() -> None:
-    """多个实例同时自称默认即无法裁决，一律报错并列出候选。"""
+def test_several_self_claimed_bare_token_targets_count_as_none() -> None:
+    """多个实例同时自称承接裸令牌即无法裁决，一律报错并列出候选。"""
     registry = StorageBackendRegistry()
 
-    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
-    registry.register(_OtherNamedInstanceBackend, instance="home", is_default=True)
+    registry.register(_NamedInstanceBackend, instance="work", bare_token_target=True)
+    registry.register(_OtherNamedInstanceBackend, instance="home", bare_token_target=True)
 
     with pytest.raises(LookupError) as excinfo:
         registry.resolve("multi_probe")
 
-    assert "多个实例被标记为默认" in str(excinfo.value)
+    assert "多个实例自称承接裸令牌" in str(excinfo.value)
 
 
 def test_unregistered_identity_still_reports_absence_not_error() -> None:
@@ -433,15 +433,15 @@ def test_unregistered_identity_still_reports_absence_not_error() -> None:
 
     assert registry.find("multi_probe") is None
     assert registry.resolve("multi_probe") is None
-    assert registry.default_entry("multi_probe") is None
+    assert registry.bare_token_entry("multi_probe") is None
     assert registry.find("multi_probe@work") is None
 
 
-def test_default_instance_stops_serving_after_it_is_unregistered() -> None:
-    """默认实例注销后等同于无默认，报错而不改走另一个已登记实例。"""
+def test_bare_token_target_stops_serving_after_it_is_unregistered() -> None:
+    """承接裸令牌的实例注销后等同于无人承接，报错而不改走另一个已登记实例。"""
     registry = StorageBackendRegistry()
 
-    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
+    registry.register(_NamedInstanceBackend, instance="work", bare_token_target=True)
     registry.register(_OtherNamedInstanceBackend, instance="home")
     registry.unregister("multi_probe@work")
 
@@ -498,20 +498,20 @@ def test_registry_rejects_malformed_instance_name() -> None:
 
 
 def test_registry_diagnose_reports_instances() -> None:
-    """诊断信息按登记逐条给出存储令牌、实例名与默认标记。"""
+    """诊断信息按登记逐条给出存储令牌、实例名与裸令牌兼容指针。"""
     registry = StorageBackendRegistry()
 
-    registry.register(_NamedInstanceBackend, instance="work", is_default=True)
+    registry.register(_NamedInstanceBackend, instance="work", bare_token_target=True)
     diagnosed = registry.diagnose()[0]
 
     assert diagnosed["storage"] == "multi_probe@work"
     assert diagnosed["storage_id"] == "multi_probe"
     assert diagnosed["instance"] == "work"
-    assert diagnosed["default"] is True
+    assert diagnosed["bare_token_target"] is True
 
 
 def test_named_instance_uri_resolves_through_the_registry() -> None:
-    """带实例名的 URI 经注册表取到该实例的后端，裸 URI 仍取默认实例。"""
+    """带实例名的 URI 经注册表取到该实例的后端，裸 URI 仍取承接裸令牌的那一份。"""
     registry = StorageBackendRegistry()
 
     registry.register(_NamedInstanceBackend)

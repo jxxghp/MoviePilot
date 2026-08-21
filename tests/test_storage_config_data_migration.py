@@ -1,10 +1,11 @@
 """存量存储配置从 systemconfig 搬进服务实例配置表。
 
-存量配置是一个存储类型一份，搬迁后成为该存储类型的具名实例，并标记为该类型的默认
-实例——裸令牌 ``u115`` 指向默认实例，不标记则所有存量路径 ``u115:/media`` 会整体失效。
+存量配置是一个存储类型一份，搬迁后成为该存储类型的具名实例，并标记为该类型的裸令牌
+兼容指针——裸令牌 ``u115`` 落到它，不标记则所有存量路径 ``u115:/media`` 会整体失效。
 
-默认标记落在实例级宿主载荷而不是「默认调用目标」列：后者每族至多一行，而存储的默认
-实例是每个存储类型各一个。
+兼容指针落在实例级宿主载荷而不是「默认调用目标」列：后者每族至多一行、回答的是「调用
+没指定存储时用哪个」，而兼容指针是每个存储类型各一个、回答的是「地址缺实例段时落到哪份」。
+搬迁写的仍是旧键名，随后由改名那一步统一成 ``bare_token_target``。
 """
 import importlib
 import json
@@ -66,8 +67,8 @@ def _storage_rows(connection) -> list:
     ]
 
 
-def test_migration_turns_each_stored_type_into_its_default_instance(monkeypatch) -> None:
-    """存量的一个类型一份配置搬成具名实例，并成为该类型的默认实例。"""
+def test_migration_turns_each_stored_type_into_its_bare_token_target(monkeypatch) -> None:
+    """存量的一个类型一份配置搬成具名实例，并成为该类型的裸令牌兼容指针。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)
@@ -85,9 +86,9 @@ def test_migration_turns_each_stored_type_into_its_default_instance(monkeypatch)
         assert set(rows) == {"local", "u115", "alipan"}
         assert rows["u115"]["name"] == "115网盘"
         assert rows["u115"]["config"] == {"refresh_token": "t"}
-        assert rows["u115"]["host_config"] == {"is_default": True}
+        assert rows["u115"]["host_config"] == {"bare_token_target": True}
         assert rows["u115"]["enabled"] is True
-        assert {row["host_config"]["is_default"] for row in rows.values()} == {True}
+        assert {row["host_config"]["bare_token_target"] for row in rows.values()} == {True}
         assert {row["is_default_target"] for row in rows.values()} == {False}
         assert {row["provider"] for row in rows.values()} == {"host:builtin"}
 
@@ -105,7 +106,7 @@ def test_migration_names_a_nameless_entry_after_its_storage_type(monkeypatch) ->
 
         rows = _storage_rows(connection)
         assert [row["name"] for row in rows] == ["u115"]
-        assert rows[0]["host_config"] == {"is_default": True}
+        assert rows[0]["host_config"] == {"bare_token_target": True}
 
 
 def test_migration_drops_entries_without_a_storage_type(monkeypatch) -> None:
@@ -127,8 +128,8 @@ def test_migration_drops_entries_without_a_storage_type(monkeypatch) -> None:
         assert [row["name"] for row in _storage_rows(connection)] == ["有类型"]
 
 
-def test_migration_gives_one_default_per_storage_type(monkeypatch) -> None:
-    """默认实例的作用域是存储类型，每个类型各有一个，取顺序上第一份。"""
+def test_migration_gives_one_bare_token_target_per_storage_type(monkeypatch) -> None:
+    """兼容指针的作用域是存储类型，每个类型各有一个，取顺序上第一份。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)
@@ -142,11 +143,11 @@ def test_migration_gives_one_default_per_storage_type(monkeypatch) -> None:
 
         migration.upgrade()
 
-        defaults = [
+        pointers = [
             (row["type"], row["name"]) for row in _storage_rows(connection)
-            if row["host_config"]["is_default"]
+            if row["host_config"]["bare_token_target"]
         ]
-        assert defaults == [("u115", "主号"), ("alipan", "阿里")]
+        assert pointers == [("u115", "主号"), ("alipan", "阿里")]
 
 
 def test_migration_lets_the_later_duplicate_win(monkeypatch) -> None:
@@ -204,6 +205,52 @@ def test_migration_skips_when_the_storage_family_already_has_rows(monkeypatch) -
         migration.upgrade()
 
         assert [row["name"] for row in _storage_rows(connection)] == ["用户自建"]
+
+
+def test_rename_step_converts_rows_left_by_an_earlier_upgrade(monkeypatch) -> None:
+    """已经搬过的库里旧键 is_default 被改名，取值原样搬到 bare_token_target。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        migration = _bind_migration(monkeypatch, connection)
+        _prepare_systemconfig(connection, {"Storages": [{"type": "u115", "name": "旧"}]})
+        migration.upgrade()
+        connection.exec_driver_sql("DELETE FROM serviceconfig WHERE capability = 'storage'")
+        for name, mark in (("主号", True), ("副号", False)):
+            connection.exec_driver_sql(
+                "INSERT INTO serviceconfig "
+                "(capability, type, name, enabled, host_config, is_default_target, provider) "
+                "VALUES ('storage', 'u115', ?, 1, ?, 0, 'host:builtin')",
+                (name, json.dumps({"is_default": mark})),
+            )
+
+        migration.upgrade()
+
+        rows = {row["name"]: row["host_config"] for row in _storage_rows(connection)}
+        assert rows == {
+            "主号": {"bare_token_target": True}, "副号": {"bare_token_target": False}
+        }
+
+
+def test_rename_step_leaves_already_renamed_rows_alone(monkeypatch) -> None:
+    """改名那一步随每次升级重放，已经是新键名的行原样跳过。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        migration = _bind_migration(monkeypatch, connection)
+        _prepare_systemconfig(connection, {
+            "Storages": [
+                {"type": "u115", "name": "主号"},
+                {"type": "u115", "name": "副号"},
+            ],
+        })
+
+        migration.upgrade()
+        first = _storage_rows(connection)
+        migration.upgrade()
+
+        assert _storage_rows(connection) == first
+        assert [row["host_config"] for row in first] == [
+            {"bare_token_target": True}, {"bare_token_target": False}
+        ]
 
 
 def test_migration_is_independent_from_the_three_service_families(monkeypatch) -> None:

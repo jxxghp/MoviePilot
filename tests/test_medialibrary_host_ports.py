@@ -120,7 +120,7 @@ def test_storage_config_is_read_and_written_through_port(restore_host_ports):
 
 
 def test_storage_config_key_carries_the_instance_of_a_named_backend(restore_host_ports):
-    """具名实例的配置读写键带实例名，默认实例仍用裸存储标识。"""
+    """具名实例的配置读写键带实例名，承接裸令牌的那一份仍用裸存储标识。"""
     written = {}
     directory_config_port.register(lambda: SimpleNamespace())
     storage_config_port.register(lambda: SimpleNamespace(
@@ -130,7 +130,7 @@ def test_storage_config_key_carries_the_instance_of_a_named_backend(restore_host
     ))
     named = LocalStorage(storage_instance="备份盘")
     default_named = LocalStorage(storage_instance="主盘")
-    default_named.storage_is_default = True
+    default_named.storage_is_bare_token = True
 
     named.set_config({"token": "y"})
     default_named.set_config({"token": "z"})

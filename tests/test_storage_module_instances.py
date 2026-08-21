@@ -1,7 +1,7 @@
 """存储模块按实例扇出后端对象的守护测试。
 
 存储路径可以携带实例名（``u115@work:/media``），存储模块因此按实例各持有一个后端
-对象：裸令牌走默认实例，具名令牌走对应实例，本模块没有该实例时让出而不回落。
+对象：裸令牌走兼容指针所指的那一份，具名令牌走对应实例，本模块没有该实例时让出而不回落。
 """
 
 from pathlib import Path
@@ -35,7 +35,7 @@ class _ProbeStorage:
         :return: 以本对象实例归属为内容的整理方式表
         """
         self.calls.append("support_transtype")
-        return {"instance": self.storage_instance or "默认"}
+        return {"instance": self.storage_instance or "裸令牌"}
 
 
 class _TakeoverStorage(_ProbeStorage):
@@ -50,8 +50,8 @@ class _ProbeStorageModule(_StorageModuleBase):
     def __init__(self, configs: Tuple[Tuple[Optional[str], bool, bool], ...] = ()) -> None:
         """记录注入的实例配置。
 
-        :param configs: ``(实例名, 是否默认, 该实例配置是否构造失败)`` 序列，
-            为空时沿用基类的单一默认实例位
+        :param configs: ``(实例名, 是否承接裸令牌, 该实例配置是否构造失败)`` 序列，
+            为空时沿用基类的单一裸令牌位
         """
         super().__init__()
         self._injected = tuple(configs)
@@ -74,14 +74,14 @@ class _ProbeStorageModule(_StorageModuleBase):
         if not self._injected:
             return super()._instance_specs()
         return tuple(
-            StorageInstanceSpec(instance=name, is_default=is_default)
-            for name, is_default, _ in self._injected
+            StorageInstanceSpec(instance=name, bare_token_target=bare_token_target)
+            for name, bare_token_target, _ in self._injected
         )
 
     def _create_storage(self, instance: Optional[str]):
         """构造指定实例的后端对象，标记为坏配置的实例构造失败。
 
-        :param instance: 实例名，None 表示默认实例位
+        :param instance: 实例名，None 表示裸令牌位
         :return: 该实例的存储操作对象
         :raises RuntimeError: 该实例的注入配置被标记为构造失败
         """
@@ -109,7 +109,7 @@ def clean_probe_registrations():
 def _probe_module(configs: Tuple[Tuple[Optional[str], bool, bool], ...]) -> _ProbeStorageModule:
     """建立并启动一个按给定配置扇出的探针存储模块。
 
-    :param configs: ``(实例名, 是否默认, 该实例配置是否构造失败)`` 序列
+    :param configs: ``(实例名, 是否承接裸令牌, 该实例配置是否构造失败)`` 序列
     :return: 已完成初始化的存储模块
     """
     module = _ProbeStorageModule(configs)
@@ -119,7 +119,7 @@ def _probe_module(configs: Tuple[Tuple[Optional[str], bool, bool], ...]) -> _Pro
 
 @pytest.mark.parametrize("storage_id,module_class,backend", BUILTIN_STORAGE_MODULES)
 def test_builtin_module_holds_only_the_default_instance(storage_id, module_class, backend):
-    """内建存储模块只持有默认实例位，裸令牌逐条命中它。"""
+    """内建存储模块只持有裸令牌位，裸令牌逐条命中它。"""
     module = module_class()
     module.init_module()
     try:
@@ -137,7 +137,7 @@ def test_builtin_module_holds_only_the_default_instance(storage_id, module_class
 
 @pytest.mark.parametrize("storage_id,module_class,_backend", BUILTIN_STORAGE_MODULES)
 def test_named_token_is_yielded_instead_of_falling_back(storage_id, module_class, _backend):
-    """本模块没有该具名实例时让出，具名令牌的操作绝不落到默认实例上。"""
+    """本模块没有该具名实例时让出，具名令牌的操作绝不落到别的实例上。"""
     module = module_class()
     module.init_module()
     named = f"{storage_id}@work"
@@ -216,7 +216,7 @@ def test_instances_do_not_share_their_backend_object():
 
 
 def test_unnamed_instance_serves_the_bare_token():
-    """未具名实例占据默认实例位，裸令牌命中它而不是任何具名实例。"""
+    """未具名实例占据裸令牌位，裸令牌命中它而不是任何具名实例。"""
     module = _probe_module(((None, False, False), ("work", False, False)))
     try:
         assert module._claim(PROBE_STORAGE_ID).storage_instance is None  # noqa: SLF001
@@ -226,7 +226,7 @@ def test_unnamed_instance_serves_the_bare_token():
 
 
 def test_marked_named_instance_serves_the_bare_token():
-    """全为具名实例时，被标记为默认的那个承接裸令牌。"""
+    """全为具名实例时，自称承接的那个接住裸令牌。"""
     module = _probe_module((("work", False, False), ("home", True, False)))
     try:
         assert module._claim(PROBE_STORAGE_ID).storage_instance == "home"  # noqa: SLF001
@@ -239,7 +239,7 @@ def test_marked_named_instance_serves_the_bare_token():
     (("work", True, False), ("home", True, False)),
 ])
 def test_bare_token_is_yielded_when_no_default_can_be_decided(configs):
-    """裁决不出默认实例时裸令牌让出，绝不按顺序取第一个实例。"""
+    """裁决不出兼容指针时裸令牌让出，绝不按顺序取第一个实例。"""
     module = _probe_module(configs)
     try:
         assert module._claim(PROBE_STORAGE_ID) is None  # noqa: SLF001
@@ -249,7 +249,7 @@ def test_bare_token_is_yielded_when_no_default_can_be_decided(configs):
 
 
 def test_absent_named_instance_is_yielded_rather_than_served_by_the_default():
-    """已有默认实例时，指名一个不存在的实例仍然让出而不改走默认实例。"""
+    """已有兼容指针时，指名一个不存在的实例仍然让出而不改走那一份。"""
     module = _probe_module(((None, False, False), ("work", False, False)))
     try:
         assert module._claim(PROBE_STORAGE_ID) is not None  # noqa: SLF001

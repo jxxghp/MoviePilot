@@ -1,16 +1,19 @@
-"""插件声明存储后端链路测试：契约校验、登记归属、停用回收与内建取值还原。"""
+"""插件声明存储类型链路测试：契约校验、登记归属、停用回收与内建取值还原。
+
+存储类型与三族同走 `provides_service_instances()`，``capability="storage"``；差别只在
+构造协议——``impl`` 是按令牌取用的存储后端类，构造走工厂（宿主默认那一个或声明自带的
+那一个）。本文件同时盯住两张表：存储后端注册表按令牌取用，服务实例类型目录按类型记账。
+"""
 
 from typing import Iterator, List, Optional
 
 import pytest
 
+from app.application.storage import StorageHelper
 from app.foundation.singleton import Singleton
 from app.modules._base.storage import StorageBase
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import (
-    ServiceInstanceDeclaration,
-    StorageDeclaration,
-)
+from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin import extension_scoped, storage_capabilities
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
@@ -19,6 +22,23 @@ from app.runtime.extensions.service_instance_registry import (
 )
 from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.schemas.system import StorageConf
+
+
+def _storage_declaration(storage_type, impl, **fields):
+    """构造一条存储类型的服务实例声明。
+
+    :param storage_type: 存储标识，同时是类型标识
+    :param impl: 存储后端类
+    :param fields: 声明的其余字段，``name`` 缺省时回落为存储标识
+    :return: 服务实例声明
+    """
+    return ServiceInstanceDeclaration(
+        capability="storage",
+        type=storage_type,
+        name=fields.pop("name", None) or storage_type or "演示存储",
+        impl=impl,
+        **fields,
+    )
 
 
 class _ValidPluginStorage(StorageBase):
@@ -202,7 +222,7 @@ class _CapableStoragePlugin:
         """返回插件启用状态。"""
         return self._enabled
 
-    def provides_storages(self):
+    def provides_service_instances(self):
         """返回声明的存储后端，或按需抛出异常模拟插件实现出错。"""
         if self._raise_error:
             raise RuntimeError("声明存储后端时出错")
@@ -213,38 +233,38 @@ def test_projection_accepts_valid_declaration():
     """契约合规的声明应被接受，字段原样保留。"""
     plugin = _CapableStoragePlugin(
         declarations=[
-            StorageDeclaration(
-                schema="demo_storage",
-                capabilities=("list", "upload"),
+            _storage_declaration(
+                "demo_storage",
                 impl=_ValidPluginStorage,
+                capabilities=("list", "upload"),
             )
         ]
     )
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert len(declared["DemoStorage"]) == 1
     accepted = declared["DemoStorage"][0]
-    assert accepted.schema == "demo_storage"
+    assert accepted.type == "demo_storage"
     assert accepted.impl is _ValidPluginStorage
 
 
-def test_projection_accepts_bare_impl_class_without_wrapper():
-    """插件直接交出实现类而不包 StorageDeclaration 的兼容写法应被接受。"""
+def test_projection_rejects_bare_impl_class_without_declaration():
+    """裸实现类不是声明对象，宿主无从得知它属于哪一族，必须被拒。"""
     plugin = _CapableStoragePlugin(declarations=[_CompatStorage])
     projection = PluginProjection({"CompatStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
-    assert declared["CompatStorage"] == [_CompatStorage]
+    assert declared["CompatStorage"] == []
 
 
 @pytest.mark.parametrize(
     "declaration",
     [
-        StorageDeclaration(schema="demo_storage", impl="not-a-class"),
-        StorageDeclaration(schema="demo_storage", impl=None),
+        _storage_declaration("demo_storage", impl="not-a-class"),
+        _storage_declaration("demo_storage", impl=None),
     ],
     ids=["impl_is_string", "impl_missing"],
 )
@@ -253,7 +273,7 @@ def test_projection_rejects_impl_not_a_class(declaration):
     plugin = _CapableStoragePlugin(declarations=[declaration])
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["DemoStorage"] == []
 
@@ -261,11 +281,11 @@ def test_projection_rejects_impl_not_a_class(declaration):
 def test_projection_rejects_impl_not_storage_base_subclass():
     """impl 不是 StorageBase 子类的声明必须被拒绝。"""
     plugin = _CapableStoragePlugin(
-        declarations=[StorageDeclaration(schema="demo_storage", impl=_NotAStorage)]
+        declarations=[_storage_declaration("demo_storage", impl=_NotAStorage)]
     )
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["DemoStorage"] == []
 
@@ -273,11 +293,11 @@ def test_projection_rejects_impl_not_storage_base_subclass():
 def test_projection_rejects_impl_with_unimplemented_abstract_methods():
     """抽象方法未全部落地的声明必须被拒绝。"""
     plugin = _CapableStoragePlugin(
-        declarations=[StorageDeclaration(schema="demo_storage", impl=_IncompleteStorage)]
+        declarations=[_storage_declaration("demo_storage", impl=_IncompleteStorage)]
     )
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["DemoStorage"] == []
 
@@ -285,11 +305,11 @@ def test_projection_rejects_impl_with_unimplemented_abstract_methods():
 def test_projection_rejects_declaration_without_schema():
     """未声明非空存储标识的声明必须被拒绝。"""
     plugin = _CapableStoragePlugin(
-        declarations=[StorageDeclaration(schema="", impl=_ValidPluginStorage)]
+        declarations=[_storage_declaration("", impl=_ValidPluginStorage)]
     )
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["DemoStorage"] == []
 
@@ -298,31 +318,31 @@ def test_projection_partial_rejection_keeps_valid_siblings():
     """同一实例声明多条时，不合契约的条目被跳过，合规的条目照常保留。"""
     plugin = _CapableStoragePlugin(
         declarations=[
-            StorageDeclaration(schema="ok_storage", impl=_ValidPluginStorage),
-            StorageDeclaration(schema="", impl=_ValidPluginStorage),
-            StorageDeclaration(schema="bad_storage", impl=_NotAStorage),
+            _storage_declaration("ok_storage", impl=_ValidPluginStorage),
+            _storage_declaration("", impl=_ValidPluginStorage),
+            _storage_declaration("bad_storage", impl=_NotAStorage),
         ]
     )
     projection = PluginProjection({"DemoStorage": plugin})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert len(declared["DemoStorage"]) == 1
-    assert declared["DemoStorage"][0].schema == "ok_storage"
+    assert declared["DemoStorage"][0].type == "ok_storage"
 
 
 def test_projection_swallows_plugin_exception_without_blocking_others():
     """单个插件声明存储后端抛异常时不应影响其它插件的投影结果。"""
     broken = _CapableStoragePlugin(raise_error=True)
     healthy = _CapableStoragePlugin(
-        declarations=[StorageDeclaration(schema="ok_storage", impl=_ValidPluginStorage)]
+        declarations=[_storage_declaration("ok_storage", impl=_ValidPluginStorage)]
     )
     projection = PluginProjection({"Broken": broken, "Ok": healthy})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert "Broken" not in declared
-    assert declared["Ok"][0].schema == "ok_storage"
+    assert declared["Ok"][0].type == "ok_storage"
 
 
 class _FakeStoragePlugin:
@@ -347,9 +367,9 @@ class _FakeStoragePlugin:
         """返回插件名称。"""
         return self.plugin_name
 
-    def provides_storages(self) -> Optional[List[StorageDeclaration]]:
+    def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
         """返回声明的固定存储后端。"""
-        return [StorageDeclaration(schema=self.storage_schema, impl=self.storage_impl)]
+        return [_storage_declaration(self.storage_schema, impl=self.storage_impl)]
 
     def close(self) -> None:
         """释放测试桩持有的资源，测试桩无资源可释放。"""
@@ -413,12 +433,12 @@ def test_plugin_manager_config_update_resyncs_storage_registration(
 def test_plugin_manager_start_skips_storage_registration_when_plugin_raises(
     monkeypatch, plugin_manager: PluginManager
 ):
-    """插件的 provides_storages 抛异常时不应阻断插件加载。"""
+    """插件的 provides_service_instances 抛异常时不应阻断插件加载。"""
 
     class _BrokenStoragePlugin(_FakeStoragePlugin):
         """声明存储后端时抛异常的插件桩。"""
 
-        def provides_storages(self):
+        def provides_service_instances(self):
             """模拟插件实现出错。"""
             raise RuntimeError("声明存储后端时出错")
 
@@ -530,14 +550,14 @@ class _StorageFanOutPlugin:
         """返回插件名称。"""
         return self.plugin_name
 
-    def provides_storages(self):
+    def provides_service_instances(self):
         """按配置声明存储后端，或按配置模拟实现出错。"""
         if self.config.get("raise_error"):
             raise RuntimeError("声明存储后端时出错")
         schema = self.config.get("schema")
         if not schema:
             return []
-        return [StorageDeclaration(schema=schema, impl=_ValidPluginStorage)]
+        return [_storage_declaration(schema, impl=_ValidPluginStorage)]
 
     def close(self) -> None:
         """释放测试桩持有的资源，测试桩无资源可释放。"""
@@ -702,7 +722,7 @@ def test_siblings_declaring_distinct_storage_identities_keep_both(
 
 
 class _StorageAndServicePlugin:
-    """同时声明存储类型与服务实例类型的插件桩。"""
+    """一条钩子里同时声明存储类型与下载器类型的插件桩。"""
 
     plugin_name = "双族插件"
     plugin_version = "1.0.0"
@@ -721,24 +741,25 @@ class _StorageAndServicePlugin:
         """返回插件名称。"""
         return self.plugin_name
 
-    def provides_storages(self) -> Optional[List[StorageDeclaration]]:
-        """声明一个带展示名、份数与配置契约的存储类型。"""
-        return [StorageDeclaration(
-            schema="catalog_storage",
-            name="目录存储",
-            multi_instance=False,
-            impl=_ValidPluginStorage,
-            config_schema={"type": "object", "properties": {"token": {"type": "string"}}},
-        )]
-
-    def provides_service_instances(self):
-        """声明一个下载器类型，用于验证两族登记互不覆盖。"""
-        return [ServiceInstanceDeclaration(
-            capability="downloader",
-            type="catalog_downloader",
-            name="目录下载器",
-            impl=_CatalogDownloader,
-        )]
+    def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+        """声明一个存储类型与一个下载器类型，两族共用同一条钩子。"""
+        return [
+            _storage_declaration(
+                "catalog_storage",
+                impl=_ValidPluginStorage,
+                name="目录存储",
+                multi_instance=False,
+                config_schema={
+                    "type": "object", "properties": {"token": {"type": "string"}}
+                },
+            ),
+            ServiceInstanceDeclaration(
+                capability="downloader",
+                type="catalog_downloader",
+                name="目录下载器",
+                impl=_CatalogDownloader,
+            ),
+        ]
 
     def close(self) -> None:
         """释放测试桩持有的资源，测试桩无资源可释放。"""
@@ -795,10 +816,10 @@ def test_plugin_storage_declaration_also_enters_the_service_type_catalog(
     assert service_instance_registry.find("storage", "catalog_storage") is None
 
 
-def test_two_family_registrations_survive_one_sync(
+def test_two_families_declared_in_one_hook_both_register(
     monkeypatch, plugin_manager: PluginManager
 ):
-    """存储与服务实例两族共用一张类型目录，一次同步后两条登记都在。"""
+    """一条钩子里的两族声明各自落账：类型目录两条，存储后端注册表一条。"""
     plugin_id = _start_catalog_plugin(monkeypatch, plugin_manager)
     try:
         assert service_instance_registry.find("storage", "catalog_storage") is not None
@@ -822,6 +843,111 @@ def test_catalog_factory_builds_the_backend_for_the_declared_instance(
 
         assert isinstance(storage, _ValidPluginStorage)
         assert storage.storage_instance == "工作号"
-        assert storage.storage_is_default is False
+        assert storage.storage_is_bare_token is False
     finally:
         plugin_manager.stop(plugin_id)
+
+
+class _FanOutStoragePlugin:
+    """声明一个多实例存储类型的插件桩，按类属性决定写不写工厂。"""
+
+    plugin_name = "存储扇出类型插件"
+    plugin_version = "1.0.0"
+    declares_factory = False
+
+    def init_plugin(self, config: dict = None) -> None:
+        """生效配置信息，测试桩不使用配置内容。"""
+
+    def get_state(self) -> bool:
+        """返回插件启用状态。"""
+        return True
+
+    def get_name(self) -> str:
+        """返回插件名称。"""
+        return self.plugin_name
+
+    def provides_service_instances(self):
+        """声明存储类型，按类属性决定是否附带自己的实例工厂。"""
+        return [_storage_declaration(
+            "fanout_type_storage",
+            impl=_ValidPluginStorage,
+            name="扇出存储",
+            factory=self._declared_factory if self.declares_factory else None,
+        )]
+
+    @staticmethod
+    def _declared_factory(conf):
+        """声明自带的工厂，返回可与宿主默认工厂区分的标记对象。
+
+        :param conf: 单条存储实例配置
+        :return: 标记该实例由声明自带工厂构造的二元组
+        """
+        return ("declared", conf.name)
+
+    def close(self) -> None:
+        """释放测试桩持有的资源，测试桩无资源可释放。"""
+
+    def stop_service(self) -> None:
+        """停止测试桩后台服务，测试桩无后台服务。"""
+
+
+class _FactoryStoragePlugin(_FanOutStoragePlugin):
+    """声明存储类型并自带实例工厂的插件桩。"""
+
+    declares_factory = True
+
+
+def _fan_out_instances(monkeypatch, plugin_manager: PluginManager, plugin_class) -> dict:
+    """启动插件桩并按当前存储配置取出该类型扇出的全部实例。
+
+    :param monkeypatch: pytest 的猴子补丁夹具
+    :param plugin_manager: 插件管理器
+    :param plugin_class: 插件桩类
+    :return: 实例名到实例的映射
+    """
+    helper = StorageHelper()
+    helper.save_storagies([
+        StorageConf(type="fanout_type_storage", name="工作号", config={"k": "a"}),
+        StorageConf(type="fanout_type_storage", name="备用号", config={"k": "b"}),
+    ])
+    monkeypatch.setattr(
+        plugin_manager,
+        "_load_selective_plugins",
+        lambda pid, installed, check: [plugin_class],
+    )
+    monkeypatch.setattr(plugin_manager, "get_plugin_config", lambda pid: {})
+    plugin_id = plugin_class.__name__
+    plugin_manager.start(pid=plugin_id)
+    try:
+        adapter = next(
+            item for item in service_instance_registry.adapters("storage")
+            if item.entry.service_type == "fanout_type_storage"
+        )
+        return adapter.get_instances()
+    finally:
+        plugin_manager.stop(plugin_id)
+        helper.save_storagies([])
+
+
+def test_storage_type_without_a_factory_fans_out_through_the_host_default(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """不写工厂的存储类型照常扇出：宿主默认工厂按实例归属构造后端，作者零样板。"""
+    instances = _fan_out_instances(monkeypatch, plugin_manager, _FanOutStoragePlugin)
+
+    assert sorted(instances) == ["备用号", "工作号"]
+    assert all(isinstance(item, _ValidPluginStorage) for item in instances.values())
+    assert {
+        name: item.storage_instance for name, item in instances.items()
+    } == {"工作号": "工作号", "备用号": "备用号"}
+
+
+def test_declared_factory_is_used_instead_of_the_host_default(
+    monkeypatch, plugin_manager: PluginManager
+):
+    """声明自带工厂时走它，宿主默认工厂让位。"""
+    instances = _fan_out_instances(monkeypatch, plugin_manager, _FactoryStoragePlugin)
+
+    assert instances == {
+        "工作号": ("declared", "工作号"), "备用号": ("declared", "备用号")
+    }

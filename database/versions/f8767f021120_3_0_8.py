@@ -33,11 +33,17 @@ _SERVICE_FAMILIES = (
     ("notification", "Notifications", ("switchs",)),
 )
 
-# 存储实例配置的族标识、在 systemconfig 上的存放键，以及默认实例标记在实例级宿主载荷
-# 中的键。存储的默认实例是每个存储类型各一个，故不占用每族至多一行的默认调用目标列。
+# 存储实例配置的族标识、在 systemconfig 上的存放键，以及裸令牌兼容指针在实例级宿主
+# 载荷中的键。兼容指针是每个存储类型各一个，回答的是「存量路径 u115:/media 没写实例名
+# 时落到哪一份」，不是默认调用目标，故不占用每族至多一行的默认调用目标列。
+#
+# 首轮搬迁写的是旧键名 is_default，之后由 _rename_storage_bare_token_field 改名。搬迁
+# 是历史快照，一次写成新键名会让「已经搬过的库」与「新搬的库」走两条不同的路径，而改名
+# 那一步无论如何都要为前者保留。
 _STORAGE_CAPABILITY = "storage"
 _STORAGE_CONFIG_KEY = "Storages"
 _STORAGE_DEFAULT_INSTANCE_FIELD = "is_default"
+_STORAGE_BARE_TOKEN_FIELD = "bare_token_target"
 
 
 def _inspector() -> sa.Inspector:
@@ -116,6 +122,7 @@ def upgrade() -> None:
     _create_serviceconfig_table()
     _migrate_service_configs()
     _migrate_storage_configs()
+    _rename_storage_bare_token_field()
 
 
 def _create_useridentity_table() -> None:
@@ -404,6 +411,49 @@ def _migrate_storage_configs() -> None:
     rows = _storage_config_rows(value)
     if rows:
         op.bulk_insert(_serviceconfig_table(), rows)
+
+
+def _rename_storage_bare_token_field() -> None:
+    """把存储行宿主载荷里的旧键 is_default 改名为 bare_token_target。
+
+    改的只是键名，取值原样搬过去：这个标记从来回答的就是「裸令牌落到哪一份」，旧名字
+    让它看起来像默认调用目标，而默认调用目标另有专列且对存储也已启用，两者同名会被
+    读成同一件事。
+
+    逐行判定、逐行改写，已经是新键名的行跳过：本函数会随每次升级重放，只有「载荷里
+    还带着旧键」这件事本身能证明这一行没搬过。两个键都在时以新键为准，旧键直接丢弃。
+
+    :return: 无返回值
+    """
+    if not _has_table("serviceconfig"):
+        return
+    bind = op.get_bind()
+    serviceconfig = sa.table(
+        "serviceconfig",
+        sa.column("id", sa.Integer()),
+        sa.column("capability", sa.String()),
+        sa.column("host_config", sa.JSON()),
+    )
+    rows = bind.execute(
+        sa.select(serviceconfig.c.id, serviceconfig.c.host_config)
+        .where(serviceconfig.c.capability == _STORAGE_CAPABILITY)
+    ).all()
+    for row_id, host_config in rows:
+        if isinstance(host_config, str):
+            try:
+                host_config = json.loads(host_config)
+            except ValueError:
+                continue
+        if not isinstance(host_config, dict) or _STORAGE_DEFAULT_INSTANCE_FIELD not in host_config:
+            continue
+        renamed = dict(host_config)
+        legacy = renamed.pop(_STORAGE_DEFAULT_INSTANCE_FIELD)
+        renamed.setdefault(_STORAGE_BARE_TOKEN_FIELD, bool(legacy))
+        bind.execute(
+            sa.update(serviceconfig)
+            .where(serviceconfig.c.id == row_id)
+            .values(host_config=renamed)
+        )
 
 
 def downgrade() -> None:

@@ -24,7 +24,7 @@ from app.runtime.extensions.declaration import (
     AuthProviderDeclaration,
     DashboardDeclaration,
     MediaSourceDeclaration,
-    StorageDeclaration,
+    ServiceInstanceDeclaration,
 )
 from app.runtime.extensions.plugin import agent_tool_capabilities, extension_scoped
 from app.runtime.extensions.plugin.projection import PluginProjection
@@ -142,9 +142,9 @@ class _DeclaringPlugin:
         """返回插件展示名。"""
         return self.plugin_name
 
-    def provides_storages(self):
-        """返回预置的存储声明。"""
-        return self._declarations.get("storages")
+    def provides_service_instances(self):
+        """返回预置的服务实例类型声明。"""
+        return self._declarations.get("service_instances")
 
     def provides_media_sources(self):
         """返回预置的媒体数据源声明。"""
@@ -236,34 +236,48 @@ def _counts(declared: Dict[str, List[Any]]) -> Dict[str, int]:
     return {key: len(items) for key, items in declared.items()}
 
 
+def _storage_type(storage_type):
+    """构造一条存储类型的服务实例声明。
+
+    :param storage_type: 存储标识，同时是类型标识
+    :return: 服务实例声明
+    """
+    return ServiceInstanceDeclaration(
+        capability="storage",
+        type=storage_type,
+        name=storage_type,
+        impl=_DemoStorage,
+    )
+
+
 def test_storage_identity_is_extension_scoped():
-    """存储后端按标识全局登记、构造时不带实例配置，同标识只认一次。"""
+    """存储类型按标识全局登记、构造时不带实例配置，同标识只认一次。"""
     log = _RecordingLogger()
     projection = _siblings(
-        "storages",
-        [StorageDeclaration(schema="demo_fs", impl=_DemoStorage)],
-        [StorageDeclaration(schema="demo_fs", impl=_DemoStorage)],
+        "service_instances",
+        [_storage_type("demo_fs")],
+        [_storage_type("demo_fs")],
         log=log,
     )
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert _counts(declared) == {"DemoPlugin": 1, "DemoPlugin@home": 0}
     assert len(log.warnings) == 1
-    assert "存储标识" in log.warnings[0]
+    assert "服务实例类型" in log.warnings[0]
 
 
 def test_distinct_storage_identities_from_siblings_are_kept():
     """不同实例声明不同存储标识各自成立，不受去重影响。"""
     log = _RecordingLogger()
     projection = _siblings(
-        "storages",
-        [StorageDeclaration(schema="demo_fs", impl=_DemoStorage)],
-        [StorageDeclaration(schema="home_fs", impl=_DemoStorage)],
+        "service_instances",
+        [_storage_type("demo_fs")],
+        [_storage_type("home_fs")],
         log=log,
     )
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert _counts(declared) == {"DemoPlugin": 1, "DemoPlugin@home": 1}
     assert log.warnings == []

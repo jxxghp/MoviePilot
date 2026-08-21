@@ -6,6 +6,11 @@
 ``factory`` 路径确认工厂可调用且能接受单个位置参数。两条路径都只做签名内省，
 不真正构造实例。
 
+存储族的构造协议另有一套，判定随之换一条：``impl`` 是按令牌取用的存储后端类，
+契约按继承判定（见 `app.runtime.extensions.plugin.storage_capabilities`），构造一律
+走工厂——不给 ``factory`` 时用宿主默认工厂，因此该族的 ``factory`` 是可选项而不是
+``impl`` 的替代项。
+
 声明携带的配置契约在此一并判定：契约本身要落在受支持的子集内，否则宿主评估不了
 它，配置写入与实例构造两处的判定都会失去依据。
 """
@@ -13,8 +18,7 @@
 from __future__ import annotations
 
 import inspect
-from types import MappingProxyType
-from typing import Any, Mapping, Optional
+from typing import Any, Optional
 
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.extensions.config_schema import config_schema_violation
@@ -28,18 +32,12 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.service_family_registry import service_family_registry
 
 # 构造实例时由宿主固定填入的关键字参数名，其余关键字均来自用户配置内容
 _INSTANCE_NAME_KEYWORD = "name"
-
-# 配置面已并入服务实例族、但构造协议另有一套因而保留专用声明钩子的族。
-# 存储后端按实例归属构造、配置由后端自己按令牌懒读，本声明的两条构造路径都表达不了它，
-# 放行只会登记出一个永远不会被存储令牌取到的类型。
-_HOOK_SPECIFIC_FAMILIES: Mapping[str, str] = MappingProxyType({
-    STORAGE_CAPABILITY: "provides_storages()",
-})
 
 # 「服务实例类型声明不带配置契约」的废弃标识，阶段推进即把契约从可选变为必填
 SERVICE_INSTANCE_SCHEMA_DEPRECATION = "plugin.service_instance_without_config_schema"
@@ -55,9 +53,12 @@ def service_instance_declaration_violation(
     校验服务实例声明是否满足登记契约
 
     契约要求声明是 `ServiceInstanceDeclaration` 实例、能力标签是服务族登记表中已登记
-    的族、类型标识与展示名称非空、``multi_instance`` 是布尔值、``impl`` 与
-    ``factory`` 恰好给出其一且该路径的调用签名成立；配置界面二选一，规则与存储声明
-    相同。任一不满足都拒绝登记，不留到构造实例时才失败。
+    的族、类型标识与展示名称非空、``multi_instance`` 是布尔值、构造路径成立；配置界面
+    二选一。任一不满足都拒绝登记，不留到构造实例时才失败。
+
+    构造路径按族判定：三族要求 ``impl`` 与 ``factory`` 恰好给出其一且该路径的调用签名
+    成立；存储族要求 ``impl`` 是合契约的存储后端类，``factory`` 可给可不给——不给即用
+    宿主默认工厂。
 
     ``config_schema`` 声明了就必须落在受支持的子集内，声明一份宿主评估不了的契约与
     不声明是两回事，后者只是没有契约，前者是一份看起来有效、实际拦不住任何东西的
@@ -82,13 +83,10 @@ def service_instance_declaration_violation(
         return f"读取服务实例声明出错：{error}"
     if not capability:
         return "未声明非空的能力标签 capability"
-    hook = _HOOK_SPECIFIC_FAMILIES.get(capability)
-    if hook:
-        return f"capability {capability!r} 的类型须经 {hook} 声明，其构造协议与本声明不同"
     if not service_family_registry.is_registered(capability):
         return (
             f"capability {capability!r} 不是可声明服务实例的能力标签，"
-            f"可选值为 {_declarable_capabilities()}"
+            f"可选值为 {list(service_family_registry.capabilities())}"
         )
     if not service_type:
         return "未声明非空的类型标识 type"
@@ -96,35 +94,27 @@ def service_instance_declaration_violation(
         return "未声明非空的展示名称 name"
     if not isinstance(multi_instance, bool):
         return f"multi_instance {multi_instance!r} 不是布尔值，无法判定该类型能配几份"
-    constructor_violation = _constructor_violation(impl, factory)
+    constructor_violation = _constructor_violation(capability, impl, factory)
     if constructor_violation:
         return constructor_violation
-    schema_violation = _config_schema_violation(config_schema, impl)
+    schema_violation = _config_schema_violation(capability, config_schema, impl)
     if schema_violation:
         return schema_violation
     return config_interface_violation(config_form, config_component, render_mode=render_mode)
 
 
-def _declarable_capabilities() -> list:
-    """
-    列出可经本声明使用的能力标签
-
-    :return: 已登记且没有专用声明钩子的能力标签列表，按标签升序
-    """
-    return [
-        capability for capability in service_family_registry.capabilities()
-        if capability not in _HOOK_SPECIFIC_FAMILIES
-    ]
-
-
-def _config_schema_violation(config_schema: Any, impl: Any) -> Optional[str]:
+def _config_schema_violation(
+    capability: str, config_schema: Any, impl: Any
+) -> Optional[str]:
     """
     校验声明携带的配置契约
 
     ``impl`` 路径下宿主按 ``impl(name=配置名, **配置内容)`` 构造，实例名由宿主填入，
     契约再声明同名字段会让构造得到两个 ``name`` 关键字；``factory`` 路径整条配置原样
-    交给扩展，不存在这次填入，因此该保留字只在 ``impl`` 路径下成立。
+    交给扩展，不存在这次填入，因此该保留字只在 ``impl`` 路径下成立。存储族的构造一律
+    走工厂，配置不经关键字展开，同样没有保留字段名。
 
+    :param capability: 声明的能力标签
     :param config_schema: 声明携带的配置契约原始值
     :param impl: 声明携带的实现类，为 None 表示走 factory 路径
     :return: 违反契约的描述；契约合规时为 None
@@ -133,22 +123,30 @@ def _config_schema_violation(config_schema: Any, impl: Any) -> Optional[str]:
         SERVICE_INSTANCE_SCHEMA_DEPRECATION
     ):
         return "未声明配置契约 config_schema，宿主无从判定该类型的配置形状"
-    reserved = (_INSTANCE_NAME_KEYWORD,) if impl is not None else ()
+    expands_config = impl is not None and capability != STORAGE_CAPABILITY
+    reserved = (_INSTANCE_NAME_KEYWORD,) if expands_config else ()
     return config_schema_violation(config_schema, reserved_property_names=reserved)
 
 
-def _constructor_violation(impl: Any, factory: Any) -> Optional[str]:
+def _constructor_violation(capability: str, impl: Any, factory: Any) -> Optional[str]:
     """
-    校验声明给出的构造路径是否唯一且成立
+    校验声明给出的构造路径是否成立
 
-    两条路径的语义不同：``impl`` 由宿主按关键字展开用户配置，``factory`` 把整条
-    配置原样交给扩展。同时给出无从判断按哪条构造，都不给出则没有构造入口，两者
-    均视为声明本身不成立。
+    三族的两条路径语义不同：``impl`` 由宿主按关键字展开用户配置，``factory`` 把整条
+    配置原样交给扩展。同时给出无从判断按哪条构造，都不给出则没有构造入口，两者均视为
+    声明本身不成立。
 
+    存储族不适用这条互斥：``impl`` 在该族里回答的是「后端类是谁」而不是「怎么构造」，
+    按令牌取用的登记要用它，因此它必填；构造一律走工厂，``factory`` 缺省即宿主默认
+    那一个。
+
+    :param capability: 声明的能力标签
     :param impl: 声明携带的实现类
     :param factory: 声明携带的实例工厂
-    :return: 违反契约的描述；构造路径唯一且签名成立时为 None
+    :return: 违反契约的描述；构造路径成立时为 None
     """
+    if capability == STORAGE_CAPABILITY:
+        return _storage_constructor_violation(impl, factory)
     if impl is not None and factory is not None:
         return "impl 与 factory 同时给出，无法确定构造方式"
     if impl is None and factory is None:
@@ -161,6 +159,20 @@ def _constructor_violation(impl: Any, factory: Any) -> Optional[str]:
     if unimplemented:
         return f"{impl!r} 未实现抽象方法：{sorted(unimplemented)}"
     return _instantiation_signature_violation(impl)
+
+
+def _storage_constructor_violation(impl: Any, factory: Any) -> Optional[str]:
+    """
+    校验存储类型声明的后端类与可选工厂
+
+    :param impl: 声明携带的存储后端类
+    :param factory: 声明携带的实例工厂，为 None 表示用宿主默认工厂
+    :return: 违反契约的描述；构造路径成立时为 None
+    """
+    backend_violation = storage_backend_violation(impl)
+    if backend_violation:
+        return backend_violation
+    return _factory_signature_violation(factory) if factory is not None else None
 
 
 def _factory_signature_violation(factory: Any) -> Optional[str]:

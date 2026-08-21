@@ -7,7 +7,8 @@
 
 要扇出哪些实例由该存储类型的配置决定，一份配置一个实例；能配几份由该类型的
 ``multi_instance`` 声明回答，不由存储族推定。筛选与单实例裁决和下载器、媒体服务器、
-消息渠道共用一份实现，存储只是同一族里默认标记作用域为类型的那一支。
+消息渠道共用一份实现，默认调用目标也同规格；存储只是额外带一个裸令牌兼容指针，
+用来回答存量路径缺实例段时落到哪一份。
 
 一份配置都没有的存储类型仍持有一个未具名实例位，因此未配置的存储照样可以浏览与登录。
 """
@@ -124,8 +125,8 @@ class StorageBase(metaclass=StorageBackendMeta):
     存储基类
 
     一个对象服务一个存储实例，``storage_instance`` 为该对象所属的实例名，
-    ``None`` 表示该存储类型的默认实例位；``storage_is_default`` 表示该对象服务的
-    是所属存储类型的默认实例。默认实例以裸令牌寻址，因此它产出的文件项与读写的
+    ``None`` 表示该存储类型的裸令牌位；``storage_is_bare_token`` 表示该对象承接所属
+    存储类型的裸令牌。承接裸令牌的实例以裸标识寻址，因此它产出的文件项与读写的
     配置都用裸存储标识，与该存储类型只有一份配置时完全一致。
 
     ``multi_instance`` 回答「用户能为这个存储类型配几份」，取值由该类型自己声明而不
@@ -137,17 +138,17 @@ class StorageBase(metaclass=StorageBackendMeta):
     snapshot_check_folder_modtime = True
     multi_instance: bool = True
     storage_instance: Optional[str] = None
-    storage_is_default: bool = False
+    storage_is_bare_token: bool = False
 
     @property
     def storage_token(self) -> str:
         """
         本对象服务的存储令牌
 
-        :return: 存储令牌，默认实例为裸存储标识，其余实例为 ``标识@实例名``
+        :return: 存储令牌，承接裸令牌的实例为裸存储标识，其余实例为 ``标识@实例名``
         """
         identity = storage_backend_identity(self) or ""
-        if self.storage_is_default or self.storage_instance is None:
+        if self.storage_is_bare_token or self.storage_instance is None:
             return identity
         return _SchemaFileURI.join_storage(identity, self.storage_instance)
 
@@ -529,30 +530,30 @@ def any_storage_file(storage: StorageBase, fileitem: _SchemaFileItem,
 class StorageInstanceSpec:
     """存储模块要扇出的一个存储实例。
 
-    :param instance: 实例名，None 表示该存储类型的默认实例位，裸令牌指向它
-    :param is_default: 该具名实例是否为所属存储类型的默认实例，未具名时不生效
+    :param instance: 实例名，None 表示该存储类型的裸令牌位
+    :param bare_token_target: 该具名实例是否承接所属存储类型的裸令牌，未具名时不生效
     """
 
     instance: Optional[str] = None
-    is_default: bool = False
+    bare_token_target: bool = False
 
 
-def select_default_storage(
+def select_bare_token_storage(
     instances: List[Tuple[StorageInstanceSpec, StorageBase]]
 ) -> Optional[StorageBase]:
     """
-    裁决一组存储实例中的默认实例，与存储后端注册表的默认裁决同一套规则
+    裁决一组存储实例中承接裸令牌的那一个，与存储后端注册表同一套规则
 
-    未具名实例占据默认实例位，优先命中；全为具名实例时只认唯一一个自称默认的；
-    没有默认、或多个实例同时自称默认，一律认定为无默认，绝不按登记顺序取任意一个。
+    未具名实例占据裸令牌位，优先命中；全为具名实例时只认唯一一个自称承接的；无人
+    自称、或多个实例同时自称，一律让出，绝不按登记顺序取任意一个。
 
     :param instances: 已建立的 (实例描述, 存储操作对象) 序列
-    :return: 默认实例的存储操作对象；裁决不出默认实例时为 None
+    :return: 承接裸令牌的存储操作对象；裁决不出时为 None
     """
     for spec, storage in instances:
         if spec.instance is None:
             return storage
-    marked = [storage for spec, storage in instances if spec.is_default]
+    marked = [storage for spec, storage in instances if spec.bare_token_target]
     return marked[0] if len(marked) == 1 else None
 
 
@@ -571,7 +572,7 @@ class _StorageModuleBase(_ModuleBase):
         """初始化模块并留空按实例组织的存储操作对象表。"""
         super().__init__()
         self._storages: Dict[Optional[str], StorageBase] = {}
-        self._default_storage: Optional[StorageBase] = None
+        self._bare_token_storage: Optional[StorageBase] = None
 
     @classmethod
     def storage_id(cls) -> Optional[str]:
@@ -586,9 +587,9 @@ class _StorageModuleBase(_ModuleBase):
         """
         列出本模块要扇出的存储实例
 
-        实例来自本存储类型的配置：配了几份就扇出几份，实例名即配置名，默认实例由配置
-        里的默认标记裁决，裁决规则与存储后端注册表一致。一份配置都没有的存储类型仍产出
-        一个未具名实例位，与该存储尚未配置时仍可浏览、仍可登录的行为一致。
+        实例来自本存储类型的配置：配了几份就扇出几份，实例名即配置名，承接裸令牌的
+        那一份由配置里的兼容指针裁决，裁决规则与存储后端注册表一致。一份配置都没有的
+        存储类型仍产出一个未具名实例位，与该存储尚未配置时仍可浏览、仍可登录的行为一致。
 
         :return: 存储实例描述元组
         """
@@ -598,7 +599,7 @@ class _StorageModuleBase(_ModuleBase):
         specs = tuple(
             StorageInstanceSpec(
                 instance=(conf.name or "").strip() or None,
-                is_default=bool(conf.is_default),
+                bare_token_target=bool(conf.bare_token_target),
             )
             for conf in self._instance_configs(storage_id)
         )
@@ -609,7 +610,7 @@ class _StorageModuleBase(_ModuleBase):
         读取指定存储类型应当扇出实例的配置
 
         筛选与单实例裁决和三族共用一份实现：同一个存储类型下有几条配置就有几个具名
-        实例，声明为单实例的类型只认默认实例那一份。
+        实例，声明为单实例的类型按族级默认调用目标裁出唯一那一份。
 
         读不到配置时按「尚未配置」处理：配置来源不可用不应让整个存储模块随之失效，该
         存储仍以未具名实例位提供服务；单实例类型裁决不出目标时同理只是不产出具名实例。
@@ -633,10 +634,10 @@ class _StorageModuleBase(_ModuleBase):
         """
         构造指定实例的存储操作对象
 
-        具名实例先一律不算默认，由本模块完成默认裁决后再标记选中的那一个；按实例复用
-        的后端会把上一轮的标记带过来，不重置则改完配置后旧的默认实例仍以裸令牌自居。
+        具名实例先一律不承接裸令牌，由本模块完成裁决后再标记选中的那一个；按实例复用
+        的后端会把上一轮的标记带过来，不重置则改完配置后旧的那一份仍以裸令牌自居。
 
-        :param instance: 实例名，None 表示该存储类型的默认实例位
+        :param instance: 实例名，None 表示该存储类型的裸令牌位
         :return: 该实例的存储操作对象
         """
         return create_storage_backend(self.storage_class, instance)
@@ -648,8 +649,8 @@ class _StorageModuleBase(_ModuleBase):
         让整个存储模块连同其余可用实例一起失效。登记被拒的实例同样不予持有，
         模块持有的实例与注册表可取用的实例始终一致。
 
-        承接裸令牌的那个实例标记为默认实例，其读写的配置与产出的文件项因此都用裸
-        存储标识；裁决不出默认实例时无人被标记，裸令牌一律让出。
+        承接裸令牌的那个实例被打上标记，其读写的配置与产出的文件项因此都用裸存储
+        标识；裁决不出时无人被标记，裸令牌一律让出。
         """
         instances: List[Tuple[StorageInstanceSpec, StorageBase]] = []
         for spec in self._instance_specs():
@@ -657,22 +658,22 @@ class _StorageModuleBase(_ModuleBase):
                 storage = self._create_storage(spec.instance)
             except Exception as err:
                 logger.error(
-                    f"【存储】{self.__class__.__name__} 实例 {spec.instance or '默认'} 构造失败，已跳过：{err}"
+                    f"【存储】{self.__class__.__name__} 实例 {spec.instance or '裸令牌'} 构造失败，已跳过：{err}"
                 )
                 continue
             registered = storage_backend_registry.register(
                 self.storage_class,
                 owner=self.__class__.__name__,
                 instance=spec.instance,
-                is_default=spec.is_default,
+                bare_token_target=spec.bare_token_target,
             )
             if not registered:
                 continue
             instances.append((spec, storage))
         self._storages = {spec.instance: storage for spec, storage in instances}
-        self._default_storage = select_default_storage(instances)
-        if self._default_storage is not None:
-            self._default_storage.storage_is_default = True
+        self._bare_token_storage = select_bare_token_storage(instances)
+        if self._bare_token_storage is not None:
+            self._bare_token_storage.storage_is_bare_token = True
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """存储模块不使用应用设置开关。"""
@@ -697,7 +698,7 @@ class _StorageModuleBase(_ModuleBase):
                     owner=self.__class__.__name__,
                 )
         self._storages = {}
-        self._default_storage = None
+        self._bare_token_storage = None
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """存储可用性由文件整理模块按目录配置统一自检，本模块不单独给出结论。"""
@@ -708,8 +709,8 @@ class _StorageModuleBase(_ModuleBase):
         判断请求是否属于本存储并取用该实例的存储操作对象
 
         令牌的类型部分与本模块的存储标识一致才认领，取用的是令牌指定的那个实例；
-        本模块没有该实例时让出，绝不回落到默认实例——回落等于拿默认实例的账号去
-        执行用户没选的实例的操作。裸令牌指向默认实例，裁决不出默认实例时同样让出。
+        本模块没有该实例时让出，绝不回落到别的实例——回落等于拿另一个账号去执行
+        用户没选的实例的操作。裸令牌落到兼容指针所指的那一份，裁决不出时同样让出。
         畸形令牌不与任何存储类型相等，因此一律让出。
 
         :param storage: 请求携带的存储令牌，如 u115 或 u115@work
@@ -719,7 +720,7 @@ class _StorageModuleBase(_ModuleBase):
             return None
         instance = _SchemaFileURI.storage_parts(storage)[1]
         if instance is None:
-            return self._default_storage
+            return self._bare_token_storage
         return self._storages.get(instance)
 
     def list_files(self, fileitem: _SchemaFileItem,

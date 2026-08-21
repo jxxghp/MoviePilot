@@ -1,8 +1,8 @@
 """存储实例配置的读写。
 
-对外只按存储令牌收发一个实例的配置：裸令牌 ``u115`` 指向该存储类型的默认实例，
-具名令牌 ``u115@work`` 精确指向该类型下名为 ``work`` 的实例。配置的形状与整形规则
-见 ``app.application.storage_config``。
+对外只按存储令牌收发一个实例的配置：裸令牌 ``u115`` 落到该存储类型的兼容指针所指的
+那一份，具名令牌 ``u115@work`` 精确指向该类型下名为 ``work`` 的实例。配置的形状、
+整形规则与兼容指针的退场路径见 ``app.application.storage_config``。
 """
 
 from typing import Any, List, Optional
@@ -49,7 +49,7 @@ class StorageHelper:
         """
         获取指定存储配置
 
-        裸令牌取该存储类型的默认实例，具名令牌精确取用该实例。
+        裸令牌取该存储类型的兼容指针所指的那一份，具名令牌精确取用该实例。
 
         :param storage: 存储令牌，如 u115 或 u115@work
         :return: 实例配置；令牌不合法或该实例未配置时为 None
@@ -106,9 +106,9 @@ class StorageHelper:
         """
         写入存储令牌指向的那个实例的配置内容
 
-        令牌指向的实例尚未配置时建出来：裸令牌在该存储类型一份配置都没有时建出默认
-        实例，具名令牌建出同名实例。该存储类型已有配置却裁决不出默认实例时不写入——
-        写下去只会把内容落到用户没有指定的实例上。
+        令牌指向的实例尚未配置时建出来：裸令牌在该存储类型一份配置都没有时建出承接
+        裸令牌的那一份，具名令牌建出同名实例。该存储类型已有配置却裁决不出兼容指针时
+        不写入——写下去只会把内容落到用户没有指定的实例上。
 
         :param storage: 存储令牌，如 u115 或 u115@work
         :param conf: 配置内容
@@ -123,12 +123,12 @@ class StorageHelper:
         target = select_storage_config(siblings, instance)
         if target is None:
             if instance is None and siblings:
-                logger.error(f"存储 {storage_id} 裁决不出默认实例，配置未写入")
+                logger.error(f"存储 {storage_id} 裁决不出承接裸令牌的实例，配置未写入")
                 return
             confs = confs + [_SchemaStorageConf(
                 type=storage_id,
                 name=instance or storage_id,
-                is_default=instance is None,
+                bare_token_target=instance is None,
                 config=conf,
             )]
         else:

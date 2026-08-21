@@ -13,11 +13,14 @@ from fastapi import HTTPException
 from app.api.endpoints.storage import config_form as storage_config_form_endpoint
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import StorageDeclaration
+from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.storage_registry import storage_backend_registry
-from tests.test_plugin_provided_storages import _ValidPluginStorage
+from tests.test_plugin_provided_storages import (
+    _storage_declaration,
+    _ValidPluginStorage,
+)
 
 # 一份合法的配置界面：组件树加默认数据二元组，形状与 get_form() 相同
 _VALID_CONFIG_FORM = (
@@ -115,10 +118,10 @@ def test_declaration_rejected_when_component_tree_is_not_list():
         def get_state(self) -> bool:
             return True
 
-        def provides_storages(self):
+        def provides_service_instances(self):
             return [
-                StorageDeclaration(
-                    schema="bad_layout_storage",
+                _storage_declaration(
+                    "bad_layout_storage",
                     impl=_ValidPluginStorage,
                     config_form=("not-a-list", {"token": ""}),
                 )
@@ -126,7 +129,7 @@ def test_declaration_rejected_when_component_tree_is_not_list():
 
     projection = PluginProjection({"BadLayoutPlugin": _Plugin()})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["BadLayoutPlugin"] == []
 
@@ -140,10 +143,10 @@ def test_declaration_rejected_when_default_data_is_not_dict():
         def get_state(self) -> bool:
             return True
 
-        def provides_storages(self):
+        def provides_service_instances(self):
             return [
-                StorageDeclaration(
-                    schema="bad_defaults_storage",
+                _storage_declaration(
+                    "bad_defaults_storage",
                     impl=_ValidPluginStorage,
                     config_form=([{"component": "VTextField"}], "not-a-dict"),
                 )
@@ -151,7 +154,7 @@ def test_declaration_rejected_when_default_data_is_not_dict():
 
     projection = PluginProjection({"BadDefaultsPlugin": _Plugin()})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["BadDefaultsPlugin"] == []
 
@@ -168,10 +171,10 @@ def test_declaration_rejected_when_both_config_form_and_config_component_given()
         def get_render_mode(self):
             return "vue", "dist/assets"
 
-        def provides_storages(self):
+        def provides_service_instances(self):
             return [
-                StorageDeclaration(
-                    schema="both_given_storage",
+                _storage_declaration(
+                    "both_given_storage",
                     impl=_ValidPluginStorage,
                     config_form=_VALID_CONFIG_FORM,
                     config_component="SomeConfig",
@@ -180,7 +183,7 @@ def test_declaration_rejected_when_both_config_form_and_config_component_given()
 
     projection = PluginProjection({"BothGivenPlugin": _Plugin()})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["BothGivenPlugin"] == []
 
@@ -197,10 +200,10 @@ def test_declaration_rejected_when_vuetify_extension_declares_config_component()
         def get_render_mode(self):
             return "vuetify", None
 
-        def provides_storages(self):
+        def provides_service_instances(self):
             return [
-                StorageDeclaration(
-                    schema="vuetify_declares_component_storage",
+                _storage_declaration(
+                    "vuetify_declares_component_storage",
                     impl=_ValidPluginStorage,
                     config_component="SomeConfig",
                 )
@@ -208,7 +211,7 @@ def test_declaration_rejected_when_vuetify_extension_declares_config_component()
 
     projection = PluginProjection({"VuetifyDeclaresComponentPlugin": _Plugin()})
 
-    declared = projection.provided_storages()
+    declared = projection.provided_service_instances()
 
     assert declared["VuetifyDeclaresComponentPlugin"] == []
 
@@ -239,11 +242,11 @@ class _VueStoragePlugin:
         """声明本插件按 vue 模式渲染，编译产物位于 dist/assets。"""
         return "vue", "dist/assets"
 
-    def provides_storages(self):
+    def provides_service_instances(self):
         """声明本插件提供的存储后端，附带该存储类型的 vue 模式配置组件名。"""
         return [
-            StorageDeclaration(
-                schema=self.storage_schema,
+            _storage_declaration(
+                self.storage_schema,
                 impl=_ValidPluginStorage,
                 config_component=self.config_component_name,
             )
@@ -288,7 +291,7 @@ def test_endpoint_returns_component_and_remote_for_vue_mode_declaration(
 class _MultiCapabilityPlugin:
     """同时提供存储后端与自身设置页的插件桩，用于验证两份界面互不串场。
 
-    ``get_form()`` 是扩展自身的设置页；``provides_storages()`` 携带的
+    ``get_form()`` 是扩展自身的设置页；``provides_service_instances()`` 携带的
     ``config_form`` 是该存储类型的专属界面。两者形状刻意不同，混淆即可被
     断言捕获。
     """
@@ -318,11 +321,11 @@ class _MultiCapabilityPlugin:
             {"enable": True},
         )
 
-    def provides_storages(self):
+    def provides_service_instances(self):
         """声明本插件提供的存储后端，附带该存储类型的专属配置界面。"""
         return [
-            StorageDeclaration(
-                schema=self.storage_schema,
+            _storage_declaration(
+                self.storage_schema,
                 impl=_ValidPluginStorage,
                 config_form=_VALID_CONFIG_FORM,
             )

@@ -27,7 +27,6 @@ from app.runtime.extensions.declaration import (
     MetaParserDeclaration,
     ModuleDeclaration,
     ServiceInstanceDeclaration,
-    StorageDeclaration,
 )
 from app.runtime.extensions.instance import (
     DEFAULT_INSTANCE_ID,
@@ -484,7 +483,7 @@ class _PluginBase(metaclass=ABCMeta):
         也可直接返回方法表字典本身（不包 `ModuleDeclaration`），宿主按字典内容
         取用方法表，兼容早期写法。
 
-        按用户配置扇出多个具名服务实例（下载器、媒体服务器、消息通知）由
+        按用户配置扇出多个具名服务实例（下载器、媒体服务器、消息通知与存储）由
         `provides_service_instances()` 承担，不在本钩子的方法表里声明。
 
         多来源契约（media_detail、media_credits、media_recommend、media_similar、
@@ -531,45 +530,6 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def provides_storages(self) -> Optional[List[StorageDeclaration]]:
-        """
-        声明本插件提供的存储类型
-
-        存储的实例配置与下载器、媒体服务器、消息渠道同族同表：用户在存储设置页为该
-        类型配几份，宿主就扇出几个具名实例。存储仍有专用钩子，是因为构造协议不同——
-        存储后端按实例归属构造、配置由后端自己按存储令牌懒读，`provides_service_instances()`
-        的两条构造路径都表达不了它。
-
-        返回示例：
-        [StorageDeclaration(
-            schema="u115",                      # 存储标识，同一标识重复登记以最新一次
-                                                  # 为准，与内建标识相同即构成覆盖
-            name="115网盘",                      # 类型展示名称，可选
-            multi_instance=True,                 # 用户能否为该类型配多份，缺省为可以
-            capabilities=["list", "upload"],     # 承诺提供的能力方法名
-            impl=U115Storage,                    # 存储后端实现类，须继承
-                                                  # app.modules._base.storage.StorageBase
-                                                  # 并落地全部抽象方法；不合契约的声明
-                                                  # 会被拒绝登记，不留到调用时才失败
-            config_form=([...], {...}),          # 该存储类型的专属配置界面（vuetify
-                                                  # 模式），形状与 get_form() 相同；
-                                                  # 与 config_component 互斥，可选
-            config_schema={...},                 # 该类型配置内容的契约，JSON Schema
-                                                  # 受控子集；声明后畸形配置在写入端
-                                                  # 即被退回，可选
-        )]
-
-        vue 模式改用 `config_component="U115StorageConfig"`——本插件联邦远程中承载
-        该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
-        同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
-
-        也可直接返回实现类本身（不包 `StorageDeclaration`），宿主按类自身的 schema
-        属性取用标识，兼容早期写法。
-
-        :return: `StorageDeclaration` 列表；插件不作为存储提供方时无需实现
-        """
-        pass
-
     def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
         """
         声明本插件提供的可配置服务实例类型
@@ -577,7 +537,7 @@ class _PluginBase(metaclass=ABCMeta):
         返回示例：
         [ServiceInstanceDeclaration(
             capability="downloader",             # 能力标签，可选值为 downloader、
-                                                  # mediaserver、notification
+                                                  # mediaserver、notification、storage
             type="my_downloader",                # 类型标识，与该族配置模型的 type
                                                   # 字段取值对应；与内建类型同名即构成
                                                   # 覆盖，用户为该类型配置的实例改由
@@ -622,9 +582,28 @@ class _PluginBase(metaclass=ABCMeta):
         该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
         同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
 
-        下载器、媒体服务器与消息通知共用本钩子，差异只在 `capability`：三者的取用
-        方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
+        下载器、媒体服务器、消息通知与存储共用本钩子，差异只在 `capability`：四族的
+        取用方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
         照常登记，只是没有实例产出。
+
+        声明存储类型改 `capability="storage"`，`type` 即存储标识（与内建标识相同即构成
+        覆盖），`impl` 给存储后端类——须继承 app.modules._base.storage.StorageBase 并
+        落地全部抽象方法：
+
+        [ServiceInstanceDeclaration(
+            capability="storage",
+            type="u115",                         # 存储标识，同时是类型标识
+            name="115网盘",
+            impl=U115Storage,                    # 存储后端类，不由宿主按关键字展开构造
+            multi_instance=True,
+            config_schema={...},
+        )]
+
+        存储的构造协议与三族不同，**但不用自己写工厂**：不给 `factory` 时宿主用默认
+        工厂，按实例归属构造后端（`后端类(storage_instance=实例名)`），配置由后端自己
+        按存储令牌懒读，因此存储配置支持运行期改写后重连。要自己接管构造就给 `factory`，
+        宿主把整条配置对象交给它；该族里 `factory` 是可选项而不是 `impl` 的替代项——
+        `impl` 还要用来回答「令牌指的实体是谁」。
 
         该类型只该被配一份时加上 `multi_instance=False`——例如一个全局唯一的接入点。
         此时宿主只认用户配置列表里的第一份，多出来的会被忽略并告警。该字段与本插件

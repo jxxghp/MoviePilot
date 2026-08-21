@@ -5,8 +5,12 @@
 本表即为这类按标识直取的唯一入口。
 
 同一存储标识下可登记多个具名实例，登记键为 ``(存储标识, 实例名)``。未给出实例名的
-登记占据该标识的默认实例位，裸令牌 ``u115`` 即指向它；具名登记以 ``u115@work``
+登记占据该标识的裸令牌位，裸令牌 ``u115`` 即落到它；具名登记以 ``u115@work``
 形式的令牌取用。覆盖与内建快照还原按整条登记键进行，不同实例之间互不影响。
+
+本表只回答地址问题：某个令牌指的实体是谁。「调用没指定存储时用哪个」是族级默认调用
+目标，落服务实例配置表的专列，与本表无关；本表里的 ``bare_token_target`` 是兼容指针，
+只在令牌缺实例段时参与裁决，判据与退场路径见 ``app.application.storage_config``。
 """
 
 from __future__ import annotations
@@ -37,17 +41,17 @@ def storage_backend_identity(backend: Any) -> Optional[str]:
 
 
 def create_storage_backend(backend: Any, instance: Optional[str] = None,
-                           is_default: bool = False) -> Any:
+                           bare_token_target: bool = False) -> Any:
     """
     构造服务于指定存储实例的操作对象
 
     实例归属优先经构造参数交给后端：按实例区分连接的后端在初始化时就要用归属读配置，
-    晚一步交付会拿默认实例的账号连上去。后端不接受该参数时退回无参构造再标注归属，
+    晚一步交付会拿裸令牌那一份的账号连上去。后端不接受该参数时退回无参构造再标注归属，
     未按实例区分连接的后端因此无须改动构造签名。
 
     :param backend: 存储后端类
-    :param instance: 实例名，None 表示该存储类型的默认实例位
-    :param is_default: 该实例是否为所属存储类型的默认实例
+    :param instance: 实例名，None 表示该存储类型的裸令牌位
+    :param bare_token_target: 该实例是否承接所属存储类型的裸令牌
     :return: 存储操作对象
     """
     if getattr(type(backend), "accepts_storage_instance", False):
@@ -56,8 +60,8 @@ def create_storage_backend(backend: Any, instance: Optional[str] = None,
         storage = backend()
         if hasattr(storage, "storage_instance"):
             storage.storage_instance = instance
-    if hasattr(storage, "storage_is_default"):
-        storage.storage_is_default = bool(is_default) or instance is None
+    if hasattr(storage, "storage_is_bare_token"):
+        storage.storage_is_bare_token = bool(bare_token_target) or instance is None
     return storage
 
 
@@ -65,8 +69,10 @@ def storage_instance_factory(backend: Any) -> Any:
     """
     把存储后端类包成服务实例类型目录接受的实例工厂
 
-    存储的构造协议与三族都不同：配置不经构造参数传入，后端按自己的实例归属懒读配置。
-    工厂由宿主包出来而不是要求扩展自己写，是为了让归属交付这条规则只有一处实现。
+    这是存储族的宿主默认工厂：声明只给出后端类、不给 ``factory`` 时宿主用它构造实例，
+    扩展作者因此一行工厂都不用写。存储的构造协议与三族不同——配置不经构造参数传入，
+    后端按自己的实例归属懒读配置，这样存储配置才能在运行期改写后重连；把这条规则
+    包在宿主里而不是要求每个作者手写，是为了让归属交付只有一处实现。
 
     :param backend: 存储后端类
     :return: 接收单条实例配置并返回存储操作对象的工厂
@@ -77,7 +83,7 @@ def storage_instance_factory(backend: Any) -> Any:
         return create_storage_backend(
             backend,
             (getattr(conf, "name", None) or "").strip() or None,
-            bool(getattr(conf, "is_default", False)),
+            bool(getattr(conf, "bare_token_target", False)),
         )
 
     return factory
@@ -95,8 +101,8 @@ class StorageBackendEntry:
         (组件树, 默认数据) 二元组
     :param config_component: 登记方为该存储标识声明的 vue 模式配置组件，
         形状为 ``{"component": 组件名, "remote": 联邦远程入口描述}``
-    :param instance: 实例名，为 None 表示本条登记占据该存储标识的默认实例位
-    :param is_default: 本条具名登记是否为该存储标识的默认实例
+    :param instance: 实例名，为 None 表示本条登记占据该存储标识的裸令牌位
+    :param bare_token_target: 本条具名登记是否承接该存储标识的裸令牌
     """
 
     storage_id: str
@@ -106,7 +112,7 @@ class StorageBackendEntry:
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[Dict[str, Any]] = None
     instance: Optional[str] = None
-    is_default: bool = False
+    bare_token_target: bool = False
 
     @property
     def storage(self) -> str:
@@ -140,11 +146,11 @@ class StorageBackendEntry:
         构造后端的操作对象，并交付本条登记所属的实例归属
 
         交付归属是必需的：同一后端类可能被同一存储标识的多个实例位共用，不交付则取出
-        的对象不知道自己服务哪个实例，读写配置会落到默认实例上。
+        的对象不知道自己服务哪个实例，读写配置会落到裸令牌那一份上。
 
         :return: 存储操作对象
         """
-        return create_storage_backend(self.backend, self.instance, self.is_default)
+        return create_storage_backend(self.backend, self.instance, self.bare_token_target)
 
 
 def build_storage_entry(backend: Any,
@@ -154,14 +160,14 @@ def build_storage_entry(backend: Any,
                         config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
                         config_component: Optional[Dict[str, Any]] = None,
                         instance: Optional[str] = None,
-                        is_default: bool = False
+                        bare_token_target: bool = False
                         ) -> Optional[StorageBackendEntry]:
     """
     构造登记项，标识优先取调用方显式给定的值，否则从后端声明推导
 
     显式标识用于登记方持有自己一套声明数据、不依赖内省后端类取得标识的场景——
-    例如按 ``StorageDeclaration.schema`` 登记的扩展存储，其标识来自声明字段而非
-    ``impl.schema``，两者允许不同。标识只承载存储类型，实例名另经 ``instance``
+    例如按 ``ServiceInstanceDeclaration.type`` 登记的扩展存储，其标识来自声明字段
+    而非 ``impl.schema``，两者允许不同。标识只承载存储类型，实例名另经 ``instance``
     给出，带实例分隔符的标识按非法处理。
 
     :param backend: 存储后端类
@@ -172,8 +178,8 @@ def build_storage_entry(backend: Any,
         不给出时该标识没有专属界面
     :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
         不给出时该标识没有专属界面
-    :param instance: 实例名，为空表示登记为该标识的默认实例
-    :param is_default: 该具名实例是否为该标识的默认实例，未具名时不生效
+    :param instance: 实例名，为空表示登记为该标识的裸令牌位
+    :param bare_token_target: 该具名实例是否承接该标识的裸令牌，未具名时不生效
     :return: 登记项；标识缺失、无法作为路径前缀或实例名不合法时为 None
     """
     identity = (storage_id or "").strip() or storage_backend_identity(backend)
@@ -196,7 +202,7 @@ def build_storage_entry(backend: Any,
         config_form=config_form,
         config_component=config_component,
         instance=instance_name,
-        is_default=bool(is_default) and instance_name is not None,
+        bare_token_target=bool(bare_token_target) and instance_name is not None,
     )
 
 
@@ -217,12 +223,12 @@ class StorageBackendRegistry:
                  config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None,
                  config_component: Optional[Dict[str, Any]] = None,
                  instance: Optional[str] = None,
-                 is_default: bool = False
+                 bare_token_target: bool = False
                  ) -> Optional[str]:
         """
         登记一个存储后端，同一 (存储标识, 实例名) 重复登记以最新一次为准
 
-        不给实例名即登记为该标识的默认实例，与只有单一实现时的行为一致；给出实例名
+        不给实例名即登记为该标识的裸令牌位，与只有单一实现时的行为一致；给出实例名
         则与同标识的其它实例并存，互不覆盖。
 
         :param backend: 存储后端类
@@ -233,13 +239,13 @@ class StorageBackendRegistry:
             不给出时沿用既有调用点不传该参数时的行为
         :param config_component: 登记方为该标识声明的已解析 vue 模式配置组件，
             不给出时沿用既有调用点不传该参数时的行为
-        :param instance: 实例名，为空表示登记为该标识的默认实例
-        :param is_default: 该具名实例是否为该标识的默认实例，未具名时不生效
+        :param instance: 实例名，为空表示登记为该标识的裸令牌位
+        :param bare_token_target: 该具名实例是否承接该标识的裸令牌，未具名时不生效
         :return: 登记成功的存储令牌；登记失败时为 None
         """
         entry = build_storage_entry(
             backend, distribution, owner, storage_id, config_form, config_component,
-            instance, is_default
+            instance, bare_token_target
         )
         if not entry:
             return None
@@ -362,17 +368,17 @@ class StorageBackendRegistry:
             key=lambda item: (item.instance is not None, item.instance or ""),
         ))
 
-    def default_entry(self, storage_id: str) -> Optional[StorageBackendEntry]:
+    def bare_token_entry(self, storage_id: str) -> Optional[StorageBackendEntry]:
         """
-        裁决指定存储标识的默认实例
+        裁决指定存储标识的裸令牌落在哪条登记上
 
-        未具名的登记就是该标识的默认实例位，优先命中；全部为具名实例时只认唯一一个
-        被标记为默认的实例。没有默认、或多个实例同时自称默认，一律报错而不按登记顺序
-        取任意一个——默认已停用的实例在本表中即已注销，与从未标记过默认同属无默认。
+        未具名的登记就是该标识的裸令牌位，优先命中；全部为具名实例时只认唯一一个
+        自称承接裸令牌的实例。无人自称、或多个实例同时自称，一律报错而不按登记顺序
+        取任意一个——已停用的实例在本表中即已注销，与从未自称过同属无人承接。
 
         :param storage_id: 存储标识
-        :return: 默认实例的登记项；该标识一条登记都没有时为 None
-        :raises LookupError: 该标识有登记但无法裁决出默认实例
+        :return: 承接裸令牌的登记项；该标识一条登记都没有时为 None
+        :raises LookupError: 该标识有登记但无法裁决出承接裸令牌的实例
         """
         with self._lock:
             unnamed = self._entries.get((storage_id, None))
@@ -384,7 +390,7 @@ class StorageBackendRegistry:
             ]
         if not named:
             return None
-        marked = [entry for entry in named if entry.is_default]
+        marked = [entry for entry in named if entry.bare_token_target]
         if len(marked) == 1:
             return marked[0]
         candidates = describe_instance_candidates(
@@ -393,11 +399,11 @@ class StorageBackendRegistry:
         )
         if marked:
             raise LookupError(
-                f"存储 {storage_id} 有多个实例被标记为默认，调用必须显式指定实例；"
+                f"存储 {storage_id} 有多个实例自称承接裸令牌，调用必须显式指定实例；"
                 f"可选实例：{candidates}"
             )
         raise LookupError(
-            f"存储 {storage_id} 未设置默认实例，调用必须显式指定实例；"
+            f"存储 {storage_id} 没有承接裸令牌的实例，调用必须显式指定实例；"
             f"可选实例：{candidates}"
         )
 
@@ -406,14 +412,14 @@ class StorageBackendRegistry:
         """
         查找指定存储令牌的登记项
 
-        令牌未带实例名且未显式给出实例名时走默认实例裁决。
+        令牌未带实例名且未显式给出实例名时走裸令牌兼容指针裁决。
 
         :param storage: 存储令牌，如 u115 或 u115@work
         :param method: 需要后端提供的操作方法名，为空表示不限定操作
         :param instance: 实例名，给出时覆盖令牌中携带的实例名
         :return: 登记项；未登记或不提供该操作时为 None
         :raises ValueError: 存储令牌带实例分隔符但不合法
-        :raises LookupError: 未指定实例，且该标识有登记但无法裁决出默认实例
+        :raises LookupError: 未指定实例，且该标识有登记但无人承接裸令牌
         """
         if not storage:
             return None
@@ -424,7 +430,7 @@ class StorageBackendRegistry:
             with self._lock:
                 entry = self._entries.get((storage_id, selected))
         else:
-            entry = self.default_entry(storage_id)
+            entry = self.bare_token_entry(storage_id)
         if not entry or not entry.supports(method):
             return None
         return entry
@@ -439,7 +445,7 @@ class StorageBackendRegistry:
         :param instance: 实例名，给出时覆盖令牌中携带的实例名
         :return: 存储操作对象；未登记或不提供该操作时为 None
         :raises ValueError: 存储令牌带实例分隔符但不合法
-        :raises LookupError: 未指定实例，且该标识有登记但无法裁决出默认实例
+        :raises LookupError: 未指定实例，且该标识有登记但无人承接裸令牌
         """
         entry = self.find(storage, method, instance)
         return entry.create() if entry else None
@@ -448,14 +454,14 @@ class StorageBackendRegistry:
         """
         输出只读的登记诊断信息
 
-        :return: 每条登记的存储令牌、存储标识、实例名、是否默认、发行方式与提供方
+        :return: 每条登记的存储令牌、存储标识、实例名、是否承接裸令牌、发行方式与提供方
         """
         return [
             {
                 "storage": entry.storage,
                 "storage_id": entry.storage_id,
                 "instance": entry.instance,
-                "default": entry.is_default,
+                "bare_token_target": entry.bare_token_target,
                 "distribution": entry.distribution.value,
                 "owner": entry.owner,
             }

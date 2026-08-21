@@ -131,15 +131,22 @@ class StorageConf(BaseModel):
     存储实例配置
 
     一个存储类型可配置多份实例，``name`` 即实例名，与存储类型拼成存储令牌
-    ``u115@work``；``is_default`` 标记该存储类型的默认实例，裸令牌 ``u115`` 指向它。
+    ``u115@work``。
+
+    ``default`` 与 ``bare_token_target`` 回答的不是同一个问题：前者是本族的默认调用
+    目标，即调用没有指定存储时用哪一个，整族至多一份，与下载器、媒体服务器、消息通知
+    完全同规格；后者是不带实例名的裸令牌 ``u115`` 落到该类型的哪个实例上，每个存储
+    类型各一份，是存量路径没有实例名时才需要的兼容指针，所有路径补全实例名后即可移除。
     """
 
     # 类型 local/alipan/u115/rclone/alist
     type: Optional[str] = None
     # 实例名，同一存储类型下唯一
     name: Optional[str] = None
-    # 是否为该存储类型的默认实例，裸令牌指向它
-    is_default: bool = False
+    # 是否为本族的默认调用目标，即调用未指定存储时选中的那一份
+    default: Optional[bool] = False
+    # 是否承接本存储类型的裸令牌，兼容存量路径用，非默认语义
+    bare_token_target: bool = False
     # 配置
     config: Optional[dict] = Field(default_factory=dict)
 

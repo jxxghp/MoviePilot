@@ -17,9 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from app.runtime.extensions.config_schema import config_value_violations
 from app.runtime.extensions.service_config import (
-    DefaultTargetScope,
-    service_default_field,
-    service_default_scope,
+    service_bare_token_field,
     service_host_fields,
     service_instance_enabled,
     service_instance_name,
@@ -98,11 +96,9 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
     的族里无名条目同样不产出行——这类条目在切表前就不产出任何实例，也无法被显式指定或被
     默认标记裁决选中。同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
 
-    默认标记按该族的作用域裁剪，两种作用域互不落到对方的载体上：族级作用域裁出至多一条
-    ``is_default_target``，取顺序上第一条为真的；类型级作用域为每个类型裁出恰好一条，写进
-    宿主载荷，``is_default_target`` 恒为假，因此这类族在条件唯一索引里一行都不占。类型级
-    裁出「恰好一条」而不是「至多一条」，是因为裸令牌必须始终指得到实例——一份都不标记会让
-    该类型已有的裸路径整体失效。同一份输入重复整形结果相同。
+    四族的默认调用目标同规格：整族裁出至多一条 ``is_default_target``，取顺序上第一条
+    为真的。存储另外还要裁出裸令牌兼容指针，它落宿主载荷、每个类型恰好一条，与默认调用
+    目标各占各的载体、互不换算。同一份输入重复整形结果相同。
 
     :param capability: 该族的能力标签
     :param value: 整族配置值
@@ -138,15 +134,12 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
 
 
 def _trim_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
-    """把整族配置行的默认标记裁剪到该族作用域允许的份数。
+    """把整族配置行的默认调用目标裁剪到至多一条，并按需补齐裸令牌兼容指针。
 
     :param capability: 该族的能力标签
     :param records: 身份二元组到配置行的映射，原地改写
     :return: 无返回值
     """
-    if service_default_scope(capability) is DefaultTargetScope.TYPE:
-        _trim_type_default_markers(capability, records)
-        return
     default_seen = False
     for record in records.values():
         if not record["is_default_target"]:
@@ -155,21 +148,23 @@ def _trim_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
             record["is_default_target"] = False
             continue
         default_seen = True
+    field = service_bare_token_field(capability)
+    if field:
+        _trim_bare_token_pointers(field, records)
 
 
-def _trim_type_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
-    """为每个类型裁出恰好一个默认实例，标记落宿主载荷。
+def _trim_bare_token_pointers(field: str, records: Dict[tuple, dict]) -> None:
+    """为每个类型裁出恰好一个裸令牌兼容指针，标记落宿主载荷。
 
-    有自称默认的取顺序上第一份，一份都没有自称时取该类型顺序上第一份；默认调用目标列
-    一律留空，类型级默认不占用族级的那一行。
+    有自称的取顺序上第一份，一份都没有自称时取该类型顺序上第一份。裁出「恰好一条」
+    而不是「至多一条」，是因为存量路径必须始终指得到实例——一份都不标记会让该类型
+    已有的裸路径整体失效。这条兼容层随存量路径补全实例名而退场，届时整个函数与该
+    字段一并移除，默认调用目标不受影响。
 
-    :param capability: 该族的能力标签
+    :param field: 兼容指针在该族配置模型上的字段名
     :param records: 身份二元组到配置行的映射，原地改写
     :return: 无返回值
     """
-    field = service_default_field(capability)
-    for record in records.values():
-        record["is_default_target"] = False
     for service_type in dict.fromkeys(key[0] for key in records):
         siblings = [record for key, record in records.items() if key[0] == service_type]
         marked = [item for item in siblings if (item["host_config"] or {}).get(field)]

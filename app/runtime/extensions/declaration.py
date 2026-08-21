@@ -29,63 +29,6 @@ class ExtensionDeclaration:
 
 
 @dataclass(frozen=True, slots=True)
-class StorageDeclaration(ExtensionDeclaration):
-    """
-    存储类型声明
-
-    存储的**配置面**已并入服务实例族：实例配置与下载器、媒体服务器、消息渠道同一张
-    表、同一套整形、同一套筛选与默认裁决。本声明因此只剩存储族自己的部分。
-
-    与 `ServiceInstanceDeclaration` 保持两条声明的判据不是字段多少，而是**构造协议**：
-    三族的实例由宿主把配置内容展开进构造参数（``impl(name=配置名, **配置内容)``），或
-    整条配置交给 ``factory``；存储后端两条都不是——它按实例归属构造
-    （``后端类(storage_instance=实例名)``），配置由后端自己按存储令牌懒读，因为存储配置
-    要支持运行期改写后重连（``set_config()`` 之后重跑 ``init_storage()``）。把这条协议
-    塞进服务实例声明，只能落成宿主里的一处族分支，或要求每个扩展作者手写一个工厂把宿主
-    本来就会做的归属交付重做一遍。
-
-    ``schema`` 是存储标识，同一标识重复登记以最新一次为准，因此扩展提供的标识
-    与内建标识相同即构成覆盖。标识允许是普通字符串，不要求登记于内核枚举。
-
-    ``multi_instance`` 回答「用户能为这个存储类型配几份」，语义与
-    `ServiceInstanceDeclaration.multi_instance` 完全相同：由声明该类型的一方回答，
-    缺省为多实例，与「扩展本体是否分身」正交。
-
-    该存储类型的专属配置界面二选一，与扩展自身的渲染模式对应：
-
-    - ``config_form``：vuetify 模式，形状与 ``_PluginBase.get_form()`` 相同——
-      组件树加默认数据二元组
-    - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
-      要求扩展的 ``get_render_mode()`` 返回 ``"vue"``
-
-    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该存储
-    类型没有专属界面，前端沿用内建类型的渲染方式。界面归属这条声明，不归属
-    声明它的扩展：扩展同时提供存储与其它能力时，各自的配置界面互不干扰，也
-    不会读到扩展自身的 ``get_form()``。
-
-    ``config_schema`` 与配置界面回答的不是同一个问题，语义与
-    `ServiceInstanceDeclaration.config_schema` 相同：界面是呈现，契约是形状，宿主据此
-    在配置写入前拒绝畸形配置。存储的构造不经关键字展开，因此契约没有保留字段名。
-
-    :param schema: 存储标识，例如 u115、alipan
-    :param name: 类型展示名称，为空时前端沿用存储标识
-    :param multi_instance: 用户能否为该类型配置多份，默认为 True
-    :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
-        ``config_component`` 互斥
-    :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
-    :param config_schema: 该类型配置内容的契约，JSON Schema 受控子集；未声明时宿主
-        不对该类型的配置内容做形状判定
-    """
-
-    schema: str = ""
-    name: str = ""
-    multi_instance: bool = True
-    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
-    config_component: Optional[str] = None
-    config_schema: Optional[Dict[str, Any]] = None
-
-
-@dataclass(frozen=True, slots=True)
 class AgentToolDeclaration(ExtensionDeclaration):
     """
     智能体工具声明
@@ -144,9 +87,9 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
 
     ``capability`` 是该类型属于哪一族服务的语义标签，取值须是服务族登记表
     （`app.runtime.extensions.service_family_registry`）中已登记的族，宿主内建
-    下载器、媒体服务器与消息通知三族。三者共用这一条声明，
-    差异只在该标签：三者的取用链是同一条——同一张服务实例表，按「能力标签加类型
-    标识」取用，形状没有区别，因此不按业务族拆成三个钩子，差异作为参数声明出来。
+    下载器、媒体服务器、消息通知与存储四族。四族共用这一条声明，
+    差异只在该标签：取用链是同一条——同一张服务实例表，按「能力标签加类型
+    标识」取用，形状没有区别，因此不按业务族拆成四个钩子，差异作为参数声明出来。
 
     构造方式二选一，宿主对该类型下的每条用户配置执行其一：
 
@@ -158,7 +101,17 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     两者互斥，同时给出视为意图不明，整条声明被拒；都不给出同样被拒，宿主无从
     构造实例。二者都是进程内快路径，跨进程时均不参与序列化。
 
-    该服务类型的专属配置界面二选一，字段语义与 ``StorageDeclaration`` 相同：
+    **存储族（``capability="storage"``）的构造协议另有一套**，因此这两条路径在
+    该族里的读法不同：``impl`` 是存储后端类，须继承
+    ``app.modules._base.storage.StorageBase`` 并落地全部抽象方法，宿主**不**按
+    ``impl(name=..., **config)`` 构造它；``type`` 同时是存储标识，按令牌取用的登记
+    从这里来。构造一律走工厂——不给 ``factory`` 时宿主用默认工厂
+    （`app.runtime.extensions.storage_registry.storage_instance_factory`），按实例
+    归属交付后端、配置由后端自己按存储令牌懒读，扩展作者一行工厂都不用写；给了
+    ``factory`` 就走扩展自己那一个，宿主只交出整条配置对象。存储的构造不经关键字
+    展开，因此 ``config_schema`` 在该族里没有保留字段名。
+
+    该服务类型的专属配置界面二选一：
 
     - ``config_form``：vuetify 模式，(组件树, 默认数据) 二元组
     - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
@@ -176,7 +129,8 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     子集，判据与关键字集合见 `app.runtime.extensions.config_schema`。
 
     :param capability: 能力标签，取值须是服务族登记表中已登记的族
-    :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent
+    :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent；
+        存储族里它同时是存储标识，例如 u115
     :param name: 类型展示名称
     :param multi_instance: 用户能否为该类型配置多份，默认为 True
     :param factory: 接收单条服务配置并返回实例的可调用对象；与 ``impl`` 互斥
@@ -207,7 +161,7 @@ class AuthProviderDeclaration(ExtensionDeclaration):
     登录入口渲染组件固定为 ``AuthPage``，由宿主联邦机制原样注入，与旧写法语义
     一致，不受本声明字段影响。
 
-    该认证提供方的专属配置界面二选一，字段语义与 ``StorageDeclaration`` 相同：
+    该认证提供方的专属配置界面二选一，字段语义与 ``ServiceInstanceDeclaration`` 相同：
 
     - ``config_form``：vuetify 模式，(组件树, 默认数据) 二元组
     - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
@@ -382,7 +336,7 @@ class DashboardDeclaration(ExtensionDeclaration):
     声明的是「有哪些仪表盘、长什么样」；「当前该显示什么数据」仍由带参数的
     ``get_dashboard(key, **kwargs)`` 在每次请求时实时取用，两者不是一回事。
 
-    该仪表盘的专属界面二选一，与 ``StorageDeclaration.config_form``/
+    该仪表盘的专属界面二选一，与 ``ServiceInstanceDeclaration.config_form``/
     ``config_component`` 同一套语义：``config_form`` 是 vuetify 模式下的
     （组件树, 默认数据）二元组，``config_component`` 是 vue 模式下本扩展联邦
     远程中承载该仪表盘的组件名，要求扩展的 ``get_render_mode()`` 返回 ``"vue"``。
@@ -403,36 +357,13 @@ class DashboardDeclaration(ExtensionDeclaration):
     config_component: Optional[str] = None
 
 
-def declaration_schema(declaration: Any) -> Optional[str]:
-    """
-    读取声明自报的存储标识
-
-    :param declaration: 存储声明
-    :return: 存储标识；声明不带标识时为 None
-    """
-    schema = getattr(declaration, "schema", None)
-    if isinstance(schema, str) and schema.strip():
-        return schema.strip()
-    return None
-
-
-def declaration_storage_name(declaration: Any) -> Optional[str]:
-    """
-    读取存储声明自报的类型展示名称
-
-    :param declaration: `StorageDeclaration` 实例，或插件直接交出的实现类
-    :return: 展示名称；字段缺失、非字符串或为空白时为 None
-    """
-    return _declared_text(declaration, "name")
-
-
 def declaration_config_form(
     declaration: Any,
 ) -> Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]]:
     """
     读取声明自带的配置界面
 
-    :param declaration: 存储声明
+    :param declaration: 扩展声明
     :return: (组件树, 默认数据) 二元组；声明未带配置界面时为 None
     """
     return getattr(declaration, "config_form", None)
@@ -455,7 +386,7 @@ def declaration_config_component(declaration: Any) -> Optional[str]:
     """
     读取声明自带的 vue 模式配置界面组件名
 
-    :param declaration: 存储声明
+    :param declaration: 扩展声明
     :return: 组件名；未声明或为空白时为 None
     """
     return _declared_text(declaration, "config_component")

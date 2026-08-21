@@ -135,6 +135,39 @@ def test_each_capability_keeps_its_own_default_target(db):
     assert ServiceConfig.get_default_target(db.session, "mediaserver").name == "mp-test-scope-ms"
 
 
+def test_partial_unique_index_covers_storage_rows_too(db):
+    """存储族的默认调用目标同样由条件唯一索引判定，与三族一条规则。"""
+    db.add(_conf("storage", "u115", "mp-test-storage-def-a", default=True))
+
+    with pytest.raises(IntegrityError):
+        db.session.add(_conf("storage", "alipan", "mp-test-storage-def-b", default=True))
+        db.session.commit()
+    db.session.rollback()
+
+    assert ServiceConfig.get_default_target(
+        db.session, "storage"
+    ).name == "mp-test-storage-def-a"
+
+
+def test_storage_bare_token_pointer_never_touches_the_default_target_column(db):
+    """裸令牌兼容指针落宿主载荷，同类型多份自称也不占用族级那一行。"""
+    db.add(
+        _conf("storage", "u115", "mp-test-ptr-a"),
+        _conf("storage", "u115", "mp-test-ptr-b"),
+    )
+    for name in ("mp-test-ptr-a", "mp-test-ptr-b"):
+        ServiceConfig.update_by_identity(
+            db.session, "storage", "u115", name, {"host_config": {"bare_token_target": True}}
+        )
+
+    rows = ServiceConfig.list_by_type(db.session, "storage", "u115")
+
+    assert [row.host_config for row in rows] == [
+        {"bare_token_target": True}, {"bare_token_target": True}
+    ]
+    assert ServiceConfig.get_default_target(db.session, "storage") is None
+
+
 def test_many_non_default_rows_coexist_in_one_capability(db):
     """未置位的行不入索引，同族可以有任意多行不是默认调用目标。"""
     db.add(

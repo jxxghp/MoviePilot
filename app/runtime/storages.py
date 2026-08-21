@@ -16,8 +16,8 @@ from app.schemas.system import StorageConf
 class StorageConfigProvider(Protocol):
     """存储实例配置的读写协议。
 
-    一个存储类型可配置多份具名实例，读写按存储令牌进行：裸令牌 ``u115`` 指该类型的
-    默认实例，具名令牌 ``u115@work`` 指该类型下名为 ``work`` 的实例。
+    一个存储类型可配置多份具名实例，读写按存储令牌进行：裸令牌 ``u115`` 落到该类型
+    兼容指针所指的那一份，具名令牌 ``u115@work`` 指该类型下名为 ``work`` 的实例。
     """
 
     def get_storage(self, storage: str) -> Optional[StorageConf]:

@@ -1,8 +1,14 @@
 """存储并入服务实例族后的等价与边界守护测试。
 
-存储的实例配置与下载器、媒体服务器、消息渠道并成一族：一张表、一套整形、一套筛选与
-默认裁决。本文件盯住三件事：并族前后同一份配置数据整形结果逐条等价；两种默认标记粒度
-各自生效且互不干扰；存储类型仍走自己的声明钩子，服务实例声明不能顶替它。
+存储与下载器、媒体服务器、消息渠道并成一族：一张表、一套整形、一套筛选、一套默认
+调用目标裁决，声明也共用同一条 `provides_service_instances()` 钩子。本文件盯住四件事：
+并族前后同一份配置数据整形结果逐条等价；族级默认调用目标对存储确实生效且与三族同规格；
+裸令牌兼容指针与族级默认互不干扰；存储类型的声明与构造协议在合并后的声明面上仍然成立。
+
+**族级默认与兼容指针回答的不是同一个问题。** 族级默认回答「调用没指定存储时用哪个」，
+整族至多一个，落 ``serviceconfig.is_default_target`` 专列；兼容指针回答「存量路径
+``u115:/media`` 没写实例名时落到哪一份」，每个存储类型各一个，落宿主载荷。一个实例可以
+同时是两者，也可以只是其中之一。
 """
 
 import asyncio
@@ -15,6 +21,7 @@ from app.application.service_config import (
     read_system_setting,
 )
 from app.application.storage import StorageHelper
+from app.application.storage_config import select_storage_config
 from app.modules._base.storage import StorageBase
 from app.modules.alipan.alipan import AliPan
 from app.modules.alist.alist import Alist
@@ -25,21 +32,14 @@ from app.modules.smb.smb import SMB
 from app.modules.u115.u115 import U115Pan
 from app.plugins import _PluginBase
 from app.runtime.deprecation.notices import NOTICES
-from app.runtime.extensions.declaration import (
-    ServiceInstanceDeclaration,
-    StorageDeclaration,
-)
+from app.runtime.extensions.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
-from app.runtime.extensions.plugin.storage_capabilities import (
-    storage_declaration_violation,
-)
 from app.runtime.extensions.service_config import (
-    DefaultTargetScope,
     STORAGE_CAPABILITY,
     select_instance_configs,
-    service_default_scope,
+    service_bare_token_field,
 )
 from app.runtime.extensions.service_config_validation import (
     service_config_records,
@@ -50,8 +50,9 @@ from app.runtime.extensions.service_instance_registry import service_instance_re
 from app.schemas.system import DownloaderConf, StorageConf
 from app.schemas.types import ModuleType, SystemConfigKey
 
-# 并族前存储配置的专用整形规则，逐字取自并族前的 storage_config_records，用作对拍基准
-_LEGACY_DEFAULT_FIELD = "is_default"
+# 并族前存储配置的专用整形规则，逐字取自并族前的 storage_config_records，用作对拍基准；
+# 那时这个标记还叫 is_default，本文件按它今天的名字写，取值口径与当初逐字节相同
+_BARE_TOKEN_FIELD = "bare_token_target"
 
 
 def _legacy_storage_records(confs) -> list:
@@ -71,22 +72,22 @@ def _legacy_storage_records(confs) -> list:
             "name": name,
             "enabled": True,
             "config": conf.config or {},
-            "host_config": {_LEGACY_DEFAULT_FIELD: bool(conf.is_default)},
+            "host_config": {_BARE_TOKEN_FIELD: bool(conf.bare_token_target)},
             "is_default_target": False,
         }
     for storage_id in dict.fromkeys(key[0] for key in records):
         siblings = [record for key, record in records.items() if key[0] == storage_id]
         marked = [
             record for record in siblings
-            if record["host_config"][_LEGACY_DEFAULT_FIELD]
+            if record["host_config"][_BARE_TOKEN_FIELD]
         ]
         chosen = marked[0] if marked else siblings[0]
         for record in siblings:
-            record["host_config"] = {_LEGACY_DEFAULT_FIELD: record is chosen}
+            record["host_config"] = {_BARE_TOKEN_FIELD: record is chosen}
     return list(records.values())
 
 
-# 对拍用的配置数据集，覆盖无名条目、无类型条目、同名覆盖、无默认与多默认
+# 对拍用的配置数据集，覆盖无名条目、无类型条目、同名覆盖、无兼容指针与多份自称
 _EQUIVALENCE_CASES = (
     ("单份配置", [StorageConf(type="u115", name="主号", config={"k": "a"})]),
     ("未填实例名", [StorageConf(type="u115", config={"k": "a"})]),
@@ -95,17 +96,17 @@ _EQUIVALENCE_CASES = (
         StorageConf(type="u115", config={"k": "旧"}),
         StorageConf(type="u115", name="u115", config={"k": "新"}),
     ]),
-    ("一份都没有自称默认", [
+    ("一份都没有自称承接", [
         StorageConf(type="u115", name="甲"),
         StorageConf(type="u115", name="乙"),
     ]),
-    ("多份自称默认", [
-        StorageConf(type="u115", name="甲", is_default=True),
-        StorageConf(type="u115", name="乙", is_default=True),
+    ("多份自称承接", [
+        StorageConf(type="u115", name="甲", bare_token_target=True),
+        StorageConf(type="u115", name="乙", bare_token_target=True),
     ]),
-    ("跨类型各有默认", [
+    ("跨类型各有兼容指针", [
         StorageConf(type="u115", name="甲"),
-        StorageConf(type="alist", name="乙", is_default=True),
+        StorageConf(type="alist", name="乙", bare_token_target=True),
         StorageConf(type="alist", name="丙"),
     ]),
     ("空配置", []),
@@ -141,39 +142,88 @@ def test_merged_shaping_matches_the_storage_specific_shaping(label, confs):
             assert merged_record[field] == legacy_record[field], (label, field)
 
 
-def test_storage_rows_never_occupy_the_family_default_target_column(storage_config):
-    """存储的默认标记只落宿主载荷，族级默认调用目标列一行都不占。"""
+def test_storage_family_default_lands_on_the_family_column(storage_config):
+    """存储的默认调用目标与三族同规格：落 is_default_target 专列，整族至多一条。"""
     storage_config.save_storagies([
-        StorageConf(type="u115", name="甲", is_default=True),
-        StorageConf(type="alist", name="乙", is_default=True),
+        StorageConf(type="u115", name="甲", default=True),
+        StorageConf(type="alist", name="乙", default=True),
     ])
 
     payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
 
-    assert [item["is_default"] for item in payloads] == [True, True]
+    assert [item["default"] for item in payloads] == [True, False]
+
+
+def test_bare_token_pointer_is_not_the_family_default(storage_config):
+    """兼容指针只回答地址补全：每类型各一个，且不占用族级默认调用目标列。"""
+    storage_config.save_storagies([
+        StorageConf(type="u115", name="甲", bare_token_target=True),
+        StorageConf(type="alist", name="乙", bare_token_target=True),
+    ])
+
+    payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
+
+    assert [item["bare_token_target"] for item in payloads] == [True, True]
     assert [item["default"] for item in payloads] == [False, False]
 
 
-def test_two_default_scopes_do_not_interfere(storage_config):
-    """两种默认粒度各自生效：存储每类型一个，三族每族一个，互不占用对方的载体。"""
+def test_one_instance_can_be_both_the_family_default_and_the_bare_token_target(
+    storage_config
+):
+    """同一实例可以同时是族级默认与所在类型的兼容指针，两个标记各自落各自的位置。"""
+    storage_config.save_storagies([
+        StorageConf(type="u115", name="甲", default=True, bare_token_target=True),
+        StorageConf(type="u115", name="乙"),
+    ])
+
+    payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
+    marks = {
+        item["name"]: (item["default"], item["bare_token_target"])
+        for item in payloads
+    }
+
+    assert marks == {"甲": (True, True), "乙": (False, False)}
+
+
+def test_the_two_marks_can_land_on_different_instances(storage_config):
+    """族级默认与兼容指针可以落在不同实例上：一个回答用哪个，一个回答裸令牌指谁。"""
+    storage_config.save_storagies([
+        StorageConf(type="u115", name="甲", bare_token_target=True),
+        StorageConf(type="u115", name="乙", default=True),
+        StorageConf(type="alist", name="丙"),
+    ])
+
+    payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
+    marks = {
+        item["name"]: (item["default"], item["bare_token_target"])
+        for item in payloads
+    }
+
+    assert marks == {"甲": (False, True), "乙": (True, False), "丙": (False, True)}
+
+
+def test_two_families_do_not_interfere(storage_config):
+    """族级默认在两族各自成立、互不排斥；存储的兼容指针不参与族级那一条。"""
     asyncio.run(async_write_system_setting(SystemConfigKey.Downloaders, [
         {"name": "主力", "type": "qbittorrent", "enabled": True, "default": True},
         {"name": "备用", "type": "transmission", "enabled": True, "default": True},
     ]))
     storage_config.save_storagies([
-        StorageConf(type="u115", name="甲", is_default=True),
-        StorageConf(type="u115", name="乙", is_default=True),
+        StorageConf(type="u115", name="甲", default=True),
+        StorageConf(type="u115", name="乙", default=True),
         StorageConf(type="alist", name="丙"),
     ])
     try:
         downloaders = read_system_setting(SystemConfigKey.Downloaders)
         storages = read_system_setting(SystemConfigKey.Storages)
 
-        # 族级：整族至多一条，多交的那条被裁掉
+        # 族级：两族各自裁出至多一条，多交的那条被裁掉
         assert [item["default"] for item in downloaders] == [True, False]
-        # 类型级：每个类型恰好一条，且跨类型互不排斥
+        assert [item["default"] for item in storages] == [True, False, False]
+        # 类型级：兼容指针每个类型恰好一条，跨类型互不排斥
         assert {
-            (item["type"], item["name"]): item["is_default"] for item in storages
+            (item["type"], item["name"]): item["bare_token_target"]
+            for item in storages
         } == {
             ("u115", "甲"): True, ("u115", "乙"): False, ("alist", "丙"): True
         }
@@ -181,39 +231,83 @@ def test_two_default_scopes_do_not_interfere(storage_config):
         asyncio.run(async_write_system_setting(SystemConfigKey.Downloaders, None))
 
 
-def test_family_default_target_stays_family_scoped():
-    """三族的默认标记作用域仍是族，读的仍是外壳字段 default。"""
-    assert service_default_scope(ModuleType.Downloader.value) is DefaultTargetScope.FAMILY
-    assert service_default_scope(ModuleType.MediaServer.value) is DefaultTargetScope.FAMILY
-    assert service_default_scope(ModuleType.Notification.value) is DefaultTargetScope.FAMILY
-    assert service_default_scope(STORAGE_CAPABILITY) is DefaultTargetScope.TYPE
+def test_only_storage_carries_a_bare_token_pointer():
+    """只有存储族有裸令牌兼容指针：其余三族的调用地址不会出现「写了类型没写实例」。"""
+    assert service_bare_token_field(STORAGE_CAPABILITY) == "bare_token_target"
+    assert service_bare_token_field(ModuleType.Downloader.value) is None
+    assert service_bare_token_field(ModuleType.MediaServer.value) is None
+    assert service_bare_token_field(ModuleType.Notification.value) is None
 
-    selected = select_instance_configs(
+
+@pytest.mark.parametrize("capability,confs,expected", [
+    (
+        ModuleType.Downloader.value,
         [
             DownloaderConf(name="主力", type="qbittorrent", enabled=True, default=True),
             DownloaderConf(name="备用", type="qbittorrent", enabled=True),
         ],
-        "qbittorrent",
-        capability=ModuleType.Downloader.value,
-        multi_instance=False,
-    )
-
-    assert list(selected) == ["主力"]
-
-
-def test_single_instance_storage_type_is_decided_by_the_type_level_default():
-    """存储的单实例裁决读类型级默认标记，不读族级默认调用目标列。"""
-    selected = select_instance_configs(
+        ["主力"],
+    ),
+    (
+        STORAGE_CAPABILITY,
         [
             StorageConf(type="local", name="甲"),
-            StorageConf(type="local", name="乙", is_default=True),
+            StorageConf(type="local", name="乙", default=True),
         ],
-        "local",
-        capability=STORAGE_CAPABILITY,
+        ["乙"],
+    ),
+], ids=["下载器", "存储"])
+def test_single_instance_ruling_is_the_same_for_storage_and_the_three_families(
+    capability, confs, expected
+):
+    """单实例类型的裁决四族同一条：读族级默认调用目标，不读别的标记。"""
+    selected = select_instance_configs(
+        confs,
+        confs[0].type,
+        capability=capability,
         multi_instance=False,
     )
 
-    assert list(selected) == ["乙"]
+    assert list(selected) == expected
+
+
+def test_single_instance_storage_without_a_family_default_stops_the_type():
+    """裁决不出族级默认时单实例存储类型整体停摆并报错，绝不取第一个。"""
+    with pytest.raises(LookupError) as excinfo:
+        select_instance_configs(
+            [
+                StorageConf(type="local", name="甲", bare_token_target=True),
+                StorageConf(type="local", name="乙"),
+            ],
+            "local",
+            capability=STORAGE_CAPABILITY,
+            multi_instance=False,
+        )
+
+    assert "甲" in str(excinfo.value) and "乙" in str(excinfo.value)
+
+
+def test_bare_token_resolution_reads_the_pointer_not_the_family_default():
+    """裸令牌只认兼容指针：族级默认是同类型另一份时，裸令牌仍落到兼容指针那一份。"""
+    confs = [
+        StorageConf(type="u115", name="甲", bare_token_target=True),
+        StorageConf(type="u115", name="乙", default=True),
+    ]
+
+    assert select_storage_config(confs, None).name == "甲"
+    assert select_storage_config(confs, "乙").name == "乙"
+
+
+@pytest.mark.parametrize("confs", [
+    [StorageConf(type="u115", name="甲"), StorageConf(type="u115", name="乙")],
+    [
+        StorageConf(type="u115", name="甲", bare_token_target=True),
+        StorageConf(type="u115", name="乙", bare_token_target=True),
+    ],
+], ids=["无人自称", "多份自称"])
+def test_bare_token_yields_instead_of_taking_the_first(confs):
+    """无兼容指针或多份自称时裸令牌让出，绝不按顺序取第一份。"""
+    assert select_storage_config(confs, None) is None
 
 
 def test_storage_instances_have_no_enable_switch():
@@ -250,8 +344,20 @@ def test_storage_is_a_registered_service_family():
     assert entry.name == "存储"
 
 
-def test_service_instance_declaration_cannot_take_over_the_storage_family():
-    """服务实例声明不能声明存储类型，拒绝理由直接指向存储自己的钩子。"""
+def test_service_instance_declaration_accepts_the_storage_family():
+    """存储类型经服务实例声明登记，不写工厂即合契约——宿主提供默认工厂。"""
+    assert service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
+        )
+    ) is None
+
+
+def test_storage_family_rejects_an_impl_that_is_not_a_storage_backend():
+    """存储族的 impl 按继承判定：不是存储基类子类的实现整条声明被拒。"""
     violation = service_instance_declaration_violation(
         ServiceInstanceDeclaration(
             capability=STORAGE_CAPABILITY,
@@ -262,36 +368,76 @@ def test_service_instance_declaration_cannot_take_over_the_storage_family():
     )
 
     assert violation is not None
-    assert "provides_storages()" in violation
+    assert "StorageBase" in violation
 
 
-def test_provides_storages_is_not_in_any_deprecation_flow():
-    """存储钩子保留而不进废弃流程：它承载的是另一套构造协议，不是旧写法。
+def test_storage_family_accepts_a_declared_factory_alongside_the_backend():
+    """存储族里 factory 是可选项：给了就走它，impl 仍要用来回答令牌指的实体是谁。"""
+    assert service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
+            factory=lambda conf: None,
+        )
+    ) is None
+    assert service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
+            factory=lambda: None,
+        )
+    ) is not None
+
+
+def test_the_storage_hook_is_gone_and_leaves_no_deprecation_entry():
+    """存储专用钩子随并族删除，且不进废弃流程。
 
     废弃登记表是给插件作者看的对外契约，只登记上游已发行、社区确实在用的旧写法；
-    `provides_storages()` 从未随发行版到达社区，把它写进去只会让废弃表变成本仓重构
-    过程的流水账。
+    `provides_storages()` 只存在于本重构线，从未随任何发行版到达社区，删除不会让已
+    发布插件失效，把它写进废弃表只会让废弃表变成本仓重构过程的流水账。
     """
+    assert not hasattr(_PluginBase, "provides_storages")
+    assert hasattr(_PluginBase, "provides_service_instances")
     assert not [key for key in NOTICES if "storages" in key]
-    assert hasattr(_PluginBase, "provides_storages")
 
 
 def test_storage_declaration_carries_the_instance_count_and_contract():
-    """存储声明自带份数与配置契约，取值不合法即拒绝登记。"""
-    assert storage_declaration_violation(
-        StorageDeclaration(schema="demo_storage", impl=_DemoStorage)
-    ) is None
-    assert storage_declaration_violation(
-        StorageDeclaration(
-            schema="demo_storage", impl=_DemoStorage, multi_instance="yes"
+    """存储类型声明自带份数与配置契约，取值不合法即拒绝登记。"""
+    assert service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
+            multi_instance="yes",
         )
     ).startswith("multi_instance")
-    assert "不受支持" in storage_declaration_violation(
-        StorageDeclaration(
-            schema="demo_storage", impl=_DemoStorage,
+    assert "不受支持" in service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
             config_schema={"type": "object", "$ref": "#/x"},
         )
     )
+
+
+def test_storage_config_schema_has_no_reserved_property_name():
+    """存储的构造不经关键字展开，因此契约可以声明名为 name 的字段。"""
+    assert service_instance_declaration_violation(
+        ServiceInstanceDeclaration(
+            capability=STORAGE_CAPABILITY,
+            type="demo_storage",
+            name="演示存储",
+            impl=_DemoStorage,
+            config_schema={"type": "object", "properties": {"name": {"type": "string"}}},
+        )
+    ) is None
 
 
 def test_write_side_contract_applies_to_plugin_declared_storage_types(storage_config):
