@@ -222,6 +222,12 @@ flowchart TB
 
 **回滚**：恢复旧 CLI 解析器即可；不得回滚已审查的 fixture 内容。
 
+**实施记录（2026-08-21）**：
+
+- `baseline.py` 已提供 host/plugin 的显式 check/write scope，性能基线提供 print/check/write；默认行为只读，
+  write 前列出目标，宿主检查不依赖外部插件仓存在。
+- CLI、只读工作树和 fixture 定向写入测试已覆盖，提交为 `7bc3ea83`。
+
 #### ARCH-202：把语义基线与诊断位置分开
 
 **目标**：正常行号移动、时间戳或插件仓 HEAD 变化不再触发“架构语义变化”；真实方法、事件、导入、签名和结果契约变化仍失败。
@@ -237,6 +243,12 @@ flowchart TB
 
 **完成标准**：只插入空行不改变 semantic fixture；改 `run_module("...")`、EventType、SDK 导出或 Compat 映射仍稳定失败。
 
+**实施记录（2026-08-21）**：
+
+- semantic key 与行号/来源 revision 诊断已分离；时间、位置和外部仓 HEAD 不再参与硬比较，真实 import、method、
+  event、SDK/compat 变化仍产生精确 diff。
+- 旧 fixture 可兼容读取，语义稳定性与真实变更失败测试通过，提交为 `37c442b0`。
+
 #### ARCH-203：把架构与跨仓兼容纳入持续 CI
 
 **目标**：当前只手工执行的架构/插件观察变成分层 CI。
@@ -249,6 +261,12 @@ flowchart TB
 4. Pylint 工作流至少对主仓 PR 运行改动文件严重错误检查；全仓报告仍可手工生成。
 
 **完成标准**：宿主 PR 不因外部仓普通版本变化随机红灯；真实兼容破坏能定位到插件和符号。
+
+**实施记录（2026-08-21）**：
+
+- 主测试 workflow 增加独立宿主 Architecture Contract Gate，跨仓插件检查进入定时/手工 observation workflow，
+  只上传报告、不自动写 baseline。
+- Pylint 硬门禁只检查本次改动 Python 文件，全仓结果保留 advisory artifact；提交为 `6c7c54d2`、`0959831b`。
 
 ### 阶段 1：固定部署拓扑和统一入口
 
@@ -279,6 +297,12 @@ flowchart TB
 
 **完成标准**：不再存在看似支持、实际重复运行控制面的多 worker 配置。
 
+**实施记录（2026-08-21）**：
+
+- Startup 边界、launcher 与 Doctor 共用单 worker 拓扑合同；全功能模式拒绝 worker>1，safe mode 与旧配置键保持
+  兼容，部署文档解释控制面重复风险。
+- worker=1/>1、safe mode 和配置解析专项测试通过，提交为 `d89d2961`。
+
 #### ARCH-211：修正 Uvicorn app factory 与开发 reload
 
 **目标**：生产、开发 reload、测试和外部 ASGI supervisor 使用明确、可验证的入口，不依赖 app 实例在 multiprocessing/reload 下的未支持行为。
@@ -300,6 +324,12 @@ flowchart TB
   tests/test_lifecycle_shutdown.py \
   tests/test_testing_bootstrap.py -q
 ```
+
+**实施记录（2026-08-21）**：
+
+- reload/监督进程统一使用 `app.factory:create_app` import-string factory；生产入口保留单 worker 和既有优雅停止，
+  import/create 阶段不启动 DB、插件或后台线程。
+- launcher、lifespan、factory/TestClient 与信号关停测试通过，提交为 `bb57b229`。
 
 #### ARCH-212：统一数据库准备与健康语义
 
@@ -323,6 +353,12 @@ flowchart TB
 
 **回滚**：生命周期组件可暂时委托回 `app.main` 旧调用，但同一版本不能同时保留两个主动迁移入口。
 
+**实施记录（2026-08-21）**：
+
+- 数据库准备已成为最早生命周期组件，`app.main` 不再重复迁移；所有受支持入口共享 prepare/head/readiness 状态。
+- `/health/live` 与 `/health/ready` 使用最小响应，准备失败阻止 ready；入口矩阵、失败和探针测试通过，提交为
+  `dd1c4c32`。
+
 ### 阶段 2：统一数据访问和事务所有权
 
 #### ARCH-220：建立 Model/Repository 事务 ratchet
@@ -342,6 +378,12 @@ flowchart TB
 6. 对同步线程和异步任务分别验证 Session 独占，禁止跨线程/跨 task 共享同一个 Session。
 
 **完成标准**：装饰器基线不增长；新写用例可从测试中明确观察 `stage -> commit -> after-commit effect` 顺序。
+
+**实施记录（2026-08-21）**：
+
+- host architecture baseline 新增 transaction debt 域，记录 Model decorator 和直接 commit/rollback；新增或增长会
+  失败，减少允许通过。
+- Repository/Oper 的 Session 所有权与可组合 stage 规则已有静态和生命周期测试，提交为 `de2957b9`。
 
 #### ARCH-221：以订阅写入做首个完整事务切片
 
