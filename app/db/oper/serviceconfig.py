@@ -1,0 +1,197 @@
+"""服务实例配置数据访问。"""
+from typing import Any, Iterable, List, Optional
+
+from sqlalchemy.exc import IntegrityError
+
+from app.db.base import DbOper
+from app.db.models.serviceconfig import BUILTIN_PROVIDER, ServiceConfig
+
+
+class ServiceConfigNameConflictError(Exception):
+    """同族同类型下已有同名实例配置，实例名必须唯一。"""
+
+
+class ServiceConfigOper(DbOper):
+    """封装服务实例配置的查询、增删改与默认调用目标裁决。
+
+    唯一约束冲突在本层被翻译成领域异常：``(capability, type, name)`` 的唯一性是
+    用户在界面上能理解的规则（同一类型下不能有两个同名实例），把 ``IntegrityError``
+    原样抛到界面既暴露表结构，也没法告诉用户该改什么。
+    """
+
+    @staticmethod
+    def _conflict_message(capability: str, service_type: str, name: str) -> str:
+        """
+        构造实例名冲突的用户可读提示。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :return: 提示文案
+        """
+        return f"{capability} 类型 {service_type} 下已存在名为 {name} 的配置，请换一个名称"
+
+    def list_by_capability(self, capability: str) -> List[ServiceConfig]:
+        """
+        列出某族的全部实例配置。
+        :param capability: 族标识
+        :return: 该族全部实例配置行
+        """
+        return ServiceConfig.list_by_capability(self._db, capability)
+
+    def list_by_type(self, capability: str, service_type: str) -> List[ServiceConfig]:
+        """
+        列出某族某类型的全部实例配置。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :return: 该类型全部实例配置行
+        """
+        return ServiceConfig.list_by_type(self._db, capability, service_type)
+
+    def get(self, capability: str, service_type: str, name: str) -> Optional[ServiceConfig]:
+        """
+        按 ``(capability, type, name)`` 精确取单条实例配置。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :return: 命中的配置行，不存在返回 None
+        """
+        return ServiceConfig.get_by_identity(self._db, capability, service_type, name)
+
+    def list_by_provider(self, provider: str) -> List[ServiceConfig]:
+        """
+        列出某提供方名下的全部实例配置。
+        :param provider: 提供方标识
+        :return: 该提供方名下的实例配置行
+        """
+        return ServiceConfig.list_by_provider(self._db, provider)
+
+    def list_with_absent_provider(
+            self, present_providers: Iterable[str]
+    ) -> List[ServiceConfig]:
+        """
+        列出提供方已不在场的实例配置，供界面提示「该类型由扩展 X 提供，X 当前未启用」。
+
+        入参是当前在场的提供方全集，由调用方从运行态取得；内建保留值恒视为在场。
+        :param present_providers: 当前在场的提供方标识集合
+        :return: 提供方已消失的实例配置行
+        """
+        return ServiceConfig.list_with_absent_provider(self._db, present_providers)
+
+    def add(
+            self,
+            capability: str,
+            service_type: str,
+            name: str,
+            *,
+            config: Optional[Any] = None,
+            enabled: bool = False,
+            provider: str = BUILTIN_PROVIDER,
+    ) -> ServiceConfig:
+        """
+        新增一条实例配置。
+
+        新增的实例一律不是默认调用目标，默认调用目标必须由用户显式选定。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :param config: 类型专属配置载荷
+        :param enabled: 是否启用
+        :param provider: 提供该类型的扩展标识，内建取 ``BUILTIN_PROVIDER``
+        :return: 新增的配置行
+        :raises ServiceConfigNameConflictError: 同族同类型下已有同名配置
+        """
+        if self.get(capability, service_type, name) is not None:
+            raise ServiceConfigNameConflictError(
+                self._conflict_message(capability, service_type, name)
+            )
+        record = ServiceConfig(
+            capability=capability,
+            type=service_type,
+            name=name,
+            enabled=enabled,
+            config=config,
+            is_default_target=False,
+            provider=provider,
+        )
+        try:
+            record.create(self._db)
+        except IntegrityError as error:
+            # 预检查与写入之间另一请求刚好写入了同名配置，由唯一约束兜底
+            raise ServiceConfigNameConflictError(
+                self._conflict_message(capability, service_type, name)
+            ) from error
+        # 重新查询而不是直接返回 record：未显式传入会话时 create() 内部自管理的会话
+        # 已在提交后关闭，record 的属性已过期且不再绑定会话，再次访问会抛
+        # DetachedInstanceError；重新查询得到的对象在本次调用内始终可安全读取。
+        return self.get(capability, service_type, name)
+
+    def update(
+            self, capability: str, service_type: str, name: str, payload: dict
+    ) -> bool:
+        """
+        更新单条实例配置，可写列见 ``UPDATABLE_FIELDS``。
+
+        改名同样走这里，因此可能撞上唯一约束；启用态与配置载荷各自独立更新，
+        不必把整族配置读出来改回去。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :param payload: 待写入的列值
+        :return: 是否更新了配置行
+        :raises ServiceConfigNameConflictError: 改名后与同族同类型下的既有配置重名
+        """
+        new_name = payload.get("name")
+        if new_name is not None and new_name != name:
+            if self.get(capability, service_type, new_name) is not None:
+                raise ServiceConfigNameConflictError(
+                    self._conflict_message(capability, service_type, new_name)
+                )
+        try:
+            updated = ServiceConfig.update_by_identity(
+                self._db, capability, service_type, name, payload
+            )
+        except IntegrityError as error:
+            raise ServiceConfigNameConflictError(
+                self._conflict_message(capability, service_type, new_name or name)
+            ) from error
+        return bool(updated)
+
+    def delete(self, capability: str, service_type: str, name: str) -> bool:
+        """
+        删除单条实例配置。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :return: 是否删除了配置行
+        """
+        return bool(
+            ServiceConfig.delete_by_identity(self._db, capability, service_type, name)
+        )
+
+    def get_default_target(self, capability: str) -> Optional[ServiceConfig]:
+        """
+        取某族的默认调用目标实例。
+        :param capability: 族标识
+        :return: 置位的配置行，该族未设置默认调用目标时返回 None
+        """
+        return ServiceConfig.get_default_target(self._db, capability)
+
+    def set_default_target(self, capability: str, service_type: str, name: str) -> bool:
+        """
+        把某族的默认调用目标改为指定实例，目标不存在时不动原有置位。
+        :param capability: 族标识
+        :param service_type: 类型标识
+        :param name: 实例名
+        :return: 是否完成置位
+        """
+        return bool(
+            ServiceConfig.set_default_target(self._db, capability, service_type, name)
+        )
+
+    def clear_default_target(self, capability: str) -> int:
+        """
+        清除某族的默认调用目标置位。
+        :param capability: 族标识
+        :return: 清除的行数
+        """
+        return ServiceConfig.clear_default_target(self._db, capability)
