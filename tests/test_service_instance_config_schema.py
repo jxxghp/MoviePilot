@@ -66,12 +66,24 @@ _VALID_SCHEMA: Dict[str, Any] = {
 
 
 class _DemoClient:
-    """按关键字构造的服务客户端桩。"""
+    """按关键字构造的服务客户端桩，带齐下载器与消息通知两族的必填方法。"""
 
     def __init__(self, name: Optional[str] = None, **kwargs: Any):
         """记录宿主填入的实例名与展开的配置内容。"""
         self.name = name
         self.config = kwargs
+
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，下载器族的重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，下载器族判定失活后直调它。"""
+        return True
+
+    def get_state(self) -> bool:
+        """回答通道是否就绪，消息通知族的连通性测试直调它。"""
+        return True
 
 
 class _Plugin:

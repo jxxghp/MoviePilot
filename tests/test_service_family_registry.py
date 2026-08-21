@@ -36,12 +36,28 @@ _BUILTIN_CAPABILITIES = ("auth", "downloader", "mediaserver", "notification", "s
 _DECLARABLE_CAPABILITIES = _BUILTIN_CAPABILITIES
 
 
-class _DemoDownloader:
-    """契约合规的服务实例实现桩。"""
+class _DemoServiceClient:
+    """契约合规的服务实例实现桩，带齐各族取用链上必须在场的方法。
+
+    本文件按族遍历同一条声明，因此这个桩要同时满足下载器、媒体服务器与消息通知三族
+    的必填集；存储族另有构造协议，由 `_ValidPluginStorage` 承担。
+    """
 
     def __init__(self, name: Optional[str] = None, **kwargs: Any):
         """记录宿主传入的实例名。"""
         self.name = name
+
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，下载器与媒体服务器族的重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，下载器与媒体服务器族判定失活后直调它。"""
+        return True
+
+    def get_state(self) -> bool:
+        """回答通道是否就绪，消息通知族的连通性测试直调它。"""
+        return True
 
 
 @pytest.fixture
@@ -85,7 +101,7 @@ def test_declaration_is_accepted_for_every_builtin_family(capability: str) -> No
         capability=capability,
         type="demo_type",
         name="演示类型",
-        impl=_ValidPluginStorage if capability == "storage" else _DemoDownloader,
+        impl=_ValidPluginStorage if capability == "storage" else _DemoServiceClient,
     )
 
     assert service_instance_declaration_violation(declaration) is None
@@ -98,7 +114,7 @@ def test_declaration_is_accepted_for_every_builtin_family(capability: str) -> No
 def test_declaration_is_rejected_for_unregistered_capability(capability: str) -> None:
     """未登记的能力标签仍被契约校验拒绝，拒绝信息列出当前可声明的族。"""
     declaration = ServiceInstanceDeclaration(
-        capability=capability, type="demo_type", name="演示类型", impl=_DemoDownloader
+        capability=capability, type="demo_type", name="演示类型", impl=_DemoServiceClient
     )
 
     violation = service_instance_declaration_violation(declaration)
@@ -117,7 +133,7 @@ def test_rejection_message_reflects_the_registry_at_call_time(
         distribution=ExtensionDistribution.MARKET,
     )
     declaration = ServiceInstanceDeclaration(
-        capability="不存在", type="demo_type", name="演示类型", impl=_DemoDownloader
+        capability="不存在", type="demo_type", name="演示类型", impl=_DemoServiceClient
     )
 
     violation = service_instance_declaration_violation(declaration)
@@ -143,7 +159,7 @@ def test_registered_family_is_accepted_by_contract_and_endpoint(
     )
     declaration = ServiceInstanceDeclaration(
         capability="subtitleserver", type="demo_type", name="演示类型",
-        impl=_DemoDownloader,
+        impl=_DemoServiceClient,
     )
 
     assert service_instance_declaration_violation(declaration) is None

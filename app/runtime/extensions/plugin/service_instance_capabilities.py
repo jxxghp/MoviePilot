@@ -6,6 +6,11 @@
 ``factory`` 路径确认工厂可调用且能接受单个位置参数。两条路径都只做签名内省，
 不真正构造实例。
 
+构造形状之外还判一层实例形状：宿主把实例交出去之后，族级取用链上有几个无保护的
+直调，缺席即在背景回路里抛异常。这几个方法名收在
+`app.runtime.extensions.plugin.service_instance_contracts`，未登记必填集的族与
+``factory`` 路径都不判。
+
 存储族的构造协议另有一套，判定随之换一条：``impl`` 是按令牌取用的存储后端类，
 契约按继承判定（见 `app.runtime.extensions.plugin.storage_capabilities`），构造一律
 走工厂——不给 ``factory`` 时用宿主默认工厂，因此该族的 ``factory`` 是可选项而不是
@@ -32,6 +37,9 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.plugin.service_instance_contracts import (
+    service_instance_shape_violation,
+)
 from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.service_family_registry import service_family_registry
@@ -59,6 +67,9 @@ def service_instance_declaration_violation(
     构造路径按族判定：除存储外的各族要求 ``impl`` 与 ``factory`` 恰好给出其一且该路径的
     调用签名成立；存储族要求 ``impl`` 是合契约的存储后端类，``factory`` 可给可不给——不给
     即用宿主默认工厂。
+
+    构造路径成立之后再判实例形状：``impl`` 须带齐本族取用链上无保护直调的方法，必填集
+    之外的方法缺席即视为不提供该能力，不必写空桩。
 
     ``config_schema`` 声明了就必须落在受支持的子集内，声明一份宿主评估不了的契约与
     不声明是两回事，后者只是没有契约，前者是一份看起来有效、实际拦不住任何东西的
@@ -97,6 +108,9 @@ def service_instance_declaration_violation(
     constructor_violation = _constructor_violation(capability, impl, factory)
     if constructor_violation:
         return constructor_violation
+    shape_violation = service_instance_shape_violation(capability, impl)
+    if shape_violation:
+        return shape_violation
     schema_violation = _config_schema_violation(capability, config_schema, impl)
     if schema_violation:
         return schema_violation

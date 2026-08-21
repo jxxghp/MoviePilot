@@ -32,6 +32,14 @@ class _DemoDownloader:
         self.name = name
         self.host = host
 
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，宿主的十分钟重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，宿主判定失活后直调它。"""
+        return True
+
 
 class _RecordingLogger:
     """记录告警与错误文本的日志端口替身。"""

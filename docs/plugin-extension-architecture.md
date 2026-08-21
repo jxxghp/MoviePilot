@@ -87,7 +87,6 @@ def provides_service_instances(self):
         capability="storage",                           # 数据，跨进程存活
         type="u115",                                    # 数据，跨进程存活
         name="115网盘",                                  # 数据，跨进程存活
-        capabilities=["list_files", "upload_file"],     # 数据，跨进程存活
         impl=U115Storage,                               # 进程内快路径，不过界
     )]
 ```

@@ -33,6 +33,14 @@ class _DemoDownloader:
         """记录宿主传入的实例名。"""
         self.name = name
 
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，宿主的十分钟重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，宿主判定失活后直调它。"""
+        return True
+
 
 @pytest.fixture(autouse=True)
 def _isolate_service_instance_registry() -> Iterator[None]:

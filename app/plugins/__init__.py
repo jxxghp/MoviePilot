@@ -533,11 +533,17 @@ class _PluginBase(metaclass=ABCMeta):
                 "id1": self.xxx1,                 # 那张表的声明式版本
                 "id2": self.xxx2,
             },
-            capabilities=["id1", "id2"],         # 承诺提供的能力方法名
+            capabilities=["id1", "id2"],         # 承诺提供的能力方法名，可省略；给出
+                                                  # 时须是 methods 键集的子集，出现表里
+                                                  # 没有的名字整条声明被拒
         )]
 
         也可直接返回方法表字典本身（不包 `ModuleDeclaration`），宿主按字典内容
-        取用方法表，兼容早期写法。
+        取用方法表，兼容早期写法。此写法下整份字典就是方法表，其中名为
+        `capabilities` 的键指的是一个叫这个名字的方法，不是承诺清单。
+
+        `capabilities` 省略即由 `methods` 的键回答，不必写第二遍；写窄了也不算违约，
+        宿主挂载的是整张方法表，少报的只是本插件自己声明提供的能力。
 
         按用户配置扇出多个具名服务实例（下载器、媒体服务器、消息通知与存储）由
         `provides_service_instances()` 承担，不在本钩子的方法表里声明。
@@ -642,6 +648,18 @@ class _PluginBase(metaclass=ABCMeta):
         下载器、媒体服务器、消息通知、存储与登录认证共用本钩子，差异只在 `capability`：
         各族的取用方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，
         声明照常登记，只是没有实例产出。
+
+        `impl` 交出的实现类须带齐本族取用链上宿主无保护直调的方法，缺一个整条声明被拒：
+
+        - `capability="downloader"`：`is_inactive`、`reconnect`（十分钟重连回路直调）
+        - `capability="mediaserver"`：`is_inactive`、`reconnect`（同上）
+        - `capability="notification"`：`get_state`（连通性测试直调）
+
+        名单之外的方法**一个都不必写空桩**：缺席即表示本实例不提供那项能力，宿主据此
+        让开；写一个返回 None 的空桩反而是声称提供却什么都不做。存储族的形状另按
+        `StorageBase` 的继承与抽象方法判定，登录认证族的握手走模块分发而不是实例方法，
+        两族都不在这份名单里。走 `factory` 路径时宿主拿不到工厂产出的类型，不判形状，
+        实现形状由插件自己保证。
 
         声明存储类型改 `capability="storage"`，`type` 即存储标识（与内建标识相同即构成
         覆盖），`impl` 给存储后端类——须继承 app.modules._base.storage.StorageBase 并
@@ -933,7 +951,6 @@ class _PluginBase(metaclass=ABCMeta):
         [AgentToolDeclaration(
             name="my_tool",                      # 工具名，供 Agent 识别并调用
             description="工具功能说明",           # 工具描述，供 Agent 判断何时调用
-            capabilities=["my_tool"],            # 承诺提供的能力方法名
             impl=MyTool,                         # 工具实现类，须继承
                                                   # app.agent.tools.base.MoviePilotTool
                                                   # 并实现异步的 run 方法；不合契约的声明

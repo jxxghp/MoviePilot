@@ -775,6 +775,14 @@ class _CatalogDownloader:
         """记录宿主传入的实例名。"""
         self.name = name
 
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，宿主的十分钟重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，宿主判定失活后直调它。"""
+        return True
+
 
 def _start_catalog_plugin(monkeypatch, plugin_manager: PluginManager) -> str:
     """启动同时声明两族类型的插件桩。

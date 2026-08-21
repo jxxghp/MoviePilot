@@ -34,6 +34,14 @@ class _DemoDownloader:
         self.host = host
         self.extra = kwargs
 
+    def is_inactive(self) -> bool:
+        """回答连接是否已断开，宿主的十分钟重连回路直调它。"""
+        return False
+
+    def reconnect(self) -> bool:
+        """重建连接，宿主判定失活后直调它。"""
+        return True
+
 
 class _ExplodingDownloader(_DemoDownloader):
     """构造时按配置内容决定是否抛异常的下载器客户端桩。"""
@@ -43,6 +51,18 @@ class _ExplodingDownloader(_DemoDownloader):
         if kwargs.get("broken"):
             raise RuntimeError(f"下载器 {name} 初始化失败")
         super().__init__(name=name, **kwargs)
+
+
+class _DemoNotifier:
+    """契约合规的消息通道客户端桩，只带消息通知族取用链上必须在场的方法。"""
+
+    def __init__(self, name: Optional[str] = None, **kwargs: Any):
+        """记录宿主传入的实例名。"""
+        self.name = name
+
+    def get_state(self) -> bool:
+        """回答通道是否就绪，宿主的连通性测试直调它。"""
+        return True
 
 
 class _NoNameDownloader:
@@ -178,10 +198,15 @@ def test_projection_accepts_valid_declaration():
 
 
 @pytest.mark.parametrize(
-    "capability",
-    ["downloader", "mediaserver", "notification"],
+    ("capability", "impl"),
+    [
+        ("downloader", _DemoDownloader),
+        ("mediaserver", _DemoDownloader),
+        ("notification", _DemoNotifier),
+    ],
+    ids=["downloader", "mediaserver", "notification"],
 )
-def test_projection_accepts_every_service_capability(capability):
+def test_projection_accepts_every_service_capability(capability, impl):
     """三个服务族共用同一条声明，各自的语义标签都应被接受。"""
     plugin = _CapableServicePlugin(
         declarations=[
@@ -189,7 +214,7 @@ def test_projection_accepts_every_service_capability(capability):
                 capability=capability,
                 type="demo_type",
                 name="演示类型",
-                impl=_DemoDownloader,
+                impl=impl,
             )
         ],
         render_mode=("vuetify", None),

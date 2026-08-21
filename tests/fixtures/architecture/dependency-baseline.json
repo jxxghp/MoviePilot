@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6570,
-  "edge_sha256": "ea6b2038121b20b0870fddacbab525979c8ab8f27a6e24f5c91b517cc95be1a9",
+  "edge_count": 6573,
+  "edge_sha256": "027053ae6afc17da65c4f204511e1ab5dfd28162c4fee27dd70b1499245ab33a",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5730,9 +5730,12 @@
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.declaration",
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.plugin.config_interface",
+    "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.plugin.service_instance_contracts",
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.plugin.storage_capabilities",
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.service_config",
     "app.runtime.extensions.plugin.service_instance_capabilities -> app.runtime.extensions.service_family_registry",
+    "app.runtime.extensions.plugin.service_instance_contracts -> app.schemas",
+    "app.runtime.extensions.plugin.service_instance_contracts -> app.schemas.types",
     "app.runtime.extensions.plugin.storage -> app.runtime",
     "app.runtime.extensions.plugin.storage -> app.runtime.extensions",
     "app.runtime.extensions.plugin.storage -> app.runtime.extensions.instance",
@@ -6637,7 +6640,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 837,
+  "module_count": 838,
   "modules": [
     "app",
     "app.adapters",
@@ -7342,6 +7345,7 @@
     "app.runtime.extensions.plugin.registry",
     "app.runtime.extensions.plugin.schedule_capabilities",
     "app.runtime.extensions.plugin.service_instance_capabilities",
+    "app.runtime.extensions.plugin.service_instance_contracts",
     "app.runtime.extensions.plugin.storage",
     "app.runtime.extensions.plugin.storage_capabilities",
     "app.runtime.extensions.plugin.system",
