@@ -4,7 +4,12 @@
 按实例包装成可被分发触达的一级模块：模块按实例名各持有一个后端对象，能力方法按
 存储令牌自筛，令牌的类型部分不属于本存储、或该类型下没有令牌指定的实例时返回
 ``None`` 让给下一个模块。
+
+要扇出哪些实例由该存储类型的配置决定，一份配置一个实例；一份配置都没有的存储类型
+仍持有一个未具名实例位，因此未配置的存储照样可以浏览与登录。
 """
+import threading
+import weakref
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -20,6 +25,7 @@ from app.modules import _ModuleBase
 from app.runtime.progress import ProgressHelper
 from app.runtime.storages import storage_config_port
 from app.runtime.extensions.storage_registry import (
+    create_storage_backend,
     storage_backend_identity,
     storage_backend_registry,
 )
@@ -54,17 +60,83 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
     return update_progress
 
 
-class StorageBase(metaclass=ABCMeta):
+class StorageBackendMeta(ABCMeta):
+    """存储后端类的元类，构造期即把实例归属交给对象。
+
+    实例归属必须早于 ``__init__``：存储后端在初始化时就按自身归属读取配置建立连接，
+    晚一步交付会拿默认实例的账号连上去。归属由元类接管，后端的构造签名因此不必声明它。
+    """
+
+    # 供不便导入本模块的调用方判断该后端类是否接受实例归属参数
+    accepts_storage_instance = True
+
+    def __call__(cls, *args, storage_instance: Optional[str] = None, **kwargs):
+        """
+        构造服务于指定存储实例的操作对象
+
+        :param storage_instance: 实例名，None 表示该存储类型的默认实例位
+        :return: 存储操作对象
+        """
+        storage = cls.__new__(cls)
+        storage.storage_instance = storage_instance
+        storage.__init__(*args, **kwargs)
+        return storage
+
+
+class StorageInstanceSingleton(StorageBackendMeta):
+    """按 ``(存储后端类, 实例名)`` 复用存储操作对象的元类。
+
+    同一实例的多次取用共用一份连接与限流状态，不同实例各自一份，账号与配额互不共享；
+    按类复用则会让同一存储类型的多个账号挤在一个连接上，实例归属也会被后建的对象顶掉。
+    无人再持有某个实例的对象时该对象自动回收。
+    """
+
+    _instances: "weakref.WeakValueDictionary" = weakref.WeakValueDictionary()
+    _lock = threading.RLock()
+
+    def __call__(cls, *args, storage_instance: Optional[str] = None, **kwargs):
+        """
+        取用指定存储实例的操作对象，尚未建立时构造一个
+
+        :param storage_instance: 实例名，None 表示该存储类型的默认实例位
+        :return: 该实例的存储操作对象
+        """
+        key = (cls, storage_instance)
+        with StorageInstanceSingleton._lock:
+            existing = StorageInstanceSingleton._instances.get(key)
+            if existing is not None:
+                return existing
+            created = super().__call__(*args, storage_instance=storage_instance, **kwargs)
+            StorageInstanceSingleton._instances[key] = created
+            return created
+
+
+class StorageBase(metaclass=StorageBackendMeta):
     """
     存储基类
 
     一个对象服务一个存储实例，``storage_instance`` 为该对象所属的实例名，
-    ``None`` 表示该存储类型的默认实例位。
+    ``None`` 表示该存储类型的默认实例位；``storage_is_default`` 表示该对象服务的
+    是所属存储类型的默认实例。默认实例以裸令牌寻址，因此它产出的文件项与读写的
+    配置都用裸存储标识，与该存储类型只有一份配置时完全一致。
     """
     schema = None
     transtype = {}
     snapshot_check_folder_modtime = True
     storage_instance: Optional[str] = None
+    storage_is_default: bool = False
+
+    @property
+    def storage_token(self) -> str:
+        """
+        本对象服务的存储令牌
+
+        :return: 存储令牌，默认实例为裸存储标识，其余实例为 ``标识@实例名``
+        """
+        identity = storage_backend_identity(self) or ""
+        if self.storage_is_default or self.storage_instance is None:
+            return identity
+        return _SchemaFileURI.join_storage(identity, self.storage_instance)
 
     @abstractmethod
     def init_storage(self):
@@ -91,7 +163,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         获取配置
         """
-        return storage_config_port.resolve().get_storage(storage_backend_identity(self))
+        return storage_config_port.resolve().get_storage(self.storage_token)
 
     def get_conf(self) -> dict:
         """
@@ -104,7 +176,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         设置配置
         """
-        storage_config_port.resolve().set_storage(storage_backend_identity(self), conf)
+        storage_config_port.resolve().set_storage(self.storage_token, conf)
         self.init_storage()
 
     def support_transtype(self) -> dict:
@@ -123,7 +195,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         重置置配置
         """
-        storage_config_port.resolve().reset_storage(storage_backend_identity(self))
+        storage_config_port.resolve().reset_storage(self.storage_token)
         self.init_storage()
 
     @staticmethod
@@ -501,23 +573,52 @@ class _StorageModuleBase(_ModuleBase):
         """
         列出本模块要扇出的存储实例
 
-        存储配置是一个存储类型一份，因此只产出默认实例位。覆写本方法即可让同一个
-        模块按实例扇出多个后端对象。
+        实例来自本存储类型的配置：配了几份就扇出几份，实例名即配置名，默认实例由配置
+        里的默认标记裁决，裁决规则与存储后端注册表一致。一份配置都没有的存储类型仍产出
+        一个未具名实例位，与该存储尚未配置时仍可浏览、仍可登录的行为一致。
 
         :return: 存储实例描述元组
         """
-        return (StorageInstanceSpec(),)
+        storage_id = self.storage_id()
+        if not storage_id:
+            return (StorageInstanceSpec(),)
+        specs = tuple(
+            StorageInstanceSpec(
+                instance=(conf.name or "").strip() or None,
+                is_default=bool(conf.is_default),
+            )
+            for conf in self._instance_configs(storage_id)
+        )
+        return specs or (StorageInstanceSpec(),)
+
+    @staticmethod
+    def _instance_configs(storage_id: str) -> List[_SchemaStorageConf]:
+        """
+        读取指定存储类型的全部实例配置
+
+        读不到配置时按「尚未配置」处理：存储配置端口未装配或配置来源不可用，不应让
+        整个存储模块随之失效，该存储仍以未具名实例位提供服务。
+
+        :param storage_id: 存储标识
+        :return: 该存储类型的实例配置；读取失败时为空列表
+        """
+        try:
+            return storage_config_port.resolve().list_storages(storage_id) or []
+        except Exception as err:
+            logger.error(f"【存储】读取 {storage_id} 的实例配置失败，按未配置处理：{err}")
+            return []
 
     def _create_storage(self, instance: Optional[str]) -> StorageBase:
         """
         构造指定实例的存储操作对象
 
+        具名实例先一律不算默认，由本模块完成默认裁决后再标记选中的那一个；按实例复用
+        的后端会把上一轮的标记带过来，不重置则改完配置后旧的默认实例仍以裸令牌自居。
+
         :param instance: 实例名，None 表示该存储类型的默认实例位
         :return: 该实例的存储操作对象
         """
-        storage = self.storage_class()
-        storage.storage_instance = instance
-        return storage
+        return create_storage_backend(self.storage_class, instance)
 
     def init_module(self) -> None:
         """按实例建立存储操作对象，并把后端逐个登记到存储后端注册表。
@@ -525,6 +626,9 @@ class _StorageModuleBase(_ModuleBase):
         单个实例构造失败只跳过它自己，本模块其余实例照常建立——一条坏配置不应
         让整个存储模块连同其余可用实例一起失效。登记被拒的实例同样不予持有，
         模块持有的实例与注册表可取用的实例始终一致。
+
+        承接裸令牌的那个实例标记为默认实例，其读写的配置与产出的文件项因此都用裸
+        存储标识；裁决不出默认实例时无人被标记，裸令牌一律让出。
         """
         instances: List[Tuple[StorageInstanceSpec, StorageBase]] = []
         for spec in self._instance_specs():
@@ -546,6 +650,8 @@ class _StorageModuleBase(_ModuleBase):
             instances.append((spec, storage))
         self._storages = {spec.instance: storage for spec, storage in instances}
         self._default_storage = select_default_storage(instances)
+        if self._default_storage is not None:
+            self._default_storage.storage_is_default = True
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """存储模块不使用应用设置开关。"""

@@ -16,10 +16,9 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
-from app.modules._base.storage import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, StorageInstanceSingleton, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.foundation.singleton import WeakSingleton
 from app.foundation import size as size_tools
 from app.runtime.rate import QpsRateLimiter, RateStats
 
@@ -47,7 +46,7 @@ class NoCheckInException(Exception):
     pass
 
 
-class U115Pan(StorageBase, metaclass=WeakSingleton):
+class U115Pan(StorageBase, metaclass=StorageInstanceSingleton):
     """
     115相关操作
     """
@@ -521,7 +520,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 full_path = parent_path / item_name
                 items.append(
                     _SchemaFileItem(
-                        storage=self.schema.value,
+                        storage=self.storage_token,
                         fileid=str(item["fid"]),
                         parent_fileid=cid,
                         name=item["fn"],
@@ -565,7 +564,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.warn(f"【115】创建目录失败: {resp.get('error')}")
             return None
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             fileid=str(resp["data"]["file_id"]),
             path=new_path.as_posix() + "/",
             name=name,
@@ -679,7 +678,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 )
                 if info_resp:
                     return _SchemaFileItem(
-                        storage=self.schema.value,
+                        storage=self.storage_token,
                         fileid=str(info_resp["file_id"]),
                         path=target_path.as_posix()
                         + ("/" if info_resp["file_category"] == "0" else ""),
@@ -877,7 +876,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         构造已上传文件项，用于兼容 115 上传成功后目录索引延迟刷新。
         """
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             path=target_path.as_posix(),
             type="file",
             name=target_path.name,
@@ -1005,7 +1004,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             # 115 对记录不存在和路径不存在返回不同业务码，两者都可确认目标不存在
             return None
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             fileid=str(data["file_id"]),
             path=path.as_posix() + ("/" if data["file_category"] == "0" else ""),
             type="file" if data["file_category"] == "1" else "dir",
@@ -1063,7 +1062,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if folder:
             return folder
         # 逐级查找和创建目录
-        fileitem = _SchemaFileItem(storage=self.schema.value, path="/")
+        fileitem = _SchemaFileItem(storage=self.storage_token, path="/")
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
             if dir_file:

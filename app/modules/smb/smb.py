@@ -16,10 +16,9 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
-from app.modules._base.storage import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, StorageInstanceSingleton, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.foundation.singleton import WeakSingleton
 
 lock = threading.Lock()
 
@@ -32,7 +31,7 @@ class SMBConnectionError(Exception):
     pass
 
 
-class SMB(StorageBase, metaclass=WeakSingleton):
+class SMB(StorageBase, metaclass=StorageInstanceSingleton):
     """
     SMB网络挂载存储相关操作 - 使用 smbclient 高级接口
     """
@@ -196,7 +195,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             if is_directory:
                 return _SchemaFileItem(
-                    storage=self.schema.value,
+                    storage=self.storage_token,
                     type="dir",
                     path=relative_path,
                     name=name,
@@ -205,7 +204,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 )
             else:
                 return _SchemaFileItem(
-                    storage=self.schema.value,
+                    storage=self.storage_token,
                     type="file",
                     path=relative_path,
                     name=name,
@@ -218,7 +217,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】创建文件项失败：{e}")
             # 返回基本的文件项信息
             return _SchemaFileItem(
-                storage=self.schema.value,
+                storage=self.storage_token,
                 type="file",
                 path=file_path.replace(self._server_path, "").replace("\\", "/"),
                 name=name,
@@ -311,7 +310,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             # 返回创建的目录信息
             return _SchemaFileItem(
-                storage=self.schema.value,
+                storage=self.storage_token,
                 type="dir",
                 path=f"{fileitem.path.rstrip('/')}/{name}/",
                 name=name,
@@ -359,7 +358,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 处理根目录
             if str(path) == "/":
                 return _SchemaFileItem(
-                    storage=self.schema.value,
+                    storage=self.storage_token,
                     type="dir",
                     path="/",
                     name="",
@@ -394,7 +393,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 处理根目录
             if str(path) == "/":
                 return _SchemaFileItem(
-                    storage=self.schema.value,
+                    storage=self.storage_token,
                     type="dir",
                     path="/",
                     name="",

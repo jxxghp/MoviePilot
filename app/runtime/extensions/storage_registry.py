@@ -36,6 +36,31 @@ def storage_backend_identity(backend: Any) -> Optional[str]:
     return identity or None
 
 
+def create_storage_backend(backend: Any, instance: Optional[str] = None,
+                           is_default: bool = False) -> Any:
+    """
+    构造服务于指定存储实例的操作对象
+
+    实例归属优先经构造参数交给后端：按实例区分连接的后端在初始化时就要用归属读配置，
+    晚一步交付会拿默认实例的账号连上去。后端不接受该参数时退回无参构造再标注归属，
+    未按实例区分连接的后端因此无须改动构造签名。
+
+    :param backend: 存储后端类
+    :param instance: 实例名，None 表示该存储类型的默认实例位
+    :param is_default: 该实例是否为所属存储类型的默认实例
+    :return: 存储操作对象
+    """
+    if getattr(type(backend), "accepts_storage_instance", False):
+        storage = backend(storage_instance=instance)
+    else:
+        storage = backend()
+        if hasattr(storage, "storage_instance"):
+            storage.storage_instance = instance
+    if hasattr(storage, "storage_is_default"):
+        storage.storage_is_default = bool(is_default) or instance is None
+    return storage
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBackendEntry:
     """存储后端在注册表中的一条登记。
@@ -90,11 +115,14 @@ class StorageBackendEntry:
 
     def create(self) -> Any:
         """
-        构造后端的操作对象
+        构造后端的操作对象，并交付本条登记所属的实例归属
+
+        交付归属是必需的：同一后端类可能被同一存储标识的多个实例位共用，不交付则取出
+        的对象不知道自己服务哪个实例，读写配置会落到默认实例上。
 
         :return: 存储操作对象
         """
-        return self.backend()
+        return create_storage_backend(self.backend, self.instance, self.is_default)
 
 
 def build_storage_entry(backend: Any,

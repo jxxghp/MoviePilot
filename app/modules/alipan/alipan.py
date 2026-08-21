@@ -12,11 +12,10 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
-from app.modules._base.storage import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, StorageInstanceSingleton, transfer_process
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
 from app.adapters.network.http import RequestUtils
-from app.foundation.singleton import WeakSingleton
 from app.foundation import temporal as time_tools
 
 lock = threading.Lock()
@@ -30,7 +29,7 @@ class SessionInvalidException(Exception):
     pass
 
 
-class AliPan(StorageBase, metaclass=WeakSingleton):
+class AliPan(StorageBase, metaclass=StorageInstanceSingleton):
     """
     阿里云盘相关操作
     """
@@ -297,7 +296,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             parent += "/"
         if fileinfo.get("type") == "folder":
             return _SchemaFileItem(
-                storage=self.schema.value,
+                storage=self.storage_token,
                 fileid=fileinfo.get("file_id"),
                 parent_fileid=fileinfo.get("parent_file_id"),
                 type="dir",
@@ -310,7 +309,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             )
         else:
             return _SchemaFileItem(
-                storage=self.schema.value,
+                storage=self.storage_token,
                 fileid=fileinfo.get("file_id"),
                 parent_fileid=fileinfo.get("parent_file_id"),
                 type="file",
@@ -906,7 +905,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return folder
         # 逐级查找和创建目录
         fileitem = _SchemaFileItem(
-            storage=self.schema.value, path="/", drive_id=self._default_drive_id
+            storage=self.storage_token, path="/", drive_id=self._default_drive_id
         )
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)

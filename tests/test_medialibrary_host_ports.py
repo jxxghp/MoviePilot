@@ -119,6 +119,25 @@ def test_storage_config_is_read_and_written_through_port(restore_host_ports):
     assert reset == ["local"]
 
 
+def test_storage_config_key_carries_the_instance_of_a_named_backend(restore_host_ports):
+    """具名实例的配置读写键带实例名，默认实例仍用裸存储标识。"""
+    written = {}
+    directory_config_port.register(lambda: SimpleNamespace())
+    storage_config_port.register(lambda: SimpleNamespace(
+        get_storage=lambda storage: StorageConf(type=storage, config={}),
+        set_storage=lambda storage, conf: written.update({storage: conf}),
+        reset_storage=lambda storage: None,
+    ))
+    named = LocalStorage(storage_instance="备份盘")
+    default_named = LocalStorage(storage_instance="主盘")
+    default_named.storage_is_default = True
+
+    named.set_config({"token": "y"})
+    default_named.set_config({"token": "z"})
+
+    assert written == {"local@备份盘": {"token": "y"}, "local": {"token": "z"}}
+
+
 def test_naming_dict_is_built_through_port(restore_host_ports):
     """重命名变量须由端口提供的命名上下文构建，并继续隐藏统一媒体身份变量。"""
     captured = {}

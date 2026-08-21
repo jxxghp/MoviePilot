@@ -44,7 +44,6 @@ from app.runtime.extensions.service_config_validation import service_config_writ
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
 from app.application.service_config import (
     async_write_system_setting,
     read_system_setting,
@@ -1021,7 +1020,7 @@ async def get_public_setting(
         return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
-    value = get_configured_system_config().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
+    value = read_system_setting(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
     return _SchemaResponse(success=True, data={"value": value})
 
 

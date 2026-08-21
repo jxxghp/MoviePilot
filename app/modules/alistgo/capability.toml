@@ -11,4 +11,4 @@ priority = 3
 
 [activation]
 policy = "bootstrap"
-watch = []
+watch = ["Storages"]

@@ -10,11 +10,10 @@ from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.cache import cached
 from app.runtime.config import settings, global_vars
 from app.runtime.log import logger
-from app.modules._base.storage import StorageBase, transfer_process
+from app.modules._base.storage import StorageBase, StorageInstanceSingleton, transfer_process
 from app.schemas.exception import OperationInterrupted, StorageQueryError
 from app.schemas.types import StorageSchema
 from app.adapters.network.http import RequestUtils
-from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 
 
@@ -22,7 +21,7 @@ from app.foundation.url import UrlUtils
 OPENLIST_MAX_LIST_PAGE_SIZE = 500
 
 
-class Alist(StorageBase, metaclass=WeakSingleton):
+class Alist(StorageBase, metaclass=StorageInstanceSingleton):
     """
     Openlist相关操作
 
@@ -82,7 +81,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             target_path_str = f"{target_path_str}/"
 
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             type=source_item.type,
             path=target_path_str,
             name=target_path.name,
@@ -293,7 +292,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             items.extend(
                 [
                     _SchemaFileItem(
-                        storage=self.schema.value,
+                        storage=self.storage_token,
                         type="dir" if item["is_dir"] else "file",
                         path=(Path(fileitem.path) / item["name"]).as_posix()
                         + ("/" if item["is_dir"] else ""),
@@ -366,7 +365,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             path, refresh=True
         ) or self.__build_transfer_item(
             _SchemaFileItem(
-                storage=self.schema.value,
+                storage=self.storage_token,
                 type="dir",
                 path=fileitem.path,
                 name=name,
@@ -388,7 +387,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         if not folder:
             folder = self.create_folder(
                 _SchemaFileItem(
-                    storage=self.schema.value,
+                    storage=self.storage_token,
                     type="dir",
                     path=path.parent.as_posix(),
                     name=path.name,
@@ -482,7 +481,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :return: 文件项
         """
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             type="dir" if data["is_dir"] else "file",
             path=path.as_posix() + ("/" if data["is_dir"] else ""),
             name=data["name"],

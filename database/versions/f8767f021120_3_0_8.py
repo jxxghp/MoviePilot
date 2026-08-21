@@ -33,6 +33,12 @@ _SERVICE_FAMILIES = (
     ("notification", "Notifications", ("switchs",)),
 )
 
+# 存储实例配置的族标识、在 systemconfig 上的存放键，以及默认实例标记在实例级宿主载荷
+# 中的键。存储的默认实例是每个存储类型各一个，故不占用每族至多一行的默认调用目标列。
+_STORAGE_CAPABILITY = "storage"
+_STORAGE_CONFIG_KEY = "Storages"
+_STORAGE_DEFAULT_INSTANCE_FIELD = "is_default"
+
 
 def _inspector() -> sa.Inspector:
     """返回使用当前迁移连接的数据库检查器。"""
@@ -70,7 +76,7 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def upgrade() -> None:
-    """建立插件实例配置表、用户身份绑定表与服务实例配置表，并搬迁存量服务实例配置。
+    """建立插件实例配置表、用户身份绑定表与服务实例配置表，并搬迁存量服务实例配置与存储配置。
 
     唯一约束随建表一并声明：SQLite 不支持事后 ALTER TABLE 添加约束，只能在
     CREATE TABLE 时一次性带上；这张表没有需要兼容的历史结构，不必再额外处理
@@ -109,6 +115,7 @@ def upgrade() -> None:
     _create_useridentity_table()
     _create_serviceconfig_table()
     _migrate_service_configs()
+    _migrate_storage_configs()
 
 
 def _create_useridentity_table() -> None:
@@ -312,6 +319,89 @@ def _migrate_service_configs() -> None:
             sa.select(systemconfig.c.value).where(systemconfig.c.key == config_key)
         ).scalar()
         rows.extend(_service_config_rows(capability, value, host_fields))
+    if rows:
+        op.bulk_insert(_serviceconfig_table(), rows)
+
+
+def _storage_config_rows(value) -> list:
+    """把存放在 systemconfig 里的存储配置列表整形为服务实例配置表的行。
+
+    存量配置是一个存储类型一份，搬迁后成为该存储类型的具名实例，并标记为该类型的默认
+    实例——裸令牌 ``u115`` 指向默认实例，不标记则所有存量路径 ``u115:/media`` 会整体
+    失效。脏数据按三条口径处置：
+
+    - 取不到存储类型的条目丢弃。表按 (族, 类型, 实例名) 定位一行，装不下没有类型的条目。
+    - 取不到名称的条目以存储类型为实例名。存量名称是可空的展示名，缺了仍要有实例名。
+    - 同一存储类型有多份时取顺序上第一份为默认实例。切表前按类型取配置返回的就是列表里
+      的首个匹配项，取第一份即与切表前用户实际用到的那一份一致。
+
+    :param value: systemconfig 上存储配置键的值
+    :return: 服务实例配置表的行
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    if not isinstance(value, list):
+        return []
+    records = {}
+    for conf in value:
+        if not isinstance(conf, dict):
+            continue
+        storage_type = conf.get("type")
+        if not isinstance(storage_type, str) or not storage_type.strip():
+            continue
+        storage_type = storage_type.strip()
+        name = conf.get("name")
+        name = name.strip() if isinstance(name, str) and name.strip() else storage_type
+        records[(storage_type, name)] = {
+            "capability": _STORAGE_CAPABILITY,
+            "type": storage_type,
+            "name": name,
+            "enabled": True,
+            "config": conf.get("config") or {},
+            "host_config": {_STORAGE_DEFAULT_INSTANCE_FIELD: False},
+            _SERVICECONFIG_DEFAULT_TARGET_COLUMN: False,
+            "provider": _BUILTIN_PROVIDER,
+        }
+    defaulted = set()
+    for record in records.values():
+        if record["type"] in defaulted:
+            continue
+        defaulted.add(record["type"])
+        record["host_config"] = {_STORAGE_DEFAULT_INSTANCE_FIELD: True}
+    return list(records.values())
+
+
+def _migrate_storage_configs() -> None:
+    """把 systemconfig 上的存储配置搬进服务实例配置表。
+
+    跳过判据取「该族已有行」而不是「整张表非空」：三族服务实例配置与存储各搬各的，
+    按整张表判定会让先搬的那一族把后搬的挡在门外。systemconfig 上的存储配置键只停写
+    不删，搬迁不动它，读取端改回去即完成回退。
+    """
+    if not _has_table("serviceconfig") or not _has_table("systemconfig"):
+        return
+    bind = op.get_bind()
+    serviceconfig = sa.table("serviceconfig", sa.column("capability", sa.String()))
+    existing = bind.execute(
+        sa.select(sa.func.count())
+        .select_from(serviceconfig)
+        .where(serviceconfig.c.capability == _STORAGE_CAPABILITY)
+    ).scalar()
+    if existing:
+        return
+    systemconfig = sa.Table(
+        "systemconfig",
+        sa.MetaData(),
+        sa.Column("key", sa.String()),
+        sa.Column("value", sa.JSON()),
+    )
+    value = bind.execute(
+        sa.select(systemconfig.c.value).where(systemconfig.c.key == _STORAGE_CONFIG_KEY)
+    ).scalar()
+    rows = _storage_config_rows(value)
     if rows:
         op.bulk_insert(_serviceconfig_table(), rows)
 

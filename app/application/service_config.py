@@ -1,8 +1,9 @@
 """服务实例配置应用服务与组合根注入点。
 
-下载器、媒体服务器与消息渠道的实例配置由服务实例配置表承载。表在持久化层、消费方在
-运行期与接口层，本服务是两者之间那一层：对外只收发「整族配置列表」这一种形状——与这
-三族配置在设置页上的形状一致——对内负责摊平成行、按消费方分列、以及整族覆盖。
+下载器、媒体服务器、消息渠道与存储的实例配置由服务实例配置表承载。表在持久化层、
+消费方在运行期与接口层，本服务是两者之间那一层：对外只收发「整族配置列表」这一种
+形状——与这几族配置在设置页上的形状一致——对内负责摊平成行、按消费方分列、以及整族
+覆盖。
 
 读取带一层进程内缓存。取服务是热路径，每次取用都会重读整族配置；系统设置本来就常驻
 内存（``SystemConfigOper`` 在构造时一次性载入），切到表后若每次取用都查一次库，换来的
@@ -15,8 +16,14 @@ import threading
 from typing import Any, Dict, List, Optional, Protocol
 
 from app.application.configuration import get_configured_system_config
+from app.application.storage_config import (
+    STORAGE_CAPABILITY,
+    parse_storage_configs,
+    storage_config_records,
+)
 from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_records
+from app.schemas.types import SystemConfigKey
 
 
 class ServiceConfigRepository(Protocol):
@@ -70,10 +77,22 @@ class ServiceInstanceConfigService:
         :param value: 整族配置列表，为 None 时视为清空该族
         :return: 该族内容是否发生变化；族标识为空时为 False
         """
+        return self.save_records(capability, service_config_records(capability, value or []))
+
+    def save_records(self, capability: Optional[str], records: List[dict]) -> bool:
+        """
+        用已整形好的整族配置行覆盖某族现有配置。
+
+        入参是表的行形状，供不按三族配置模型整形的族直接写入；返回值判定与 `save`
+        相同，按「写完之后这一族有没有变」而不是「有没有执行写入」。
+
+        :param capability: 族标识
+        :param records: 该族的全部配置行
+        :return: 该族内容是否发生变化；族标识为空时为 False
+        """
         if not capability:
             return False
         before = self.read(capability)
-        records = service_config_records(capability, value or [])
         self._repository.replace_capability(capability, records)
         self.invalidate(capability)
         return self.read(capability) != before
@@ -112,16 +131,20 @@ def read_system_setting(key: Any) -> Any:
     """
     按配置键读取系统设置值。
 
-    三族服务实例配置的事实源已是服务实例配置表，systemconfig 上的同名键只停写不删，
-    留作回退用的历史快照，读到的是切表当时的内容。凡是按配置键取值的入口都要走这里
-    分流，否则一部分入口读表、另一部分读快照，用户会看到两份互相矛盾的配置。
+    三族服务实例配置与存储实例配置的事实源已是服务实例配置表，systemconfig 上的同名键
+    只停写不删，留作回退用的历史快照，读到的是切表当时的内容。凡是按配置键取值的入口
+    都要走这里分流，否则一部分入口读表、另一部分读快照，用户会看到两份互相矛盾的配置。
 
     :param key: 配置键，接受 `SystemConfigKey` 成员或其取值字符串
     :return: 配置值
     """
-    capability = service_capability(getattr(key, "value", key))
+    key_value = getattr(key, "value", key)
+    capability = service_capability(key_value)
     if capability:
         return get_configured_service_instance_configs().read(capability)
+    if key_value == SystemConfigKey.Storages.value:
+        payloads = get_configured_service_instance_configs().read(STORAGE_CAPABILITY)
+        return [conf.model_dump() for conf in parse_storage_configs(payloads)]
     return get_configured_system_config().get(key)
 
 
@@ -133,7 +156,12 @@ async def async_write_system_setting(key: Any, value: Any) -> bool:
     :param value: 待写入的配置值
     :return: 配置内容是否发生变化
     """
-    capability = service_capability(getattr(key, "value", key))
+    key_value = getattr(key, "value", key)
+    capability = service_capability(key_value)
     if capability:
         return get_configured_service_instance_configs().save(capability, value)
+    if key_value == SystemConfigKey.Storages.value:
+        return get_configured_service_instance_configs().save_records(
+            STORAGE_CAPABILITY, storage_config_records(parse_storage_configs(value))
+        )
     return await get_configured_system_config().async_set(key, value) is True

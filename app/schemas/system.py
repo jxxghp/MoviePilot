@@ -128,13 +128,18 @@ class PluginMarketSyncRequest(BaseModel):
 
 class StorageConf(BaseModel):
     """
-    存储配置
+    存储实例配置
+
+    一个存储类型可配置多份实例，``name`` 即实例名，与存储类型拼成存储令牌
+    ``u115@work``；``is_default`` 标记该存储类型的默认实例，裸令牌 ``u115`` 指向它。
     """
 
     # 类型 local/alipan/u115/rclone/alist
     type: Optional[str] = None
-    # 名称
+    # 实例名，同一存储类型下唯一
     name: Optional[str] = None
+    # 是否为该存储类型的默认实例，裸令牌指向它
+    is_default: bool = False
     # 配置
     config: Optional[dict] = Field(default_factory=dict)
 

@@ -123,19 +123,12 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
     """公开系统设置接口只能读取明确列入白名单的非敏感配置。"""
     calls = []
 
-    class FakeSystemConfigOper:
-        """返回测试配置值的系统配置桩。"""
+    def _read_setting(key):
+        """记录取值的配置键并返回测试配置值。"""
+        calls.append(key)
+        return [{"path": "/downloads"}]
 
-        def get(self, key):
-            """返回测试配置值。"""
-            calls.append(key)
-            return [{"path": "/downloads"}]
-
-    monkeypatch.setattr(
-        system_endpoint,
-        "get_configured_system_config",
-        lambda: FakeSystemConfigOper(),
-    )
+    monkeypatch.setattr(system_endpoint, "read_system_setting", _read_setting)
 
     response = asyncio.run(
         system_endpoint.get_public_setting(SystemConfigKey.Directories.value)

@@ -55,7 +55,7 @@ class LocalStorage(StorageBase):
         # 等于把这个热点路径的开销翻倍
         info = fsproxy.stat(path)
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             type="file",
             path=path.as_posix(),
             name=path.name,
@@ -70,7 +70,7 @@ class LocalStorage(StorageBase):
         获取目录项
         """
         return _SchemaFileItem(
-            storage=self.schema.value,
+            storage=self.storage_token,
             type="dir",
             path=path.as_posix() + "/",
             name=path.name,
@@ -90,7 +90,7 @@ class LocalStorage(StorageBase):
                 partitions = SystemUtils.get_windows_drives() or ["C:/"]
                 for partition in partitions:
                     ret_items.append(_SchemaFileItem(
-                        storage=self.schema.value,
+                        storage=self.storage_token,
                         type="dir",
                         path=partition + "/",
                         name=partition,

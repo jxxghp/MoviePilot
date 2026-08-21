@@ -14,13 +14,17 @@ from app.schemas.system import StorageConf
 
 @runtime_checkable
 class StorageConfigProvider(Protocol):
-    """单个存储类型配置的读写协议。"""
+    """存储实例配置的读写协议。
+
+    一个存储类型可配置多份具名实例，读写按存储令牌进行：裸令牌 ``u115`` 指该类型的
+    默认实例，具名令牌 ``u115@work`` 指该类型下名为 ``work`` 的实例。
+    """
 
     def get_storage(self, storage: str) -> Optional[StorageConf]:
         """
         获取指定存储的配置。
 
-        :param storage: 存储类型
+        :param storage: 存储令牌，如 u115 或 u115@work
         :return: 存储配置；未配置时为 None
         """
         ...
@@ -29,7 +33,7 @@ class StorageConfigProvider(Protocol):
         """
         写入指定存储的配置。
 
-        :param storage: 存储类型
+        :param storage: 存储令牌，如 u115 或 u115@work
         :param conf: 存储配置内容
         """
         ...
@@ -38,7 +42,16 @@ class StorageConfigProvider(Protocol):
         """
         清空指定存储的配置内容。
 
-        :param storage: 存储类型
+        :param storage: 存储令牌，如 u115 或 u115@work
+        """
+        ...
+
+    def list_storages(self, storage_id: str) -> List[StorageConf]:
+        """
+        列出指定存储类型的全部实例配置。
+
+        :param storage_id: 存储标识，如 u115
+        :return: 该存储类型的实例配置列表
         """
         ...
 
