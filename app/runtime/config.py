@@ -134,7 +134,7 @@ class ConfigModel(BaseModel):
     # 数据库连接额度校验按它换算总用量。注意：当前主程序以单进程方式启动
     # （uvicorn.Config 的 workers 仅在多进程 supervisor 路径下生效），
     # 调大此项前需先解决调度器会在每个 worker 内重复执行的问题
-    API_WORKERS: int = 1
+    API_WORKERS: int = Field(default=1, ge=1)
     DB_TYPE: str = "sqlite"
     # 是否在控制台输出 SQL 语句，默认关闭
     DB_ECHO: bool = False

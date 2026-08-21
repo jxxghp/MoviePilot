@@ -55,6 +55,7 @@ elif SystemUtils.is_frozen():
 
 from app.factory import app
 from app.runtime.config import global_vars, settings
+from app.runtime.topology import validate_process_topology
 from app.startup.database_initializer import prepare_database
 
 setproctitle.setproctitle(settings.PROJECT_NAME)
@@ -133,6 +134,10 @@ def signal_handler(signum, frame):
 
 def run_application() -> None:
     """初始化进程并启动 API 服务"""
+    validate_process_topology(
+        workers=settings.API_WORKERS,
+        safe_mode=settings.MOVIEPILOT_SAFE_MODE,
+    )
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 

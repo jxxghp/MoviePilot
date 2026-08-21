@@ -37,6 +37,7 @@ Doctor 默认执行只读检查：
 
 - 运行路径：程序目录、配置目录、日志目录、Python 解释器
 - 关键配置：`API_TOKEN`、`PORT`、`NGINX_PORT`、代理格式、安全模式
+- 进程拓扑：全功能模式必须使用 `API_WORKERS=1`，避免插件、调度器、监控器和工作流重复启动
 - 进程与端口：后端、前端端口监听状态，runtime 文件是否过期
 - 日志线索：后端日志、启动日志、前端日志和插件日志最近 24 小时内的错误
 - 核心依赖：FastAPI、Pydantic、SQLAlchemy、Uvicorn、CloakBrowser 等是否可导入
@@ -70,6 +71,10 @@ Doctor 不会自动删除数据库、修改 Docker Compose、回滚迁移、禁�
 - 工作流后台服务
 
 安全模式不修改用户配置，适合插件、调度任务或 Agent 导致后端无法启动时先恢复后台入口。修复问题后移除环境变量或使用普通 `moviepilot start` 重启即可恢复完整能力。
+
+MoviePilot V3 的全功能模式只支持 `API_WORKERS=1`。配置更大的值时，主入口和外部 ASGI
+lifespan 都会在数据库迁移及后台任务启动前拒绝运行，Doctor 同时给出失败项。安全模式因跳过
+控制面而允许临时使用多 worker，但 Doctor 会将其标记为降级；故障排除后应恢复单 worker。
 
 ## Docker 诊断保活
 

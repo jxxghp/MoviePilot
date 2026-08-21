@@ -82,6 +82,7 @@ create additional top-level directory categories.
 | Path | Ownership |
 |---|---|
 | `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
+| `app/runtime/topology.py` | Process topology policy shared by startup and offline diagnostics |
 | `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
@@ -419,6 +420,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
 | `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
+| `app/runtime/topology.py` | Single-worker full-runtime policy and safe-mode topology validation |
 | `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
 | `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
 | `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |
