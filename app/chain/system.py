@@ -165,7 +165,7 @@ class SystemChain(ChainBase):
         for item in backup_dir.iterdir():
             if (
                 item.name == SystemChain._plugin_restore_pending_file
-                or item.name.startswith(".")
+                or SystemChain.__is_snapshot_artifact(item.name)
             ):
                 continue
             target_path = plugins_dir / item.name
@@ -204,6 +204,11 @@ class SystemChain(ChainBase):
             logger.warning(f"删除备份目录失败: {str(e)}")
             if backup_dir.exists():
                 SystemChain.__write_plugin_restore_pending(pending_file, {})
+
+    @staticmethod
+    def __is_snapshot_artifact(name: str) -> bool:
+        """识别快照替换过程中生成的临时或旧快照条目。"""
+        return bool(re.fullmatch(r"\..+\.(?:tmp|old)-[0-9a-f]{32}", name))
 
     @staticmethod
     def __read_plugin_restore_pending(pending_file: Path) -> Optional[dict[str, bool]]:
