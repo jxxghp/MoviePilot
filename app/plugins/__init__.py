@@ -19,7 +19,6 @@ from app.runtime.events import EventManager
 from app.runtime.extensions.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
-    AuthProviderDeclaration,
     DashboardDeclaration,
     FilterRuleDeclaration,
     FilterRuleGroupDeclaration,
@@ -410,6 +409,10 @@ class _PluginBase(metaclass=ABCMeta):
         """
         声明插件提供的登录认证入口。
 
+        本钩子是分身级写法：一个分身一个登录入口，接第二台服务器要再建一个分身。
+        已进入废弃期，改用 `provides_service_instances()` 声明 capability="auth" 的
+        登录入口类型，由用户在登录认证设置里配置几份就有几个入口。
+
         返回示例：
         [{
             "id": "oidc",
@@ -418,35 +421,6 @@ class _PluginBase(metaclass=ABCMeta):
             "component": "AuthPage",
             "enabled": True
         }]
-        """
-        pass
-
-    def provides_auth_providers(self) -> Optional[List[AuthProviderDeclaration]]:
-        """
-        声明本插件提供的登录认证入口
-
-        返回示例：
-        [AuthProviderDeclaration(
-            id="oidc",                           # 提供方标识，缺省回落为
-                                                  # plugin:<实例键>
-            name="OIDC 登录",                     # 展示名称，缺省回落为插件展示名
-            icon="mdi-openid",
-            capabilities=["oidc"],               # 承诺提供的能力方法名
-            config_form=([...], {...}),          # 该提供方的专属配置界面（vuetify
-                                                  # 模式），形状与 get_form() 相同；
-                                                  # 与 config_component 互斥，可选
-        )]
-
-        vue 模式改用 `config_component="OidcProviderConfig"`——本插件联邦远程中承载
-        该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
-        同时给出视为意图不明，整条声明被拒。登录入口本身在 vue 模式下固定渲染为
-        `AuthPage`，由宿主联邦机制原样注入，不受本字段影响；该配置界面归属这条
-        声明，不归属插件本身。
-
-        也可直接返回字段字典本身（不包 `AuthProviderDeclaration`），宿主按字典内容
-        取用展示字段，兼容早期写法，此时无法声明专属配置界面。
-
-        :return: `AuthProviderDeclaration` 列表；插件不提供登录认证入口时无需实现
         """
         pass
 
@@ -537,7 +511,8 @@ class _PluginBase(metaclass=ABCMeta):
         返回示例：
         [ServiceInstanceDeclaration(
             capability="downloader",             # 能力标签，可选值为 downloader、
-                                                  # mediaserver、notification、storage
+                                                  # mediaserver、notification、storage、
+                                                  # auth
             type="my_downloader",                # 类型标识，与该族配置模型的 type
                                                   # 字段取值对应；与内建类型同名即构成
                                                   # 覆盖，用户为该类型配置的实例改由
@@ -582,9 +557,9 @@ class _PluginBase(metaclass=ABCMeta):
         该界面的组件名，要求 `get_render_mode()` 返回 "vue"；与 `config_form` 二选一，
         同时给出视为意图不明，整条声明被拒。界面归属这条声明，不归属本插件本身。
 
-        下载器、媒体服务器、消息通知与存储共用本钩子，差异只在 `capability`：四族的
-        取用方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，声明
-        照常登记，只是没有实例产出。
+        下载器、媒体服务器、消息通知、存储与登录认证共用本钩子，差异只在 `capability`：
+        各族的取用方式相同，都是按配置扇出 N 个具名实例。用户未为该类型配置任何实例时，
+        声明照常登记，只是没有实例产出。
 
         声明存储类型改 `capability="storage"`，`type` 即存储标识（与内建标识相同即构成
         覆盖），`impl` 给存储后端类——须继承 app.modules._base.storage.StorageBase 并
@@ -605,10 +580,32 @@ class _PluginBase(metaclass=ABCMeta):
         宿主把整条配置对象交给它；该族里 `factory` 是可选项而不是 `impl` 的替代项——
         `impl` 还要用来回答「令牌指的实体是谁」。
 
+        声明登录入口类型改 `capability="auth"`，`type` 是入口类型标识，用户配几份就有
+        几个登录入口——接第二台服务器不再需要建插件分身：
+
+        [ServiceInstanceDeclaration(
+            capability="auth",
+            type="emby_sso",                     # 入口类型标识
+            name="Emby 单点登录",                 # 类型展示名称，用于设置页
+            icon="mdi-emby",                     # 入口图标，登录页按钮取它
+            impl=EmbySsoEntry,                   # 完成认证握手的实现类
+            multi_instance=True,                 # 每台服务器一份配置
+            config_schema={...},
+        )]
+
+        登录页上那个按钮的名称取**实例名**而不是类型名，用户接两台服务器时才分辨得出
+        点的是哪一台。每个入口另有一个身份绑定标识，即写进第三方身份绑定表 `provider`
+        列的取值：用户不填时宿主按 `类型@实例名` 派生，填了就用填的那个。插件在认证
+        握手成功后调用 `create_plugin_auth_ticket_for_identity(provider_id=入口标识, ...)`
+        时原样回传登录页交来的入口标识即可，不要自行拼接——宿主不改写这个取值，它一变
+        就是另一个身份命名空间。第三方站点单点登录通常「一种类型一份配置」，声明
+        `multi_instance=False`。
+
         该类型只该被配一份时加上 `multi_instance=False`——例如一个全局唯一的接入点。
-        此时宿主只认用户配置列表里的第一份，多出来的会被忽略并告警。该字段与本插件
-        建了几个实例无关：插件实例是插件自己的分身，`multi_instance` 描述的是本类型
-        的配置列表允许有几条记录。缺省为 True，即按配置扇出多个实例。
+        此时用户若配了多份，宿主按该族的默认调用目标裁决：有显式默认就用它，没有默认
+        或默认已停用则整个类型不产出实例并报错列出候选，绝不替用户挑一份。该字段与本
+        插件建了几个实例无关：插件实例是插件自己的分身，`multi_instance` 描述的是本
+        类型的配置列表允许有几条记录。缺省为 True，即按配置扇出多个实例。
 
         :return: `ServiceInstanceDeclaration` 列表；插件不提供服务实例类型时无需实现
         """

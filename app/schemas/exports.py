@@ -50,6 +50,7 @@ SCHEMA_EXPORTS = {
     'Any': ('app.schemas.workflow', 'Any'),
     'AuthCredentials': ('app.schemas.event', 'AuthCredentials'),
     'AuthInterceptCredentials': ('app.schemas.event', 'AuthInterceptCredentials'),
+    'AuthProviderConf': ('app.schemas.system', 'AuthProviderConf'),
     'AuthProviderInfo': ('app.schemas.user', 'AuthProviderInfo'),
     'AuthProviderRemote': ('app.schemas.user', 'AuthProviderRemote'),
     'BaseEventData': ('app.schemas.event', 'BaseEventData'),

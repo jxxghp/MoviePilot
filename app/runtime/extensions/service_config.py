@@ -1,15 +1,17 @@
 """宿主服务配置的读取端口，以及「一份服务类型按配置扇出多个具名实例」的唯一实现。
 
-下载器、媒体服务器、消息通知与存储按「一份配置扇出一个具名实例」消费，声明面只出现
-能力标签（``downloader``/``mediaserver``/``notification``/``storage``）；这四族配置存在
-哪张表、按哪个模型校验、有没有裸令牌兼容指针，是宿主内部实现，只在本模块落地。
+下载器、媒体服务器、消息通知、存储与登录认证按「一份配置扇出一个具名实例」消费，声明面
+只出现能力标签（``downloader``/``mediaserver``/``notification``/``storage``/``auth``）；
+这几族配置存在哪张表、按哪个模型校验、有没有裸令牌兼容指针，是宿主内部实现，只在本
+模块落地。
 
-四族的默认调用目标同规格：每族至多一个，落 ``serviceconfig.is_default_target`` 专列，
-唯一性由条件唯一索引判定。存储另有一个**兼容指针**——它不是默认，只回答「存量路径
-``u115:/media`` 没写实例名时落到哪个实例」，每个存储类型各一份，随宿主载荷落库，
-所有路径补全实例名后即可整体移除。
+默认调用目标每族至多一个，落 ``serviceconfig.is_default_target`` 专列，唯一性由条件
+唯一索引判定。它只对存在「调用未指定实例」这种形态的族成立：登录认证族没有，用户点的
+永远是具体某个入口，因此该族不接受这个标记。存储另有一个**兼容指针**——它不是默认，
+只回答「存量路径 ``u115:/media`` 没写实例名时落到哪个实例」，每个存储类型各一份，随
+宿主载荷落库，所有路径补全实例名后即可整体移除。
 
-这四族的实例配置由服务实例配置表承载，按能力标签整族读取；其余服务相关配置键
+这几族的实例配置由服务实例配置表承载，按能力标签整族读取；其余服务相关配置键
 （通知场景开关等）仍在 systemconfig 上，两条来源各有一个读取端口，由配置键属不属于
 服务实例族决定走哪一条。
 
@@ -29,6 +31,7 @@ from pydantic import ValidationError
 from app.runtime.extensions.config_schema import config_value_violations
 from app.runtime.extensions.instance import describe_instance_candidates
 from app.runtime.log import logger
+from app.schemas.system import AuthProviderConf
 from app.schemas.system import DownloaderConf
 from app.schemas.system import MediaServerConf
 from app.schemas.system import NotificationConf
@@ -50,16 +53,21 @@ class ServiceFamilySpec:
     :param bare_token_field: 裸令牌兼容指针在该族配置模型上的字段名，不需要兼容指针
         的族为 None
     :param name_defaults_to_type: 实例名缺省时是否回落为类型标识
+    :param default_target: 该族有没有默认调用目标
     """
 
     config_key: SystemConfigKey
     conf_type: Type
     bare_token_field: Optional[str] = None
     name_defaults_to_type: bool = False
+    default_target: bool = True
 
 
 # 存储族的能力标签
 STORAGE_CAPABILITY = ModuleType.Storage.value
+
+# 登录认证族的能力标签
+AUTH_CAPABILITY = ModuleType.Auth.value
 
 # 族级默认调用目标在族配置模型上的字段名，取值映射自 is_default_target 列
 _FAMILY_DEFAULT_FIELD = "default"
@@ -81,12 +89,20 @@ _SERVICE_CONFIGS: Mapping[str, ServiceFamilySpec] = MappingProxyType({
     # 存储实例名是后加的：切表前存储配置根本没有名字这一列，无名条目的含义是
     # 「该类型的那一份」而不是残缺数据，因此回落为类型标识而不是丢弃。
     # 兼容指针只在存储族存在：只有存储的调用地址会出现「写了类型、没写实例」这种
-    # 半指定形态，其余三族的调用地址要么全空要么直接给实例名。
+    # 半指定形态，其余各族的调用地址要么全空要么直接给实例名。
     STORAGE_CAPABILITY: ServiceFamilySpec(
         SystemConfigKey.Storages,
         StorageConf,
         bare_token_field=_STORAGE_BARE_TOKEN_FIELD,
         name_defaults_to_type=True,
+    ),
+    # 登录认证族没有默认调用目标：族级默认回答的是「调用没指定用哪个」，而登录时
+    # 用户点的是具体某个入口，不存在未指定这回事。语义不符还占着 is_default_target
+    # 会撞上「每族至多一个」的条件唯一索引，因此整形时一律裁掉，该列对本族恒为假。
+    AUTH_CAPABILITY: ServiceFamilySpec(
+        SystemConfigKey.AuthProviders,
+        AuthProviderConf,
+        default_target=False,
     ),
 })
 
@@ -173,10 +189,26 @@ def service_bare_token_field(capability: Optional[str]) -> Optional[str]:
     return spec.bare_token_field if spec else None
 
 
+def service_supports_default_target(capability: Optional[str]) -> bool:
+    """判断该族有没有默认调用目标。
+
+    默认调用目标回答「调用没指定实例时用哪一个」，因此只对存在「未指定」这种调用形态
+    的族成立。登录认证族里用户点的永远是具体某个入口，没有未指定的情形，标记语义不符；
+    而 ``is_default_target`` 由「每族至多一个」的条件唯一索引把关，让语义不符的族占着
+    它，只会在用户给第二条配置置位时撞索引写不进去。因此不属于任何服务族的标签同样答否。
+
+    :param capability: 服务能力标签
+    :return: 该族有默认调用目标时为 True
+    """
+    spec = service_family_spec(capability)
+    return bool(spec and spec.default_target)
+
+
 def service_instance_default(conf: Any) -> bool:
     """读取一条实例配置自带的默认调用目标标记。
 
-    四族共用同一个外壳字段，取值映射自 ``serviceconfig.is_default_target`` 列。
+    有默认调用目标的族共用同一个外壳字段，取值映射自 ``serviceconfig.is_default_target``
+    列；没有该字段的族一律读到假值。
 
     :param conf: 单条实例配置，接受配置对象或配置字典
     :return: 该实例是否被标记为本族的默认调用目标
@@ -281,7 +313,7 @@ def select_instance_configs(
     开关的族一律视为已启用，判据见 `service_instance_enabled`。
 
     单实例类型被配了多份时按族级默认调用目标裁决：有显式默认则用它，没有默认或默认
-    已停用则报错并列出候选，绝不取第一个。四族共用这一条规则——存储的裸令牌兼容指针
+    已停用则报错并列出候选，绝不取第一个。各族共用这一条规则——存储的裸令牌兼容指针
     回答的是另一个问题（地址里的实例段空着时落到哪一份），不参与本裁决。配置存进服务
     实例配置表后没有顺序列，「列表里排在最前的一份」不再是用户看得见也改得动的规则，
     因此不能再按顺序挑；报错而不是静默挑一个，是为了让用户看到的实例与他自己指定的
@@ -369,7 +401,7 @@ class ServiceConfigHelper:
     def get_configs(config_key: SystemConfigKey, conf_type: Type) -> List:
         """按指定 Schema 过滤单条非法配置，避免影响同组其它服务。
 
-        四族实例配置按能力标签从服务实例配置表整族取，其余配置键仍从 systemconfig 取；
+        服务实例族的配置按能力标签从服务实例配置表整族取，其余配置键仍从 systemconfig 取；
         两条来源之后共用同一段逐条校验，一条坏配置只跳过它自己，不影响同族其它服务。
 
         :param config_key: 服务配置键，接受 `SystemConfigKey` 成员或其取值字符串

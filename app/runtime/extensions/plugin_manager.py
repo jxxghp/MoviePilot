@@ -38,6 +38,7 @@ from app.runtime.extensions.declaration import (
     declaration_meta_parser_identity,
     declaration_meta_parser_priority,
     declaration_service_instance_constructor,
+    declaration_service_instance_icon,
     declaration_service_instance_identity,
     declaration_service_instance_multi_instance,
 )
@@ -2275,6 +2276,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     service_type=service_type,
                     name=name,
                     owner=owner,
+                    icon=declaration_service_instance_icon(item),
                     impl=impl,
                     factory=factory,
                     multi_instance=declaration_service_instance_multi_instance(item),

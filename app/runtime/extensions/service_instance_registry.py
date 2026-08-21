@@ -44,6 +44,7 @@ class ServiceInstanceEntry:
     :param capability: 能力标签，即该类型属于哪一族服务
     :param service_type: 类型标识，与该族配置模型的 ``type`` 字段取值对应
     :param name: 类型展示名称
+    :param icon: 类型展示图标，登记方未声明时为 None
     :param distribution: 提供方的发行方式
     :param owner: 提供该类型的扩展实例键
     :param impl: 实例实现类，按 ``impl(name=..., **config)`` 构造
@@ -64,6 +65,7 @@ class ServiceInstanceEntry:
     name: str
     distribution: ExtensionDistribution
     owner: str
+    icon: Optional[str] = None
     impl: Optional[Any] = None
     factory: Optional[Any] = None
     multi_instance: bool = True
@@ -212,6 +214,7 @@ class ServiceInstanceRegistry:
                  service_type: str,
                  name: str,
                  owner: str,
+                 icon: Optional[str] = None,
                  impl: Optional[Any] = None,
                  factory: Optional[Any] = None,
                  multi_instance: bool = True,
@@ -229,6 +232,7 @@ class ServiceInstanceRegistry:
         :param service_type: 类型标识
         :param name: 类型展示名称
         :param owner: 提供该类型的扩展实例键
+        :param icon: 类型展示图标
         :param impl: 实例实现类，与 factory 二选一
         :param factory: 实例工厂，与 impl 二选一
         :param multi_instance: 用户能否为该类型配置多份，缺省为可以
@@ -250,6 +254,7 @@ class ServiceInstanceRegistry:
             name=name,
             distribution=distribution,
             owner=owner,
+            icon=icon,
             impl=impl,
             factory=factory,
             multi_instance=multi_instance,

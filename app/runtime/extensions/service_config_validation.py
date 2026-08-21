@@ -21,6 +21,7 @@ from app.runtime.extensions.service_config import (
     service_host_fields,
     service_instance_enabled,
     service_instance_name,
+    service_supports_default_target,
 )
 from app.runtime.extensions.service_family_registry import service_family_registry
 from app.runtime.extensions.service_instance_registry import service_instance_registry
@@ -96,9 +97,10 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
     的族里无名条目同样不产出行——这类条目在切表前就不产出任何实例，也无法被显式指定或被
     默认标记裁决选中。同身份的条目后者覆盖前者，与读取端「同名配置后者胜出」一致。
 
-    四族的默认调用目标同规格：整族裁出至多一条 ``is_default_target``，取顺序上第一条
-    为真的。存储另外还要裁出裸令牌兼容指针，它落宿主载荷、每个类型恰好一条，与默认调用
-    目标各占各的载体、互不换算。同一份输入重复整形结果相同。
+    有默认调用目标的族同规格：整族裁出至多一条 ``is_default_target``，取顺序上第一条
+    为真的；没有默认调用目标的族整族裁成假。存储另外还要裁出裸令牌兼容指针，它落宿主
+    载荷、每个类型恰好一条，与默认调用目标各占各的载体、互不换算。同一份输入重复整形
+    结果相同。
 
     :param capability: 该族的能力标签
     :param value: 整族配置值
@@ -136,15 +138,20 @@ def service_config_records(capability: str, value: Any) -> List[dict]:
 def _trim_default_markers(capability: str, records: Dict[tuple, dict]) -> None:
     """把整族配置行的默认调用目标裁剪到至多一条，并按需补齐裸令牌兼容指针。
 
+    没有默认调用目标的族一律裁成假：该族的语义里不存在「调用未指定实例」，标记本身
+    无从解释，而它又受「每族至多一个」的条件唯一索引管辖，放任写入只会在第二条置位
+    时撞索引，整次写入连带失败。
+
     :param capability: 该族的能力标签
     :param records: 身份二元组到配置行的映射，原地改写
     :return: 无返回值
     """
+    supports_default = service_supports_default_target(capability)
     default_seen = False
     for record in records.values():
         if not record["is_default_target"]:
             continue
-        if default_seen:
+        if default_seen or not supports_default:
             record["is_default_target"] = False
             continue
         default_seen = True

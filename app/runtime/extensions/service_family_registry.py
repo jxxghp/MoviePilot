@@ -26,12 +26,15 @@ from app.runtime.extensions.contract import ExtensionDistribution
 from app.runtime.log import logger
 from app.schemas.types import ModuleType
 
-# 内建服务族的能力标签与展示名称
+# 宿主自带的服务族能力标签与展示名称。族由宿主登记、类型由谁提供是另一回事：登录
+# 认证族没有任何内建类型，全部登录入口类型都来自扩展声明，族本身仍归宿主登记，否则
+# 第一个提供登录入口的扩展会连族一起带进来，卸载它即让存量配置整族失去归属。
 _BUILTIN_SERVICE_FAMILIES: Tuple[Tuple[str, str], ...] = (
     (ModuleType.Downloader.value, "下载器"),
     (ModuleType.MediaServer.value, "媒体服务器"),
     (ModuleType.Notification.value, "消息通知"),
     (ModuleType.Storage.value, "存储"),
+    (ModuleType.Auth.value, "登录认证"),
 )
 
 

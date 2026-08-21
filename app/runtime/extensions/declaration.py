@@ -86,10 +86,16 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     个分身的扩展提供的类型也可以只认一份配置。
 
     ``capability`` 是该类型属于哪一族服务的语义标签，取值须是服务族登记表
-    （`app.runtime.extensions.service_family_registry`）中已登记的族，宿主内建
-    下载器、媒体服务器、消息通知与存储四族。四族共用这一条声明，
+    （`app.runtime.extensions.service_family_registry`）中已登记的族，宿主自带
+    下载器、媒体服务器、消息通知、存储与登录认证五族。各族共用这一条声明，
     差异只在该标签：取用链是同一条——同一张服务实例表，按「能力标签加类型
-    标识」取用，形状没有区别，因此不按业务族拆成四个钩子，差异作为参数声明出来。
+    标识」取用，形状没有区别，因此不按业务族拆成多个钩子，差异作为参数声明出来。
+
+    登录认证族（``capability="auth"``）的每条用户配置即登录页上的一个入口：媒体服务器
+    单点登录声明 ``multi_instance=True``（每台一份），第三方站点单点登录声明
+    ``multi_instance=False``（一种类型一份）。登录入口列表由「该族配置加本登记」直接
+    投影，不经实例构造——登录页在任何用户会话之前就要渲染，一次构造失败不能让整族入口
+    消失。``impl``/``factory`` 仍按通用规则二选一，它构造的是完成认证握手的那个对象。
 
     构造方式二选一，宿主对该类型下的每条用户配置执行其一：
 
@@ -132,6 +138,8 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent；
         存储族里它同时是存储标识，例如 u115
     :param name: 类型展示名称
+    :param icon: 类型展示图标，取值为前端可解析的图标标识；未声明时由前端按类型自行
+        决定呈现，登录认证族的入口按钮即取此图标
     :param multi_instance: 用户能否为该类型配置多份，默认为 True
     :param factory: 接收单条服务配置并返回实例的可调用对象；与 ``impl`` 互斥
     :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
@@ -144,47 +152,12 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     capability: str = ""
     type: str = ""
     name: str = ""
+    icon: Optional[str] = None
     multi_instance: bool = True
     factory: Optional[Any] = None
     config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
     config_component: Optional[str] = None
     config_schema: Optional[Dict[str, Any]] = None
-
-
-@dataclass(frozen=True, slots=True)
-class AuthProviderDeclaration(ExtensionDeclaration):
-    """
-    登录认证提供方声明
-
-    ``id``/``name``/``icon`` 是该登录入口向宿主自报的展示信息，缺省时分别回落为
-    ``plugin:<实例键>``、插件展示名、无图标；``enabled`` 默认为 True。vue 模式下
-    登录入口渲染组件固定为 ``AuthPage``，由宿主联邦机制原样注入，与旧写法语义
-    一致，不受本声明字段影响。
-
-    该认证提供方的专属配置界面二选一，字段语义与 ``ServiceInstanceDeclaration`` 相同：
-
-    - ``config_form``：vuetify 模式，(组件树, 默认数据) 二元组
-    - ``config_component``：vue 模式，本扩展联邦远程中承载该界面的组件名，
-      要求扩展的 ``get_render_mode()`` 返回 ``"vue"``
-
-    两者互斥，同时给出视为意图不明，整条声明被拒；都不给出合法，表示该认证
-    提供方没有专属配置界面。界面归属这条声明，不归属声明它的扩展。
-
-    :param id: 提供方标识，缺省时回落为 ``plugin:<实例键>``
-    :param name: 展示名称，缺省时回落为插件展示名
-    :param icon: 展示图标
-    :param enabled: 是否启用，默认为 True
-    :param config_form: (组件树, 默认数据) 二元组，vuetify 模式；与
-        ``config_component`` 互斥
-    :param config_component: 联邦远程中的组件名，vue 模式；与 ``config_form`` 互斥
-    """
-
-    id: Optional[str] = None
-    name: Optional[str] = None
-    icon: Optional[str] = None
-    enabled: bool = True
-    config_form: Optional[Tuple[List[Dict[str, Any]], Dict[str, Any]]] = None
-    config_component: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,31 +365,6 @@ def declaration_config_component(declaration: Any) -> Optional[str]:
     return _declared_text(declaration, "config_component")
 
 
-def declaration_auth_provider_fields(declaration: Any) -> Optional[Dict[str, Any]]:
-    """
-    读取认证提供方声明的展示字段
-
-    兼容插件直接交出字段字典而不包 `AuthProviderDeclaration` 的写法：此时字典即
-    声明本身，字段原样返回；此时无法声明专属配置界面，因为字典没有
-    ``config_form``/``config_component`` 属性可读。
-
-    :param declaration: `AuthProviderDeclaration` 实例，或插件直接交出的字段字典
-    :return: 含 id/name/icon/enabled 等展示字段的字典；声明形状不合法时为 None
-    """
-    if isinstance(declaration, Mapping):
-        return dict(declaration)
-    if isinstance(declaration, AuthProviderDeclaration):
-        fields: Dict[str, Any] = {"enabled": declaration.enabled}
-        if declaration.id:
-            fields["id"] = declaration.id
-        if declaration.name:
-            fields["name"] = declaration.name
-        if declaration.icon:
-            fields["icon"] = declaration.icon
-        return fields
-    return None
-
-
 def declaration_agent_tool_identity(declaration: Any) -> Tuple[Optional[str], Optional[str]]:
     """
     读取声明自报的工具名与描述
@@ -616,6 +564,16 @@ def declaration_service_instance_identity(
         _declared_field_text(declaration, "type"),
         _declared_field_text(declaration, "name"),
     )
+
+
+def declaration_service_instance_icon(declaration: Any) -> Optional[str]:
+    """
+    读取服务实例声明自报的类型展示图标
+
+    :param declaration: `ServiceInstanceDeclaration` 实例
+    :return: 图标标识；字段缺失、非字符串或为空白时为 None
+    """
+    return _declared_field_text(declaration, "icon")
 
 
 def declaration_service_instance_multi_instance(declaration: Any) -> Any:

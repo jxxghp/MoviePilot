@@ -26,9 +26,9 @@ def config_form(
     """
     按能力标签与类型标识获取扩展为该类型声明的配置界面
 
-    下载器、媒体服务器、消息通知与存储共用本端点：四族的服务类型登记在同一张表里，
-    按「能力标签加类型标识」两个维度索引，界面形状也完全相同，拆成四个端点只会
-    得到四份同样的代码。界面归属声明该类型的扩展本身，不归属某个插件：同一
+    下载器、媒体服务器、消息通知、存储与登录认证共用本端点：各族的服务类型登记在同一
+    张表里，按「能力标签加类型标识」两个维度索引，界面形状也完全相同，拆成多个端点只会
+    得到多份同样的代码。界面归属声明该类型的扩展本身，不归属某个插件：同一
     插件可能同时声明服务实例与另一种能力，此处只按类型索引到登记时随声明附带
     的界面，不会读到扩展自身的 get_form()。
 
@@ -44,8 +44,8 @@ def config_form(
     ``config_schema`` 与 ``available`` 各自独立下发：契约描述配置形状，界面描述
     配置呈现，声明方可以只给其一。只声明契约的类型 ``available`` 仍为 False，
     前端据契约生成默认表单。
-    :param capability: 能力标签，取值为宿主已登记的服务族，内建为 downloader、
-        mediaserver、notification、storage
+    :param capability: 能力标签，取值为宿主已登记的服务族，宿主自带 downloader、
+        mediaserver、notification、storage、auth
     :param service_type: 类型标识，即该族配置模型的 type
     :param _: 鉴权
     :return: available 为 False 时该类型没有专属界面，界面相关字段均为 None

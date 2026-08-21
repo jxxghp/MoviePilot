@@ -251,7 +251,12 @@ def create_plugin_auth_ticket_for_identity(
     这是插件完成自身的第三方认证握手后应调用的落点：查绑定命中即签发票据，
     未命中按 `resolve_or_create_user_id_for_identity` 的策略处理。
 
-    :param provider_id: 提供方标识
+    ``provider_id`` 原样落进身份绑定表的 ``provider`` 列，宿主不改写也不校验它属于
+    哪个登录入口——该列是绑定唯一键的一半，宿主替插件改口径就是替用户丢绑定。插件应
+    原样回传登录页交来的入口标识（登录入口列表里的 ``id``），不要自行拼接：两个入口
+    共用一个取值，就是两台服务器的账号落进同一个身份命名空间。
+
+    :param provider_id: 登录入口标识，即身份绑定表 provider 列的取值
     :param external_id: 第三方侧的用户标识
     :param display_name: 第三方侧的显示名
     :param metadata: 插件侧附加信息，随票据一并保存

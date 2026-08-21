@@ -1,6 +1,6 @@
 """插件公开能力投影。"""
 
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from app.runtime.extensions.contract import (
     ExtensionDistribution,
@@ -17,9 +17,7 @@ from app.runtime.extensions.declaration import (
     declaration_action_identity,
     declaration_action_impl,
     declaration_action_kwargs,
-    declaration_auth_provider_fields,
     declaration_config_component,
-    declaration_config_form,
     declaration_config_schema,
     declaration_dashboard_identity,
     declaration_filter_rule_conditions,
@@ -31,13 +29,11 @@ from app.runtime.extensions.declaration import (
     declaration_methods,
     declaration_service_instance_identity,
 )
+from app.runtime.extensions.auth_entries import list_auth_entries
 from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
 from app.runtime.extensions.plugin.agent_tool_capabilities import (
     agent_tool_declaration_name,
     agent_tool_declaration_violation,
-)
-from app.runtime.extensions.plugin.auth_provider_capabilities import (
-    auth_provider_declaration_violation,
 )
 from app.runtime.extensions.plugin.channel_capabilities import (
     channel_capability_declaration_violation,
@@ -1116,67 +1112,6 @@ class PluginProjection:
             remotes.append(self._remote_descriptor(extension_id, plugin, dist_path))
         return remotes
 
-    def provided_auth_providers(self, pid: Optional[str] = None) -> Dict[str, List[Any]]:
-        """投影启用插件声明且通过登记契约校验的登录认证提供方。
-
-        单条声明不合契约只跳过该条，既不影响同一实例的其余声明，也不影响其它
-        实例；单个实例取声明时抛异常同理只跳过该实例。
-
-        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
-        :return: 实例键到其认证提供方声明列表的映射，仅含通过契约校验的条目
-        """
-        result: Dict[str, List[Any]] = {}
-        for extension in self._extensions(pid):
-            extension_id, plugin = extension.extension_id, extension.instance
-            if not extension.is_enabled() or not extension.supports_hook(
-                    "provides_auth_providers"
-            ):
-                continue
-            try:
-                declared = plugin.provides_auth_providers() or []
-            except Exception as error:
-                self._logger.error(
-                    f"获取插件 {extension_id} 登录认证提供方声明出错：{str(error)}"
-                )
-                continue
-            # config_component 只在扩展渲染模式为 vue 时合法，默认 vuetify 与
-            # get_render_mode() 基类实现的缺省值一致
-            render_mode = "vuetify"
-            if extension.supports_hook("get_render_mode"):
-                render_mode, _ = plugin.get_render_mode()
-            accepted: List[Any] = []
-            for item in declared:
-                violation = auth_provider_declaration_violation(item, render_mode=render_mode)
-                if violation:
-                    self._logger.error(
-                        f"插件[{extension_id}]声明的登录认证提供方 {item!r} 不合登记"
-                        f"契约，已跳过：{violation}"
-                    )
-                    continue
-                accepted.append(item)
-            result[extension_id] = accepted
-        return result
-
-    def auth_provider_component_descriptor(
-        self, extension_id: str, plugin: Any, component: str
-    ) -> Dict[str, Any]:
-        """构造认证提供方 vue 模式配置界面的组件描述：组件名加所在联邦远程入口。
-
-        调用方需自行保证 ``component`` 已通过登记契约校验、其声明方渲染模式
-        确为 vue；本方法只负责组装，不重复校验。
-
-        :param extension_id: 插件实例键
-        :param plugin: 运行态插件实例
-        :param component: 认证提供方声明携带的组件名
-        :return: 含 component 与 remote（联邦远程入口描述）的字典
-        :raises RuntimeError: 联邦入口生成器尚未配置
-        """
-        _, dist_path = plugin.get_render_mode()
-        return {
-            "component": component,
-            "remote": self._remote_descriptor(extension_id, plugin, dist_path),
-        }
-
     def _build_auth_provider(
         self,
         extension_id: str,
@@ -1185,11 +1120,13 @@ class PluginProjection:
         render_mode: Optional[str],
         dist_path: Optional[str],
     ) -> Dict[str, Any]:
-        """按既有字段语义组装单条认证提供方描述。
+        """按同一套字段语义组装单条认证提供方描述。
+
+        配置扇出与旧钩子两条来源共用本方法，因此登录页看到的字段形状与来源无关。
 
         :param extension_id: 插件实例键
         :param plugin: 运行态插件实例
-        :param fields: 声明携带的展示字段（id/name/icon/enabled）
+        :param fields: 展示字段（id/name/icon/enabled，配置扇出的入口另带 service_type）
         :param render_mode: 声明方扩展当前的渲染模式
         :param dist_path: vue 模式下的联邦构建产物相对路径
         :return: 含 id/type/plugin_id/name/enabled/instance_id/instance_key 的字典，
@@ -1253,47 +1190,103 @@ class PluginProjection:
             deprecation_warn("plugin.get_auth_providers", context=extension_id)
         return providers
 
-    def auth_providers(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """投影启用插件声明的登录认证提供方。
+    def _configured_auth_providers(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """投影用户已配置的登录入口。
 
-        聚合两条来源：`provides_auth_providers()` 声明式登记（经契约校验，可选带
-        专属配置界面）与 `get_auth_providers()` 裸字典列表（后者已进入废弃期，
-        触达即告警一次）。两条来源按既有字段语义统一组装：vue 渲染模式下登录
-        入口组件缺省为 `AuthPage`，附带联邦远程入口描述；仅声明式登记额外支持
-        `config_form`/`config_component` 专属配置界面。
+        入口由登录认证族的实例配置扇出，配置与类型登记的连接、单实例裁决与身份标识
+        去歧义都收在 `app.runtime.extensions.auth_entries`；本方法只补上登记表里没有
+        的那一样——声明该类型的插件实例当下的渲染模式与联邦远程入口，vue 模式下登录页
+        据此加载入口组件。
+
+        入口的展示名取实例名而不是类型名：用户接了两台媒体服务器时，登录页上要能分辨
+        点的是哪一台。
+
+        单个入口组装失败只跳过它自己：登录页是所有登录方式的唯一入口，一条坏配置或一个
+        实现有问题的插件不能让整份列表消失。
 
         :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
         :return: 认证提供方描述列表
         """
+        extensions = {
+            extension.extension_id: extension
+            for extension in self._extensions(pid)
+            if extension.is_enabled()
+        }
         providers: List[Dict[str, Any]] = []
-        declared_by_instance = self.provided_auth_providers(pid)
+        for entry in list_auth_entries():
+            extension = extensions.get(entry.owner)
+            if extension is None:
+                continue
+            try:
+                render_mode, dist_path = self._extension_render_mode(extension)
+                providers.append(
+                    self._build_auth_provider(
+                        entry.owner,
+                        extension.instance,
+                        {
+                            "id": entry.identity,
+                            "name": entry.name,
+                            "icon": entry.icon,
+                            "enabled": True,
+                            "service_type": entry.service_type,
+                        },
+                        render_mode,
+                        dist_path,
+                    )
+                )
+            except Exception as error:
+                self._logger.error(
+                    f"组装插件实例 {entry.owner} 的登录入口 {entry.identity} 出错，"
+                    f"已跳过该入口：{str(error)}"
+                )
+        return providers
+
+    @staticmethod
+    def _extension_render_mode(
+        extension: PluginExtension,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """读取扩展当前的渲染模式与联邦构建产物路径。
+
+        :param extension: 插件扩展视图
+        :return: (渲染模式, 构建产物相对路径) 二元组；未声明该钩子时两位均为 None
+        """
+        if not extension.supports_hook("get_render_mode"):
+            return None, None
+        return extension.instance.get_render_mode()
+
+    def auth_providers(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
+        """投影登录页可展示的插件登录入口。
+
+        聚合两条来源：登录认证族的实例配置扇出（用户配几条就有几个入口），与
+        `get_auth_providers()` 裸字典列表（分身级旧写法，已进入废弃期，触达即告警
+        一次）。两条来源按同一套字段语义组装：vue 渲染模式下登录入口组件缺省为
+        `AuthPage`，附带联邦远程入口描述。
+
+        描述里不带任何配置载荷：本列表由未登录状态下的登录页取用，而登录入口的配置里
+        装着客户端密钥一类的东西。
+
+        单个插件实例出错只跳过它自己，其余入口照常出现在登录页上。
+
+        :param pid: 插件 ID 命中该插件全部实例，实例键只命中该实例，为空时命中全部
+        :return: 认证提供方描述列表
+        """
+        providers = self._configured_auth_providers(pid)
         for extension in self._extensions(pid):
             extension_id, plugin = extension.extension_id, extension.instance
             if not extension.is_enabled():
                 continue
-            render_mode = None
-            dist_path = None
-            if extension.supports_hook("get_render_mode"):
-                render_mode, dist_path = plugin.get_render_mode()
-            for declaration in declared_by_instance.get(extension_id, []):
-                fields = declaration_auth_provider_fields(declaration)
-                provider = self._build_auth_provider(
-                    extension_id, plugin, fields, render_mode, dist_path
-                )
-                component = declaration_config_component(declaration)
-                config_form = declaration_config_form(declaration)
-                if component:
-                    provider["config_component"] = self.auth_provider_component_descriptor(
-                        extension_id, plugin, component
+            try:
+                render_mode, dist_path = self._extension_render_mode(extension)
+                providers.extend(
+                    self._legacy_auth_providers(
+                        extension, extension_id, plugin, render_mode, dist_path
                     )
-                elif config_form is not None:
-                    provider["config_form"] = config_form
-                providers.append(provider)
-            providers.extend(
-                self._legacy_auth_providers(
-                    extension, extension_id, plugin, render_mode, dist_path
                 )
-            )
+            except Exception as error:
+                self._logger.error(
+                    f"组装插件实例 {extension_id} 的登录入口出错，已跳过该实例："
+                    f"{str(error)}"
+                )
         return providers
 
     def sidebar(self) -> List[Dict[str, Any]]:

@@ -9,7 +9,7 @@
 本文件按族固定这条分界：
 
 - 扩展级（去重）：服务实例类型、存储标识、媒体数据源标识、智能体工具名
-- 分身级（不去重）：工作流动作、仪表盘、登录认证提供方
+- 分身级（不去重）：工作流动作、仪表盘、分身级旧钩子声明的登录入口
 """
 
 from typing import Any, Dict, Iterator, List, Optional
@@ -21,7 +21,6 @@ from app.modules._base.storage import StorageBase
 from app.runtime.extensions.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
-    AuthProviderDeclaration,
     DashboardDeclaration,
     MediaSourceDeclaration,
     ServiceInstanceDeclaration,
@@ -162,8 +161,8 @@ class _DeclaringPlugin:
         """返回预置的仪表盘声明。"""
         return self._declarations.get("dashboards")
 
-    def provides_auth_providers(self):
-        """返回预置的登录认证提供方声明。"""
+    def get_auth_providers(self):
+        """返回预置的分身级登录入口描述。"""
         return self._declarations.get("auth_providers")
 
     def get_dashboard(self, key=None, **kwargs):
@@ -420,28 +419,18 @@ def test_dashboard_metadata_keeps_one_entry_per_instance():
     assert {item["key"] for item in metadata} == {"overview"}
 
 
-def test_auth_providers_are_not_deduplicated_across_siblings():
-    """登录入口的认证由声明它的实例自己完成，多个实例即多个登录入口。"""
+def test_legacy_auth_providers_are_not_deduplicated_across_siblings():
+    """分身级旧钩子的登录入口由声明它的实例自己完成认证，多个实例即多个入口。
+
+    登录入口本身已并入服务实例族，那条来源按类型登记、按配置扇出，与实例键无关；
+    仍留在废弃期里的旧钩子则维持分身级语义不变。
+    """
     log = _RecordingLogger()
     projection = _siblings(
         "auth_providers",
-        [AuthProviderDeclaration(id="demo_login", name="演示登录")],
-        [AuthProviderDeclaration(id="demo_login", name="演示登录")],
+        [{"id": "demo_login", "name": "演示登录"}],
+        [{"id": "demo_login", "name": "演示登录"}],
         log=log,
-    )
-
-    declared = projection.provided_auth_providers()
-
-    assert _counts(declared) == {"DemoPlugin": 1, "DemoPlugin@home": 1}
-    assert log.warnings == []
-
-
-def test_auth_provider_entries_carry_their_own_instance_key():
-    """两个实例的登录入口各自带实例键，登录流程据此回到正确的实例。"""
-    projection = _siblings(
-        "auth_providers",
-        [AuthProviderDeclaration(id="demo_login", name="演示登录")],
-        [AuthProviderDeclaration(id="demo_login", name="演示登录")],
     )
 
     providers = projection.auth_providers()
@@ -450,6 +439,7 @@ def test_auth_provider_entries_carry_their_own_instance_key():
         "DemoPlugin",
         "DemoPlugin@home",
     ]
+    assert log.warnings == []
 
 
 def test_instance_precedence_orders_default_instance_first():

@@ -109,8 +109,12 @@ def test_repeated_modules_calls_do_not_repeat_same_plugin_method_warning():
     assert len(log.warnings) == 1
 
 
-def test_module_type_enum_importable_with_all_seven_members():
-    """ModuleType 枚举符号恢复可导入，且 7 个成员齐全。"""
+def test_module_type_enum_importable_with_all_members():
+    """ModuleType 枚举符号恢复可导入，且成员齐全。
+
+    ``Auth`` 没有对应的内建模块：它是登录认证服务族的能力标签，取值与其余服务族同出
+    一套词表，因此登记在这个已知值目录里而不另起一套。
+    """
     from app.schemas.types import ModuleType
 
     names = {member.name for member in ModuleType}
@@ -121,5 +125,6 @@ def test_module_type_enum_importable_with_all_seven_members():
         "MediaRecognize",
         "Indexer",
         "Storage",
+        "Auth",
         "Other",
     }

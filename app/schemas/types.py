@@ -358,6 +358,8 @@ class SystemConfigKey(Enum):
     MountedLocalDiskDeleteEmptyDirs = "MountedLocalDiskDeleteEmptyDirs"
     # 存储配置
     Storages = "Storages"
+    # 登录认证入口配置
+    AuthProviders = "AuthProviders"
     # 搜索站点范围
     IndexerSites = "IndexerSites"
     # 订阅站点范围
@@ -645,6 +647,8 @@ class ModuleType(Enum):
     Indexer = "indexer"
     # 存储
     Storage = "storage"
+    # 登录认证入口，宿主无内建实现，取值供扩展声明登录入口类型时引用
+    Auth = "auth"
     # 其它
     Other = "other"
 

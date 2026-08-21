@@ -94,8 +94,8 @@ NOTICES: Mapping[str, DeprecationNotice] = {
         stage=DeprecationStage.WARN,
         since="v3.1.0",
         remove_in="v3.3.0",
-        replacement="provides_auth_providers()",
-        reason="返回裸字典列表，无契约校验，且无法声明专属配置界面",
+        replacement='provides_service_instances() 声明 capability="auth" 的登录入口类型',
+        reason="登录入口绑在分身上，接第二台服务器要再建一个分身，而那本该是同一个入口类型的第二份配置",
     ),
     "plugin.clone_by_source_copy": DeprecationNotice(
         key="plugin.clone_by_source_copy",

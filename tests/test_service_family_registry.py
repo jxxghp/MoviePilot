@@ -1,7 +1,7 @@
 """服务族登记表：内建族登记、契约校验按表判定、列举顺序与登记先后无关。
 
 服务族是登记出来的而不是写死在声明面上的枚举，因此可声明服务实例的能力标签集合由
-本表回答。本文件锁死两件事：内建族恰好是下载器、媒体服务器与消息通知三族，取值与
+本表回答。本文件锁死两件事：宿主自带族恰好是下载器、媒体服务器、消息通知、存储与登录认证五族，取值与
 `ModuleType` 的对应成员逐字相同；以及未登记的标签仍被契约校验拒绝，拒绝信息如实列出
 当前登记的族而不是一份写死的清单。
 
@@ -28,8 +28,8 @@ from app.runtime.extensions.service_family_registry import (
 from app.schemas.types import ModuleType
 from tests.test_plugin_provided_storages import _ValidPluginStorage
 
-# 内建服务族的能力标签，取值与 `ModuleType` 成员逐字相同
-_BUILTIN_CAPABILITIES = ("downloader", "mediaserver", "notification", "storage")
+# 宿主自带服务族的能力标签，取值与 `ModuleType` 成员逐字相同
+_BUILTIN_CAPABILITIES = ("auth", "downloader", "mediaserver", "notification", "storage")
 
 # 可经 `ServiceInstanceDeclaration` 声明的族，四族全在其列——存储只是构造协议不同，
 # 不再另设专用钩子
@@ -56,14 +56,15 @@ def isolated_registry() -> Iterator[None]:
 
 
 def test_builtin_families_are_registered_and_vocabulary_is_unchanged() -> None:
-    """内建族的标签集合恰好是四族，取值与 `ModuleType` 成员一致。"""
+    """宿主自带族恰好是五族，取值与 `ModuleType` 成员一致。"""
     assert service_family_registry.capabilities() == _BUILTIN_CAPABILITIES
-    assert _BUILTIN_CAPABILITIES == (
+    assert set(_BUILTIN_CAPABILITIES) == {
+        ModuleType.Auth.value,
         ModuleType.Downloader.value,
         ModuleType.MediaServer.value,
         ModuleType.Notification.value,
         ModuleType.Storage.value,
-    )
+    }
 
 
 def test_builtin_families_carry_display_name_and_builtin_ownership() -> None:
@@ -124,7 +125,7 @@ def test_rejection_message_reflects_the_registry_at_call_time(
     assert violation is not None
     assert "'subtitleserver'" in violation
     assert service_family_registry.capabilities() == (
-        "downloader", "mediaserver", "notification", "storage", "subtitleserver",
+        "auth", "downloader", "mediaserver", "notification", "storage", "subtitleserver",
     )
 
 
@@ -225,7 +226,7 @@ def test_unregister_owner_reclaims_only_its_own_families() -> None:
         "bookserver", "subtitleserver",
     )
     assert registry.capabilities() == (
-        "downloader", "mediaserver", "notification", "photoserver", "storage",
+        "auth", "downloader", "mediaserver", "notification", "photoserver", "storage",
     )
     assert registry.unregister_owner("DemoPlugin@default") == ()
 

@@ -18,8 +18,16 @@ class UserIdentity(Base):
     ``(user_id, provider)`` 设唯一约束，因为同一用户允许绑定同一 provider 族下的
     多个实例（例如两台媒体服务器）。
 
-    ``provider`` 取值为认证扩展的 ``AuthProviderDeclaration.id``，插件未显式声明时
-    宿主回落为 ``plugin:<插件实例键>``，天然带实例粒度。
+    ``provider`` 取值是登录入口的标识，由插件在签发登录票据时原样交来，**宿主既不
+    生成也不改写**。这一点决定了登录入口并入服务实例族不会动到存量绑定：并族改的是
+    入口的配置载体与扇出方式，没有改这一列的口径。
+
+    该标识今天有两个来源，取值形状不同但都合法：登录入口配置的身份绑定标识（用户未
+    填时宿主按 ``类型@实例名`` 派生），以及分身级旧钩子那条路径下插件自选的取值——常见
+    是宿主回落值 ``plugin:<插件实例键>``。旧值要在并族后继续命中，把该入口配置的身份
+    绑定标识填成旧值即可，本列一行都不用改。反过来也说明**不能靠迁移脚本改写本列**：
+    旧值是插件自选的任意字符串，新入口的类型与实例名在升级那一刻还不存在，两者之间
+    推不出任何映射。
     """
     # ID
     id = get_id_column()
@@ -30,7 +38,7 @@ class UserIdentity(Base):
         nullable=False,
         index=True,
     )
-    # 提供方标识，即 AuthProviderDeclaration.id 或其缺省回落值 plugin:<实例键>
+    # 登录入口标识，由插件签票时交来，宿主不生成也不改写
     provider: Mapped[str] = mapped_column(String, nullable=False)
     # 第三方侧的用户标识
     external_id: Mapped[str] = mapped_column(String, nullable=False)

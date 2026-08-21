@@ -113,8 +113,15 @@ class AuthProviderRemote(BaseModel):
 
 
 class AuthProviderInfo(BaseModel):
-    """匿名登录页可展示的认证提供方摘要。"""
+    """匿名登录页可展示的认证提供方摘要。
 
+    本模型由未登录状态下的登录页取用，因此只带展示与路由所需的字段，不带任何配置
+    载荷——登录入口的配置里装着客户端密钥一类的东西。入口类型的配置界面另由
+    ``/service/config_form/auth/{type}`` 下发，那条端点要求管理员身份。
+    """
+
+    # 入口标识，同时是第三方身份绑定表 provider 列的取值；插件完成认证握手后
+    # 原样回传它，宿主不改写
     id: str
     type: str
     name: str
@@ -123,12 +130,12 @@ class AuthProviderInfo(BaseModel):
     icon: Optional[str] = None
     component: Optional[str] = None
     plugin_id: Optional[str] = None
+    # 登录入口类型标识，由实例配置扇出的入口才有；分身级旧钩子声明的入口为 None
+    service_type: Optional[str] = Field(
+        default=None, description="登录入口类型标识"
+    )
+    # 提供该入口的插件实例标识与实例键。两者取值都能从 plugin_id 推出，声明出来是因为
+    # response_model 会静默丢掉模型里没有的字段，而组装侧确实填了它们
+    instance_id: Optional[str] = Field(default=None, description="插件实例标识")
+    instance_key: Optional[str] = Field(default=None, description="插件实例键")
     remote: Optional[AuthProviderRemote] = None
-    # 该认证方式的专属配置界面，归属声明它的那条声明而非扩展自身；二选一，
-    # 与声明方扩展的渲染模式对应，都不给表示该认证方式没有专属界面
-    config_form: Optional[list[dict[str, JsonData]]] = Field(
-        default=None, description="vuetify 模式的组件树，非 vuetify 模式时为 None"
-    )
-    config_component: Optional[dict[str, JsonData]] = Field(
-        default=None, description="vue 模式下应加载的组件名与其所在联邦远程入口"
-    )
