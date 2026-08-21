@@ -163,6 +163,11 @@ function cleanup_previous_payload() {
     rm -rf "${UPDATE_PREVIOUS_APP}" "${UPDATE_PREVIOUS_PUBLIC}"
 }
 
+function finalize_update_transaction() {
+    cleanup_previous_payload || return 1
+    clear_update_pending
+}
+
 function restore_previous_payload() {
     local failed="false"
 
@@ -197,8 +202,10 @@ function rollback_update_transaction() {
         UPDATE_RECOVERY_REQUIRED="true"
         return 1
     fi
-    clear_update_pending
-    cleanup_previous_payload
+    if ! finalize_update_transaction; then
+        UPDATE_RECOVERY_REQUIRED="true"
+        return 1
+    fi
     return 0
 }
 
@@ -209,8 +216,10 @@ function recover_pending_update() {
 
     if [ "${state}" = "committed" ]; then
         INFO "→ 清理已完成的容器更新事务"
-        cleanup_previous_payload
-        clear_update_pending
+        if ! finalize_update_transaction; then
+            WARN "→ 已完成更新的旧代际备份清理失败，保留事务标记以便下次启动重试"
+            return 1
+        fi
         return 0
     fi
 
@@ -410,8 +419,9 @@ function install_backend_and_download_resources() {
         return 1
     fi
 
-    clear_update_pending
-    cleanup_previous_payload || WARN "更新完成，但旧程序备份清理失败"
+    if ! finalize_update_transaction; then
+        WARN "更新完成，但旧程序备份清理失败，保留事务标记以便下次启动重试"
+    fi
     rm -rf "${TMP_PATH}"
     MOVIEPILOT_UPDATE_RESULT="updated"
     INFO "程序更新成功，前端版本：${frontend_version}，后端版本：${1}"
