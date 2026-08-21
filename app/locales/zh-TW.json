@@ -1463,6 +1463,18 @@
       "target": "服務能力 {capability} 沒有預設呼叫目標"
     },
     {
+      "source": "存储 {storage} 尚未配置账号密码",
+      "target": "儲存 {storage} 尚未設定帳號密碼"
+    },
+    {
+      "source": "【123云盘】列举目录失败：{folder} - {reason}",
+      "target": "【123雲盤】列舉目錄失敗：{folder} - {reason}"
+    },
+    {
+      "source": "【123云盘】查询 {path} 失败：{reason}",
+      "target": "【123雲盤】查詢 {path} 失敗：{reason}"
+    },
+    {
       "source": "{action}失败：GitHub 服务不可达",
       "target": "{action_i18n}失敗：GitHub 服務無法連線"
     },

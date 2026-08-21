@@ -1467,6 +1467,18 @@
       "target": "Service capability {capability} has no default call target"
     },
     {
+      "source": "存储 {storage} 尚未配置账号密码",
+      "target": "Storage {storage} has no account or password configured"
+    },
+    {
+      "source": "【123云盘】列举目录失败：{folder} - {reason}",
+      "target": "[123 Pan] Failed to list directory: {folder} - {reason}"
+    },
+    {
+      "source": "【123云盘】查询 {path} 失败：{reason}",
+      "target": "[123 Pan] Failed to query {path}: {reason}"
+    },
+    {
       "source": "{action}失败：GitHub 服务不可达",
       "target": "Failed to {action_i18n}: the GitHub service is unreachable"
     },
