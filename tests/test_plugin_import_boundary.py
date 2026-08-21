@@ -15,10 +15,19 @@
 
 插件自己的包内导入照常，跨插件导入不在公开面内：另一个插件装没装、是什么版本，都不是
 本插件能假定的。
+
+门禁的对象是随仓入库的参考实现。``app/plugins/`` 同时是运行期的插件安装目录，装在那里的
+第三方插件不是本仓的代码，且多数是靠兼容层工作的 v2 插件——拿 v3 SDK 去判它们越界，既管
+不着又判错了对象，还会让这条规则随开发机上装了什么插件而红。扫描范围因此按
+``REFERENCE_PLUGINS`` 显式登记：参考实现是给社区照抄的范例，「只用 SDK 也写得出来」由它们
+担保。清单与 git 索引的一致性另立一条断言，入库却漏登记的插件不会静默失去保护。
 """
 
 import ast
-from pathlib import Path
+import subprocess
+from pathlib import Path, PurePosixPath
+
+import pytest
 
 from app.sdk._exports import SDK_DECLARED_EXPORTS, SDK_REQUIRED_EXPORTS
 
@@ -26,6 +35,10 @@ PROJECT_ROOT = Path(__file__).parents[1]
 PLUGIN_ROOT = PROJECT_ROOT / "app" / "plugins"
 # 插件所在的包，插件包内导入按它加插件包名判定
 PLUGIN_PACKAGE = "app.plugins"
+# 随仓入库的参考实现，门禁的扫描范围；新增参考实现须同时登记在此
+REFERENCE_PLUGINS = frozenset({"githubsso", "p123disk"})
+# 宿主提供的扩展基类所在处，不是插件，不参与判定
+HOST_BASE_ENTRY = "app/plugins/__init__.py"
 # 插件门面根包；下划线开头的子模块是 SDK 自己的生成物与内部实现，不对插件承诺
 SDK_ROOT = "app.sdk"
 # schema 惰性兼容聚合入口，插件只用它，不下探子模块
@@ -70,18 +83,59 @@ SYMBOL_INDEX = sdk_symbol_index()
 MODULE_INDEX = sdk_module_index()
 
 
-def plugin_sources() -> list[tuple[str, Path]]:
-    """列出各插件的源码文件。
+def reference_plugin_files(package: str) -> list[Path]:
+    """列出一个参考实现的源码文件。
 
-    ``app/plugins/__init__.py`` 是宿主提供的扩展基类所在处，不是插件，因此不参与判定。
     单文件插件与包形态插件都收，前者的包名即去掉后缀的文件名。
+
+    :param package: 参考实现的插件包名
+    :return: 源码路径列表，插件不在磁盘上时为空
+    """
+    directory = PLUGIN_ROOT / package
+    if directory.is_dir():
+        return list(directory.rglob("*.py"))
+    module = PLUGIN_ROOT / f"{package}.py"
+    return [module] if module.is_file() else []
+
+
+def reference_plugin_sources() -> list[tuple[str, Path]]:
+    """列出随仓入库的参考实现的源码文件。
 
     :return: ``(插件名, 源码路径)`` 列表
     """
     return sorted(
-        (path.relative_to(PLUGIN_ROOT).parts[0].removesuffix(".py"), path)
-        for path in PLUGIN_ROOT.rglob("*.py")
-        if path != PLUGIN_ROOT / "__init__.py"
+        (package, path)
+        for package in REFERENCE_PLUGINS
+        for path in reference_plugin_files(package)
+    )
+
+
+def tracked_plugin_packages() -> frozenset[str] | None:
+    """按 git 索引列出随仓入库的插件包名。
+
+    索引里必须认得出宿主扩展基类那一项，认不出说明看的不是本仓的索引，判不了谁随仓入库。
+
+    :return: 插件包名集合；git 不可用、不在仓内或索引对不上本仓时为 None
+    """
+    try:
+        completed = subprocess.run(
+            ("git", "ls-files", "-z", "--", "app/plugins"),
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode:
+        return None
+    entries = [entry for entry in completed.stdout.split("\0") if entry]
+    if HOST_BASE_ENTRY not in entries:
+        return None
+    return frozenset(
+        PurePosixPath(entry).parts[2].removesuffix(".py")
+        for entry in entries
+        if entry != HOST_BASE_ENTRY
     )
 
 
@@ -165,9 +219,9 @@ def remedy(module_name: str, symbol_name: str) -> str:
 
 
 def test_plugins_only_import_the_sdk_and_public_surface():
-    """插件的 app 内导入必须全部落在 SDK、schema 聚合入口或本插件包内。"""
+    """参考实现的 app 内导入必须全部落在 SDK、schema 聚合入口或本插件包内。"""
     violations: list[str] = []
-    for package, path in plugin_sources():
+    for package, path in reference_plugin_sources():
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         relative = path.relative_to(PROJECT_ROOT)
         violations.extend(
@@ -190,11 +244,29 @@ def test_plugins_only_import_the_sdk_and_public_surface():
 def test_the_boundary_gate_covers_the_reference_implementations():
     """两个原生参考实现必须在本门禁的扫描范围内。
 
-    仓内插件全部搬走或扫描条件写错时上一条会无声通过——一条不扫任何文件的规则和没有
-    规则是一回事。参考实现是「只用 SDK 也写得出来」的验收标准，它们在场即门禁在跑。
+    参考实现被搬走、改名，或登记清单被清空时上一条会无声通过——一条不扫任何文件的规则
+    和没有规则是一回事。参考实现是「只用 SDK 也写得出来」的验收标准，它们在场即门禁在跑。
     """
-    scanned = {package for package, _path in plugin_sources()}
+    scanned = {package for package, _path in reference_plugin_sources()}
 
     assert {"githubsso", "p123disk"} <= scanned, (
         f"参考实现不在扫描范围内，当前只扫到 {sorted(scanned)}"
+    )
+
+
+def test_every_in_repo_plugin_is_registered_as_a_reference_implementation():
+    """随仓入库的插件必须逐个登记进扫描清单。
+
+    显式清单换来了「不受运行期装了什么插件影响」，代价是新增参考实现要多改一处；漏改
+    的后果不是报错而是这个插件不受门禁保护，本条把这种漏改变成红。
+    """
+    tracked = tracked_plugin_packages()
+    if tracked is None:
+        pytest.skip("git 索引不可用，判不了哪些插件随仓入库")
+
+    assert tracked == REFERENCE_PLUGINS, (
+        "扫描清单与随仓入库的插件对不上："
+        f"入库但漏登记 {sorted(tracked - REFERENCE_PLUGINS)}，"
+        f"登记了但不在库里 {sorted(REFERENCE_PLUGINS - tracked)}；"
+        "漏登记的插件不受导入边界门禁保护，请把它补进 REFERENCE_PLUGINS。"
     )
