@@ -718,6 +718,8 @@ class ConfigModel(BaseModel):
     AI_AGENT_VERBOSE: bool = False
     # AI智能体自动重试整理失败记录开关
     AI_AGENT_RETRY_TRANSFER: bool = False
+    # 是否按媒体聚合整理失败通知，关闭时保持逐条发送
+    TRANSFER_FAILURE_NOTIFICATION_AGGREGATION: bool = True
 
     # 音频输入提供商：openai/openai_chat_audio/mimo/minimax
     AUDIO_INPUT_PROVIDER: str = "openai"

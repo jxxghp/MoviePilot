@@ -16,6 +16,7 @@ TransferJob / TransferJobTask，那两个用 app.schemas 的同名 DTO——一�
 import asyncio
 import threading
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -153,6 +154,97 @@ class TransferQueueService:
         """先处理失活任务，再返回当前整理作业视图。"""
         self._expire_tasks()
         return self._list_tasks()
+
+
+@dataclass(frozen=True, slots=True)
+class TransferFailureNotification:
+    """整理失败聚合器保存的单条通知快照。"""
+
+    media_title: str
+    season_episode: str
+    reason: str
+    history_id: Optional[int]
+    image: Optional[str]
+    username: Optional[str]
+    manual_identity: bool = False
+
+
+def build_transfer_failure_group_key(task: TransferTask) -> str:
+    """构造主程序和第三方整理路径可共同使用的失败通知分组键。"""
+    media_source, media_id = resolve_media_identity(media=task.mediainfo)
+    if not media_source or not media_id:
+        media_source, media_id = resolve_media_identity(media=task)
+    season = getattr(task.meta, "begin_season", None) if task.meta else None
+    username = task.username or ""
+    if media_source and media_id:
+        return f"media:{media_source}:{media_id}:season:{season}:user:{username}"
+    if task.download_hash:
+        return f"download:{task.download_hash}:user:{username}"
+    source_path = str(task.fileitem.path) if task.fileitem else ""
+    parent_path = str(Path(source_path).parent) if source_path else ""
+    return f"path:{parent_path or source_path}:user:{username}"
+
+
+class TransferFailureNotificationAggregator:
+    """在短暂静默窗口内按媒体合并整理失败通知。"""
+
+    NOTIFICATION_DEBOUNCE_SECONDS = 30
+
+    def __init__(self) -> None:
+        """初始化分组缓冲和定时器。"""
+        self._buffers: dict[str, list[TransferFailureNotification]] = {}
+        self._timers: dict[str, asyncio.TimerHandle] = {}
+
+    def schedule(
+            self,
+            *,
+            group_key: str,
+            notification: TransferFailureNotification,
+            callback: Callable[[list[TransferFailureNotification]], None],
+            loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """从整理线程安全地把失败快照加入事件循环中的聚合缓冲。"""
+        loop.call_soon_threadsafe(
+            self._schedule_on_loop,
+            group_key,
+            notification,
+            callback,
+            loop,
+        )
+
+    def _schedule_on_loop(
+            self,
+            group_key: str,
+            notification: TransferFailureNotification,
+            callback: Callable[[list[TransferFailureNotification]], None],
+            loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """在所属事件循环中更新缓冲并重置静默窗口。"""
+        self._buffers.setdefault(group_key, []).append(notification)
+        timer = self._timers.pop(group_key, None)
+        if timer:
+            timer.cancel()
+        self._timers[group_key] = loop.call_later(
+            self.NOTIFICATION_DEBOUNCE_SECONDS,
+            self.flush,
+            group_key,
+            callback,
+        )
+
+    def flush(
+            self,
+            group_key: str,
+            callback: Callable[[list[TransferFailureNotification]], None],
+    ) -> None:
+        """发送一个分组内的聚合结果并释放缓冲。"""
+        notifications = self._buffers.pop(group_key, [])
+        self._timers.pop(group_key, None)
+        if not notifications:
+            return
+        try:
+            callback(notifications)
+        except Exception as err:
+            logger.error(f"发送整理失败聚合通知失败 (group={group_key}): {err}")
 
 
 # 作业锁：JobManager 与 TransferChain 共享，保护整理作业视图。
