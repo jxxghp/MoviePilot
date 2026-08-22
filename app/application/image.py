@@ -5,7 +5,7 @@ from typing import Callable, Optional, List
 from PIL import Image
 
 from app.runtime.cache import cached, FileCache, AsyncFileCache
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.network.ip import IpUtils
@@ -64,13 +64,14 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取登录页面壁纸
         """
-        if settings.WALLPAPER == "bing":
+        wallpaper = get_chain_runtime_config_snapshot().wallpaper
+        if wallpaper == "bing":
             return self.get_bing_wallpaper()
-        elif settings.WALLPAPER == "mediaserver":
+        elif wallpaper == "mediaserver":
             return self.get_mediaserver_wallpaper()
-        elif settings.WALLPAPER == "customize":
+        elif wallpaper == "customize":
             return self.get_customize_wallpaper()
-        elif settings.WALLPAPER == "tmdb":
+        elif wallpaper == "tmdb":
             return self.get_tmdb_wallpaper()
         return ''
 
@@ -78,13 +79,14 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取登录页面壁纸列表
         """
-        if settings.WALLPAPER == "bing":
+        wallpaper = get_chain_runtime_config_snapshot().wallpaper
+        if wallpaper == "bing":
             return self.get_bing_wallpapers(num)
-        elif settings.WALLPAPER == "mediaserver":
+        elif wallpaper == "mediaserver":
             return self.get_mediaserver_wallpapers(num)
-        elif settings.WALLPAPER == "customize":
+        elif wallpaper == "customize":
             return self.get_customize_wallpapers()
-        elif settings.WALLPAPER == "tmdb":
+        elif wallpaper == "tmdb":
             return self.get_tmdb_wallpapers(num)
         return []
 
@@ -190,19 +192,20 @@ class WallpaperHelper(metaclass=Singleton):
             return _result
 
         # 判断是否存在自定义壁纸api
-        if settings.CUSTOMIZE_WALLPAPER_API_URL:
+        config = get_chain_runtime_config_snapshot()
+        if config.customize_wallpaper_api_url:
             wallpaper_list = []
-            resp = RequestUtils(timeout=15).get_res(settings.CUSTOMIZE_WALLPAPER_API_URL)
+            resp = RequestUtils(timeout=15).get_res(config.customize_wallpaper_api_url)
             if resp and resp.status_code == 200:
                 # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')
                 if content_type and content_type.lower().startswith('image/'):
-                    wallpaper_list.append(settings.CUSTOMIZE_WALLPAPER_API_URL)
+                    wallpaper_list.append(config.customize_wallpaper_api_url)
                 else:
                     try:
                         result = resp.json()
                         if isinstance(result, list) or isinstance(result, dict) or isinstance(result, str):
-                            wallpaper_list = find_files_with_suffixes(result, settings.SECURITY_IMAGE_SUFFIXES)
+                            wallpaper_list = find_files_with_suffixes(result, config.security_image_suffixes)
                     except Exception as err:
                         print(str(err))
             return wallpaper_list
@@ -215,8 +218,9 @@ class ImageHelper(metaclass=Singleton):
 
     def __init__(self):
         """按全局图片缓存天数初始化文件缓存。"""
-        _base_path = settings.CACHE_PATH
-        _ttl = settings.GLOBAL_IMAGE_CACHE_DAYS * 24 * 3600
+        config = get_chain_runtime_config_snapshot()
+        _base_path = config.cache_path
+        _ttl = config.global_image_cache_days * 24 * 3600
         self.file_cache = FileCache(base=_base_path, ttl=_ttl)
         self.async_file_cache = AsyncFileCache(base=_base_path, ttl=_ttl)
 
@@ -260,12 +264,13 @@ class ImageHelper(metaclass=Singleton):
     def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict]) -> dict:
         """获取参数"""
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
+        config = get_chain_runtime_config_snapshot()
         if proxy is None:
-            proxies = settings.PROXY if not (referer or IpUtils.is_internal(url)) else None
+            proxies = config.proxy if not (referer or IpUtils.is_internal(url)) else None
         else:
-            proxies = settings.PROXY if proxy else None
+            proxies = config.proxy if proxy else None
         return {
-            "ua": settings.NORMAL_USER_AGENT,
+            "ua": config.normal_user_agent,
             "proxies": proxies,
             "referer": referer,
             "cookies": cookies,

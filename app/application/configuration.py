@@ -192,6 +192,11 @@ class ChainRuntimeConfig:
     television_rename_format: str = ""
     music_rename_format: str = ""
     tmdb_image_domain: str = "image.tmdb.org"
+    wallpaper: str = "bing"
+    customize_wallpaper_api_url: Optional[str] = None
+    security_image_suffixes: tuple[str, ...] = ()
+    cache_path: Path = Path(".")
+    global_image_cache_days: int = 7
 
     def rename_format(self, media_type: MediaType) -> str:
         """从快照返回指定媒体类型的稳定重命名格式。"""

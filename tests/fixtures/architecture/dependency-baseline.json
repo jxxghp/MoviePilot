@@ -14,7 +14,7 @@
     "workflow_to_db": []
   },
   "edge_count": 6393,
-  "edge_sha256": "fe5804c22c536d640583046cb78ba29a7ba4de577a3205cc6eacaf030491c3d3",
+  "edge_sha256": "ea375f19071a37a9c72bd01ce9fa4a070e64ad7f14a87d2e5013b5c7440680cd",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2527,13 +2527,13 @@
     "app.application.image -> app.adapters.network.http",
     "app.application.image -> app.adapters.network.ip",
     "app.application.image -> app.application",
+    "app.application.image -> app.application.configuration",
     "app.application.image -> app.application.security",
     "app.application.image -> app.application.security.url",
     "app.application.image -> app.foundation",
     "app.application.image -> app.foundation.singleton",
     "app.application.image -> app.runtime",
     "app.application.image -> app.runtime.cache",
-    "app.application.image -> app.runtime.config",
     "app.application.image -> app.runtime.log",
     "app.application.maintenance -> app.runtime",
     "app.application.maintenance -> app.runtime.config",

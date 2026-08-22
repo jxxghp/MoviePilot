@@ -969,6 +969,11 @@ Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源�
 - 单元测试覆盖删除/缩短放行和增长/新增拒绝，当前仓库 baseline check 通过。
 - 2026-08-22 将 MCP JSON-RPC 分派、无媒体信息下载识别、缺集结果合并拆成具有独立输入/输出的私有阶段；
   对应 `mcp_jsonrpc`、`download.add`、`DownloadChain.get_no_exists_info` 退出超限清单，总债务从 28 降到 25。
+- 2026-08-22 将 `SiteChain.sync_cookies` 拆为单域名处理、黑名单判断、索引器地址解析和连接重试阶段，入口降至预算内；
+  保留已有站点健康、黑名单、失败重试时的事件与进度回调语义，站点专项测试通过。
+
+配置债务继续按模块族收敛：`app/application/image.py` 的壁纸模式、图片缓存、代理和安全后缀读取已接入
+`ChainRuntimeConfig`，canonical `settings` 直接读取文件数从 137 降至 136；配置/依赖基线已更新，壁纸与图片专项测试通过。
 
 #### ARCH-272：异步阻塞检测
 

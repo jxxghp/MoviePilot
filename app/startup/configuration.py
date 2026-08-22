@@ -141,4 +141,9 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         television_rename_format=settings.RENAME_FORMAT(MediaType.TV),
         music_rename_format=settings.RENAME_FORMAT(MediaType.MUSIC),
         tmdb_image_domain=settings.TMDB_IMAGE_DOMAIN,
+        wallpaper=settings.WALLPAPER,
+        customize_wallpaper_api_url=settings.CUSTOMIZE_WALLPAPER_API_URL,
+        security_image_suffixes=tuple(settings.SECURITY_IMAGE_SUFFIXES),
+        cache_path=settings.CACHE_PATH,
+        global_image_cache_days=settings.GLOBAL_IMAGE_CACHE_DAYS,
     )
