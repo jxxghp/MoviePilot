@@ -1375,7 +1375,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             ):
                 logger.debug(f"search lock acquired at {datetime.now()}")
             else:
-                logger.warn("search上锁超时")
+                logger.error("订阅搜索锁等待超时，已中止本轮执行")
+                if progress_callback:
+                    progress_callback(
+                        value=100,
+                        text="订阅搜索锁等待超时，已跳过本轮",
+                    )
+                return
 
             subscribeoper = SubscribeOper()
             if sid:
@@ -1819,7 +1825,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             ):
                 logger.debug(f"match lock acquired at {datetime.now()}")
             else:
-                logger.warn("match上锁超时")
+                logger.error("订阅匹配锁等待超时，已中止本轮执行")
+                if progress_callback:
+                    progress_callback(
+                        value=100,
+                        text="订阅匹配锁等待超时，已跳过本轮",
+                    )
+                return
 
             # 预识别所有未识别的种子
             processed_torrents: Dict[str, List[Context]] = {}

@@ -309,6 +309,8 @@
     "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "WeChat ClawBot notification is not enabled or the configuration has not been saved. Please save and enable this channel first",
     "请输入至少一个有效的站点 ID": "Enter at least one valid site ID",
     "所有订阅搜索完成": "All subscription searches are complete",
+    "订阅搜索锁等待超时，已跳过本轮": "Subscription search lock timed out, this round was skipped",
+    "订阅匹配锁等待超时，已跳过本轮": "Subscription matching lock timed out, this round was skipped",
     "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "Enter subscription IDs separated by spaces, or enter all",
     "请输入至少一个有效的订阅 ID": "Enter at least one valid subscription ID",
     "格式错误，请输入：cookie <id> <username> <password> [2fa_code/secret]": "Invalid format. Enter: cookie <id> <username> <password> [2fa_code/secret]",
