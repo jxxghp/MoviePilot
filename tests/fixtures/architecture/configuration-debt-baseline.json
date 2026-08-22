@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 50,
+    "count": 39,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/cli.py",
@@ -21,17 +21,6 @@
       "app/factory.py",
       "app/main.py",
       "app/modules/filemanager/storages/local.py",
-      "app/modules/indexer/parser/__init__.py",
-      "app/modules/indexer/parser/rousi.py",
-      "app/modules/indexer/spider/__init__.py",
-      "app/modules/indexer/spider/haidan.py",
-      "app/modules/indexer/spider/hddolby.py",
-      "app/modules/indexer/spider/mtorrent.py",
-      "app/modules/indexer/spider/rousi.py",
-      "app/modules/indexer/spider/sunnypt.py",
-      "app/modules/indexer/spider/tnode.py",
-      "app/modules/indexer/spider/torrentleech.py",
-      "app/modules/indexer/spider/yema.py",
       "app/modules/postgresql/__init__.py",
       "app/modules/qbittorrent/__init__.py",
       "app/modules/qqbot/qqbot.py",

@@ -2,7 +2,9 @@ import base64
 import json
 from typing import List, Optional, Tuple
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType

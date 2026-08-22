@@ -3,7 +3,9 @@ import json
 import time
 from typing import List, Optional, Tuple
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils

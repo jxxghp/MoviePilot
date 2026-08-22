@@ -1064,6 +1064,8 @@ Emby、Jellyfin、Feishu、Discord 与 Slack 模块切换到动态运行时配�
 配置债务由 62 个文件降至 57 个，媒体服务器和消息模块专项测试通过。
 文件管理器及 Alist、Rclone、U115、SMB、Alipan 存储实现切换到动态运行时配置，保留模块级 global_vars 与
 存储公开方法；配置债务由 57 个文件降至 50 个，文件管理与存储专项测试通过。
+Indexer parser/spider 模块族切换到动态运行时配置，站点搜索 URL、解析与分类行为保持；配置债务由 50 个文件
+降至 39 个，Indexer 专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
