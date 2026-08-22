@@ -65,6 +65,23 @@ def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
     return None
 
 
+def _manager_execution_error(error: BaseException) -> JSONResponse:
+    """把 AgentManager 稳定错误映射为 Anthropic 兼容错误响应。"""
+    if _is_manager_unavailable(error):
+        return _anthropic_error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="api_error",
+        )
+    if _is_manager_queue_full(error):
+        return _anthropic_error_response(
+            str(error),
+            429,
+            error_type="rate_limit_error",
+        )
+    return _anthropic_error_response(str(error), 500, error_type="api_error")
+
+
 async def _stream_anthropic_response(
     manager,
     session_id: str,
@@ -241,19 +258,7 @@ async def messages(
             stream_mode=False,
         )
     except Exception as exc:
-        if _is_manager_unavailable(exc):
-            return _anthropic_error_response(
-                "MoviePilot AI agent is unavailable.",
-                503,
-                error_type="api_error",
-            )
-        if _is_manager_queue_full(exc):
-            return _anthropic_error_response(
-                str(exc),
-                429,
-                error_type="rate_limit_error",
-            )
-        return _anthropic_error_response(str(exc), 500, error_type="api_error")
+        return _manager_execution_error(exc)
     finally:
         await manager.clear_session(session_id=session_id, user_id=session_id)
 

@@ -7,7 +7,7 @@ import langchain.agents as langchain_agents
 if not hasattr(langchain_agents, "create_agent"):
     langchain_agents.create_agent = lambda *args, **kwargs: None
 
-from app.agent import _ThinkTagStripper
+from app.agent.orchestrator import _ThinkTagStripper
 from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
 from app.agent.tools.base import MoviePilotTool

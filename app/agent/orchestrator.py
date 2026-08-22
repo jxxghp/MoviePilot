@@ -21,7 +21,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
-from app.agent.llm import LLMHelper
+from app.agent.llm.helper import LLMHelper
 from app.agent.llm.server_tools import ServerToolRegistry
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity_log import (
@@ -51,7 +51,7 @@ from app.agent.middleware.subagents import (
 from app.agent.middleware.tool_selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent.prompt import prompt_manager
-from app.agent.policy import (
+from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
     ToolOrigin,

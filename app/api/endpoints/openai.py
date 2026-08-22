@@ -351,6 +351,30 @@ def _is_manager_queue_full(error: BaseException) -> bool:
     return getattr(error, "code", None) == "agent_manager_queue_full"
 
 
+def _manager_execution_error(error: BaseException) -> JSONResponse:
+    """把 AgentManager 稳定错误映射为 OpenAI 兼容错误响应。"""
+    if _is_manager_unavailable(error):
+        return _error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="server_error",
+            code="ai_agent_unavailable",
+        )
+    if _is_manager_queue_full(error):
+        return _error_response(
+            str(error),
+            429,
+            error_type="rate_limit_error",
+            code="ai_agent_queue_full",
+        )
+    return _error_response(
+        str(error),
+        500,
+        error_type="server_error",
+        code="agent_execution_failed",
+    )
+
+
 async def _run_managed_agent(
     *,
     manager,
@@ -550,26 +574,7 @@ async def chat_completions(
             stream_mode=False,
         )
     except Exception as exc:
-        if _is_manager_unavailable(exc):
-            return _error_response(
-                "MoviePilot AI agent is unavailable.",
-                503,
-                error_type="server_error",
-                code="ai_agent_unavailable",
-            )
-        if _is_manager_queue_full(exc):
-            return _error_response(
-                str(exc),
-                429,
-                error_type="rate_limit_error",
-                code="ai_agent_queue_full",
-            )
-        return _error_response(
-            str(exc),
-            500,
-            error_type="server_error",
-            code="agent_execution_failed",
-        )
+        return _manager_execution_error(exc)
     finally:
         if not use_server_session:
             await manager.clear_session(session_id=session_id, user_id=session_key)
@@ -657,26 +662,7 @@ async def responses(
             stream_mode=False,
         )
     except Exception as exc:
-        if _is_manager_unavailable(exc):
-            return _error_response(
-                "MoviePilot AI agent is unavailable.",
-                503,
-                error_type="server_error",
-                code="ai_agent_unavailable",
-            )
-        if _is_manager_queue_full(exc):
-            return _error_response(
-                str(exc),
-                429,
-                error_type="rate_limit_error",
-                code="ai_agent_queue_full",
-            )
-        return _error_response(
-            str(exc),
-            500,
-            error_type="server_error",
-            code="agent_execution_failed",
-        )
+        return _manager_execution_error(exc)
     finally:
         if not payload.user:
             await manager.clear_session(session_id=session_id, user_id=session_key)

@@ -5,15 +5,11 @@ from typing import Any, Optional, Tuple
 
 from fastapi.concurrency import run_in_threadpool
 
-from app.agent.policy import sanitize_for_host
+from app.agent.policy.sanitizer import sanitize_for_host
 from app.chain import ChainBase
 from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.message import (
-    MessageResponse,
-    ChannelCapabilityManager,
-    ChannelCapability,
-)
+from app.schemas.message import Message, MessageResponse
+from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
 from app.schemas.types import NotificationChannel, MessageType
 
 

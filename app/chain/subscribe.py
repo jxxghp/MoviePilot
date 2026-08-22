@@ -1353,6 +1353,28 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         return cls._subscription_query().exists(mediainfo, meta)
 
+    def _acquire_run_lock(
+            self,
+            operation: str,
+            progress_callback: Optional[Callable[..., None]],
+    ) -> bool:
+        """获取订阅任务锁，超时时统一记录并结束本轮进度。"""
+        if self._rlock.acquire(blocking=True, timeout=self._LOCK_TIMOUT):
+            logger.debug(f"{operation} lock acquired at {datetime.now()}")
+            return True
+        operation_label = {"search": "搜索", "match": "匹配"}[operation]
+        progress_text = {
+            "search": "订阅搜索锁等待超时，已跳过本轮",
+            "match": "订阅匹配锁等待超时，已跳过本轮",
+        }[operation]
+        logger.error(f"订阅{operation_label}锁等待超时，已中止本轮执行")
+        if progress_callback:
+            progress_callback(
+                value=100,
+                text=progress_text,
+            )
+        return False
+
     def search(
             self,
             sid: Optional[int] = None,
@@ -1370,17 +1392,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         lock_acquired = False
         try:
-            if lock_acquired := self._rlock.acquire(
-                    blocking=True, timeout=self._LOCK_TIMOUT
-            ):
-                logger.debug(f"search lock acquired at {datetime.now()}")
-            else:
-                logger.error("订阅搜索锁等待超时，已中止本轮执行")
-                if progress_callback:
-                    progress_callback(
-                        value=100,
-                        text="订阅搜索锁等待超时，已跳过本轮",
-                    )
+            lock_acquired = self._acquire_run_lock("search", progress_callback)
+            if not lock_acquired:
                 return
 
             subscribeoper = SubscribeOper()
@@ -1820,17 +1833,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         lock_acquired = False
         try:
-            if lock_acquired := self._rlock.acquire(
-                    blocking=True, timeout=self._LOCK_TIMOUT
-            ):
-                logger.debug(f"match lock acquired at {datetime.now()}")
-            else:
-                logger.error("订阅匹配锁等待超时，已中止本轮执行")
-                if progress_callback:
-                    progress_callback(
-                        value=100,
-                        text="订阅匹配锁等待超时，已跳过本轮",
-                    )
+            lock_acquired = self._acquire_run_lock("match", progress_callback)
+            if not lock_acquired:
                 return
 
             # 预识别所有未识别的种子
