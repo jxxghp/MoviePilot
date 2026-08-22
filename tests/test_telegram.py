@@ -54,6 +54,25 @@ def test_send_msg_success(telegram):
     assert result and result.get("success")
 
 
+def test_edit_msg_with_rich_message(telegram):
+    """Telegram 流式编辑应继续使用 Rich Message 协议。"""
+    telegram._bot.edit_message_text.return_value = SimpleNamespace(message_id=101)
+
+    result = telegram.edit_msg(
+        chat_id="10001",
+        message_id=101,
+        text="# 旧回退",
+        rich_message="# 流式结果\n\n- **完成**",
+    )
+
+    assert result is True
+    kwargs = telegram._bot.edit_message_text.call_args.kwargs
+    assert kwargs["text"] is None
+    assert kwargs["rich_message"].html == (
+        '<h1>流式结果</h1><ul><li><b>完成</b></li></ul>'
+    )
+
+
 def test_telegram_parser_preserves_reply_to_message_id():
     """Telegram ForceReply 回复应保留来源消息和被回复消息的 message_id。"""
     module = TelegramModule()
@@ -331,6 +350,50 @@ def test_send_msg_with_html_parse_mode_keeps_html(telegram):
     )
 
 
+def test_send_msg_uses_rich_message_api(telegram):
+    """Rich Markdown 应转换后通过 Telegram sendRichMessage 发送。"""
+    telegram.bot.send_rich_message.return_value = SimpleNamespace(
+        message_id=101,
+        chat=SimpleNamespace(id=10001),
+    )
+
+    result = telegram.send_msg(
+        title="",
+        rich_message=(
+            "# 处理完成\n\n"
+            "| 项目 | 结果 |\n"
+            "| --- | --- |\n"
+            "| 下载 | **成功** |"
+        ),
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+
+    assert result == {"success": True, "message_id": 101, "chat_id": 10001}
+    telegram.bot.send_message.assert_not_called()
+    send_kwargs = telegram.bot.send_rich_message.call_args.kwargs
+    assert send_kwargs["chat_id"] == "fake_chat_id"
+    assert send_kwargs["rich_message"].markdown is None
+    assert "<h1>处理完成</h1>" in send_kwargs["rich_message"].html
+    assert "<table>" in send_kwargs["rich_message"].html
+    assert send_kwargs["reply_markup"] is not None
+
+
+def test_send_msg_edits_rich_message(telegram):
+    """带原消息定位信息的 Rich Message 应使用富文本编辑接口。"""
+    result = telegram.send_msg(
+        title="",
+        rich_message="# 更新结果\n\n- 已完成",
+        original_message_id=101,
+        original_chat_id="10001",
+    )
+
+    assert result == {"success": True, "message_id": 101, "chat_id": "10001"}
+    edit_kwargs = telegram.bot.edit_message_text.call_args.kwargs
+    assert edit_kwargs["text"] is None
+    assert edit_kwargs["message_id"] == 101
+    assert "<h1>更新结果</h1>" in edit_kwargs["rich_message"].html
+
+
 def test_telegram_module_passes_parse_mode_to_client():
     """模块发送通知时应透传消息指定的parse_mode"""
     module = TelegramModule()
@@ -357,6 +420,59 @@ def test_telegram_module_passes_parse_mode_to_client():
 
     client.send_msg.assert_called_once()
     assert client.send_msg.call_args.kwargs["parse_mode"] == "HTML"
+
+
+def test_telegram_module_passes_rich_message_to_client():
+    """Telegram 模块应把消息模型中的 Rich Markdown 透传给客户端。"""
+    module = TelegramModule()
+    client = Mock()
+
+    with patch.object(
+        module,
+        "get_configs",
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+    ), patch.object(
+        module, "check_message", return_value=True
+    ), patch.object(
+        module, "get_instance", return_value=client
+    ):
+        module.post_message(
+            Message(
+                channel=NotificationChannel.Telegram,
+                source="telegram-test",
+                rich_message="# 智能体回复\n\n- 已完成",
+            )
+        )
+
+    client.send_msg.assert_called_once()
+    assert client.send_msg.call_args.kwargs["rich_message"].startswith("# 智能体回复")
+
+
+def test_telegram_module_passes_streaming_rich_message_to_edit_client():
+    """Telegram 模块应把流式 Rich Markdown 元数据透传给编辑客户端。"""
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    client = Mock()
+    client.edit_msg.return_value = True
+
+    with patch.object(
+        module,
+        "get_configs",
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+    ), patch.object(
+        module, "get_instance", return_value=client
+    ):
+        result = module.edit_message(
+            channel=NotificationChannel.Telegram,
+            source="telegram-test",
+            message_id=101,
+            chat_id="10001",
+            text="# 普通回退",
+            metadata={"telegram_rich_message": "# 流式富文本"},
+        )
+
+    assert result is True
+    assert client.edit_msg.call_args.kwargs["rich_message"] == "# 流式富文本"
 
 
 def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_message():

@@ -105,6 +105,7 @@ You act as a proactive agent. Your goal is to fully resolve the user's media-rel
 - Channel-aware formatting: Follow the capability rules below for Markdown, plain text, buttons, and voice replies.
 {button_choice_spec}
 - Voice replies: {voice_reply_spec}
+{rich_message_spec}
 - If the current channel supports image sending and an image would materially help, you may use the `send_message` tool with `image_url` to send it.
 - If the current channel supports file sending and you need to return a local image or file for the user to download, use `send_local_file`.
 </communication_runtime>

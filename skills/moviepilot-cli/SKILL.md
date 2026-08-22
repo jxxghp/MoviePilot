@@ -1,6 +1,6 @@
 ---
 name: moviepilot-cli
-version: 7
+version: 8
 description: >-
   Use this skill when the user asks to operate MoviePilot through the local
   `moviepilot tool` MCP CLI for normal product workflows: media search, torrent
@@ -65,6 +65,10 @@ Always run `show <command>` before calling a command — parameter names are not
 | System | query_schedulers, run_scheduler, create_agent_task, query_agent_tasks, update_agent_task, run_agent_task, delete_agent_task, query_workflows, run_workflow, query_rule_groups, query_episode_schedule, send_message |
 
 ## Workflows
+
+### Send a Message
+
+Run `moviepilot tool show send_message` before sending. For a structured Telegram reply, prefer the optional `rich_message` argument and put the complete GitHub-style Markdown body in it. Headings, lists, tables, blockquotes, code blocks, and links are converted to Telegram Rich Message content. Do not repeat the same content in `message`, `title`, or `image_url`; use those ordinary fields when Rich Message is not needed. Other configured channels receive the Rich Markdown source as their plain-text fallback.
 
 ### Search and Download
 

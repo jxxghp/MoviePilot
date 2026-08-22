@@ -515,6 +515,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         original_chat_id=message.original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
+                        rich_message=message.rich_message,
                     )
 
     def post_medias_message(
@@ -616,7 +617,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param text: 新的消息内容
         :param title: 消息标题
         :param buttons: 新的按钮列表
-        :param metadata: 其他元信息
+        :param metadata: 其他元信息；telegram_rich_message 用于流式富文本编辑
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
         :return: 编辑是否成功
         """
@@ -634,6 +635,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     title=title,
                     buttons=buttons,
                     parse_mode=parse_mode,
+                    rich_message=(metadata or {}).get("telegram_rich_message"),
                 )
                 if result:
                     return True
@@ -739,6 +741,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         original_chat_id=original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
+                        rich_message=message.rich_message,
                         private_delivery=message.private_delivery,
                     )
                 if result and result.get("success"):

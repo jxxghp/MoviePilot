@@ -486,6 +486,14 @@ class StreamingHandler:
         except (ValueError, KeyError):
             return False
 
+    def _get_rich_message(self, text: str) -> Optional[str]:
+        """
+        为 Telegram 流式消息返回 Rich Markdown，其他渠道继续使用原有格式。
+        """
+        if self._channel == NotificationChannel.Telegram.value:
+            return text
+        return None
+
     async def _flush_loop(self):
         """
         定时刷新循环，定期将缓冲区内容发送/编辑到用户
@@ -557,6 +565,7 @@ class StreamingHandler:
                         original_chat_id=self._original_chat_id,
                         title=self._title,
                         text=current_text,
+                        rich_message=self._get_rich_message(current_text),
                         save_history=False,
                     ),
                 )
@@ -603,6 +612,7 @@ class StreamingHandler:
                                 original_chat_id=self._original_chat_id,
                                 title=self._title,
                                 text=current_text,
+                                rich_message=self._get_rich_message(current_text),
                                 save_history=False,
                             ),
                         )
@@ -623,6 +633,11 @@ class StreamingHandler:
                     except (ValueError, KeyError):
                         return
 
+                    metadata = dict(self._message_response.metadata or {})
+                    rich_message = self._get_rich_message(current_text)
+                    if rich_message:
+                        # 通用编辑接口不增加渠道专属参数，通过元数据交给 Telegram 模块消费。
+                        metadata["telegram_rich_message"] = rich_message
                     success = await run_in_threadpool(
                         chain.edit_message,
                         channel=channel_enum,
@@ -631,7 +646,7 @@ class StreamingHandler:
                         chat_id=self._message_response.chat_id,
                         text=current_text,
                         title=self._title,
-                        metadata=self._message_response.metadata,
+                        metadata=metadata,
                     )
                     if success:
                         with self._lock:

@@ -19,12 +19,14 @@ from telebot.types import (  # noqa: E402
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto,
+    InputRichMessage as TelebotInputRichMessage,
+    ReplyParameters,
 )
 try:
     from telebot.types import ForceReply  # noqa: E402
 except ImportError:
     ForceReply = None
-from telegramify_markdown import standardize, telegramify  # noqa: E402
+from telegramify_markdown import richify, split_rich, standardize, telegramify  # noqa: E402
 try:
     from telegramify_markdown import entities_to_markdownv2  # noqa: E402
 except ImportError:
@@ -615,6 +617,7 @@ class Telegram:
             disable_web_page_preview: Optional[bool] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            rich_message: Optional[str] = None,
             private_delivery: bool = False,
     ) -> Optional[dict]:
         """
@@ -631,6 +634,7 @@ class Telegram:
         :param disable_web_page_preview: 是否禁用链接预览
         :param stop_typing: 发送完成后是否立即停止 typing
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
+        :param rich_message: 完整的 Telegram Rich Markdown 正文，设置后替代普通图文内容
         :param private_delivery: 是否绕过最近会话映射，直接以用户 ID 作为私聊目标
         :return: 包含 message_id, chat_id, success 的字典
         """
@@ -644,8 +648,8 @@ class Telegram:
             original_chat_id,
             private_delivery=private_delivery,
         )
-        if not title and not text:
-            logger.warn("标题和内容不能同时为空")
+        if not title and not text and not rich_message:
+            logger.warn("标题、内容和富文本内容不能同时为空")
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
 
@@ -669,6 +673,45 @@ class Telegram:
                 reply_markup = self._create_inline_keyboard(buttons)
             elif force_reply and ForceReply:
                 reply_markup = self._create_force_reply_markup()
+
+            if rich_message:
+                if original_message_id and original_chat_id and not force_reply:
+                    result = self.__edit_rich_message(
+                        chat_id=original_chat_id,
+                        message_id=original_message_id,
+                        rich_message=rich_message,
+                        reply_markup=reply_markup,
+                    )
+                    self._stop_typing_if_needed(chat_id, stop_typing)
+                    return {
+                        "success": bool(result),
+                        "message_id": original_message_id,
+                        "chat_id": original_chat_id,
+                    }
+
+                target_chat_id = (
+                    original_chat_id
+                    if force_reply and original_chat_id
+                    else chat_id
+                )
+                sent = self.__send_rich_message(
+                    chat_id=target_chat_id,
+                    rich_message=rich_message,
+                    reply_markup=reply_markup,
+                    reply_to_message_id=(
+                        original_message_id if force_reply else None
+                    ),
+                )
+                self._stop_typing_if_needed(chat_id, stop_typing)
+                if sent and hasattr(sent, "message_id"):
+                    return {
+                        "success": True,
+                        "message_id": sent.message_id,
+                        "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
+                    }
+                if sent:
+                    return {"success": True}
+                return {"success": False}
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
@@ -1165,6 +1208,7 @@ class Telegram:
             buttons: Optional[List[List[dict]]] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            rich_message: Optional[str] = None,
     ) -> Optional[bool]:
         """
         编辑Telegram消息（公开方法）
@@ -1175,6 +1219,7 @@ class Telegram:
         :param buttons: 新的按钮列表
         :param stop_typing: 编辑完成后是否立即停止 typing
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
+        :param rich_message: 完整的 Telegram Rich Markdown 正文，设置后替代普通文本
         :return: 编辑是否成功
         """
         if not self._bot:
@@ -1182,6 +1227,17 @@ class Telegram:
 
         parse_mode = self._normalize_parse_mode(parse_mode)
         try:
+            if rich_message:
+                reply_markup = (
+                    self._create_inline_keyboard(buttons) if buttons else None
+                )
+                return self.__edit_rich_message(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    rich_message=rich_message,
+                    reply_markup=reply_markup,
+                )
+
             # 组合标题和文本
             if title:
                 bold_title = self._format_title(title, parse_mode)
@@ -1350,6 +1406,94 @@ class Telegram:
                     e = fallback_err
             logger.error(f"编辑消息失败：{str(e)}")
             return False
+
+    @staticmethod
+    def _build_rich_message_chunks(
+            rich_message: str,
+    ) -> List[TelebotInputRichMessage]:
+        """
+        将 GitHub 风格 Markdown 转换并拆分为 Telegram Rich Message。
+
+        :param rich_message: 完整的 Rich Markdown 正文
+        :return: 满足 Telegram 字节数和块数量限制的消息片段
+        """
+        converted = richify(rich_message, mode="html")
+        return [
+            TelebotInputRichMessage(**chunk.to_dict())
+            for chunk in split_rich(converted)
+        ]
+
+    def __edit_rich_message(
+            self,
+            chat_id: Union[str, int],
+            message_id: Union[str, int],
+            rich_message: str,
+            reply_markup: Optional[InlineKeyboardMarkup] = None,
+    ) -> bool:
+        """
+        编辑 Telegram Rich Message。
+
+        :param chat_id: 聊天 ID
+        :param message_id: 原消息 ID
+        :param rich_message: 完整的 Rich Markdown 正文
+        :param reply_markup: 内联键盘
+        :return: 编辑是否成功
+        """
+        chunks = self._build_rich_message_chunks(rich_message)
+        if len(chunks) != 1:
+            logger.warning("Telegram Rich Message 超出单条限制，无法编辑原消息")
+            return False
+        try:
+            self._bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=int(message_id),
+                text=None,
+                rich_message=chunks[0],
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as err:
+            if self.__is_message_not_modified_error(err):
+                logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(err)}")
+                return True
+            logger.error(f"编辑 Telegram Rich Message 失败：{str(err)}")
+            return False
+
+    @retry(RetryException, logger=logger)
+    def __send_rich_message(
+            self,
+            chat_id: Union[str, int],
+            rich_message: str,
+            reply_markup: Optional[InlineKeyboardMarkup] = None,
+            reply_to_message_id: Optional[Union[str, int]] = None,
+    ) -> Any:
+        """
+        发送 Telegram Rich Message，超限内容自动拆分为多条。
+
+        :param chat_id: 目标聊天 ID
+        :param rich_message: 完整的 Rich Markdown 正文
+        :param reply_markup: 首条消息携带的键盘
+        :param reply_to_message_id: 首条消息回复的原消息 ID
+        :return: 最后一条已发送的 Telegram 消息
+        """
+        chunks = self._build_rich_message_chunks(rich_message)
+        reply_parameters = (
+            ReplyParameters(message_id=int(reply_to_message_id))
+            if reply_to_message_id is not None
+            else None
+        )
+        sent = None
+        try:
+            for index, chunk in enumerate(chunks):
+                sent = self._bot.send_rich_message(
+                    chat_id=chat_id,
+                    rich_message=chunk,
+                    reply_markup=reply_markup if index == 0 else None,
+                    reply_parameters=reply_parameters if index == 0 else None,
+                )
+            return sent
+        except Exception as err:
+            raise RetryException("发送 Telegram Rich Message 失败") from err
 
     def __send_request(
             self,

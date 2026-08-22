@@ -365,7 +365,10 @@ class TestAgentToolStreaming:
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "send_direct_message"
-        assert run_in_threadpool_mock.await_args.args[1].mtype == MessageType.Agent
+        notification = run_in_threadpool_mock.await_args.args[1]
+        assert notification.mtype == MessageType.Agent
+        assert notification.text == "hello"
+        assert notification.rich_message == "hello"
         assert handler.has_sent_message
 
     def test_flush_edits_message_via_threadpool(self):
@@ -392,6 +395,12 @@ class TestAgentToolStreaming:
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "edit_message"
+        assert (
+            run_in_threadpool_mock.await_args.kwargs["metadata"][
+                "telegram_rich_message"
+            ]
+            == "hello world"
+        )
         assert handler._sent_text == "hello world"
 
     def test_stop_streaming_waits_inflight_initial_flush_before_final_edit(self):

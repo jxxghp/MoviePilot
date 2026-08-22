@@ -26,12 +26,25 @@ class SendMessageInput(BaseModel):
         None,
         description="Optional image URL to send together with the message on channels that support images (such as Telegram and Slack)",
     )
+    rich_message: Optional[str] = Field(
+        None,
+        description=(
+            "Optional complete Telegram Rich Message body written in GitHub-style "
+            "Markdown. Telegram renders this instead of message, title, and image_url; "
+            "other channels use it as the plain-text fallback when message is empty."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_payload(self) -> "SendMessageInput":
         """校验消息内容和可选格式参数。"""
-        if not self.message and not self.title and not self.image_url:
-            raise ValueError("message、title、image_url 至少需要提供一个")
+        if (
+            not self.message
+            and not self.title
+            and not self.image_url
+            and not self.rich_message
+        ):
+            raise ValueError("message、title、image_url、rich_message 至少需要提供一个")
         return self
 
 
@@ -50,15 +63,18 @@ class SendMessageTool(MoviePilotTool):
     description: str = (
         "Send notification message to the user through configured notification channels "
         "(Telegram, Slack, WeChat, etc.). Supports optional image_url on channels that can "
-        "send images. This is a terminal response tool: after it sends the user-facing "
-        "message, do not send another final text reply with the same content."
+        "send images. On Telegram, prefer the optional rich_message parameter for structured "
+        "final replies; write its complete content in GitHub-style Markdown. This is a "
+        "terminal response tool: after it sends the user-facing message, do not send another "
+        "final text reply with the same content."
     )
     args_schema: Type[BaseModel] = SendMessageInput
     require_admin: bool = True
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据消息参数生成友好的提示消息"""
-        message = kwargs.get("message", "") or ""
+        rich_message = kwargs.get("rich_message") or ""
+        message = kwargs.get("message", "") or rich_message
         title = kwargs.get("title") or ""
         image_url = kwargs.get("image_url")
 
@@ -66,6 +82,8 @@ class SendMessageTool(MoviePilotTool):
         if len(message) > 50:
             message = message[:50] + "..."
 
+        if rich_message:
+            return f"发送富文本消息: {message}"
         if title and image_url:
             return f"发送图文消息: [{title}] {message}"
         if title:
@@ -79,15 +97,16 @@ class SendMessageTool(MoviePilotTool):
         message: Optional[str] = None,
         title: Optional[str] = None,
         image_url: Optional[str] = None,
+        rich_message: Optional[str] = None,
         **kwargs,
     ) -> str:
         """发送消息到当前会话渠道。"""
-        title = title or ("图片" if image_url and not message else "")
-        text = message or ""
+        title = title or ("图片" if image_url and not message and not rich_message else "")
+        text = message or rich_message or ""
 
         logger.info(
             f"执行工具: {self.name}, 参数: title={title}, message={text}, "
-            f"image_url={image_url}"
+            f"image_url={image_url}, rich_message={bool(rich_message)}"
         )
         try:
             await self.send_message(
@@ -100,6 +119,7 @@ class SendMessageTool(MoviePilotTool):
                     title=title,
                     text=text,
                     image=image_url,
+                    rich_message=rich_message,
                     save_history=False,
                 )
             )
