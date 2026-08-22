@@ -19,6 +19,7 @@ class _Executor:
     def __init__(self) -> None:
         self.calls = 0
         self.worker_thread_id: int | None = None
+        self.results: list[object] = []
 
     async def run(self, operation):
         """在线程中执行一个完整的同步操作。"""
@@ -26,7 +27,9 @@ class _Executor:
 
         def invoke():
             self.worker_thread_id = threading.get_ident()
-            return operation()
+            result = operation()
+            self.results.append(result)
+            return result
 
         return await asyncio.to_thread(invoke)
 
@@ -85,6 +88,7 @@ async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> No
     )
 
     assert executor.calls == 4
+    assert executor.results == [None, None, None, None]
     assert executor.worker_thread_id != caller_thread_id
     assert [name for name, _kwargs in repository.calls] == [
         "append_display_messages",

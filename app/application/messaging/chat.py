@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any, Optional, Protocol, TypeVar
+from typing import Any, Optional, Protocol
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
-
-
-T = TypeVar("T")
 
 
 def has_custom_agent_chat_title(value: Optional[str]) -> bool:
@@ -354,11 +351,16 @@ class AgentChatPersistenceService:
         self._repository = repository
         self._async_executor = async_executor
 
-    async def _run(self, operation: Callable[[SyncAgentChatRepository], T]) -> T:
-        """在线程 worker 中执行一个同步 AgentChat 持久化操作。"""
-        return await self._async_executor.run(
-            lambda: operation(self._repository())
-        )
+    async def _run_write(
+        self,
+        operation: Callable[[SyncAgentChatRepository], object],
+    ) -> None:
+        """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
+        def execute() -> None:
+            """执行同步写入，不让 ORM 对象越过 worker 边界。"""
+            operation(self._repository())
+
+        await self._async_executor.run(execute)
 
     async def async_append_display_messages(
         self,
@@ -373,7 +375,7 @@ class AgentChatPersistenceService:
         client_session_id: Optional[str] = None,
     ) -> None:
         """异步追加展示消息，等待同步事务取得确定终态。"""
-        await self._run(
+        await self._run_write(
             lambda repository: repository.append_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -400,7 +402,7 @@ class AgentChatPersistenceService:
         client_session_id: Optional[str] = None,
     ) -> None:
         """异步保存展示消息快照，实际写入由有界 worker 承接。"""
-        await self._run(
+        await self._run_write(
             lambda repository: repository.save_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -422,7 +424,7 @@ class AgentChatPersistenceService:
         messages: list[dict],
     ) -> None:
         """异步保存可恢复的原始消息。"""
-        await self._run(
+        await self._run_write(
             lambda repository: repository.save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -443,7 +445,7 @@ class AgentChatPersistenceService:
         client_session_id: Optional[str] = None,
     ) -> None:
         """异步写入首次生成的会话标题。"""
-        await self._run(
+        await self._run_write(
             lambda repository: repository.update_title_if_empty(
                 session_id=session_id,
                 user_id=user_id,
