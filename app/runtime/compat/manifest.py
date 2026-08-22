@@ -352,9 +352,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="sdk",
     ),
+    # 防抖器只为旧插件而存在，宿主零调用方，canonical 侧无对应实现，故驻留兼容面。
     "app.utils.debounce": ModuleAlias(
-        target="app.runtime.debounce",
-        replacement="app.runtime.debounce",
+        target="app.runtime.compat.debounce",
+        replacement="app.runtime.compat.debounce",
         introduced="v3.0.0",
         owner="runtime",
     ),

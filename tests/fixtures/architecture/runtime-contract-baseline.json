@@ -985,8 +985,8 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "runtime",
-        "replacement": "app.runtime.debounce",
-        "target": "app.runtime.debounce"
+        "replacement": "app.runtime.compat.debounce",
+        "target": "app.runtime.compat.debounce"
       },
       "app.utils.dom": {
         "introduced": "v3.0.0",

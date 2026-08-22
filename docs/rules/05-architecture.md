@@ -80,16 +80,41 @@ create additional top-level directory categories.
 
 ### Runtime boundaries
 
-| Path | Ownership |
-|---|---|
-| `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
-| `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
-| `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
-| `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
-| `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
-| `app/runtime/state.py` | Process restart and update state |
-| `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
-| `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
+`app/runtime` spans far more modules than a per-file ownership table can track,
+and such a table silently rots: it drifts from the tree and starts assigning
+responsibilities to files that no longer exist. Placement is therefore decided
+by a rule, and the rule is what this section fixes.
+
+**Criterion D — a directory exists because *when its members run* and *who may
+import them* differ, not because they share a topic word.**
+
+Ask in order. The first hit decides placement; parallel answers are not allowed.
+
+| # | Question | Hit → |
+|---|---|---|
+| D1 | Would deleting it break plugin code that is already written? | `compat/` |
+| D2 | Is its shape a port slot — registered by the composition root, resolved by extensions? | `hostports/` |
+| D3 | At which moment of the extension lifecycle does it run? | registration → admission; held state → registry; query → projection; discovery and loading → lifecycle |
+| D4 | None of the above | Process-level mechanism; stays flat at the runtime root |
+
+Tie-break: when two lifecycle phases both claim a module, it belongs to the
+earliest one.
+
+Directories follow from the criterion, not from subject matter:
+
+| Path | Admitted by | Contents |
+|---|---|---|
+| `app/runtime/*.py` (flat) | D4 | Process-level mechanisms owned by the process, not by any extension: deployment configuration, logging, cache, event facade, scheduling, threading, execution, rate limiting, process and reload state |
+| `app/runtime/hostports/` | D2 | Port slots only. Each module declares one protocol plus one module-level `HostPort` instance; `port.py` holds the generic. Every slot is injected in one place, by `app/startup/hostport_initializer.py` |
+| `app/runtime/extensions/` | D3 | Module, plugin, configured-service and managed-resource discovery, registration and lifecycle adapters |
+| `app/runtime/compat/` | D1 | Exact legacy import routing, resource preflight scanning and DEBUG diagnostics, plus modules the host itself no longer calls and only already-published plugins still import. `manifest.py` stays standard-library-only so the baseline script can load it without importing the host |
+
+`app/runtime/extensions/` has not yet been split along the D3 phases; until it
+is, D3 names phases rather than existing directories. New modules are still
+placed by asking D1–D4 in order.
+
+`app/runtime/config.py` does not move. Three workflow paths under `.github/`
+and three assertions in `tests/test_plugin_market_default.py` name it literally.
 
 `app/startup/` remains the established composition root and is not nested under
 runtime. It injects providers and callbacks, orders initialization/shutdown and
@@ -431,7 +456,6 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
-| `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
 | `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
 | `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
 | `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
