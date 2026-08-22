@@ -59,7 +59,7 @@ class DownloadHistoryOper(DbOper):
         """
         新增下载历史
         """
-        DownloadHistory(**kwargs).create(self._db)
+        self._stage_create(DownloadHistory(**kwargs))
 
     def stage_add(self, payload: dict) -> DownloadHistory:
         """在调用方同步 Session 中暂存下载历史并返回已分配 ID 的记录。"""
@@ -76,7 +76,7 @@ class DownloadHistoryOper(DbOper):
         """
         for file_item in file_items:
             downloadfile = DownloadFiles(**file_item)
-            downloadfile.create(self._db)
+            self._stage_create(downloadfile)
 
     def stage_add_files(self, file_items: List[dict]) -> None:
         """在调用方事务内批量暂存下载文件，不逐条提交。"""
@@ -89,7 +89,7 @@ class DownloadHistoryOper(DbOper):
         """
         清空下载历史文件记录
         """
-        DownloadFiles.truncate(self._db)
+        self._stage_truncate(DownloadFiles)
 
     def get_files_by_hash(self, download_hash: str, state: Optional[int] = None) -> List[DownloadFiles]:
         """
@@ -171,13 +171,13 @@ class DownloadHistoryOper(DbOper):
         """
         异步删除下载记录。
         """
-        await DownloadHistory.async_delete(self._db, historyid)
+        await self._stage_async_delete(DownloadHistory, historyid)
 
     def truncate(self):
         """
         清空下载记录
         """
-        DownloadHistory.truncate(self._db)
+        self._stage_truncate(DownloadHistory)
 
     def get_last_by(self, mtype=None, title: Optional[str] = None, year: Optional[str] = None,
                     season: Optional[str] = None, episode: Optional[str] = None,
@@ -230,7 +230,7 @@ class DownloadHistoryOper(DbOper):
         """
         删除下载记录
         """
-        DownloadHistory.delete(self._db, historyid)
+        self._stage_delete(DownloadHistory, historyid)
 
     def stage_delete_history(self, historyid: int) -> None:
         """暂存下载记录删除，不由模型装饰器提交事务。"""
@@ -244,4 +244,4 @@ class DownloadHistoryOper(DbOper):
         """
         删除下载文件记录
         """
-        DownloadFiles.delete(self._db, downloadfileid)
+        self._stage_delete(DownloadFiles, downloadfileid)

@@ -1,11 +1,11 @@
 import json
-from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
 from app.api import servcookie
+from app.runtime.config import settings
 
 pytestmark = pytest.mark.anyio
 
@@ -17,12 +17,11 @@ def anyio_backend():
 
 @pytest.fixture()
 def cookiecloud_app(tmp_path, monkeypatch):
-    settings = SimpleNamespace(
-        COOKIE_PATH=tmp_path,
-        COOKIECLOUD_ENABLE_LOCAL=True,
-        COOKIECLOUD_AUTH_HEADER=None,
-    )
-    monkeypatch.setattr(servcookie, "settings", settings)
+    """用启动组合根读取的同一 Settings 实例配置 CookieCloud 测试。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "COOKIECLOUD_ENABLE_LOCAL", True)
+    monkeypatch.setattr(settings, "COOKIECLOUD_AUTH_HEADER", None)
+    settings.COOKIE_PATH.mkdir(parents=True, exist_ok=True)
 
     app = FastAPI()
     app.include_router(servcookie.cookie_router, prefix="/cookiecloud")
@@ -37,8 +36,8 @@ def make_client(app):
 
 
 async def test_update_rejects_when_local_cookiecloud_disabled(cookiecloud_app):
-    servcookie.settings.COOKIECLOUD_ENABLE_LOCAL = False
-    servcookie.settings.COOKIECLOUD_AUTH_HEADER = "secret"
+    settings.COOKIECLOUD_ENABLE_LOCAL = False
+    settings.COOKIECLOUD_AUTH_HEADER = "secret"
 
     async with make_client(cookiecloud_app) as client:
         response = await client.post(
@@ -54,7 +53,7 @@ async def test_update_rejects_when_local_cookiecloud_disabled(cookiecloud_app):
 async def test_update_allows_legacy_clients_when_auth_header_unconfigured(
     cookiecloud_app, auth_header
 ):
-    servcookie.settings.COOKIECLOUD_AUTH_HEADER = auth_header
+    settings.COOKIECLOUD_AUTH_HEADER = auth_header
 
     async with make_client(cookiecloud_app) as client:
         response = await client.post(
@@ -64,13 +63,13 @@ async def test_update_allows_legacy_clients_when_auth_header_unconfigured(
 
     assert response.status_code == 200
     assert response.json() == {"action": "done"}
-    assert json.loads((servcookie.settings.COOKIE_PATH / "abcde.json").read_text()) == {
+    assert json.loads((settings.COOKIE_PATH / "abcde.json").read_text()) == {
         "encrypted": "payload"
     }
 
 
 async def test_update_allows_matching_auth_header(cookiecloud_app):
-    servcookie.settings.COOKIECLOUD_AUTH_HEADER = "  secret-token  "
+    settings.COOKIECLOUD_AUTH_HEADER = "  secret-token  "
 
     async with make_client(cookiecloud_app) as client:
         response = await client.post(
@@ -85,7 +84,7 @@ async def test_update_allows_matching_auth_header(cookiecloud_app):
 
 @pytest.mark.parametrize("headers", [{}, {"X-CookieCloud-Auth": "wrong"}])
 async def test_update_rejects_missing_or_wrong_auth_header(cookiecloud_app, headers):
-    servcookie.settings.COOKIECLOUD_AUTH_HEADER = "secret-token"
+    settings.COOKIECLOUD_AUTH_HEADER = "secret-token"
 
     async with make_client(cookiecloud_app) as client:
         response = await client.post(
@@ -99,7 +98,7 @@ async def test_update_rejects_missing_or_wrong_auth_header(cookiecloud_app, head
 
 
 async def test_get_routes_do_not_require_auth_header(cookiecloud_app, monkeypatch):
-    servcookie.settings.COOKIECLOUD_AUTH_HEADER = "secret-token"
+    settings.COOKIECLOUD_AUTH_HEADER = "secret-token"
 
     async def load_encrypt_data(uuid):
         assert uuid == "abcde"

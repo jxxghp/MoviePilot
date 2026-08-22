@@ -14,14 +14,17 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.domain.context import Context
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
 from app.runtime.events import eventmanager, Event
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.search.state import (
@@ -155,7 +158,7 @@ class SearchChain(ChainBase):
 
         settings 可能被环境变量写成字符串，这里统一兜底为 1，避免异常配置导致搜索中断。
         """
-        pages = settings.SEARCH_RESOURCE_PAGES
+        pages = get_chain_runtime_config_snapshot().search_resource_pages
         try:
             pages = int(pages)
         except (TypeError, ValueError):
@@ -199,7 +202,10 @@ class SearchChain(ChainBase):
         """
         检查AI推荐功能是否已启用。
         """
-        return settings.AI_AGENT_ENABLE and settings.AI_RECOMMEND_ENABLED
+        return (
+            self.runtime_config.ai_agent_enable
+            and self.runtime_config.ai_recommend_enabled
+        )
 
     @staticmethod
     def _calculate_recommend_request_hash(
@@ -425,7 +431,7 @@ class SearchChain(ChainBase):
         """
         items: List[str] = []
         valid_indices: List[int] = []
-        max_items = settings.AI_RECOMMEND_MAX_ITEMS or 50
+        max_items = get_chain_runtime_config_snapshot().ai_recommend_max_items or 50
 
         if filtered_indices:
             results_to_process = [
@@ -555,7 +561,7 @@ class SearchChain(ChainBase):
                     return
 
                 user_preference = (
-                        settings.AI_RECOMMEND_USER_PREFERENCE
+                        self.runtime_config.ai_recommend_user_preference
                         or "Prefer high-quality resources with more seeders"
                 )
                 search_results_text = (
@@ -1211,8 +1217,9 @@ class SearchChain(ChainBase):
                                                        mediainfo.tw_title,
                                                        mediainfo.sg_title] if k]))
             # 限制搜索关键词数量
-            if settings.MAX_SEARCH_NAME_LIMIT:
-                keywords = keywords[:settings.MAX_SEARCH_NAME_LIMIT]
+            max_names = get_chain_runtime_config_snapshot().max_search_name_limit
+            if max_names:
+                keywords = keywords[:max_names]
 
         return season_episodes, keywords
 
@@ -1274,7 +1281,10 @@ class SearchChain(ChainBase):
 
             finished_count = 0
             filtered_by_site: Dict[Tuple[Optional[int], Optional[str]], List[TorrentInfo]] = {}
-            max_workers = min(len(site_torrents), settings.CONF.threadpool or len(site_torrents))
+            max_workers = min(
+                len(site_torrents),
+                self.runtime_config.search_threadpool_size or len(site_torrents),
+            )
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 all_tasks = {
                     executor.submit(__do_site_filter, site_torrent_list): site_key
@@ -1539,7 +1549,7 @@ class SearchChain(ChainBase):
                 mediainfo,
             )
             torrents.extend(matched_torrents)
-            if matched_torrents and not settings.SEARCH_MULTIPLE_NAME:
+            if matched_torrents and not self.runtime_config.search_multiple_name:
                 break
         return self._build_music_contexts(
             torrents=torrents,
@@ -1572,7 +1582,7 @@ class SearchChain(ChainBase):
                 mediainfo,
             )
             torrents.extend(matched_torrents)
-            if matched_torrents and not settings.SEARCH_MULTIPLE_NAME:
+            if matched_torrents and not self.runtime_config.search_multiple_name:
                 break
         return await run_in_threadpool(
             self._build_music_contexts,
@@ -1618,7 +1628,7 @@ class SearchChain(ChainBase):
                     "items": [],
                     "total_items": len(torrents),
                 }
-            if keyword_matched and not settings.SEARCH_MULTIPLE_NAME:
+            if keyword_matched and not self.runtime_config.search_multiple_name:
                 break
 
         contexts = await run_in_threadpool(
@@ -1726,7 +1736,7 @@ class SearchChain(ChainBase):
             torrents.extend(results)
 
             # 有结果则停止
-            if not settings.SEARCH_MULTIPLE_NAME and torrents:
+            if not self.runtime_config.search_multiple_name and torrents:
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
@@ -1816,7 +1826,7 @@ class SearchChain(ChainBase):
             )
             search_count += 1
             # 未开启多名称搜索时，有结果则停止
-            if not settings.SEARCH_MULTIPLE_NAME and torrents:
+            if not self.runtime_config.search_multiple_name and torrents:
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
@@ -1918,7 +1928,7 @@ class SearchChain(ChainBase):
                 }
 
             search_count += 1
-            if not settings.SEARCH_MULTIPLE_NAME and torrents:
+            if not self.runtime_config.search_multiple_name and torrents:
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
@@ -2156,7 +2166,7 @@ class SearchChain(ChainBase):
                 ) or []
             )
             search_count += 1
-            if not settings.SEARCH_MULTIPLE_NAME and subtitles:
+            if not self.runtime_config.search_multiple_name and subtitles:
                 logger.info(f"共搜索到 {len(subtitles)} 个字幕，停止搜索")
                 break
 
@@ -2246,7 +2256,7 @@ class SearchChain(ChainBase):
                 }
 
             search_count += 1
-            if not settings.SEARCH_MULTIPLE_NAME and subtitles:
+            if not self.runtime_config.search_multiple_name and subtitles:
                 logger.info(f"共搜索到 {len(subtitles)} 个字幕，停止搜索")
                 break
 
@@ -2331,7 +2341,10 @@ class SearchChain(ChainBase):
         # 结果集
         results = []
         # 同一站点按页顺序抓取，避免空页后仍继续请求该站点的后续页。
-        max_workers = min(len(indexer_sites), settings.CONF.threadpool or len(indexer_sites))
+        max_workers = min(
+            len(indexer_sites),
+            self.runtime_config.search_threadpool_size or len(indexer_sites),
+        )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             pending_tasks = {}
 
@@ -2444,7 +2457,9 @@ class SearchChain(ChainBase):
                               text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         # 结果集
         results = []
-        semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
+        semaphore = asyncio.Semaphore(
+            self.runtime_config.search_threadpool_size or total_num
+        )
 
         async def search_site_page(site: dict, search_page: int) -> List[TorrentInfo]:
             """
@@ -2579,7 +2594,9 @@ class SearchChain(ChainBase):
             "total": total_num
         }
 
-        semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
+        semaphore = asyncio.Semaphore(
+            self.runtime_config.search_threadpool_size or total_num
+        )
 
         async def search_site(site: dict, search_page: int) -> List[TorrentInfo]:
             """
@@ -2701,7 +2718,9 @@ class SearchChain(ChainBase):
         await progress.update(value=0,
                               text=f"开始搜索字幕，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         results = []
-        semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
+        semaphore = asyncio.Semaphore(
+            self.runtime_config.search_threadpool_size or total_num
+        )
 
         async def search_site_page(site: dict, search_page: int) -> List[SubtitleInfo]:
             """
@@ -2816,7 +2835,9 @@ class SearchChain(ChainBase):
             "total": total_num
         }
 
-        semaphore = asyncio.Semaphore(settings.CONF.threadpool or total_num)
+        semaphore = asyncio.Semaphore(
+            self.runtime_config.search_threadpool_size or total_num
+        )
 
         async def search_site(site: dict, search_page: int) -> List[SubtitleInfo]:
             """

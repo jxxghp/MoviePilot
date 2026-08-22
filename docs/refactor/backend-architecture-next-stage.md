@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与阶段 3（ARCH-230～232）已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；按既定范围暂不处理插件仓适配、Outbox 外围扩展和 25 个存量超长方法拆分
 
 ## 1. 结论先行
 
@@ -585,6 +585,13 @@ app/api/dependencies/           # 按领域拆分依赖工厂
   测试显式注入快照，不再依赖 endpoint 模块中的全局配置别名。
 - 直接调用 endpoint 和显式构造 `ChainRuntimeContext` 的旧测试/兼容入口仍有 fallback；正式 FastAPI 与
   Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
+- 收尾批次把 API 与 Chain 余下直接配置读取全部迁入类型化 snapshot；Scheduler 继续保持为零。
+  `HostRuntime` 新增可变部署设置服务，只供系统设置管理 API 使用，业务 API/Chain 只接收 frozen 字段。
+  snapshot 构造集中到 `app/startup/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
+  漂移。canonical `settings` 直接导入低水位从 154 降到 137，`SystemConfigOper()` 保持 14 个。
+- `ApiRuntimeConfig` 已覆盖搜索来源、媒体/字幕/音频后缀、重命名格式、WebPush、CookieCloud、根目录和
+  版本标识；`ChainRuntimeConfig` 覆盖搜索、下载、整理、刮削、AI、代理、缓存、链接、路径和 TMDB 图片域。
+  元数据缓存 TTL 使用动态 provider，在保留热更新语义的同时不再让 Chain 导入全局 settings。
 
 ### 阶段 4：把动态模块和事件变成可演进契约
 
@@ -706,6 +713,11 @@ ModuleMethodSpec(
 - 详细规则和验收证据见 `docs/refactor/module-quality-scale.md`；自动测试阻止 profile 使用未登记规则，
   并要求今后修改模块时将对应 profile 纳入同一提交。
 
+**收口记录（2026-08-22）**：39 个宿主 Module 已全部显式进入 assessed，不再以通用 fallback 把
+37 个模块标成“尚未审查”。所有模块共同由零真实网络、async 阻塞扫描、Module Contract V2 和 owner
+四项机器门禁覆盖；能力专属的鉴权、限流、并发、敏感日志与 reload/stop 仍按 profile 精确豁免，
+不会把 assessed 误读为十项满分。未知第三方模块继续使用 legacy 兼容视图，Module ABI 未变。
+
 ### 阶段 5：定义后台可靠性，不先引入分布式队列
 
 #### ARCH-250：后台动作可靠性分类 ADR
@@ -800,6 +812,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 123 个查询装饰器，
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
+- 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
+  Session 只 stage，由 Application UoW 提交；无 Session 的旧 Oper 入口才委托 Startup 的短事务执行器。
+  Base 包装器继续保留给插件/旧模型 ABI，新增 AST 门禁禁止宿主 Oper 回退到隐式提交。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -925,6 +940,9 @@ Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/start
 
 异步安全与契约收口继续纳管 scheduling facade、Event error policy、Module dispatcher 和 async blocking
 scanner，strict 清单扩大到 26 个源文件；已登记范围保持零错误，未使用全文件 ignore 或 `cast(Any, ...)`。
+
+收尾批次继续纳管 Startup 配置快照、Module quality、Compat manifest/diagnostics、插件运行时窄端口、
+Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源文件并保持零错误。
 
 #### ARCH-271：复杂度和端点预算 ratchet
 
@@ -1133,10 +1151,10 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 178 | 新增为 0；每迁移一个切片净减少，baseline 不增 |
-| 新写用例事务 | 部分 UoW | 100% 由入口/Application 边界拥有 Session/UoW |
-| 高频 Module 契约 | 96 个 legacy 默认 | 首批 20 个高频方法有完整参数、结果、错误、timeout 描述 |
-| Event payload | 53 类型 / 20 专用 model | 宿主 producer 使用的 EventType 100% 登记 payload 与可靠性 |
+| Model 事务装饰器 | 当前 123 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
+| 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
+| Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |
 | 超长新端点/用例 | 无增量门禁 | 新代码不越预算；旧 baseline 只降不增 |
 | Request 关联 | 无统一 ID | HTTP → Application → Module/Event/外部请求可关联 |
 | 关键后台副作用 | commit 后存在崩溃窗口 | 选定 pilot 可恢复、幂等、可查询失败和重试次数 |

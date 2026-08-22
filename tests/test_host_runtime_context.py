@@ -29,6 +29,7 @@ from app.application.configuration import (
     ApiRuntimeConfig,
     ChainRuntimeConfig,
     RuntimeConfiguration,
+    RuntimeSettingsService,
     SchedulerRuntimeConfig,
 )
 
@@ -86,6 +87,22 @@ class _Outbox:
         """模拟收口 durable intent。"""
 
 
+class _RuntimeSettings:
+    """提供 HostRuntime 设置服务所需的最小测试合同。"""
+
+    def model_dump(self, *, include=None, exclude=None):
+        """返回空设置快照。"""
+        return {}
+
+    def update_settings(self, env):
+        """返回批量更新成功结果。"""
+        return {key: (True, "") for key in env}
+
+    def update_setting(self, key, value):
+        """返回单项更新成功结果。"""
+        return True, ""
+
+
 def _runtime() -> HostRuntime:
     """构造不加载数据库引擎或 PluginManager 的假宿主运行时。"""
     async def async_session():
@@ -141,6 +158,7 @@ def _runtime() -> HostRuntime:
             ),
             chain=lambda: ChainRuntimeConfig(media_extensions=(".mkv",)),
         ),
+        settings=RuntimeSettingsService(_RuntimeSettings()),
     )
 
 

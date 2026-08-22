@@ -321,13 +321,12 @@ def test_save_subtitle_response_creates_missing_temp_directory(monkeypatch, tmp_
     temp_path = tmp_path / "missing-temp"
     assert not temp_path.exists()
 
-    monkeypatch.setattr(
-        download_module,
-        "settings",
-        SimpleNamespace(TEMP_PATH=temp_path, RMT_SUBEXT=settings.RMT_SUBEXT),
-    )
     monkeypatch.setattr(download_module, "StorageChain", lambda: storage_chain)
     chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        temporary_path=temp_path,
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+    )
     subtitle = SubtitleInfo(
         title="Demo Movie",
         enclosure="https://example.test/subtitle.srt",
@@ -363,15 +362,14 @@ def test_save_subtitle_response_accepts_rar_filename_from_header(monkeypatch, tm
         extract_dir.mkdir(parents=True, exist_ok=True)
         extracted_subtitle.write_text("subtitle", encoding="utf-8")
 
-    monkeypatch.setattr(
-        download_module,
-        "settings",
-        SimpleNamespace(TEMP_PATH=temp_path, RMT_SUBEXT=settings.RMT_SUBEXT),
-    )
     monkeypatch.setattr(download_module, "StorageChain", lambda: storage_chain)
     monkeypatch.setattr(download_module.SystemUtils, "unpack_archive", fake_unpack_archive)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        temporary_path=temp_path,
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+    )
     subtitle = SubtitleInfo(
         title="Hypnosis",
         enclosure="https://audiences.me/downloadsubs.php?torrentid=666519&subid=2195",
@@ -401,14 +399,13 @@ def test_save_subtitle_response_rejects_unsupported_filename_from_header(monkeyp
         headers={"content-disposition": 'attachment; filename="error.html"'},
     )
 
-    monkeypatch.setattr(
-        download_module,
-        "settings",
-        SimpleNamespace(TEMP_PATH=temp_path, RMT_SUBEXT=settings.RMT_SUBEXT),
-    )
     monkeypatch.setattr(download_module, "StorageChain", lambda: storage_chain)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        temporary_path=temp_path,
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+    )
     subtitle = SubtitleInfo(
         title="Hypnosis",
         enclosure="https://audiences.me/downloadsubs.php?torrentid=666519&subid=2195",

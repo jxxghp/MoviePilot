@@ -13,7 +13,7 @@ from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
@@ -112,11 +112,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """初始化文件整理处理链。"""
         super().__init__()
         # 主要媒体文件后缀
-        self._media_exts = settings.RMT_MEDIAEXT
+        self._media_exts = self.runtime_config.video_extensions
         # 字幕文件后缀
-        self._subtitle_exts = settings.RMT_SUBEXT
+        self._subtitle_exts = self.runtime_config.subtitle_extensions
         # 音频文件后缀
-        self._audio_exts = settings.RMT_AUDIOEXT
+        self._audio_exts = self.runtime_config.audio_extensions
         # 可处理的文件后缀（视频文件、字幕、音频文件）
         self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts
         # 待整理任务队列
@@ -154,7 +154,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         启动文件整理线程
         """
         self._queue_active = True
-        for i in range(settings.TRANSFER_THREADS):
+        for i in range(self.runtime_config.transfer_threads):
             logger.info(f"启动文件整理线程 {i + 1} ...")
             thread = threading.Thread(
                 target=self.__start_transfer, name=f"transfer-{i}", daemon=True
@@ -341,8 +341,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             # AI智能体自动重试整理
             if (
                     history
-                    and settings.AI_AGENT_ENABLE
-                    and settings.AI_AGENT_RETRY_TRANSFER
+                    and self.runtime_config.ai_agent_enable
+                    and self.runtime_config.ai_agent_retry_transfer
             ):
                 try:
                     # 使用 download_hash 或源文件父目录作为分组键，
@@ -554,7 +554,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             username=task.username,
             manual_identity=manual_identity,
         )
-        if not settings.TRANSFER_FAILURE_NOTIFICATION_AGGREGATION:
+        if not self.runtime_config.transfer_failure_notification_aggregation:
             self._send_transfer_failure_notifications([notification])
             return
         try:
@@ -616,7 +616,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             text = "\n".join(text_parts)
             buttons = [[{
                 "text": "批量处理",
-                "url": settings.MP_DOMAIN("#/history"),
+                "url": self.runtime_config.history_url,
             }]]
             title = f"{first.media_title} 入库失败（{len(notifications)} 个文件）"
         self.post_message(
@@ -626,7 +626,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 text=text,
                 image=first.image,
                 username=first.username,
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
                 buttons=buttons,
             )
         )
@@ -855,7 +855,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
     def __expire_stale_transfer_tasks(self):
         """清理外部接管后失去状态心跳的运行中整理任务。"""
-        timeout_minutes = max(int(settings.TRANSFER_TASK_TIMEOUT), 0)
+        timeout_minutes = max(int(self.runtime_config.transfer_task_timeout), 0)
         expire_tasks = getattr(self.jobview, "expire_stale_running_tasks", None)
         expired_tasks = (
             expire_tasks(timeout_seconds=timeout_minutes * 60)
@@ -1110,8 +1110,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     # AI智能体自动重试整理
                     if (
                             his
-                            and settings.AI_AGENT_ENABLE
-                            and settings.AI_AGENT_RETRY_TRANSFER
+                            and self.runtime_config.ai_agent_enable
+                            and self.runtime_config.ai_agent_retry_transfer
                     ):
                         try:
                             # 使用 download_hash 或源文件父目录作为分组键
@@ -1136,7 +1136,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
             if (
-                    not settings.SCRAP_FOLLOW_TMDB
+                    not self.runtime_config.scrape_follow_tmdb
                     and mediainfo.media_source == MediaSource.TMDB
             ):
                 transfer_history = transferhis.get_by_media_identity(
@@ -2533,7 +2533,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         source=source,
                         text=errmsg,
                         userid=userid,
-                        link=settings.MP_DOMAIN("#/history"),
+                        link=self.runtime_config.history_url,
                         save_history=False,
                     )
                 )
@@ -2570,7 +2570,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     source=source,
                     text=errmsg,
                     userid=userid,
-                    link=settings.MP_DOMAIN("#/history"),
+                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -2734,7 +2734,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 ctype=ContentType.OrganizeSuccess,
                 image=mediainfo.get_message_image(),
                 username=username,
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
             ),
             meta=meta,
             mediainfo=mediainfo,

@@ -21,7 +21,7 @@ class SiteOper(DbOper):
         """
         site = Site(**kwargs)
         if not site.get_by_domain(self._db, kwargs.get("domain")):
-            site.create(self._db)
+            self._stage_create(site)
             return True, "新增站点成功"
         return False, "站点已存在"
 
@@ -113,7 +113,7 @@ class SiteOper(DbOper):
         """
         删除站点
         """
-        Site.delete(self._db, sid)
+        self._stage_delete(Site, sid)
 
     def reset(self) -> None:
         """清空站点表；兼容入口的事务由组合根统一持有。"""
@@ -130,7 +130,7 @@ class SiteOper(DbOper):
         site = Site.get(self._db, sid)
         if not site:
             return None
-        site.update(self._db, payload)
+        self._stage_update(site, payload)
         return site
 
     async def async_update(self, sid: int, payload: dict) -> Optional[Site]:
@@ -139,7 +139,7 @@ class SiteOper(DbOper):
         """
         site = await self.async_get(sid)
         if site:
-            await site.async_update(self._db, payload)
+            await self._stage_async_update(site, payload)
         return site
 
     def get_by_domain(self, domain: str) -> Optional[Site]:
@@ -179,7 +179,7 @@ class SiteOper(DbOper):
         site = Site.get_by_domain(self._db, domain)
         if not site:
             return False, "站点不存在"
-        site.update(self._db, {
+        self._stage_update(site, {
             "cookie": cookies
         })
         return True, "更新站点Cookie成功"
@@ -191,7 +191,7 @@ class SiteOper(DbOper):
         site = Site.get_by_domain(self._db, domain)
         if not site:
             return False, "站点不存在"
-        site.update(self._db, {
+        self._stage_update(site, {
             "rss": rss
         })
         return True, "更新站点RSS地址成功"
@@ -215,10 +215,10 @@ class SiteOper(DbOper):
         if siteuserdatas:
             # 存在则更新
             if not payload.get("err_msg"):
-                siteuserdatas[0].update(self._db, payload)
+                self._stage_update(siteuserdatas[0], payload)
         else:
             # 不存在则插入
-            SiteUserData(**payload).create(self._db)
+            self._stage_create(SiteUserData(**payload))
         return True, "更新站点用户数据成功"
 
     def get_userdata(self) -> List[SiteUserData]:
@@ -287,9 +287,11 @@ class SiteOper(DbOper):
         icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
         siteicon = self.get_icon_by_domain(domain)
         if not siteicon:
-            SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64).create(self._db)
+            self._stage_create(
+                SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64)
+            )
         elif icon_base64:
-            siteicon.update(self._db, {
+            self._stage_update(siteicon, {
                 "url": icon_url,
                 "base64": icon_base64
             })
@@ -313,7 +315,7 @@ class SiteOper(DbOper):
                     note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
                 avg_seconds = sum([v for v in note.values()]) // avg_times
 
-            sta.update(self._db, {
+            self._stage_update(sta, {
                 "success": sta.success + 1,
                 "seconds": avg_seconds or sta.seconds,
                 "lst_state": 0,
@@ -326,7 +328,7 @@ class SiteOper(DbOper):
                 note = {
                     lst_date: seconds or 1
                 }
-            SiteStatistic(
+            self._stage_create(SiteStatistic(
                 domain=domain,
                 success=1,
                 fail=0,
@@ -334,7 +336,7 @@ class SiteOper(DbOper):
                 lst_state=0,
                 lst_mod_date=lst_date,
                 note=note
-            ).create(self._db)
+            ))
 
     def fail(self, domain: str):
         """
@@ -343,19 +345,19 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = SiteStatistic.get_by_domain(self._db, domain)
         if sta:
-            sta.update(self._db, {
+            self._stage_update(sta, {
                 "fail": sta.fail + 1,
                 "lst_state": 1,
                 "lst_mod_date": lst_date
             })
         else:
-            SiteStatistic(
+            self._stage_create(SiteStatistic(
                 domain=domain,
                 success=0,
                 fail=1,
                 lst_state=1,
                 lst_mod_date=lst_date
-            ).create(self._db)
+            ))
 
     async def async_success(self, domain: str, seconds: Optional[int] = None):
         """
@@ -375,7 +377,7 @@ class SiteOper(DbOper):
                     note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
                 avg_seconds = sum([v for v in note.values()]) // avg_times
 
-            await sta.async_update(self._db, {
+            await self._stage_async_update(sta, {
                 "success": sta.success + 1,
                 "seconds": avg_seconds or sta.seconds,
                 "lst_state": 0,
@@ -388,7 +390,7 @@ class SiteOper(DbOper):
                 note = {
                     lst_date: seconds or 1
                 }
-            await SiteStatistic(
+            await self._stage_async_create(SiteStatistic(
                 domain=domain,
                 success=1,
                 fail=0,
@@ -396,7 +398,7 @@ class SiteOper(DbOper):
                 lst_state=0,
                 lst_mod_date=lst_date,
                 note=note
-            ).async_create(self._db)
+            ))
 
     async def async_fail(self, domain: str):
         """
@@ -405,16 +407,16 @@ class SiteOper(DbOper):
         lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sta = await SiteStatistic.async_get_by_domain(self._db, domain)
         if sta:
-            await sta.async_update(self._db, {
+            await self._stage_async_update(sta, {
                 "fail": sta.fail + 1,
                 "lst_state": 1,
                 "lst_mod_date": lst_date
             })
         else:
-            await SiteStatistic(
+            await self._stage_async_create(SiteStatistic(
                 domain=domain,
                 success=0,
                 fail=1,
                 lst_state=1,
                 lst_mod_date=lst_date
-            ).async_create(self._db)
+            ))

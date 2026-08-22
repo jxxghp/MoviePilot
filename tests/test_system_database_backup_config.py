@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from app.api.endpoints import system as system_endpoint
+from app.runtime.config import settings
 
 
 @pytest.mark.parametrize(
@@ -75,7 +76,7 @@ def test_set_env_rejects_invalid_database_backup_policy_without_partial_write() 
         system_endpoint,
         "_validate_llm_server_tool_config",
         return_value=None,
-    ), patch.object(type(system_endpoint.settings), "update_settings") as update_settings:
+    ), patch.object(type(settings), "update_settings") as update_settings:
         response = asyncio.run(system_endpoint.set_env_setting(env=env, _=object()))
 
     assert response.success is False
@@ -85,7 +86,7 @@ def test_set_env_rejects_invalid_database_backup_policy_without_partial_write() 
 
 def test_database_backup_default_path_tracks_config_directory(tmp_path, monkeypatch) -> None:
     """未显式配置目录时应跟随当前配置根，而不是写死 Docker 路径。"""
-    monkeypatch.setattr(system_endpoint.settings, "CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(system_endpoint.settings, "DB_BACKUP_PATH", None)
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "DB_BACKUP_PATH", None)
 
-    assert system_endpoint.settings.DATABASE_BACKUP_PATH == tmp_path / "database_backup"
+    assert settings.DATABASE_BACKUP_PATH == tmp_path / "database_backup"

@@ -34,7 +34,7 @@ from app.application.plugin.config import PluginConfigCommand
 from app.application.commands import init_commands
 from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.cache import async_fresh
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.runtime.extensions.plugin.contracts import (
     PluginDashboardError,
@@ -74,7 +74,7 @@ async def _get_market_plugin_from_repo(
     只读取指定插件仓库的市场元数据，避免单插件详情触发全部市场刷新。
     """
     market_plugins = await plugin_manager.async_get_plugins_from_market(
-        repo_url, settings.VERSION_FLAG, force
+        repo_url, get_api_runtime_config_snapshot().version_flag, force
     )
     market_plugin = next(
         (
@@ -84,7 +84,7 @@ async def _get_market_plugin_from_repo(
         ),
         None,
     )
-    if market_plugin or not settings.VERSION_FLAG:
+    if market_plugin or not get_api_runtime_config_snapshot().version_flag:
         return market_plugin
 
     compatible_plugins = await plugin_manager.async_get_plugins_from_market(
@@ -783,7 +783,7 @@ async def plugin_static_file(
 
     source_plugin_id = PluginManager().get_plugin_source_id(plugin_id)
     plugin_base_dir = (
-        AsyncPath(settings.ROOT_PATH)
+        AsyncPath(get_api_runtime_config_snapshot().root_path)
         / "app"
         / "plugins"
         / source_plugin_id.lower()
@@ -1043,7 +1043,12 @@ def uninstall_plugin(
         plugin_manager.delete_plugin_config(plugin_id)
         plugin_manager.delete_plugin_data(plugin_id)
         # 删除分身文件
-        plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+        plugin_base_dir = (
+            get_api_runtime_config_snapshot().root_path
+            / "app"
+            / "plugins"
+            / plugin_id.lower()
+        )
         if plugin_base_dir.exists():
             try:
                 shutil.rmtree(plugin_base_dir)

@@ -23,7 +23,7 @@ from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -39,7 +39,10 @@ from app.application.chain.data import (
     SitePortProxy as SiteOper,
     SubscribePortProxy as SubscribeOper,
 )
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
@@ -874,10 +877,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __subscribe_added_link(mtype: MediaType) -> str:
         """返回订阅类型对应的前端详情入口。"""
         if mtype == MediaType.TV:
-            return settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            return get_chain_runtime_config_snapshot().television_subscribe_url
         if mtype == MediaType.MUSIC:
-            return settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
-        return settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+            return get_chain_runtime_config_snapshot().music_subscribe_url
+        return get_chain_runtime_config_snapshot().movie_subscribe_url
 
     @staticmethod
     def __subscribe_report_payload(context: _SubscribePostCommitContext) -> dict:
@@ -2938,11 +2941,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         subscribeoper.delete(subscribe.id)
         # 发送通知
         if mediainfo.type == MediaType.TV:
-            link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            link = self.runtime_config.television_subscribe_url
         elif mediainfo.type == MediaType.MUSIC:
-            link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
+            link = self.runtime_config.music_subscribe_url
         else:
-            link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+            link = self.runtime_config.movie_subscribe_url
         # 完成订阅按规则发送消息
         self.post_message(
             _SchemaMessage(
@@ -3195,11 +3198,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if not default_subscribe_key:
             return None
 
-        # 默认订阅规则
-        if hasattr(settings, default_subscribe_key):
-            value = getattr(settings, default_subscribe_key)
-        else:
-            value = _system_config().get(default_subscribe_key)
+        # 默认订阅规则属于持久化用户配置，不再从部署 Settings 猜测同名属性。
+        value = _system_config().get(default_subscribe_key)
 
         if not value:
             return None
@@ -3259,7 +3259,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     info = _SchemaSubscribeEpisodeInfo()
                     info.title = episode.name
                     info.description = episode.overview
-                    info.backdrop = settings.TMDB_IMAGE_URL(episode.still_path, "w500")
+                    info.backdrop = self.runtime_config.tmdb_image_url(
+                        episode.still_path,
+                        "w500",
+                    )
                     episodes[episode.episode_number] = info
         elif subscribe.type == MediaType.TV.value:
             # 根据开始结束集计算集信息

@@ -4,6 +4,7 @@ import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+from app.runtime.config import settings as runtime_settings
 from app.testing import stub_modules
 
 
@@ -151,7 +152,7 @@ class NettestSecurityTest(unittest.TestCase):
             "_hostname_addresses_async",
             new=AsyncMock(return_value=[ipaddress.ip_address("198.18.16.96")]),
         ), patch.object(
-            system_endpoint.settings,
+            runtime_settings,
             "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
             ["198.18.0.0/15"],
         ), patch(
@@ -241,7 +242,7 @@ class NettestSecurityTest(unittest.TestCase):
                 )
 
         with patch.object(system_endpoint, "AsyncRequestUtils", FakeAsyncRequestUtils), patch.object(
-            system_endpoint.settings,
+            runtime_settings,
             "GITHUB_PROXY",
             "https://ghproxy.example/",
         ):
@@ -313,7 +314,7 @@ class NettestSecurityTest(unittest.TestCase):
                 return SimpleNamespace(status_code=200, text="MoviePilot README")
 
         with patch.object(system_endpoint, "AsyncRequestUtils", FakeAsyncRequestUtils), patch.object(
-            system_endpoint.settings,
+            runtime_settings,
             "GITHUB_PROXY",
             "https://ghproxy.example/",
         ):
@@ -343,7 +344,7 @@ class NettestSecurityTest(unittest.TestCase):
                 return SimpleNamespace(status_code=200, text="proxy landing page")
 
         with patch.object(system_endpoint, "AsyncRequestUtils", FakeAsyncRequestUtils), patch.object(
-            system_endpoint.settings,
+            runtime_settings,
             "PIP_PROXY",
             "https://pypi.tuna.tsinghua.edu.cn/simple/",
         ):

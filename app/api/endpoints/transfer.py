@@ -17,7 +17,8 @@ from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_history_lookup_service
@@ -59,7 +60,9 @@ def query_name(
         return _SchemaResponse(success=False, message="未识别到新名称")
     if filetype == "dir":
         media_path = DirectoryHelper.get_media_root_path(
-            rename_format=settings.RENAME_FORMAT(context.media_info.type),
+            rename_format=get_api_runtime_config_snapshot().rename_format(
+                context.media_info.type
+            ),
             rename_path=Path(new_path),
             media_type=context.media_info.type,
         )

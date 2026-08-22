@@ -159,9 +159,9 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
-        "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+        "app.runtime.config.settings.AI_AGENT_ENABLE", False
     ), patch(
-        "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+        "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
     ):
         state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
 
@@ -205,9 +205,9 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
-        "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+        "app.runtime.config.settings.AI_AGENT_ENABLE", False
     ), patch(
-        "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+        "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
     ):
         state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
 
@@ -257,7 +257,7 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
-        "app.chain.transfer.settings.AI_AGENT_ENABLE",
+        "app.runtime.config.settings.AI_AGENT_ENABLE",
         False,
     ):
         state, errmsg = chain._TransferChain__default_callback(task, transferinfo)

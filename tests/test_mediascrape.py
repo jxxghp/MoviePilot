@@ -1,5 +1,6 @@
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 # ruff: noqa: E402
@@ -414,8 +415,7 @@ class TestMediaScrapingImages(unittest.TestCase):
     @patch("app.chain.scraping.RequestUtils")
     @patch("app.chain.scraping.NamedTemporaryFile")
     @patch("app.chain.scraping.Path.chmod")
-    @patch("app.chain.scraping.settings")
-    def test_download_and_save_image(self, mock_settings, mock_chmod, mock_temp_file, mock_request_utils):
+    def test_download_and_save_image(self, mock_chmod, mock_temp_file, mock_request_utils):
         # We need to test _download_and_save_image directly so we remove mock
         self.media_chain = ScrapingChain()
         self.media_chain._download_and_save_image = self.original_download
@@ -442,7 +442,10 @@ class TestMediaScrapingImages(unittest.TestCase):
 
         self.media_chain._download_and_save_image(fileitem, target_path, url)
 
-        mock_request_utils.assert_called_with(proxies=mock_settings.PROXY, ua=mock_settings.NORMAL_USER_AGENT)
+        mock_request_utils.assert_called_with(
+            proxies=self.media_chain.runtime_config.proxy,
+            ua=self.media_chain.runtime_config.normal_user_agent,
+        )
         mock_instance.get_stream.assert_called_with(url=url)
         mock_temp_file.assert_called_once_with(delete=False, suffix=".jpg")
         tmp_mock.write.assert_any_call(b"data1")
@@ -489,10 +492,12 @@ class TestMediaScrapingTVDirectory(unittest.TestCase):
     def tearDown(self):
         reset_scraping_chain_singleton()
 
-    @patch("app.chain.media.settings")
-    def test_initialize_tv_directory_specials(self, mock_settings):
+    def test_initialize_tv_directory_specials(self):
         # mock specials directory recognition
-        mock_settings.RENAME_FORMAT_S0_NAMES = ["Specials", "SPs"]
+        self.media_chain.runtime_config = replace(
+            self.media_chain.runtime_config,
+            season_zero_names=("Specials", "SPs"),
+        )
 
         fileitem = schemas.FileItem(path="/tv/Show/Specials", name="Specials", type="dir", storage="local")
         meta = MetaInfo("Show")
@@ -525,9 +530,11 @@ class TestMediaScrapingTVDirectory(unittest.TestCase):
             season_number=0
         )
 
-    @patch("app.chain.media.settings")
-    def test_initialize_tv_directory_season(self, mock_settings):
-        mock_settings.RENAME_FORMAT_S0_NAMES = ["Specials", "SPs"]
+    def test_initialize_tv_directory_season(self):
+        self.media_chain.runtime_config = replace(
+            self.media_chain.runtime_config,
+            season_zero_names=("Specials", "SPs"),
+        )
 
         fileitem = schemas.FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
         meta = MetaInfo("Show")

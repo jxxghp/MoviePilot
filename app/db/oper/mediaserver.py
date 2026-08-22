@@ -35,7 +35,7 @@ class MediaServerOper(DbOper):
             return False
         item = MediaServerItem(**kwargs)
         if not item.get_by_server_itemid(self._db, server, item_id):
-            item.create(self._db)
+            self._stage_create(item)
             return True
         return False
 
@@ -51,10 +51,10 @@ class MediaServerOper(DbOper):
 
         item = MediaServerItem.get_by_server_itemid(self._db, server, item_id)
         if item:
-            item.update(self._db, kwargs)
+            self._stage_update(item, kwargs)
             return False
 
-        MediaServerItem(**kwargs).create(self._db)
+        self._stage_create(MediaServerItem(**kwargs))
         return True
 
     def empty(self, server: Optional[str] = None):

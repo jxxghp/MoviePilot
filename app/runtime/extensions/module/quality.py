@@ -39,7 +39,76 @@ QUALITY_RULES = frozenset(
     }
 )
 
+COMMON_ASSESSED_RULES = frozenset(
+    {
+        "zero-real-network-tests",
+        "no-blocking-io-in-event-loop",
+        "module-contract-v2",
+        "owner-declared",
+    }
+)
+
+# 这些模块均已纳入全局真实网络守卫、async 阻塞扫描和 V2 方法契约门禁。
+# 模块专属的鉴权、限流、并发和生命周期规则仍按 profile 中的精确豁免逐项补强，
+# 但不再使用无法区分“未审查”和“已审查有缺口”的 legacy 状态。
+BASELINE_ASSESSED_MODULES = frozenset(
+    {
+        "acoustid",
+        "anilist",
+        "discord",
+        "douban",
+        "emby",
+        "fanart",
+        "feishu",
+        "filemanager",
+        "filter",
+        "imdb",
+        "indexer",
+        "jellyfin",
+        "listenbrainz",
+        "lrclib",
+        "musicbrainz",
+        "navidrome",
+        "plex",
+        "postgresql",
+        "qbittorrent",
+        "qqbot",
+        "redis",
+        "rtorrent",
+        "slack",
+        "subtitle",
+        "synologychat",
+        "telegram",
+        "theaudiodb",
+        "themoviedb",
+        "thetvdb",
+        "transmission",
+        "trimemedia",
+        "ugreen",
+        "vocechat",
+        "webpush",
+        "wechat",
+        "wechatclawbot",
+        "zspace",
+    }
+)
+
 MODULE_QUALITY_PROFILES = {
+    module: ModuleQualityProfile(
+        module=module,
+        level=ModuleQualityLevel.ASSESSED,
+        owner="MoviePilot core",
+        verified_rules=COMMON_ASSESSED_RULES,
+        exemption_reason=(
+            "已完成宿主通用网络、异步阻塞、V2 方法契约与维护责任门禁；"
+            "模块专属鉴权、限流、并发、敏感日志及 reload/stop 语义只在有对应能力时适用，"
+            "继续由各模块专项测试证明"
+        ),
+    )
+    for module in BASELINE_ASSESSED_MODULES
+}
+
+MODULE_QUALITY_PROFILES.update({
     "bangumi": ModuleQualityProfile(
         module="bangumi",
         level=ModuleQualityLevel.ASSESSED,
@@ -78,7 +147,7 @@ MODULE_QUALITY_PROFILES = {
             "钉钉自定义机器人仅提供同步出站 Webhook，不包含长连接、轮询或入站回调"
         ),
     ),
-}
+})
 
 
 def get_module_quality_profile(module: str) -> ModuleQualityProfile:

@@ -16,7 +16,8 @@ from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.runtime.cache import FileCache
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -128,7 +129,7 @@ class DownloadChain(ChainBase):
                 mtype=MessageType.Download,
                 ctype=ContentType.DownloadAdded,
                 image=media.get_message_image(),
-                link=settings.MP_DOMAIN('/#/downloading'),
+                link=self.runtime_config.downloading_url,
                 userid=userid,
                 username=username,
             ),
@@ -171,7 +172,8 @@ class DownloadChain(ChainBase):
         track_identities = {
             identity
             for file in file_list
-            if Path(str(file)).suffix.lower() in settings.RMT_AUDIOEXT
+            if Path(str(file)).suffix.lower()
+            in get_chain_runtime_config_snapshot().audio_extensions
             and (identity := DownloadChain._music_resource_track_identity(file))
         }
         actual_tracks = len(track_identities)
@@ -264,7 +266,10 @@ class DownloadChain(ChainBase):
         """
         判断是否为支持的字幕文件。
         """
-        return Path(file_name).suffix.lower() in settings.RMT_SUBEXT
+        return (
+            Path(file_name).suffix.lower()
+            in get_chain_runtime_config_snapshot().subtitle_extensions
+        )
 
     @classmethod
     def _get_subtitle_working_dir(
@@ -441,10 +446,10 @@ class DownloadChain(ChainBase):
             return False, message, []
 
         saved_files = []
-        temp_file = settings.TEMP_PATH / file_name
+        temp_file = self.runtime_config.temporary_path / file_name
         temp_extract_dir = temp_file.with_name(temp_file.stem)
         try:
-            settings.TEMP_PATH.mkdir(parents=True, exist_ok=True)
+            self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
             temp_file.write_bytes(response.content)
             if self._is_subtitle_archive(file_name):
                 try:
@@ -457,7 +462,10 @@ class DownloadChain(ChainBase):
                     message = f"字幕压缩包解压失败：{str(err)}"
                     logger.error(f"{message}，文件：{temp_file}")
                     return False, message, []
-                for sub_file in SystemUtils.list_files(temp_extract_dir, settings.RMT_SUBEXT):
+                for sub_file in SystemUtils.list_files(
+                    temp_extract_dir,
+                    self.runtime_config.subtitle_extensions,
+                ):
                     uploaded_path, message = self._upload_subtitle_file(
                         storage_chain=storage_chain,
                         storage=storage,
@@ -537,8 +545,8 @@ class DownloadChain(ChainBase):
 
         request = RequestUtils(
             cookies=subtitle.site_cookie,
-            ua=subtitle.site_ua or settings.USER_AGENT,
-            proxies=settings.PROXY if subtitle.site_proxy else None,
+            ua=subtitle.site_ua or self.runtime_config.user_agent,
+            proxies=self.runtime_config.proxy if subtitle.site_proxy else None,
         )
         try:
             response = request.get_res(subtitle.enclosure, raise_exception=True)
@@ -621,7 +629,7 @@ class DownloadChain(ChainBase):
         :param download_dir:  下载目录
         :param torrent_content: 种子内容，如果是种子文件，则为文件内容，否则为种子字符串
         """
-        if not settings.DOWNLOAD_SUBTITLE:
+        if not self.runtime_config.download_subtitle:
             return
 
         # 没有种子文件不处理
@@ -673,9 +681,9 @@ class DownloadChain(ChainBase):
         request = RequestUtils(
             cookies=torrent.site_cookie,
             ua=torrent.site_ua,
-            proxies=settings.PROXY if torrent.site_proxy else None,
+            proxies=self.runtime_config.proxy if torrent.site_proxy else None,
         )
-        settings.TEMP_PATH.mkdir(parents=True, exist_ok=True)
+        self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
         for sublink in sublink_list:
             logger.info(f"找到字幕下载链接：{sublink}，开始下载...")
             # 下载
@@ -687,7 +695,7 @@ class DownloadChain(ChainBase):
                     continue
                 archive_format = self._SUBTITLE_ARCHIVE_FORMATS.get(Path(file_name).suffix.lower())
                 if archive_format:
-                    archive_file = settings.TEMP_PATH / file_name
+                    archive_file = self.runtime_config.temporary_path / file_name
                     # 保存
                     archive_file.write_bytes(ret.content)
                     # 解压路径
@@ -700,7 +708,10 @@ class DownloadChain(ChainBase):
                             archive_format=archive_format,
                         )
                         # 遍历转移文件
-                        for sub_file in SystemUtils.list_files(archive_path, settings.RMT_SUBEXT):
+                        for sub_file in SystemUtils.list_files(
+                            archive_path,
+                            self.runtime_config.subtitle_extensions,
+                        ):
                             target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
                             if storage_chain.get_file_item(storage, target_sub_file):
                                 logger.info(f"字幕文件已存在：{target_sub_file}")
@@ -718,10 +729,13 @@ class DownloadChain(ChainBase):
                     except Exception as err:
                         logger.error(f"删除临时文件失败：{str(err)}")
                 else:
-                    if Path(file_name).suffix.lower() not in settings.RMT_SUBEXT:
+                    if (
+                        Path(file_name).suffix.lower()
+                        not in self.runtime_config.subtitle_extensions
+                    ):
                         logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
                         continue
-                    sub_file = settings.TEMP_PATH / file_name
+                    sub_file = self.runtime_config.temporary_path / file_name
                     # 保存
                     sub_file.write_bytes(ret.content)
                     target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
@@ -953,7 +967,7 @@ class DownloadChain(ChainBase):
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=settings.PROXY if proxy else None
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
                     ).get_res(url, params=req_params.get('params'))
                 else:
                     # POST请求
@@ -961,7 +975,7 @@ class DownloadChain(ChainBase):
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=settings.PROXY if proxy else None
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
                     ).post_res(url, params=req_params.get('params'))
                 if not res:
                     return None
@@ -1016,7 +1030,7 @@ class DownloadChain(ChainBase):
         _, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
             url=torrent_url,
             cookie=site_cookie,
-            ua=torrent.site_ua or settings.USER_AGENT,
+            ua=torrent.site_ua or self.runtime_config.user_agent,
             proxy=torrent.site_proxy,
             cache_invalid=not indirect_download)
 
@@ -1255,7 +1269,7 @@ class DownloadChain(ChainBase):
                             or file_meta.begin_episode not in episodes:
                         continue
                 # 只处理音视频、字幕格式
-                media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
+                media_exts = self.runtime_config.media_extensions
                 if not Path(file).suffix \
                         or Path(file).suffix.lower() not in media_exts:
                     continue
@@ -2074,7 +2088,7 @@ class DownloadChain(ChainBase):
                 mtype=MessageType.Download,
                 title="没有正在下载的任务！",
                 userid=userid,
-                link=settings.MP_DOMAIN('#/downloading'),
+                link=self.runtime_config.downloading_url,
                 save_history=False,
             ))
             return
@@ -2094,7 +2108,7 @@ class DownloadChain(ChainBase):
             title=title,
             text="\n".join(messages),
             userid=userid,
-            link=settings.MP_DOMAIN('#/downloading'),
+            link=self.runtime_config.downloading_url,
             save_history=False,
         ))
 

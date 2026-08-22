@@ -2,6 +2,7 @@ import asyncio
 import threading
 import time
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -257,12 +258,14 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
 
     def test_async_agent_leaves_processing_status_to_worker(self):
         chain = MessageChain.__new__(MessageChain)
+        chain.runtime_config = replace(
+            chain.runtime_config,
+            ai_agent_enable=True,
+        )
 
         with patch.object(chain, "_record_user_message"), patch.object(
                 chain, "_mark_message_processing_started"
         ) as start_status, patch(
-                "app.chain.message.settings.AI_AGENT_ENABLE", True
-        ), patch(
                 "app.chain.message.get_running_agent_manager",
         ) as get_running_manager, patch(
                 "app.chain.message.asyncio.run_coroutine_threadsafe",

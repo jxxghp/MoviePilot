@@ -47,4 +47,4 @@ class SubscribeHistoryOper(DbOper):
 
     async def async_delete(self, history_id: int) -> None:
         """异步删除订阅历史。"""
-        await SubscribeHistory.async_delete(self._db, history_id)
+        await self._stage_async_delete(SubscribeHistory, history_id)

@@ -35,13 +35,16 @@ from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_configured_system_config,
+    get_runtime_settings,
+)
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
@@ -108,22 +111,23 @@ def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
         ServerToolUnavailableError,
     )
 
+    runtime_settings = get_runtime_settings()
     mode = ServerToolRegistry.normalize_web_search_mode(
         env.get(
             "LLM_WEB_SEARCH_MODE",
-            getattr(settings, "LLM_WEB_SEARCH_MODE", "local"),
+            runtime_settings.get("LLM_WEB_SEARCH_MODE", "local"),
         )
     )
     if mode != "builtin":
         return None
 
     provider = str(
-        env.get("LLM_PROVIDER", getattr(settings, "LLM_PROVIDER", "")) or ""
+        env.get("LLM_PROVIDER", runtime_settings.get("LLM_PROVIDER", "")) or ""
     ).strip()
     model = str(
-        env.get("LLM_MODEL", getattr(settings, "LLM_MODEL", "")) or ""
+        env.get("LLM_MODEL", runtime_settings.get("LLM_MODEL", "")) or ""
     ).strip()
-    base_url = env.get("LLM_BASE_URL", getattr(settings, "LLM_BASE_URL", None))
+    base_url = env.get("LLM_BASE_URL", runtime_settings.get("LLM_BASE_URL"))
     capability = ServerToolRegistry.get_capability(
         provider=provider,
         model=model,
@@ -147,14 +151,19 @@ def _validate_database_backup_config(env: dict) -> Optional[str]:
     if not _DATABASE_BACKUP_SETTING_KEYS.intersection(env):
         return None
 
-    cron = str(env.get("DB_BACKUP_CRON", settings.DB_BACKUP_CRON) or "").strip()
+    runtime_settings = get_runtime_settings()
+    cron = str(env.get("DB_BACKUP_CRON", runtime_settings.get("DB_BACKUP_CRON")) or "").strip()
     if cron:
         try:
-            TimerUtils.normalize_schedule_trigger("cron", cron, settings.TZ)
+            TimerUtils.normalize_schedule_trigger(
+                "cron",
+                cron,
+                runtime_settings.get("TZ"),
+            )
         except (TypeError, ValueError):
             return "数据库备份周期格式不正确"
 
-    backup_path = env.get("DB_BACKUP_PATH", settings.DB_BACKUP_PATH)
+    backup_path = env.get("DB_BACKUP_PATH", runtime_settings.get("DB_BACKUP_PATH"))
     if backup_path is not None and not isinstance(backup_path, str):
         return "数据库备份目录必须是路径字符串"
 
@@ -162,7 +171,7 @@ def _validate_database_backup_config(env: dict) -> Optional[str]:
         ("DB_BACKUP_RETENTION_DAYS", "数据库备份过期天数"),
         ("DB_BACKUP_MAX_COUNT", "数据库备份最大保留份数"),
     ):
-        value = env.get(key, getattr(settings, key))
+        value = env.get(key, runtime_settings.get(key))
         if isinstance(value, bool):
             return f"{label}必须是大于等于 0 的整数"
         try:
@@ -221,12 +230,16 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
     前端只拿到展示所需的 id/name/icon；真正的 URL、代理策略、内容校验规则
     和重定向白名单都保留在服务端，避免再出现用户可控 SSRF。
     """
-    github_proxy = UrlUtils.standardize_base_url(settings.GITHUB_PROXY or "")
-    pip_proxy = UrlUtils.standardize_base_url(
-        settings.PIP_PROXY or "https://pypi.org/simple/"
+    runtime_settings = get_runtime_settings()
+    github_proxy = UrlUtils.standardize_base_url(
+        runtime_settings.get("GITHUB_PROXY") or ""
     )
-    tmdb_key = settings.TMDB_API_KEY
-    tmdb_domain = settings.TMDB_API_DOMAIN or "api.themoviedb.org"
+    pip_proxy = UrlUtils.standardize_base_url(
+        runtime_settings.get("PIP_PROXY") or "https://pypi.org/simple/"
+    )
+    tmdb_key = runtime_settings.get("TMDB_API_KEY")
+    tmdb_domain = runtime_settings.get("TMDB_API_DOMAIN") or "api.themoviedb.org"
+    github_headers = runtime_settings.get("GITHUB_HEADERS")
 
     github_readme_url = "https://github.com/jxxghp/MoviePilot/blob/v2/README.md"
     raw_readme_url = "https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/README.md"
@@ -348,7 +361,7 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
             if github_proxy
             else "无效响应",
             "proxy_name": "Github加速代理" if github_proxy else "",
-            "headers": settings.GITHUB_HEADERS,
+            "headers": github_headers,
         },
         {
             "id": "github_api",
@@ -357,7 +370,7 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
             "url": "https://api.github.com",
             "proxy": True,
             "allowed_redirect_prefixes": ["https://api.github.com/"],
-            "headers": settings.GITHUB_HEADERS,
+            "headers": github_headers,
         },
         {
             "id": "github_codeload",
@@ -369,7 +382,7 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
                 "https://codeload.github.com/",
                 "https://github.com/",
             ],
-            "headers": settings.GITHUB_HEADERS,
+            "headers": github_headers,
         },
         {
             "id": "github_proxy_raw",
@@ -392,7 +405,7 @@ def _build_nettest_rules() -> list[dict[str, Any]]:
             if github_proxy
             else "无效响应",
             "proxy_name": "Github加速代理" if github_proxy else "",
-            "headers": settings.GITHUB_HEADERS,
+            "headers": github_headers,
         },
     ]
     if tmdb_domain not in {"api.themoviedb.org", "api.tmdb.org"}:
@@ -424,7 +437,7 @@ def _collect_named_log_files(name: str) -> list[Path]:
     if not normalized_name or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized_name):
         raise HTTPException(status_code=404, detail="Not Found")
 
-    log_root = settings.LOG_PATH
+    log_root = Path(get_runtime_settings().get("LOG_PATH"))
     if normalized_name == "moviepilot":
         log_dir = log_root
         log_prefix = "moviepilot.log"
@@ -495,7 +508,7 @@ def _build_log_zip_data(name: str) -> tuple[bytes, str]:
     if not log_files:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    log_root = settings.LOG_PATH
+    log_root = Path(get_runtime_settings().get("LOG_PATH"))
     zip_buffer = io.BytesIO()
     filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe_name = (name or "logs").strip().lower() or "logs"
@@ -598,14 +611,17 @@ async def fetch_image(
         return None
 
     if allowed_domains is None:
-        allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS)
+        allowed_domains = set(get_runtime_settings().get("SECURITY_IMAGE_DOMAINS", []))
 
     fetch_url = SecurityUtils.strip_url_signature(url)
     # 验证URL安全性
     if not await SecurityUtils.is_safe_image_url_async(
         url,
         allowed_domains,
-        allowed_private_ranges=settings.IMAGE_PROXY_ALLOWED_PRIVATE_RANGES,
+        allowed_private_ranges=get_runtime_settings().get(
+            "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
+            [],
+        ),
     ):
         return None
 
@@ -663,7 +679,7 @@ async def proxy_img(
     """
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
     """
-    allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS)
+    allowed_domains = set(get_runtime_settings().get("SECURITY_IMAGE_DOMAINS", []))
     cookies = (
         MediaServerChain().get_image_cookies(server=None, image_url=imgurl)
         if use_cookies
@@ -706,7 +722,9 @@ async def cache_img(
     """
     # 如果没有启用全局图片缓存，则不使用磁盘缓存
     return await fetch_image(
-        url=url, use_cache=settings.GLOBAL_IMAGE_CACHE, if_none_match=if_none_match
+        url=url,
+        use_cache=bool(get_runtime_settings().get("GLOBAL_IMAGE_CACHE")),
+        if_none_match=if_none_match,
     )
 
 
@@ -724,7 +742,8 @@ def get_global_setting(token: str):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     # 白名单模式，仅包含登录前UI初始化必需的字段
-    info = settings.model_dump(
+    runtime_settings = get_runtime_settings()
+    info = runtime_settings.snapshot(
         include={
             "TMDB_IMAGE_DOMAIN",
             "GLOBAL_IMAGE_CACHE",
@@ -739,7 +758,7 @@ def get_global_setting(token: str):
         }
     )
     # 仅在后端开发模式下返回该标记，避免生产环境暴露无意义运行态信息
-    if settings.DEV:
+    if runtime_settings.get("DEV"):
         info.update({"BACKEND_DEV": True})
     return _SchemaResponse(success=True, data=info)
 
@@ -755,7 +774,8 @@ async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_u
     包含业务功能相关的配置和用户权限信息
     """
     # 业务功能相关的配置字段
-    info = settings.model_dump(
+    runtime_settings = get_runtime_settings()
+    info = runtime_settings.snapshot(
         include={
             "AI_AGENT_ENABLE",
             "AI_AGENT_HIDE_ENTRY",
@@ -767,7 +787,7 @@ async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_u
         }
     )
     # 智能助手总开关未开启，智能推荐状态强制返回False
-    if not settings.AI_AGENT_ENABLE:
+    if not runtime_settings.get("AI_AGENT_ENABLE"):
         info["AI_RECOMMEND_ENABLED"] = False
         info["LLM_SUPPORT_AUDIO_INPUT"] = False
         info["LLM_SUPPORT_AUDIO_OUTPUT"] = False
@@ -795,7 +815,9 @@ async def get_env_setting(
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
-    info = settings.model_dump(exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"})
+    info = get_runtime_settings().snapshot(
+        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"}
+    )
     info.update(
         {
             "VERSION": APP_VERSION,
@@ -847,7 +869,7 @@ async def set_env_setting(
     if validation_error:
         return _SchemaResponse(success=False, message=validation_error)
 
-    result = settings.update_settings(env=env)
+    result = get_runtime_settings().update_many(env)
     # 统计成功和失败的结果
     success_updates = {k: v for k, v in result.items() if v[0]}
     failed_updates = {k: v for k, v in result.items() if v[0] is False}
@@ -924,7 +946,10 @@ async def get_public_setting(
     查询普通用户可读取的非敏感系统设置
     """
     if key in _PUBLIC_SETTINGS_KEYS:
-        return _SchemaResponse(success=True, data={"value": getattr(settings, key)})
+        return _SchemaResponse(
+            success=True,
+            data={"value": get_runtime_settings().get(key)},
+        )
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
     value = get_configured_system_config().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
@@ -949,8 +974,8 @@ async def sync_plugin_market_from_wiki(
         return _SchemaResponse(success=False, message="不支持的 Wiki 同步地址")
 
     res = await AsyncRequestUtils(
-        ua=settings.USER_AGENT,
-        proxies=settings.PROXY,
+        ua=get_runtime_settings().get("USER_AGENT"),
+        proxies=get_runtime_settings().get("PROXY"),
         timeout=30,
         content_type=None,
         accept_type="text/plain,*/*",
@@ -967,13 +992,15 @@ async def sync_plugin_market_from_wiki(
     if not wiki_repos:
         return _SchemaResponse(success=False, message="未在 Wiki 中识别到插件仓库地址")
 
-    local_repos = split_plugin_market_repo_urls(settings.PLUGIN_MARKET)
+    local_repos = split_plugin_market_repo_urls(
+        get_runtime_settings().get("PLUGIN_MARKET", "")
+    )
     local_repo_keys = {repo.lower() for repo in local_repos}
     added_count = len([repo for repo in wiki_repos if repo.lower() not in local_repo_keys])
     merged_repos = merge_plugin_market_repos(local_repos, wiki_repos)
     merged_value = ",".join(merged_repos)
 
-    success, message = settings.update_setting("PLUGIN_MARKET", merged_value)
+    success, message = get_runtime_settings().update("PLUGIN_MARKET", merged_value)
     if success:
         await eventmanager.async_send_event(
             etype=EventType.ConfigChanged,
@@ -1009,8 +1036,9 @@ async def get_setting(
     """
     查询系统设置（仅管理员）
     """
-    if hasattr(settings, key):
-        value = getattr(settings, key)
+    runtime_settings = get_runtime_settings()
+    if runtime_settings.contains(key):
+        value = runtime_settings.get(key)
     else:
         value = get_configured_system_config().get(key)
     return _SchemaResponse(success=True, data={"value": value})
@@ -1025,8 +1053,9 @@ async def set_setting(
     """
     更新系统设置（仅管理员）
     """
-    if hasattr(settings, key):
-        success, message = settings.update_setting(key=key, value=value)
+    runtime_settings = get_runtime_settings()
+    if runtime_settings.contains(key):
+        success, message = runtime_settings.update(key, value)
         if success:
             # 发送配置变更事件
             await eventmanager.async_send_event(
@@ -1114,7 +1143,7 @@ async def get_logging(
     length = -1 时, 返回text/plain
     否则 返回格式SSE
     """
-    base_path = AsyncPath(settings.LOG_PATH)
+    base_path = AsyncPath(get_runtime_settings().get("LOG_PATH"))
     log_path = base_path / logfile
 
     if not await SecurityUtils.async_is_safe_path(
@@ -1252,7 +1281,8 @@ async def latest_version(_: _SchemaTokenPayload = Depends(verify_token)):
     查询Github所有Release版本
     """
     version_res = await AsyncRequestUtils(
-        proxies=settings.PROXY, headers=settings.GITHUB_HEADERS
+        proxies=get_runtime_settings().get("PROXY"),
+        headers=get_runtime_settings().get("GITHUB_HEADERS"),
     ).get_res(f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
     if version_res is not None and version_res.status_code == 200:
         ver_json = version_res.json()
@@ -1392,10 +1422,10 @@ async def nettest(
         logger.debug("nettest include 参数已忽略，改为服务端固定校验")
 
     request_utils = AsyncRequestUtils(
-        proxies=settings.PROXY if target.get("proxy") else None,
+        proxies=get_runtime_settings().get("PROXY") if target.get("proxy") else None,
         headers=target.get("headers"),
         timeout=10,
-        ua=settings.NORMAL_USER_AGENT,
+        ua=get_runtime_settings().get("NORMAL_USER_AGENT"),
         verify=True,
         follow_redirects=False,
     )

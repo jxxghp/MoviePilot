@@ -21,11 +21,11 @@ class PluginDataOper(DbOper):
         """
         plugin = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
         if plugin:
-            plugin.update(self._db, {
+            self._stage_update(plugin, {
                 "value": value
             })
         else:
-            PluginData(plugin_id=plugin_id, key=key, value=value).create(self._db)
+            self._stage_create(PluginData(plugin_id=plugin_id, key=key, value=value))
 
     async def async_save(self, plugin_id: str, key: str, value: Any) -> None:
         """
@@ -39,11 +39,11 @@ class PluginDataOper(DbOper):
             self._db, plugin_id, key
         )
         if plugin:
-            await plugin.async_update(self._db, {"value": value})
+            await self._stage_async_update(plugin, {"value": value})
         else:
-            await PluginData(
-                plugin_id=plugin_id, key=key, value=value
-            ).async_create(self._db)
+            await self._stage_async_create(
+                PluginData(plugin_id=plugin_id, key=key, value=value)
+            )
 
     def get_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
@@ -102,7 +102,7 @@ class PluginDataOper(DbOper):
         """
         清空插件数据
         """
-        PluginData.truncate(self._db)
+        self._stage_truncate(PluginData)
 
     def get_data_all(self, plugin_id: str) -> Any:
         """

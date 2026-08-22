@@ -9,6 +9,10 @@ from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
 from app.application.chain.data import get_chain_data_ports
+from app.application.configuration import (
+    ChainRuntimeConfig,
+    get_chain_runtime_config_snapshot,
+)
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
@@ -63,6 +67,19 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             rate_limit_handler=self.__handle_rate_limit_error,
         )
         self.messagequeue = context.message_queue_factory(self.run_module)
+
+    @property
+    def runtime_config(self) -> ChainRuntimeConfig:
+        """返回实例快照；兼容绕过构造器的旧调用并按需取得当前快照。"""
+        configuration = getattr(self, "_runtime_config", None)
+        if configuration is None:
+            return get_chain_runtime_config_snapshot()
+        return configuration
+
+    @runtime_config.setter
+    def runtime_config(self, configuration: ChainRuntimeConfig) -> None:
+        """保存显式注入的 Chain 配置快照。"""
+        self._runtime_config = configuration
 
     def load_cache(self, filename: str) -> Any:
         """

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -167,6 +168,11 @@ def test_rebuild_download_scope_keeps_special_season_zero():
 def test_message_routes_text_reply_to_media_interaction_before_ai():
     """已有传统媒体交互时，用户回复应优先交给传统交互处理。"""
     chain = MessageChain()
+    chain.runtime_config = replace(
+        chain.runtime_config,
+        ai_agent_enable=True,
+        ai_agent_global=True,
+    )
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
         channel=NotificationChannel.Wechat,
@@ -1542,6 +1548,11 @@ def test_target_plugin_filter_only_allows_target_plugin_handler():
 def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     """全局 AI 开启时，/noai 前缀应让本条消息进入传统搜索交互。"""
     chain = MessageChain()
+    chain.runtime_config = replace(
+        chain.runtime_config,
+        ai_agent_enable=True,
+        ai_agent_global=True,
+    )
     meta = _build_meta("星际穿越")
     medias = [
         MediaInfo(title="星际穿越", year="2014"),
@@ -1549,10 +1560,6 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     ]
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.settings.AI_AGENT_ENABLE", True
-    ), patch(
-        "app.chain.message.settings.AI_AGENT_GLOBAL", True
-    ), patch(
         "app.chain.media.MediaChain.search",
         return_value=(meta, medias),
     ) as search_media, patch(
@@ -1582,6 +1589,11 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
 def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     """通过 /noai 进入传统交互后，后续选择应继续优先走传统交互。"""
     chain = MessageChain()
+    chain.runtime_config = replace(
+        chain.runtime_config,
+        ai_agent_enable=True,
+        ai_agent_global=True,
+    )
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
         channel=NotificationChannel.Wechat,
@@ -1596,10 +1608,6 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     assert request is not None
 
     with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.message.settings.AI_AGENT_ENABLE", True
-    ), patch(
-        "app.chain.message.settings.AI_AGENT_GLOBAL", True
-    ), patch(
         "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
         return_value=True,
     ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
