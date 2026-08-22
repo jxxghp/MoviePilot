@@ -1416,15 +1416,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
                     # 执行异步整理，匹配源目录
                     self.do_transfer(
-                        fileitem=FileItem(
-                            storage="local",
-                            path=file_path.as_posix()
-                                 + ("/" if file_path.is_dir() else ""),
-                            type="dir" if not file_path.is_file() else "file",
-                            name=file_path.name,
-                            size=file_path.stat().st_size,
-                            extension=file_path.suffix.lstrip("."),
-                        ),
+                        fileitem=self._build_transfer_fileitem(torrent),
                         mediainfo=mediainfo,
                         mtype=mtype,
                         downloader=torrent.downloader,
@@ -1442,6 +1434,19 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 del torrents
 
             return True
+
+    @staticmethod
+    def _build_transfer_fileitem(torrent: TorrentInfo) -> FileItem:
+        """把下载器任务路径转换为整理链使用的本地文件项。"""
+        file_path = torrent.path
+        return FileItem(
+            storage="local",
+            path=file_path.as_posix() + ("/" if file_path.is_dir() else ""),
+            type="dir" if not file_path.is_file() else "file",
+            name=file_path.name,
+            size=file_path.stat().st_size,
+            extension=file_path.suffix.lstrip("."),
+        )
 
     def __get_trans_fileitems(
             self,
