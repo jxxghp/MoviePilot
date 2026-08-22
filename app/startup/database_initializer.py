@@ -14,20 +14,8 @@ from app.runtime.config import settings
 from app.db.base import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models
-from app.db.session import SessionFactory, async_session_scope
-from app.db.uow import configure_transaction_runners
 from app.runtime.log import logger
 from app.startup.database import build_database_governance
-from app.startup.transaction import TransactionalWriteRunner
-
-
-def _configure_migration_transaction_runner() -> None:
-    """在 Alembic 调用旧无会话 Oper 前装配可独立提交的兼容事务。"""
-    runner = TransactionalWriteRunner(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    configure_transaction_runners(sync=runner.sync, async_=runner.async_)
 
 
 def _build_alembic_config(engine: Engine | None = None) -> Config:
@@ -161,8 +149,6 @@ def update_db(alembic_cfg: Config | None = None):
     更新数据库
     """
     try:
-        # 早期迁移脚本会调用 SystemConfigOper()，此时 modules_initializer 尚未执行。
-        _configure_migration_transaction_runner()
         alembic_cfg = alembic_cfg or _build_alembic_config()
         upgrade(alembic_cfg, 'head')
     except Exception as error:

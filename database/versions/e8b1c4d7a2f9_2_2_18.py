@@ -63,9 +63,6 @@ def upgrade() -> None:
     ])
 
     # 只升级系统旧默认模板；用户编辑过的模板保持原样。
-    from app.db.oper.systemconfig import SystemConfigOper
-    from app.schemas.types import SystemConfigKey
-
     legacy_organize = """
 {
     'title': '{{ title_year }}'
@@ -123,18 +120,31 @@ def upgrade() -> None:
             '{% if labels %}\\n标签：{{ labels }}{% endif %}'
             '{% if description %}\\n描述：{{ description }}{% endif %}'
 }"""
-    config_oper = SystemConfigOper()
-    templates = dict(config_oper.get(SystemConfigKey.NotificationTemplates) or {})
+    systemconfig = sa.table(
+        "systemconfig",
+        sa.column("key", sa.String()),
+        sa.column("value", sa.JSON()),
+    )
+    connection = op.get_bind()
+    config_key = "NotificationTemplates"
+    row = connection.execute(
+        sa.select(systemconfig.c.value).where(systemconfig.c.key == config_key)
+    ).first()
+    templates = dict(row[0] or {}) if row else {}
     changed = False
-    for key, legacy, replacement in (
+    for template_key, legacy, replacement in (
         ("organizeSuccess", legacy_organize, music_organize),
         ("downloadAdded", legacy_download, music_download),
     ):
-        if str(templates.get(key) or "").strip() == legacy.strip():
-            templates[key] = replacement
+        if str(templates.get(template_key) or "").strip() == legacy.strip():
+            templates[template_key] = replacement
             changed = True
     if changed:
-        config_oper.set(SystemConfigKey.NotificationTemplates, templates)
+        connection.execute(
+            systemconfig.update().where(systemconfig.c.key == config_key).values(
+                value=templates
+            )
+        )
 
 
 def downgrade() -> None:

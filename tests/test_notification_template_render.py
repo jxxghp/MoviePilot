@@ -16,6 +16,9 @@ from pathlib import Path
 import importlib.util
 
 import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -207,9 +210,7 @@ def test_message_without_template_config_stays_unchanged(
     assert message.text is None
 
 
-def test_v3_migration_overwrites_templates_once(
-        notification_templates: SystemConfigOper,
-) -> None:
+def test_v3_migration_overwrites_templates_once(monkeypatch) -> None:
     """
     V3 大版本迁移应无条件覆盖用户旧通知模板配置，并写入全部 4 类模板。
     """
@@ -221,12 +222,32 @@ def test_v3_migration_overwrites_templates_once(
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
 
-    notification_templates.set(
-        SystemConfigKey.NotificationTemplates, {"organizeSuccess": "用户自定义模板"}
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    systemconfig = sa.Table(
+        "systemconfig",
+        metadata,
+        sa.Column("key", sa.String(), primary_key=True),
+        sa.Column("value", sa.JSON()),
     )
-    migration.upgrade()
+    with engine.begin() as connection:
+        metadata.create_all(connection)
+        connection.execute(
+            systemconfig.insert().values(
+                key=SystemConfigKey.NotificationTemplates.value,
+                value={"organizeSuccess": "用户自定义模板"},
+            )
+        )
+        context = MigrationContext.configure(connection)
+        monkeypatch.setattr(migration, "op", Operations(context))
 
-    templates = notification_templates.get(SystemConfigKey.NotificationTemplates)
+        migration.upgrade()
+        templates = connection.execute(
+            sa.select(systemconfig.c.value).where(
+                systemconfig.c.key == SystemConfigKey.NotificationTemplates.value
+            )
+        ).scalar_one()
+
     assert set(templates.keys()) == {
         "organizeSuccess", "downloadAdded", "subscribeAdded", "subscribeComplete",
     }
