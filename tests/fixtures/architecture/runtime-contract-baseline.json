@@ -1574,7 +1574,7 @@
     ]
   },
   "events": {
-    "consumer_count": 15,
+    "consumer_count": 16,
     "dynamic_consumers": [
       {
         "caller": "app.adapters.system.fsproxy",
@@ -1610,23 +1610,23 @@
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2524
+        "line": 2529
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2565
+        "line": 2615
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2638
+        "line": 2711
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2682
+        "line": 2755
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2718
+        "line": 2791
       },
       {
         "caller": "app.runtime.extensions.registry.service_family",
@@ -2019,6 +2019,10 @@
             "line": 58
           },
           {
+            "caller": "app.runtime.extensions.plugin_manager",
+            "line": 3746
+          },
+          {
             "caller": "app.runtime.reload",
             "line": 81
           },
@@ -2136,7 +2140,7 @@
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1682
+            "line": 1686
           }
         ]
       },

@@ -27,7 +27,7 @@ from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.config import settings
-from app.runtime.events import EventHandlerBinding, eventmanager
+from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
@@ -73,7 +73,11 @@ from app.runtime.extensions.registry.command import plugin_command_registry
 from app.runtime.extensions.registry.filter_rule import plugin_filter_rule_registry
 from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.extensions.registry.meta_parser import meta_parser_registry
-from app.runtime.extensions.service_config import STORAGE_CAPABILITY
+from app.runtime.extensions.service_config import (
+    STORAGE_CAPABILITY,
+    select_instance_configs,
+    service_capability_configs,
+)
 from app.runtime.extensions.service_instance_requirement import (
     SERVICE_INSTANCE_PARAM,
     accepts_keyword,
@@ -2513,13 +2517,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             try:
                 capability, service_type, name = declaration_service_instance_identity(item)
                 impl, factory = declaration_service_instance_constructor(item)
+                multi_instance = declaration_service_instance_multi_instance(item)
                 config_component = self._resolve_service_instance_config_component(
                     projection, owner, plugin, item
                 )
                 if capability == STORAGE_CAPABILITY:
                     impl, factory = self._register_declared_storage_backend(
                         owner, service_type, impl, factory,
-                        declaration_config_form(item), config_component
+                        declaration_config_form(item), config_component, multi_instance
                     )
                 service_instance_registry.register(
                     capability=capability,
@@ -2529,7 +2534,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     icon=declaration_service_instance_icon(item),
                     impl=impl,
                     factory=factory,
-                    multi_instance=declaration_service_instance_multi_instance(item),
+                    multi_instance=multi_instance,
                     distribution=ExtensionDistribution.MARKET,
                     config_form=declaration_config_form(item),
                     config_component=config_component,
@@ -2539,15 +2544,56 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 logger.error(f"登记插件实例 {owner} 的服务实例声明出错：{str(error)}")
 
     @staticmethod
+    def _declared_storage_instance_specs(
+        storage_id: str, multi_instance: bool
+    ) -> Tuple[Tuple[Optional[str], bool], ...]:
+        """列出某个存储类型当前应当占据的实例位。
+
+        实例位来自该类型的配置：配了几份就有几个具名实例位，实例名即配置名，承接
+        裸令牌的那一位由配置里的兼容指针裁出。一份配置都没有的类型仍留一个未具名
+        实例位，未配置的存储因此照样可以浏览与登录——与内建存储模块同一口径。
+
+        读取或裁决失败按未配置处理：配置来源不可用、或单实例类型裁决不出唯一目标，
+        都不该让整个存储类型从注册表消失。
+
+        :param storage_id: 存储标识
+        :param multi_instance: 该类型能否接受多份配置
+        :return: (实例名, 是否承接裸令牌) 二元组序列，实例名为 None 表示裸令牌位
+        """
+        try:
+            selected = select_instance_configs(
+                service_capability_configs(STORAGE_CAPABILITY),
+                storage_id,
+                capability=STORAGE_CAPABILITY,
+                multi_instance=multi_instance,
+            )
+        except Exception as error:
+            logger.error(f"读取存储 {storage_id} 的实例配置失败，按未配置处理：{str(error)}")
+            selected = {}
+        specs = tuple(
+            (
+                (getattr(conf, "name", None) or "").strip() or None,
+                bool(getattr(conf, "bare_token_target", False)),
+            )
+            for conf in selected.values()
+        )
+        return specs or ((None, False),)
+
+    @staticmethod
     def _register_declared_storage_backend(
         owner: str, storage_id: str, impl: Any, factory: Optional[Any],
-        config_form: Optional[Any], config_component: Optional[Dict[str, Any]]
+        config_form: Optional[Any], config_component: Optional[Dict[str, Any]],
+        multi_instance: bool = True
     ) -> tuple:
-        """把存储类型的后端登进存储后端注册表，并补上类型目录要用的构造工厂。
+        """把存储类型的后端按实例逐条登进存储后端注册表，并补上类型目录要用的构造工厂。
 
         存储类型落两张表：存储后端注册表按令牌回答「``u115@work`` 指的实体是谁」，
         类型目录按类型回答「谁提供、能配几份、配置什么形状、界面长什么样」。粒度不同，
         后者也回答不了按实例寻址，因此不是同一份登记的两个副本。
+
+        登记按实例位逐条进行：只登记一条裸令牌位的话，具名令牌在整理编排里一律解析
+        不到实例，该类型就只有一个账号能用。单个实例位登记失败只跳过它自己，同类型
+        其余实例位照常登记。
 
         构造一律走工厂：声明没给工厂时用宿主默认那一个，按实例归属交付后端、配置由
         后端自己按令牌懒读；给了就用声明自带的。类型目录因此不再持有 ``impl``——存储的
@@ -2560,17 +2606,44 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param factory: 声明携带的实例工厂，为 None 表示用宿主默认工厂
         :param config_form: 该类型的专属配置界面（vuetify 模式）
         :param config_component: 该类型的已解析 vue 模式配置组件
+        :param multi_instance: 该类型能否接受多份配置
         :return: (类型目录用的实现类, 类型目录用的实例工厂) 二元组
         """
-        storage_backend_registry.register(
-            impl,
-            distribution=ExtensionDistribution.MARKET,
-            owner=owner,
-            storage_id=storage_id,
-            config_form=config_form,
-            config_component=config_component,
-        )
+        specs = PluginManager._declared_storage_instance_specs(storage_id, multi_instance)
+        for instance, bare_token_target in specs:
+            try:
+                storage_backend_registry.register(
+                    impl,
+                    distribution=ExtensionDistribution.MARKET,
+                    owner=owner,
+                    storage_id=storage_id,
+                    config_form=config_form,
+                    config_component=config_component,
+                    instance=instance,
+                    bare_token_target=bare_token_target,
+                )
+            except Exception as error:
+                logger.error(
+                    f"登记存储 {storage_id} 的实例 {instance or '裸令牌'} 出错，已跳过：{str(error)}"
+                )
         return None, factory or storage_instance_factory(impl)
+
+    def resync_declared_service_types(self) -> None:
+        """按各运行插件当前的声明重建其提供的服务类型登记。
+
+        存储登记按实例位展开，实例位来自该存储类型的当前配置：增删一份配置即多出或
+        少掉一个可寻址的实例位，不重建则新配的账号按令牌取不到、已删的账号仍取得到。
+        重建以扩展为单位，每个扩展取其一个运行实例键触发，兄弟实例在同一轮内一并重建。
+
+        :return: 无返回值
+        """
+        seen: Set[str] = set()
+        for key in list(self._running_plugins):
+            extension_id = extension_id_of(key)
+            if extension_id in seen:
+                continue
+            seen.add(extension_id)
+            self._sync_plugin_service_types(key)
 
     def _extension_registration_owners(self, key: str) -> List[str]:
         """列出一次扩展级同步需要重建登记的实例键。
@@ -3649,3 +3722,27 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
             return None
 
+
+
+def _handle_storage_instance_config_changed(event: Event) -> None:
+    """存储实例配置变更后重建插件声明的服务类型登记。
+
+    插件声明的存储按实例位登进存储后端注册表，实例位由该存储类型的配置决定；配置在
+    插件运行期间被增删时，登记不随之重建就会与配置对不上——新配的账号按具名令牌取
+    不到，已删的账号仍取得到。插件管理器尚未装配时无人持有登记，无须重建。
+
+    :param event: 配置变更事件
+    :return: 无返回值
+    """
+    changed_keys = getattr(getattr(event, "event_data", None), "key", None) or set()
+    if SystemConfigKey.Storages.value not in changed_keys:
+        return
+    manager = PluginManager.get_existing_instance()
+    if manager is None:
+        return
+    manager.resync_declared_service_types()
+
+
+eventmanager.add_event_listener(
+    EventType.ConfigChanged, _handle_storage_instance_config_changed
+)

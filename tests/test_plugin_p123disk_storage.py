@@ -29,12 +29,16 @@ from app.runtime.extensions.admission.service_instance import (
 )
 from app.runtime.extensions.admission.storage import storage_backend_violation
 from app.runtime.extensions import plugin_manager as plugin_manager_module
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.extensions.registry.storage import storage_backend_registry
+from app.runtime.events import Event
 from app.runtime.hostports.storages import storage_config_port
 from app.schemas import FileURI
+from app.schemas.event import ConfigChangeEventData
 from app.schemas.system import StorageConf
+from app.schemas.types import EventType, SystemConfigKey
 
 # 插件在宿主里的实例键，默认实例即裸插件标识
 PLUGIN_KEY = "P123Disk"
@@ -440,6 +444,171 @@ def test_two_instances_do_not_share_the_path_cache(monkeypatch, plugin_manager) 
 
         assert instances["主号"]._api.path_to_id("/媒体库") == "1001"
         assert instances["备号"]._api._id_cache == {}
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def _registered_instances() -> list:
+    """
+    列出 123 云盘当前在存储后端注册表里占据的实例位
+
+    :return: 实例名列表，未具名实例位为 None
+    """
+    return [entry.instance for entry in storage_backend_registry.instances(STORAGE_ID)]
+
+
+def _storage_config_changed_event() -> Event:
+    """
+    构造一次存储实例配置变更事件
+
+    :return: 配置变更事件
+    """
+    return Event(
+        EventType.ConfigChanged,
+        ConfigChangeEventData(key={SystemConfigKey.Storages.value}),
+    )
+
+
+def test_named_tokens_are_addressable_in_the_backend_registry(
+    monkeypatch, plugin_manager
+) -> None:
+    """三份账号各占一个实例位：具名令牌在按令牌寻址的那张表里各取到自己那份账号。"""
+    _save_three_accounts()
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        main = storage_backend_registry.find(f"{STORAGE_ID}@主号")
+        spare = storage_backend_registry.find(f"{STORAGE_ID}@备号")
+
+        assert (main, spare) != (None, None)
+        assert (main.instance, spare.instance) == ("主号", "备号")
+        assert main.owner == spare.owner == plugin_id
+
+        main_oper = storage_backend_registry.resolve(f"{STORAGE_ID}@主号")
+        spare_oper = storage_backend_registry.resolve(f"{STORAGE_ID}@备号")
+        assert main_oper is not spare_oper
+        assert main_oper.storage_token == f"{STORAGE_ID}@主号"
+        assert spare_oper.storage_token == f"{STORAGE_ID}@备号"
+        assert main_oper.get_conf() == MAIN_ACCOUNT
+        assert spare_oper.get_conf() == SPARE_ACCOUNT
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_bare_token_lands_on_the_compat_pointer_among_three_accounts(
+    monkeypatch, plugin_manager
+) -> None:
+    """三份账号并存时裸令牌落到承接者那一位，取到的是它自己的账号。"""
+    _save_three_accounts()
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        entry = storage_backend_registry.find(STORAGE_ID)
+
+        assert entry is not None
+        assert (entry.instance, entry.bare_token_target) == ("默认号", True)
+        oper = entry.create()
+        assert oper.storage_token == STORAGE_ID
+        assert oper.get_conf() == DEFAULT_ACCOUNT
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_absent_named_instance_yields_among_three_accounts(
+    monkeypatch, plugin_manager
+) -> None:
+    """指名一个没配过的账号一律让出，绝不回落到承接裸令牌的那一份。"""
+    _save_three_accounts()
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        token = FileURI.join_storage(STORAGE_ID, "不存在的账号")
+
+        assert storage_backend_registry.find(token) is None
+        assert storage_backend_registry.resolve(token) is None
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_stop_checks_ownership_per_instance(monkeypatch, plugin_manager) -> None:
+    """停用按 (标识, 实例) 两级校验归属：被接管的实例位跳过，同标识其余位照常回收。"""
+    _save_three_accounts()
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    storage_backend_registry.register(
+        P123Storage,
+        distribution=ExtensionDistribution.MARKET,
+        owner="OtherOwner@default",
+        storage_id=STORAGE_ID,
+        instance="主号",
+    )
+
+    plugin_manager.stop(plugin_id)
+
+    taken_over = storage_backend_registry.find(f"{STORAGE_ID}@主号")
+    assert taken_over is not None
+    assert taken_over.owner == "OtherOwner@default"
+    assert storage_backend_registry.find(f"{STORAGE_ID}@备号") is None
+    assert storage_backend_registry.find(f"{STORAGE_ID}@默认号") is None
+
+
+def test_an_illegal_instance_name_drops_only_its_own_position(
+    monkeypatch, plugin_manager
+) -> None:
+    """一份实例名不合法的配置只让它自己登记不成，同类型其余账号照常可寻址。"""
+    _save_accounts(
+        StorageConf(
+            type=STORAGE_ID, name="主号", bare_token_target=True, config=MAIN_ACCOUNT
+        ),
+        StorageConf(type=STORAGE_ID, name="坏@名字", config=SPARE_ACCOUNT),
+    )
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        assert _registered_instances() == ["主号"]
+        assert storage_backend_registry.resolve(STORAGE_ID).get_conf() == MAIN_ACCOUNT
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_storage_config_change_resyncs_the_addressable_instances(
+    monkeypatch, plugin_manager
+) -> None:
+    """插件运行期间增配账号后，按令牌可寻址的实例位随之重建。"""
+    _save_accounts(
+        StorageConf(type=STORAGE_ID, name="主号", config=MAIN_ACCOUNT)
+    )
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        assert _registered_instances() == ["主号"]
+
+        _save_three_accounts()
+        plugin_manager_module._handle_storage_instance_config_changed(
+            _storage_config_changed_event()
+        )
+
+        assert sorted(_registered_instances()) == ["主号", "备号", "默认号"]
+        assert (
+            storage_backend_registry.resolve(f"{STORAGE_ID}@备号").get_conf()
+            == SPARE_ACCOUNT
+        )
+    finally:
+        plugin_manager.stop(plugin_id)
+
+
+def test_unrelated_config_change_leaves_the_registrations_alone(
+    monkeypatch, plugin_manager
+) -> None:
+    """与存储实例配置无关的变更不触发重建，登记维持原样。"""
+    _save_accounts(
+        StorageConf(type=STORAGE_ID, name="主号", config=MAIN_ACCOUNT)
+    )
+    plugin_id = _start_plugin(monkeypatch, plugin_manager)
+    try:
+        _save_three_accounts()
+        plugin_manager_module._handle_storage_instance_config_changed(
+            Event(
+                EventType.ConfigChanged,
+                ConfigChangeEventData(key={SystemConfigKey.Downloaders.value}),
+            )
+        )
+
+        assert _registered_instances() == ["主号"]
     finally:
         plugin_manager.stop(plugin_id)
 
