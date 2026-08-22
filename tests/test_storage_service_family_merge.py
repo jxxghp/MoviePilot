@@ -23,7 +23,7 @@ from app.application.service_config import (
 from app.application.storage import StorageHelper
 from app.application.storage_config import select_storage_config
 from app.modules._base.storage import StorageBase
-from app.plugins import _PluginBase
+from app.sdk.extension import _PluginBase
 from app.runtime.deprecation.notices import NOTICES
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.projection.module_declarations import builtin_multi_instance

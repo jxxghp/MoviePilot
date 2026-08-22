@@ -29,6 +29,8 @@ from app.runtime.extensions.lifecycle.layout import (
 )
 from app.runtime.extensions.plugin_manager import PluginManager
 
+# 用 v2 生态的写法 from app.plugins import _PluginBase：被加载的是真插件，
+# 这条路径由兼容层解析，一并覆盖挂载点形态下的旧写法
 _PLUGIN_SOURCE_TEMPLATE = """
 from app.plugins import _PluginBase
 
@@ -101,12 +103,15 @@ def plugins_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     root = tmp_path / "app" / "plugins"
     root.mkdir(parents=True)
-    # 把临时插件根目录并入 app.plugins 包的搜索路径，使临时插件可被真实 import
-    package_path = importlib.import_module("app.plugins").__path__
-    package_path.append(str(root))
+    # 把临时插件根目录并入 app.plugins 包的搜索路径，使临时插件可被真实 import。
+    # app.plugins 是命名空间包，其 __path__ 是只支持追加的 _NamespacePath，
+    # 因此整体换成列表，退出时把原对象换回去
+    plugins_package = importlib.import_module("app.plugins")
+    original_path = plugins_package.__path__
+    plugins_package.__path__ = [*original_path, str(root)]
     importlib.invalidate_caches()
     yield root
-    package_path.remove(str(root))
+    plugins_package.__path__ = original_path
     for module_name in [name for name in sys.modules if name.startswith("app.plugins.")]:
         sys.modules.pop(module_name, None)
     importlib.invalidate_caches()

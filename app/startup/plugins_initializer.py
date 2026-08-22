@@ -269,13 +269,13 @@ def _resolve_plugin_instance_log_dir(plugin_id: str, instance_id: str) -> Path:
     """
     按插件实例持久化目录推导其日志目录：与业务数据目录同级的 logs 子目录。
 
-    `app.runtime.log` 是依赖叶节点，不直接导入 `app.plugins`；这里是组合根，
+    `app.runtime.log` 是依赖叶节点，不直接导入插件目录定位模块；这里是组合根，
     由它经 `plugin_instance_path` 完成插件标识与实例标识的路径分段校验。
     :param plugin_id: 插件标识
     :param instance_id: 实例标识
     :return: 该实例的日志目录
     """
-    from app.plugins import plugin_instance_path
+    from app.runtime.extensions.paths import plugin_instance_path
     return plugin_instance_path(plugin_id, instance_id, "data").parent / "logs"
 
 

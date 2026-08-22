@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-import app.plugins as plugins_package
-from app.plugins import _PluginBase
+import app.sdk.extension as extension_module
+from app.sdk.extension import _PluginBase
 from app.runtime.extensions.contract.extension import supports_extension_hook
 from app.runtime.extensions.projection import plugin as projection_module
 from app.runtime.extensions.projection.plugin import PluginExtension
@@ -155,7 +155,7 @@ def _base_method_definition_lines() -> dict:
 
     :return: 方法名到其全部定义行号列表的映射
     """
-    source = Path(plugins_package.__file__).read_text(encoding="utf-8")
+    source = Path(extension_module.__file__).read_text(encoding="utf-8")
     definitions: dict = {}
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.ClassDef) or node.name != "_PluginBase":

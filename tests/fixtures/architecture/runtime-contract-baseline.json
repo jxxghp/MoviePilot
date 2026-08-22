@@ -1325,6 +1325,23 @@
           "target_name": "TransHandler"
         }
       },
+      "app.plugins": {
+        "PluginChian": {
+          "replacement": "app.sdk.extension.PluginChian",
+          "target_module": "app.sdk.extension",
+          "target_name": "PluginChian"
+        },
+        "_PluginBase": {
+          "replacement": "app.sdk.extension._PluginBase",
+          "target_module": "app.sdk.extension",
+          "target_name": "_PluginBase"
+        },
+        "plugin_instance_path": {
+          "replacement": "app.runtime.extensions.paths.plugin_instance_path",
+          "target_module": "app.runtime.extensions.paths",
+          "target_name": "plugin_instance_path"
+        }
+      },
       "app.schemas": {
         "ChannelCapabilities": {
           "replacement": "app.schemas.notification.ChannelCapabilities",
@@ -2633,7 +2650,203 @@
         "target": "app.runtime.events.eventmanager"
       }
     ],
-    "app.sdk.extension": [],
+    "app.sdk.extension": [
+      {
+        "kind": "import",
+        "name": "ABCMeta",
+        "target": "abc.ABCMeta"
+      },
+      {
+        "kind": "import",
+        "name": "ActionDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.ActionDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "AgentToolDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.AgentToolDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "Any",
+        "target": "typing.Any"
+      },
+      {
+        "kind": "import",
+        "name": "ChainBase",
+        "target": "app.application.orchestration.ChainBase"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelCapabilities",
+        "target": "app.schemas.notification.ChannelCapabilities"
+      },
+      {
+        "kind": "import",
+        "name": "CommandDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.CommandDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "DEFAULT_INSTANCE_ID",
+        "target": "app.runtime.extensions.contract.instance.DEFAULT_INSTANCE_ID"
+      },
+      {
+        "kind": "import",
+        "name": "DashboardDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.DashboardDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "DeclarativeBase",
+        "target": "sqlalchemy.orm.DeclarativeBase"
+      },
+      {
+        "kind": "import",
+        "name": "Dict",
+        "target": "typing.Dict"
+      },
+      {
+        "kind": "import",
+        "name": "EventManager",
+        "target": "app.runtime.events.EventManager"
+      },
+      {
+        "kind": "import",
+        "name": "FilterRuleDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.FilterRuleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "FilterRuleGroupDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.FilterRuleGroupDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "List",
+        "target": "typing.List"
+      },
+      {
+        "kind": "import",
+        "name": "MediaSourceDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.MediaSourceDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "Message",
+        "target": "app.schemas.message.Message"
+      },
+      {
+        "kind": "import",
+        "name": "MessageHelper",
+        "target": "app.application.messaging.message.MessageHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MessageType",
+        "target": "app.schemas.types.MessageType"
+      },
+      {
+        "kind": "import",
+        "name": "MetaParserDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.MetaParserDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ModuleDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.ModuleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "NotificationChannel",
+        "target": "app.schemas.types.NotificationChannel"
+      },
+      {
+        "kind": "import",
+        "name": "Optional",
+        "target": "typing.Optional"
+      },
+      {
+        "kind": "import",
+        "name": "Path",
+        "target": "pathlib.Path"
+      },
+      {
+        "kind": "ClassDef",
+        "name": "PluginChian",
+        "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "PluginConfigOper",
+        "target": "app.db.oper.pluginconfig.PluginConfigOper"
+      },
+      {
+        "kind": "import",
+        "name": "PluginDataOper",
+        "target": "app.db.oper.plugindata.PluginDataOper"
+      },
+      {
+        "kind": "import",
+        "name": "ScheduleDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.ScheduleDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "ServiceInstanceDeclaration",
+        "target": "app.runtime.extensions.contract.declaration.ServiceInstanceDeclaration"
+      },
+      {
+        "kind": "import",
+        "name": "SystemConfigOper",
+        "target": "app.db.oper.systemconfig.SystemConfigOper"
+      },
+      {
+        "kind": "import",
+        "name": "TYPE_CHECKING",
+        "target": "typing.TYPE_CHECKING"
+      },
+      {
+        "kind": "import",
+        "name": "Tuple",
+        "target": "typing.Tuple"
+      },
+      {
+        "kind": "import",
+        "name": "Type",
+        "target": "typing.Type"
+      },
+      {
+        "kind": "import",
+        "name": "Union",
+        "target": "typing.Union"
+      },
+      {
+        "kind": "import",
+        "name": "abstractmethod",
+        "target": "abc.abstractmethod"
+      },
+      {
+        "kind": "import",
+        "name": "instance_key",
+        "target": "app.runtime.extensions.contract.instance.instance_key"
+      },
+      {
+        "kind": "import",
+        "name": "normalize_instance_id",
+        "target": "app.runtime.extensions.contract.instance.normalize_instance_id"
+      },
+      {
+        "kind": "import",
+        "name": "plugin_instance_path",
+        "target": "app.runtime.extensions.paths.plugin_instance_path"
+      },
+      {
+        "kind": "import",
+        "name": "settings",
+        "target": "app.runtime.config.settings"
+      }
+    ],
     "app.sdk.logging": [
       {
         "kind": "import",

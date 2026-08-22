@@ -590,7 +590,7 @@ def test_binding_row_is_untouched_by_the_merge(user_factory) -> None:
 
 def test_declaration_hook_for_auth_providers_is_gone() -> None:
     """`provides_auth_providers()` 整条删除，插件基类上不再有这个钩子。"""
-    from app.plugins import _PluginBase
+    from app.sdk.extension import _PluginBase
 
     assert not hasattr(_PluginBase, "provides_auth_providers")
 

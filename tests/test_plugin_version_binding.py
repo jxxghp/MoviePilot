@@ -169,11 +169,12 @@ def plugins_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pa
     )
     root = tmp_path / "app" / "plugins"
     root.mkdir(parents=True)
-    package_path = importlib.import_module("app.plugins").__path__
-    package_path.append(str(root))
+    plugins_package = importlib.import_module("app.plugins")
+    original_path = plugins_package.__path__
+    plugins_package.__path__ = [*original_path, str(root)]
     importlib.invalidate_caches()
     yield root
-    package_path.remove(str(root))
+    plugins_package.__path__ = original_path
     for module_name in [name for name in sys.modules if name.startswith("app.plugins.")]:
         sys.modules.pop(module_name, None)
     importlib.invalidate_caches()

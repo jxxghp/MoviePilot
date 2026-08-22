@@ -5,7 +5,7 @@ import importlib.util
 import sys
 import threading
 from types import ModuleType
-from typing import Dict
+from typing import Dict, Optional
 
 from app.runtime.compat.diagnostics import record_legacy_import
 from app.runtime.compat.manifest import (
@@ -117,17 +117,27 @@ class VirtualLegacyPackageLoader(importlib.abc.Loader):
 
 
 class LegacySymbolOverlayLoader(importlib.abc.Loader):
-    """在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。"""
+    """在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。
+
+    ``original_loader`` 为 ``None`` 表示目标是命名空间包（PathFinder 对这类包只给出
+    搜索路径、不给 Loader），此时没有源码要执行，只叠加符号解析。
+    """
 
     _STATE_KEY = "__legacy_symbol_overlay_state__"
 
-    def __init__(self, module_name: str, original_loader: importlib.abc.Loader):
+    def __init__(
+            self,
+            module_name: str,
+            original_loader: Optional[importlib.abc.Loader],
+    ):
         """保存物理模块名称和 PathFinder 已选择的原始 Loader。"""
         self.module_name = module_name
         self.original_loader = original_loader
 
     def __getattr__(self, name: str):
         """把资源读取等非核心 Loader 能力转交给原始 Loader。"""
+        if self.original_loader is None:
+            raise AttributeError(name)
         return getattr(self.original_loader, name)
 
     def create_module(self, spec):
@@ -155,10 +165,11 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
     def exec_module(self, module: ModuleType) -> None:
         """执行真实模块后安装只对已登记旧符号生效的 __getattr__。"""
         self._restore_previous_overlay(module)
-        executor = getattr(self.original_loader, "exec_module", None)
-        if not executor:
-            raise ImportError(f"模块 {self.module_name} 的原始 Loader 不支持 exec_module")
-        executor(module)
+        if self.original_loader is not None:
+            executor = getattr(self.original_loader, "exec_module", None)
+            if not executor:
+                raise ImportError(f"模块 {self.module_name} 的原始 Loader 不支持 exec_module")
+            executor(module)
 
         exports = SYMBOL_ALIASES[self.module_name]
         previous_getattr = module.__dict__.get("__getattr__")
@@ -254,7 +265,9 @@ class LegacyImportFinder(importlib.abc.MetaPathFinder):
 
         if fullname in SYMBOL_ALIASES:
             spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
-            if spec and spec.loader:
+            # 命名空间包的 spec 没有 Loader，只有搜索路径；两种形态都要挂上叠加层，
+            # 否则挂载点形态的旧包（app.plugins）拿不到已迁走的符号
+            if spec and (spec.loader or spec.submodule_search_locations is not None):
                 spec.loader = LegacySymbolOverlayLoader(fullname, spec.loader)
                 return spec
 

@@ -256,6 +256,9 @@ RUN mkdir -p ${HOME} \
 WORKDIR /app
 
 COPY --link --from=prepare_frontend /public /public
+# /app/app/plugins 是扩展的安装挂载点，纯数据目录：不含宿主源码，可以整个挂宿主目录
+# 上去做跨升级持久化（docker run -v /宿主目录:/app/app/plugins），覆盖后 app.plugins
+# 仍以命名空间包解析
 COPY --link --from=prepare_plugins /plugins /app/app/plugins
 COPY --link --from=prepare_resources /resources /app/app/application/site
 COPY --link --from=prepare_backend /app /app

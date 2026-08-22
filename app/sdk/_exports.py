@@ -31,6 +31,10 @@ SDK_REQUIRED_EXPORTS = {
         'Event': [('app.runtime.events', 'Event')],
         'EventManager': [('app.runtime.events', 'EventManager')],
     },
+    'app.sdk.extension': {
+        'PluginChian': [('app.sdk.extension', 'PluginChian')],
+        '_PluginBase': [('app.sdk.extension', '_PluginBase')],
+    },
     'app.sdk.logging': {
         'logger': [('app.sdk.logging', 'logger')],
     },
@@ -276,7 +280,8 @@ SDK_DECLARED_EXPORTS = {
         'eventmanager': ('app.runtime.events', 'eventmanager'),
     },
     'app.sdk.extension': {
-        '_PluginBase': ('app.plugins', '_PluginBase'),
+        'PluginChian': ('app.sdk.extension', 'PluginChian'),
+        '_PluginBase': ('app.sdk.extension', '_PluginBase'),
     },
     'app.sdk.logging': {
         'logger': ('app.runtime.log', 'logger'),

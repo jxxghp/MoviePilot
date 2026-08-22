@@ -1358,3 +1358,95 @@ def test_failed_generation_probe_keeps_current_control_snapshot(tmp_path: Path) 
 
     assert not marker.exists()
     assert "继续使用当前控制脚本快照启动" in completed.stdout
+
+
+def _run_stage_runtime_payload(tmp_path: Path) -> subprocess.CompletedProcess:
+    """在临时目录上跑一次升级载荷准备。
+
+    调用前由用例自行铺好运行目录与更新包里的扩展目录。
+
+    :param tmp_path: 用例级临时目录
+    :return: 子进程结果
+    """
+    live_app = tmp_path / "app"
+    (live_app / "app" / "application" / "site").mkdir(parents=True, exist_ok=True)
+    stage_app = tmp_path / "update" / "App"
+    stage_app.mkdir(parents=True, exist_ok=True)
+    for name in ("version.py", "pyproject.toml", "uv.lock"):
+        (stage_app / name).write_text("x\n", encoding="utf-8")
+    (tmp_path / "update" / "dist").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "update" / "dist" / "index.html").write_text("front", encoding="utf-8")
+
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        TMP_PATH="$2"
+        GITHUB_PROXY= CURL_OPTIONS=
+        source {UPDATER!s}
+        APP_DIR="$3"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        download_staged_resource() {{ return 0; }}
+        stage_runtime_payload
+        """
+    )
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "stage-plugins-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "update"),
+            str(live_app),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_generation_swap_carries_over_installed_plugins(tmp_path: Path) -> None:
+    """用户已装扩展被搬进新代际，新版本包自带的扩展目录不被清掉。
+
+    `/app` 整代替换，扩展挂载点在 `/app` 之内，所以必须显式搬运；挂载点是纯数据
+    目录，搬运过程不涉及任何宿主源码文件。
+    """
+    live_plugins = tmp_path / "app" / "app" / "plugins"
+    (live_plugins / "userplugin").mkdir(parents=True)
+    (live_plugins / "userplugin" / "__init__.py").write_text("user", encoding="utf-8")
+    stage_plugins = tmp_path / "update" / "App" / "app" / "plugins"
+    (stage_plugins / "shippedplugin").mkdir(parents=True)
+    (stage_plugins / "shippedplugin" / "__init__.py").write_text(
+        "shipped", encoding="utf-8"
+    )
+
+    result = _run_stage_runtime_payload(tmp_path)
+
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    assert (stage_plugins / "userplugin" / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "user"
+    assert (stage_plugins / "shippedplugin" / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "shipped"
+
+
+def test_generation_swap_leaves_no_host_source_in_the_mount_point(tmp_path: Path) -> None:
+    """升级不会在扩展挂载点顶层留下任何宿主源码文件。
+
+    挂载点顶层一旦有宿主源码，卷挂载就会把它盖掉；升级流程必须不依赖、也不生成
+    这类文件。
+    """
+    live_plugins = tmp_path / "app" / "app" / "plugins"
+    live_plugins.mkdir(parents=True)
+    (tmp_path / "update" / "App" / "app" / "plugins").mkdir(parents=True)
+
+    result = _run_stage_runtime_payload(tmp_path)
+    stage_plugins = tmp_path / "update" / "App" / "app" / "plugins"
+
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    assert [
+        entry.name for entry in stage_plugins.iterdir() if entry.suffix == ".py"
+    ] == []

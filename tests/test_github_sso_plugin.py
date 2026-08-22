@@ -27,7 +27,7 @@ from app.application.service_config import async_write_system_setting
 from app.db.models.user import User
 from app.db.oper.user import UserOper
 from app.db.oper.user_identity import UserIdentityOper
-from app.plugins import _PluginBase
+from app.sdk.extension import _PluginBase
 from app.plugins.githubsso import (
     ERROR_FRAGMENT_KEY,
     SERVICE_TYPE,

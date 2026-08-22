@@ -2326,7 +2326,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         :param instance_id: 实例标识，调用方需确保不是默认实例
         """
-        from app.plugins import plugin_instance_path
+        from app.runtime.extensions.paths import plugin_instance_path
         instance_dir = plugin_instance_path(plugin_id, instance_id, "data").parent
         plugin_root = instance_dir.parent
         resolved_instance_dir = instance_dir.resolve()

@@ -397,7 +397,7 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
 
 def test_plugin_base_subclass_without_overrides_declares_nothing():
     """什么都不声明的插件行为与既有完全一致：两个新钩子都不算已实现。"""
-    from app.plugins import _PluginBase
+    from app.sdk.extension import _PluginBase
     from app.runtime.extensions.contract.extension import supports_extension_hook
 
     class _SilentPlugin(_PluginBase):

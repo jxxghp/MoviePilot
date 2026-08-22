@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.modules import _ModuleBase
-from app.plugins import _PluginBase
+from app.sdk.extension import _PluginBase
 from app.runtime.extensions.contract.extension import (
     ExtensionDistribution,
     ExtensionFaultScope,

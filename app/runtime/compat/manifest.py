@@ -874,6 +874,26 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    # app.plugins 是扩展的安装挂载点而不是宿主包：它要能被容器卷整体覆盖，因此目录里
+    # 没有 __init__.py，是个命名空间包。存量扩展写的 from app.plugins import _PluginBase
+    # 由这里解析，目录被覆盖也不影响。
+    "app.plugins": {
+        "_PluginBase": SymbolAlias(
+            target_module="app.sdk.extension",
+            target_name="_PluginBase",
+            replacement="app.sdk.extension._PluginBase",
+        ),
+        "PluginChian": SymbolAlias(
+            target_module="app.sdk.extension",
+            target_name="PluginChian",
+            replacement="app.sdk.extension.PluginChian",
+        ),
+        "plugin_instance_path": SymbolAlias(
+            target_module="app.runtime.extensions.paths",
+            target_name="plugin_instance_path",
+            replacement="app.runtime.extensions.paths.plugin_instance_path",
+        ),
+    },
     "app.agent.orchestrator": {
         "AgentChain": SymbolAlias(
             target_module="app.application.orchestration.agent",

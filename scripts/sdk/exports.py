@@ -293,9 +293,9 @@ def collect_plugin_base_surface() -> dict[str, list[str]]:
 
     :return: ``{"members": [类成员名], "attributes": [实例属性名]}``
     """
-    from app.plugins import _PluginBase
+    from app.sdk.extension import _PluginBase
 
-    source = PROJECT_ROOT / "app" / "plugins" / "__init__.py"
+    source = PROJECT_ROOT / "app" / "sdk" / "extension.py"
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     class_body = next(
         node.body
