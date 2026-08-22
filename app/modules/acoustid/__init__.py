@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 from uuid import UUID
 
+from fastapi.concurrency import run_in_threadpool
+
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
@@ -137,7 +139,10 @@ class AcoustIdModule(_ModuleBase):
     ) -> Optional[str]:
         """异步读取音频指纹并返回高置信匹配的 MusicBrainz Recording ID。"""
         file_path = Path(path)
-        if not self._fpcalc_path or not file_path.is_file():
+        if not self._fpcalc_path or not await run_in_threadpool(
+                Path.is_file,
+                file_path,
+        ):
             return None
         cache_key = self._file_cache_key(file_path)
         if cache_key:

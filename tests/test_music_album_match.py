@@ -220,6 +220,52 @@ def test_async_recognize_album_directory_calls_async_module(
     run_module.assert_not_called()
 
 
+def test_async_recognize_album_directory_checks_path_in_threadpool(
+        tmp_path,
+        media_chain,
+        monkeypatch,
+):
+    """异步专辑识别应把目录元数据检查移出事件循环。"""
+    check_directory = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.chain.media.run_in_threadpool", check_directory)
+
+    result = asyncio.run(
+        media_chain.async_recognize_music_album_directory(tmp_path / "missing")
+    )
+
+    assert result == {}
+    check_directory.assert_awaited_once()
+    assert check_directory.await_args.args[1] == tmp_path / "missing"
+
+
+def test_async_album_fallback_propagates_cancellation_during_path_check(
+        tmp_path,
+        media_chain,
+        monkeypatch,
+):
+    """异步专辑兜底不得吞掉文件检查被取消的信号。"""
+    started = asyncio.Event()
+
+    async def wait_for_check(*_args, **_kwargs):
+        """模拟慢文件系统检查，直到调用方取消。"""
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("app.chain.media.run_in_threadpool", wait_for_check)
+
+    async def exercise_cancellation():
+        """在同一事件循环中取消正在等待文件检查的调用。"""
+        task = asyncio.create_task(
+            media_chain._async_music_album_dir_fallback(tmp_path / "track.flac")
+        )
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise_cancellation())
+
+
 def test_recognize_album_directory_skips_single_file(tmp_path, media_chain, monkeypatch):
     """单文件目录不走专辑匹配，交给单曲识别链路。"""
     album_dir = tmp_path / "单曲"

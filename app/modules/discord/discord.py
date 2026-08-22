@@ -8,6 +8,7 @@ from urllib.parse import quote
 import discord
 from discord import app_commands
 import httpx
+from fastapi.concurrency import run_in_threadpool
 
 from app.runtime.settings import RuntimeSettingsCompat
 
@@ -26,6 +27,11 @@ PARSE_FIELD_TYPES = {
     MessageType.Subscribe,  # 订阅
     MessageType.Manual,  # 手动处理
 }
+
+
+def _is_regular_file(path: Path) -> bool:
+    """判断路径是否仍指向可发送的普通文件。"""
+    return path.exists() and path.is_file()
 
 
 class Discord:
@@ -780,7 +786,10 @@ class Discord:
             return False, None
 
         local_file = Path(file_path)
-        if not local_file.exists() or not local_file.is_file():
+        if not await run_in_threadpool(
+                _is_regular_file,
+                local_file,
+        ):
             logger.error(f"Discord发送文件失败，文件不存在: {local_file}")
             return False, None
 
