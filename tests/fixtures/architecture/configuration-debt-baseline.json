@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 57,
+    "count": 50,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/cli.py",
@@ -20,14 +20,7 @@
       "app/doctor/runner.py",
       "app/factory.py",
       "app/main.py",
-      "app/modules/filemanager/module.py",
-      "app/modules/filemanager/storages/alipan.py",
-      "app/modules/filemanager/storages/alist.py",
       "app/modules/filemanager/storages/local.py",
-      "app/modules/filemanager/storages/rclone.py",
-      "app/modules/filemanager/storages/smb.py",
-      "app/modules/filemanager/storages/u115.py",
-      "app/modules/filemanager/transhandler.py",
       "app/modules/indexer/parser/__init__.py",
       "app/modules/indexer/parser/rousi.py",
       "app/modules/indexer/spider/__init__.py",

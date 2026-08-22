@@ -4,7 +4,9 @@ from typing import Optional, List, Tuple
 
 from jinja2 import Template
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase

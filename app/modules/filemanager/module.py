@@ -1,7 +1,9 @@
 from pathlib import Path
 from typing import Any, Optional, List, Tuple, Union, Dict, Callable
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
