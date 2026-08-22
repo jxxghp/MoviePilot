@@ -38,6 +38,7 @@ def test_projection_preserves_commands_and_api_adaptation():
         "endpoint": api["endpoint"],
         "auth": "apikey",
     }]
+    assert api == {"path": "/items", "endpoint": api["endpoint"]}
 
 
 def test_projection_filters_disabled_stateful_hooks_but_keeps_api_contract():

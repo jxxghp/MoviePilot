@@ -6,6 +6,9 @@ FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5
 FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548 AS rclone
 
 
+FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
+
+
 FROM python:3.14.7-slim-trixie@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS base
 
 
@@ -35,6 +38,7 @@ ENV LANG="C.UTF-8" \
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && install -d -m 0755 /usr/share/postgresql-common/pgdg \
     && curl -fsSL \
@@ -220,8 +224,8 @@ ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
     MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true"
 
 # 引入支持 amr 编码的静态 ffmpeg
-COPY --from=mwader/static-ffmpeg:8.1.1 /ffmpeg /usr/local/bin/
-COPY --from=mwader/static-ffmpeg:8.1.1 /ffprobe /usr/local/bin/
+COPY --from=ffmpeg /ffmpeg /usr/local/bin/
+COPY --from=ffmpeg /ffprobe /usr/local/bin/
 COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
 # python 环境

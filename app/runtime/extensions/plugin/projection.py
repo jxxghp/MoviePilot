@@ -57,7 +57,8 @@ class PluginProjection:
             if not supports_plugin_hook(plugin, "get_api"):
                 continue
             try:
-                for api in plugin.get_api() or []:
+                for source_api in plugin.get_api() or []:
+                    api = dict(source_api)
                     api["path"] = f"/{plugin_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"
