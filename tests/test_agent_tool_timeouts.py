@@ -150,7 +150,7 @@ def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
 
 def test_create_agent_config_uses_llm_max_iterations():
     """Agent 执行配置应把 LLM_MAX_ITERATIONS 传给 LangGraph recursion_limit。"""
-    from app.agent import MoviePilotAgent
+    from app.agent.orchestrator import MoviePilotAgent
     from langchain_core.messages import AIMessage
 
     class _FakeGraphState:

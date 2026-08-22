@@ -15,7 +15,12 @@ from app.agent.middleware.subagents import (
     SubAgentTaskControlMiddleware,
     create_subagent_middlewares,
 )
-from app.agent.policy import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+from app.agent.policy.contracts import (
+    AuthSource,
+    PrincipalType,
+    ToolOrigin,
+    ToolPolicyContext,
+)
 from app.agent.tools.tags import ToolTag
 
 

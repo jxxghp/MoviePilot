@@ -8,9 +8,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agent import MoviePilotAgent, ReplyMode, _CompiledAgentBundle
+from app.agent.contracts import ReplyMode
 from app.agent.mcp import AgentMcpToolSpec
 from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.orchestrator import MoviePilotAgent, _CompiledAgentBundle
 from app.agent.tools.catalog import (
     ToolCatalogSnapshot,
     ToolIdentityAmbiguousError,

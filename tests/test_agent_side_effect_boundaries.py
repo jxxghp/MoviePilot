@@ -14,7 +14,7 @@ from langchain_core.messages import ToolMessage
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.subagents import SubAgentTaskControlMiddleware
 from app.agent.orchestrator import MoviePilotAgent
-from app.agent.policy import (
+from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
     ToolOrigin,
