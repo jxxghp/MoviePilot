@@ -41,7 +41,7 @@ from app.adapters.system.plugin.manifest import dependency_manifest_status
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
-from app.db.oper.systemconfig import SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.db.session import SessionFactory
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.runtime.log import logger
@@ -52,7 +52,7 @@ from app.schemas.types import SystemConfigKey
 
 async def _async_write_plugin_config(key, value):
     """通过数据库操作器异步保存插件运行时配置。"""
-    return await SystemConfigOper().async_set(key, value)
+    return await get_configured_system_config().async_set(key, value)
 
 
 def _delete_plugin_data(plugin_id: str) -> None:
@@ -88,7 +88,7 @@ def configure_plugin_services() -> None:
     configure_plugin_install_reporter(MoviePilotServerHelper.install_plugin_reg)
     configure_site_auth_level_provider(lambda: SitesHelper().auth_level)
     configure_installed_plugins_provider(
-        lambda: SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+        lambda: get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
     )
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_system(PluginSystemServices(
@@ -96,7 +96,7 @@ def configure_plugin_services() -> None:
         package=PluginPackageManager(plugin_helper),
         dependency=PluginDependencyInstaller(
             plugin_helper,
-            installed_plugins_provider=lambda: SystemConfigOper().get(
+            installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             plugin_dir=Path(settings.ROOT_PATH) / "app" / "plugins",
@@ -109,10 +109,10 @@ def configure_plugin_services() -> None:
         frozen=SystemUtils.is_frozen,
     ))
     configure_plugin_storage(PluginStorage(
-        read=lambda key: SystemConfigOper().get(key),
-        write=lambda key, value: SystemConfigOper().set(key, value),
+        read=lambda key: get_configured_system_config().get(key),
+        write=lambda key, value: get_configured_system_config().set(key, value),
         async_write=_async_write_plugin_config,
-        delete=lambda key: SystemConfigOper().delete(key),
+        delete=lambda key: get_configured_system_config().delete(key),
         delete_data=_delete_plugin_data,
     ))
 
@@ -123,7 +123,7 @@ def _build_plugin_catalog(manager: PluginManager) -> PluginCatalogService:
     return PluginCatalogService(
         market_loader=client.get_plugins,
         async_market_loader=client.async_get_plugins,
-        installed_plugins_provider=lambda: SystemConfigOper().get(
+        installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         plugin_mapper=manager._process_plugin_info,

@@ -14,7 +14,7 @@
     "workflow_to_db": []
   },
   "edge_count": 6404,
-  "edge_sha256": "08caab762b3882534d0cdf43ea4e0fcaf28c580f5e04537346f742b212854123",
+  "edge_sha256": "850e490b866ed8eeee03515e39a3821c3078f934c622a60d9db5e279bab1bfbb",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6176,6 +6176,7 @@
     "app.startup.plugins_initializer -> app.adapters.system.plugin.manifest",
     "app.startup.plugins_initializer -> app.adapters.system.plugin.package",
     "app.startup.plugins_initializer -> app.application",
+    "app.startup.plugins_initializer -> app.application.configuration",
     "app.startup.plugins_initializer -> app.application.plugin",
     "app.startup.plugins_initializer -> app.application.plugin.catalog",
     "app.startup.plugins_initializer -> app.application.plugin.data",
@@ -6184,7 +6185,6 @@
     "app.startup.plugins_initializer -> app.db",
     "app.startup.plugins_initializer -> app.db.oper",
     "app.startup.plugins_initializer -> app.db.oper.plugindata",
-    "app.startup.plugins_initializer -> app.db.oper.systemconfig",
     "app.startup.plugins_initializer -> app.db.session",
     "app.startup.plugins_initializer -> app.db.uow",
     "app.startup.plugins_initializer -> app.foundation",

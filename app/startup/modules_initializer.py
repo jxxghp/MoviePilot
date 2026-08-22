@@ -40,6 +40,7 @@ from app.application.configuration import (
     RuntimeConfiguration,
     RuntimeSettingsService,
     SystemConfigService,
+    get_configured_system_config,
     TransferRetryConfig,
     configure_runtime_configuration,
     configure_runtime_settings,
@@ -185,7 +186,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
 
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
-    configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+    configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
     configure_plugin_runtime(lambda: PluginManager())
     configure_service_directory(
@@ -196,9 +197,9 @@ def configure_runtime_data_providers() -> None:
     )
     configure_server_application_services(
         report_service=ServerReportService(
-            config_reader=lambda key: SystemConfigOper().get(key),
-            config_writer=lambda key, value: SystemConfigOper().set(key, value),
-            installed_plugins_provider=lambda: SystemConfigOper().get(
+            config_reader=lambda key: get_configured_system_config().get(key),
+            config_writer=lambda key, value: get_configured_system_config().set(key, value),
+            installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             subscribes_provider=lambda: SubscribeOper().list(),
@@ -406,7 +407,7 @@ def user_auth():
     sites_helper = SitesHelper()
     if sites_helper.auth_level >= 2:
         return
-    auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+    auth_conf = get_configured_system_config().get(SystemConfigKey.UserSiteAuthParams)
     status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
     if status:
         logger.info(f"{msg} 用户认证成功")
@@ -565,6 +566,8 @@ async def init_modules() -> HostRuntime:
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
+    # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
+    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
@@ -583,7 +586,6 @@ async def init_modules() -> HostRuntime:
         ),
         user=lambda: UserOper(),
     )
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
@@ -600,7 +602,7 @@ async def init_modules() -> HostRuntime:
     configure_auth_service(
         AuthService(
             users=UserOper(),
-            config=SystemConfigOper(),
+            config=get_configured_system_config(),
             passkeys=PassKeyOper(),
         )
     )
