@@ -93,11 +93,18 @@ def _class_level_annotations(py_file: Path):
 
     只取 ClassDef 直接子语句中的 AnnAssign：函数体内的局部注解、模块级注解都不算
     类级注解；``if TYPE_CHECKING:`` 块里的注解运行期根本不存在，声明式系统也看不到，
-    同样不在此列。
+    同样不在此列。独立的 dataclass 是 worker、DTO 等运行时数据结构，不参与 SQLAlchemy
+    声明式映射，也不属于本守卫的范围。
     """
     tree = ast.parse(py_file.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
+            continue
+        if any(
+            ast.unparse(decorator).split("(", maxsplit=1)[0].split(".")[-1]
+            == "dataclass"
+            for decorator in node.decorator_list
+        ):
             continue
         for stmt in node.body:
             if isinstance(stmt, ast.AnnAssign):
@@ -130,7 +137,7 @@ def test_allow_unmapped_is_not_set():
 
 def test_no_unmapped_class_level_annotations_in_db_package():
     """
-    app/db 内不存在非 Mapped[] 的类级注解——这是移除 __allow_unmapped__ 的前提。
+    app/db 内的 ORM 声明不存在非 Mapped[] 的类级注解——这是移除 __allow_unmapped__ 的前提。
 
     上一条用例断言标志不在，本条断言仓内确实不需要它。两者缺一不可：只断言标志不在，
     则某天有人补进一条 legacy 注解、发现 import 就炸、顺手把标志加回来，上一条用例
@@ -140,11 +147,11 @@ def test_no_unmapped_class_level_annotations_in_db_package():
     「现有 22 个模型仍是 legacy Column() 写法」，在 329 列全部迁移完之后仍原样留了
     很久，主动误导读者。
 
-    扫全部类而非只扫 Base 子类：判定 Base 子类要么靠运行期 Base.__subclasses__()，
+    扫全部 ORM 类而非只扫 Base 子类：判定 Base 子类要么靠运行期 Base.__subclasses__()，
     要么靠 AST 解析基类名。前者会漏掉「新增了模型文件但还没接进 app/db/models/__init__.py」
     的情况——恰恰是最可能带进 legacy 注解的场景；后者一遇 mixin 或跨文件继承就不准。
-    纯静态扫全部类没有这个盲区，而且当下不需要任何白名单：DbOper 这类非 ORM 类本身
-    就没有类级注解，天然不受影响。
+    纯静态扫描仍保留这个盲区保护；独立 dataclass 已在扫描函数中排除，其他非 ORM 类
+    若声明类级注解仍会被报告，避免通过装饰器名称伪装模型。
 
     变红时怎么办（二选一，别直接把用例删了）：
     1. 常见情况——新模型忘了用 2.0 写法，把它改成 mapped_column() + Mapped[] 即可；
