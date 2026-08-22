@@ -443,7 +443,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
             indexer = siteshelper.get_indexer(domain)
             site_info = siteoper.get_by_domain(domain)
-            updated, added, failed = self._sync_cookiecloud_domain(
+            updated, added, failed, should_finalize = self._sync_cookiecloud_domain(
                 domain=domain,
                 cookie=cookie,
                 indexer=indexer,
@@ -454,6 +454,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
             update_count += updated
             add_count += added
             fail_count += failed
+            if not should_finalize:
+                continue
 
             # 通知站点更新
             if indexer:
@@ -485,8 +487,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
             site_info: Any,
             siteoper: SiteOper,
             rsshelper: RssHelper,
-    ) -> Tuple[int, int, int]:
-        """处理单个 CookieCloud 域名并返回更新、新增、失败数量。"""
+    ) -> Tuple[int, int, int, bool]:
+        """处理单个域名，并返回计数与是否继续发送更新事件。"""
         if site_info and site_info.is_active:
             status, _ = self.test(domain)
             if status:
@@ -503,25 +505,25 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         siteoper.update_rss(domain=domain, rss=rss_url)
                     else:
                         logger.warning(errmsg)
-                return 0, 0, 0
+                return 0, 0, 0, False
             logger.info(f"更新站点 {domain} Cookie ...")
             siteoper.update_cookie(domain=domain, cookies=cookie)
-            return 1, 0, 0
+            return 1, 0, 0, True
         if not indexer:
-            return 0, 0, 0
+            return 0, 0, 0, True
         if self._cookiecloud_blacklisted(domain):
             logger.warning(f"站点 {domain} 已在黑名单中，不添加站点")
-            return 0, 0, 0
+            return 0, 0, 0, False
         domain_url = self._cookiecloud_indexer_domain(indexer, domain)
         proxy, response = self._cookiecloud_connect(domain_url, cookie, indexer)
         if response is None:
-            return 0, 0, 1
+            return 0, 0, 1, False
         if response.status_code not in [200, 500, 403]:
             logger.warning(f"站点 {indexer.get('name')} 连接状态码：{response.status_code}，无法添加站点")
-            return 0, 0, 1
+            return 0, 0, 1, False
         if not indexer.get("public") and not SiteUtils.is_logged_in(response.text):
             logger.warning(f"站点 {indexer.get('name')} 登录失败，无法添加站点")
-            return 0, 0, 1
+            return 0, 0, 1, False
         rss_url = None
         if not indexer.get("public") and domain_url:
             rss_url, errmsg = rsshelper.get_rss_link(
@@ -533,7 +535,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             name=indexer.get("name"), url=domain_url, domain=domain, cookie=cookie,
             rss=rss_url, proxy=1 if proxy else 0, public=1 if indexer.get("public") else 0,
         )
-        return 0, 1, 0
+        return 0, 1, 0, True
 
     def _cookiecloud_blacklisted(self, domain: str) -> bool:
         """判断域名是否命中 CookieCloud 黑名单。"""
