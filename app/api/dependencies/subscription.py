@@ -16,7 +16,7 @@ from app.api.context import (
 from app.api.data import get_async_db, get_db
 from app.api.dependencies.data import repository
 from app.application.outbox import AsyncOutboxTransaction
-from app.application.scheduling import Scheduler
+from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.delete import (
     AsyncUnitOfWork as DeleteUnitOfWork,
@@ -99,7 +99,7 @@ def get_search_subscriptions_command(
     def schedule_search(subscribe_id: int | None, state: str | None) -> None:
         """按历史参数提交订阅搜索调度任务。"""
         background_tasks.add_task(
-            Scheduler().start,
+            start_scheduler_job,
             job_id="subscribe_search",
             sid=subscribe_id,
             state=state,

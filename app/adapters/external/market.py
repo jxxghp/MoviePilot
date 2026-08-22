@@ -2772,8 +2772,11 @@ class PluginHelper(metaclass=WeakSingleton):
                         await async_dest_path.mkdir(parents=True, exist_ok=True)
                         continue
                     await async_dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(info, 'r') as src:
-                        data = src.read()
+                    data = await asyncio.to_thread(
+                        self.__read_release_zip_member,
+                        zf,
+                        info,
+                    )
                     async with aiofiles.open(dest_path, 'wb') as dst:
                         await dst.write(data)
                     wrote_any = True
@@ -2783,6 +2786,12 @@ class PluginHelper(metaclass=WeakSingleton):
         except Exception as e:
             logger.error(f"解压 Release 压缩包失败：{e}")
             return False, f"解压 Release 压缩包失败：{e}"
+
+    @staticmethod
+    def __read_release_zip_member(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+        """在线程池读取并解压单个 Release 文件，避免阻塞事件循环。"""
+        with zf.open(info, "r") as source:
+            return source.read()
 
 
 # 公开 Release 查询的缓存管理统一指向仓库级分页缓存。

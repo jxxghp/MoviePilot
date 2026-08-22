@@ -87,6 +87,17 @@ SUMMARY_PROMPT = """请判断以下 AI 助手与用户的对话是否值得写�
 ACTIVITY_ENTRY_PATTERN = re.compile(r"^-\s+\*\*(?P<time>\d{2}:\d{2})\*\*\s+(?P<summary>.+)$")
 
 
+def _write_activity_log_exclusive(path: Path, content: str) -> bool:
+    """同步独占创建日志文件；调用方必须在线程池中执行本函数。"""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(content)
+    return True
+
+
 class QueryActivityLogInput(BaseModel):
     """查询活动日志工具的输入参数模型。"""
 
@@ -565,18 +576,18 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
                     await stream.write(entry)
             else:
                 header = f"# {today_str} 活动日志\n\n"
-                try:
-                    fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-                except FileExistsError:
+                created = await anyio.to_thread.run_sync(
+                    _write_activity_log_exclusive,
+                    Path(log_path),
+                    header + entry,
+                )
+                if not created:
                     async with await anyio.open_file(
                         log_path,
                         mode="a",
                         encoding="utf-8",
                     ) as stream:
                         await stream.write(entry)
-                else:
-                    with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                        stream.write(header + entry)
             logger.debug(f"Activity logged: {summarize_result(summary, max_chars=80)}")
         except Exception as e:
             logger.warning(f"Failed to append activity log: {summarize_error(e)}")

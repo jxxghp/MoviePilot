@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool
@@ -324,7 +324,7 @@ class ModuleInvocationDispatcher:
     def _module_name(module: Any, fallback: str) -> str:
         """读取模块展示名，失败时回退到稳定类名。"""
         try:
-            return module.get_name()
+            return cast(str, module.get_name())
         except Exception as err:
             logger.debug("获取模块名称出错：%s", str(err))
             return fallback

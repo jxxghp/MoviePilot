@@ -12,7 +12,7 @@ Scheduler 实现由 startup 组合根在导入期注册，避免 application 层
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, List, Optional, cast
 
 # Agent 自主定时任务在运行时调度器中的任务 ID 前缀。
 AGENT_TASK_JOB_PREFIX = "agent-task"
@@ -143,12 +143,12 @@ class Scheduler:
 
 def list_scheduler_jobs() -> List[Any]:
     """列出运行时调度器的全部任务。"""
-    return get_scheduler().list()
+    return cast(List[Any], get_scheduler().list())
 
 
-def start_scheduler_job(job_id: str) -> None:
+def start_scheduler_job(job_id: str, **kwargs: Any) -> None:
     """立即运行指定的运行时定时任务。"""
-    get_scheduler().start(job_id)
+    get_scheduler().start(job_id, **kwargs)
 
 
 def update_plugin_job(plugin_id: str) -> None:
@@ -163,7 +163,7 @@ def remove_plugin_job(plugin_id: str) -> None:
 
 def start_agent_task(task_id: int) -> bool:
     """立即执行 Agent 自主定时任务。"""
-    return get_scheduler().start_agent_task(task_id)
+    return cast(bool, get_scheduler().start_agent_task(task_id))
 
 
 def get_agent_task_next_run(task_id: int) -> Optional[Any]:

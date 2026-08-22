@@ -8,13 +8,27 @@ from scripts.architecture.async_blocking import SCAN_ROOTS, compare_async_blocki
 
 
 def test_async_blocking_scan_covers_runtime_entrypoints() -> None:
-    """扫描范围必须覆盖 API、Scheduler、Chain 及其启动组合根。"""
+    """扫描范围必须覆盖全部 canonical 宿主目录和顶层运行入口。"""
     assert {
+        "app/adapters",
         "app/api",
+        "app/agent",
         "app/application",
         "app/chain",
+        "app/db",
+        "app/doctor",
+        "app/domain",
+        "app/foundation",
+        "app/monitor",
         "app/modules",
+        "app/runtime",
+        "app/schemas",
         "app/startup",
+        "app/workflow",
+        "app/cli.py",
+        "app/command.py",
+        "app/factory.py",
+        "app/main.py",
         "app/scheduler.py",
     }.issubset({str(path) for path in SCAN_ROOTS})
 

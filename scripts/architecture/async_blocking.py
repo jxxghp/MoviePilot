@@ -6,17 +6,31 @@ import argparse
 import ast
 import json
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/async-blocking-baseline.json"
 SCAN_ROOTS = (
+    "app/adapters",
     "app/api",
     "app/agent",
     "app/application",
     "app/chain",
+    "app/db",
+    "app/doctor",
+    "app/domain",
+    "app/foundation",
+    "app/monitor",
     "app/modules",
+    "app/runtime",
+    "app/schemas",
     "app/startup",
+    "app/workflow",
+    "app/cli.py",
+    "app/command.py",
+    "app/factory.py",
+    "app/main.py",
     "app/scheduler.py",
 )
 BLOCKING_EXACT = {
@@ -83,19 +97,27 @@ class _AsyncPathCollector(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """识别 AsyncPath 构造和已知路径的 `/` 派生赋值。"""
-        is_async_path = (
-            isinstance(node.value, ast.Call)
-            and _call_name(node.value).endswith("AsyncPath")
-        ) or (
-            isinstance(node.value, ast.BinOp)
-            and isinstance(node.value.left, ast.Name)
-            and node.value.left.id in self.paths
-        )
+        is_async_path = self._is_async_path_expression(node.value)
         if is_async_path:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.paths.add(target.id)
         self.generic_visit(node)
+
+    def _is_async_path_expression(self, expression: ast.expr) -> bool:
+        """识别 AsyncPath 构造及任意层级的 `/` 路径派生表达式。"""
+        if isinstance(expression, ast.Call):
+            return _call_name(expression).endswith("AsyncPath")
+        if isinstance(expression, ast.Name):
+            return expression.id in self.paths
+        if isinstance(expression, ast.BinOp):
+            return self._is_async_path_expression(expression.left)
+        if isinstance(expression, ast.IfExp):
+            return (
+                self._is_async_path_expression(expression.body)
+                and self._is_async_path_expression(expression.orelse)
+            )
+        return False
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         """识别 `list[AsyncPath]` 等路径集合。"""
@@ -160,7 +182,9 @@ class _AsyncCallVisitor(ast.NodeVisitor):
         """嵌套异步函数由模块级收集器单独治理。"""
 
 
-def _async_functions(tree: ast.Module):
+def _async_functions(
+    tree: ast.Module,
+) -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
     """产出模块顶层及类直接拥有的 async 函数限定名。"""
     for node in tree.body:
         if isinstance(node, ast.AsyncFunctionDef):

@@ -899,6 +899,9 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/startup/workflow.py` 纳入 strict 清单，
 治理范围扩大到 22 个源文件；事务命令、仓储 Protocol 和短会话适配器保持零错误。
 
+异步安全与契约收口继续纳管 scheduling facade、Event error policy、Module dispatcher 和 async blocking
+scanner，strict 清单扩大到 26 个源文件；已登记范围保持零错误，未使用全文件 ignore 或 `cast(Any, ...)`。
+
 #### ARCH-271：复杂度和端点预算 ratchet
 
 **目标**：阻止大方法继续增长，并让拆分对应真实阶段，而不是机械 helper 化。
@@ -949,6 +952,9 @@ Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/start
   通过。同步第三方 Module 仍由 dispatcher 的 `app.runtime.execution.run_in_threadpool` 兼容。
 - 2026-08-22 扫描范围扩大到 `app/chain`、`app/modules`、`app/startup` 与 `app/scheduler.py`；扩大后未发现
   新存量，仍只保留 ActivityLog 的一处原子 `os.open` 精确债务，并由测试锁定扫描根目录。
+- 扫描进一步覆盖 `adapters/db/doctor/domain/foundation/monitor/runtime/schemas/workflow` 及 CLI、Command、
+  Factory、Main 顶层入口，明确排除插件源码和 SDK。AsyncPath 条件派生识别已修正；Release zip 解压读取和
+  ActivityLog `O_EXCL` 独占创建移入线程池，扩围后 async 阻塞 baseline 从 1 降为 0。
 
 ## 6. 推荐执行队列
 
