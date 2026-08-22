@@ -2030,6 +2030,15 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                                 if TorrentHelper.match_torrent(mediainfo=mediainfo,
                                                                torrent_meta=torrent_meta,
                                                                torrent=torrent_info):
+                                    if TorrentHelper.requires_identity_disambiguation(
+                                            mediainfo=mediainfo,
+                                            torrent_meta=torrent_meta,
+                                    ):
+                                        logger.info(
+                                            f'{torrent_info.site_name} - {torrent_info.title} '
+                                            f'仅通过无年份别名命中且候选媒体身份无法确认，已跳过'
+                                        )
+                                        continue
                                     # 匹配成功
                                     logger.info(
                                         f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
@@ -3839,13 +3848,26 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
             return None
 
+        evidence_matched, evidence = TorrentHelper.match_same_work_evidence(
+            target_mediainfo=target_mediainfo,
+            candidate_mediainfo=candidate_mediainfo,
+            torrent_meta=torrent_meta,
+        )
+        if not evidence_matched:
+            logger.debug(
+                f'{torrent_info.site_name} - {torrent_info.title} 候选媒体ID冲突且缺少同作品证据：'
+                f'{evidence}；{conflict_text}'
+            )
+            return None
+
         context.media_info = target_mediainfo
         context.match_source = "title"
         context.candidate_recognized = False
         context.media_info_is_target = True
         logger.debug(
             f'{target_mediainfo.title_year} 候选媒体ID冲突（{conflict_text}），'
-            f'经标题或别名复核匹配到订阅目标：{torrent_info.site_name} - {torrent_info.title}'
+            f'经标题或别名及{evidence}复核匹配到订阅目标：'
+            f'{torrent_info.site_name} - {torrent_info.title}'
         )
         return target_mediainfo
 

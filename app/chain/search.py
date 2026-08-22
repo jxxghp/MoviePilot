@@ -1331,6 +1331,7 @@ class SearchChain(ChainBase):
 
         # 开始匹配
         _match_torrents = []
+        disambiguation_cache: Dict[Tuple[str, str, str], Optional[MediaInfo]] = {}
         try:
             # 英文标题应该在别名/原标题中，不需要再匹配
             logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
@@ -1370,6 +1371,38 @@ class SearchChain(ChainBase):
                 if TorrentHelper.match_torrent(mediainfo=mediainfo,
                                                torrent_meta=torrent_meta,
                                                torrent=torrent):
+                    if TorrentHelper.requires_identity_disambiguation(
+                            mediainfo=mediainfo,
+                            torrent_meta=torrent_meta,
+                    ):
+                        disambiguation_key = (
+                            torrent_meta.cn_name or "",
+                            torrent_meta.en_name or "",
+                            torrent_meta.year or "",
+                        )
+                        if disambiguation_key not in disambiguation_cache:
+                            disambiguation_cache[disambiguation_key] = MediaChain().recognize_by_meta(
+                                torrent_meta,
+                                obtain_images=False,
+                            )
+                        candidate_mediainfo = disambiguation_cache[disambiguation_key]
+                        if not candidate_mediainfo:
+                            logger.info(
+                                f'{torrent.site_name} - {torrent.title} '
+                                f'仅通过无年份别名命中且候选媒体身份无法确认，已跳过'
+                            )
+                            continue
+                        evidence_matched, evidence = TorrentHelper.match_same_work_evidence(
+                            target_mediainfo=mediainfo,
+                            candidate_mediainfo=candidate_mediainfo,
+                            torrent_meta=torrent_meta,
+                        )
+                        if not evidence_matched:
+                            logger.info(
+                                f'{torrent.site_name} - {torrent.title} '
+                                f'无年份同名候选未通过消歧：{evidence}'
+                            )
+                            continue
                     # 匹配成功
                     _match_torrents.append((torrent, torrent_meta, "title"))
                     continue

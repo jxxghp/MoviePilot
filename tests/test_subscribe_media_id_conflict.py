@@ -5,36 +5,44 @@ from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 
 
-def _target_media(tmdb_id=106449, douban_id=None) -> MediaInfo:
+def _target_media(tmdb_id=106449, douban_id=None, **kwargs) -> MediaInfo:
     """构造订阅目标媒体。"""
     media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
     media_id = str(tmdb_id) if tmdb_id is not None else douban_id
+    defaults = {
+        "title": "凡人修仙传",
+        "original_title": "凡人修仙传",
+        "names": ["A Record Of A Mortals Journey To Immortality"],
+        "type": MediaType.TV,
+        "year": "2020",
+        "season_years": {1: "2020"},
+    }
+    defaults.update(kwargs)
     return MediaInfo(
         media_source=media_source if media_id is not None else None,
         media_id=media_id,
-        title="凡人修仙传",
-        original_title="凡人修仙传",
-        names=["A Record Of A Mortals Journey To Immortality"],
-        type=MediaType.TV,
-        year="2020",
-        season_years={1: "2020"},
         tmdb_id=tmdb_id,
         douban_id=douban_id,
+        **defaults,
     )
 
 
-def _candidate_media(tmdb_id=285479, douban_id=None) -> MediaInfo:
+def _candidate_media(tmdb_id=285479, douban_id=None, **kwargs) -> MediaInfo:
     """构造由 RSS 标题推断出的候选媒体。"""
     media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
     media_id = str(tmdb_id) if tmdb_id is not None else douban_id
+    defaults = {
+        "title": "凡人修仙传",
+        "type": MediaType.TV,
+        "year": "2020",
+    }
+    defaults.update(kwargs)
     return MediaInfo(
         media_source=media_source if media_id is not None else None,
         media_id=media_id,
-        title="凡人修仙传",
-        type=MediaType.TV,
-        year="2020",
         tmdb_id=tmdb_id,
         douban_id=douban_id,
+        **defaults,
     )
 
 
@@ -94,6 +102,69 @@ def test_inferred_tmdb_conflict_falls_back_to_strict_alias_match():
     assert context.match_source == "title"
     assert context.candidate_recognized is False
     assert context.media_info_is_target is True
+
+
+def test_no_year_alias_rejects_candidate_with_different_first_air_year():
+    """无年份别名命中另一个首播年份的同名作品时应拒绝。"""
+    target = _target_media(
+        tmdb_id=236356,
+        title="家族计划",
+        original_title="가족계획",
+        names=["Family Matters"],
+        year="2024",
+        original_language="ko",
+        season_years={1: "2024"},
+    )
+    candidate = _candidate_media(
+        tmdb_id=30161,
+        title="Family Matters",
+        original_title="Family Matters",
+        year="2008",
+        original_language="en",
+    )
+    meta = _torrent_meta(en_name="Family Matters")
+    torrent = TorrentInfo(
+        title="Family Matters S01 1080p WEBRip DD2.0 x264-TrollHD",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    context = _context(meta, candidate, torrent)
+
+    assert _reconcile(target, candidate, meta, torrent, context) is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
+
+
+def test_explicit_target_year_can_override_wrong_same_name_candidate():
+    """资源明确携带目标年份时应允许纠正同名候选的错误识别。"""
+    target = _target_media(
+        tmdb_id=236356,
+        title="家族计划",
+        original_title="가족계획",
+        names=["Family Matters"],
+        year="2024",
+        original_language="ko",
+        season_years={1: "2024"},
+    )
+    candidate = _candidate_media(
+        tmdb_id=30161,
+        title="Family Matters",
+        original_title="Family Matters",
+        year="2008",
+        original_language="en",
+    )
+    meta = _torrent_meta(en_name="Family Matters")
+    meta.year = "2024"
+    torrent = TorrentInfo(
+        title="Family Matters 2024 S01 1080p WEB-DL",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    context = _context(meta, candidate, torrent)
+
+    assert _reconcile(target, candidate, meta, torrent, context) is target
+    assert context.media_info is target
+    assert context.match_source == "title"
 
 
 def test_inferred_tmdb_conflict_rejects_nonmatching_title():
