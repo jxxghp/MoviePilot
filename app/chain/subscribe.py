@@ -2027,29 +2027,21 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             )[1]:
                                 logger.debug(
                                     f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
-                                if TorrentHelper.match_torrent(mediainfo=mediainfo,
-                                                               torrent_meta=torrent_meta,
-                                                               torrent=torrent_info):
-                                    if TorrentHelper.requires_identity_disambiguation(
-                                            mediainfo=mediainfo,
-                                            torrent_meta=torrent_meta,
-                                    ):
-                                        logger.info(
-                                            f'{torrent_info.site_name} - {torrent_info.title} '
-                                            f'仅通过无年份别名命中且候选媒体身份无法确认，已跳过'
-                                        )
-                                        continue
-                                    # 匹配成功
-                                    logger.info(
-                                        f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                    torrent_mediainfo = mediainfo
-                                    # 更新种子缓存
-                                    _context.media_info = mediainfo
-                                    _context.match_source = "title"
-                                    _context.candidate_recognized = False
-                                    _context.media_info_is_target = True
-                                else:
+                                if not self.__is_title_match_allowed(
+                                        mediainfo=mediainfo,
+                                        torrent_meta=torrent_meta,
+                                        torrent_info=torrent_info,
+                                ):
                                     continue
+                                # 匹配成功
+                                logger.info(
+                                    f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                                torrent_mediainfo = mediainfo
+                                # 更新种子缓存
+                                _context.media_info = mediainfo
+                                _context.match_source = "title"
+                                _context.candidate_recognized = False
+                                _context.media_info_is_target = True
 
                             # 直接比对媒体信息
                             if torrent_mediainfo and resolve_media_identity(
@@ -3778,6 +3770,30 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if media_source and media_id:
             return str(media_source)
         return "unknown"
+
+    @staticmethod
+    def __is_title_match_allowed(
+            mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+            torrent_info: TorrentInfo,
+    ) -> bool:
+        """判断资源是否可以通过标题兜底匹配订阅目标。"""
+        if not TorrentHelper.match_torrent(
+                mediainfo=mediainfo,
+                torrent_meta=torrent_meta,
+                torrent=torrent_info,
+        ):
+            return False
+        if not TorrentHelper.requires_identity_disambiguation(
+                mediainfo=mediainfo,
+                torrent_meta=torrent_meta,
+        ):
+            return True
+        logger.info(
+            f'{torrent_info.site_name} - {torrent_info.title} '
+            f'仅通过无年份别名命中且候选媒体身份无法确认，已跳过'
+        )
+        return False
 
     @staticmethod
     def __reconcile_candidate_media(
