@@ -9,8 +9,8 @@ import pytest
 import app.plugins as plugins_package
 from app.plugins import _PluginBase
 from app.runtime.extensions.contract.extension import supports_extension_hook
-from app.runtime.extensions.plugin import projection as projection_module
-from app.runtime.extensions.plugin.projection import PluginExtension
+from app.runtime.extensions.projection import plugin as projection_module
+from app.runtime.extensions.projection.plugin import PluginExtension
 
 
 class _BasePluginStub(_PluginBase):

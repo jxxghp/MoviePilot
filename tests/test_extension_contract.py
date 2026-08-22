@@ -22,8 +22,8 @@ from app.runtime.extensions.host_module_adapter import (
     HostModuleExtension,
     HostModuleProviderSource,
 )
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin.projection import (
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.plugin import (
     PluginExtension,
     PluginProviderSource,
 )

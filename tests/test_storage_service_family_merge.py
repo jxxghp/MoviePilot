@@ -26,8 +26,8 @@ from app.modules._base.storage import StorageBase
 from app.plugins import _PluginBase
 from app.runtime.deprecation.notices import NOTICES
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.module.declarations import builtin_multi_instance
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.projection.module_declarations import builtin_multi_instance
+from app.runtime.extensions.admission.service_instance import (
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.service_config import (
@@ -35,7 +35,7 @@ from app.runtime.extensions.service_config import (
     select_instance_configs,
     service_bare_token_field,
 )
-from app.runtime.extensions.service_config_validation import (
+from app.runtime.extensions.admission.service_config import (
     service_config_records,
     service_config_write_violation,
 )

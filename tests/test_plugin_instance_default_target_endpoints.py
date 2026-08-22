@@ -20,7 +20,7 @@ from app.api.endpoints.plugin import (
 from app.db.models.pluginconfig import PluginConfig
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.schemas.plugin import PluginInstanceInfo
-from app.runtime.extensions.plugin.instance_selection import resolve_plugin_instance_key
+from app.runtime.extensions.admission.instance_selection import resolve_plugin_instance_key
 from app.startup.plugins_initializer import _list_plugin_instance_targets
 
 PLUGIN_ID = "_DefaultTargetEndpointPlugin"
@@ -198,7 +198,7 @@ def test_response_model_keeps_the_is_default_target_field(db):
 
 def test_setting_default_target_lets_resolve_plugin_instance_key_succeed(db, monkeypatch):
     """设为默认前调用目标解析报错，设置后立即能解析到该实例键——这正是本字段存在的意义。"""
-    import app.runtime.extensions.plugin.instance_selection as instance_selection_module
+    import app.runtime.extensions.admission.instance_selection as instance_selection_module
 
     db.add(
         PluginConfig(plugin_id=PLUGIN_ID, instance_id="default", is_enabled=True),
@@ -218,7 +218,7 @@ def test_setting_default_target_lets_resolve_plugin_instance_key_succeed(db, mon
 
 def test_clearing_default_target_makes_resolve_fail_again(db, monkeypatch):
     """清除默认之后，原本依赖默认解析的调用立即回到报错状态，没有过渡期。"""
-    import app.runtime.extensions.plugin.instance_selection as instance_selection_module
+    import app.runtime.extensions.admission.instance_selection as instance_selection_module
 
     db.add(PluginConfig(plugin_id=PLUGIN_ID, instance_id="default", is_enabled=True))
     monkeypatch.setattr(

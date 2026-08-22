@@ -8,8 +8,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.foundation.singleton import Singleton
 from app.runtime.deprecation import policy as deprecation_policy
 from app.runtime.extensions.contract.declaration import AgentToolDeclaration
-from app.runtime.extensions.plugin import agent_tool_capabilities
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.admission import agent_tool
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 
 
@@ -71,12 +71,12 @@ class _NotATool:
 @pytest.fixture(autouse=True)
 def _isolate_agent_tool_base() -> Iterator[None]:
     """快照并复原智能体工具基类注入状态，避免测试间相互污染。"""
-    original = agent_tool_capabilities._agent_tool_base
-    agent_tool_capabilities.configure_agent_tool_base(MoviePilotTool)
+    original = agent_tool._agent_tool_base
+    agent_tool.configure_agent_tool_base(MoviePilotTool)
     try:
         yield
     finally:
-        agent_tool_capabilities._agent_tool_base = original
+        agent_tool._agent_tool_base = original
 
 
 @pytest.fixture(autouse=True)
@@ -157,7 +157,7 @@ def test_declaration_without_explicit_identity_falls_back_to_impl_defaults():
     declared = projection.provided_agent_tools()
 
     assert declared["DemoTool"] == [AgentToolDeclaration(impl=_ValidTool)]
-    assert agent_tool_capabilities.agent_tool_declaration_violation(
+    assert agent_tool.agent_tool_declaration_violation(
         AgentToolDeclaration(impl=_ValidTool)
     ) is None
 
@@ -267,9 +267,9 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
 
 def test_contract_skips_inheritance_check_when_base_not_injected():
     """基类未注入时跳过继承项校验，其余各项照常生效。"""
-    agent_tool_capabilities._agent_tool_base = None
+    agent_tool._agent_tool_base = None
 
-    violation = agent_tool_capabilities.agent_tool_declaration_violation(
+    violation = agent_tool.agent_tool_declaration_violation(
         AgentToolDeclaration(name="demo", description="demo", impl=_NotATool)
     )
 
@@ -278,7 +278,7 @@ def test_contract_skips_inheritance_check_when_base_not_injected():
 
 def test_contract_rejects_non_subclass_when_base_injected():
     """基类已注入时未继承工具基类的实现必须被拒绝。"""
-    violation = agent_tool_capabilities.agent_tool_declaration_violation(
+    violation = agent_tool.agent_tool_declaration_violation(
         AgentToolDeclaration(name="demo", description="demo", impl=_NotATool)
     )
 
@@ -298,7 +298,7 @@ def test_agent_tool_base_configuration_resolves_to_the_real_class() -> None:
 
     _configure_agent_tool_contract_base()
 
-    assert agent_tool_capabilities._agent_tool_base is MoviePilotTool
+    assert agent_tool._agent_tool_base is MoviePilotTool
 
 
 class _FakeAgentToolPlugin:

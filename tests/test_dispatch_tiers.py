@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
 from app.schemas.exception import RateLimitExceededException
 
 

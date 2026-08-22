@@ -19,9 +19,9 @@ from app.application.storage import StorageHelper
 from app.modules.localstorage import LocalStorageModule
 from app.modules.localstorage.local import LocalStorage
 from app.modules.u115 import U115Module
-from app.runtime.extensions.module.declarations import builtin_multi_instance
+from app.runtime.extensions.projection.module_declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
-from app.runtime.extensions.service_config_validation import service_config_records
+from app.runtime.extensions.admission.service_config import service_config_records
 from app.runtime.extensions.registry.storage import (
     create_storage_backend,
     storage_backend_registry,

@@ -10,7 +10,7 @@
 """
 
 from app.application.security.auth import create_plugin_auth_ticket_for_identity
-from app.runtime.extensions.auth_entries import AuthEntry, list_auth_entries
+from app.runtime.extensions.projection.auth_entries import AuthEntry, list_auth_entries
 
 
 __all__ = ["AuthEntry", "create_plugin_auth_ticket_for_identity", "list_auth_entries"]

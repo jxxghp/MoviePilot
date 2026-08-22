@@ -4,7 +4,7 @@ from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callabl
 from pathlib import Path
 
 from app.runtime.extensions.contract.instance import describe_instance_candidates
-from app.runtime.extensions.module.declarations import builtin_multi_instance
+from app.runtime.extensions.projection.module_declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     create_service_instance,

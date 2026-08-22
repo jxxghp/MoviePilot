@@ -8,7 +8,7 @@
 同一套整形：一行一个实例，``type`` 是存储类型、``name`` 是实例名、``config`` 是该实例
 的配置内容；默认调用目标也与三族同规格，整族至多一个，由 ``serviceconfig`` 的专列
 承载。整形规则（分列、实例名回落、默认标记裁剪）与三族共用一份实现，收在
-`app.runtime.extensions.service_config_validation`。
+`app.runtime.extensions.admission.service_config`。
 
 **兼容指针不是默认。** 它只回答一个问题：存量路径 ``u115:/media`` 没有实例段时该落到
 哪个实例。这是地址补全，不是「用户没指定存储时用哪个」——后者是族级默认调用目标，

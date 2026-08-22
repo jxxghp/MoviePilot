@@ -12,14 +12,14 @@ from httpx import ASGITransport, AsyncClient
 from app.adapters.web.security.access import verify_token
 from app.api.endpoints import media as media_endpoint
 from app.runtime.extensions.contract.declaration import MediaSourceDeclaration
-from app.runtime.extensions.module.media_source_faces import (
+from app.runtime.extensions.projection.media_source_faces import (
     media_source_capabilities,
     method_capability,
     ordered_capabilities,
 )
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin.media_source_routing import routes_by_source
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.media_source_routing import routes_by_source
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.schemas.types import MediaSource, MediaSourceCapability
 
 

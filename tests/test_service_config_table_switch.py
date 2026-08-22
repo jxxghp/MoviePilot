@@ -23,7 +23,7 @@ from app.runtime.extensions.service_config import (
     service_capability_configs,
     service_host_fields,
 )
-from app.runtime.extensions.service_config_validation import (
+from app.runtime.extensions.admission.service_config import (
     service_config_records,
     service_config_write_violation,
 )

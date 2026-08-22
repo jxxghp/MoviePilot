@@ -19,7 +19,7 @@ from app.agent.tools.impl._system_setting_utils import (
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.runtime.extensions.service_config import service_capability
-from app.runtime.extensions.service_config_validation import service_config_write_violation
+from app.runtime.extensions.admission.service_config import service_config_write_violation
 from app.application.service_config import (
     async_write_system_setting,
     read_system_setting,

@@ -24,10 +24,10 @@ from app.runtime.extensions.registry.meta_parser import (
     meta_parser_registry,
     meta_parser_token,
 )
-from app.runtime.extensions.plugin.meta_parser_capabilities import (
+from app.runtime.extensions.admission.meta_parser import (
     meta_parser_declaration_violation,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.schemas.metaparse import (
     BUILTIN_META_PARSER,
     PARSED_META_FIELDS,

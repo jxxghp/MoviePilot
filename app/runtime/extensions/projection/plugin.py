@@ -40,41 +40,41 @@ from app.runtime.extensions.contract.declaration import (
     declaration_service_instance_identity,
     declaration_service_instance_requirement,
 )
-from app.runtime.extensions.auth_entries import list_auth_entries
-from app.runtime.extensions.module.media_source_faces import media_source_capabilities
-from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
-from app.runtime.extensions.plugin.agent_tool_capabilities import (
+from app.runtime.extensions.projection.auth_entries import list_auth_entries
+from app.runtime.extensions.projection.media_source_faces import media_source_capabilities
+from app.runtime.extensions.admission.action import action_declaration_violation
+from app.runtime.extensions.admission.agent_tool import (
     agent_tool_declaration_name,
     agent_tool_declaration_violation,
 )
-from app.runtime.extensions.plugin.channel_capabilities import (
+from app.runtime.extensions.admission.channel import (
     channel_capability_declaration_violation,
 )
-from app.runtime.extensions.plugin.command_capabilities import (
+from app.runtime.extensions.admission.command import (
     command_declaration_violation,
 )
-from app.runtime.extensions.plugin.dashboard_capabilities import dashboard_declaration_violation
-from app.runtime.extensions.plugin.extension_scoped import elect_extension_scoped
-from app.runtime.extensions.plugin.filter_rule_capabilities import (
+from app.runtime.extensions.admission.dashboard import dashboard_declaration_violation
+from app.runtime.extensions.admission.extension_scoped import elect_extension_scoped
+from app.runtime.extensions.admission.filter_rule import (
     filter_rule_declaration_violation,
     filter_rule_group_declaration_violation,
 )
-from app.runtime.extensions.plugin.media_source_capabilities import (
+from app.runtime.extensions.admission.media_source import (
     media_source_declaration_violation,
 )
-from app.runtime.extensions.plugin.media_source_routing import (
+from app.runtime.extensions.projection.media_source_routing import (
     media_source_method_table,
     routes_by_source,
 )
-from app.runtime.extensions.plugin.meta_parser_capabilities import (
+from app.runtime.extensions.admission.meta_parser import (
     meta_parser_declaration_violation,
 )
-from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
-from app.runtime.extensions.plugin.schedule_capabilities import (
+from app.runtime.extensions.admission.module import module_declaration_violation
+from app.runtime.extensions.admission.schedule import (
     schedule_declaration_violation,
     schedule_trigger_args,
 )
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.admission.service_instance import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
 )
@@ -1498,7 +1498,7 @@ class PluginProjection:
         """投影用户已配置的登录入口。
 
         入口由登录认证族的实例配置扇出，配置与类型登记的连接、单实例裁决与身份标识
-        去歧义都收在 `app.runtime.extensions.auth_entries`；本方法只补上登记表里没有
+        去歧义都收在 `app.runtime.extensions.projection.auth_entries`；本方法只补上登记表里没有
         的那一样——声明该类型的插件实例当下的渲染模式与联邦远程入口，vue 模式下登录页
         据此加载入口组件。
 

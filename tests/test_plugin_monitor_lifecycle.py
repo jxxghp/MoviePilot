@@ -11,7 +11,7 @@ from app.runtime.extensions.contract.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
 )
-from app.runtime.extensions.plugin.system import reset_plugin_system
+from app.runtime.extensions.lifecycle.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup import plugins_initializer

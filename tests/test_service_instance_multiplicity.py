@@ -15,7 +15,7 @@ from app.application.downloader import DownloaderHelper
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.registry import service_instance as registry_module
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,

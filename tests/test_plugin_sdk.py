@@ -152,7 +152,7 @@ def test_agent_tool_base_and_tags_are_the_canonical_objects():
 def test_agent_tool_written_against_the_sdk_passes_the_registration_contract():
     """只用 SDK 基类写出来的工具必须过得了登记期契约校验。"""
     from app.runtime.extensions.contract.declaration import AgentToolDeclaration
-    from app.runtime.extensions.plugin import agent_tool_capabilities
+    from app.runtime.extensions.admission import agent_tool
     from app.sdk.agent import MoviePilotTool
 
     class _SdkTool(MoviePilotTool):
@@ -165,10 +165,10 @@ def test_agent_tool_written_against_the_sdk_passes_the_registration_contract():
             """返回固定结果。"""
             return "ok"
 
-    original = agent_tool_capabilities._agent_tool_base
-    agent_tool_capabilities.configure_agent_tool_base(MoviePilotTool)
+    original = agent_tool._agent_tool_base
+    agent_tool.configure_agent_tool_base(MoviePilotTool)
     try:
-        violation = agent_tool_capabilities.agent_tool_declaration_violation(
+        violation = agent_tool.agent_tool_declaration_violation(
             AgentToolDeclaration(
                 name="sdk_written_tool",
                 description="A tool written against the SDK facade only.",
@@ -176,7 +176,7 @@ def test_agent_tool_written_against_the_sdk_passes_the_registration_contract():
             )
         )
     finally:
-        agent_tool_capabilities._agent_tool_base = original
+        agent_tool._agent_tool_base = original
 
     assert violation is None
 

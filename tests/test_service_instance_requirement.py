@@ -25,11 +25,11 @@ from app.runtime.extensions.contract.declaration import (
     DashboardDeclaration,
     ServiceInstanceRequirement,
 )
-from app.runtime.extensions.plugin.action_capabilities import action_declaration_violation
-from app.runtime.extensions.plugin.dashboard_capabilities import (
+from app.runtime.extensions.admission.action import action_declaration_violation
+from app.runtime.extensions.admission.dashboard import (
     dashboard_declaration_violation,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,

@@ -15,12 +15,12 @@ from app.runtime.extensions.contract.declaration import (
     MediaSourceDeclaration,
     ModuleDeclaration,
 )
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin import projection as projection_module
-from app.runtime.extensions.plugin.media_source_capabilities import (
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection import plugin as projection_module
+from app.runtime.extensions.admission.media_source import (
     media_source_declaration_violation,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.schemas.types import MediaSource
 
 

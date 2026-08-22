@@ -10,7 +10,7 @@ from app.runtime.extensions.contract.declaration import (
     declaration_dashboard_identity,
     declaration_service_instance_requirement,
 )
-from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.admission.config_interface import config_interface_violation
 from app.runtime.extensions.service_instance_requirement import (
     service_instance_requirement_violation,
 )

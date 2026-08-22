@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.pluginconfig import PluginConfig
 from app.db.oper.pluginconfig import PluginConfigOper
-from app.runtime.extensions.plugin.instance_selection import (
+from app.runtime.extensions.admission.instance_selection import (
     PluginInstanceTarget,
     configure_plugin_instance_targets,
     resolve_plugin_instance_key,
@@ -37,7 +37,7 @@ def instance_targets(monkeypatch):
 
     :return: ``install(plugin_id, targets)``，登记某插件的实例状态
     """
-    import app.runtime.extensions.plugin.instance_selection as module
+    import app.runtime.extensions.admission.instance_selection as module
 
     registry: dict[str, list[PluginInstanceTarget]] = {}
     monkeypatch.setattr(
@@ -163,7 +163,7 @@ def test_resolve_returns_composed_key_for_clone_instance(instance_targets):
 
 def test_resolve_without_configured_lister_raises(monkeypatch):
     """读取钩子未装配时按「没有任何实例」处理，未指定实例即报错，不得静默取到什么。"""
-    import app.runtime.extensions.plugin.instance_selection as module
+    import app.runtime.extensions.admission.instance_selection as module
 
     monkeypatch.setattr(module, "_instance_target_lister", module._no_instance_targets)
 

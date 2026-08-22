@@ -26,7 +26,7 @@ MoviePilot 后端支持插件源码**多版本并存**（磁盘布局
 接口 `GET /api/v1/plugin/remotes` 与 `GET /api/v1/plugin/login-providers`
 （认证提供方的 `remote` 子字段）下发的远程组件描述来自
 `PluginProjection.remotes()` / `PluginProjection.auth_providers()`
-（`app/runtime/extensions/plugin/projection.py`），字段只有三个：
+（`app/runtime/extensions/projection/plugin.py`），字段只有三个：
 
 ```json
 { "id": "PluginId", "url": "/plugin/file/pluginid/dist/assets/remoteEntry.js", "name": "插件展示名" }

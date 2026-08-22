@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 
 
 class _Plugin(SimpleNamespace):

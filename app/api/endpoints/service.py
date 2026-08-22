@@ -27,9 +27,9 @@ from app.db.models.serviceconfig import BUILTIN_PROVIDER
 from app.db.oper.serviceconfig import ServiceConfigNameConflictError
 from app.runtime.extensions.contract.declaration import ServiceInstanceRequirement
 from app.runtime.extensions.contract.instance import extension_id_of
-from app.runtime.extensions.module.declarations import builtin_multi_instance
+from app.runtime.extensions.projection.module_declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import service_supports_default_target
-from app.runtime.extensions.service_config_validation import (
+from app.runtime.extensions.admission.service_config import (
     service_config_record,
     service_config_record_violation,
 )

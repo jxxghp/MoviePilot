@@ -396,7 +396,7 @@ REMOVED   触达即报错并给出迁移指引
 扩展级的族**按扩展标识去重，不按实例键**。认哪一个必须与分身的启动顺序无关，否则同一份
 配置在两次启动后可能得到不同归属：规则是**默认实例优先，其余按实例标识升序取第一个**，
 只读实例键本身，因此任何登记顺序都得到同一个结果。裁决收在
-`app/runtime/extensions/plugin/extension_scoped.py`，四族共用一份实现与一条告警文案。
+`app/runtime/extensions/admission/extension_scoped.py`，四族共用一份实现与一条告警文案。
 
 **登记归属仍记到具体实例键**，回收按实例键精确进行；去重只决定「同一个标识被登记几次」，
 不改变回收语义。胜出的分身停止或停用后，仍在运行且声明同一标识的兄弟分身重新参与裁决并
@@ -425,7 +425,7 @@ REMOVED   触达即报错并给出迁移指引
 `/subscribes` 是正当诉求，说「没有哪一方算意图覆盖」不成立；但命令词自己带不出「我要替换
 内建行为」这个意思，接管与撞车从命令词分辨不出来，就把意图单列一个字段说出来。连内建一起
 废会让任意插件随手起的命令词打掉宿主的 `/restart`，冲突不再落回安全态；一律内建胜出则堵死
-正当诉求且是静默丢弃。裁决收在 `app/runtime/extensions/command_arbitration.py`。
+正当诉求且是静默丢弃。裁决收在 `app/runtime/extensions/admission/command_arbitration.py`。
 
 两类失效此前只在服务端日志里留过一次告警，用户敲了没反应无从得知原因。可见性入口：筛选规则
 是 `GET /api/v1/filterrule/rules`，命令是 `GET /api/v1/command/origins` 与
@@ -619,7 +619,7 @@ REMOVED   触达即报错并给出迁移指引
 
 **登录入口列表不经实例构造。** 登录页在任何用户会话之前渲染，是所有登录方式的唯一入口；
 一次实例构造失败若能让整族入口消失，用户就再也进不来。因此入口列表只取「该族配置 + 类型
-登记」这两样纯数据（`app/runtime/extensions/auth_entries.py`），构造留给真正要完成认证
+登记」这两样纯数据（`app/runtime/extensions/projection/auth_entries.py`），构造留给真正要完成认证
 握手的那条路径。这与 §7.5 那两张登记表是同一种分工：一张回答「这条配置活成什么对象」，
 一张回答「登录页该显示什么」。配置读取端口在未登录状态下照常可用（它是一次普通的表读取），
 而入口描述只带展示与路由字段、不带 `config` 载荷——登录入口的配置里装着客户端密钥。
@@ -688,7 +688,7 @@ REMOVED   触达即报错并给出迁移指引
 两个原生参考实现各自独立撞上了同一堵墙：声明式注册是扩展面的主入口，存储契约按基类的
 MRO 判定，登录入口列表承载着去歧义后的身份标识，三者在 SDK 里都没有出口，于是只能直接
 import `app.runtime.extensions.*` 与 `app.modules._base.*`。宿主自己反而守着规矩绕行——
-`app/runtime/extensions/plugin/storage_capabilities.py` 为了不造 `runtime → modules` 反向边，
+`app/runtime/extensions/admission/storage.py` 为了不造 `runtime → modules` 反向边，
 改用 MRO 限定名字符串比对。宿主绕着走，插件无路可走，缺口就是这么显形的。
 
 三处裁决：

@@ -40,7 +40,7 @@ from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.service_config import service_capability
-from app.runtime.extensions.service_config_validation import service_config_write_violation
+from app.runtime.extensions.admission.service_config import service_config_write_violation
 from app.application.module import ModuleManager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal

@@ -106,15 +106,23 @@ Directories follow from the criterion, not from subject matter:
 |---|---|---|
 | `app/runtime/*.py` (flat) | D4 | Process-level mechanisms owned by the process, not by any extension: deployment configuration, logging, cache, event facade, scheduling, threading, execution, rate limiting, process and reload state |
 | `app/runtime/hostports/` | D2 | Port slots only. Each module declares one protocol plus one module-level `HostPort` instance; `port.py` holds the generic. Every slot is injected in one place, by `app/startup/hostport_initializer.py` |
-| `app/runtime/extensions/` | D3 | Module, plugin, configured-service and managed-resource discovery, registration and lifecycle adapters |
+| `app/runtime/extensions/` | D3 | Module, plugin, configured-service and managed-resource discovery, registration and lifecycle adapters, split by lifecycle phase |
 | `app/runtime/extensions/contract/` | D1 | Declaration types, distribution and hook probing, instance identity and the configuration-schema subset. Every symbol here is handed to extension authors through the SDK |
+| `app/runtime/extensions/admission/` | D3 registration | Declaration contract checks, extension-scoped deduplication, instance selection and registration arbitration. A declaration that breaks its contract is rejected at registration, never at call time |
 | `app/runtime/extensions/registry/` | D3 held state | Registries that keep admitted extensions by coordinate and reclaim their entries. They only store and hand back registration results |
+| `app/runtime/extensions/projection/` | D3 query | Views and dispatch paths aggregated from a registration snapshot; a projection never changes what is registered |
+| `app/runtime/extensions/lifecycle/` | D3 discovery and loading | Versioned plugin source layout plus the persistence and external-system ports the loader resolves, all of which run before any registration |
 | `app/runtime/compat/` | D1 | Exact legacy import routing, resource preflight scanning and DEBUG diagnostics, plus modules the host itself no longer calls and only already-published plugins still import. `manifest.py` stays standard-library-only so the baseline script can load it without importing the host |
 
-The remaining D3 phases — registration, query and discovery/loading — are not
-split out of `app/runtime/extensions/` yet; until they are, D3 names those
-phases rather than existing directories. New modules are still placed by asking
-D1–D4 in order.
+`plugin_manager.py` and `module_manager.py` stay flat in
+`app/runtime/extensions/`. They belong to the discovery-and-loading phase, but
+five hard-coded names in `scripts/sdk/exports.py`, one `__module__` assertion
+and fourteen patch-target strings in tests all spell their current path, and
+every one of those is a string match that stays green when it is wrong.
+
+A file name never repeats the phase its directory already states: the
+registration check for storage declarations is `admission/storage.py`, the
+registry that holds them is `registry/storage.py`.
 
 `app/runtime/config.py` does not move. Three workflow paths under `.github/`
 and three assertions in `tests/test_plugin_market_default.py` name it literally.
@@ -275,7 +283,7 @@ do not belong here. Chains interact with modules exclusively through
 internals (classes, exceptions, constants) are forbidden, so every module stays
 pluggable and a chain never names a concrete module implementation.
 The dispatch algorithm belongs to
-`app/runtime/extensions/module/dispatcher.py`; `ChainBase` remains the
+`app/runtime/extensions/projection/dispatcher.py`; `ChainBase` remains the
 compatibility facade. New chains and tests inject the minimal
 `ChainRuntimeContext` from `app/application/orchestration/context.py`. No-argument
 `Chain()` remains supported through the startup-configured compatibility
@@ -453,14 +461,14 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |
 | `app/runtime/event/dispatch.py` | Chain/broadcast ordering, concurrency, target-plugin filtering and isolated delivery |
 | `app/runtime/event/errors.py` | Handler failure notification and non-recursive `SystemError` downgrade policy |
-| `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
+| `app/runtime/extensions/projection/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
 | `app/runtime/extensions/contract/module_method.py` | High-frequency method families and frozen legacy fallback contract |
 | `app/application/orchestration/context.py` | Injectable Chain dependencies and no-argument compatibility provider |
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
-| `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
-| `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
+| `app/runtime/extensions/projection/plugin.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
+| `app/runtime/extensions/lifecycle/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
 | `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
 | `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
 | `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol and registration/removal use cases; plugin response payloads remain raw unless the plugin chooses its own envelope |

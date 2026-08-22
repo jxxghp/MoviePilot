@@ -17,11 +17,11 @@ from app.runtime.extensions.registry.filter_rule import (
     PluginFilterRuleRegistry,
     plugin_filter_rule_registry,
 )
-from app.runtime.extensions.plugin.filter_rule_capabilities import (
+from app.runtime.extensions.admission.filter_rule import (
     filter_rule_declaration_violation,
     filter_rule_group_declaration_violation,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.hostports.torrentanalysis import torrent_analysis_port
 from app.schemas.rule import is_valid_rule_id, rule_string_violation

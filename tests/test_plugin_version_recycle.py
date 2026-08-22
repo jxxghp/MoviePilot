@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from app.runtime.extensions.plugin import layout as plugin_layout_module
-from app.runtime.extensions.plugin.layout import (
+from app.runtime.extensions.lifecycle import layout as plugin_layout_module
+from app.runtime.extensions.lifecycle.layout import (
     _delete_plugin_version_dir,
     plugin_version_dir_name,
     read_plugin_versions_manifest,

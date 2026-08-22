@@ -26,14 +26,14 @@ from app.runtime.extensions.contract.config_schema import (
 )
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.projection.plugin import PluginProjection
+from app.runtime.extensions.admission.service_instance import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.service_config import create_service_instance
 from app.runtime.extensions.service_config import service_capability
-from app.runtime.extensions.service_config_validation import service_config_write_violation
+from app.runtime.extensions.admission.service_config import service_config_write_violation
 from app.runtime.extensions.registry.service_instance import (
     ServiceInstanceAdapter,
     ServiceInstanceEntry,

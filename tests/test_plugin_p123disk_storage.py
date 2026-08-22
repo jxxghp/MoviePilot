@@ -23,11 +23,11 @@ from app.plugins.p123disk.fileitem import build_file_item
 from app.plugins.p123disk.storage import STORAGE_ID, P123Storage
 from app.runtime.extensions.contract.config_schema import config_value_violations
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.projection.plugin import PluginProjection
+from app.runtime.extensions.admission.service_instance import (
     service_instance_declaration_violation,
 )
-from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
+from app.runtime.extensions.admission.storage import storage_backend_violation
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.registry.service_instance import service_instance_registry

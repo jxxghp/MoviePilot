@@ -160,7 +160,7 @@ self._runtime = CapabilityRuntime(
    `capability.toml`，在真实跑起来的 MoviePilot 里，`ModuleManager()` 单例目前
    仍然发现不到它，因为没有人告诉它插件的版本目录在哪里。这一步需要在启动组合
    根里，找到"已装插件 + 当前生效版本"的来源（大概率是 `PluginManager` 已有的
-   版本解析逻辑，如 `app/runtime/extensions/plugin/layout.py` 的
+   版本解析逻辑，如 `app/runtime/extensions/lifecycle/layout.py` 的
    `plugin_version_dirs`/`resolve_plugin_version_dir`），包成一个不反查数据库的
    provider 传给 `configure_plugin_capability_roots`。本次验证没有覆盖这一层，
    因为运行时层禁止反向依赖 `app/db`，这个 provider 必须放在启动组合根而不是

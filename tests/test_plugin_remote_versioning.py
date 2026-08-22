@@ -14,11 +14,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.plugin.layout import (
+from app.runtime.extensions.lifecycle.layout import (
     plugin_version_dir_name,
     register_plugin_version,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 
 PLUGIN_ID = "RemoteVersionedPlugin"

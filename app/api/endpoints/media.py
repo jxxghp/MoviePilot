@@ -22,7 +22,7 @@ from app.application.orchestration.media import MediaChain
 from app.application.orchestration.scraping import ScrapingChain
 from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.config import settings
-from app.runtime.extensions.module.media_source_faces import ordered_capabilities
+from app.runtime.extensions.projection.media_source_faces import ordered_capabilities
 from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic

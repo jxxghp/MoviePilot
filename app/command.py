@@ -12,7 +12,7 @@ from app.application.orchestration.subscribe import SubscribeChain
 from app.application.orchestration.system import SystemChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.runtime.extensions.command_arbitration import (
+from app.runtime.extensions.admission.command_arbitration import (
     BUILTIN_LAYER,
     OTHER_LAYER,
     PLUGIN_LAYER,

@@ -27,7 +27,7 @@ from app.plugins.servicehealth.probe import (
     TOOL_NAME,
     ServiceInstanceHealthTool,
 )
-from app.runtime.extensions.plugin import agent_tool_capabilities
+from app.runtime.extensions.admission import agent_tool
 from app.sdk.agent import ToolTag
 from app.sdk.service_instances import service_capabilities
 
@@ -73,12 +73,12 @@ def _release_blocking_executors() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _inject_agent_tool_base() -> Iterator[None]:
     """快照并复原智能体工具基类注入状态。"""
-    original = agent_tool_capabilities._agent_tool_base
-    agent_tool_capabilities.configure_agent_tool_base(MoviePilotTool)
+    original = agent_tool._agent_tool_base
+    agent_tool.configure_agent_tool_base(MoviePilotTool)
     try:
         yield
     finally:
-        agent_tool_capabilities._agent_tool_base = original
+        agent_tool._agent_tool_base = original
 
 
 def test_declaration_passes_the_registration_contract():
@@ -86,7 +86,7 @@ def test_declaration_passes_the_registration_contract():
     declarations = ServiceHealth().provides_agent_tools()
 
     assert len(declarations) == 1
-    assert agent_tool_capabilities.agent_tool_declaration_violation(declarations[0]) is None
+    assert agent_tool.agent_tool_declaration_violation(declarations[0]) is None
 
 
 def test_declaration_and_implementation_report_the_same_identity():
@@ -99,7 +99,7 @@ def test_declaration_and_implementation_report_the_same_identity():
 
     assert declaration.name == TOOL_NAME
     assert declaration.description == TOOL_DESCRIPTION
-    assert agent_tool_capabilities.agent_tool_declaration_name(declaration) == TOOL_NAME
+    assert agent_tool.agent_tool_declaration_name(declaration) == TOOL_NAME
     assert ServiceInstanceHealthTool.model_fields["name"].default == TOOL_NAME
     assert ServiceInstanceHealthTool.model_fields["description"].default == TOOL_DESCRIPTION
 

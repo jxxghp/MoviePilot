@@ -28,15 +28,15 @@ from app.runtime.extensions.contract.dependency import (
 from app.application.messaging.message import MessageHelper
 from app.application.plugin.catalog import PluginCatalogService
 from app.adapters.external.plugin.client import PluginMarketClient
-from app.runtime.extensions.plugin.instance_selection import (
+from app.runtime.extensions.admission.instance_selection import (
     PluginInstanceTarget,
     configure_plugin_instance_targets,
 )
-from app.runtime.extensions.plugin.storage import (
+from app.runtime.extensions.lifecycle.storage import (
     PluginStorage,
     configure_plugin_storage,
 )
-from app.runtime.extensions.plugin.system import (
+from app.runtime.extensions.lifecycle.system import (
     PluginSystemServices,
     configure_plugin_system,
 )
@@ -56,7 +56,7 @@ from app.adapters.system.plugin.dependency import (
 )
 from app.adapters.system.plugin.manifest import dependency_manifest_status
 from app.adapters.system.plugin.package import PluginPackageManager
-from app.runtime.extensions.plugin.layout import (
+from app.runtime.extensions.lifecycle.layout import (
     plugin_version_dirs,
     plugin_version_from_dir_name,
 )

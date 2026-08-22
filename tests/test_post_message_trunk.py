@@ -15,7 +15,7 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 
 from app.application.orchestration.context import ChainRuntimeContext  # noqa: E402
 from app.application.orchestration import ChainBase  # noqa: E402
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher  # noqa: E402
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher  # noqa: E402
 
 
 class ChannelModule:

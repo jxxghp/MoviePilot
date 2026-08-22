@@ -14,7 +14,7 @@ from app.api.endpoints.service import config_form as service_config_form_endpoin
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.service import ServiceConfigForm

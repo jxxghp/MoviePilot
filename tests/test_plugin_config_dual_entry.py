@@ -14,7 +14,7 @@ import pytest
 from app.db.models.pluginconfig import PluginConfig
 from app.plugins import _PluginBase
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.plugin.storage import (
+from app.runtime.extensions.lifecycle.storage import (
     PluginStorage,
     configure_plugin_storage,
     get_plugin_storage,

@@ -212,9 +212,9 @@ SDK_DECLARED_EXPORTS = {
         'ToolTag': ('app.agent.tools.tags', 'ToolTag'),
     },
     'app.sdk.auth': {
-        'AuthEntry': ('app.runtime.extensions.auth_entries', 'AuthEntry'),
+        'AuthEntry': ('app.runtime.extensions.projection.auth_entries', 'AuthEntry'),
         'create_plugin_auth_ticket_for_identity': ('app.application.security.auth', 'create_plugin_auth_ticket_for_identity'),
-        'list_auth_entries': ('app.runtime.extensions.auth_entries', 'list_auth_entries'),
+        'list_auth_entries': ('app.runtime.extensions.projection.auth_entries', 'list_auth_entries'),
     },
     'app.sdk.browser': {
         'launch_browser_context': ('app.sdk.browser', 'launch_browser_context'),

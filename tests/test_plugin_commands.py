@@ -12,16 +12,16 @@ import pytest
 from app.command import Command
 from app.modules.discord.discord import Discord
 from app.runtime.deprecation import policy as deprecation_policy
-from app.runtime.extensions.command_arbitration import BuiltinCommandArbiter
+from app.runtime.extensions.admission.command_arbitration import BuiltinCommandArbiter
 from app.runtime.extensions.registry.command import (
     PluginCommandRegistry,
     plugin_command_registry,
 )
 from app.runtime.extensions.contract.declaration import CommandDeclaration
-from app.runtime.extensions.plugin.command_capabilities import (
+from app.runtime.extensions.admission.command import (
     command_declaration_violation,
 )
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.schemas.command import (
     AI_COMMAND_PREFIX,
     COMMAND_WORD_GRAMMAR_HINT,

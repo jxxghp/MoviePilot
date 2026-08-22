@@ -26,7 +26,7 @@ from app.foundation.singleton import Singleton
 from app.plugins import _PluginBase
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
-from app.runtime.extensions.plugin.storage import (
+from app.runtime.extensions.lifecycle.storage import (
     PluginStorage,
     configure_plugin_storage,
     get_plugin_storage,

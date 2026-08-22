@@ -13,8 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.plugin import layout as plugin_layout_module
-from app.runtime.extensions.plugin.layout import (
+from app.runtime.extensions.lifecycle import layout as plugin_layout_module
+from app.runtime.extensions.lifecycle.layout import (
     PLUGIN_FALLBACK_VERSION,
     PLUGIN_VERSIONS_MANIFEST_NAME,
     ensure_plugin_version_dir_available,

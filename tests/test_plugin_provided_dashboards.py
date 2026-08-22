@@ -9,7 +9,7 @@ from app.runtime.deprecation import notices as notices_module
 from app.runtime.deprecation import policy as deprecation_policy
 from app.runtime.deprecation.notices import DeprecationNotice, DeprecationStage
 from app.runtime.extensions.contract.declaration import DashboardDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 
 # 一份合法的配置界面：组件树加默认数据二元组，形状与 get_form() 相同

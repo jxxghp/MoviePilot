@@ -14,8 +14,8 @@ from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin import extension_scoped
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.admission import extension_scoped
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,

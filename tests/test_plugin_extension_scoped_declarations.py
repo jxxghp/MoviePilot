@@ -30,9 +30,9 @@ from app.runtime.extensions.contract.declaration import (
     ModuleDeclaration,
     ServiceInstanceDeclaration,
 )
-from app.runtime.extensions.plugin import agent_tool_capabilities, extension_scoped
-from app.runtime.extensions.plugin import projection as projection_module
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.admission import agent_tool, extension_scoped
+from app.runtime.extensions.projection import plugin as projection_module
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.schemas.notification import ChannelCapabilities
 
 
@@ -215,12 +215,12 @@ def _clean_extension_scoped_warnings() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _isolate_agent_tool_base() -> Iterator[None]:
     """快照并复原智能体工具基类注入状态，避免测试间相互污染。"""
-    original = agent_tool_capabilities._agent_tool_base
-    agent_tool_capabilities.configure_agent_tool_base(MoviePilotTool)
+    original = agent_tool._agent_tool_base
+    agent_tool.configure_agent_tool_base(MoviePilotTool)
     try:
         yield
     finally:
-        agent_tool_capabilities._agent_tool_base = original
+        agent_tool._agent_tool_base = original
 
 
 def _siblings(

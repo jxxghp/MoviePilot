@@ -23,7 +23,7 @@
 
 1. API、Agent、Workflow、Chain 不再直接构造插件/模块 Runtime 管理器；入口通过 `app.application.plugin.runtime.get_plugin_manager()`、`app.application.module.get_module_manager()` 和 `app.application.scheduling.get_scheduler()` 等端口访问，启动层负责实例装配。
 2. `ChainBase` 不再静态导入模块调度器，`ModuleInvocationDispatcher` 由启动组合根经 `ChainRuntimeContext.module_dispatcher_factory` 注入。
-3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
+3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/` 各阶段包下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
 6. 当前机器基线为 746 个宿主 Python 模块、6,024 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
@@ -374,7 +374,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **关键文件**：
 - `app/runtime/extensions/module/protocols.py`：Module 族的 Protocol 定义。
-- `app/runtime/extensions/module/dispatcher.py`：装配时的签名验证。
+- `app/runtime/extensions/projection/dispatcher.py`：装配时的签名验证。
 - 各 Module 实现：补充类型注解和 docstring。
 
 **验证**：
@@ -395,8 +395,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 - `app/runtime/extensions/plugin/loader.py`
 - `app/runtime/extensions/plugin/lifecycle.py`
 - `app/runtime/extensions/registry/plugin.py`
-- `app/runtime/extensions/plugin/projection.py`
-- `app/runtime/extensions/plugin/storage.py`
+- `app/runtime/extensions/projection/plugin.py`
+- `app/runtime/extensions/lifecycle/storage.py`
 - `app/runtime/extensions/plugin/dependency.py`
 - `app/runtime/extensions/plugin/watcher.py`
 - `app/runtime/extensions/plugin/directory.py`
@@ -502,7 +502,16 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 已落地：宿主端口槽归入 `app/runtime/hostports/`（D2）；`debounce.py` 归入
 `app/runtime/compat/`（D1，宿主零调用方，只由 `app.utils.debounce` 别名吊命）；
 扩展契约归入 `app/runtime/extensions/contract/`（D1，符号已随 SDK 交到扩展作者手里）；
-登记结果的持有态归入 `app/runtime/extensions/registry/`（D3 持有态）。
+扩展生命周期的四个时刻各自成目录：登记期 `admission/`、持有态 `registry/`、
+查询期 `projection/`、发现加载 `lifecycle/`。`plugin/` 与 `module/` 两个子目录随之消失——
+那层边界的两条候选规则都有反例：按「装插件专属的」分，命令与过滤规则注册表在上层而
+插件注册表在下层；按「装内部实现」分，上层的契约与配置模式纯内部，下层却有五个文件
+被 `app/startup` 直接 import。
+
+十二个声明族的校验器同批去掉 `_capabilities` 后缀：文件里十七个公开函数有十五个是
+`*_declaration_violation()`，它们是校验器不是能力表，后缀指的方向与内容相反。目录已经
+说明这是登记期的判定，文件名不再重复它——存储声明的登记校验是 `admission/storage.py`，
+持有它的注册表是 `registry/storage.py`。
 
 `contract/` 与 `compat/` 同由 D1 admit，靠「宿主自己还走不走这条路」区分：宿主把所有
 调用方都指向它的，是仍在生效的契约；宿主一处都不再调用、只有已发布插件还 import 的，
@@ -517,9 +526,26 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 - `tests/test_plugin_local_sync.py` 有 14 处 monkeypatch 目标字符串。
 
 三者都是字符串匹配，改错时测试仍可能是绿的，因此该模块只在能同批收紧上述硬编码时
-才动，不允许顺手搬。
+才动，不允许顺手搬。`module_manager.py` 同理。两者都属发现加载期，`lifecycle/` 已建，
+待上述硬编码可同批收紧时归位。
 
-#### 6.9.2 目录门禁的已知失效模式
+**`service_config_validation.py` 不与 `service_config.py` 合并。** 两者确实共用同一套
+判定，但合并会成环：`registry/service_instance.py` 静态 import `service_config` 的扇出
+函数，而校验一条配置合不合它那个类型的契约必须查服务实例登记表。合并后
+`service_config` 反向 import `registry/service_instance`，实测即报
+`partially initialized module` 的循环导入。「写得进就用得起来」的保证不靠同处一个文件
+维持——两条路径都调用 `contract/config_schema.py` 的同一个判定函数，保证落在那里。
+该文件按判据归 `admission/service_config.py`：它判定的是一次写入准不准入，是登记期。
+
+`plugin/method_table.py` 合并进 `admission/module.py`：模块声明的全部契约就是这张方法表，
+媒体数据源声明携带的实现表形状与要求完全相同，判定收在一处，两个校验器共用一份规则。
+
+判据 D 在两个文件上判不出唯一归属，按「取用形状与本目录的既有规则是否一致」落定：
+`lifecycle/storage.py` 与 `lifecycle/system.py` 是组合根注册、由插件管理器解析的端口，
+形状上命中 D2，但 `hostports/` 的规则是「一个协议加一个模块级 `HostPort` 实例，由
+`app/startup/hostport_initializer.py` 一处注入」，这两个都不满足——它们是具体类加模块级
+全局，由 `app/startup/plugins_initializer.py` 注入，且只在插件的装载与卸载路径上取用，
+故归发现加载期。
 
 `tests/test_architecture_dependencies.py` 的 `PLUGIN_COMPONENT_ROOTS` 用 `rglob`
 扫描一组硬编码目录。目录一旦改名或搬走，`rglob` 扫空、断言列表为空、测试转绿，

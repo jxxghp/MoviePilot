@@ -11,7 +11,7 @@ setattr(sys.modules["transmission_rpc"], "File", object)
 
 from app.application.orchestration import ChainBase
 from app.application.orchestration.context import ChainRuntimeContext
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
 from app.schemas import RateLimitExceededException
 
 

@@ -5,7 +5,7 @@ from typing import Iterator
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.notification import (

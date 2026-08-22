@@ -20,13 +20,13 @@ from app.runtime.extensions.contract.declaration import (
     ServiceInstanceDeclaration,
     declaration_methods,
 )
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin.media_source_capabilities import (
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.admission.media_source import (
     media_source_declaration_violation,
 )
-from app.runtime.extensions.plugin.module_capabilities import module_declaration_violation
-from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.admission.module import module_declaration_violation
+from app.runtime.extensions.projection.plugin import PluginProjection
+from app.runtime.extensions.admission.service_instance import (
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.contract.service_instance import (

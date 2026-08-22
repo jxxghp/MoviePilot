@@ -54,8 +54,8 @@ from app.runtime.extensions.contract.instance import (
     normalize_instance_id,
     split_instance_key,
 )
-from app.runtime.extensions.plugin.instance_selection import resolve_plugin_instance_key
-from app.runtime.extensions.plugin.layout import (
+from app.runtime.extensions.admission.instance_selection import resolve_plugin_instance_key
+from app.runtime.extensions.lifecycle.layout import (
     ensure_plugin_version_dir_available,
     plugin_module_name,
     plugin_version_dirs,
@@ -65,10 +65,10 @@ from app.runtime.extensions.plugin.layout import (
     register_plugin_version,
     resolve_plugin_version_dir,
 )
-from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
+from app.runtime.extensions.projection.plugin import PluginExtension, PluginProjection
 from app.runtime.extensions.registry.plugin import PluginRegistry
-from app.runtime.extensions.plugin.storage import get_plugin_storage
-from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.lifecycle.storage import get_plugin_storage
+from app.runtime.extensions.lifecycle.system import get_plugin_system
 from app.runtime.extensions.registry.command import plugin_command_registry
 from app.runtime.extensions.registry.filter_rule import plugin_filter_rule_registry
 from app.runtime.extensions.registry.service_instance import service_instance_registry

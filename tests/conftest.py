@@ -61,7 +61,7 @@ def configure_plugin_system_services():
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
     from app.runtime.extensions.module_manager import ModuleManager
-    from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+    from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.plugin_manager import PluginManager
     configure_plugin_runtime(lambda: PluginManager())
     configure_module_runtime(lambda: ModuleManager())
@@ -168,7 +168,7 @@ def configure_plugin_system_services():
     from app.adapters.system.plugin.dependency import PluginDependencyInstaller
     from app.adapters.system.plugin.manifest import dependency_manifest_status
     from app.adapters.system.plugin.package import PluginPackageManager
-    from app.runtime.extensions.plugin.system import (
+    from app.runtime.extensions.lifecycle.system import (
         PluginSystemServices,
         configure_plugin_system,
         reset_plugin_system,

@@ -35,7 +35,7 @@ from app.application.messaging.message import (
 )
 from app.db.oper.message import MessageOper
 from app.runtime.cache import AsyncFileCache, FileCache
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,

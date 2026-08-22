@@ -32,7 +32,7 @@ def _configure_agent_tool_contract_base() -> None:
     `AI_AGENT_ENABLE` 开关影响。
     """
     from app.agent.tools.base import MoviePilotTool
-    from app.runtime.extensions.plugin.agent_tool_capabilities import (
+    from app.runtime.extensions.admission.agent_tool import (
         configure_agent_tool_base,
     )
 

@@ -9,7 +9,7 @@ from packaging.version import Version
 from watchfiles import Change
 
 from app.runtime.events import Event, eventmanager
-from app.runtime.extensions.plugin.layout import read_plugin_versions_manifest
+from app.runtime.extensions.lifecycle.layout import read_plugin_versions_manifest
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.adapters.external.market import PluginHelper
 from app.scheduler import Scheduler

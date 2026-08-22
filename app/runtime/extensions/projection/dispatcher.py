@@ -15,7 +15,7 @@ from app.runtime.extensions.contract.extension import (
 )
 from app.runtime.extensions.host_module_adapter import HostModuleProviderSource
 from app.runtime.extensions.contract.module_method import get_module_method_contract
-from app.runtime.extensions.plugin.projection import PluginProviderSource
+from app.runtime.extensions.projection.plugin import PluginProviderSource
 from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException
 

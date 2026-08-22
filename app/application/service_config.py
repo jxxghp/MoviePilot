@@ -20,7 +20,7 @@ from app.runtime.extensions.service_config import (
     service_bare_token_field,
     service_capability,
 )
-from app.runtime.extensions.service_config_validation import (
+from app.runtime.extensions.admission.service_config import (
     elect_bare_token_holder,
     service_config_records,
 )

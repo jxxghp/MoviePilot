@@ -17,7 +17,7 @@ import pytest
 from app.api.deps import get_current_active_superuser
 from app.api.endpoints import command as command_endpoint
 from app.command import Command
-from app.runtime.extensions.command_arbitration import (
+from app.runtime.extensions.admission.command_arbitration import (
     BUILTIN_LAYER,
     OTHER_LAYER,
     PLUGIN_LAYER,

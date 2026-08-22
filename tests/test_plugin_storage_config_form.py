@@ -14,7 +14,7 @@ from app.api.endpoints.storage import config_form as storage_config_form_endpoin
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.registry.storage import storage_backend_registry
 from tests.test_plugin_provided_storages import (

@@ -31,11 +31,11 @@ from app.application.service_config import (
 from app.db.models.user import User
 from app.db.oper.user import UserOper
 from app.db.oper.user_identity import UserIdentityOper
-from app.runtime.extensions.auth_entries import list_auth_entries
+from app.runtime.extensions.projection.auth_entries import list_auth_entries
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.service_instance_capabilities import (
+from app.runtime.extensions.projection.plugin import PluginProjection
+from app.runtime.extensions.admission.service_instance import (
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.service_config import (
@@ -43,7 +43,7 @@ from app.runtime.extensions.service_config import (
     service_host_fields,
     service_supports_default_target,
 )
-from app.runtime.extensions.service_config_validation import service_config_records
+from app.runtime.extensions.admission.service_config import service_config_records
 from app.runtime.extensions.registry.service_family import service_family_registry
 from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.system import AuthProviderConf
@@ -504,7 +504,7 @@ def test_login_entry_list_survives_a_config_read_failure(monkeypatch) -> None:
     """整族配置读取出错时入口列表退化为空，不向上抛断掉登录页。"""
     _register_type()
     monkeypatch.setattr(
-        "app.runtime.extensions.auth_entries.service_capability_configs",
+        "app.runtime.extensions.projection.auth_entries.service_capability_configs",
         lambda capability: (_ for _ in ()).throw(RuntimeError("库连不上")),
     )
 

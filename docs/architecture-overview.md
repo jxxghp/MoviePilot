@@ -510,8 +510,9 @@ flowchart TB
 - 动态插件路由使用原生 `APIRoute`，插件自行决定返回结构；主程序的统一 `Response` 封装只适用于
   `app/api/` 的宿主端点。插件若已经自行返回 `Response`、字典、列表或其它可序列化值，宿主不再二次包裹。
 - `app/runtime/extensions/plugin_manager.py` 是保留插件 ABI 的管理器门面，发现、加载、生命周期、
-  目录、同步等实现拆在 `app/runtime/extensions/plugin/`；这个“门面 + 实现包”是有意的兼容边界，
-  不应为了目录整齐而让外部插件改用内部实现文件。
+  目录、同步等实现按扩展生命周期的时刻拆在 `app/runtime/extensions/` 的 `contract/`、
+  `admission/`、`registry/`、`projection/`、`lifecycle/` 五个包里；这个“门面 + 实现包”是有意
+  的兼容边界，不应为了目录整齐而让外部插件改用内部实现文件。
 - 插件可参与 `run_module` 方法分发（同名方法优先响应）并注册事件处理器。
 
 ---
@@ -589,8 +590,9 @@ flowchart LR
   `app/sdk/_legacy/` 薄门面保留行为兼容。兼容清单是导入路由，不负责合并模块，也不负责把任意
   新实现重新导出到旧模块。
 - 已完成的插件边界：插件 API 的动态路由由 application 端口 + web adapter 组成，使用原生
-  `APIRoute` 保留插件响应；插件管理器保留 `plugin_manager.py` 的稳定 ABI，内部实现拆在
-  `runtime/extensions/plugin/`；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
+  `APIRoute` 保留插件响应；插件管理器保留 `plugin_manager.py` 的稳定 ABI，内部实现按扩展
+  生命周期的时刻拆在 `runtime/extensions/` 的各阶段包里；`app/plugins/` 仅作为运行时插件
+  副本/覆盖层处理。
 - 已完成的主题收口：订阅写入归入 `app/application/subscription/write.py`；插件动态路由与
   文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
   `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，

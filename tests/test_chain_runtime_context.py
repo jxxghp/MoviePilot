@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from app.application.orchestration.context import ChainRuntimeContext
 from app.application.orchestration import context as chain_context
 from app.application.orchestration import ChainBase
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
 
 
 def _context() -> ChainRuntimeContext:

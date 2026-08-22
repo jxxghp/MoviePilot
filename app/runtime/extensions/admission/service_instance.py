@@ -12,7 +12,7 @@
 ``factory`` 路径都不判。
 
 存储族的构造协议另有一套，判定随之换一条：``impl`` 是按令牌取用的存储后端类，
-契约按继承判定（见 `app.runtime.extensions.plugin.storage_capabilities`），构造一律
+契约按继承判定（见 `app.runtime.extensions.admission.storage`），构造一律
 走工厂——不给 ``factory`` 时用宿主默认工厂，因此该族的 ``factory`` 是可选项而不是
 ``impl`` 的替代项。
 
@@ -36,11 +36,11 @@ from app.runtime.extensions.contract.declaration import (
     declaration_service_instance_identity,
     declaration_service_instance_multi_instance,
 )
-from app.runtime.extensions.plugin.config_interface import config_interface_violation
+from app.runtime.extensions.admission.config_interface import config_interface_violation
 from app.runtime.extensions.contract.service_instance import (
     service_instance_shape_violation,
 )
-from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
+from app.runtime.extensions.admission.storage import storage_backend_violation
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.registry.service_family import service_family_registry
 

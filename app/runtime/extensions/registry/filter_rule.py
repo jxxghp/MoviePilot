@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.runtime.extensions.contract.instance import extension_id_of
-from app.runtime.extensions.plugin.extension_scoped import instance_precedence
+from app.runtime.extensions.admission.extension_scoped import instance_precedence
 from app.runtime.log import logger as default_logger
 
 # 标识种类：筛选规则

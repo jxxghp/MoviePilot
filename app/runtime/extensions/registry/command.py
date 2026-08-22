@@ -28,7 +28,7 @@
 命令；争的若是新词，它就不存在，用户敲它得到既有的「命令不存在」提示。冲突只作废争用的
 那一个命令词，双方其余命令照常生效；一方停用后另一方重新参与裁决并接手。
 
-插件与内建同命令词的处置不在本表，见 `app.runtime.extensions.command_arbitration`：
+插件与内建同命令词的处置不在本表，见 `app.runtime.extensions.admission.command_arbitration`：
 内建命令表是命令中枢自己的东西，本表看不见它。
 """
 
@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.runtime.extensions.contract.instance import extension_id_of
-from app.runtime.extensions.plugin.extension_scoped import instance_precedence
+from app.runtime.extensions.admission.extension_scoped import instance_precedence
 from app.runtime.log import logger as default_logger
 
 

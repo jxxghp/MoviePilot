@@ -17,7 +17,7 @@
 判定只看「在不在、可不可调用」，不追问实现是不是空桩：判空桩要读源码，动态生成与
 编译分发的实现会被误判，而必填集是硬拒，误拒的代价高于放过一个空桩。
 
-存储族不在本表：它的形状已由 `app.runtime.extensions.plugin.storage_capabilities`
+存储族不在本表：它的形状已由 `app.runtime.extensions.admission.storage`
 按 ``StorageBase`` 的继承与抽象方法判定，两处判同一件事必然漂移。登录认证族同样
 不在本表：该族零内建类型，登录握手走 ``unicast("user_authenticate")`` 的模块分发
 而不是实例方法，宿主对实例一个方法都不调，空地板上不该硬编一个必填名字。

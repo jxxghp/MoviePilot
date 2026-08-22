@@ -14,7 +14,7 @@ import pytest
 
 from app.foundation.singleton import Singleton
 from app.runtime.extensions.contract.declaration import ActionDeclaration
-from app.runtime.extensions.plugin.instance_selection import PluginInstanceTarget
+from app.runtime.extensions.admission.instance_selection import PluginInstanceTarget
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.workflow import Action, ActionContext
 from app.workflow import WorkFlowManager
@@ -61,7 +61,7 @@ def instance_targets(monkeypatch):
 
     :return: ``install(plugin_id, targets)``，登记某插件的实例状态
     """
-    import app.runtime.extensions.plugin.instance_selection as module
+    import app.runtime.extensions.admission.instance_selection as module
 
     registry: dict[str, list[PluginInstanceTarget]] = {}
     monkeypatch.setattr(

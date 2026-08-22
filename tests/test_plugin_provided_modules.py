@@ -7,10 +7,10 @@ import pytest
 
 from app.runtime.deprecation import policy as deprecation_policy
 from app.runtime.extensions.contract.declaration import ModuleDeclaration
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin import module_capabilities
-from app.runtime.extensions.plugin import projection as projection_module
-from app.runtime.extensions.plugin.projection import PluginProjection, PluginProviderSource
+from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.admission import module
+from app.runtime.extensions.projection import plugin as projection_module
+from app.runtime.extensions.projection.plugin import PluginProjection, PluginProviderSource
 
 
 @pytest.fixture(autouse=True)
@@ -85,12 +85,12 @@ def test_contract_accepts_valid_declaration() -> None:
     """方法表非空、键值均合法时声明合规。"""
     declaration = ModuleDeclaration(methods={"recognize": _handler})
 
-    assert module_capabilities.module_declaration_violation(declaration) is None
+    assert module.module_declaration_violation(declaration) is None
 
 
 def test_contract_accepts_bare_dict_declaration() -> None:
     """插件直接交出方法表字典而不包 ModuleDeclaration 时同样合规。"""
-    assert module_capabilities.module_declaration_violation({"recognize": _handler}) is None
+    assert module.module_declaration_violation({"recognize": _handler}) is None
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_contract_accepts_bare_dict_declaration() -> None:
 )
 def test_contract_rejects_empty_methods(declaration) -> None:
     """方法表为空映射的声明必须被拒绝。"""
-    violation = module_capabilities.module_declaration_violation(declaration)
+    violation = module.module_declaration_violation(declaration)
 
     assert violation is not None
 
@@ -112,7 +112,7 @@ def test_contract_rejects_non_string_method_name() -> None:
     """方法名不是字符串的声明必须被拒绝。"""
     declaration = ModuleDeclaration(methods={1: _handler})
 
-    violation = module_capabilities.module_declaration_violation(declaration)
+    violation = module.module_declaration_violation(declaration)
 
     assert violation is not None
 
@@ -121,7 +121,7 @@ def test_contract_rejects_blank_method_name() -> None:
     """方法名为空白字符串的声明必须被拒绝。"""
     declaration = ModuleDeclaration(methods={"   ": _handler})
 
-    violation = module_capabilities.module_declaration_violation(declaration)
+    violation = module.module_declaration_violation(declaration)
 
     assert violation is not None
 
@@ -130,7 +130,7 @@ def test_contract_rejects_non_callable_method_value() -> None:
     """方法名对应值不可调用的声明必须被拒绝。"""
     declaration = ModuleDeclaration(methods={"recognize": "not-callable"})
 
-    violation = module_capabilities.module_declaration_violation(declaration)
+    violation = module.module_declaration_violation(declaration)
 
     assert violation is not None
 

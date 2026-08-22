@@ -15,7 +15,7 @@ from app.runtime.extensions.contract.declaration import (
     declaration_media_source_methods,
     declaration_media_types,
 )
-from app.runtime.extensions.plugin.method_table import method_table_violation
+from app.runtime.extensions.admission.module import method_table_violation
 from app.schemas.media import normalize_media_source
 
 

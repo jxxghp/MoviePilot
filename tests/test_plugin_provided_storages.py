@@ -14,8 +14,8 @@ from app.foundation.singleton import Singleton
 from app.modules._base.storage import StorageBase
 from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
-from app.runtime.extensions.plugin import extension_scoped, storage_capabilities
-from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.admission import extension_scoped, storage
+from app.runtime.extensions.projection.plugin import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.registry.service_instance import (
     service_instance_registry,
@@ -607,7 +607,7 @@ def test_storage_base_qualified_name_still_resolves_to_the_real_class() -> None:
     """
     assert (
         f"{StorageBase.__module__}.{StorageBase.__qualname__}"
-        == storage_capabilities._STORAGE_BASE_QUALIFIED_NAME
+        == storage._STORAGE_BASE_QUALIFIED_NAME
     )
 
 
