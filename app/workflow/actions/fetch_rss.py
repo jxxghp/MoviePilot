@@ -4,7 +4,8 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.chain.media import MediaChain
-from app.runtime.config import settings, global_vars
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.runtime.config import global_vars
 from app.domain.context import Context, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.application.rss import RssHelper
@@ -65,7 +66,11 @@ class FetchRssAction(BaseAction):
             headers["User-Agent"] = params.ua
 
         rss_items = RssHelper().parse(url=params.url,
-                                      proxy=settings.PROXY if params.proxy else None,
+                                      proxy=(
+                                          get_chain_runtime_config_snapshot().proxy
+                                          if params.proxy
+                                          else None
+                                      ),
                                       timeout=params.timeout,
                                       headers=headers)
         if rss_items is None or rss_items is False:

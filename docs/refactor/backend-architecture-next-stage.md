@@ -903,6 +903,11 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 - Outbox dispatcher 的有限重试和 dead-letter 已分别接入 `scheduler.job.retry` 与
   `scheduler.job.dead_letter`，只使用固定 `owner=outbox` 低基数标签；观测失败端口由 Startup 注入，
   Application 不依赖具体 OTel SDK。
+- 2026-08-23 增加 `compat.facade.hit` 低基数指标和 `observe_compat_facade()` 装饰器，覆盖
+  `PluginManager`、`PluginHelper`、`MoviePilotServerHelper` 三个正式 V3 ABI 入口。装饰器保留同步/
+  异步 descriptor、原方法签名和对象身份，并同时记录公开方法与旧私有方法的命中，标签仅包含
+  facade、稳定方法名、可见性和固定 ABI 来源，不包含插件/用户/媒体实例数据。专项测试验证三类
+  Facade 的公开与私有命中，后续可按真实命中量和行为快照逐项内移算法。
 - 专项测试覆盖 exporter 缺失、非法标签、全目录高基数审计、成功/失败 outcome、动态 URL 路由模板；
   既有 API、Event、Module、Scheduler 与健康探针回归保持通过。
 
@@ -994,6 +999,8 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 `SubscribeAdded` payload、outbox stage/commit/post-commit 顺序仍由既有 `application/subscription/write.py` 负责。
 两个公开入口均降至 150 行预算内，复杂度基线移除对应债务项；订阅识别、音乐订阅、写入事务和搜索来源专项
 共 280 项测试通过，架构、复杂度与异步阻塞门禁通过。
+
+2026-08-23 将工作流动作 `FetchRssAction`、`ScanFileAction` 和 `AddSubscribeAction` 接入 `ChainRuntimeConfig` 快照，分别移除代理、媒体后缀和超级用户的全局 `settings` 读取；保留动作公开入口与工作流上下文行为，新增快照注入测试覆盖。配置债务由 130 个文件降至 127 个文件，宿主依赖与配置基线已更新。
 
 **收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式
