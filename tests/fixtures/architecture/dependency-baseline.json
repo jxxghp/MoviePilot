@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6774,
-  "edge_sha256": "5278a712ee7bbb0c66ce1f01529917fa83b987334265c48afb1ab35e25d2bb96",
+  "edge_count": 6782,
+  "edge_sha256": "d8d601f69bc719e254fe12e678d0e0f2c2596665886f82e49b2f9dd49ba29f4d",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3520,6 +3520,8 @@
     "app.command -> app.runtime.extensions.admission.command_arbitration",
     "app.command -> app.runtime.extensions.contract",
     "app.command -> app.runtime.extensions.contract.instance",
+    "app.command -> app.runtime.extensions.projection",
+    "app.command -> app.runtime.extensions.projection.command",
     "app.command -> app.runtime.extensions.registry",
     "app.command -> app.runtime.extensions.registry.command",
     "app.command -> app.runtime.log",
@@ -5795,6 +5797,12 @@
     "app.runtime.extensions.projection.auth_entries -> app.runtime.extensions.registry.service_instance",
     "app.runtime.extensions.projection.auth_entries -> app.runtime.extensions.service_config",
     "app.runtime.extensions.projection.auth_entries -> app.runtime.log",
+    "app.runtime.extensions.projection.command -> app.runtime",
+    "app.runtime.extensions.projection.command -> app.runtime.extensions",
+    "app.runtime.extensions.projection.command -> app.runtime.extensions.admission",
+    "app.runtime.extensions.projection.command -> app.runtime.extensions.admission.command_arbitration",
+    "app.runtime.extensions.projection.command -> app.runtime.extensions.registry",
+    "app.runtime.extensions.projection.command -> app.runtime.extensions.registry.command",
     "app.runtime.extensions.projection.dispatcher -> app.foundation",
     "app.runtime.extensions.projection.dispatcher -> app.foundation.reflection",
     "app.runtime.extensions.projection.dispatcher -> app.runtime",
@@ -6841,7 +6849,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 855,
+  "module_count": 856,
   "modules": [
     "app",
     "app.adapters",
@@ -7548,6 +7556,7 @@
     "app.runtime.extensions.plugin_manager",
     "app.runtime.extensions.projection",
     "app.runtime.extensions.projection.auth_entries",
+    "app.runtime.extensions.projection.command",
     "app.runtime.extensions.projection.dispatcher",
     "app.runtime.extensions.projection.media_source_faces",
     "app.runtime.extensions.projection.media_source_routing",

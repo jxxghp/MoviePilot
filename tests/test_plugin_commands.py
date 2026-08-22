@@ -18,6 +18,7 @@ from app.runtime.extensions.registry.command import (
     plugin_command_registry,
 )
 from app.runtime.extensions.contract.declaration import CommandDeclaration
+from app.runtime.extensions.projection.command import PluginCommandTable
 from app.runtime.extensions.admission.command import (
     command_declaration_violation,
 )
@@ -106,11 +107,14 @@ def _build_command_chain(warnings: Optional[List[str]] = None) -> Command:
             "data": {},
         }
     }
-    chain._plugin_commands = {}
-    chain._declined_plugin_commands = {}
-    chain._plugin_command_revision = -1
-    chain._builtin_arbiter = BuiltinCommandArbiter(
-        log=SimpleNamespace(warning=(warnings.append if warnings is not None else (lambda _: None)))
+    chain._plugin_table = PluginCommandTable(
+        builtin_command_words=lambda: chain._preset_commands,
+        event_sender=Command.send_plugin_event,
+        arbiter=BuiltinCommandArbiter(
+            log=SimpleNamespace(
+                warning=(warnings.append if warnings is not None else (lambda _: None))
+            )
+        ),
     )
     chain._other_commands = {}
     chain._commands = {}
@@ -643,8 +647,8 @@ def test_legacy_hook_returning_empty_list_does_not_warn(monkeypatch):
 # ---------------------------------------------------------------- 命令中枢：组装、调用与回收
 
 
-def test_command_chain_builds_plugin_commands_from_registry():
-    """命令中枢按注册表组装插件命令，带实现的命令直接调用实现。"""
+def test_plugin_command_table_builds_commands_from_registry():
+    """插件命令表按注册表组装插件命令，带实现的命令直接调用实现。"""
     plugin = _CommandPlugin()
     plugin_command_registry.register("AcmePlugin", [(
         "/sync",
@@ -660,7 +664,8 @@ def test_command_chain_builds_plugin_commands_from_registry():
     )])
     chain = _build_command_chain()
 
-    built = chain._Command__build_plugin_commands()
+    chain._plugin_table.rebuild()
+    built = chain._plugin_table.commands
 
     assert built["/sync"]["func"] == plugin.handle
     assert built["/sync"]["pid"] == "AcmePlugin"
@@ -862,6 +867,26 @@ def test_override_intent_does_not_exempt_the_command_word_from_grammar():
 
     assert violation is not None
     assert COMMAND_WORD_GRAMMAR_HINT in violation
+
+
+def test_plugin_command_table_reassembles_only_when_the_registry_revision_moves():
+    """插件命令表只在登记版本变化时重组，命令中枢据此决定要不要重新合并命令表。"""
+    plugin = _CommandPlugin()
+    _register_plugin_command("/acme_sync", plugin)
+    table = PluginCommandTable(
+        builtin_command_words=lambda: (),
+        event_sender=Command.send_plugin_event,
+        arbiter=BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None)),
+    )
+
+    assert table.refresh() is True
+    assert table.refresh() is False
+    assert set(table.commands) == {"/acme_sync"}
+
+    plugin_command_registry.unregister_owner("AcmePlugin")
+
+    assert table.refresh() is True
+    assert table.commands == {}
 
 
 def test_command_table_staleness_is_decided_only_by_the_registry_revision():

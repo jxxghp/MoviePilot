@@ -9,9 +9,9 @@ from app.runtime.extensions.admission.command_arbitration import (
     BUILTIN_LAYER,
     OTHER_LAYER,
     PLUGIN_LAYER,
-    BuiltinCommandArbiter,
 )
-from app.runtime.extensions.registry.command import CommandClaim, plugin_command_registry
+from app.runtime.extensions.projection.command import PluginCommandTable
+from app.runtime.extensions.registry.command import CommandClaim
 from app.runtime.extensions.contract.instance import split_instance_key
 from app.application.messaging.gateway import CommandChain
 from app.application.messaging.message import MessageHelper
@@ -120,16 +120,13 @@ class Command(metaclass=Singleton):
         self._commands = {}
         # 内建命令集合
         self._preset_commands = _resolve_builtin_commands()
-        # 插件命令集合
-        self._plugin_commands = {}
-        # 与内建命令同名却未声明接管意图、已作废的插件命令集合
-        self._declined_plugin_commands = {}
-        # 插件命令集合对应的注册表版本号，-1 表示尚未按注册表组装过
-        self._plugin_command_revision = -1
-        # 插件与内建同命令词的裁决器
-        self._builtin_arbiter = BuiltinCommandArbiter()
         # 其他命令集合
         self._other_commands = {}
+        # 插件命令表，随插件命令登记版本对齐
+        self._plugin_table = PluginCommandTable(
+            builtin_command_words=lambda: self._preset_commands,
+            event_sender=self.send_plugin_event,
+        )
         # 初始化锁
         self._rlock = threading.RLock()
         # 消息管理器
@@ -150,14 +147,8 @@ class Command(metaclass=Singleton):
         try:
             with self._rlock:
                 logger.debug("Acquired lock for initializing commands in background.")
-                revision = plugin_command_registry.revision
-                self._plugin_commands = self.__build_plugin_commands(pid)
-                self._plugin_command_revision = revision
-                self._commands = {
-                    **self._preset_commands,
-                    **self._plugin_commands,
-                    **self._other_commands,
-                }
+                self._plugin_table.rebuild()
+                self._commands = self.__merge_commands()
 
                 # 强制触发注册
                 force_register = False
@@ -214,6 +205,20 @@ class Command(metaclass=Singleton):
                 exc_info=True,
             )
 
+    def __merge_commands(self) -> Dict[str, dict]:
+        """
+        把内建、插件与单独注册三处来源合并成一张命令表
+
+        合并次序即优先级，后一处压住前一处的同名命令词。
+
+        :return: 命令词到命令表条目的映射
+        """
+        return {
+            **self._preset_commands,
+            **self._plugin_table.commands,
+            **self._other_commands,
+        }
+
     def __trigger_register_commands_event(self) -> tuple[Optional[Event], dict]:
         """
         触发事件，允许调整命令数据
@@ -241,7 +246,7 @@ class Command(metaclass=Singleton):
         # 初始化命令字典
         commands: Dict[str, dict] = {}
         add_commands(self._preset_commands, "preset")
-        add_commands(self._plugin_commands, "plugin")
+        add_commands(self._plugin_table.commands, "plugin")
         add_commands(self._other_commands, "other")
 
         # 触发事件允许可以拦截和调整命令
@@ -250,51 +255,6 @@ class Command(metaclass=Singleton):
         )
         event = eventmanager.send_event(ChainEventType.CommandRegister, event_data)
         return event, commands
-
-    def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict]:
-        """
-        构建插件命令
-
-        命令来源是插件命令注册表，同插件多实例与跨插件的同命令词裁决都已在表内完成。
-        与内建命令的同词争用只有本方法看得见——内建命令表是命令中枢自己持有的，注册表
-        看不到它——因此在这里按接管意图裁决一次，未声明接管的同名插件命令不进命令表，
-        用户敲这个词仍得到内建行为。
-
-        :param _: 插件标识，命令表按注册表整体重建，不按插件裁剪
-        :return: 命令词到命令表条目的映射，仅含通过裁决的插件命令
-        """
-        definitions = plugin_command_registry.command_definitions()
-        arbitration = self._builtin_arbiter.arbitrate(
-            definitions, self._preset_commands
-        )
-        self._declined_plugin_commands = {
-            cmd: {
-                "pid": command.get("pid"),
-                "description": command.get("desc"),
-                "category": command.get("category"),
-            }
-            for cmd, command in arbitration.declined.items()
-        }
-        plugin_commands = {}
-        for cmd, command in arbitration.effective.items():
-            impl = command.get("impl")
-            data = command.get("data") or {}
-            if callable(impl):
-                func, payload = impl, {"data": data}
-            else:
-                func, payload = self.send_plugin_event, {
-                    "etype": command.get("event"),
-                    "data": data,
-                }
-            plugin_commands[cmd] = {
-                "pid": command.get("pid"),
-                "func": func,
-                "description": command.get("desc"),
-                "category": command.get("category"),
-                "show": command.get("show", True),
-                "data": payload,
-            }
-        return plugin_commands
 
     def command_origins(self) -> List[CommandOrigin]:
         """
@@ -309,10 +269,10 @@ class Command(metaclass=Singleton):
         self._refresh_plugin_commands()
         with self._rlock:
             preset = dict(self._preset_commands)
-            plugin = dict(self._plugin_commands)
-            declined = dict(self._declined_plugin_commands)
+            plugin = dict(self._plugin_table.commands)
+            declined = dict(self._plugin_table.declined)
             other = dict(self._other_commands)
-        claims = {claim.cmd: claim for claim in plugin_command_registry.claims()}
+        claims = {claim.cmd: claim for claim in self._plugin_table.claims()}
         words = set(preset) | set(plugin) | set(declined) | set(other) | set(claims)
         return [
             self.__command_origin(cmd, preset, plugin, declined, other, claims.get(cmd))
@@ -433,22 +393,13 @@ class Command(metaclass=Singleton):
         插件命令登记发生变化时重新组装命令表
 
         插件停用或卸载后其命令必须立刻从命令表里消失，而广播注册是异步的、也未必每次
-        都被触发。命令表是注册表某一版本的快照，版本号变了即代表快照过期，在查表前对
-        齐一次，用户敲已卸载插件的命令就得到「命令不存在」而不是调用到已卸载的代码。
+        都被触发。插件命令表是注册表某一版本的快照，版本号变了即代表快照过期，在查表前
+        对齐一次，用户敲已卸载插件的命令就得到「命令不存在」而不是调用到已卸载的代码。
         """
-        if plugin_command_registry.revision == self._plugin_command_revision:
+        if not self._plugin_table.refresh():
             return
         with self._rlock:
-            revision = plugin_command_registry.revision
-            if revision == self._plugin_command_revision:
-                return
-            self._plugin_commands = self.__build_plugin_commands()
-            self._plugin_command_revision = revision
-            self._commands = {
-                **self._preset_commands,
-                **self._plugin_commands,
-                **self._other_commands,
-            }
+            self._commands = self.__merge_commands()
 
     def get_commands(self):
         """
@@ -458,11 +409,7 @@ class Command(metaclass=Singleton):
         if not self._commands:
             with self._rlock:
                 if not self._commands:
-                    self._commands = {
-                        **self._preset_commands,
-                        **self._plugin_commands,
-                        **self._other_commands,
-                    }
+                    self._commands = self.__merge_commands()
         return self._commands
 
     def get(self, cmd: str) -> Any:

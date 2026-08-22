@@ -14,6 +14,7 @@ import pytest
 import app.command as command_module
 from app.command import Command, _command_callable, _resolve_builtin_commands
 from app.runtime.extensions.admission.command_arbitration import BuiltinCommandArbiter
+from app.runtime.extensions.projection.command import PluginCommandTable
 from app.startup.builtin_commands import builtin_commands
 
 # 内建清单里由业务链提供实现的命令词
@@ -133,10 +134,11 @@ def test_executing_a_builtin_business_command_passes_the_call_context():
             "data": {},
         }
     }
-    hub._plugin_commands = {}
-    hub._declined_plugin_commands = {}
-    hub._plugin_command_revision = -1
-    hub._builtin_arbiter = BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None))
+    hub._plugin_table = PluginCommandTable(
+        builtin_command_words=lambda: hub._preset_commands,
+        event_sender=Command.send_plugin_event,
+        arbiter=BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None)),
+    )
     hub._other_commands = {}
     hub._commands = {}
     hub._rlock = threading.RLock()
