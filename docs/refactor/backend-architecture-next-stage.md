@@ -772,6 +772,10 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
 - 下载失败冷却切片继续迁移到 `TransactionalDownloadFailureRepository`：Chain 每次读写使用独立短会话，
   写成功由显式 `SqlAlchemyUnitOfWork` commit，异常 rollback；`DownloadFailure` 查询和记录方法不再拥有
   自动会话/提交装饰器。Model decorator 基线继续从 176 降到 174，Oper 内显式 commit/rollback 仍为 0。
+- Workflow 执行状态切片新增 `WorkflowExecutionCommand` 与短会话事务适配器；运行中、动作进度、成功、
+  失败和重置均由 Application command 显式 commit/rollback。`WorkflowOper()` 的旧方法名、参数和返回值
+  继续可用，无 Session 调用委托组合根服务，显式 Session 调用只暂存；同步 Model 自动提交装饰器移除 6 个，
+  事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -885,6 +889,9 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 
 **扩展实施记录（2026-08-22）**：mypy 目标运行时更新到 Python 3.14，严格清单扩大到 20 个源文件；
 新增纳管配置快照和下载失败事务适配器，仍保持零错误、无全局 ignore。
+
+Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/startup/workflow.py` 纳入 strict 清单，
+治理范围扩大到 22 个源文件；事务命令、仓储 Protocol 和短会话适配器保持零错误。
 
 #### ARCH-271：复杂度和端点预算 ratchet
 

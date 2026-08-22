@@ -228,6 +228,8 @@ def test_update_current_action_matches_async_twin(db):
 
     for action in ("a1", "a2", "a1"):
         Workflow.update_current_action(db.session, sync_flow.id, action, {})
+        # 同步 Model 方法只暂存 SQL；由测试持有的事务边界先提交，避免与异步会话争锁。
+        db.session.commit()
         asyncio.run(Workflow.async_update_current_action(
             wid=async_flow.id, action_id=action, context={}))
 

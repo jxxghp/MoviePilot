@@ -4,9 +4,9 @@
       "async_db_query": 49,
       "async_db_update": 12,
       "db_query": 74,
-      "db_update": 39
+      "db_update": 33
     },
-    "count": 174,
+    "count": 168,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -829,11 +829,6 @@
         "method": "Workflow.async_update_state"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.fail"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/workflow.py",
         "method": "Workflow.get_by_name"
@@ -852,31 +847,6 @@
         "decorator": "db_query",
         "file": "app/db/models/workflow.py",
         "method": "Workflow.get_timer_triggered_workflows"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.reset"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.start"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.success"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.update_current_action"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.update_state"
       }
     ]
   },

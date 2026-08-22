@@ -357,6 +357,16 @@ def test_workflow_oper_exposes_lists_and_lifecycle(db):
     assert (oper.get(flow.id).state, oper.get(flow.id).run_count) == ("W", 0)
 
 
+def test_workflow_oper_no_session_uses_configured_uow_writer(db):
+    """旧的无 Session Oper 写入口仍可用，但事务由组合根服务持有。"""
+    flow = db.add(Workflow(**_workflow_kwargs("op-wf-legacy")))
+
+    assert WorkflowOper().start(flow.id) is True
+
+    db.session.expire_all()
+    assert WorkflowOper(db=db.session).get(flow.id).state == "R"
+
+
 def test_workflow_oper_event_list_and_async_accessors(db):
     """
     事件触发列表与异步访问器同样可用。

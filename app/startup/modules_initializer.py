@@ -96,7 +96,7 @@ from app.db.oper.message import MessageOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper
+from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
 from app.command import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
@@ -113,6 +113,7 @@ from app.startup.subscription import (
 )
 from app.startup.chain_events import TransactionalChainDurableEventWriter
 from app.startup.download_failure import TransactionalDownloadFailureRepository
+from app.startup.workflow import TransactionalWorkflowExecutionService
 from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
@@ -570,6 +571,8 @@ async def init_modules() -> HostRuntime:
     configure_runtime_configuration(host_runtime.configuration)
     configure_api_data_runtime(host_runtime.compatibility_api_data)
     configure_runtime_data_providers()
+    workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
+    configure_workflow_legacy_writer(workflow_execution)
     configure_chain_data_ports(
         site=lambda: SiteOper(),
         subscribe=lambda: SubscribeOper(),

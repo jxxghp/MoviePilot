@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query, async_db_update
 
 
 class Workflow(Base):
@@ -130,7 +130,6 @@ class Workflow(Base):
         return result.scalars().first()
 
     @classmethod
-    @db_update
     def update_state(cls, db, wid: int, state: str):
         db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
@@ -142,7 +141,6 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @db_update
     def start(cls, db, wid: int):
         db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
@@ -154,7 +152,6 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @db_update
     def fail(cls, db, wid: int, result: str):
         db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
@@ -178,7 +175,6 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @db_update
     def success(cls, db, wid: int, result: Optional[str] = None):
         db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
@@ -204,7 +200,6 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @db_update
     def reset(cls, db, wid: int, reset_count: Optional[bool] = False):
         db.execute(update(cls).where(cls.id == wid).values(
             state='W',
@@ -230,7 +225,6 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @db_update
     def update_current_action(cls, db, wid: int, action_id: str, context: dict,
                               execution_state: Optional[dict] = None):
         workflow = db.execute(select(cls).where(cls.id == wid)).scalars().first()

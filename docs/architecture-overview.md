@@ -370,7 +370,7 @@ flowchart LR
   成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
-  `transaction-debt-baseline.json` 将存量 178 个 Model 事务装饰器冻结为只降不增低水位。
+  `transaction-debt-baseline.json` 将存量 168 个 Model 事务装饰器冻结为只降不增低水位。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/plugins_initializer.py` 创建独占会话，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。

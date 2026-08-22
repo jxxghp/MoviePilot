@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6360,
-  "edge_sha256": "09c923d8b167a889e22829c320e05f8801c62400f672b1386d6524c55b064564",
+  "edge_count": 6367,
+  "edge_sha256": "62c413857cd12dbaf4d31e4fad4c6b6c80f7dc747d0d5a74ecb61c44b4996822",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6120,6 +6120,7 @@
     "app.startup.modules_initializer -> app.startup.managed_resources_initializer",
     "app.startup.modules_initializer -> app.startup.outbox",
     "app.startup.modules_initializer -> app.startup.subscription",
+    "app.startup.modules_initializer -> app.startup.workflow",
     "app.startup.monitor_initializer -> app.monitor",
     "app.startup.outbox -> app.application",
     "app.startup.outbox -> app.application.outbox",
@@ -6200,6 +6201,12 @@
     "app.startup.subscription -> app.startup.outbox",
     "app.startup.transfer_initializer -> app.chain",
     "app.startup.transfer_initializer -> app.chain.transfer",
+    "app.startup.workflow -> app.application",
+    "app.startup.workflow -> app.application.workflow",
+    "app.startup.workflow -> app.db",
+    "app.startup.workflow -> app.db.oper",
+    "app.startup.workflow -> app.db.oper.workflow",
+    "app.startup.workflow -> app.db.uow",
     "app.startup.workflow_initializer -> app.workflow",
     "app.testing -> app.testing.stub",
     "app.testing.bootstrap -> app.application",
@@ -6377,7 +6384,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 789,
+  "module_count": 790,
   "modules": [
     "app",
     "app.adapters",
@@ -7146,6 +7153,7 @@
     "app.startup.scheduler_initializer",
     "app.startup.subscription",
     "app.startup.transfer_initializer",
+    "app.startup.workflow",
     "app.startup.workflow_initializer",
     "app.testing",
     "app.testing.bootstrap",
