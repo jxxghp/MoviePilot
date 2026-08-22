@@ -270,7 +270,183 @@ class MediaServerChain(ChainBase):
             "mediaserver_image_cookies", server=server, image_url=image_url
         )
 
+    def _prepare_sync_contexts(
+        self,
+        mediaservers: List[Any],
+        server: Optional[str],
+    ) -> Tuple[List[Any], int, Dict[str, Any], Optional[int]]:
+        """
+        准备启用媒体服务器的同步库和进度总量。
+
+        :return: (待同步服务器、服务器数量、服务器同步上下文、全局媒体总数)
+        """
+        enabled_servers = [
+            item.name for item in mediaservers
+            if item and item.enabled and item.name
+        ]
+        dboper = MediaServerOper()
+        dboper.delete_excluded_servers(enabled_servers)
+        selected_servers = [
+            item for item in mediaservers
+            if item and item.enabled and (not server or item.name == server)
+        ]
+        total_servers = len(selected_servers)
+        contexts: Dict[str, Any] = {}
+        global_media_total = 0
+        global_counts_available = True
+        for mediaserver in selected_servers:
+            server_name = mediaserver.name
+            logger.info(f"正在统计媒体服务器 {server_name} 的待同步媒体数量")
+            libraries = self.librarys(server_name)
+            if not libraries:
+                contexts[server_name] = None
+                continue
+            sync_libraries = mediaserver.sync_libraries or []
+            selected_libraries = [
+                library for library in libraries
+                if not sync_libraries
+                or "all" in sync_libraries
+                or str(library.id) in sync_libraries
+            ]
+            library_media_counts = {str(library.id): None for library in selected_libraries}
+            sync_all_libraries = not sync_libraries or "all" in sync_libraries
+            server_media_count = self.media_count(server_name) if sync_all_libraries else None
+            if server_media_count:
+                global_media_total += server_media_count
+            else:
+                for library in selected_libraries:
+                    media_count = self.items_count(server=server_name, library_id=library.id)
+                    library_media_counts[str(library.id)] = media_count
+                    if media_count is None:
+                        global_counts_available = False
+                        logger.warning(
+                            f"未获取到 {server_name} 媒体库 {library.name} 的媒体总数，"
+                            "同步进度将按媒体库完成度计算"
+                        )
+                    else:
+                        global_media_total += media_count
+            contexts[server_name] = (selected_libraries, library_media_counts)
+        if not global_counts_available:
+            global_media_total = None
+        return selected_servers, total_servers, contexts, global_media_total
+
+    def _sync_server_libraries(
+        self,
+        server_name: str,
+        selected_libraries: List[Any],
+        library_media_counts: Dict[str, Optional[int]],
+        dboper: MediaServerOper,
+        sync_time: str,
+        progress_callback: Optional[Callable[..., None]],
+        server_index: int,
+        total_servers: int,
+        global_media_total: Optional[int],
+        global_media_finished: int,
+    ) -> Tuple[int, int]:
+        """
+        同步单个媒体服务器的媒体库并清理陈旧条目。
+
+        :return: (本服务器写入数量、更新后的全局已完成媒体数)
+        """
+        total_count = 0
+        total_libraries = len(selected_libraries)
+        for library_index, library in enumerate(selected_libraries, start=1):
+            logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
+            library_media_total = library_media_counts.get(str(library.id))
+            library_count = 0
+            for item in self.items(server=server_name, library_id=library.id):
+                if global_vars.is_system_stopped:
+                    return total_count, global_media_finished
+                if not item or not item.item_id:
+                    continue
+                logger.debug(f"正在同步 {item.title} ...")
+                library_count += 1
+                global_media_finished += 1
+                seasoninfo = {}
+                item_type = self._normalize_item_type(item.item_type)
+                if item_type == MediaType.TV.value:
+                    for episode in self.episodes(server_name, item.item_id) or []:
+                        seasoninfo[episode.season] = episode.episodes
+                item_dict = item.model_dump()
+                item_dict.update({
+                    "seasoninfo": seasoninfo,
+                    "item_type": item_type,
+                    "lst_mod_date": sync_time,
+                })
+                dboper.upsert(**item_dict)
+                if progress_callback:
+                    if global_media_total:
+                        progress_value = min(global_media_finished / global_media_total, 1) * 100
+                    else:
+                        library_progress = min(library_count / library_media_total, 1) if library_media_total else 0
+                        server_progress = (library_index - 1 + library_progress) / total_libraries
+                        progress_value = (server_index - 1 + server_progress) / total_servers * 100
+                    progress_callback(
+                        value=progress_value,
+                        text=(
+                            f"正在同步 {server_name} 媒体库 {library.name}"
+                            f"（{library_count}/{library_media_total}）"
+                            if library_media_total is not None
+                            else f"正在同步 {server_name} 媒体库 {library.name}"
+                        ),
+                        data={
+                            "total": total_servers,
+                            "finished": server_index - 1,
+                            "current": server_name,
+                            "library_total": total_libraries,
+                            "library_finished": library_index - 1,
+                            "current_library": library.name,
+                            "library_media_total": library_media_total,
+                            "library_media_finished": library_count,
+                            "media_total": global_media_total,
+                            "media_finished": global_media_finished,
+                        },
+                    )
+            logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
+            total_count += library_count
+            if progress_callback:
+                progress_value = (
+                    min(global_media_finished / global_media_total, 1) * 100
+                    if global_media_total
+                    else (server_index - 1 + library_index / total_libraries) / total_servers * 100
+                )
+                progress_callback(
+                    value=progress_value,
+                    text=f"{server_name} 媒体库（{library_index}/{total_libraries}）{library.name} 同步完成",
+                    data={
+                        "total": total_servers,
+                        "finished": server_index - 1,
+                        "current": server_name,
+                        "library_total": total_libraries,
+                        "library_finished": library_index,
+                        "current_library": library.name,
+                        "library_media_total": library_media_total,
+                        "library_media_finished": library_count,
+                        "media_total": global_media_total,
+                        "media_finished": global_media_finished,
+                    },
+                )
+        stale_count = dboper.delete_stale(server=server_name, sync_time=sync_time)
+        logger.info(f"媒体服务器 {server_name} 清理陈旧数据完成，删除数量：{stale_count}")
+        return total_count, global_media_finished
+
     def sync(
+            self,
+            progress_callback: Optional[Callable[..., None]] = None,
+            server: Optional[str] = None,
+    ) -> None:
+        """
+        兼容媒体库同步公开入口，委托给内部同步执行阶段。
+
+        定时器、API 和插件使用该稳定入口；内部阶段负责统计、逐库读取、写入和陈旧清理，
+        以便后续独立演进进度策略而不改变调用方参数。
+        """
+        return self._execute_sync(
+            progress_callback=progress_callback,
+            server=server,
+        )
+
+    def _execute_sync(
             self,
             progress_callback: Optional[Callable[..., None]] = None,
             server: Optional[str] = None,
@@ -291,17 +467,9 @@ class MediaServerChain(ChainBase):
             # 汇总统计
             total_count = 0
             dboper = MediaServerOper()
-            enabled_servers = [mediaserver.name for mediaserver in mediaservers
-                               if mediaserver and mediaserver.enabled and mediaserver.name]
-            dboper.delete_excluded_servers(enabled_servers)
-            if server:
-                mediaservers = [
-                    mediaserver for mediaserver in mediaservers
-                    if mediaserver and mediaserver.enabled and mediaserver.name == server
-                ]
-            total_servers = len(enabled_servers)
-            if server:
-                total_servers = len(mediaservers)
+            mediaservers, total_servers, server_sync_contexts, global_media_total = (
+                self._prepare_sync_contexts(mediaservers, server)
+            )
             if progress_callback:
                 progress_callback(
                     value=0,
@@ -318,71 +486,6 @@ class MediaServerChain(ChainBase):
                         ),
                     )
                 return
-
-            server_sync_contexts = {}
-            global_media_total = 0
-            global_counts_available = True
-            for mediaserver in mediaservers:
-                if not mediaserver or not mediaserver.enabled:
-                    continue
-                server_name = mediaserver.name
-                logger.info(f"正在统计媒体服务器 {server_name} 的待同步媒体数量")
-                libraries = self.librarys(server_name)
-                if not libraries:
-                    server_sync_contexts[server_name] = None
-                    continue
-
-                sync_libraries = mediaserver.sync_libraries or []
-                selected_libraries = []
-                for library in libraries:
-                    if sync_libraries \
-                            and "all" not in sync_libraries \
-                            and str(library.id) not in sync_libraries:
-                        logger.info(f"{library.name} 未在 {server_name} 同步媒体库列表中，跳过")
-                        continue
-                    selected_libraries.append(library)
-
-                library_media_counts = {
-                    str(library.id): None for library in selected_libraries
-                }
-                sync_all_libraries = (
-                    not sync_libraries or "all" in sync_libraries
-                )
-                server_media_count = (
-                    self.media_count(server_name)
-                    if sync_all_libraries else None
-                )
-                if server_media_count:
-                    global_media_total += server_media_count
-                    logger.info(
-                        f"媒体服务器 {server_name} 共 {server_media_count} 个媒体待同步"
-                    )
-                else:
-                    for library in selected_libraries:
-                        media_count = self.items_count(
-                            server=server_name,
-                            library_id=library.id,
-                        )
-                        library_media_counts[str(library.id)] = media_count
-                        if media_count is None:
-                            global_counts_available = False
-                            logger.warning(
-                                f"未获取到 {server_name} 媒体库 {library.name} 的媒体总数，"
-                                f"同步进度将按媒体库完成度计算"
-                            )
-                        else:
-                            global_media_total += media_count
-                            logger.info(
-                                f"{server_name} 媒体库 {library.name}"
-                                f"共 {media_count} 个媒体待同步"
-                            )
-                server_sync_contexts[server_name] = (
-                    selected_libraries,
-                    library_media_counts,
-                )
-
-            if not global_counts_available:
-                global_media_total = None
 
             # 遍历媒体服务器
             server_index = 0
@@ -439,107 +542,19 @@ class MediaServerChain(ChainBase):
                     continue
                 sync_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                 selected_libraries, library_media_counts = sync_context
-                total_libraries = len(selected_libraries)
-                for library_index, library in enumerate(selected_libraries, start=1):
-                    logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
-                    library_media_total = library_media_counts.get(str(library.id))
-                    library_count = 0
-                    for item in self.items(server=server_name, library_id=library.id):
-                        if global_vars.is_system_stopped:
-                            return
-                        if not item or not item.item_id:
-                            continue
-                        logger.debug(f"正在同步 {item.title} ...")
-                        # 计数
-                        library_count += 1
-                        global_media_finished += 1
-                        seasoninfo = {}
-                        # 类型
-                        item_type = self._normalize_item_type(item.item_type)
-                        if item_type == MediaType.TV.value:
-                            # 查询剧集信息
-                            espisodes_info = self.episodes(server_name, item.item_id) or []
-                            for episode in espisodes_info:
-                                seasoninfo[episode.season] = episode.episodes
-                        # 插入数据
-                        item_dict = item.model_dump()
-                        item_dict["seasoninfo"] = seasoninfo
-                        item_dict["item_type"] = item_type
-                        item_dict["lst_mod_date"] = sync_time
-                        dboper.upsert(**item_dict)
-                        if progress_callback:
-                            if global_media_total:
-                                progress_value = min(
-                                    global_media_finished / global_media_total,
-                                    1,
-                                ) * 100
-                            else:
-                                library_progress = (
-                                    min(library_count / library_media_total, 1)
-                                    if library_media_total else 0
-                                )
-                                server_progress = (
-                                    library_index - 1 + library_progress
-                                ) / total_libraries
-                                progress_value = (
-                                    server_index - 1 + server_progress
-                                ) / total_servers * 100
-                            progress_callback(
-                                value=progress_value,
-                                text=(
-                                    f"正在同步 {server_name} 媒体库 {library.name}"
-                                    f"（{library_count}/{library_media_total}）"
-                                    if library_media_total is not None
-                                    else f"正在同步 {server_name} 媒体库 {library.name}"
-                                ),
-                                data={
-                                    "total": total_servers,
-                                    "finished": server_index - 1,
-                                    "current": server_name,
-                                    "library_total": total_libraries,
-                                    "library_finished": library_index - 1,
-                                    "current_library": library.name,
-                                    "library_media_total": library_media_total,
-                                    "library_media_finished": library_count,
-                                    "media_total": global_media_total,
-                                    "media_finished": global_media_finished,
-                                },
-                            )
-                    logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
-                    # 总数累加
-                    total_count += library_count
-                    if progress_callback:
-                        if global_media_total:
-                            progress_value = min(
-                                global_media_finished / global_media_total,
-                                1,
-                            ) * 100
-                        else:
-                            server_progress = library_index / total_libraries
-                            progress_value = (
-                                server_index - 1 + server_progress
-                            ) / total_servers * 100
-                        progress_callback(
-                            value=progress_value,
-                            text=(
-                                f"{server_name} 媒体库"
-                                f"（{library_index}/{total_libraries}）{library.name} 同步完成"
-                            ),
-                            data={
-                                "total": total_servers,
-                                "finished": server_index - 1,
-                                "current": server_name,
-                                "library_total": total_libraries,
-                                "library_finished": library_index,
-                                "current_library": library.name,
-                                "library_media_total": library_media_total,
-                                "library_media_finished": library_count,
-                                "media_total": global_media_total,
-                                "media_finished": global_media_finished,
-                            },
-                        )
-                stale_count = dboper.delete_stale(server=server_name, sync_time=sync_time)
-                logger.info(f"媒体服务器 {server_name} 清理陈旧数据完成，删除数量：{stale_count}")
+                server_count, global_media_finished = self._sync_server_libraries(
+                    server_name=server_name,
+                    selected_libraries=selected_libraries,
+                    library_media_counts=library_media_counts,
+                    dboper=dboper,
+                    sync_time=sync_time,
+                    progress_callback=progress_callback,
+                    server_index=server_index,
+                    total_servers=total_servers,
+                    global_media_total=global_media_total,
+                    global_media_finished=global_media_finished,
+                )
+                total_count += server_count
                 logger.info(f"媒体服务器 {server_name} 数据同步完成，总同步数量：{total_count}")
                 if progress_callback:
                     progress_value = (
