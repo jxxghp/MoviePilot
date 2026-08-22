@@ -1016,20 +1016,11 @@ def _get_web_agent_registered_file(ref: str) -> Optional[dict[str, Any]]:
     return _WEB_AGENT_FILE_REGISTRY.get(file_id)
 
 
-def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
-    """
-    转写 WebAgent 上传的本地录音附件。
-
-    Web 面板上传后的音频已经保存在短期文件登记表里，不能再像第三方渠道那样
-    走模块下载逻辑；这里直接读取临时文件并调用当前音频输入 provider。
-    """
-    if not audio_refs:
-        return None
-    if not AgentCapabilityManager.is_audio_input_available():
-        logger.warning("WebAgent 音频输入能力未配置或未启用，跳过语音识别")
-        return None
-
-    transcripts = []
+def _resolve_web_agent_audio_refs(
+    audio_refs: list[str],
+) -> list[tuple[str, Path, str]]:
+    """在调用协程中解析音频引用，返回不依赖登记表的文件快照。"""
+    audio_files = []
     for audio_ref in audio_refs:
         file_info = _get_web_agent_registered_file(audio_ref)
         if not file_info:
@@ -1037,6 +1028,29 @@ def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
             continue
 
         file_path = Path(file_info["path"])
+        audio_files.append(
+            (audio_ref, file_path, file_info.get("name") or file_path.name)
+        )
+    return audio_files
+
+
+def _transcribe_web_agent_audio_files(
+    audio_files: list[tuple[str, Path, str]],
+) -> Optional[str]:
+    """
+    转写 WebAgent 上传的本地录音附件。
+
+    文件信息已在调用协程中从短期登记表解析，阻塞文件读取和 provider 调用可在
+    worker 中执行，避免跨线程访问登记表。
+    """
+    if not audio_files:
+        return None
+    if not AgentCapabilityManager.is_audio_input_available():
+        logger.warning("WebAgent 音频输入能力未配置或未启用，跳过语音识别")
+        return None
+
+    transcripts = []
+    for audio_ref, file_path, file_name in audio_files:
         try:
             content = file_path.read_bytes()
         except OSError as err:
@@ -1045,12 +1059,20 @@ def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
 
         transcript = AgentCapabilityManager.transcribe_audio(
             content=content,
-            filename=file_info.get("name") or file_path.name,
+            filename=file_name,
         )
         if transcript:
             transcripts.append(transcript)
 
     return "\n".join(transcripts).strip() if transcripts else None
+
+
+async def _transcribe_web_agent_audio_input(audio_refs: list[str]) -> Optional[str]:
+    """解析并在线程池中转写 WebAgent 音频引用。"""
+    audio_files = _resolve_web_agent_audio_refs(audio_refs)
+    if not audio_files:
+        return None
+    return await asyncio.to_thread(_transcribe_web_agent_audio_files, audio_files)
 
 
 def _merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[str]) -> str:
@@ -2104,7 +2126,7 @@ async def web_agent_stream(
             locale=locale,
         )
 
-    transcript = _transcribe_web_agent_audio_refs(payload.audio_refs or [])
+    transcript = await _transcribe_web_agent_audio_input(payload.audio_refs or [])
     prompt = _merge_web_agent_prompt_with_transcript(prompt, transcript)
     display_prompt = _merge_web_agent_prompt_with_transcript(display_prompt, transcript)
     has_audio_input = bool(transcript)
