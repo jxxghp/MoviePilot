@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any, Optional, Protocol
+from weakref import WeakValueDictionary
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
@@ -350,17 +352,31 @@ class AgentChatPersistenceService:
         """保存同步仓储工厂和异步执行端口。"""
         self._repository = repository
         self._async_executor = async_executor
+        # append_display_messages 属于读取旧快照后整列写回的复合操作；按会话串行化，
+        # 才能在 worker 并发下保持首次建行和既有会话追加的完整性。弱引用避免长期运行
+        # 中为一次性会话永久保留锁对象，不限制不同会话之间的 worker 并行度。
+        self._session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+
+    def _session_lock(self, session_id: str) -> asyncio.Lock:
+        """返回当前进程内指定会话的写锁。"""
+        lock = self._session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[session_id] = lock
+        return lock
 
     async def _run_write(
         self,
+        session_id: str,
         operation: Callable[[SyncAgentChatRepository], object],
     ) -> None:
         """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
-        def execute() -> None:
-            """执行同步写入，不让 ORM 对象越过 worker 边界。"""
-            operation(self._repository())
+        async with self._session_lock(session_id):
+            def execute() -> None:
+                """执行同步写入，不让 ORM 对象越过 worker 边界。"""
+                operation(self._repository())
 
-        await self._async_executor.run(execute)
+            await self._async_executor.run(execute)
 
     async def async_append_display_messages(
         self,
@@ -376,6 +392,7 @@ class AgentChatPersistenceService:
     ) -> None:
         """异步追加展示消息，等待同步事务取得确定终态。"""
         await self._run_write(
+            session_id,
             lambda repository: repository.append_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -403,6 +420,7 @@ class AgentChatPersistenceService:
     ) -> None:
         """异步保存展示消息快照，实际写入由有界 worker 承接。"""
         await self._run_write(
+            session_id,
             lambda repository: repository.save_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -425,6 +443,7 @@ class AgentChatPersistenceService:
     ) -> None:
         """异步保存可恢复的原始消息。"""
         await self._run_write(
+            session_id,
             lambda repository: repository.save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -446,6 +465,7 @@ class AgentChatPersistenceService:
     ) -> None:
         """异步写入首次生成的会话标题。"""
         await self._run_write(
+            session_id,
             lambda repository: repository.update_title_if_empty(
                 session_id=session_id,
                 user_id=user_id,

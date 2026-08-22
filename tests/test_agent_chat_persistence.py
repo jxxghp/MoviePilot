@@ -7,9 +7,12 @@ import threading
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import delete, select
 
 from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
+from app.db.models.agentchat import AgentChat
 from app.db.oper.agentchat import AgentChatOper
+from app.db.session import SessionFactory, async_session_scope
 from app.db.worker import DatabaseWorker
 
 
@@ -152,4 +155,68 @@ async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() 
             session_id=session_id,
             user_id="worker-user",
         )
+        await worker.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_persistence_serializes_same_session_writes() -> None:
+    """同一会话的首次创建和既有快照追加都必须串行。"""
+    worker = DatabaseWorker(max_workers=4, capacity=16)
+    await worker.start()
+    session_id = f"worker-race-{uuid4().hex}"
+    existing_session_id = f"worker-race-existing-{uuid4().hex}"
+    persistence = AgentChatPersistenceService(
+        repository=AgentChatOper,
+        async_executor=worker,
+    )
+
+    async def append(content: str) -> None:
+        await persistence.async_append_display_messages(
+            session_id=session_id,
+            user_id="worker-race-user",
+            messages=[{"role": "user", "content": content}],
+        )
+
+    async def append_existing(content: str) -> None:
+        await persistence.async_append_display_messages(
+            session_id=existing_session_id,
+            user_id="worker-race-user",
+            messages=[{"role": "user", "content": content}],
+        )
+
+    try:
+        await asyncio.gather(*(append(f"message-{index}") for index in range(4)))
+        await persistence.async_save_display_messages(
+            session_id=existing_session_id,
+            user_id="worker-race-user",
+            messages=[{"role": "user", "content": "seed"}],
+        )
+        await asyncio.gather(
+            *(append_existing(f"existing-{index}") for index in range(4))
+        )
+        async with async_session_scope() as session:
+            result = await session.execute(
+                select(AgentChat).where(
+                    AgentChat.session_id.in_((session_id, existing_session_id))
+                )
+            )
+            rows = list(result.scalars().all())
+        assert len(rows) == 2
+        row_by_session = {row.session_id: row for row in rows}
+        assert {
+            message["content"]
+            for message in row_by_session[session_id].display_messages
+        } == {f"message-{index}" for index in range(4)}
+        assert {
+            message["content"]
+            for message in row_by_session[existing_session_id].display_messages
+        } == {"seed"} | {f"existing-{index}" for index in range(4)}
+    finally:
+        with SessionFactory() as session:
+            session.execute(
+                delete(AgentChat).where(
+                    AgentChat.session_id.in_((session_id, existing_session_id))
+                )
+            )
+            session.commit()
         await worker.shutdown()
