@@ -3,6 +3,7 @@
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import inspect
 from typing import Any, Awaitable, Callable, Mapping, Protocol, cast
 from uuid import uuid4
 
@@ -55,7 +56,7 @@ class AsyncUnitOfWork(Protocol):
 
 
 SubscribeDeletedPublisher = Callable[[dict[str, Any]], Awaitable[None]]
-SubscribeDeletedReporter = Callable[[Mapping[str, object]], object]
+SubscribeDeletedReporter = Callable[[Mapping[str, object]], object | Awaitable[object]]
 
 
 class DeleteSubscribeCommand:
@@ -134,6 +135,8 @@ class DeleteSubscribeCommand:
         # 上报适配器会自行白名单过滤公开字段；传完整删除前快照可保留音乐实体维度，
         # 避免 Agent 与 API 入口收敛后丢失 music_type / total_tracks。
         report_result = self._report_deleted(dict(candidate.event_payload))
+        if inspect.isawaitable(report_result):
+            report_result = await report_result
         if report_result is False:
             raise RuntimeError("订阅删除统计上报未确认")
         if self._outbox:

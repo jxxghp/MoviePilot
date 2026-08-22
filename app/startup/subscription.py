@@ -145,7 +145,7 @@ async def delete_subscribe_scope():
             repository=SubscribeOper(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             publish_deleted=_publish_deleted,
-            report_deleted=MoviePilotServerHelper.sub_done_async,
+            report_deleted=MoviePilotServerHelper.async_sub_done,
             outbox=SqlAlchemyAsyncOutboxStager(session),
         )
 
