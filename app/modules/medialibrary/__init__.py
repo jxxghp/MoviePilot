@@ -7,10 +7,10 @@ from app.domain.mediapath import resolve_media_root_path
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.runtime.directories import directory_config_port
+from app.runtime.hostports.directories import directory_config_port
 from app.runtime.extensions.storage_registry import storage_backend_registry
 from app.runtime.log import logger
-from app.runtime.mediatransfer import media_transfer_port
+from app.runtime.hostports.mediatransfer import media_transfer_port
 from app.modules import _ModuleBase
 from app.modules._base.storage import StorageBase, list_storage_files
 from app.schemas.transfer import TransferInfo

@@ -5,7 +5,7 @@
 
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from app.runtime.hostport import HostPort
+from app.runtime.hostports.port import HostPort
 from app.schemas.tmdb import TmdbEpisode
 
 

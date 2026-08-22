@@ -32,7 +32,7 @@ from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_instance_registry import service_instance_registry
 from app.runtime.extensions.storage_registry import storage_backend_registry
-from app.runtime.storages import storage_config_port
+from app.runtime.hostports.storages import storage_config_port
 from app.schemas import FileURI
 from app.schemas.system import StorageConf
 

@@ -7,7 +7,7 @@ from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.adapters.media.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
-from app.runtime.directories import directory_config_port
+from app.runtime.hostports.directories import directory_config_port
 from app.modules.medialibrary import MediaLibraryModule
 from app.application.transferhandler import TransHandler
 from app.schemas import FileItem, TransferDirectoryConf

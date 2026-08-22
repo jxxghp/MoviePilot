@@ -9,8 +9,8 @@ from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
-from app.runtime.filterrules import filter_rule_group_port
-from app.runtime.torrentanalysis import torrent_analysis_port
+from app.runtime.hostports.filterrules import filter_rule_group_port
+from app.runtime.hostports.torrentanalysis import torrent_analysis_port
 from app.schemas.filter import TorrentVerdict
 from app.schemas.types import SystemConfigKey
 from app.adapters.system import rust as rust_accel

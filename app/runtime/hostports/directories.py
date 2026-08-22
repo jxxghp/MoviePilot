@@ -5,7 +5,7 @@
 
 from typing import List, Protocol, runtime_checkable
 
-from app.runtime.hostport import HostPort
+from app.runtime.hostports.port import HostPort
 from app.schemas.system import TransferDirectoryConf
 
 

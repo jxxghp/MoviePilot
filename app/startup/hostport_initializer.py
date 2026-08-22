@@ -7,15 +7,15 @@
 
 from functools import lru_cache
 
-from app.runtime.diagnostics import DiagnosticsProvider, diagnostics_port
-from app.runtime.directories import DirectoryConfigProvider, directory_config_port
-from app.runtime.filterrules import FilterRuleGroupProvider, filter_rule_group_port
-from app.runtime.mediatransfer import MediaTransferProvider, media_transfer_port
-from app.runtime.naming import NamingContextProvider, naming_context_port
-from app.runtime.siteresource import SiteResourceProvider, site_resource_port
-from app.runtime.storages import StorageConfigProvider, storage_config_port
-from app.runtime.torrentanalysis import TorrentAnalysisProvider, torrent_analysis_port
-from app.runtime.workflows import WorkflowExecutionProvider, workflow_execution_port
+from app.runtime.hostports.diagnostics import DiagnosticsProvider, diagnostics_port
+from app.runtime.hostports.directories import DirectoryConfigProvider, directory_config_port
+from app.runtime.hostports.filterrules import FilterRuleGroupProvider, filter_rule_group_port
+from app.runtime.hostports.mediatransfer import MediaTransferProvider, media_transfer_port
+from app.runtime.hostports.naming import NamingContextProvider, naming_context_port
+from app.runtime.hostports.siteresource import SiteResourceProvider, site_resource_port
+from app.runtime.hostports.storages import StorageConfigProvider, storage_config_port
+from app.runtime.hostports.torrentanalysis import TorrentAnalysisProvider, torrent_analysis_port
+from app.runtime.hostports.workflows import WorkflowExecutionProvider, workflow_execution_port
 
 
 def _get_directory_config() -> DirectoryConfigProvider:

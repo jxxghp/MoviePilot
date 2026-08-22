@@ -12,8 +12,8 @@ import pytest
 
 from app.agent.tools.impl.run_workflow import RunWorkflowTool
 from app.runtime.config import settings
-from app.runtime.diagnostics import diagnostics_port
-from app.runtime.workflows import workflow_execution_port
+from app.runtime.hostports.diagnostics import diagnostics_port
+from app.runtime.hostports.workflows import workflow_execution_port
 from app.startup.hostport_initializer import configure_host_ports
 
 

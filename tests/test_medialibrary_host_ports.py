@@ -15,9 +15,9 @@ from app.modules import medialibrary
 from app.modules.medialibrary import MediaLibraryModule, get_media_root_path
 from app.modules.localstorage.local import LocalStorage
 from app.application.transferhandler import TransHandler
-from app.runtime.directories import directory_config_port
-from app.runtime.naming import naming_context_port
-from app.runtime.storages import storage_config_port
+from app.runtime.hostports.directories import directory_config_port
+from app.runtime.hostports.naming import naming_context_port
+from app.runtime.hostports.storages import storage_config_port
 from app.schemas.system import StorageConf, TransferDirectoryConf
 from app.schemas.types import MediaType
 from app.startup.hostport_initializer import configure_host_ports

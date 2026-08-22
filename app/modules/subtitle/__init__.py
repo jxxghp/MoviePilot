@@ -8,7 +8,7 @@ from app.runtime.config import settings
 from app.domain.context import Context
 from app.db.oper.site import SiteOper
 from app.runtime.log import logger
-from app.runtime.siteresource import site_resource_port
+from app.runtime.hostports.siteresource import site_resource_port
 from app.modules import _ModuleBase
 from app.adapters.network.http import RequestUtils
 

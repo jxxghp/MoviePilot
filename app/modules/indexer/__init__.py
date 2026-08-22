@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.db.oper.site import SiteOper
 from app.runtime.log import logger
-from app.runtime.siteresource import site_resource_port
+from app.runtime.hostports.siteresource import site_resource_port
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.parser.registry import load_builtin_parsers, resolve_parser_class

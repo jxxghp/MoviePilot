@@ -27,7 +27,7 @@ from app.runtime.extensions.storage_registry import (
     storage_backend_identity,
     storage_backend_registry,
 )
-from app.runtime.storages import storage_config_port
+from app.runtime.hostports.storages import storage_config_port
 from app.schemas.file import FileURI
 from app.schemas.types import StorageSchema
 from app.schemas.workflow import FileItem
