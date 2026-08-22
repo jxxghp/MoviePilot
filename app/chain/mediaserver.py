@@ -554,6 +554,8 @@ class MediaServerChain(ChainBase):
                     global_media_total=global_media_total,
                     global_media_finished=global_media_finished,
                 )
+                if global_vars.is_system_stopped:
+                    return
                 total_count += server_count
                 logger.info(f"媒体服务器 {server_name} 数据同步完成，总同步数量：{total_count}")
                 if progress_callback:

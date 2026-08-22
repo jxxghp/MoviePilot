@@ -925,6 +925,25 @@ class DownloadChain(ChainBase):
             logger.error(f"查询下载失败冷却失败：{str(err)}")
             return {}
 
+    @staticmethod
+    def _log_download_failure_cooldown(
+            context: Context,
+            failure: Optional["DownloadFailure"],
+    ) -> None:
+        """记录候选资源处于失败冷却期时的跳过原因和下次重试时间。"""
+        reason = getattr(failure, "error_message", None) or "未知原因"
+        retry_at = getattr(failure, "next_retry_at", None)
+        if retry_at:
+            logger.info(
+                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
+                f"暂时跳过该资源，将于 {retry_at} 后重试"
+            )
+        else:
+            logger.info(
+                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
+                "暂时跳过该资源"
+            )
+
     def _prepare_batch_download_contexts(
         self,
         contexts: List[Context],
@@ -987,6 +1006,10 @@ class DownloadChain(ChainBase):
                 continue
             fingerprint = self._build_download_failure_fingerprint(context)
             if fingerprint and fingerprint in active_failure_records:
+                self._log_download_failure_cooldown(
+                    context,
+                    active_failure_records[fingerprint],
+                )
                 continue
             if media_type == MediaType.MOVIE:
                 download_key = context.media_info.title_year
@@ -1276,6 +1299,40 @@ class DownloadChain(ChainBase):
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
 
     def download_single(self, context: Context,
+                        torrent_file: Path = None,
+                        torrent_content: Optional[Union[str, bytes]] = None,
+                        episodes: Set[int] = None,
+                        channel: NotificationChannel = None,
+                        source: Optional[str] = None,
+                        downloader: Optional[str] = None,
+                        save_path: Optional[str] = None,
+                        userid: Union[str, int] = None,
+                        username: Optional[str] = None,
+                        label: Optional[str] = None,
+                        return_detail: bool = False,
+                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+        """
+        下载单个资源并发送结果通知。
+
+        保持下载链、消息入口和插件使用的公开签名，实际流程委托给内部执行阶段。
+        """
+        return self._execute_download_single(
+            context=context,
+            torrent_file=torrent_file,
+            torrent_content=torrent_content,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            downloader=downloader,
+            save_path=save_path,
+            userid=userid,
+            username=username,
+            label=label,
+            return_detail=return_detail,
+            custom_words=custom_words,
+        )
+
+    def _execute_download_single(self, context: Context,
                         torrent_file: Path = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
                         episodes: Set[int] = None,
@@ -1623,15 +1680,10 @@ class DownloadChain(ChainBase):
             """
             fingerprint = self._build_download_failure_fingerprint(_context)
             if fingerprint and fingerprint in active_failure_records:
-                _failure = active_failure_records[fingerprint]
-                _reason = getattr(_failure, "error_message", None) or "未知原因"
-                _retry_at = getattr(_failure, "next_retry_at", None)
-                if _retry_at:
-                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
-                                f"暂时跳过该资源，将于 {_retry_at} 后重试")
-                else:
-                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
-                                f"暂时跳过该资源")
+                self._log_download_failure_cooldown(
+                    _context,
+                    active_failure_records[fingerprint],
+                )
                 return True
             return False
 

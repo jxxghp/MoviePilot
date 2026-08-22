@@ -1500,6 +1500,25 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             progress_callback: Optional[Callable[..., None]] = None,
     ) -> None:
         """
+        执行订阅搜索。
+
+        保持定时任务、API 和插件使用的公开签名，搜索实现委托给内部执行阶段。
+        """
+        return self._execute_search(
+            sid=sid,
+            state=state,
+            manual=manual,
+            progress_callback=progress_callback,
+        )
+
+    def _execute_search(
+            self,
+            sid: Optional[int] = None,
+            state: Optional[str] = 'N',
+            manual: Optional[bool] = False,
+            progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
         :param state: 订阅状态 N:新建, R:订阅中, P:待定, S:暂停
@@ -1928,7 +1947,82 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             self.get_states_for_search('R')
         )
 
+    def _prepare_match_torrents(
+            self,
+            torrents: Dict[str, List[Context]],
+    ) -> Dict[str, List[Context]]:
+        """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
+        processed_torrents: Dict[str, List[Context]] = {}
+        for domain, contexts in torrents.items():
+            if global_vars.is_system_stopped:
+                break
+            processed_torrents[domain] = []
+            for context in contexts:
+                if global_vars.is_system_stopped:
+                    break
+                if context.torrent_info and getattr(context.torrent_info, "category", None) in (
+                        MediaType.MUSIC,
+                        MediaType.MUSIC.value,
+                ):
+                    # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
+                    processed_torrents[domain].append(context)
+                    continue
+                if (
+                        not context.media_info
+                        or not resolve_media_identity(media=context.media_info)[1]
+                ) and context.media_recognize_fail_count < 3:
+                    logger.debug(
+                        f'尝试重新识别种子：{context.torrent_info.title}，当前失败次数：'
+                        f'{context.media_recognize_fail_count}/3'
+                    )
+                    re_mediainfo = MediaChain().recognize_by_meta(
+                        context.meta_info,
+                        obtain_images=False,
+                    )
+                    if re_mediainfo:
+                        re_mediainfo.clear()
+                        context.media_info = re_mediainfo
+                        context.match_source = self.__get_media_id_match_source(re_mediainfo)
+                        context.candidate_recognized = bool(
+                            resolve_media_identity(media=re_mediainfo)[1]
+                        )
+                        context.media_info_is_target = False
+                        context.media_recognize_fail_count = 0
+                        logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
+                    else:
+                        context.media_recognize_fail_count += 1
+                        logger.debug(
+                            f'种子 {context.torrent_info.title} 媒体识别失败，失败次数：'
+                            f'{context.media_recognize_fail_count}/3'
+                        )
+                elif context.media_recognize_fail_count >= 3:
+                    logger.debug(f'种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别')
+                processed_torrents[domain].append(context)
+        return processed_torrents
+
     def match(
+            self,
+            torrents: Dict[str, List[Context]],
+            progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """
+        从缓存中匹配订阅，并自动下载。
+
+        该入口保持订阅刷新、定时任务和插件调用的稳定签名，具体匹配流程由内部阶段执行。
+        """
+        if not torrents:
+            logger.warn('没有缓存资源，无法匹配订阅')
+            if progress_callback:
+                progress_callback(value=100, text="没有缓存资源，跳过订阅匹配")
+            return
+        if progress_callback:
+            progress_callback(value=0, text="正在预处理订阅资源 ...")
+        return self._execute_match(
+            torrents=torrents,
+            progress_callback=progress_callback,
+        )
+
+    def _execute_match(
             self,
             torrents: Dict[str, List[Context]],
             progress_callback: Optional[Callable[..., None]] = None,
@@ -1954,55 +2048,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if not lock_acquired:
                 return
 
-            # 预识别所有未识别的种子
-            processed_torrents: Dict[str, List[Context]] = {}
-            for domain, contexts in torrents.items():
-                if global_vars.is_system_stopped:
-                    break
-                processed_torrents[domain] = []
-                for context in contexts:
-                    if global_vars.is_system_stopped:
-                        break
-                    if context.torrent_info and getattr(context.torrent_info, "category", None) in (
-                            MediaType.MUSIC,
-                            MediaType.MUSIC.value,
-                    ):
-                        # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
-                        processed_torrents[domain].append(context)
-                        continue
-                    # 如果种子未识别且失败次数未超过3次，尝试识别
-                    if (
-                            not context.media_info
-                            or not resolve_media_identity(media=context.media_info)[1]
-                    ) and context.media_recognize_fail_count < 3:
-                        logger.debug(
-                            f'尝试重新识别种子：{context.torrent_info.title}，当前失败次数：{context.media_recognize_fail_count}/3')
-                        re_mediainfo = MediaChain().recognize_by_meta(
-                            context.meta_info,
-                            obtain_images=False,
-                        )
-                        if re_mediainfo:
-                            # 清理多余信息
-                            re_mediainfo.clear()
-                            # 更新种子缓存
-                            context.media_info = re_mediainfo
-                            context.match_source = self.__get_media_id_match_source(re_mediainfo)
-                            context.candidate_recognized = bool(
-                                resolve_media_identity(media=re_mediainfo)[1]
-                            )
-                            context.media_info_is_target = False
-                            # 重置失败次数
-                            context.media_recognize_fail_count = 0
-                            logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
-                        else:
-                            # 识别失败，增加失败次数
-                            context.media_recognize_fail_count += 1
-                            logger.debug(
-                                f'种子 {context.torrent_info.title} 媒体识别失败，失败次数：{context.media_recognize_fail_count}/3')
-                    elif context.media_recognize_fail_count >= 3:
-                        logger.debug(f'种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别')
-                    # 添加已预处理
-                    processed_torrents[domain].append(context)
+            processed_torrents = self._prepare_match_torrents(torrents)
 
             # 所有订阅
             subscribes = SubscribeOper().list(self.get_states_for_search('R'))

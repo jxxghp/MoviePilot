@@ -16,9 +16,5 @@
     "app/application/rss.py:RssHelper.parse": 206,
     "app/application/security/cookie.py:CookieHelper.get_site_cookie_ua": 221
   },
-  "chain_public": {
-    "app/chain/download.py:DownloadChain.download_single": 167,
-    "app/chain/subscribe.py:SubscribeChain.match": 415,
-    "app/chain/subscribe.py:SubscribeChain.search": 246
-  }
+  "chain_public": {}
 }
