@@ -574,7 +574,7 @@ def _build_scheduler() -> Scheduler:
 
 def _bind_scheduler(monkeypatch, manager: PluginManager) -> None:
     """把调度器使用的插件管理器替换为给定实例。"""
-    monkeypatch.setattr("app.scheduler.PluginManager", lambda: manager)
+    monkeypatch.setattr("app.scheduler.plugins.PluginManager", lambda: manager)
 
 
 def test_declared_schedule_reaches_scheduler_with_expanded_trigger(

@@ -1,9 +1,10 @@
 import threading
 from unittest.mock import Mock
 
-from app import scheduler as scheduler_module
+from app.scheduler import composition as scheduler_module
 from app.scheduler import Scheduler
 from app.startup import scheduler_initializer
+from app.scheduler import workflows as workflows_module
 from app.startup.scheduling import manifest as manifest_module
 from app.startup.scheduling.systemjobs import UserAuthChecker
 
@@ -62,7 +63,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
         "PluginManager",
     ]:
         monkeypatch.setattr(manifest_module, name, lambda: generic_chain)
-    monkeypatch.setattr(scheduler_module, "WorkflowChain", lambda: generic_chain)
+    monkeypatch.setattr(workflows_module, "WorkflowChain", lambda: generic_chain)
     monkeypatch.setattr(
         manifest_module.ServiceConfigHelper,
         "get_mediaserver_configs",

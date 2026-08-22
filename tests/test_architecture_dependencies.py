@@ -129,6 +129,7 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
     "app/application/subscribe.py",
+    "app/scheduler.py",
 )
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",

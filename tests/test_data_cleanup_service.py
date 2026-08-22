@@ -133,11 +133,11 @@ def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
 
 def test_scheduler_does_not_reclaim_database_cleanup_ownership() -> None:
     """调度模块不得重新导入清理模型或数据库会话。"""
-    scheduler_path = Path(__file__).parents[1] / "app" / "scheduler.py"
-    tree = ast.parse(scheduler_path.read_text(encoding="utf-8"))
+    scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
     imports = {
         node.module
-        for node in ast.walk(tree)
+        for path in sorted(scheduler_root.glob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.ImportFrom) and node.module
     }
 

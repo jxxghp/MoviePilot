@@ -194,11 +194,13 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     from app.application.orchestration.subscribe import SubscribeChain
     from app.workflow.service import WorkflowChain
     from app.command import Command
-    from app.scheduler import Scheduler
+    from app.scheduler import PluginScheduling, Scheduler
 
     return {
         Command: Command,
         DownloadChain: DownloadChain,
+        # 插件重载处理器声明在插件调度混入类上，实例仍是调度器组合根单例
+        PluginScheduling: Scheduler,
         Scheduler: Scheduler,
         ScrapingChain: ScrapingChain,
         SearchChain: SearchChain,

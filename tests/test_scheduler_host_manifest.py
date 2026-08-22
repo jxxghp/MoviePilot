@@ -209,7 +209,9 @@ def test_user_auth_counter_survives_config_reload(stub_business_domains):
 def test_scheduler_init_does_not_rebuild_the_auth_checker():
     """认证检查作业只在调度器构造期创建，init 重入不得新建实例。"""
     source = ast.parse(
-        (Path(__file__).parents[1] / "app" / "scheduler.py").read_text(encoding="utf-8")
+        (Path(__file__).parents[1] / "app" / "scheduler" / "composition.py").read_text(
+            encoding="utf-8"
+        )
     )
     constructing_methods = {
         method.name

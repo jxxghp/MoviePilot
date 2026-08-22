@@ -69,7 +69,7 @@ def _patch_plugin_manager(monkeypatch, services: list[dict]) -> None:
     plugin_manager = Mock()
     plugin_manager.get_plugin_services.return_value = services
     plugin_manager.get_plugin_attr.return_value = "Demo 插件"
-    monkeypatch.setattr("app.scheduler.PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr("app.scheduler.plugins.PluginManager", lambda: plugin_manager)
 
 
 def test_two_instances_register_same_service_id_without_overwriting(monkeypatch):

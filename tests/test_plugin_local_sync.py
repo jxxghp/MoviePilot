@@ -730,7 +730,7 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
         }
     ]
     plugin_manager.get_plugin_attr.return_value = "测试插件"
-    monkeypatch.setattr("app.scheduler.PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr("app.scheduler.plugins.PluginManager", lambda: plugin_manager)
     backend = _FakeSchedulerBackend(["DemoPlugin_old"])
     scheduler = _build_scheduler_for_plugin_reload(
         jobs={
@@ -750,7 +750,12 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
         if item["event_type"] == EventType.PluginReload.value
         and item["status"] == "enabled"
     }
-    assert "app.scheduler.Scheduler.on_plugin_reload" in reload_handlers
+    assert "app.scheduler.plugins.PluginScheduling.on_plugin_reload" in reload_handlers
+    # 处理器声明在混入类上，宿主 resolver 必须显式认领该类，否则事件被静默跳过
+    from app.scheduler import PluginScheduling, Scheduler
+    from app.startup.modules_initializer import get_host_event_handler_factories
+
+    assert get_host_event_handler_factories()[PluginScheduling] is Scheduler
     scheduler.on_plugin_reload(event)
     scheduler.on_plugin_reload(event)
 

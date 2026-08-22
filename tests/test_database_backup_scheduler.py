@@ -86,7 +86,7 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
     sources = (
-        Path(__file__).parents[1] / "app" / "scheduler.py",
+        Path(__file__).parents[1] / "app" / "scheduler" / "composition.py",
         Path(__file__).parents[1] / "app" / "startup" / "scheduling" / "systemjobs.py",
     )
     function_imports = [
