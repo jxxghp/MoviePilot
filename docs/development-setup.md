@@ -122,6 +122,17 @@ dependencies = ["example-package>=1,<2"]
 - 仅有 `requirements.txt` 的历史插件继续按原方式安装；
 - 宿主不消费插件自己的 `uv.lock`，因为多个插件共享同一主程序环境，不能分别同步独立锁文件。
 
+### 3.2 异步 HTTP 客户端边界
+
+主程序自建的 `AsyncRequestUtils` 使用 HTTPX2，`app.sdk.network.AsyncRequestUtils` 与旧插件
+入口 `app.utils.http.AsyncRequestUtils` 共享同一实现。未显式传入客户端时，返回的响应与抛出的
+请求异常均来自 `httpx2`；直接依赖响应类型或异常类型的 V3 代码应导入 `httpx2`。
+
+OpenAI、Anthropic、Google GenAI、LangChain、CloakBrowser 等第三方 SDK 继续使用它们声明的
+HTTPX 版本。不得调用 `httpx2.alias_httpx()` 在进程内替换 `httpx`，否则会同时改变第三方 SDK、
+测试工具和插件的导入结果。确需复用调用方自管客户端时，向 `AsyncRequestUtils` 传入
+`httpx2.AsyncClient`。
+
 ### 4. 准备资源与插件目录
 
 本地源码开发时，主程序需要读取资源文件和插件源码。相关文件需要放到主程序实际加载的目录下：
