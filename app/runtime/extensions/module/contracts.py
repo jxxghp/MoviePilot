@@ -83,7 +83,7 @@ _METHOD_CONTRACTS = {
     "get_folder": ModuleMethodContract(family="storage", input_contract="StorageFolderRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "path")),
     "get_parent_item": ModuleMethodContract(family="storage", input_contract="StorageParentRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem",)),
     "rename_file": ModuleMethodContract(family="storage", input_contract="StorageRenameRequest", result_contract="bool | FileItem", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem", "name")),
-    "storage_manage": ModuleMethodContract(family="storage", input_contract="StorageManageRequest", result_contract="Any", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "action")),
+    "storage_manage": ModuleMethodContract(family="storage", input_contract="StorageManageRequest", result_contract="StorageProviderResult", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "action")),
     "snapshot_storage": ModuleMethodContract(family="storage", input_contract="StorageSnapshotRequest", result_contract="dict[str, dict] | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "path", "last_snapshot_time", "max_depth", "previous_snapshot")),
     "send_message": ModuleMethodContract(family="messaging", input_contract="MessageSendRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
     "finalize_message": ModuleMethodContract(family="messaging", input_contract="MessageFinalizeRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("response",)),
@@ -105,6 +105,318 @@ _PREFIX_CONTRACTS = (
     ("music_", ModuleMethodContract(family="music")),
     ("torrent_", ModuleMethodContract(family="downloader")),
 )
+
+
+# 宿主静态扫描到的全部字符串能力名。第三方插件仍可声明未在这里出现的自定义方法，
+# 自定义方法继续走开放的 legacy contract；宿主新增调用则必须先进入本清单。
+_OBSERVED_HOST_METHODS = (
+    'anilist_credits',
+    'anilist_discover',
+    'anilist_info',
+    'anilist_person_credits',
+    'anilist_person_detail',
+    'anilist_popular_this_season',
+    'anilist_recommendations',
+    'anilist_trending',
+    'any_files',
+    'async_anilist_credits',
+    'async_anilist_discover',
+    'async_anilist_info',
+    'async_anilist_person_credits',
+    'async_anilist_person_detail',
+    'async_anilist_popular_this_season',
+    'async_anilist_recommendations',
+    'async_anilist_trending',
+    'async_bangumi_calendar',
+    'async_bangumi_credits',
+    'async_bangumi_discover',
+    'async_bangumi_info',
+    'async_bangumi_person_credits',
+    'async_bangumi_person_detail',
+    'async_bangumi_recommend',
+    'async_douban_discover',
+    'async_douban_info',
+    'async_douban_movie_credits',
+    'async_douban_movie_recommend',
+    'async_douban_person_credits',
+    'async_douban_person_detail',
+    'async_douban_tv_credits',
+    'async_douban_tv_recommend',
+    'async_identify_music_by_fingerprint',
+    'async_match_doubaninfo',
+    'async_match_music_album',
+    'async_match_tmdbinfo',
+    'async_movie_hot',
+    'async_movie_showing',
+    'async_movie_top250',
+    'async_obtain_images',
+    'async_recognize_media',
+    'async_refresh_torrents',
+    'async_search_collections',
+    'async_search_medias',
+    'async_search_persons',
+    'async_search_subtitles',
+    'async_search_torrents',
+    'async_tmdb_collection',
+    'async_tmdb_discover',
+    'async_tmdb_episodes',
+    'async_tmdb_group_seasons',
+    'async_tmdb_info',
+    'async_tmdb_movie_credits',
+    'async_tmdb_movie_recommend',
+    'async_tmdb_movie_similar',
+    'async_tmdb_person_credits',
+    'async_tmdb_person_detail',
+    'async_tmdb_seasons',
+    'async_tmdb_trending',
+    'async_tmdb_tv_credits',
+    'async_tmdb_tv_recommend',
+    'async_tmdb_tv_similar',
+    'async_tv_animation',
+    'async_tv_hot',
+    'async_tv_weekly_chinese',
+    'async_tv_weekly_global',
+    'async_update_recognize_cache',
+    'bangumi_calendar',
+    'bangumi_credits',
+    'bangumi_discover',
+    'bangumi_info',
+    'bangumi_person_credits',
+    'bangumi_person_detail',
+    'bangumi_recommend',
+    'channel_manage',
+    'clear_cache',
+    'create_folder',
+    'delete_file',
+    'delete_message',
+    'douban_discover',
+    'douban_info',
+    'douban_movie_credits',
+    'douban_movie_recommend',
+    'douban_person_credits',
+    'douban_person_detail',
+    'douban_tv_credits',
+    'douban_tv_recommend',
+    'download',
+    'download_added',
+    'download_discord_file_bytes',
+    'download_feishu_file_bytes',
+    'download_feishu_image_to_data_url',
+    'download_file',
+    'download_qq_file_bytes',
+    'download_slack_file_bytes',
+    'download_slack_file_to_data_url',
+    'download_synologychat_file_bytes',
+    'download_telegram_file_bytes',
+    'download_telegram_file_to_base64',
+    'download_vocechat_file_bytes',
+    'download_vocechat_image_to_data_url',
+    'download_wechat_image_to_data_url',
+    'download_wechat_media_bytes',
+    'downloader_info',
+    'edit_message',
+    'filter_torrents',
+    'finalize_message',
+    'get_file_item',
+    'get_folder',
+    'get_parent_item',
+    'get_search_page_size',
+    'get_torrent_trackers',
+    'identify_music_by_fingerprint',
+    'list_files',
+    'list_torrents',
+    'load_category_config',
+    'mark_message_processing_finished',
+    'mark_message_processing_started',
+    'match_doubaninfo',
+    'match_music_album',
+    'match_tmdbinfo',
+    'media_category',
+    'media_exists',
+    'media_files',
+    'media_statistic',
+    'mediaserver_image_cookies',
+    'mediaserver_iteminfo',
+    'mediaserver_items',
+    'mediaserver_items_count',
+    'mediaserver_latest',
+    'mediaserver_latest_images',
+    'mediaserver_librarys',
+    'mediaserver_play_url',
+    'mediaserver_playing',
+    'mediaserver_season_episode_ids',
+    'mediaserver_tv_episodes',
+    'message_parser',
+    'metadata_img',
+    'metadata_nfo',
+    'movie_hot',
+    'movie_showing',
+    'movie_top250',
+    'music_album',
+    'music_album_related',
+    'music_artist',
+    'music_artist_albums',
+    'music_artist_related',
+    'music_cache_clear',
+    'music_cache_delete',
+    'music_cache_items',
+    'music_chart',
+    'music_discover',
+    'music_fresh_releases',
+    'music_lyrics',
+    'obtain_images',
+    'obtain_specific_image',
+    'recognize_media',
+    'recommend_name',
+    'refresh_torrents',
+    'refresh_userdata',
+    'register_commands',
+    'remove_torrents',
+    'rename_file',
+    'save_category_config',
+    'scheduler_job',
+    'search_collections',
+    'search_medias',
+    'search_music',
+    'search_persons',
+    'search_subtitles',
+    'search_torrents',
+    'search_tvdb',
+    'send_direct_message',
+    'set_torrents_tag',
+    'site_subtitle_links',
+    'snapshot_storage',
+    'start_torrents',
+    'stop_torrents',
+    'storage_manage',
+    'tmdb_cache_clear',
+    'tmdb_cache_delete',
+    'tmdb_cache_items',
+    'tmdb_collection',
+    'tmdb_discover',
+    'tmdb_episodes',
+    'tmdb_group_seasons',
+    'tmdb_info',
+    'tmdb_movie_credits',
+    'tmdb_movie_recommend',
+    'tmdb_movie_similar',
+    'tmdb_person_credits',
+    'tmdb_person_detail',
+    'tmdb_seasons',
+    'tmdb_trending',
+    'tmdb_tv_credits',
+    'tmdb_tv_recommend',
+    'tmdb_tv_similar',
+    'torrent_files',
+    'transfer',
+    'transfer_completed',
+    'tv_animation',
+    'tv_hot',
+    'tv_weekly_chinese',
+    'tv_weekly_global',
+    'tvdb_info',
+    'tvdb_slug',
+    'update_recognize_cache',
+    'update_torrent',
+    'upload_file',
+    'user_authenticate',
+    'webhook_parser',
+)
+
+_FAMILY_IO_CONTRACTS = {
+    "anilist": ("AniListKeywordArguments", "AniListProviderResult"),
+    "authentication": ("AuthenticationKeywordArguments", "AuthenticationResult"),
+    "bangumi": ("BangumiKeywordArguments", "BangumiProviderResult"),
+    "category": ("CategoryKeywordArguments", "CategoryProviderResult"),
+    "douban": ("DoubanKeywordArguments", "DoubanProviderResult"),
+    "downloader": ("DownloaderKeywordArguments", "DownloaderProviderResult"),
+    "integration": ("IntegrationKeywordArguments", "IntegrationProviderResult"),
+    "media-discovery": ("MediaDiscoveryKeywordArguments", "MediaDiscoveryProviderResult"),
+    "media-recognition": ("MediaRecognitionKeywordArguments", "MediaRecognitionProviderResult"),
+    "media-server": ("MediaServerKeywordArguments", "MediaServerProviderResult"),
+    "messaging": ("MessagingKeywordArguments", "MessagingProviderResult"),
+    "metadata": ("MetadataKeywordArguments", "MetadataProviderResult"),
+    "music": ("MusicKeywordArguments", "MusicProviderResult"),
+    "site": ("SiteKeywordArguments", "SiteProviderResult"),
+    "storage": ("StorageKeywordArguments", "StorageProviderResult"),
+    "tmdb": ("TmdbKeywordArguments", "TmdbProviderResult"),
+    "tvdb": ("TvdbKeywordArguments", "TvdbProviderResult"),
+}
+
+
+def _infer_observed_family(method: str) -> str:
+    """按稳定能力前缀把已观察宿主方法归入可审计的输入/结果族。"""
+    for prefix, contract in _PREFIX_CONTRACTS:
+        if method.startswith(prefix):
+            return contract.family
+    if method.startswith(("mediaserver_", "media_exists", "media_statistic")):
+        return "media-server"
+    if method.startswith((
+        "download", "torrent_", "list_torrents", "refresh_torrents",
+        "remove_torrents", "start_torrents", "stop_torrents",
+        "set_torrents_tag", "update_torrent", "get_torrent_trackers",
+        "downloader_info", "filter_torrents", "transfer_completed",
+    )):
+        return "downloader"
+    if method.startswith((
+        "channel_", "delete_message", "edit_message", "finalize_message",
+        "mark_message_", "message_parser", "register_commands",
+        "send_direct_message", "send_message",
+    )):
+        return "messaging"
+    if method.startswith((
+        "any_files", "create_folder", "delete_file", "get_file_item",
+        "get_folder", "get_parent_item", "list_files", "media_files",
+        "rename_file", "snapshot_storage", "storage_manage", "transfer",
+        "upload_file",
+    )):
+        return "storage"
+    if method.startswith((
+        "metadata_", "obtain_specific_image", "recommend_name",
+    )):
+        return "metadata"
+    if method.startswith((
+        "async_identify_music", "async_match_music", "identify_music",
+        "match_music", "search_music",
+    )):
+        return "music"
+    if method.startswith((
+        "async_match_", "async_obtain_images", "async_recognize_media",
+        "async_update_recognize_cache", "match_", "obtain_images",
+        "recognize_media", "update_recognize_cache",
+    )):
+        return "media-recognition"
+    if method.startswith((
+        "async_movie_", "async_search_", "async_tv_", "movie_",
+        "search_collections", "search_medias", "search_persons",
+        "search_subtitles", "search_torrents", "tv_",
+    )):
+        return "media-discovery"
+    if method in {"clear_cache", "load_category_config", "save_category_config"}:
+        return "category"
+    if method in {"get_search_page_size", "refresh_userdata", "site_subtitle_links"}:
+        return "site"
+    if method == "user_authenticate":
+        return "authentication"
+    return "integration"
+
+
+def _register_observed_host_contracts() -> None:
+    """为全部宿主字符串调用登记完整 V2 字段，保留未知插件方法的 legacy fallback。"""
+    for method in _OBSERVED_HOST_METHODS:
+        if method in _METHOD_CONTRACTS:
+            continue
+        family = _infer_observed_family(method)
+        input_contract, result_contract = _FAMILY_IO_CONTRACTS[family]
+        _METHOD_CONTRACTS[method] = ModuleMethodContract(
+            family=family,
+            input_contract=input_contract,
+            result_contract=result_contract,
+        )
+
+
+_register_observed_host_contracts()
+
 
 
 def get_module_method_contract(method: str) -> ModuleMethodContract:

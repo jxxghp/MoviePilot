@@ -9,7 +9,9 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 import app.schemas.event as event_schemas
+from app.schemas.mediaserver import WebhookEventInfo
 from app.schemas.types import ChainEventType, EventType
+from app.schemas.workflow import ActionContext
 
 
 class EventDelivery(StrEnum):
@@ -53,6 +55,13 @@ class EventContract:
 
 _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     EventType.ConfigChanged: event_schemas.ConfigChangeEventData,
+    EventType.PluginReload: event_schemas.PluginReloadEventData,
+    EventType.PluginAction: event_schemas.PluginActionEventData,
+    EventType.PluginTriggered: event_schemas.PluginTriggeredEventData,
+    EventType.CommandExcute: event_schemas.CommandExecuteEventData,
+    EventType.SiteDeleted: event_schemas.SiteEventData,
+    EventType.SiteUpdated: event_schemas.SiteEventData,
+    EventType.SiteRefreshed: event_schemas.SiteEventData,
     EventType.AgentTokensUsage: event_schemas.AgentTokensUsageEventData,
     EventType.SubscribeAdded: event_schemas.SubscribeAddedEventData,
     EventType.SubscribeDeleted: event_schemas.SubscribeDeletedEventData,
@@ -60,6 +69,22 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     EventType.DownloadAdded: event_schemas.DownloadAddedEventData,
     EventType.TransferComplete: event_schemas.TransferResultEventData,
     EventType.TransferFailed: event_schemas.TransferResultEventData,
+    EventType.SubtitleTransferComplete: event_schemas.TransferResultEventData,
+    EventType.SubtitleTransferFailed: event_schemas.TransferResultEventData,
+    EventType.AudioTransferComplete: event_schemas.TransferResultEventData,
+    EventType.AudioTransferFailed: event_schemas.TransferResultEventData,
+    EventType.HistoryDeleted: event_schemas.HistoryDeletedEventData,
+    EventType.DownloadFileDeleted: event_schemas.DownloadFileDeletedEventData,
+    EventType.DownloadDeleted: event_schemas.DownloadDeletedEventData,
+    EventType.UserMessage: event_schemas.UserMessageEventData,
+    EventType.WebhookMessage: WebhookEventInfo,
+    EventType.NoticeMessage: event_schemas.NoticeMessageEventData,
+    EventType.SubscribeComplete: event_schemas.SubscribeCompleteEventData,
+    EventType.SystemError: event_schemas.SystemErrorEventData,
+    EventType.MetadataScrape: event_schemas.MetadataScrapeEventData,
+    EventType.ModuleReload: event_schemas.EmptyEventData,
+    EventType.MessageAction: event_schemas.MessageActionEventData,
+    EventType.WorkflowExecute: event_schemas.WorkflowExecuteEventData,
     ChainEventType.PluginDataReset: event_schemas.PluginDataResetEventData,
     ChainEventType.AuthVerification: event_schemas.AuthCredentials,
     ChainEventType.AuthIntercept: event_schemas.AuthInterceptCredentials,
@@ -77,6 +102,11 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.AgentLLMProvider: event_schemas.AgentLLMProviderEventData,
     ChainEventType.SubscribeEpisodesRefresh: event_schemas.SubscribeEpisodesRefreshEventData,
     ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckEventData,
+    ChainEventType.NameRecognize: event_schemas.NameRecognizeEventData,
+    ChainEventType.MusicNameRecognize: event_schemas.MusicNameRecognizeEventData,
+    ChainEventType.MediaRecognize: event_schemas.MediaRecognizeEventData,
+    ChainEventType.MusicMediaRecognize: event_schemas.MusicMediaRecognizeEventData,
+    ChainEventType.WorkflowExecution: ActionContext,
 }
 
 _DURABLE_REQUIRED = {

@@ -18,7 +18,7 @@ from app.schemas.types import ChainEventType, EventType, MediaType
 
 
 def test_every_event_enum_has_complete_contract() -> None:
-    """53 个广播/链式事件必须全部登记且 legacy 项必须解释原因。"""
+    """53 个广播/链式事件必须全部登记并绑定 typed payload。"""
     expected = {*EventType, *ChainEventType}
 
     assert set(EVENT_CONTRACTS) == expected
@@ -26,8 +26,24 @@ def test_every_event_enum_has_complete_contract() -> None:
     for contract in EVENT_CONTRACTS.values():
         assert contract.mode in {"broadcast", "chain"}
         assert contract.payload_contract
-        if contract.payload_contract == "legacy_dict":
-            assert contract.legacy_reason
+        assert contract.payload_model is not None
+        assert contract.payload_contract != "legacy_dict"
+        assert contract.legacy_reason is None
+
+
+def test_extensible_plugin_payload_accepts_custom_fields_without_shape_change() -> None:
+    """插件动作 contract 只校验公共字段，插件自定义字段和原始 dict 均保持不变。"""
+    payload = {
+        "plugin_id": "DemoPlugin",
+        "action": "refresh",
+        "plugin_owned_field": {"value": 1},
+    }
+
+    assert validate_event_payload(EventType.PluginAction, payload) == ()
+    event = Event(EventType.PluginAction, payload)
+
+    assert event.event_data is payload
+    assert event.event_data["plugin_owned_field"] == {"value": 1}
 
 
 def test_typed_payload_is_validated_without_changing_public_shape() -> None:

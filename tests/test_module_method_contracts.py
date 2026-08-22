@@ -19,15 +19,19 @@ RUNTIME_BASELINE = (
 )
 
 
-def test_all_scanned_module_methods_resolve_a_contract() -> None:
-    """架构快照中的所有字符串方法都必须能解析到稳定聚合规则。"""
+def test_all_scanned_host_module_methods_have_explicit_v2_contracts() -> None:
+    """架构快照中的全部宿主字符串方法都必须显式登记 V2 契约。"""
     payload = json.loads(RUNTIME_BASELINE.read_text(encoding="utf-8"))
-    methods = payload["run_module"]["methods"]
+    methods = set(payload["run_module"]["methods"])
+    contracts = list_explicit_module_contracts()
 
     assert methods
+    assert methods <= contracts.keys()
     for method in methods:
-        contract = get_module_method_contract(method)
+        contract = contracts[method]
         assert isinstance(contract.aggregation, ModuleResultAggregation)
+        assert contract.input_contract != "legacy_args"
+        assert contract.result_contract != "Any"
         assert contract.plugin_short_circuit is True
 
 
@@ -59,11 +63,11 @@ def test_unknown_plugin_method_keeps_legacy_compatibility() -> None:
     assert contract.supports_async is True
 
 
-def test_contract_v2_freezes_at_least_twenty_high_value_methods() -> None:
-    """首批能力必须具备可生成文档和诊断的完整 V2 字段。"""
+def test_contract_v2_freezes_every_observed_host_method() -> None:
+    """全部已观察宿主能力必须具备可生成文档和诊断的完整 V2 字段。"""
     contracts = list_explicit_module_contracts()
 
-    assert len(contracts) >= 20
+    assert len(contracts) >= 211
     for contract in contracts.values():
         assert contract.version == 1
         assert contract.input_contract != "legacy_args"

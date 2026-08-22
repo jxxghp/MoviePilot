@@ -621,6 +621,9 @@ ModuleMethodSpec(
   `ModuleCapability` Protocol 为宿主和新插件提供静态声明入口，但不替换字符串 dispatcher ABI。
 - 22 个显式方法进一步登记宿主真实传入的 required parameter 名称，覆盖识别、搜索、媒体服务器、存储、
   消息收尾、命令注册和 webhook；dispatcher 仍只输出诊断 warning，不阻断缺少参数的旧插件或未知自定义方法。
+- 契约清单现覆盖静态扫描到的 211 个宿主字符串调用，并保留一个暂未被宿主调用的 `send_message` 公开能力，
+  共 212 个显式 V2 spec。原先仅按 prefix 分类或落入默认 legacy 的宿主方法均获得稳定 family、输入合同、
+  结果合同、执行、超时和错误语义；未知第三方自定义方法仍走开放 legacy fallback，不拒绝加载或执行。
 
 #### ARCH-241：Event Contract Registry
 
@@ -658,6 +661,9 @@ ModuleMethodSpec(
 - 订阅变更、下载添加、整理成功/失败等用户副作用标记为 `durable_required`，只表达完成语义要求；
   在 ARCH-251 pilot 完成前不虚构当前已具备持久投递。SystemError 仍沿用既有递归保护和异常通知路径。
 - runtime contract baseline 新增稳定 `event_specs`，后续 enum 新增必须同步登记，且不比较源码行号。
+- 53 个事件现已全部绑定 typed payload，原有 28 个 `legacy_dict` 项归零。插件动作/触发等开放事件使用
+  “公共字段类型化 + `extra=allow`”模型，Webhook 与 Workflow execution 复用既有 DTO；验证仍只诊断并投递
+  同一个原始 dict/model，因此插件字段、对象引用和链式原地修改语义未改变。
 
 #### ARCH-242：Module/Integration 质量清单
 
