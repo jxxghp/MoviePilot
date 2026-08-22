@@ -3259,10 +3259,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     info = _SchemaSubscribeEpisodeInfo()
                     info.title = episode.name
                     info.description = episode.overview
-                    info.backdrop = self.runtime_config.tmdb_image_url(
-                        episode.still_path,
-                        "w500",
-                    )
+                    info.backdrop = self.runtime_config.tmdb_image_url(episode.still_path, "w500")
                     episodes[episode.episode_number] = info
         elif subscribe.type == MediaType.TV.value:
             # 根据开始结束集计算集信息
@@ -3350,31 +3347,54 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 else:
                     episodes[0].library.append(file_info)
 
-        # 合并所有媒体服务器已存在条目（逐台查询，不只取第一个命中）
+        self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
+
+        # 更新订阅信息
+        subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
+        subscribe_info.episodes = episodes
+        return subscribe_info
+
+    def _append_subscribe_media_servers(
+        self,
+        subscribe: Subscribe,
+        mediainfo: MediaInfo,
+        episodes: Dict[int, _SchemaSubscribeEpisodeInfo],
+    ) -> None:
+        """合并媒体服务器条目，跳过已经由本地媒体库记录覆盖的服务。"""
         mediaserver_chain = MediaServerChain()
         server_names = list(MediaServerHelper().get_services().keys())
 
-        def _has_server_entry(library_list: List[_SchemaSubscribeLibraryFileInfo],
-                              server_name: Optional[str],
-                              server_type: Optional[str]) -> bool:
+        def has_server_entry(
+            library_list: List[_SchemaSubscribeLibraryFileInfo],
+            server_name: Optional[str],
+            server_type: Optional[str],
+        ) -> bool:
+            """判断媒体库列表是否已经包含目标服务条目。"""
             for info in library_list or []:
                 if info.server and server_name and info.server == server_name:
                     return True
-                if info.server_type and server_type and info.server_type == server_type \
-                        and info.server == server_name \
-                        and (not info.file_path or str(info.file_path).startswith(("http://", "https://"))):
+                if (
+                    info.server_type
+                    and server_type
+                    and info.server_type == server_type
+                    and info.server == server_name
+                    and (
+                        not info.file_path
+                        or str(info.file_path).startswith(("http://", "https://"))
+                    )
+                ):
                     return True
             return False
 
         for server_name in server_names:
             exists_media = self.media_exists(mediainfo=mediainfo, server=server_name)
-            # 仅合并真实媒体服务器结果，跳过本地 FileManager 兜底（已由 media_files 覆盖）
             if not exists_media or not (exists_media.server or exists_media.server_type):
                 continue
-
             resolved_server = exists_media.server or server_name
             server_storage = exists_media.server_type or resolved_server
-            server_itemid = str(exists_media.itemid) if exists_media.itemid is not None else None
+            server_itemid = (
+                str(exists_media.itemid) if exists_media.itemid is not None else None
+            )
             series_detail_url = None
             if resolved_server and exists_media.itemid is not None:
                 series_detail_url = mediaserver_chain.get_play_url(
@@ -3382,42 +3402,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     item_id=exists_media.itemid,
                 )
 
-            if subscribe.type == MediaType.TV.value:
-                season_number = subscribe.season if subscribe.season is not None else 1
-                exist_episodes = (exists_media.seasons or {}).get(season_number) or []
-                episode_item_ids: Dict[int, str] = {}
-                if resolved_server and exists_media.itemid is not None:
-                    episode_item_ids = mediaserver_chain.get_season_episode_ids(
-                        server=resolved_server,
-                        item_id=exists_media.itemid,
-                        season=season_number,
-                    )
-                for episode_number in exist_episodes:
-                    episode_info = episodes.get(episode_number)
-                    if not episode_info:
-                        continue
-                    if _has_server_entry(episode_info.library, resolved_server, exists_media.server_type):
-                        continue
-                    episode_itemid = episode_item_ids.get(episode_number) or server_itemid
-                    detail_url = series_detail_url
-                    if resolved_server and episode_item_ids.get(episode_number):
-                        detail_url = mediaserver_chain.get_play_url(
-                            server=resolved_server,
-                            item_id=episode_itemid,
-                        ) or series_detail_url
-                    episode_info.library.append(
-                        _SchemaSubscribeLibraryFileInfo(
-                            storage=server_storage,
-                            file_path=detail_url,
-                            server=resolved_server,
-                            server_type=exists_media.server_type,
-                            itemid=str(episode_itemid) if episode_itemid is not None else None,
-                        )
-                    )
-            else:
+            if subscribe.type != MediaType.TV.value:
                 episode_info = episodes.get(0)
-                if episode_info and not _has_server_entry(
-                        episode_info.library, resolved_server, exists_media.server_type):
+                if episode_info and not has_server_entry(
+                    episode_info.library, resolved_server, exists_media.server_type
+                ):
                     episode_info.library.append(
                         _SchemaSubscribeLibraryFileInfo(
                             storage=server_storage,
@@ -3427,11 +3416,41 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             itemid=server_itemid,
                         )
                     )
+                continue
 
-        # 更新订阅信息
-        subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
-        subscribe_info.episodes = episodes
-        return subscribe_info
+            season_number = subscribe.season if subscribe.season is not None else 1
+            exist_episodes = (exists_media.seasons or {}).get(season_number) or []
+            episode_item_ids: Dict[int, str] = {}
+            if resolved_server and exists_media.itemid is not None:
+                episode_item_ids = mediaserver_chain.get_season_episode_ids(
+                    server=resolved_server,
+                    item_id=exists_media.itemid,
+                    season=season_number,
+                )
+            for episode_number in exist_episodes:
+                episode_info = episodes.get(episode_number)
+                if not episode_info or has_server_entry(
+                    episode_info.library, resolved_server, exists_media.server_type
+                ):
+                    continue
+                episode_itemid = episode_item_ids.get(episode_number) or server_itemid
+                detail_url = series_detail_url
+                if resolved_server and episode_item_ids.get(episode_number):
+                    detail_url = mediaserver_chain.get_play_url(
+                        server=resolved_server,
+                        item_id=episode_itemid,
+                    ) or series_detail_url
+                episode_info.library.append(
+                    _SchemaSubscribeLibraryFileInfo(
+                        storage=server_storage,
+                        file_path=detail_url,
+                        server=resolved_server,
+                        server_type=exists_media.server_type,
+                        itemid=(
+                            str(episode_itemid) if episode_itemid is not None else None
+                        ),
+                    )
+                )
 
     def check_and_handle_existing_media(self, subscribe: Subscribe, meta: MetaBase,
                                         mediainfo: MediaInfo, mediakey: Union[str, int]):
