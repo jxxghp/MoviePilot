@@ -157,6 +157,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         model="fake",
         profile={"max_input_tokens": 64000},
     )
+    temporary_middleware = SimpleNamespace(close=AsyncMock())
 
     with patch.object(
         agent,
@@ -195,7 +196,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         return_value=SimpleNamespace(name="skills", tools=[]),
     ), patch(
         "app.agent.orchestrator.create_subagent_middlewares",
-        return_value=([], []),
+        return_value=([temporary_middleware], []),
     ), patch(
         "app.agent.orchestrator._get_plugin_tools_revision",
         return_value=0,
@@ -210,6 +211,89 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
 
     assert graph is cached_graph
     assert agent._compiled_agent_bundle.catalog_checked_at > expired_at
+    temporary_middleware.close.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_create_agent_cancellation_closes_temporary_subagent_middleware() -> None:
+    """构图取消时必须释放尚未被缓存接管的子代理控制器。"""
+    catalog = ToolCatalogSnapshot.from_tools(
+        [], plugin_revision=0, factory_revision="factory-v1"
+    )
+    fake_llm = SimpleNamespace(
+        _llm_type="openai-chat",
+        model="fake",
+        profile={"max_input_tokens": 64000},
+    )
+    temporary_middleware = SimpleNamespace(close=AsyncMock())
+    signature_started = __import__("asyncio").Event()
+    agent = MoviePilotAgent(session_id="cancel-create", user_id="user-1")
+
+    async def _wait_for_signature(*_args, **_kwargs):
+        signature_started.set()
+        await __import__("asyncio").Future()
+
+    with patch.object(
+        agent,
+        "_resolve_llm_runtime_config",
+        new=AsyncMock(return_value={"provider": "openai", "model": "fake"}),
+    ), patch.object(
+        agent,
+        "_initialize_local_tool_catalogs",
+        return_value=(catalog, catalog),
+    ), patch.object(
+        agent,
+        "_initialize_mcp_tools",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        agent,
+        "_initialize_subagent_mcp_tools",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        agent,
+        "_initialize_llm",
+        new=AsyncMock(return_value=fake_llm),
+    ), patch.object(
+        agent,
+        "_sync_model_profile",
+    ), patch.object(
+        agent,
+        "_agent_bundle_signature",
+        new=_wait_for_signature,
+    ), patch(
+        "app.agent.orchestrator._get_plugin_tools_revision",
+        return_value=0,
+    ), patch(
+        "app.agent.orchestrator.agent_mcp_manager.config_signature",
+        return_value="mcp-config",
+    ), patch(
+        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
+        return_value=SimpleNamespace(use_local_web_search=True),
+    ), patch(
+        "app.agent.orchestrator.LLMHelper.get_server_tools",
+        return_value=[],
+    ), patch(
+        "app.agent.orchestrator.prompt_manager.get_agent_prompt",
+        return_value="prompt",
+    ), patch(
+        "app.agent.orchestrator.SkillsMiddleware",
+        return_value=SimpleNamespace(name="skills", tools=[]),
+    ), patch(
+        "app.agent.orchestrator.create_subagent_middlewares",
+        return_value=([temporary_middleware], []),
+    ):
+        create_task = __import__("asyncio").create_task(
+            agent._create_agent(streaming=False)
+        )
+        await signature_started.wait()
+        create_task.cancel()
+        with pytest.raises(__import__("asyncio").CancelledError):
+            await create_task
+
+    temporary_middleware.close.assert_awaited_once()
 
 
 @pytest.mark.anyio

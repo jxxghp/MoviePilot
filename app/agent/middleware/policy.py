@@ -1,16 +1,19 @@
 """LangChain 工具调用的 MoviePilot 宿主策略中间件。"""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_config
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agent.policy import (
+from app.agent.policy.contracts import (
+    ToolOrigin,
+    ToolPolicyContext,
+)
+from app.agent.policy.orchestrator import (
     DEFAULT_TOOL_POLICY_ORCHESTRATOR,
     AgentToolPolicyOrchestrator,
-    ToolPolicyContext,
-    ToolOrigin,
     call_policy_hook,
 )
 from app.agent.tools.catalog import ToolCatalogSnapshot
@@ -19,6 +22,10 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
+TOOL_TIMEOUT_MESSAGE = (
+    "工具执行超时，已停止等待结果；"
+    "若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
+)
 
 
 class AgentPolicyMiddleware(AgentMiddleware):
@@ -107,13 +114,22 @@ class AgentPolicyMiddleware(AgentMiddleware):
         arguments = tool_call.get("args") or {}
         if not isinstance(arguments, dict):
             arguments = {}
-        _, result = await self.execute_tool_call(
-            tool=request.tool,
-            arguments=arguments,
-            invocation_id=tool_call.get("id"),
-            handler=lambda: handler(request),
-            enforce_decision=False,
-        )
+        try:
+            _, result = await self.execute_tool_call(
+                tool=request.tool,
+                arguments=arguments,
+                invocation_id=tool_call.get("id"),
+                handler=lambda: handler(request),
+                enforce_decision=False,
+            )
+        except TimeoutError:
+            tool_name = str(getattr(request.tool, "name", None) or "unknown")
+            return ToolMessage(
+                content=TOOL_TIMEOUT_MESSAGE,
+                tool_call_id=str(tool_call.get("id") or ""),
+                name=tool_name,
+                status="error",
+            )
         # 普通 ToolNode 保持 shadow 观测；已确认调用使用默认的强制决策语义。
         return result
 
@@ -144,6 +160,15 @@ class AgentPolicyMiddleware(AgentMiddleware):
             return False, POLICY_DENIED_MESSAGE
         try:
             result = await handler()
+        except asyncio.CancelledError as error:
+            if observation is not None:
+                call_policy_hook(
+                    "cancel",
+                    self.orchestrator.fail,
+                    observation,
+                    error,
+                )
+            raise
         except Exception as error:
             if observation is not None:
                 call_policy_hook(

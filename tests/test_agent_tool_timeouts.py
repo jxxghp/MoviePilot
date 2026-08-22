@@ -4,7 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.tools.base import MoviePilotTool, _blocking_executors, shutdown_blocking_executors
+from app.agent.tools.base import (
+    MoviePilotTool,
+    ToolExecutionTimeoutError,
+    _blocking_executors,
+    shutdown_blocking_executors,
+)
 from app.agent.tools.manager import MoviePilotToolsManager
 
 
@@ -31,18 +36,16 @@ class BlockingAgentTool(MoviePilotTool):
         return "unused"
 
 
-def test_arun_returns_timeout_message_when_tool_exceeds_limit():
-    """LangChain 工具入口应按 LLM_TOOL_TIMEOUT 停止等待慢工具。"""
+def test_arun_raises_timeout_when_tool_exceeds_limit():
+    """底层工具入口应把超时交给宿主策略记录失败终态。"""
     tool = SlowAgentTool(session_id="session-1", user_id="10001")
 
     async def _run_tool():
         with patch("app.agent.tools.base.settings.LLM_TOOL_TIMEOUT", 0.05):
             return await tool._arun()
 
-    result = asyncio.run(_run_tool())
-
-    assert "工具 slow_agent_tool 执行超时" in result
-    assert "超过 0.05 秒" in result
+    with pytest.raises(ToolExecutionTimeoutError, match="超过 0.05 秒"):
+        asyncio.run(_run_tool())
 
 
 def test_http_tool_manager_uses_same_timeout_guard():

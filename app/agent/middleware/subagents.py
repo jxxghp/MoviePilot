@@ -23,14 +23,16 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
-from app.agent.llm import LLMHelper
+from app.agent.llm.helper import LLMHelper
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.utils import append_to_system_message
-from app.agent.policy import (
+from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
     ToolOrigin,
     ToolPolicyContext,
+)
+from app.agent.policy.sanitizer import (
     sanitize_for_host,
     summarize_error,
 )
@@ -46,6 +48,7 @@ SUBAGENT_STREAM_MARKER_KEY = "ls_agent_type"
 SUBAGENT_STREAM_MARKER_VALUE = "subagent"
 SUBAGENT_DEFAULT_WAIT_TIMEOUT_MS = 60000
 SUBAGENT_MAX_WAIT_TIMEOUT_MS = 300000
+SUBAGENT_CANCEL_GRACE_SECONDS = 5.0
 SUBAGENT_MAX_ACTIVE_TASKS = 8
 SUBAGENT_MAX_CONCURRENT_TASKS = 4
 SUBAGENT_RESULT_MAX_CHARS = 12000
@@ -890,8 +893,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         )
 
     @staticmethod
-    async def _cancel_records(records: list[_SubAgentRuntimeTask]) -> None:
-        """取消一组尚未完成的任务。"""
+    async def _cancel_records(
+        records: list[_SubAgentRuntimeTask],
+    ) -> list[_SubAgentRuntimeTask]:
+        """取消一组任务，并返回等待上限内仍未收敛的记录。"""
         cancellable_tasks = [
             record.task for record in records if not record.task.done()
         ]
@@ -899,9 +904,35 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             logger.info(f"开始取消子代理任务: tasks={len(cancellable_tasks)}")
         for task in cancellable_tasks:
             task.cancel()
-        if cancellable_tasks:
-            await asyncio.gather(*cancellable_tasks, return_exceptions=True)
+        if not cancellable_tasks:
+            return []
+
+        done, pending = await asyncio.wait(
+            cancellable_tasks,
+            timeout=SUBAGENT_CANCEL_GRACE_SECONDS,
+        )
+        if done:
+            await asyncio.gather(*done, return_exceptions=True)
+        if pending:
+            logger.warning(
+                f"子代理任务取消等待超时: pending={len(pending)}, "
+                f"timeout={SUBAGENT_CANCEL_GRACE_SECONDS}s"
+            )
+        else:
             logger.info(f"子代理任务取消完成: tasks={len(cancellable_tasks)}")
+        return [record for record in records if record.task in pending]
+
+    async def close(self) -> None:
+        """取消脱离当前 Agent 回合的子代理任务。"""
+        unfinished_records = [
+            record for record in self._tasks.values() if not record.task.done()
+        ]
+        if unfinished_records:
+            logger.info(
+                f"关闭子代理任务控制器，取消未完成任务: tasks={len(unfinished_records)}"
+            )
+        await self._cancel_records(unfinished_records)
+        self._tasks.clear()
 
     @staticmethod
     def _pipeline_description(
@@ -1039,14 +1070,16 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 f"subagent_type={record.subagent_type}"
             )
 
-            try:
-                result = await asyncio.wait_for(task, timeout=timeout)
-            except asyncio.TimeoutError:
+            done, pending = await asyncio.wait({task}, timeout=timeout)
+            if pending:
+                task.cancel()
                 error = f"第 {step_index} 个管道子代理任务等待超时。"
                 logger.info(
                     f"{error} task_id={record.task_id}, timeout_ms={normalized_timeout_ms}"
                 )
                 return records, error
+            try:
+                result = next(iter(done)).result()
             except Exception as err:
                 error = (
                     f"第 {step_index} 个管道子代理任务执行失败: "
@@ -1125,6 +1158,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             active_only=action in {"wait", "cancel"} and not task_ids and not task_id,
         )
 
+        cancellation_pending: list[_SubAgentRuntimeTask] = []
         if action == "wait":
             logger.info(
                 f"准备等待子代理任务: selected={len(records)}, missing={len(missing_ids)}"
@@ -1138,31 +1172,28 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             logger.info(
                 f"准备取消子代理任务: selected={len(records)}, missing={len(missing_ids)}"
             )
-            await self._cancel_records(records)
+            cancellation_pending = await self._cancel_records(records)
         elif action == "status":
             logger.info(
                 f"查询子代理任务状态: selected={len(records)}, missing={len(missing_ids)}"
             )
 
-        return self._json_response(
-            {
-                "success": True,
-                "action": action,
-                "wait_mode": wait_mode if action == "wait" else None,
-                "missing_task_ids": missing_ids,
-                "tasks": [self._task_output(record) for record in records],
-            }
-        )
+        response = {
+            "success": not cancellation_pending,
+            "action": action,
+            "wait_mode": wait_mode if action == "wait" else None,
+            "missing_task_ids": missing_ids,
+            "tasks": [self._task_output(record) for record in records],
+        }
+        if action == "cancel":
+            response["cancel_pending_task_ids"] = [
+                record.task_id for record in cancellation_pending
+            ]
+        return self._json_response(response)
 
     async def aafter_agent(self, state: Any, runtime: Any) -> None:
         """Agent 结束时取消未完成的子代理任务，避免后台泄漏。"""
-        unfinished_records = [
-            record for record in self._tasks.values() if not record.task.done()
-        ]
-        if unfinished_records:
-            logger.info(f"Agent 结束，取消未完成子代理任务: tasks={len(unfinished_records)}")
-        await self._cancel_records(unfinished_records)
-        self._tasks.clear()
+        await self.close()
 
     async def awrap_tool_call(
         self,
