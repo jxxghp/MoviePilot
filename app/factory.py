@@ -21,7 +21,9 @@ from app.adapters.web.security.access import (
 )
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger

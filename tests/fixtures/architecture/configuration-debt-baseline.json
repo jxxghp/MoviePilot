@@ -9,17 +9,12 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 24,
+    "count": 19,
     "files": [
       "app/adapters/system/fsproxy.py",
-      "app/cli.py",
       "app/db/base.py",
       "app/db/engine.py",
       "app/db/session.py",
-      "app/doctor/checks.py",
-      "app/doctor/runner.py",
-      "app/factory.py",
-      "app/main.py",
       "app/modules/filemanager/storages/local.py",
       "app/modules/postgresql/__init__.py",
       "app/modules/qbittorrent/__init__.py",
