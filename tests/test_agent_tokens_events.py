@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
 
-from app.agent import MoviePilotAgent
+from app.agent.orchestrator import MoviePilotAgent
 from app.agent.memory import memory_manager
 from app.runtime.config import settings
 from app.schemas.types import ChainEventType, EventType

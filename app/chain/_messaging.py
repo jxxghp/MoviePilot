@@ -18,7 +18,7 @@ from app.runtime.log import logger
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message
 from app.schemas.transfer import TransferInfo
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import EventType, NotificationChannel
 
 

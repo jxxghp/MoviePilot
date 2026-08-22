@@ -13,7 +13,7 @@ from app.db.oper.message import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.schemas import MediaSource, MediaType, MessageType
+from app.schemas.types import MediaSource, MediaType, MessageType
 
 
 class _FakeResponse:

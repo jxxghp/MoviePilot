@@ -33,7 +33,11 @@ from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
-from app.agent.policy import sanitize_for_host, summarize_error, summarize_result
+from app.agent.policy.sanitizer import (
+    sanitize_for_host,
+    summarize_error,
+    summarize_result,
+)
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
@@ -459,7 +463,7 @@ async def _summarize_with_llm(conversation_text: str) -> Optional[str]:
         LLM 生成的摘要字符串，失败时返回 None。
     """
     try:
-        from app.agent.llm import LLMHelper
+        from app.agent.llm.helper import LLMHelper
 
         llm = await LLMHelper.get_llm(streaming=False)
         prompt = SUMMARY_PROMPT.format(conversation=conversation_text)
