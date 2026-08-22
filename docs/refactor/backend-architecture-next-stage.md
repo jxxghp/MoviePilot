@@ -70,7 +70,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
 | 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 109 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| 直接读取 `settings` 的文件 | 107 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
 | Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
@@ -1029,6 +1029,8 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 随后将插件依赖扫描、插件包事务和 V3 资源安装适配器的部署配置读取迁移到同一 runtime 端口；资源适配器
 保留模块级 `settings` 兼容入口供旧插件覆盖，实际逻辑动态读取 runtime 配置。插件/资源专项 141 项测试、
 Pylint 与架构基线通过，配置债务由 112 个文件降至 109 个文件。
+缓存 Redis 连接池、内存限制和文件缓存工厂随后改用 runtime 配置端口，保留旧模块级 Settings 覆盖入口；
+缓存专项 41 项测试与 Pylint 通过，配置债务由 109 个文件降至 107 个文件。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
