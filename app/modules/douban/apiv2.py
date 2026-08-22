@@ -8,7 +8,7 @@ from random import choice
 from typing import Optional, Union
 from urllib import parse
 
-import httpx
+import httpx2
 import requests
 from bs4 import BeautifulSoup
 
@@ -223,7 +223,9 @@ class DoubanApi(metaclass=WeakSingleton):
         return req_url, params
 
     @staticmethod
-    def _handle_response(resp: Union[requests.Response, httpx.Response]) -> dict:
+    def _handle_response(
+        resp: Union[requests.Response, httpx2.Response]
+    ) -> dict:
         """
         处理HTTP响应
         """

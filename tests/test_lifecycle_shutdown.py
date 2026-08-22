@@ -658,7 +658,7 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
                 raise RuntimeError("eviction close failed")
 
     monkeypatch.setattr(http_utils, "_MAX_SHARED_TRANSPORTS_PER_LOOP", 1)
-    monkeypatch.setattr(http_utils.httpx, "AsyncHTTPTransport", FakeTransport)
+    monkeypatch.setattr(http_utils.httpx2, "AsyncHTTPTransport", FakeTransport)
     async def run_test():
         transport_kwargs = {
             "proxy": None,

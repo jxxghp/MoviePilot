@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
+import httpx2
 import pytest
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, StreamingResponse
@@ -162,12 +163,12 @@ async def test_async_external_request_preserves_explicit_header() -> None:
     """异步外呼默认传播当前 ID，但不得覆盖调用方显式 trace 边界。"""
     observed = []
 
-    async def respond(request: httpx.Request) -> httpx.Response:
+    async def respond(request: httpx2.Request) -> httpx2.Response:
         """记录 MockTransport 收到的请求头。"""
         observed.append(request.headers[CORRELATION_ID_HEADER])
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as client:
         utils = AsyncRequestUtils(client=client)
         with correlation_scope("context-request"):
             await utils.request("GET", "https://example.com/default")

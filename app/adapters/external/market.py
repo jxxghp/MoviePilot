@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit
 
 import aiofiles
 import aioshutil
-import httpx
+import httpx2
 from anyio import Path as AsyncPath
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
@@ -2152,7 +2152,7 @@ class PluginHelper(metaclass=WeakSingleton):
     async def __async_request_with_fallback(url: str,
                                             headers: Optional[dict] = None,
                                             timeout: Optional[int] = 60,
-                                            is_api: bool = False) -> Optional[httpx.Response]:
+                                            is_api: bool = False) -> Optional[httpx2.Response]:
         """
         使用自动降级策略，异步请求资源，优先级依次为镜像站、代理、直连
         :param url: 目标URL
