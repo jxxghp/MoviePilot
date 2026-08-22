@@ -2,8 +2,8 @@
   "api_endpoint": {
     "app/api/endpoints/agent.py:web_agent_stream": 346,
     "app/api/endpoints/media.py:scrape": 105,
-    "app/api/endpoints/openai.py:chat_completions": 107,
-    "app/api/endpoints/openai.py:responses": 105,
+    "app/api/endpoints/openai.py:chat_completions": 95,
+    "app/api/endpoints/openai.py:responses": 93,
     "app/api/endpoints/system.py:get_logging": 111,
     "app/api/endpoints/system.py:nettest": 87,
     "app/api/endpoints/torrent.py:reidentify_cache": 147
@@ -20,14 +20,10 @@
     "app/chain/download.py:DownloadChain.batch_download": 572,
     "app/chain/download.py:DownloadChain.download_single": 255,
     "app/chain/mediaserver.py:MediaServerChain.sync": 292,
-    "app/chain/site.py:SiteChain.sync_cookies": 180,
     "app/chain/subscribe.py:SubscribeChain.add": 183,
     "app/chain/subscribe.py:SubscribeChain.async_add": 186,
-    "app/chain/subscribe.py:SubscribeChain.match": 417,
-    "app/chain/subscribe.py:SubscribeChain.search": 249,
-    "app/chain/subscribe.py:SubscribeChain.subscribe_files_info": 199,
-    "app/chain/torrents.py:TorrentsChain.refresh": 235,
-    "app/chain/transfer.py:TransferChain.do_transfer": 885,
-    "app/chain/transfer.py:TransferChain.process": 154
+    "app/chain/subscribe.py:SubscribeChain.match": 415,
+    "app/chain/subscribe.py:SubscribeChain.search": 246,
+    "app/chain/transfer.py:TransferChain.do_transfer": 885
   }
 }
