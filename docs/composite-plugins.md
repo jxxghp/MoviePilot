@@ -1,106 +1,185 @@
-# 复合插件：一个插件一键拓展多个同类能力
+# 一个插件登记多项同类能力
 
-MoviePilot 的插件声明式注册（`provides_*` 钩子）天然支持**一个插件用同一注册器注册多个同类项**，
-无需任何额外开关。这让你能做"复合插件 / 一键式拓展"：一次安装即拉起一整套同类能力。
+`_PluginBase`（`app.sdk.extension`）暴露十二个 `provides_*` 钩子，签名统一形如
+`Optional[List[XxxDeclaration]]`：一次调用返回的是一张列表，列表里放几项由插件自己决定，
+框架不设上限。这十二个钩子与它们各自的声明类型定义在
+`app/runtime/extensions/contract/declaration.py`，通过 `app/sdk/declarations.py` 交给插件；
+`ChannelCapabilities` 是唯一例外，它复用 `app.schemas.notification.ChannelCapabilities`
+这个既有的传输数据类，见该文件顶部注释。
 
-举例：
-- 消息通知：`Wechat + Telegram + 邮件` 一键拓展
-- 认证 SSO：`GitHub + Google + Microsoft` 一键拓展
-- 下载器：`Aria2 + 迅雷 + P2P` 一键拓展
-- 元数据：`IMDb + TVDB + 网易爆米花` 一键拓展
-- 推荐/发现源：`爱奇艺 + 腾讯 + 芒果 + 优酷` 一键拓展
+登记按**扩展实例键**（`plugin_id` 或 `plugin_id@instance_id`）记账。以下几族的注册表都实测
+提供按实例键批量回收的方法：
 
-## 原理
+| 族 | 注册表 | 回收方法 |
+|---|---|---|
+| 服务实例类型（含存储、登录入口） | `app/runtime/extensions/registry/service_instance.py::ServiceInstanceRegistry` | `unregister_owner(owner)` |
+| 存储后端 | `app/runtime/extensions/registry/storage.py::StorageBackendRegistry` | `unregister_owner(owner)` |
+| 远程命令 | `app/runtime/extensions/registry/command.py::PluginCommandRegistry` | `unregister_owner(owner)` |
+| 名称解析器 | `app/runtime/extensions/registry/meta_parser.py::MetaParserRegistry` | `unregister_owner(owner)` |
+| 定时任务 | `app/scheduler/plugins.py::PluginScheduling` | `remove_plugin_job(pid)`（不传 `job_id` 时移除该插件/实例的全部任务） |
 
-每个 `provides_*` 钩子返回的都是 **List**；框架聚合器按 `plugin_id`(owner) 归集成 `{plugin_id: [items]}`，
-逐项注册到对应注册器。所有下游注册器都是 **owner-scoped**：按各自 id 单索引存储、带 owner 记账、
-按 owner **批量卸载**。因此同一插件注册多个不同 id 的项天然成立，停用插件时一次性全清。
+因此一个插件在同一个 `provides_*()` 调用里返回三项、五项还是一项，登记与卸载的开销不随项数
+变化——停用插件时框架按 owner 一次性回收它登记过的全部条目，不逐条追踪。测试证据：
+`tests/test_plugin_filter_rules.py::test_projection_skips_only_the_offending_declaration`
+构造一个插件、一次 `provides_filter_rules()` 调用返回两条声明，验证框架逐条校验、逐条接受
+或拒绝，互不影响。
 
-| 能力 | 钩子 | 返回 | 注册去向 |
+## 十二族能力表
+
+「级别」取自 `docs/plugin-extension-architecture.md` §7.3：**扩展级**指同一插件的多个分身
+（`plugin_id@instance_id`）声明同一个标识时只认一次（默认分身优先，其余按实例标识升序取
+第一个，裁决收在 `app/runtime/extensions/admission/extension_scoped.py`）；**分身级**指标识本身
+带着实例归属，各分身各自成立、不去重。这条轴回答的是「同一插件的分身之间怎么处理同名声明」，
+与「一次调用返回几项」是两件事：无论哪个级别，单次调用返回的多项只要标识互不相同，天然互不
+冲突。
+
+| 钩子 | 声明类型 | 唯一键 | 级别（同插件分身间） |
 |---|---|---|---|
-| 消息渠道 | `provides_notifications()` | 渠道模块类列表 | `ModuleManager` + 各模块自带 `get_channel_capabilities()` 登记到 `ChannelCapabilityManager` |
-| SSO 登录 | `provides_auth_providers()` | `IAuthProvider` 实例列表 | `app.core.auth.redirect` 提供方注册表 |
-| 认证流程/步骤 | `provides_auth_flows()` / `provides_auth_steps()` | 实例列表 | `flow_registry` / `steps` 注册表 |
-| 下载器 | `provides_downloaders()` | 下载器模块类列表 | `ModuleManager`（Downloader 域） |
-| 元数据/识别源 | `provides_data_sources()` | 模块类列表 | `ModuleManager`（MediaRecognize 域） |
-| 媒体服务器 | `provides_mediaservers()` | 模块类列表 | `ModuleManager`（MediaServer 域） |
-| 存储器 | `provides_storages()` | `StorageBase` 子类列表 | `FileManager` 存储注册表 |
-| 发现/推荐源 | `provides_discover_sources()` / `provides_recommend_sources()` | 数据对象列表 | `/api/discover/source`、`/api/recommend/source` 端点聚合 |
+| `provides_modules` | `ModuleDeclaration` | 方法名（实例内） | 分身级 |
+| `provides_media_sources` | `MediaSourceDeclaration` | `media_source` | 扩展级 |
+| `provides_service_instances` | `ServiceInstanceDeclaration` | `(capability, type)` | 扩展级 |
+| `provides_schedules` | `ScheduleDeclaration` | `job_id`（实例内） | 分身级 |
+| `provides_agent_tools` | `AgentToolDeclaration` | `name` | 扩展级 |
+| `provides_dashboards` | `DashboardDeclaration` | `key`（实例内） | 分身级 |
+| `provides_commands` | `CommandDeclaration` | `cmd` | 扩展级 |
+| `provides_channel_capabilities` | `ChannelCapabilities`（`app.schemas.notification`） | `channel` | 分身级 |
+| `provides_actions` | `ActionDeclaration` | `action_id`（实例内） | 分身级 |
+| `provides_meta_parsers` | `MetaParserDeclaration` | `parser_id`（实例内） | 分身级 |
+| `provides_filter_rules` | `FilterRuleDeclaration` | `rule_id` | 扩展级 |
+| `provides_filter_rule_groups` | `FilterRuleGroupDeclaration` | `name` | 扩展级 |
 
-## 两条铁律
+「实例内」表示唯一性只在声明它的那个分身范围内要求，宿主按 `(实例键, 标识)` 建键，天然不与
+其它分身或其它插件冲突。
 
-1. **每个子项 id 必须唯一**，且不得与内建或其它插件相撞，否则后注册者被拒：
-   - 模块类（通知/下载器/元数据/媒体服务器）：靠**类名** + `get_subtype_id()` 区分；
-   - SSO 提供方 / 流程 / 步骤：靠 `provider_id` / `flow_id` / `step_id`（`provider_id` 须为 1–32 位字母数字连字符）；
-   - 存储器：靠 `schema.value`；
-   - 发现/推荐源：靠 `api_path`（端点按 api_path 去重）。
-2. **生命周期是插件整体**：启用/停用插件 = 一次性注册/卸载它声明的全部子项。框架不提供"单独关闭某个
-   子项"——如需子项级开关，请在插件自身配置里实现，并由各模块的 `init_setting()` 开关或子项的
-   `applies_to()` 自行裁剪。
+### 跨插件冲突：不是"谁先注册谁赢"
 
-## 完整示例：一个一键拓展三路通知 + 三路 SSO 的复合插件
+`docs/plugin-extension-architecture.md` §7.2 的判据是**绝不取第一个、绝不取任意一个**。同一
+标识被两个不同插件声明时，结局按标识是否指称同一个外部对象分两支：
+
+- **后登记覆盖**：`u115` 就是那个存储后端，`downloader`+`qbittorrent` 就是那个下载器类型——
+  标识指称一个共同的外部对象，后声明的一方接管，先声明的一方停用后自动恢复。适用于
+  `provides_service_instances`（含存储与登录入口）与 `provides_channel_capabilities`。渠道
+  能力另有一条内建优先规则：内建渠道的静态能力表命中时插件登记不会被查到。证据：
+  `app/runtime/extensions/registry/service_instance.py::unregister_owner` 的文档字符串
+  ——"类型一旦被更晚的登记覆盖，owner 随之更新为新的登记方，因此本方法只回收…"。
+- **双方一并失效并告警**：`/sync` 在两个插件里做的是两件不相干的事，宿主分辨不出谁对，双方
+  都不生效。适用于 `provides_filter_rules`、`provides_filter_rule_groups`、
+  `provides_commands`（跨插件之间）。裁决收在 `app/runtime/extensions/admission/command_arbitration.py`
+  的模块级文档。
+- **接管须显式声明**：插件命令词撞上**内建**命令时既不是"共同对象"也不是"两个不相干的
+  东西"——声明 `overrides_builtin=True` 才按接管处置，插件命令生效、内建命令被压住；不声明
+  就按撞车处置，插件命令作废、内建命令保持生效。裁决同样在
+  `app/runtime/extensions/admission/command_arbitration.py`。
+- **分身级的族不构成跨插件冲突**：`provides_modules`、`provides_schedules`、
+  `provides_dashboards`、`provides_actions`、`provides_meta_parsers` 的唯一性只在声明它的
+  实例范围内要求，两个插件天然分处两个实例键，不会撞在一起（模块方法表的多来源契约方法是唯一
+  例外，按调用方传入的 `source` 参数路由，非本来源必须返回 `None` 让出——见
+  `app/sdk/extension.py` 的 `provides_modules` 与 `provides_media_sources` 文档字符串）。
+
+## 三个参考实现怎么用它
+
+`tests/test_plugin_import_boundary.py` 的 `REFERENCE_PLUGINS` 只登记了三个插件；它们是唯一
+被门禁保护、保证"只用 `app.sdk` 也写得出来"的范例。三个插件目前都只在各自的
+`provides_*()` 调用里返回**一项**，这里如实注明，不假装它们做了更多。
+
+### `app/plugins/githubsso/__init__.py`——登录入口（`capability="auth"`）
 
 ```python
-from app.plugins import _PluginBase
-from app.modules import _ModuleBase
-from app.schemas.message import ChannelCapabilities, ChannelCapability
-from app.schemas.types import ModuleType
+from app.sdk.declarations import ServiceInstanceDeclaration
+from app.sdk.extension import _PluginBase
 
-
-# —— 三个消息渠道模块（各自带能力矩阵）——
-class _WechatLikeChannel(_ModuleBase):
-    def init_module(self): ...
-    def init_setting(self): return None
-    def stop(self): ...
-    def test(self): return True, ""
-    @staticmethod
-    def get_type(): return ModuleType.Notification
-    def get_subtype_id(self): return "mycombo-wechat"        # ← channel id 唯一声明处
-    def post_message(self, message, **kwargs): ...           # 发送实现
-    def get_channel_capabilities(self):
-        return ChannelCapabilities(channel="mycombo-wechat",
-                                   capabilities={ChannelCapability.MARKDOWN, ChannelCapability.IMAGES})
-
-
-class _TelegramLikeChannel(_WechatLikeChannel):
-    def get_subtype_id(self): return "mycombo-telegram"
-    def get_channel_capabilities(self):
-        return ChannelCapabilities(channel="mycombo-telegram",
-                                   capabilities={ChannelCapability.INLINE_BUTTONS, ChannelCapability.MARKDOWN})
-
-
-class _EmailChannel(_WechatLikeChannel):
-    def get_subtype_id(self): return "mycombo-email"
-    def get_channel_capabilities(self):
-        return ChannelCapabilities(channel="mycombo-email", capabilities={ChannelCapability.LINKS})
-
-
-# —— 三个 SSO 登录提供方 ——
-class _SSOProvider:
-    def __init__(self, pid, name):
-        self.provider_id, self.provider_name, self.provider_icon = pid, name, f"mdi-{pid}"
-    def authorize_url(self, state, redirect_uri): ...        # 构造 IdP 授权 URL
-    def fetch_identity(self, code, redirect_uri): ...        # 授权码换身份
-
-
-class ComboPlugin(_PluginBase):
-    plugin_name = "一键多渠道 + 多 SSO"
-
-    def get_state(self) -> bool:
-        return True  # 实际应读插件自身的启用配置
-
-    # 一次声明三个消息渠道
-    def provides_notifications(self):
-        return [_WechatLikeChannel, _TelegramLikeChannel, _EmailChannel]
-
-    # 一次声明三个 SSO 提供方（id 唯一、字母数字连字符）
-    def provides_auth_providers(self):
-        return [_SSOProvider("github", "GitHub"),
-                _SSOProvider("google", "Google"),
-                _SSOProvider("microsoft", "Microsoft")]
+def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+    return [
+        ServiceInstanceDeclaration(
+            capability=SERVICE_CAPABILITY,  # "auth"
+            type=SERVICE_TYPE,              # "github"
+            name="GitHub 单点登录",
+            icon="mdi-github",
+            impl=GithubSsoEntry,
+            multi_instance=True,
+            config_form=config_form(),
+            config_schema=CONFIG_SCHEMA,
+        )
+    ]
 ```
 
-安装并启用 `ComboPlugin` 后，三个消息渠道（含能力矩阵）与三个 SSO 入口一并上线；停用插件时全部一起卸载。
-下载器 / 元数据 / 发现推荐源同理——把对应 `provides_*` 钩子返回多项即可。
+`multi_instance=True` 回答的是"用户能为 `github` 这个类型配几份"，不是"这次调用返回几项"：
+用户在登录认证设置里配两份 GitHub 部署的凭据，宿主按配置数扇出两个登录入口，与
+`provides_service_instances()` 本身只声明一项类型不矛盾——这正是 §7.4 讲的"实例数由声明
+表达，与声明它的调用返回几项、扩展建了几个分身，都是不同的轴"。
 
-回归测试见 `tests/test_composite_plugin_registration.py`。
+### `app/plugins/p123disk/__init__.py`——存储后端（`capability="storage"`）
+
+```python
+from app.sdk.declarations import ServiceInstanceDeclaration
+from app.sdk.extension import _PluginBase
+
+def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+    return [
+        ServiceInstanceDeclaration(
+            capability="storage",
+            type=STORAGE_ID,        # "p123"
+            name=STORAGE_NAME,
+            icon=STORAGE_ICON,
+            multi_instance=True,
+            impl=P123Storage,       # 继承 app.sdk.storage.StorageBase
+            config_form=storage_config_form(),
+            config_schema=STORAGE_CONFIG_SCHEMA,
+        )
+    ]
+```
+
+存储族的 `impl` 回答的是"按令牌取用时后端类是谁"而不是"怎么构造"：宿主不按
+`impl(name=..., **config)` 展开构造，缺省用默认工厂
+`app.runtime.extensions.registry.storage.storage_instance_factory` 按实例归属交付后端，插件
+不必自己写工厂——`app/plugins/p123disk/__init__.py` 的声明也确实没有给 `factory`。
+
+### `app/plugins/servicehealth/__init__.py`——智能体工具
+
+```python
+from app.sdk.declarations import AgentToolDeclaration
+from app.sdk.extension import _PluginBase
+
+def provides_agent_tools(self) -> Optional[List[AgentToolDeclaration]]:
+    return [
+        AgentToolDeclaration(
+            name=TOOL_NAME,
+            description=TOOL_DESCRIPTION,
+            impl=ServiceInstanceHealthTool,  # 继承 app.sdk.agent.MoviePilotTool
+        )
+    ]
+```
+
+工具实现类 `ServiceInstanceHealthTool`（`app/plugins/servicehealth/probe.py`）本身消费另一族
+声明的产物：它调用 `app.sdk.service_instances.service_capabilities()` 与
+`service_instance_required_methods()` 查询当前登记的服务族与必填只读方法，再经
+`app.sdk.services` 的 `DownloaderHelper`/`MediaServerHelper`/`NotificationHelper` 取实例状态——
+可见能力表不是各族互不相干，`provides_agent_tools` 声明的工具可以读取
+`provides_service_instances` 登记的结果。
+
+## 想让一次调用登记多项时怎么写
+
+把 `githubsso` 的例子改写成"同时接入 GitHub 与另一个自建 OIDC 部署"，只需要在返回的列表里
+多放一个 `ServiceInstanceDeclaration`，`type` 换成不同的类型标识：
+
+```python
+def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+    return [
+        ServiceInstanceDeclaration(capability="auth", type="github", name="GitHub", impl=GithubSsoEntry),
+        ServiceInstanceDeclaration(capability="auth", type="oidc", name="OIDC", impl=OidcEntry),
+    ]
+```
+
+两项的 `(capability, type)` 不同，`provides_service_instances` 是扩展级族，登记表按
+`(capability, type)` 建键，二者各自独立登记、各自独立被 `unregister_owner` 回收，互不影响。
+`provides_commands`、`provides_media_sources`、`provides_filter_rules` 等其余扩展级族同理：
+只要一次调用返回的多项标识互不相同，登记与卸载不需要插件多做任何事。分身级的族
+（`provides_modules`、`provides_schedules`、`provides_dashboards`、`provides_actions`、
+`provides_meta_parsers`、`provides_channel_capabilities`）连"标识互不相同"这个前提都不必满足
+到跨实例的程度——它们的唯一性只在声明它的那个分身范围内要求。
+
+## 与本文档保持同步的检查
+
+本文档提到的每一个 `provides_*` 钩子名，都必须真实存在于 `app.sdk.extension._PluginBase`；
+本文档代码块里的每一条 `import`，都必须能在当前代码库里解析成功。这两条由
+`tests/test_composite_plugins_doc.py` 在每次测试运行时核对，不是靠人工比对维持。
