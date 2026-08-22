@@ -195,6 +195,11 @@ async def _initialize_configuration_services(
     )
 
 
+def _build_runtime_settings_service() -> RuntimeSettingsService:
+    """将可变部署配置实现注入管理服务，避免把兼容代理再次包装。"""
+    return RuntimeSettingsService(legacy_settings)
+
+
 async def _async_get_subscribe(subscribe_id: int):
     """通过数据库操作器异步读取订阅，供服务端共享用例使用。"""
     return await SubscribeOper().async_get(subscribe_id)
@@ -630,7 +635,7 @@ async def init_modules() -> HostRuntime:
         scheduler=lambda: build_scheduler_runtime_config(settings),
         chain=lambda: build_chain_runtime_config(settings),
     )
-    runtime_settings = RuntimeSettingsService(settings)
+    runtime_settings = _build_runtime_settings_service()
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,

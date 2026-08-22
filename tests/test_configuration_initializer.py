@@ -6,6 +6,8 @@ import pytest
 
 from app.startup import modules_initializer
 from app.startup.lifecycle import initialize_modules_component
+from app.application.configuration import configure_runtime_settings
+from app.runtime.settings import RuntimeSettingsCompat
 
 
 class _InlineWorker:
@@ -14,6 +16,48 @@ class _InlineWorker:
     async def run(self, operation):
         """执行并返回操作结果。"""
         return operation()
+
+
+class _MutableSettings:
+    """提供运行时配置代理回归测试所需的最小可变设置实现。"""
+
+    def __init__(self) -> None:
+        """初始化一项可读写的部署设置。"""
+        self.VALUE = "before"
+
+    def model_dump(self, *, include=None, exclude=None):
+        """导出测试设置快照。"""
+        values = {"VALUE": self.VALUE}
+        if include is not None:
+            values = {key: value for key, value in values.items() if key in include}
+        if exclude is not None:
+            values = {key: value for key, value in values.items() if key not in exclude}
+        return values
+
+    def update_settings(self, env):
+        """批量更新测试设置。"""
+        for key, value in env.items():
+            setattr(self, key, value)
+        return {key: (True, "") for key in env}
+
+    def update_setting(self, key, value):
+        """更新单项测试设置。"""
+        setattr(self, key, value)
+        return True, ""
+
+
+def test_runtime_settings_compat_uses_legacy_settings_from_startup_root(monkeypatch) -> None:
+    """组合根装配的兼容代理应读写原始部署配置而不是自身。"""
+    legacy_settings = _MutableSettings()
+    monkeypatch.setattr(modules_initializer, "legacy_settings", legacy_settings)
+
+    service = modules_initializer._build_runtime_settings_service()
+    configure_runtime_settings(service)
+    compat = RuntimeSettingsCompat()
+
+    assert compat.model_dump(include={"VALUE"}) == {"VALUE": "before"}
+    assert compat.update_setting("VALUE", "after") == (True, "")
+    assert compat.model_dump(include={"VALUE"}) == {"VALUE": "after"}
 
 
 @pytest.mark.asyncio
