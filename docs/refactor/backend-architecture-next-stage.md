@@ -987,6 +987,11 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 鉴权与 MFA 专项测试通过。
 `DownloadChain.download_single` 的下载成功结算已提取为独立阶段，入口从 255 行降至 167 行；
 历史、文件明细、durable intent、post-commit 通知和旧测试 fallback 语义保持，下载专项测试通过。
+`SubscribeChain.add/async_add` 的同步/异步重复编排随后收口到显式创建上下文和阶段方法：输入规范化、媒体识别、
+电视剧集数准备、默认字段/图片处理、事务提交和失败反馈分别拥有明确边界；订阅重复检测、owner scope、
+`SubscribeAdded` payload、outbox stage/commit/post-commit 顺序仍由既有 `application/subscription/write.py` 负责。
+两个公开入口均降至 150 行预算内，复杂度基线移除对应债务项；订阅识别、音乐订阅、写入事务和搜索来源专项
+共 280 项测试通过，架构、复杂度与异步阻塞门禁通过。
 
 #### ARCH-272：异步阻塞检测
 

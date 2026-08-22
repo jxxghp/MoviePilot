@@ -20,8 +20,6 @@
     "app/chain/download.py:DownloadChain.batch_download": 572,
     "app/chain/download.py:DownloadChain.download_single": 167,
     "app/chain/mediaserver.py:MediaServerChain.sync": 292,
-    "app/chain/subscribe.py:SubscribeChain.add": 183,
-    "app/chain/subscribe.py:SubscribeChain.async_add": 186,
     "app/chain/subscribe.py:SubscribeChain.match": 415,
     "app/chain/subscribe.py:SubscribeChain.search": 246,
     "app/chain/transfer.py:TransferChain.do_transfer": 885
