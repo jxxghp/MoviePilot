@@ -14,19 +14,57 @@ _provider: RuntimeSettingProvider | None = None
 class RuntimeSettingsCompat:
     """为旧模块级 Settings 访问提供动态 runtime 配置代理。"""
 
+    @staticmethod
+    def _legacy_settings() -> Any:
+        """返回旧 Settings 实例，供 runtime 尚未装配时的兼容回退使用。"""
+        return importlib.import_module("app.runtime.config").settings
+
     def __getattr__(self, key: str) -> Any:
         """读取当前组合根配置；未装配时沿用旧 Settings 回退。"""
         return get_runtime_setting(key)
 
     def __setattr__(self, key: str, value: Any) -> None:
         """把旧模块级覆盖同步到 legacy Settings，保持测试和插件注入语义。"""
-        legacy_settings = importlib.import_module("app.runtime.config").settings
-        setattr(legacy_settings, key, value)
+        setattr(self._legacy_settings(), key, value)
 
     def __delattr__(self, key: str) -> None:
         """删除旧模块级覆盖，使配置对象恢复其原有属性解析。"""
-        legacy_settings = importlib.import_module("app.runtime.config").settings
-        delattr(legacy_settings, key)
+        delattr(self._legacy_settings(), key)
+
+    def model_dump(
+        self,
+        *,
+        include: set[str] | None = None,
+        exclude: set[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """导出当前配置快照，保留旧 Settings 的序列化入口。"""
+        try:
+            from app.application.configuration import get_runtime_settings
+
+            return get_runtime_settings().snapshot(include=include, exclude=exclude)
+        except RuntimeError:
+            return self._legacy_settings().model_dump(
+                include=include, exclude=exclude, **kwargs
+            )
+
+    def update_setting(self, key: str, value: Any) -> tuple[Any, str]:
+        """更新单项配置，兼容插件对模块级 Settings 的公开调用。"""
+        try:
+            from app.application.configuration import get_runtime_settings
+
+            return get_runtime_settings().update(key, value)
+        except RuntimeError:
+            return self._legacy_settings().update_setting(key, value)
+
+    def update_settings(self, env: dict[str, Any]) -> dict[str, tuple[Any, str]]:
+        """批量更新配置，兼容旧 Settings 的管理接口。"""
+        try:
+            from app.application.configuration import get_runtime_settings
+
+            return get_runtime_settings().update_many(env)
+        except RuntimeError:
+            return self._legacy_settings().update_settings(env=env)
 
 
 def configure_runtime_setting_provider(provider: RuntimeSettingProvider) -> None:
@@ -39,5 +77,4 @@ def get_runtime_setting(key: str) -> Any:
     """读取单项运行配置；启动早期未装配时回退旧 Settings ABI。"""
     if _provider is not None:
         return _provider(key)
-    legacy_settings = importlib.import_module("app.runtime.config").settings
-    return getattr(legacy_settings, key)
+    return getattr(RuntimeSettingsCompat._legacy_settings(), key)
