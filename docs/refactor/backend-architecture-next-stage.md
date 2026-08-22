@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；按既定范围暂不处理插件仓适配、Outbox 外围扩展和 25 个存量超长方法拆分
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
 
 ## 1. 结论先行
 
@@ -983,7 +983,7 @@ Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源�
 清理服务与 Chain 专项测试通过。
 Passkey 的 APP_DOMAIN、NGINX_PORT 和用户验证要求也已接入 API 配置快照，配置债务降至 131 个文件；
 MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安全端口范围内。
-认证服务的超级用户、向导开关和访问令牌过期时间也改用配置快照，债务降至 130 个文件；
+认证服务的超级用户、向导开关和访问令牌过期时间也改用配置快照，直接 `settings` 读取债务降至 130 个文件；启动组合根的 `SystemConfigOper()` 构造点进一步由 14 降至 1（唯一保留点为创建 `SystemConfigService` 本身）。
 鉴权与 MFA 专项测试通过。
 `DownloadChain.download_single` 的下载成功结算已提取为独立阶段，入口从 255 行降至 167 行；
 历史、文件明细、durable intent、post-commit 通知和旧测试 fallback 语义保持，下载专项测试通过。
@@ -992,6 +992,8 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 `SubscribeAdded` payload、outbox stage/commit/post-commit 顺序仍由既有 `application/subscription/write.py` 负责。
 两个公开入口均降至 150 行预算内，复杂度基线移除对应债务项；订阅识别、音乐订阅、写入事务和搜索来源专项
 共 280 项测试通过，架构、复杂度与异步阻塞门禁通过。
+
+**收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式
 `media_source/media_id` 校验、识别失败文案和所有原有调用参数；整理专项 80 项测试通过，复杂度基线移除该入口，
 后续继续拆分其批次规划与执行阶段。

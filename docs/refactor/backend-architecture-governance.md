@@ -1371,7 +1371,7 @@ done_when: []
 
 架构专项复核：`tests/test_architecture_dependencies.py`、`tests/test_architecture_contract_baseline.py`、插件 API/注册/SDK 相关聚焦用例共 71 passed。全量门禁中的 2 个失败均来自未修改的 `tests/test_agent_image_capability.py`：其一依赖当前模型目录未提供的 MiniMax 图片能力元数据，其二直接调用消息链时未装配 Agent service；它们不是本批次的层间依赖或插件兼容回归。
 
-独立插件仓 `tests/v3` 全量当前为 58 passed、13 failed（使用主仓 `.venv` 执行；插件仓自身 `.venv` 还缺少 `mutagen`，无法完成收集）。失败集中在本次未修改的 AnimeUpscale 版本断言、LibraryScraper 未知媒体源处理、历史身份迁移和媒体服务器身份测试；它们不经过本次 IMDb/TVDB 响应适配路径，但仍是插件仓自身需要单独清理的红色基线。不得把“本次适配专项通过”扩大表述为“插件仓全量通过”。
+独立插件仓分代回归已使用主仓 `.venv` 通过 `tests/run.py` 复现：CI 35 passed、V3 80 passed、V2 30 passed，共 145 passed。插件仓自身 `.venv` 直接运行时因缺少主程序依赖 `httpx2` 在收集阶段失败；该问题属于测试环境依赖边界，CI 应统一使用主仓锁定运行环境或在插件仓补齐同版本依赖。官方插件语义基线未变化，仅 provenance HEAD 更新，已审查后不刷新 fixture。
 
 ## 12. 量化治理目标
 
