@@ -1659,6 +1659,81 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 )
         return mediainfo, normalized_source, normalized_media_id, None
 
+    def _collect_transfer_candidates(
+        self,
+        fileitem: FileItem,
+        batch_mtype: Optional[MediaType],
+        min_filesize: int,
+        epformat: Optional[EpisodeFormat],
+        season: Optional[int],
+        continue_callback: Optional[Callable],
+    ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
+        """
+        收集并过滤本次整理的候选文件。
+
+        候选遍历只负责发现文件，业务过滤集中在此阶段；返回模板命中状态供公开整理流程
+        保持“未命中自定义集数模板时跳过”的旧行为。
+        """
+        format_handler = (
+            FormatParser(
+                eformat=epformat.format,
+                details=epformat.detail,
+                part=epformat.part,
+                offset=epformat.offset,
+            )
+            if epformat
+            else None
+        )
+        has_template = bool(epformat and epformat.format)
+        exclude_words = get_configured_system_config().get(
+            SystemConfigKey.TransferExcludeWords
+        )
+        matched_template = False
+
+        def keep_candidate(item: FileItem, _is_bluray_dir: bool) -> bool:
+            """候选遍历阶段只响应取消请求，不提前应用业务过滤。"""
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            return True
+
+        def is_allowed(item: FileItem, is_bluray_dir: bool) -> bool:
+            """判断候选文件是否符合格式、后缀、大小和屏蔽词约束。"""
+            nonlocal matched_template
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            if has_template and format_handler:
+                if not format_handler.match(item.name):
+                    return False
+                matched_template = True
+            if batch_mtype == MediaType.MUSIC:
+                if not self._is_media_file(item, batch_mtype):
+                    return False
+                if not self._is_allow_filesize(item, min_filesize):
+                    return False
+            elif (
+                not is_bluray_dir
+                and not self._is_subtitle_file(item)
+                and not self._is_audio_file(item)
+            ):
+                if not self._is_media_file(item, batch_mtype):
+                    return False
+                if not self._is_allow_filesize(item, min_filesize):
+                    return False
+            if any(
+                marker in item.path
+                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
+            ):
+                logger.debug(f"{item.path} 是回收站或隐藏的文件")
+                return False
+            return not self._is_blocked_by_exclude_words(item.path, exclude_words)
+
+        candidates = self.__get_trans_fileitems(fileitem, predicate=keep_candidate)
+        return [
+            (item, is_bluray_dir)
+            for item, is_bluray_dir in candidates
+            if is_allowed(item, is_bluray_dir)
+        ], matched_template
+
     def do_transfer(
             self,
             fileitem: FileItem,
@@ -1816,13 +1891,22 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             else None
         )
 
-        # 整理屏蔽词
+        # 汇总错误信息
+        err_msgs: List[str] = []
         transfer_exclude_words = get_configured_system_config().get(
             SystemConfigKey.TransferExcludeWords
         )
-        # 汇总错误信息
-        err_msgs: List[str] = []
-        matched_episode_format_template = False
+        has_episode_format_template = bool(epformat and epformat.format)
+        formaterHandler = (
+            FormatParser(
+                eformat=epformat.format,
+                details=epformat.detail,
+                part=epformat.part,
+                offset=epformat.offset,
+            )
+            if epformat
+            else None
+        )
 
         def _build_file_meta(
                 source_path: Path,
@@ -1902,78 +1986,18 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             return current_meta
 
-        def _is_allowed_transfer_item(item: FileItem, is_bluray_dir: bool) -> bool:
-            """
-            判断候选文件项是否允许进入整理规划。
-
-            :return: True 表示保留，False 表示排除
-            """
-            nonlocal matched_episode_format_template
+        def _is_allowed_transfer_item(item: FileItem, _is_bluray_dir: bool) -> bool:
+            """筛选单文件模式额外读取的字幕/音频，保持模板和屏蔽词语义。"""
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
-            # 存在集数定位模板时，模板匹配结果作为手动整理的硬过滤条件。
-            if has_episode_format_template and formaterHandler:
-                if not formaterHandler.match(item.name):
-                    return False
-                matched_episode_format_template = True
-            if batch_mtype == MediaType.MUSIC:
-                # 明确的音乐批次只接收音频主文件，避免混合下载目录中的视频或字幕
-                # 被音乐身份和命名模板整理进音乐库。
-                if not self._is_media_file(item, batch_mtype):
-                    return False
-                if not self._is_allow_filesize(item, min_filesize):
-                    return False
-            # 过滤后缀和大小（蓝光目录、附加文件不过滤）
-            elif (
-                    not is_bluray_dir
-                    and not self._is_subtitle_file(item)
-                    and not self._is_audio_file(item)
-            ):
-                if not self._is_media_file(item, batch_mtype):
-                    return False
-                if not self._is_allow_filesize(item, min_filesize):
-                    return False
-            # 回收站及隐藏的文件不处理
-            if (
-                    item.path.find("/@Recycle/") != -1
-                    or item.path.find("/#recycle/") != -1
-                    or item.path.find("/.") != -1
-                    or item.path.find("/@eaDir") != -1
-            ):
-                logger.debug(f"{item.path} 是回收站或隐藏的文件")
+            if has_episode_format_template and formaterHandler and not formaterHandler.match(item.name):
                 return False
-            # 整理屏蔽词不处理
-            if self._is_blocked_by_exclude_words(
-                    item.path, transfer_exclude_words
+            if any(
+                marker in item.path
+                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
             ):
                 return False
-            return True
-
-        def _keep_candidate_item(item: FileItem, is_bluray_dir: bool) -> bool:
-            """
-            收集候选文件时仅检查中断状态，不套用整理业务过滤。
-            """
-            if continue_callback and not continue_callback():
-                raise OperationInterrupted()
-            return True
-
-        def _collect_candidate_file_items() -> List[Tuple[FileItem, bool]]:
-            """
-            收集来源下的候选文件项，不在此阶段套用整理业务过滤。
-            """
-            return self.__get_trans_fileitems(fileitem, predicate=_keep_candidate_item)
-
-        def _filter_allowed_file_items(
-                candidates: List[Tuple[FileItem, bool]]
-        ) -> List[Tuple[FileItem, bool]]:
-            """
-            将候选文件项筛选为本轮允许整理的文件项。
-            """
-            return [
-                (candidate_item, candidate_bluray_dir)
-                for candidate_item, candidate_bluray_dir in candidates
-                if _is_allowed_transfer_item(candidate_item, candidate_bluray_dir)
-            ]
+            return not self._is_blocked_by_exclude_words(item.path, transfer_exclude_words)
 
         def _build_main_meta(
                 main_fileitem: FileItem,
@@ -2216,14 +2240,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             return planned_items, inherited_map
 
-        candidate_file_items: List[Tuple[FileItem, bool]] = []
         try:
-            candidate_file_items = _collect_candidate_file_items()
-            file_items = _filter_allowed_file_items(candidate_file_items)
+            file_items, matched_episode_format_template = self._collect_transfer_candidates(
+                fileitem=fileitem,
+                batch_mtype=batch_mtype,
+                min_filesize=min_filesize,
+                epformat=epformat,
+                season=season,
+                continue_callback=continue_callback,
+            )
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"
-        finally:
-            candidate_file_items.clear()
 
         if not file_items:
             if has_episode_format_template and not matched_episode_format_template:
