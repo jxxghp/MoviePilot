@@ -3,7 +3,7 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ValidationError
@@ -33,6 +33,18 @@ class Item(BaseModel):
     """统一响应测试使用的业务数据模型。"""
 
     id: int
+
+
+def _v1_compat_routes() -> list[tuple[str, APIRoute]]:
+    """返回兼容 v1 导出的公开路由，不依赖 FastAPI 内部 include 包装器。"""
+    from app.api.router_specs import API_V1_ROUTER_SPECS
+
+    return [
+        (f"{spec.prefix}{route.path}", route)
+        for spec in API_V1_ROUTER_SPECS
+        for route in spec.router.routes
+        if isinstance(route, APIRoute)
+    ]
 
 
 @pytest.fixture()
@@ -308,13 +320,6 @@ def test_response_rejects_fields_outside_unified_protocol():
 
 def test_v1_routes_use_response_route_except_native_protocols():
     """v1 普通接口应使用统一路由，标准协议路由保持原生实现。"""
-    from fastapi.routing import APIRoute
-
-    from app.api.apiv1 import api_router
-
-    api_routes = [
-        route for route in api_router.routes if isinstance(route, APIRoute)
-    ]
     native_paths = {
         "/openai/v1/models",
         "/openai/v1/chat/completions",
@@ -323,21 +328,15 @@ def test_v1_routes_use_response_route_except_native_protocols():
     }
 
     assert all(
-        isinstance(route, ResponseAPIRoute) or route.path in native_paths
-        for route in api_routes
+        isinstance(route, ResponseAPIRoute) or path in native_paths
+        for path, route in _v1_compat_routes()
     )
 
 
 def test_v1_json_routes_have_concrete_data_models():
     """普通 v1 JSON 路由禁止未参数化、Any 或通用 JSON 顶层输出模型。"""
-    from fastapi.routing import APIRoute
-
-    from app.api.apiv1 import api_router
-
     weak_routes = []
-    for route in api_router.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for path, route in _v1_compat_routes():
         response_model = route.response_model
         try:
             is_response_model = issubclass(response_model, Response)
@@ -347,15 +346,13 @@ def test_v1_json_routes_have_concrete_data_models():
             continue
         generic_args = response_model.__pydantic_generic_metadata__.get("args")
         if not generic_args or generic_args in ((Any,), (JsonData,)):
-            weak_routes.append((route.path, route.name, generic_args))
+            weak_routes.append((path, route.name, generic_args))
 
     assert weak_routes == []
 
 
 def test_v1_model_free_routes_match_audited_native_allowlist():
     """无响应模型仅允许固定的协议、流、文件、图片、HTML 与 204 路由。"""
-    from app.api.apiv1 import api_router
-
     expected_routes = {
         ("/message/", "incoming_verify"),
         ("/message/agent/file/{file_id}", "download_web_agent_file"),
@@ -383,8 +380,8 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
         ("/mcp", "delete_mcp_session"),
     }
     actual_routes = {
-        (route.path, route.name)
-        for route in api_router.routes
+        (path, route.name)
+        for path, route in _v1_compat_routes()
         if isinstance(route, ResponseAPIRoute) and route.response_model is None
     }
 
@@ -742,6 +739,72 @@ def test_plugin_routes_only_register_v1(monkeypatch):
 
     plugin_routes.remove_plugin_api("DemoPlugin")
     assert fake_app.routes == []
+
+
+async def test_plugin_routes_ignore_included_router_wrappers():
+    """动态插件路由更新应跳过 FastAPI include_router 的内部包装器。"""
+    from app.application.plugin import routes as plugin_routes
+
+    app = FastAPI()
+    included_router = APIRouter(prefix="/included")
+
+    @included_router.get("/health")
+    def included_health() -> dict[str, bool]:
+        """返回被聚合路由的健康状态。"""
+        return {"ok": True}
+
+    app.include_router(included_router)
+
+    async def plugin_dependency() -> None:
+        """提供用于验证动态路由依赖隔离的测试依赖。"""
+
+    source_dependencies = [Depends(plugin_dependency)]
+    plugin_api = {
+        "path": "/DemoPlugin/health",
+        "endpoint": lambda: {"plugin": True},
+        "methods": ["GET"],
+        "allow_anonymous": True,
+        "dependencies": source_dependencies,
+    }
+    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=lambda _plugin_id: [plugin_api],
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+    ))
+
+    plugin_routes.register_plugin_api("DemoPlugin")
+    plugin_routes.register_plugin_api("DemoPlugin")
+
+    registered_path = "/api/v1/plugin/DemoPlugin/health"
+    registered_routes = [
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == registered_path
+    ]
+    assert len(registered_routes) == 1
+    assert registered_routes[0].dependencies == plugin_api["dependencies"]
+    assert registered_routes[0].dependencies is not plugin_api["dependencies"]
+    assert plugin_api["path"] == "/DemoPlugin/health"
+    assert plugin_api["allow_anonymous"] is True
+    assert plugin_api["dependencies"] is source_dependencies
+
+    async with make_client(app) as client:
+        response = await client.get(registered_path)
+        assert response.status_code == 200
+        assert response.json() == {"plugin": True}
+
+        plugin_routes.remove_plugin_api("DemoPlugin")
+        assert not any(
+            getattr(route, "path", None) == registered_path for route in app.routes
+        )
+        removed_response = await client.get(registered_path)
+
+    assert removed_response.status_code == 404
 
 
 def test_response_router_uses_response_route_class():
