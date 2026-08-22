@@ -957,6 +957,63 @@ class DownloadChain(ChainBase):
             source=source,
         )
 
+    def _download_movie_music_candidates(
+        self,
+        contexts: List[Context],
+        downloaded_list: List[Context],
+        active_failure_records: Dict[str, "DownloadFailure"],
+        save_path: Optional[str],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Optional[str],
+        username: Optional[str],
+        downloader: Optional[str],
+        custom_words: Optional[str],
+    ) -> None:
+        """
+        处理电影与音乐的直接候选下载。
+
+        两类媒体都遵循成功后按身份去重、失败后继续尝试后续候选的规则，差异只在去重键。
+        """
+        downloaded_keys: Dict[MediaType, Set[str]] = {
+            MediaType.MOVIE: set(),
+            MediaType.MUSIC: set(),
+        }
+        for context in contexts:
+            if global_vars.is_system_stopped:
+                break
+            media_type = context.media_info.type
+            if media_type not in downloaded_keys:
+                continue
+            fingerprint = self._build_download_failure_fingerprint(context)
+            if fingerprint and fingerprint in active_failure_records:
+                continue
+            if media_type == MediaType.MOVIE:
+                download_key = context.media_info.title_year
+                label = "电影"
+            else:
+                media_source, media_id = resolve_media_identity(media=context.media_info)
+                download_key = build_media_key(media_source, media_id) or context.media_info.title_year
+                label = "音乐"
+            if download_key in downloaded_keys[media_type]:
+                continue
+            logger.info(f"开始下载{label} {context.torrent_info.title} ...")
+            if self.download_single(
+                context,
+                save_path=save_path,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                downloader=downloader,
+                custom_words=custom_words,
+            ):
+                logger.info(f"{context.torrent_info.title} 添加下载成功")
+                downloaded_list.append(context)
+                downloaded_keys[media_type].add(download_key)
+            elif fingerprint:
+                active_failure_records[fingerprint] = None
+
     def download_torrent(self, torrent: TorrentInfo,
                          channel: NotificationChannel = None,
                          source: Optional[str] = None,
@@ -1586,49 +1643,18 @@ class DownloadChain(ChainBase):
             if fingerprint:
                 active_failure_records[fingerprint] = None
 
-        # 如果是电影，直接下载
-        downloaded_movies = set()
-        for context in contexts:
-            if global_vars.is_system_stopped:
-                break
-            if context.media_info.type == MediaType.MOVIE:
-                if __is_context_in_failure_cooldown(context):
-                    continue
-                movie_key = __get_movie_download_key(context)
-                if movie_key in downloaded_movies:
-                    continue
-                logger.info(f"开始下载电影 {context.torrent_info.title} ...")
-                if self.download_single(context, save_path=save_path, channel=channel,
-                                        source=source, userid=userid, username=username,
-                                        downloader=downloader, custom_words=custom_words):
-                    # 下载成功
-                    logger.info(f"{context.torrent_info.title} 添加下载成功")
-                    downloaded_list.append(context)
-                    downloaded_movies.add(movie_key)
-                else:
-                    __remember_context_failure(context)
-
-        # 音乐按单个订阅目标择一下载；专辑在 download_single 内先按文件清单确认整专覆盖。
-        downloaded_music = set()
-        for context in contexts:
-            if global_vars.is_system_stopped:
-                break
-            if context.media_info.type != MediaType.MUSIC:
-                continue
-            if __is_context_in_failure_cooldown(context):
-                continue
-            music_key = __get_music_download_key(context)
-            if music_key in downloaded_music:
-                continue
-            logger.info(f"开始下载音乐 {context.torrent_info.title} ...")
-            if self.download_single(context, save_path=save_path, channel=channel,
-                                    source=source, userid=userid, username=username,
-                                    downloader=downloader, custom_words=custom_words):
-                logger.info(f"{context.torrent_info.title} 添加下载成功")
-                downloaded_list.append(context)
-                downloaded_music.add(music_key)
-            else:
-                __remember_context_failure(context)
+        self._download_movie_music_candidates(
+            contexts=contexts,
+            downloaded_list=downloaded_list,
+            active_failure_records=active_failure_records,
+            save_path=save_path,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            downloader=downloader,
+            custom_words=custom_words,
+        )
 
         # 电视剧整季匹配
         if no_exists:

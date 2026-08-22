@@ -17,7 +17,6 @@
     "app/application/security/cookie.py:CookieHelper.get_site_cookie_ua": 221
   },
   "chain_public": {
-    "app/chain/download.py:DownloadChain.batch_download": 572,
     "app/chain/download.py:DownloadChain.download_single": 167,
     "app/chain/mediaserver.py:MediaServerChain.sync": 292,
     "app/chain/subscribe.py:SubscribeChain.match": 415,
