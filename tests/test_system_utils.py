@@ -251,6 +251,56 @@ async def test_async_subprocess_cancellation_reaps_process_tree(tmp_path):
         pytest.fail(f"进程树仍在运行：{alive}")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows 没有 POSIX 进程组信号语义")
+@pytest.mark.asyncio
+async def test_async_subprocess_reaps_descendant_after_early_pipe_close(tmp_path):
+    """父进程关闭管道后，忽略终止信号的后代也必须被强制回收。"""
+    marker = tmp_path / "pids"
+    child_code = (
+        "import os, signal, time; os.close(1); os.close(2); "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    )
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import os, signal, subprocess, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}], "
+            "start_new_session=True); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "signal.signal(signal.SIGTERM, lambda *_: os._exit(0)); time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pids = [int(value) for value in marker.read_text().split(":")]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        alive = []
+        for pid in pids:
+            try:
+                process = psutil.Process(pid)
+                if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+            except (psutil.Error, OSError):
+                continue
+            alive.append(pid)
+        if not alive:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"通信已结束但进程树仍在运行：{alive}")
+
+
 def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():
     error = subprocess.CalledProcessError(
         returncode=1,

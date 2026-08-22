@@ -224,6 +224,7 @@ class PluginInstallCommand:
                     stage="installed_list_persistence",
                     message=str(err),
                     package_installed=True,
+                    installed_list_persisted=state.installed_list_touched,
                 )
                 if isinstance(err, DatabaseWorkerOverloadedError):
                     raise

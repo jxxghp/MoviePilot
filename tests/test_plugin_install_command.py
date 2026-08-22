@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.application.database import DatabaseWorkerOverloadedError
 from app.application.plugin.install import PluginInstallCommand
 
 
@@ -177,10 +176,39 @@ async def test_persistence_failure_restores_package_without_touching_runtime():
     assert result.success is False
     assert result.failure_stage == "installed_list_persistence"
     assert result.rollback.file_restored is True
-    assert result.rollback.installed_list_attempted is False
+    assert result.rollback.installed_list_attempted is True
     assert result.rollback.runtime_attempted is False
     rollback.assert_awaited_once_with(checkpoint)
     reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persistence_exception_after_write_restores_installed_list():
+    """清单写入已提交后抛异常时，文件和清单必须一起恢复。"""
+    persisted: list[list[str]] = []
+    checkpoint = object()
+    rollback = AsyncMock()
+
+    async def write(plugin_ids: list[str]) -> None:
+        persisted.append(list(plugin_ids))
+        if len(persisted) == 1:
+            raise RuntimeError("write acknowledgement lost")
+
+    result = await _command(
+        checkpointer=AsyncMock(return_value=checkpoint),
+        writer=write,
+        rollback=rollback,
+    ).execute(
+        plugin_id="DemoPlugin",
+        repo_url="https://github.com/demo/plugins",
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "installed_list_persistence"
+    assert result.rollback.installed_list_attempted is True
+    assert result.rollback.installed_list_restored is True
+    assert persisted == [["DemoPlugin"], []]
+    rollback.assert_awaited_once_with(checkpoint)
 
 
 @pytest.mark.asyncio

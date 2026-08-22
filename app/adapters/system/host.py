@@ -205,28 +205,48 @@ class SystemUtils:
                 timeout=grace_seconds,
             )
         except (asyncio.TimeoutError, asyncio.CancelledError):
-            try:
-                if os.name == "nt":
-                    SystemUtils._signal_process_tree(process_tree, force=True)
+            pass
+
+        # 管道可能在父进程退出时立即关闭，而后代仍在运行或忽略终止信号。
+        # 通信任务完成只代表 stdout/stderr 已收口，不能作为进程树已收口的依据。
+        try:
+            known_pids = {item.pid for item in process_tree}
+            process_tree.extend(
+                process_item
+                for process_item in SystemUtils._process_tree(process.pid)
+                if process_item.pid not in known_pids
+            )
+        except (ProcessLookupError, OSError):
+            pass
+
+        alive_processes = SystemUtils._alive_processes(process_tree)
+        if alive_processes or process.returncode is None:
+            if os.name == "nt":
+                try:
+                    SystemUtils._signal_process_tree(alive_processes, force=True)
                     process.kill()
-                else:
+                except (ProcessLookupError, OSError):
+                    pass
+            else:
+                try:
                     os.killpg(process.pid, signal.SIGKILL)
-                    SystemUtils._signal_process_tree(process_tree, force=True)
-            except (ProcessLookupError, OSError):
-                pass
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(communication_task),
-                    timeout=grace_seconds,
-                )
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                communication_task.cancel()
-                await asyncio.gather(communication_task, return_exceptions=True)
-        finally:
-            try:
-                await process.wait()
-            except (ProcessLookupError, OSError):
-                pass
+                except (ProcessLookupError, OSError):
+                    pass
+                try:
+                    SystemUtils._signal_process_tree(alive_processes, force=True)
+                except (ProcessLookupError, OSError):
+                    pass
+            await SystemUtils._wait_process_tree(
+                process_tree,
+                grace_seconds,
+            )
+        if not communication_task.done():
+            communication_task.cancel()
+            await asyncio.gather(communication_task, return_exceptions=True)
+        try:
+            await process.wait()
+        except (ProcessLookupError, OSError):
+            pass
 
     @staticmethod
     def _process_tree(pid: int) -> list[psutil.Process]:
@@ -236,6 +256,38 @@ class SystemUtils:
             return [parent, *parent.children(recursive=True)]
         except (psutil.Error, OSError):
             return []
+
+    @staticmethod
+    def _alive_processes(processes: list[psutil.Process]) -> list[psutil.Process]:
+        """返回仍可能执行外部副作用的进程，忽略已退出和僵尸进程。"""
+        alive = []
+        seen_pids = set()
+        for process in processes:
+            if process.pid in seen_pids:
+                continue
+            seen_pids.add(process.pid)
+            try:
+                if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                    alive.append(process)
+            except (psutil.Error, OSError):
+                continue
+        return alive
+
+    @staticmethod
+    async def _wait_process_tree(
+            processes: list[psutil.Process],
+            timeout: float,
+    ) -> list[psutil.Process]:
+        """在事件循环中有界等待整棵进程树退出，并返回残留进程。"""
+        deadline = asyncio.get_running_loop().time() + max(timeout, 0)
+        while True:
+            alive = SystemUtils._alive_processes(processes)
+            if not alive:
+                return []
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return alive
+            await asyncio.sleep(min(0.05, remaining))
 
     @staticmethod
     def _signal_process_tree(
