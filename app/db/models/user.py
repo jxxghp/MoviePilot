@@ -81,9 +81,11 @@ class User(Base):
             user.delete(db, user.id)
         return True
 
+    @classmethod
     @async_db_update
-    async def async_delete_by_id(self, db: AsyncSession, user_id: int):
-        user = await self.async_get_by_id(db, user_id)
+    async def async_delete_by_id(cls, db: AsyncSession, user_id: int):
+        """异步按用户 ID 删除用户，供 UserOper 通过类方法调用。"""
+        user = await cls.async_get_by_id(db, user_id)
         if user:
             await user.async_delete(db, user.id)
         return True
@@ -99,9 +101,11 @@ class User(Base):
             return True
         return False
 
+    @classmethod
     @async_db_update
-    async def async_update_otp_by_name(self, db: AsyncSession, name: str, otp: bool, secret: str):
-        user = await self.async_get_by_name(db, name)
+    async def async_update_otp_by_name(cls, db: AsyncSession, name: str, otp: bool, secret: str):
+        """异步按用户名更新 OTP 状态，供 UserOper 通过类方法调用。"""
+        user = await cls.async_get_by_name(db, name)
         if user:
             await user.async_update(db, {
                 'is_otp': otp,
