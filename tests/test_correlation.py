@@ -104,7 +104,9 @@ def test_event_dispatch_restores_producer_correlation_id() -> None:
     resolver = MagicMock()
     resolver.resolve.return_value = (
         handler,
-        SimpleNamespace(owner_name="test", run_sync_in_threadpool=False),
+        SimpleNamespace(
+            owner_name="test", run_sync_in_threadpool=False, instance_key=None
+        ),
         "Handler",
         "handle",
     )

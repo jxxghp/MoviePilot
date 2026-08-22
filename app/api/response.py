@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 from fastapi.datastructures import DefaultPlaceholder
+from fastapi.dependencies.utils import get_typed_signature
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, get_typed_return_annotation
 from starlette.responses import Response as StarletteResponse
@@ -121,8 +122,26 @@ class ResponseAPIRoute(APIRoute):
         return merged_responses
 
     @staticmethod
+    def _resolved_signature(endpoint: Callable[..., Any]) -> inspect.Signature:
+        """按端点自身模块名字空间解析出的参数签名。
+
+        FastAPI 用 ``call.__globals__`` 求值延后注解，而包装函数的 globals 属于本模块，
+        端点模块里 ``from __future__ import annotations`` 写下的注解会在这里求值失败，
+        被静默保留成未解析的 ``ForwardRef``——错误直到生成 OpenAPI 才抛出。
+        先按端点自身名字空间解析好，再挂到包装函数上，取值来源就不再依赖包装位置。
+
+        :param endpoint: 原始端点函数
+        :return: 参数注解已解析、返回注解保持原样的签名
+        """
+        signature = inspect.signature(endpoint)
+        return signature.replace(
+            parameters=list(get_typed_signature(endpoint).parameters.values())
+        )
+
+    @staticmethod
     def _wrap_endpoint(endpoint: Callable[..., Any]) -> Callable[..., Any]:
         """包装端点返回值，同时保持原函数签名供 FastAPI 注入依赖。"""
+        signature = ResponseAPIRoute._resolved_signature(endpoint)
         if inspect.iscoroutinefunction(endpoint):
 
             @wraps(endpoint)
@@ -131,6 +150,7 @@ class ResponseAPIRoute(APIRoute):
                 result = await endpoint(*args, **kwargs)
                 return ResponseAPIRoute._wrap_result(result)
 
+            async_endpoint.__signature__ = signature  # type: ignore[attr-defined]
             return async_endpoint
 
         @wraps(endpoint)
@@ -139,6 +159,7 @@ class ResponseAPIRoute(APIRoute):
             result = endpoint(*args, **kwargs)
             return ResponseAPIRoute._wrap_result(result)
 
+        sync_endpoint.__signature__ = signature  # type: ignore[attr-defined]
         return sync_endpoint
 
     @staticmethod

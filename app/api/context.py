@@ -17,7 +17,7 @@ from app.application.subscription.mutation import (
     SubscriptionHistoryMutationRepository,
     SubscriptionMutationRepository,
 )
-from app.startup.context import (
+from app.startup.ports.context import (
     AgentChatRuntime,
     HostRuntime,
     SubscriptionRuntime,

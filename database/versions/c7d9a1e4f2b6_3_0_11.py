@@ -1,7 +1,11 @@
-"""3.0.8 add durable side-effect outbox.
+"""3.0.11 add durable side-effect outbox.
+
+合并时与本仓已推进到 3.0.10 的插件实例配置迁移各自独立地接在 3.0.7 之后，
+形成两个 head；改接到 3.0.10 之后使迁移链保持单一线性，符合
+``_validate_migration_lineage`` 只允许一个 head 的约束。
 
 Revision ID: c7d9a1e4f2b6
-Revises: 73370ce9bab7
+Revises: 27c3b2eb9b1e
 Create Date: 2026-08-21
 """
 
@@ -10,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision = "c7d9a1e4f2b6"
-down_revision = "73370ce9bab7"
+down_revision = "27c3b2eb9b1e"
 branch_labels = None
 depends_on = None
 

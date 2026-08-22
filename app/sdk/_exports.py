@@ -289,8 +289,12 @@ SDK_DECLARED_EXPORTS = {
     },
     'app.sdk.extension': {
         'ChainDataPorts': ('app.application.orchestration.data', 'ChainDataPorts'),
+        'ChainDurableEventWriter': ('app.application.orchestration.durable_events', 'ChainDurableEventWriter'),
+        'ChainRuntimeConfig': ('app.application.configuration', 'ChainRuntimeConfig'),
         'ChainRuntimeContext': ('app.application.orchestration.context', 'ChainRuntimeContext'),
         'PluginChian': ('app.sdk.extension', 'PluginChian'),
+        'TransferHistoryRecord': ('app.application.history', 'TransferHistoryRecord'),
+        'TransferHistoryWriter': ('app.application.history', 'TransferHistoryWriter'),
         '_PluginBase': ('app.sdk.extension', '_PluginBase'),
     },
     'app.sdk.logging': {

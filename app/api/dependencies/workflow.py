@@ -16,7 +16,7 @@ from app.application.workflow import (
 )
 from app.runtime.config import global_vars
 from app.workflow import WorkFlowManager
-from app.startup.context import HostRuntime
+from app.startup.ports.context import HostRuntime
 
 
 def get_workflow_mutation_command(

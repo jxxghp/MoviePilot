@@ -385,11 +385,12 @@ def test_no_shell_directories_remain():
 def test_startup_root_admits_only_initializers():
     """组合根顶层只放初始化动作。
 
-    判据 S（docs/rules/05-architecture.md）把 `app/startup/` 的成员分成三类：
+    判据 S（docs/rules/05-architecture.md）把 `app/startup/` 的成员分成四类：
     `lifecycle/` 决定时刻，顶层 `*_initializer.py` 在指定时刻执行一次，
-    `bindings/` 由消费方按自己的时刻反复读取。顶层若没有形状约束，新文件的默认
-    落点就是顶层——2024-09 到 2026-08-16 之间新增的每一个文件都落在这里，
-    三类因此混在一层，「谁在启动时被调用」只能靠逐个打开文件重建。
+    `bindings/` 由消费方按自己的时刻反复读取，`ports/` 由组合根构造后交给别处长期
+    持有。顶层若没有形状约束，新文件的默认落点就是顶层——2024-09 到 2026-08-16
+    之间新增的每一个文件都落在这里，四类因此混在一层，「谁在启动时被调用」只能靠
+    逐个打开文件重建。
     """
     strays = sorted(
         path.name
@@ -434,9 +435,10 @@ def test_startup_subpackages_are_declared():
         for path in (APP_ROOT / "startup").iterdir()
         if path.is_dir() and path.name != "__pycache__"
     )
-    assert actual == ["bindings", "lifecycle"], (
+    assert actual == ["bindings", "lifecycle", "ports"], (
         f"app/startup/ 的子目录集合变为 {actual}\n"
-        "判据 S 只承认 lifecycle/（S1 决定时刻）与 bindings/（S3 供消费方读取的绑定表）。"
+        "判据 S 只承认 lifecycle/（S1 决定时刻）、bindings/（S3 供消费方读取的绑定表）"
+        "与 ports/（S4 组合根构造、别处长期持有的端口实现及其运行时形状）。"
         "新增子目录前先扩充判据 S 并同步更新本断言。"
     )
 

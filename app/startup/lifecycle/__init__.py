@@ -199,7 +199,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="数据端口装配",
             dependencies=("数据库连接预算",),
             start=configure_data_ports,
-            start_order=45,
+            start_order=55,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(

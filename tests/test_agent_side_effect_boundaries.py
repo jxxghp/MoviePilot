@@ -29,6 +29,18 @@ from app.agent.tools.impl._terminal_session import (
 )
 
 
+@pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    本文件覆盖的 AgentManager/终端会话/子代理关闭路径直接使用
+    ``asyncio.create_task`` 等仅限 asyncio 的原语，在 trio 后端下没有
+    running asyncio loop，必然以 ``RuntimeError: no running event loop``
+    失败；与业务逻辑无关，故不参数化到 trio。
+    """
+    return "asyncio"
+
+
 class _SlowWriteTool(MoviePilotTool):
     """模拟超时后外部写操作仍可能继续的工具。"""
 

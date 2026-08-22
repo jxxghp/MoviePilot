@@ -334,7 +334,7 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
     )
     assert len(calls) == 2
     assert calls[0][0] == "plugin"
-    assert calls[0][1] == plugin_manager.reload_plugin_tree
+    assert calls[0][1] == plugin_manager.reload_plugin
     assert calls[0][2] == ("DemoPlugin",)
     assert calls[0][3] == {}
     assert calls[1][0] == "plugin"

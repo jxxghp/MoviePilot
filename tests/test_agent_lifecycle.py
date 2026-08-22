@@ -14,6 +14,18 @@ from app.agent.memory import MemoryManager
 from app.startup import agent_initializer, modules_initializer
 
 
+@pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    AgentManager 的启动/关闭路径直接使用 ``asyncio.create_task`` /
+    ``asyncio.get_running_loop`` 等仅限 asyncio 的原语，在 trio 后端下没有
+    running asyncio loop，必然以 ``RuntimeError: no running event loop``
+    失败；与业务逻辑无关，故不参数化到 trio。
+    """
+    return "asyncio"
+
+
 @pytest.mark.anyio
 async def test_agent_entrypoint_initializes_on_calling_loop(monkeypatch) -> None:
     """Agent 启动入口必须在应用主循环完成初始化。"""

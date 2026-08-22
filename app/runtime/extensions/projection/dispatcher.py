@@ -146,7 +146,7 @@ class ModuleInvocationDispatcher:
         for provider in self._notify_providers(method):
             await self._async_invoke(provider, method, *args, **kwargs)
 
-    def multicast(self, method: str, *args: Any, **kwargs: Any) -> list:
+    def multicast(self, method: str, *args: Any, **kwargs: Any) -> list[Any]:
         """在能力族内收集全部提供者的非空答案。
 
         :param method: 模块方法名称
@@ -161,7 +161,7 @@ class ModuleInvocationDispatcher:
                 results.append(result)
         return results
 
-    async def async_multicast(self, method: str, *args: Any, **kwargs: Any) -> list:
+    async def async_multicast(self, method: str, *args: Any, **kwargs: Any) -> list[Any]:
         """以多播语义收集同步或异步提供者的全部非空答案。
 
         :param method: 模块方法名称

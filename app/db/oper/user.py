@@ -80,6 +80,18 @@ class UserOper(DbOper):
             lambda session: User.async_delete_by_id(session, user_id)
         ))
 
+    def delete_by_name(self, name: str) -> bool:
+        """在独立事务中按用户名删除用户，级联删除其名下的第三方身份绑定。
+
+        模型层 ``User.delete_by_name`` 不再自带 ``@db_update``：多语句的级联删除
+        （先删身份绑定再删用户本体）需要在同一个事务边界内完成，事务边界由本方法
+        经 ``_execute_sync_write`` 统一持有，不再由被调用的模型方法各自创建一次性
+        会话。
+        """
+        return bool(self._execute_sync_write(
+            lambda session: User().delete_by_name(session, name)
+        ))
+
     async def async_delete_by_name(self, name: str) -> bool:
         """在独立异步事务中按用户名删除用户。"""
         return bool(await self._execute_async_write(

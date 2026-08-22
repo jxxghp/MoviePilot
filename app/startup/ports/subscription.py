@@ -28,7 +28,7 @@ from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.session import async_session_scope
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
-from app.startup.outbox import (
+from app.startup.ports.outbox import (
     SqlAlchemyAsyncOutboxStager,
     SqlAlchemyOutboxRepository,
 )

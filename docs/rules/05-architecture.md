@@ -204,9 +204,10 @@ Ask in order. The first hit decides placement; parallel answers are not allowed.
 | S1 | Does it decide *when* other members run — order, dependencies, timeout budget, failure policy, normal/safe-mode scope? | `lifecycle/` |
 | S2 | Does the caller *perform* it, once, at a moment the composition root names, and never read it again? | flat `*_initializer.py` at the startup root |
 | S3 | Does the caller *read* it as a table — the caller picks the moment, may read it again, and an engine that must not know the entries executes them later? | `bindings/` |
-| S4 | None of the above | There is no fourth class. Extend this criterion before landing the file; it must not default to the top level |
+| S4 | Does the caller *build* it — a port implementation, or the frozen type of the runtime those implementations are assembled into — and hand the object to another layer that then holds it for the life of the process? | `ports/` |
+| S5 | None of the above | There is no fifth class. Extend this criterion before landing the file; it must not default to the top level |
 
-Tie-break: S1 > S2 > S3 — the end that decides moments wins.
+Tie-break: S1 > S2 > S3 > S4 — the end that decides moments wins.
 `command_initializer.py` both pushes a table into the command hub at import time
 (S3-shaped) and exposes `init_command`/`stop_command` (S2); it hits S2 and stays
 flat, while the table it pushes hits S3 and lives in `bindings/`.
@@ -217,11 +218,26 @@ is a new process or a new `lifespan`. A binding is re-read on the consumer's
 schedule: `builtin_commands()` on every `restart_command()`, `build_host_jobs()`
 on every `Scheduler().init()`, `build_database_governance()` on every backup.
 
+Decidability check when S2 and S4 both look like a hit: **is the module read
+again after that one call?** An initialization action is dead once its moment
+has passed — nothing imports it afterwards. A port module keeps being read: the
+object it defines is held and called for the life of the process, and its types
+annotate the layers that hold it. `ports/subscription.py` exposes one
+registration verb next to its writer, and stays a port module because
+`modules_initializer.py` also constructs `TransactionalSubscribeWriter` from it.
+
 | Path | Admitted by | Contents |
 |---|---|---|
 | `app/startup/lifecycle/` | S1 | `components.py` declares the normal/safe-mode manifest, ordering, dependencies, timeout budgets and failure policy; `__init__.py` is the `lifespan` that executes it. Nothing here binds a business domain |
 | `app/startup/*_initializer.py` (flat) | S2 | One initialization-action family per module. Every public symbol is a verb bound to a moment, and deleting its lifecycle entry makes the module dead. The top level admits nothing else |
 | `app/startup/bindings/` | S3 | Command word, job id and database dialect bound to concrete business chains and infrastructure. Knows every business domain; the engines that consume it know none. One binding family per module, or a subpackage when it needs more than one |
+| `app/startup/ports/` | S4 | `context.py` declares the shape — request-scoped repository/transaction factory protocols and the frozen `HostRuntime` that groups them by domain; every other module implements one application-declared port over SQLAlchemy and Oper classes. This is the only place in the host allowed to depend on `app/db` and `app/application` at once: the port is declared in application, landed in db, and only the composition root sees both ends |
+
+`app/runtime/hostports/` and `app/startup/ports/` are different ends of the same
+word. The runtime package holds *slots* — one protocol plus one module-level
+`HostPort` instance that extensions resolve. The startup package holds
+*implementations* the composition root constructs and hands out; nothing resolves
+them by name.
 
 The fifteen `*_initializer.py` modules deliberately stay flat. They are one class
 with one shape, and a subdirectory for them would only restate `_initializer`.
@@ -238,9 +254,9 @@ facade; the second owns table creation and Alembic migration. Keeping them apart
 keeps Alembic and `load_all_models()` off `app/cli.py`, which builds the
 governance facade to take one backup without ever starting the application.
 
-`tests/test_architecture_dependencies.py` gates all three rows: the top level
+`tests/test_architecture_dependencies.py` gates all four rows: the top level
 admits only `*_initializer.py`, no subpackage may contain one, and the set of
-subpackages is closed — a third one turns the gate red until criterion S is
+subpackages is closed — a fourth one turns the gate red until criterion S is
 extended to admit it.
 
 ### Adapter boundaries

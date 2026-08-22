@@ -99,7 +99,7 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
 - A synchronous Session is private to one worker thread. An AsyncSession is
   private to one asyncio task/operation; neither may be stored in a process
   singleton or reused by concurrent work.
-- Subscription creation is the reference slice: `app/startup/subscription.py`
+- Subscription creation is the reference slice: `app/startup/ports/subscription.py`
   creates an exclusive Session, `app/application/subscription/write.py` owns the
   UoW and post-commit callback, and `SubscribeOper.stage_add()` only queries,
   adds, and flushes. Preserve `SubscribeOper.add()` only for legacy SDK callers;

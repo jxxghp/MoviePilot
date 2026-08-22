@@ -12,6 +12,18 @@ from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
 from app.startup import agent_initializer
 
 
+@pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    本文件覆盖的 AgentInitializer/AgentManager 启停路径直接使用
+    ``asyncio.create_task`` 等仅限 asyncio 的原语，在 trio 后端下没有
+    running asyncio loop，必然以 ``RuntimeError: no running event loop``
+    失败；与业务逻辑无关，故不参数化到 trio。
+    """
+    return "asyncio"
+
+
 @pytest.mark.anyio
 async def test_disabled_initializer_does_not_materialize_manager(monkeypatch) -> None:
     """功能关闭时启动阶段不得解析完整 Agent 模块。"""

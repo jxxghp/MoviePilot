@@ -14,7 +14,7 @@ from app.domain import site as site_rules
 from app.foundation import url as url_tools
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
-from app.startup.context import HostRuntime
+from app.startup.ports.context import HostRuntime
 
 
 async def _publish_site_updated(payload: dict[str, Any]) -> None:

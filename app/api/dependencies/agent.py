@@ -15,7 +15,7 @@ from app.application.messaging.chat import (
     AsyncUnitOfWork,
 )
 from app.application.messaging.message import MessageQueryService
-from app.startup.context import HostRuntime
+from app.startup.ports.context import HostRuntime
 
 
 def get_agent_chat_service(

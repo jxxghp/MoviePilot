@@ -417,7 +417,7 @@ flowchart TB
 
 **实施记录（2026-08-21）**：
 
-- `app/startup/subscription.py` 为每次规范新增创建独占同步/异步 Session；
+- `app/startup/ports/subscription.py` 为每次规范新增创建独占同步/异步 Session；
   `CreateSubscriptionCommand` / `AsyncCreateSubscriptionCommand` 持有 UoW，Oper 只执行
   查重、`add` 与 `flush`。
 - `SubscribeOper.stage_add()` 的查重 SQL 已收口到 Oper，不再调用 Model 自动会话装饰器；
@@ -464,7 +464,7 @@ flowchart TB
 **建议结构**：
 
 ```text
-app/startup/context.py          # HostRuntime 及构建结果
+app/startup/ports/context.py          # HostRuntime 及构建结果
 app/api/context.py              # API 可见的最小 AppState / 读取依赖
 app/api/dependencies/           # 按领域拆分依赖工厂
   auth.py
@@ -492,7 +492,7 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 
 **实施记录（2026-08-21）**：
 
-- `app/startup/context.py` 定义 frozen slots `HostRuntime` 与首个窄能力
+- `app/startup/ports/context.py` 定义 frozen slots `HostRuntime` 与首个窄能力
   `AgentChatRuntime`，仓储、Session、UoW 字段均为具体 Protocol 工厂，不是字符串字典。
 - `init_modules()` 保留零参数兼容签名并返回本次 lifespan 唯一 Runtime；生命周期组件把结果挂到
   `app.state.host_runtime`。`app/api/context.py` 只向 Depends 暴露 Agent chat 的最小能力。
@@ -901,7 +901,7 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
    - 新增 Application command/port
    - `app/runtime/event/`
    - `app/runtime/extensions/module/contracts.py`
-   - `app/startup/context.py` / `app/api/context.py`
+   - `app/startup/ports/context.py` / `app/api/context.py`
 3. 对第三方移植包、旧插件 Facade 和动态 SDK 设置精确豁免，不允许 `app.* = ignore_errors`。
 4. CI 先检查严格目录；每次迁移扩大 include 范围。
 5. 类型错误不能用无界 `Any`、`cast(Any, ...)` 或全文件 ignore 消音。
@@ -920,7 +920,7 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 **扩展实施记录（2026-08-22）**：mypy 目标运行时更新到 Python 3.14，严格清单扩大到 20 个源文件；
 新增纳管配置快照和下载失败事务适配器，仍保持零错误、无全局 ignore。
 
-Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/startup/workflow.py` 纳入 strict 清单，
+Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/startup/ports/workflow.py` 纳入 strict 清单，
 治理范围扩大到 22 个源文件；事务命令、仓储 Protocol 和短会话适配器保持零错误。
 
 异步安全与契约收口继续纳管 scheduling facade、Event error policy、Module dispatcher 和 async blocking

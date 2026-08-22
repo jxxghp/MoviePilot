@@ -60,7 +60,7 @@ from app.application.security.userconfig import (
 )
 from app.application.history import configure_transfer_history_provider
 from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
-from app.startup.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.startup.ports.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
@@ -112,15 +112,15 @@ from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
 )
-from app.startup.subscription import (
+from app.startup.ports.subscription import (
     TransactionalSubscribeWriter,
     configure_transactional_subscription_scopes,
 )
-from app.startup.chain_events import TransactionalChainDurableEventWriter
-from app.startup.download_failure import TransactionalDownloadFailureRepository
-from app.startup.workflow import TransactionalWorkflowExecutionService
-from app.startup.transaction import TransactionalWriteRunner
-from app.startup.context import (
+from app.startup.ports.chain_events import TransactionalChainDurableEventWriter
+from app.startup.ports.download_failure import TransactionalDownloadFailureRepository
+from app.startup.ports.workflow import TransactionalWorkflowExecutionService
+from app.startup.ports.transaction import TransactionalWriteRunner
+from app.startup.ports.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
     HistoryRuntime,

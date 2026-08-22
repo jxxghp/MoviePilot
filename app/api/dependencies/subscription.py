@@ -37,7 +37,7 @@ from app.application.subscription.search import SearchSubscriptionsCommand
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
-from app.startup.context import HostRuntime
+from app.startup.ports.context import HostRuntime
 
 
 async def _publish_subscribe_deleted(

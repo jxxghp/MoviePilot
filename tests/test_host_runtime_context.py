@@ -14,7 +14,7 @@ from app.api.context import (
     get_agent_chat_transaction,
 )
 from app.startup import lifecycle
-from app.startup.context import (
+from app.startup.ports.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
     HistoryRuntime,

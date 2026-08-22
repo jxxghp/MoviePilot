@@ -676,7 +676,13 @@ class PluginProjection:
                 continue
             try:
                 plugin_id, instance_id = split_instance_key(extension_id)
-                for api in plugin.get_api() or []:
+                for source_api in plugin.get_api() or []:
+                    # 拷贝而非原地改写：`get_api()` 常返回模块级常量或 `self._apis`，
+                    # 同一插件的多个分身各投影一次时会共享同一个底层 dict/list——原地
+                    # 改写会让第二个分身在第一个分身已经改过的 path 上再叠一层前缀
+                    # （如 `/p@b/p@a/x`），且后写入的 endpoint 包装会覆盖先写入的，
+                    # 两个分身的路由与日志都会串到错的实例上。
+                    api = dict(source_api)
                     api["path"] = f"/{extension_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"

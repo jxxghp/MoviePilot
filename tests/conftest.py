@@ -126,9 +126,9 @@ def configure_plugin_system_services():
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
     from app.db.oper.user_identity import UserIdentityOper
-    from app.startup.subscription import TransactionalSubscribeWriter
-    from app.startup.workflow import TransactionalWorkflowExecutionService
-    from app.startup.transaction import TransactionalWriteRunner
+    from app.startup.ports.subscription import TransactionalSubscribeWriter
+    from app.startup.ports.workflow import TransactionalWorkflowExecutionService
+    from app.startup.ports.transaction import TransactionalWriteRunner
 
     def compatibility_sync_session() -> Session:
         """动态读取可被存量隔离数据库用例替换的 ScopedSession。"""

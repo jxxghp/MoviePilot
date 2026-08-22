@@ -12,9 +12,12 @@
 容不下任何宿主源码。旧写法 ``from app.plugins import _PluginBase`` 由
 ``app/runtime/compat/manifest.py`` 的符号别名继续解析到这里。
 
-``ChainRuntimeContext`` 与它的 ``data_ports`` 字段类型 ``ChainDataPorts`` 是构造
-``PluginChian`` 时可传入的运行上下文：不传即沿用宿主装配好的那一份，要接管调度、事件、
-消息或缓存中的任何一项则按这两个形状给。
+``ChainRuntimeContext`` 与它三个字段的类型 ``ChainDataPorts``、
+``ChainDurableEventWriter``、``ChainRuntimeConfig`` 是构造 ``PluginChian`` 时可传入的
+运行上下文：不传即沿用宿主装配好的那一份，要接管调度、事件、消息、缓存、durable 事件
+写入或链层配置快照中的任何一项则按这些形状给。``ChainDurableEventWriter`` 的
+``transfer_result`` 收发 ``TransferHistoryWriter`` 与 ``TransferHistoryRecord``，
+两者一并出口，接管该端口才写得出实现。
 """
 
 from abc import ABCMeta, abstractmethod
@@ -23,10 +26,13 @@ from typing import TYPE_CHECKING, Any, List, Dict, Optional, Tuple, Type, Union
 
 from sqlalchemy.orm import DeclarativeBase
 
+from app.application.configuration import ChainRuntimeConfig
+from app.application.history import TransferHistoryRecord, TransferHistoryWriter
 from app.application.messaging.message import MessageHelper
 from app.application.orchestration import ChainBase
 from app.application.orchestration.context import ChainRuntimeContext
 from app.application.orchestration.data import ChainDataPorts
+from app.application.orchestration.durable_events import ChainDurableEventWriter
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -58,7 +64,16 @@ from app.schemas.types import MessageType, NotificationChannel
 if TYPE_CHECKING:
     from app.db.plugin import PluginDatabaseHandle
 
-__all__ = ["ChainDataPorts", "ChainRuntimeContext", "PluginChian", "_PluginBase"]
+__all__ = [
+    "ChainDataPorts",
+    "ChainDurableEventWriter",
+    "ChainRuntimeConfig",
+    "ChainRuntimeContext",
+    "PluginChian",
+    "TransferHistoryRecord",
+    "TransferHistoryWriter",
+    "_PluginBase",
+]
 
 
 class PluginChian(ChainBase):

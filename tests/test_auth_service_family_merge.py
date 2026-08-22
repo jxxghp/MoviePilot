@@ -28,7 +28,6 @@ from app.application.service_config import (
     async_write_system_setting,
     read_system_setting,
 )
-from app.db.models.user import User
 from app.db.oper.user import UserOper
 from app.db.oper.user_identity import UserIdentityOper
 from app.runtime.extensions.projection.auth_entries import list_auth_entries
@@ -653,4 +652,4 @@ def user_factory() -> Iterator[Any]:
     yield _create
     for name in created:
         # 删用户会级联删掉它名下的全部身份绑定，用例之间因此不会互相看见对方的绑定
-        User().delete_by_name(None, name)
+        users.delete_by_name(name)

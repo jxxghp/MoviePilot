@@ -24,7 +24,6 @@ from fastapi.testclient import TestClient
 from app.api.endpoints.auth import auth_providers as auth_providers_endpoint
 from app.application.security.auth import consume_plugin_auth_ticket
 from app.application.service_config import async_write_system_setting
-from app.db.models.user import User
 from app.db.oper.user import UserOper
 from app.db.oper.user_identity import UserIdentityOper
 from app.sdk.extension import _PluginBase
@@ -168,7 +167,7 @@ def user_factory() -> Iterator[Any]:
 
     yield _create
     for name in created:
-        User().delete_by_name(None, name)
+        users.delete_by_name(name)
 
 
 @pytest.fixture

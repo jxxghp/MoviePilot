@@ -507,6 +507,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         original_chat_id=message.original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
+                        rich_message=message.rich_message,
                     )
 
     def post_medias_message(
@@ -626,6 +627,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     title=title,
                     buttons=buttons,
                     parse_mode=parse_mode,
+                    rich_message=(metadata or {}).get("telegram_rich_message"),
                 )
                 if result:
                     return True
@@ -732,6 +734,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
                         private_delivery=message.private_delivery,
+                        rich_message=message.rich_message,
                     )
                 if result and result.get("success"):
                     return MessageResponse(

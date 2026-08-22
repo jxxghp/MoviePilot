@@ -14,11 +14,11 @@ from app.application.history import (
     clear_transfer_failures,
 )
 from app.application.mediaserver import MediaServerQueryService
-from app.chain.storage import StorageChain
+from app.application.orchestration.storage import StorageChain
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.startup.context import HostRuntime
+from app.startup.ports.context import HostRuntime
 
 
 def get_mediaserver_query_service(
@@ -36,7 +36,7 @@ def get_dashboard_query_service(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> DashboardQueryService:
     """组装 Dashboard 媒体与整理历史统计查询服务。"""
-    from app.chain.dashboard import DashboardChain
+    from app.application.orchestration.dashboard import DashboardChain
 
     return DashboardQueryService(
         repository=runtime.history.transfer_repository(db),

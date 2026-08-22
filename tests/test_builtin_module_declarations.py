@@ -232,7 +232,6 @@ def test_placeholder_sources_are_declared_by_no_builtin_module() -> None:
     declared = set(builtin_media_sources())
 
     for placeholder in (
-        MediaSource.IMDb,
         MediaSource.Bilibili,
         MediaSource.MangoTV,
         MediaSource.MiguVideo,

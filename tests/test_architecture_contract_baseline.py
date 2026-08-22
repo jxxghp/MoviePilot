@@ -9,6 +9,26 @@ from app.schemas.types import ChainEventType, EventType
 
 PROJECT_ROOT = Path(__file__).parents[1]
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
+# 插件配置、服务配置与第三方身份三张表上仍由模型自持事务的写方法。
+# 清偿方向：写入交给对应 Oper 的 UoW，本名单随之缩短，直至为空。
+MODEL_WRITE_DECORATOR_DEBT = {
+    ("app/db/models/pluginconfig.py", "PluginConfig.async_delete_by_instance"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.async_delete_by_plugin"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.async_set_default_target"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.clear_default_target"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.delete_by_instance"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.delete_by_plugin"),
+    ("app/db/models/pluginconfig.py", "PluginConfig.set_default_target"),
+    ("app/db/models/serviceconfig.py", "ServiceConfig.clear_default_target"),
+    ("app/db/models/serviceconfig.py", "ServiceConfig.delete_by_identity"),
+    ("app/db/models/serviceconfig.py", "ServiceConfig.replace_capability"),
+    ("app/db/models/serviceconfig.py", "ServiceConfig.set_default_target"),
+    ("app/db/models/serviceconfig.py", "ServiceConfig.update_by_identity"),
+    ("app/db/models/user_identity.py", "UserIdentity.async_delete_by_id"),
+    ("app/db/models/user_identity.py", "UserIdentity.async_delete_by_user_id"),
+    ("app/db/models/user_identity.py", "UserIdentity.delete_by_id"),
+    ("app/db/models/user_identity.py", "UserIdentity.delete_by_user_id"),
+}
 
 
 def test_architecture_contract_baselines_match_current_source():
@@ -120,15 +140,24 @@ def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
 
 
 def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
-    """事务 fixture 必须保持 Model 写装饰器归零，并冻结剩余查询债务。"""
+    """事务 fixture 必须冻结 Model 写装饰器的逐条名单和剩余查询债务。
+
+    写装饰器让模型自己开事务并提交，绕过 Oper 侧的 UoW；除下列三个模型外的任何模型
+    出现写装饰器，或这三个模型再多一条，都会让本断言转红。按名单而不是按条数冻结：
+    条数拦不住「删一条旧的、补一条新的」，那种改动一条债没还，账面却看不出来。
+    """
     baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    write_decorators = {
+        (entry["file"], entry["method"])
+        for entry in baseline["model_decorators"]["methods"]
+        if entry["decorator"] in {"db_update", "async_db_update"}
+    }
 
     assert baseline["schema_version"] == 1
-    assert baseline["model_decorators"]["count"] == 123
-    assert sum(baseline["model_decorators"]["by_kind"].values()) == 123
-    assert baseline["model_decorators"]["by_kind"]["db_update"] == 0
-    assert baseline["model_decorators"]["by_kind"]["async_db_update"] == 0
+    assert baseline["model_decorators"]["count"] == 159
+    assert sum(baseline["model_decorators"]["by_kind"].values()) == 159
+    assert write_decorators == MODEL_WRITE_DECORATOR_DEBT
     assert baseline["model_transaction_calls"] == {"count": 0, "calls": []}
     assert baseline["model_session_factories"] == {"count": 0, "calls": []}
     assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}

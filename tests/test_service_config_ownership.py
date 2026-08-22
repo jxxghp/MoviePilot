@@ -36,6 +36,7 @@ _EXPECTED_SERVICE_OWNERSHIP: Dict[str, set] = {
         "ZSpaceModule",
     },
     ModuleType.Notification.value: {
+        "DingTalkModule",
         "DiscordModule",
         "FeishuModule",
         "QQBotModule",

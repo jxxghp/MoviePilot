@@ -13,6 +13,7 @@ from app.agent.tools.impl.execute_command import (
     ExecuteCommandTool,
     MAX_OUTPUT_PREVIEW_BYTES,
 )
+from app.agent.tools.impl._terminal_session import _TerminalSessionManager
 
 
 def _python_command(code: str) -> str:
@@ -168,14 +169,35 @@ class TestExecuteCommandTool(unittest.TestCase):
 
 class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        """创建每个测试复用的统一命令工具。"""
+        """创建每个测试复用的统一命令工具。
+
+        终端会话管理器是进程级单例：其它套件里真实走到
+        ``agent_initializer.stop_agent()`` 的用例会通过
+        ``close_materialized_terminal_sessions()`` 把它永久关闭且无法重开。
+        这里替换成一个全新实例，使本测试类不受运行顺序或其它套件副作用影响。
+        """
+        fresh_manager = _TerminalSessionManager()
+        self._terminal_manager_patchers = [
+            patch(
+                "app.agent.tools.impl._terminal_session.terminal_session_manager",
+                fresh_manager,
+            ),
+            patch(
+                "app.agent.tools.impl.execute_command.terminal_session_manager",
+                fresh_manager,
+            ),
+        ]
+        for patcher in self._terminal_manager_patchers:
+            patcher.start()
         self.tool = ExecuteCommandTool(session_id="session-1", user_id="10001")
         self._created_sessions: list[str] = []
 
     async def asyncTearDown(self):
-        """清理测试中残留的后台会话，避免影响后续用例。"""
+        """清理测试中残留的后台会话，并恢复原有单例引用。"""
         for session_id in self._created_sessions:
             await self.tool.run(action="kill", session_id=session_id)
+        for patcher in self._terminal_manager_patchers:
+            patcher.stop()
 
     @staticmethod
     def _loads(result: str) -> dict:

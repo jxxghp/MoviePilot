@@ -19,6 +19,17 @@ from app.db.session import SessionFactory
 Engine = get_engine()
 
 
+@pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    受测的阻塞查询经 ``run_agent_blocking`` 调用 ``asyncio.get_running_loop``，
+    在 trio 后端下没有 running asyncio loop，必然以
+    ``RuntimeError: no running event loop`` 失败；与业务逻辑无关，故不参数化到 trio。
+    """
+    return "asyncio"
+
+
 def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
     """创建带隔离 owner 的 Agent 自主任务。"""
     user_id = f"{prefix}-{uuid4().hex}"
