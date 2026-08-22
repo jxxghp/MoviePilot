@@ -925,6 +925,38 @@ class DownloadChain(ChainBase):
             logger.error(f"查询下载失败冷却失败：{str(err)}")
             return {}
 
+    def _prepare_batch_download_contexts(
+        self,
+        contexts: List[Context],
+        downloader: Optional[str],
+        source: Optional[str],
+    ) -> Tuple[List[Context], Dict[str, "DownloadFailure"]]:
+        """
+        执行批量下载前的资源选择、排序和失败冷却准备。
+
+        :return: 排序后的上下文和本轮失败冷却记录；资源选择事件仍可替换上下文列表
+        """
+        logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
+        event_data = ResourceSelectionEventData(
+            contexts=contexts,
+            downloader=downloader,
+            origin=source,
+        )
+        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            if event_data.updated and event_data.updated_contexts is not None:
+                logger.debug(
+                    f"Contexts updated by event: {len(event_data.updated_contexts)} "
+                    f"items (source: {event_data.source})"
+                )
+                contexts = event_data.updated_contexts
+        contexts = TorrentHelper().sort_torrents(contexts)
+        return contexts, self._active_download_failure_fingerprints(
+            contexts=contexts,
+            source=source,
+        )
+
     def download_torrent(self, torrent: TorrentInfo,
                          channel: NotificationChannel = None,
                          source: Optional[str] = None,
@@ -1354,7 +1386,37 @@ class DownloadChain(ChainBase):
             return _hash, error_msg
         return _hash
 
-    def batch_download(self,
+    def batch_download(
+                       self,
+                       contexts: List[Context],
+                       no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
+                       save_path: Optional[str] = None,
+                       channel: NotificationChannel = None,
+                       source: Optional[str] = None,
+                       userid: Optional[str] = None,
+                       username: Optional[str] = None,
+                       downloader: Optional[str] = None,
+                       custom_words: Optional[str] = None
+                       ) -> Tuple[List[Context], Dict[str, Dict[int, NotExistMediaInfo]]]:
+        """
+        兼容批量下载公开入口，委托给内部候选匹配阶段。
+
+        该签名被订阅链、消息入口和插件调用；内部策略拆分不改变候选排序、失败冷却、
+        完整覆盖判断或剩余缺集的返回结构。
+        """
+        return self._execute_batch_download(
+            contexts=contexts,
+            no_exists=no_exists,
+            save_path=save_path,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            downloader=downloader,
+            custom_words=custom_words,
+        )
+
+    def _execute_batch_download(self,
                        contexts: List[Context],
                        no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
                        save_path: Optional[str] = None,
@@ -1491,26 +1553,10 @@ class DownloadChain(ChainBase):
             media_source, media_id = resolve_media_identity(media=_context.media_info)
             return build_media_key(media_source, media_id) or _context.media_info.title_year
 
-        # 发送资源选择事件，允许外部修改上下文数据
-        logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
-        event_data = ResourceSelectionEventData(
+        # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
+        contexts, active_failure_records = self._prepare_batch_download_contexts(
             contexts=contexts,
             downloader=downloader,
-            origin=source
-        )
-        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
-        # 如果事件修改了上下文数据，使用更新后的数据
-        if event and event.event_data:
-            event_data: ResourceSelectionEventData = event.event_data
-            if event_data.updated and event_data.updated_contexts is not None:
-                logger.debug(f"Contexts updated by event: "
-                             f"{len(event_data.updated_contexts)} items (source: {event_data.source})")
-                contexts = event_data.updated_contexts
-
-        # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
-        contexts = TorrentHelper().sort_torrents(contexts)
-        active_failure_records = self._active_download_failure_fingerprints(
-            contexts=contexts,
             source=source,
         )
 
