@@ -72,7 +72,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
 | 直接读取 `settings` 的文件 | 127 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
-| Model 上的 DB 查询装饰器 | 121 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
+| Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
 | Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
 | Application 方法超过 150 行 | 8 | 最大 296 行 |
@@ -430,8 +430,10 @@ flowchart TB
   并继续保留既有 Model/旧 SDK 查询兼容；本次 AgentTask 切片将查询装饰器减少到 121 个。
   2026-08-23 已完成 AgentTask 查询切片：`AgentTaskOper.get/list` 直接在调用方 Session 中执行查询，
   `AgentTask.get_for_user/list_for_user` 保留原签名和返回语义供旧调用方使用，但不再持有查询装饰器；
-  无 Session 的旧 Oper 入口继续由组合根兼容事务执行器承接。查询装饰器低水位由 123 降至 121，
-  归属过滤、启用状态过滤和创建时间/主键稳定排序由 canonical Oper 测试覆盖。
+  无 Session 的旧 Oper 入口继续由组合根兼容事务执行器承接。随后 PassKey 的宿主同步查询迁移到
+  `PassKeyOper`，其按用户/凭证的启用状态过滤由显式 Session 测试覆盖；异步 Model 查询保留旧 ABI。
+  查询装饰器低水位由 123 降至 119，归属过滤、启用状态过滤和创建时间/主键稳定排序由 canonical
+  Oper 测试覆盖。
 
 #### ARCH-222：按风险迁移其余写用例
 
@@ -794,8 +796,13 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   对插件仍投递原有 dict 字段，只新增可选 `idempotency_key`，不把 Pydantic 实例传给插件。
 - 保证边界只覆盖主仓可追踪的宿主生产者。运行时安装在 `app/plugins/**` 的第三方插件未被主仓改写；
   插件若自行直接发送同名事件，该发送仍由插件负责，无法与插件自己的数据库写入自动组成原子事务。
-- 订阅外部统计上报仍是 post-commit 副作用，不在事件 intent 的重放 handler 中；因此当前可以宣称三种
-  订阅事件具备宿主级 at-least-once 恢复，但不能宣称订阅通知和所有外部上报均已 durable。
+- `SubscribeChain` 完成流程现由 `app/application/subscription/complete.py` 统一收口：订阅历史新增、
+  原订阅删除、`subscribe.complete` 事件 intent 与 `subscribe.complete.report` 统计 intent 在同一同步
+  Session/UoW 中提交。提交后仍按通知、事件、统计的历史顺序执行；事件和统计分别按幂等键收口，任一步
+  失败都会留下独立 pending intent，由 outbox dispatcher 有限重试并最终进入 dead-letter。完成事件仍向插件
+  投递原有 `subscribe_id`、`subscribe_info`、`mediainfo` 字段，仅增加可选 `idempotency_key`。
+- 普通订阅新增/修改/删除路径的用户通知与第三方插件自行发送的事件仍不自动纳入宿主事务；本切片只覆盖
+  主仓可追踪的 `SubscribeChain` 完成生产者。
 - `DownloadAdded`、`TransferComplete`、`TransferFailed` 也已逐项接入，而不是复用一个不分业务语义的
   “万能消息总线”。下载历史、下载文件清单或整理历史与各自 intent 在独占同步 Session/UoW 中原子提交；
   即时广播失败时 intent 保持 pending，三种恢复 handler 均继续使用有限重试与 dead-letter 策略。
@@ -815,7 +822,7 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
 - 剩余 45 个同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
   站点快照、媒体服务器、插件数据、TransferPending 等写入由调用方 Session 和 UoW 收口；无 Session
-  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 123 个查询装饰器，
+  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 119 个查询装饰器，
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
 - 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
@@ -1006,6 +1013,7 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 
 2026-08-23 将工作流动作 `FetchRssAction`、`ScanFileAction` 和 `AddSubscribeAction` 接入 `ChainRuntimeConfig` 快照，分别移除代理、媒体后缀和超级用户的全局 `settings` 读取；保留动作公开入口与工作流上下文行为，新增快照注入测试覆盖。配置债务由 130 个文件降至 127 个文件，宿主依赖与配置基线已更新。
 2026-08-23 将工作流动作 `FetchMediasAction` 和 `SendMessageAction` 接入 `ChainRuntimeConfig` 快照，分别移除内部 API 端口/令牌及工作流链接的全局 `settings` 读取；保留动作公开入口与消息载荷行为，新增快照注入测试覆盖。配置债务由 127 个文件降至 125 个文件，宿主依赖与配置基线已更新。
+2026-08-23 将 API 路由前缀作为组合根参数传入 `init_routers`，移除路由初始化模块对全局 `settings` 的直接读取；默认参数保留旧调用兼容性，并补充自定义前缀测试。配置债务由 125 个文件降至 124 个文件。
 
 **收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式
@@ -1196,7 +1204,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 当前 121 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| Model 事务装饰器 | 当前 119 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |

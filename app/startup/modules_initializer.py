@@ -249,6 +249,13 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
         ):
             raise RuntimeError("订阅新增统计上报未确认")
 
+    def dispatch_subscribe_complete_report(message) -> None:
+        """重放订阅完成统计；未确认时抛错以进入有限重试。"""
+        if not MoviePilotServerHelper.sub_done_durable(
+            message.payload.get("subscribe_info") or {}
+        ):
+            raise RuntimeError("订阅完成统计上报未确认")
+
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
@@ -267,6 +274,11 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 message.payload,
             ),
             "subscribe.deleted.report": dispatch_subscribe_deleted_report,
+            "subscribe.complete": lambda message: EventManager().send_event(
+                EventType.SubscribeComplete,
+                message.payload,
+            ),
+            "subscribe.complete.report": dispatch_subscribe_complete_report,
             "download.added": lambda message: EventManager().send_event(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),
