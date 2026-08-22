@@ -70,7 +70,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
 | 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 119 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| 直接读取 `settings` 的文件 | 118 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
 | Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
@@ -1021,6 +1021,7 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 2026-08-23 将 `AgentRuntimeManager` 的默认 Agent 目录改为通过 `RuntimeSettingsService` 读取配置快照；显式目录参数和导入早期的旧设置回退保持不变。配置债务由 122 个文件降至 121 个文件，并补充默认目录注入回归测试。
 2026-08-23 将 `OcrHelper` 的服务地址改为通过 `RuntimeSettingsService` 或显式构造参数取得；导入早期保留旧模块回退，自动补齐 `/captcha/base64` 路径。配置债务由 121 个文件降至 120 个文件，并补充 OCR 地址注入回归测试。
 2026-08-23 将 `CookieCloudHelper` 的五项运行配置改为通过 `RuntimeSettingsService` 读取；同步期间仍获取最新值，未装配时保留旧 Settings ABI。配置债务由 120 个文件降至 119 个文件，并通过 CookieCloud 路由与站点回归测试。
+2026-08-23 将 DoH 开关、域名和解析器配置改为通过 `RuntimeSettingsService` 动态读取；socket 补丁、热更新、缓存和线程池关闭语义保持不变，未装配时保留旧 Settings ABI。配置债务由 119 个文件降至 118 个文件，并通过 DoH 与生命周期回归测试。
 
 **收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式

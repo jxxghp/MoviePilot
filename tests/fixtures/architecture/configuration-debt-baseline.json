@@ -9,14 +9,13 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 119,
+    "count": 118,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
       "app/adapters/external/market.py",
       "app/adapters/external/server.py",
       "app/adapters/network/browser.py",
-      "app/adapters/network/doh.py",
       "app/adapters/system/fsproxy.py",
       "app/adapters/system/plugin/dependency.py",
       "app/adapters/system/plugin/package.py",

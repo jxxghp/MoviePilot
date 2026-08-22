@@ -5,6 +5,7 @@ author: https://github.com/C5H12O5/syno-videoinfo-plugin
 import base64
 import concurrent
 import concurrent.futures
+import importlib
 import json
 import socket
 import struct
@@ -13,7 +14,7 @@ import urllib.request
 from threading import Lock
 from typing import Dict, Optional
 
-from app.runtime.config import settings
+from app.application.configuration import get_runtime_settings
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import Singleton
@@ -29,6 +30,15 @@ _doh_cache: Dict[str, str] = {}
 _doh_lock = Lock()
 # 保存原始的 socket.getaddrinfo 方法
 _orig_getaddrinfo = socket.getaddrinfo
+
+
+def _doh_setting(key: str):
+    """读取 DoH 热更新配置，组合根未装配时兼容旧 Settings。"""
+    try:
+        return get_runtime_settings().get(key)
+    except RuntimeError:
+        legacy_settings = importlib.import_module("app.runtime.config").settings
+        return getattr(legacy_settings, key)
 
 
 def _get_executor_locked() -> concurrent.futures.ThreadPoolExecutor:
@@ -50,7 +60,7 @@ def enable_doh(enable: bool) -> None:
         """
         socket.getaddrinfo的补丁版本。
         """
-        if host not in settings.DOH_DOMAINS.split(","):
+        if host not in _doh_setting("DOH_DOMAINS").split(","):
             return _orig_getaddrinfo(host, *args, **kwargs)
         # 检查主机是否已解析
         with _doh_lock:
@@ -66,7 +76,7 @@ def enable_doh(enable: bool) -> None:
             # 一次解析的任务必须在同一临界区提交完，避免关闭过程中部分任务落入新线程池
             futures = [
                 executor.submit(_doh_query, resolver, host)
-                for resolver in settings.DOH_RESOLVERS.split(",")
+                for resolver in _doh_setting("DOH_RESOLVERS").split(",")
             ]
         for future in concurrent.futures.as_completed(futures):
             ip = future.result()
@@ -91,11 +101,11 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
 
     def __init__(self) -> None:
         """按当前配置安装或移除 DoH 解析器。"""
-        enable_doh(settings.DOH_ENABLE)
+        enable_doh(_doh_setting("DOH_ENABLE"))
 
     def on_config_changed(self) -> None:
         """配置变化时清理缓存并重新应用 DoH 状态。"""
-        if not settings.DOH_ENABLE:
+        if not _doh_setting("DOH_ENABLE"):
             self.shutdown()
             return
         with _doh_lock:

@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6418,
-  "edge_sha256": "5849976e41ca96688d718358b3c1218d66d986efa0196051531be2a17aae1466",
+  "edge_count": 6419,
+  "edge_sha256": "7e3db5ef8bc9be8d21706ad7a5f4b256430ea876afef66ca9ecf33ea2ff3c64e",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -101,10 +101,11 @@
     "app.adapters.network.browser -> app.runtime.managed_resources",
     "app.adapters.network.cloudflare -> app.runtime",
     "app.adapters.network.cloudflare -> app.runtime.log",
+    "app.adapters.network.doh -> app.application",
+    "app.adapters.network.doh -> app.application.configuration",
     "app.adapters.network.doh -> app.foundation",
     "app.adapters.network.doh -> app.foundation.singleton",
     "app.adapters.network.doh -> app.runtime",
-    "app.adapters.network.doh -> app.runtime.config",
     "app.adapters.network.doh -> app.runtime.log",
     "app.adapters.network.doh -> app.runtime.reload",
     "app.adapters.network.http -> app.runtime",
