@@ -11,6 +11,10 @@
 基类的物理归属在 SDK 而不在 ``app/plugins/``：后者是扩展的安装挂载点，要能被卷整体覆盖，
 容不下任何宿主源码。旧写法 ``from app.plugins import _PluginBase`` 由
 ``app/runtime/compat/manifest.py`` 的符号别名继续解析到这里。
+
+``ChainRuntimeContext`` 与它的 ``data_ports`` 字段类型 ``ChainDataPorts`` 是构造
+``PluginChian`` 时可传入的运行上下文：不传即沿用宿主装配好的那一份，要接管调度、事件、
+消息或缓存中的任何一项则按这两个形状给。
 """
 
 from abc import ABCMeta, abstractmethod
@@ -21,6 +25,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.application.messaging.message import MessageHelper
 from app.application.orchestration import ChainBase
+from app.application.orchestration.context import ChainRuntimeContext
+from app.application.orchestration.data import ChainDataPorts
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -52,7 +58,7 @@ from app.schemas.types import MessageType, NotificationChannel
 if TYPE_CHECKING:
     from app.db.plugin import PluginDatabaseHandle
 
-__all__ = ["PluginChian", "_PluginBase"]
+__all__ = ["ChainDataPorts", "ChainRuntimeContext", "PluginChian", "_PluginBase"]
 
 
 class PluginChian(ChainBase):

@@ -330,6 +330,13 @@
         "replacement": "app.application.orchestration.webhook",
         "target": "app.application.orchestration.webhook"
       },
+      "app.command": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.command",
+        "target": "app.runtime.command"
+      },
       "app.core.auth": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -1735,10 +1742,6 @@
         "line": 223
       },
       {
-        "caller": "app.command",
-        "line": 516
-      },
-      {
         "caller": "app.modules._base.mediaserver",
         "line": 56
       },
@@ -1749,6 +1752,10 @@
       {
         "caller": "app.modules.plex",
         "line": 85
+      },
+      {
+        "caller": "app.runtime.command",
+        "line": 516
       },
       {
         "caller": "app.runtime.extensions.module_manager",
@@ -1778,12 +1785,12 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.command",
-            "line": 282
-          },
-          {
             "caller": "app.modules._base.notification",
             "line": 99
+          },
+          {
+            "caller": "app.runtime.command",
+            "line": 282
           }
         ]
       },
@@ -1997,7 +2004,7 @@
       "EventType.CommandExcute": {
         "consumers": [
           {
-            "caller": "app.command",
+            "caller": "app.runtime.command",
             "line": 518
           }
         ],
@@ -2111,7 +2118,7 @@
       "EventType.ModuleReload": {
         "consumers": [
           {
-            "caller": "app.command",
+            "caller": "app.runtime.command",
             "line": 552
           }
         ],
@@ -2376,6 +2383,11 @@
       },
       {
         "kind": "import",
+        "name": "StreamingHandler",
+        "target": "app.agent.tools.base._StreamingHandlerProtocol"
+      },
+      {
+        "kind": "import",
         "name": "ToolTag",
         "target": "app.agent.tools.tags.ToolTag"
       }
@@ -2555,6 +2567,11 @@
         "target": "app.application.backup.BackupVerification"
       },
       {
+        "kind": "import",
+        "name": "PluginDatabaseHandle",
+        "target": "app.db.plugin.PluginDatabaseHandle"
+      },
+      {
         "kind": "FunctionDef",
         "name": "create_backup",
         "target": ""
@@ -2645,6 +2662,11 @@
       },
       {
         "kind": "import",
+        "name": "EventHandlerBinding",
+        "target": "app.runtime.events.EventHandlerBinding"
+      },
+      {
+        "kind": "import",
         "name": "EventManager",
         "target": "app.runtime.events.EventManager"
       },
@@ -2679,6 +2701,16 @@
         "kind": "import",
         "name": "ChainBase",
         "target": "app.application.orchestration.ChainBase"
+      },
+      {
+        "kind": "import",
+        "name": "ChainDataPorts",
+        "target": "app.application.orchestration.data.ChainDataPorts"
+      },
+      {
+        "kind": "import",
+        "name": "ChainRuntimeContext",
+        "target": "app.application.orchestration.context.ChainRuntimeContext"
       },
       {
         "kind": "import",
@@ -2854,6 +2886,11 @@
     "app.sdk.logging": [
       {
         "kind": "import",
+        "name": "LogWriter",
+        "target": "app.runtime.log.LogWriter"
+      },
+      {
+        "kind": "import",
         "name": "logger",
         "target": "app.runtime.log.logger"
       }
@@ -2906,6 +2943,11 @@
       },
       {
         "kind": "import",
+        "name": "MetaFieldRevision",
+        "target": "app.schemas.metaparse.MetaFieldRevision"
+      },
+      {
+        "kind": "import",
         "name": "MetaInfo",
         "target": "app.domain.metainfo.MetaInfo"
       },
@@ -2918,6 +2960,21 @@
         "kind": "import",
         "name": "MetaMusic",
         "target": "app.domain.meta.metamusic.MetaMusic"
+      },
+      {
+        "kind": "import",
+        "name": "MetaParseStatus",
+        "target": "app.schemas.metaparse.MetaParseStatus"
+      },
+      {
+        "kind": "import",
+        "name": "MetaParseTrace",
+        "target": "app.schemas.metaparse.MetaParseTrace"
+      },
+      {
+        "kind": "import",
+        "name": "MetaParserRun",
+        "target": "app.schemas.metaparse.MetaParserRun"
       },
       {
         "kind": "import",
@@ -3173,6 +3230,16 @@
       },
       {
         "kind": "import",
+        "name": "UrlSafetyDiagnosis",
+        "target": "app.adapters.network.urlsafety.UrlSafetyDiagnosis"
+      },
+      {
+        "kind": "import",
+        "name": "UrlSafetyReason",
+        "target": "app.adapters.network.urlsafety.UrlSafetyReason"
+      },
+      {
+        "kind": "import",
         "name": "UrlUtils",
         "target": "app.foundation.url.UrlUtils"
       },
@@ -3235,13 +3302,38 @@
     "app.sdk.plugins": [
       {
         "kind": "import",
+        "name": "ActivationPolicy",
+        "target": "app.runtime.capabilities.model.ActivationPolicy"
+      },
+      {
+        "kind": "import",
+        "name": "CapabilitySpec",
+        "target": "app.runtime.capabilities.model.CapabilitySpec"
+      },
+      {
+        "kind": "import",
         "name": "ModuleManager",
         "target": "app.runtime.extensions.module_manager.ModuleManager"
       },
       {
         "kind": "import",
+        "name": "PluginDependencyClassification",
+        "target": "app.runtime.extensions.contract.dependency.PluginDependencyClassification"
+      },
+      {
+        "kind": "import",
+        "name": "PluginDependencyInstallResult",
+        "target": "app.runtime.extensions.contract.dependency.PluginDependencyInstallResult"
+      },
+      {
+        "kind": "import",
         "name": "PluginManager",
         "target": "app.runtime.extensions.plugin_manager.PluginManager"
+      },
+      {
+        "kind": "import",
+        "name": "SelectorSpec",
+        "target": "app.runtime.capabilities.model.SelectorSpec"
       }
     ],
     "app.sdk.security": [
@@ -3807,6 +3899,33 @@
         "kind": "import",
         "name": "wraps",
         "target": "functools.wraps"
+      }
+    ],
+    "app.sdk.types": [
+      {
+        "kind": "import",
+        "name": "ChainEventType",
+        "target": "app.schemas.types.ChainEventType"
+      },
+      {
+        "kind": "import",
+        "name": "EventType",
+        "target": "app.schemas.types.EventType"
+      },
+      {
+        "kind": "import",
+        "name": "MediaImageType",
+        "target": "app.schemas.types.MediaImageType"
+      },
+      {
+        "kind": "import",
+        "name": "SystemConfigKey",
+        "target": "app.schemas.types.SystemConfigKey"
+      },
+      {
+        "kind": "import",
+        "name": "TorrentStatus",
+        "target": "app.schemas.types.TorrentStatus"
       }
     ],
     "app.sdk.utilities": [

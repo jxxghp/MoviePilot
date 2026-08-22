@@ -1,4 +1,9 @@
-"""插件使用的媒体上下文、标题解析、识别类型和媒体身份规则。"""
+"""插件使用的媒体上下文、标题解析、识别类型和媒体身份规则。
+
+``MetaParseTrace`` 挂在每个识别结果的 ``parse_trace`` 上，记这次识别经过哪些解析器、哪一步
+改写了哪个字段；它与 ``MetaParserRun``、``MetaFieldRevision``、``MetaParseStatus`` 同属一族，
+读取轨迹要逐层往下取，因此四个一并给出。
+"""
 
 from app.domain.context import (
     Context,
@@ -50,6 +55,12 @@ from app.domain.media import (
     normalize_music_type,
     parse_media_source_selection,
 )
+from app.schemas.metaparse import (
+    MetaFieldRevision,
+    MetaParserRun,
+    MetaParseStatus,
+    MetaParseTrace,
+)
 from app.schemas.media import (
     MEDIA_SOURCE_ALIASES,
     MEDIA_SOURCE_PREFIXES,
@@ -71,9 +82,13 @@ __all__ = [
     "MediaInfo",
     "MetaAnime",
     "MetaBase",
+    "MetaFieldRevision",
     "MetaInfo",
     "MetaInfoPath",
     "MetaMusic",
+    "MetaParseStatus",
+    "MetaParseTrace",
+    "MetaParserRun",
     "MetaVideo",
     "MusicAlbumInfo",
     "MusicArtistInfo",

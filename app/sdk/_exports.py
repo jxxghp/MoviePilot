@@ -36,6 +36,7 @@ SDK_REQUIRED_EXPORTS = {
         '_PluginBase': [('app.sdk.extension', '_PluginBase')],
     },
     'app.sdk.logging': {
+        'LogWriter': [('app.sdk.logging', 'LogWriter')],
         'logger': [('app.sdk.logging', 'logger')],
     },
     'app.sdk.media': {
@@ -48,9 +49,13 @@ SDK_REQUIRED_EXPORTS = {
         'MediaInfo': [('app.domain.context', 'MediaInfo'), ('app.sdk.media', 'MediaInfo')],
         'MetaAnime': [('app.domain.meta.metaanime', 'MetaAnime'), ('app.sdk.media', 'MetaAnime')],
         'MetaBase': [('app.domain.meta.metabase', 'MetaBase'), ('app.sdk.media', 'MetaBase')],
+        'MetaFieldRevision': [('app.sdk.media', 'MetaFieldRevision')],
         'MetaInfo': [('app.domain.metainfo', 'MetaInfo'), ('app.sdk.media', 'MetaInfo')],
         'MetaInfoPath': [('app.domain.metainfo', 'MetaInfoPath'), ('app.sdk.media', 'MetaInfoPath')],
         'MetaMusic': [('app.domain.meta.metamusic', 'MetaMusic'), ('app.sdk.media', 'MetaMusic')],
+        'MetaParseStatus': [('app.sdk.media', 'MetaParseStatus')],
+        'MetaParseTrace': [('app.sdk.media', 'MetaParseTrace')],
+        'MetaParserRun': [('app.sdk.media', 'MetaParserRun')],
         'MetaVideo': [('app.domain.meta.metavideo', 'MetaVideo'), ('app.sdk.media', 'MetaVideo')],
         'MusicAlbumInfo': [('app.domain.context', 'MusicAlbumInfo'), ('app.sdk.media', 'MusicAlbumInfo')],
         'MusicArtistInfo': [('app.domain.context', 'MusicArtistInfo'), ('app.sdk.media', 'MusicArtistInfo')],
@@ -213,6 +218,7 @@ SDK_REQUIRED_EXPORTS = {
 SDK_DECLARED_EXPORTS = {
     'app.sdk.agent': {
         'MoviePilotTool': ('app.agent.tools.base', 'MoviePilotTool'),
+        'StreamingHandler': ('app.agent.tools.base', '_StreamingHandlerProtocol'),
         'ToolTag': ('app.agent.tools.tags', 'ToolTag'),
     },
     'app.sdk.auth': {
@@ -255,6 +261,7 @@ SDK_DECLARED_EXPORTS = {
     'app.sdk.database': {
         'BackupArtifact': ('app.application.backup', 'BackupArtifact'),
         'BackupVerification': ('app.application.backup', 'BackupVerification'),
+        'PluginDatabaseHandle': ('app.db.plugin', 'PluginDatabaseHandle'),
         'create_backup': ('app.sdk.database', 'create_backup'),
         'list_backups': ('app.sdk.database', 'list_backups'),
         'verify_backup': ('app.sdk.database', 'verify_backup'),
@@ -276,14 +283,18 @@ SDK_DECLARED_EXPORTS = {
     },
     'app.sdk.events': {
         'Event': ('app.runtime.events', 'Event'),
+        'EventHandlerBinding': ('app.runtime.events', 'EventHandlerBinding'),
         'EventManager': ('app.runtime.events', 'EventManager'),
         'eventmanager': ('app.runtime.events', 'eventmanager'),
     },
     'app.sdk.extension': {
+        'ChainDataPorts': ('app.application.orchestration.data', 'ChainDataPorts'),
+        'ChainRuntimeContext': ('app.application.orchestration.context', 'ChainRuntimeContext'),
         'PluginChian': ('app.sdk.extension', 'PluginChian'),
         '_PluginBase': ('app.sdk.extension', '_PluginBase'),
     },
     'app.sdk.logging': {
+        'LogWriter': ('app.runtime.log', 'LogWriter'),
         'logger': ('app.runtime.log', 'logger'),
     },
     'app.sdk.media': {
@@ -296,9 +307,13 @@ SDK_DECLARED_EXPORTS = {
         'MediaInfo': ('app.domain.context', 'MediaInfo'),
         'MetaAnime': ('app.domain.meta.metaanime', 'MetaAnime'),
         'MetaBase': ('app.domain.meta.metabase', 'MetaBase'),
+        'MetaFieldRevision': ('app.schemas.metaparse', 'MetaFieldRevision'),
         'MetaInfo': ('app.domain.metainfo', 'MetaInfo'),
         'MetaInfoPath': ('app.domain.metainfo', 'MetaInfoPath'),
         'MetaMusic': ('app.domain.meta.metamusic', 'MetaMusic'),
+        'MetaParseStatus': ('app.schemas.metaparse', 'MetaParseStatus'),
+        'MetaParseTrace': ('app.schemas.metaparse', 'MetaParseTrace'),
+        'MetaParserRun': ('app.schemas.metaparse', 'MetaParserRun'),
         'MetaVideo': ('app.domain.meta.metavideo', 'MetaVideo'),
         'MusicAlbumInfo': ('app.domain.context', 'MusicAlbumInfo'),
         'MusicArtistInfo': ('app.domain.context', 'MusicArtistInfo'),
@@ -351,6 +366,8 @@ SDK_DECLARED_EXPORTS = {
         'SecurityUtils': ('app.adapters.network.urlsafety', 'SecurityUtils'),
         'SiteUtils': ('app.domain.site', 'SiteUtils'),
         'SitesHelper': ('app.application.site.sites', 'SitesHelper'),
+        'UrlSafetyDiagnosis': ('app.adapters.network.urlsafety', 'UrlSafetyDiagnosis'),
+        'UrlSafetyReason': ('app.adapters.network.urlsafety', 'UrlSafetyReason'),
         'UrlUtils': ('app.foundation.url', 'UrlUtils'),
         'WebUtils': ('app.adapters.external.location', 'WebUtils'),
         'base_url': ('app.foundation.url', 'base_url'),
@@ -365,8 +382,13 @@ SDK_DECLARED_EXPORTS = {
         'urls_match': ('app.domain.site', 'urls_match'),
     },
     'app.sdk.plugins': {
+        'ActivationPolicy': ('app.runtime.capabilities.model', 'ActivationPolicy'),
+        'CapabilitySpec': ('app.runtime.capabilities.model', 'CapabilitySpec'),
         'ModuleManager': ('app.runtime.extensions.module_manager', 'ModuleManager'),
+        'PluginDependencyClassification': ('app.runtime.extensions.contract.dependency', 'PluginDependencyClassification'),
+        'PluginDependencyInstallResult': ('app.runtime.extensions.contract.dependency', 'PluginDependencyInstallResult'),
         'PluginManager': ('app.runtime.extensions.plugin_manager', 'PluginManager'),
+        'SelectorSpec': ('app.runtime.capabilities.model', 'SelectorSpec'),
     },
     'app.sdk.security': {
         'ALGORITHM': ('app.application.security.token', 'ALGORITHM'),
@@ -428,6 +450,13 @@ SDK_DECLARED_EXPORTS = {
     },
     'app.sdk.string': {
         'StringUtils': ('app.sdk.string', 'StringUtils'),
+    },
+    'app.sdk.types': {
+        'ChainEventType': ('app.schemas.types', 'ChainEventType'),
+        'EventType': ('app.schemas.types', 'EventType'),
+        'MediaImageType': ('app.schemas.types', 'MediaImageType'),
+        'SystemConfigKey': ('app.schemas.types', 'SystemConfigKey'),
+        'TorrentStatus': ('app.schemas.types', 'TorrentStatus'),
     },
     'app.sdk.utilities': {
         'AbstractSingleton': ('app.foundation.singleton', 'AbstractSingleton'),

@@ -5,6 +5,9 @@
 自身跑不掉的两样东西——``run_blocking`` 把阻塞型调用放进受控线程池，``send_message``
 把工具中途的消息回到发起这次对话的渠道。
 
+``StreamingHandler`` 是 ``set_stream_handler`` 收下的流式缓冲合同，工具重载该方法时按它标注
+参数。它是结构化协议而不是基类，实现方不必继承，方法在场即满足。
+
 ``ToolTag`` 是工具向宿主自报能力域的词汇。标签不是装饰：只读子代理按 ``ToolTag.Read``
 筛选可用工具，不带该标签的工具在只读场景里一次都不会被选中；工具筛选中间件也按标签把
 同一能力域的工具归组。不带标签的工具照常登记，代价是它只出现在全量工具列表里。
@@ -17,7 +20,8 @@
 """
 
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.base import _StreamingHandlerProtocol as StreamingHandler
 from app.agent.tools.tags import ToolTag
 
 
-__all__ = ["MoviePilotTool", "ToolTag"]
+__all__ = ["MoviePilotTool", "StreamingHandler", "ToolTag"]
