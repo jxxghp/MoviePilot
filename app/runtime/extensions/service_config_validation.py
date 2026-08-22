@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Dict, List, Optional
 
-from app.runtime.extensions.config_schema import config_value_violations
+from app.runtime.extensions.contract.config_schema import config_value_violations
 from app.runtime.extensions.service_config import (
     service_bare_token_field,
     service_host_fields,
@@ -23,8 +23,8 @@ from app.runtime.extensions.service_config import (
     service_instance_name,
     service_supports_default_target,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 
 
 def service_config_write_violation(capability: Optional[str], value: Any) -> Optional[str]:

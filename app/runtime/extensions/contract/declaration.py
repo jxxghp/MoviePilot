@@ -119,7 +119,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     个分身的扩展提供的类型也可以只认一份配置。
 
     ``capability`` 是该类型属于哪一族服务的语义标签，取值须是服务族登记表
-    （`app.runtime.extensions.service_family_registry`）中已登记的族，宿主自带
+    （`app.runtime.extensions.registry.service_family`）中已登记的族，宿主自带
     下载器、媒体服务器、消息通知、存储与登录认证五族。各族共用这一条声明，
     差异只在该标签：取用链是同一条——同一张服务实例表，按「能力标签加类型
     标识」取用，形状没有区别，因此不按业务族拆成多个钩子，差异作为参数声明出来。
@@ -145,7 +145,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     ``app.modules._base.storage.StorageBase`` 并落地全部抽象方法，宿主**不**按
     ``impl(name=..., **config)`` 构造它；``type`` 同时是存储标识，按令牌取用的登记
     从这里来。构造一律走工厂——不给 ``factory`` 时宿主用默认工厂
-    （`app.runtime.extensions.storage_registry.storage_instance_factory`），按实例
+    （`app.runtime.extensions.registry.storage.storage_instance_factory`），按实例
     归属交付后端、配置由后端自己按存储令牌懒读，扩展作者一行工厂都不用写；给了
     ``factory`` 就走扩展自己那一个，宿主只交出整条配置对象。存储的构造不经关键字
     展开，因此 ``config_schema`` 在该族里没有保留字段名。
@@ -165,7 +165,7 @@ class ServiceInstanceDeclaration(ExtensionDeclaration):
     模式下界面是扩展自带的联邦组件，宿主看不见组件树，推不出配置形状。契约描述的是
     该类型自己的配置内容，即该族配置模型 ``config`` 字段的形状；``name``/``type``/
     ``enabled`` 这类外壳字段属于服务族，不由类型描述。取值是 JSON Schema 的一个受控
-    子集，判据与关键字集合见 `app.runtime.extensions.config_schema`。
+    子集，判据与关键字集合见 `app.runtime.extensions.contract.config_schema`。
 
     :param capability: 能力标签，取值须是服务族登记表中已登记的族
     :param type: 类型标识，与该族配置模型的 ``type`` 字段取值对应，例如 qbittorrent；

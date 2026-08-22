@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     declaration_filter_rule_conditions,
     declaration_filter_rule_group_identity,
     declaration_filter_rule_group_scope,

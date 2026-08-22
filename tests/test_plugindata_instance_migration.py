@@ -12,7 +12,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
 from app.db.models.plugindata import PluginData
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 MIGRATION = "database.versions.58e7ce2cd0fd_3_0_9"

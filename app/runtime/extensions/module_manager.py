@@ -13,7 +13,7 @@ from app.runtime.capabilities.model import (
 from app.runtime.capabilities.runtime import CapabilityRuntime
 from app.runtime.config import settings
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
-from app.runtime.extensions.contract import supports_extension_hook
+from app.runtime.extensions.contract.extension import supports_extension_hook
 from app.runtime.extensions.host_module_adapter import (
     HOST_MODULE_KIND,
     HostModuleAdapter,
@@ -23,7 +23,7 @@ from app.runtime.extensions.host_module_adapter import (
     should_run_host_module,
 )
 from app.runtime.extensions.service_config import service_capability
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.log import logger
 from app.schemas.types import EventType
 

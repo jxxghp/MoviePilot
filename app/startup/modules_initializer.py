@@ -72,7 +72,7 @@ from app.application.service_config import (
     configure_service_instance_configs,
     get_configured_service_instance_configs,
 )
-from app.runtime.extensions.meta_parser_registry import configure_meta_parser_order_reader
+from app.runtime.extensions.registry.meta_parser import configure_meta_parser_order_reader
 from app.runtime.extensions.service_config import (
     configure_service_config_reader,
     configure_service_instance_config_reader,

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from app.runtime.extensions.module.contracts import (
+from app.runtime.extensions.contract.module_method import (
     ModuleResultAggregation,
     get_module_method_contract,
     get_multi_source_contract,

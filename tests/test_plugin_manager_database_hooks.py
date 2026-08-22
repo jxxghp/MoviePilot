@@ -11,7 +11,7 @@ import pytest
 
 from app.foundation.singleton import Singleton
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.plugin_manager import (
     PluginManager,
     _configure_plugin_database_lifecycle,

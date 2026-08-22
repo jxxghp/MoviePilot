@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from app.runtime.extensions.instance import extension_id_of
+from app.runtime.extensions.contract.instance import extension_id_of
 from app.schemas.plugin import PluginRuntimeStatus
 
 

@@ -18,18 +18,6 @@ DEFAULT_INSTANCE_ID = "default"
 # 实例键中扩展标识与实例标识的分隔符，实例标识不含该字符才能无损反解
 INSTANCE_KEY_SEPARATOR = "@"
 
-__all__ = [
-    "DEFAULT_INSTANCE_ID",
-    "INSTANCE_KEY_SEPARATOR",
-    "describe_instance_candidates",
-    "extension_id_of",
-    "instance_key",
-    "is_default_instance_key",
-    "matches_extension",
-    "normalize_instance_id",
-    "split_instance_key",
-]
-
 
 def normalize_instance_id(instance_id: Optional[str]) -> str:
     """校验实例标识并返回归一后的取值。

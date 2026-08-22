@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 ConfigReader = Callable[[Any], Any]

@@ -15,7 +15,7 @@ from app.modules.bangumi import BangumiModule
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.thetvdb import TheTvDbModule
-from app.runtime.extensions.module.contracts import (
+from app.runtime.extensions.contract.module_method import (
     get_module_method_contract,
     get_multi_source_contract,
 )

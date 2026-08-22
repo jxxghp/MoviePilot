@@ -22,7 +22,7 @@ from app.runtime.extensions.plugin_manager import (
     _configure_plugin_version_switch_notifier,
     configure_site_auth_level_provider,
 )
-from app.runtime.extensions.plugin.dependency_status import (
+from app.runtime.extensions.contract.dependency import (
     PluginDependencyInstallResult,
 )
 from app.application.messaging.message import MessageHelper
@@ -64,7 +64,7 @@ from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.log import (
     configure_plugin_log_dir_resolver,
     logger,

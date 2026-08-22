@@ -12,13 +12,13 @@ import pytest
 
 from app.modules import _MessageBase
 from app.runtime.extensions import service_config as service_config_module
-from app.runtime.extensions import service_instance_registry as registry_module
-from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.registry import service_instance as registry_module
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.service_config import (
     create_service_instance,
     select_instance_configs,
 )
-from app.runtime.extensions.service_instance_registry import (
+from app.runtime.extensions.registry.service_instance import (
     ServiceInstanceAdapter,
     ServiceInstanceEntry,
 )

@@ -16,7 +16,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.paths import ensure_path_segment
 from app.runtime.config import settings
 from app.runtime.events import EventManager
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
     CommandDeclaration,
@@ -30,7 +30,7 @@ from app.runtime.extensions.declaration import (
     ServiceInstanceDeclaration,
     ServiceInstanceRequirement,
 )
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     DEFAULT_INSTANCE_ID,
     instance_key,
     normalize_instance_id,

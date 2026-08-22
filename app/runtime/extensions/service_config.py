@@ -28,8 +28,8 @@ from typing import Any, Dict, List, Mapping, Optional, Type
 
 from pydantic import ValidationError
 
-from app.runtime.extensions.config_schema import config_value_violations
-from app.runtime.extensions.instance import describe_instance_candidates
+from app.runtime.extensions.contract.config_schema import config_value_violations
+from app.runtime.extensions.contract.instance import describe_instance_candidates
 from app.runtime.log import logger
 from app.schemas.system import AuthProviderConf
 from app.schemas.system import DownloaderConf

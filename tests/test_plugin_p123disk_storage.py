@@ -21,8 +21,8 @@ from app.plugins.p123disk import STORAGE_NAME, P123Disk
 from app.plugins.p123disk.config import STORAGE_CONFIG_SCHEMA
 from app.plugins.p123disk.fileitem import build_file_item
 from app.plugins.p123disk.storage import STORAGE_ID, P123Storage
-from app.runtime.extensions.config_schema import config_value_violations
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.config_schema import config_value_violations
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
@@ -30,8 +30,8 @@ from app.runtime.extensions.plugin.service_instance_capabilities import (
 from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.extensions.service_instance_registry import service_instance_registry
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
+from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.runtime.hostports.storages import storage_config_port
 from app.schemas import FileURI
 from app.schemas.system import StorageConf

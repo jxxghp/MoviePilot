@@ -13,7 +13,7 @@ from typing import Iterator
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.declaration import ActionDeclaration
+from app.runtime.extensions.contract.declaration import ActionDeclaration
 from app.runtime.extensions.plugin.instance_selection import PluginInstanceTarget
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.workflow import Action, ActionContext

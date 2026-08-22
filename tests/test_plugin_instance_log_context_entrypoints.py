@@ -22,7 +22,7 @@ import pytest
 from app.foundation.singleton import Singleton
 from app.runtime import log as log_module
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID, instance_key
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID, instance_key
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 

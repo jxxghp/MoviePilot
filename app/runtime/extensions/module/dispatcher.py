@@ -8,13 +8,13 @@ from typing import Any, Protocol
 
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool
-from app.runtime.extensions.contract import (
+from app.runtime.extensions.contract.extension import (
     ExtensionFaultScope,
     ExtensionProvider,
     ExtensionProviderSource,
 )
 from app.runtime.extensions.host_module_adapter import HostModuleProviderSource
-from app.runtime.extensions.module.contracts import get_module_method_contract
+from app.runtime.extensions.contract.module_method import get_module_method_contract
 from app.runtime.extensions.plugin.projection import PluginProviderSource
 from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException

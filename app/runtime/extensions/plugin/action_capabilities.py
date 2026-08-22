@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Mapping, Optional
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     declaration_action_identity,
     declaration_action_impl,
     declaration_action_kwargs,

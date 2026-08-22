@@ -12,15 +12,15 @@ import pytest
 from app.application.storage import StorageHelper
 from app.foundation.singleton import Singleton
 from app.modules._base.storage import StorageBase
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin import extension_scoped, storage_capabilities
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.extensions.service_instance_registry import (
+from app.runtime.extensions.registry.service_instance import (
     service_instance_registry,
 )
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.schemas.system import StorageConf
 
 

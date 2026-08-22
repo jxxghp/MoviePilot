@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.plugin.dependency_status import (
+from app.runtime.extensions.contract.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
 )

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
-from app.runtime.extensions.module.contracts import (
+from app.runtime.extensions.contract.module_method import (
     get_module_method_contract,
     get_multi_source_contract,
 )

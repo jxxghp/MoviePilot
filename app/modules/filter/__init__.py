@@ -8,7 +8,7 @@ from app.domain.filterrule import get_builtin_rule_set, parse_rule_group
 from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
 from app.runtime.log import logger
 from app.modules import _ModuleBase
-from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
+from app.runtime.extensions.registry.filter_rule import plugin_filter_rule_registry
 from app.runtime.hostports.filterrules import filter_rule_group_port
 from app.runtime.hostports.torrentanalysis import torrent_analysis_port
 from app.schemas.filter import TorrentVerdict

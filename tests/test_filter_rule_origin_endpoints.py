@@ -21,7 +21,7 @@ from app.application.rules import (
     FilterRuleOriginService,
 )
 from app.domain.filterrule import BUILTIN_RULE_SET
-from app.runtime.extensions.filter_rule_registry import (
+from app.runtime.extensions.registry.filter_rule import (
     RULE_GROUP_KIND,
     RULE_KIND,
     PluginFilterRuleRegistry,

@@ -15,12 +15,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.endpoints.service import config_form as service_config_form_endpoint
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
-from app.runtime.extensions.service_family_registry import (
+from app.runtime.extensions.registry.service_family import (
     ServiceFamilyRegistry,
     register_builtin_service_families,
     service_family_registry,

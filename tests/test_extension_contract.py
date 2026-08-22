@@ -9,7 +9,7 @@ import pytest
 
 from app.modules import _ModuleBase
 from app.plugins import _PluginBase
-from app.runtime.extensions.contract import (
+from app.runtime.extensions.contract.extension import (
     ExtensionDistribution,
     ExtensionFaultScope,
     ExtensionProvider,

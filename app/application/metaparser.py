@@ -15,8 +15,8 @@ from __future__ import annotations
 from typing import Any, List, Optional, Sequence
 
 from app.application.service_config import async_write_system_setting
-from app.runtime.extensions.instance import split_instance_key
-from app.runtime.extensions.meta_parser_registry import (
+from app.runtime.extensions.contract.instance import split_instance_key
+from app.runtime.extensions.registry.meta_parser import (
     MetaParserArbitration,
     PARSER_TOKEN_SEPARATOR,
     meta_parser_registry,

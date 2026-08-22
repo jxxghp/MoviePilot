@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.runtime.extensions.registry.plugin import PluginRegistry
 from app.schemas.plugin import PluginRuntimeStatus
 
 

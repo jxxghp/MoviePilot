@@ -25,7 +25,7 @@ from app.application.orchestration.transfer import TransferChain
 from app.workflow.service import WorkflowChain
 from app.runtime.config import settings, global_vars
 from app.runtime.events import Event, eventmanager
-from app.runtime.extensions.instance import matches_extension, split_instance_key
+from app.runtime.extensions.contract.instance import matches_extension, split_instance_key
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.systemconfig import SystemConfigOper

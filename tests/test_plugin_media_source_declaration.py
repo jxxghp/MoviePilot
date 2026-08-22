@@ -11,7 +11,7 @@ from typing import Iterator
 import pytest
 
 from app.runtime.deprecation import policy as deprecation_policy
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     MediaSourceDeclaration,
     ModuleDeclaration,
 )

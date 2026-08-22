@@ -31,8 +31,8 @@ from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
 from app.runtime.deprecation.policy import warn as deprecation_warn
-from app.runtime.extensions.contract import ExtensionDistribution, supports_extension_hook
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.extension import ExtensionDistribution, supports_extension_hook
+from app.runtime.extensions.contract.declaration import (
     declaration_config_component,
     declaration_config_form,
     declaration_config_schema,
@@ -46,7 +46,7 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
     declaration_service_instance_requirement,
 )
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     DEFAULT_INSTANCE_ID,
     extension_id_of,
     instance_key,
@@ -66,24 +66,24 @@ from app.runtime.extensions.plugin.layout import (
     resolve_plugin_version_dir,
 )
 from app.runtime.extensions.plugin.projection import PluginExtension, PluginProjection
-from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.runtime.extensions.registry.plugin import PluginRegistry
 from app.runtime.extensions.plugin.storage import get_plugin_storage
 from app.runtime.extensions.plugin.system import get_plugin_system
-from app.runtime.extensions.command_registry import plugin_command_registry
-from app.runtime.extensions.filter_rule_registry import plugin_filter_rule_registry
-from app.runtime.extensions.service_instance_registry import service_instance_registry
-from app.runtime.extensions.meta_parser_registry import meta_parser_registry
+from app.runtime.extensions.registry.command import plugin_command_registry
+from app.runtime.extensions.registry.filter_rule import plugin_filter_rule_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
+from app.runtime.extensions.registry.meta_parser import meta_parser_registry
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
 from app.runtime.extensions.service_instance_requirement import (
     SERVICE_INSTANCE_PARAM,
     accepts_keyword,
     resolve_required_service_instance,
 )
-from app.runtime.extensions.storage_registry import (
+from app.runtime.extensions.registry.storage import (
     storage_backend_registry,
     storage_instance_factory,
 )
-from app.runtime.extensions.plugin.dependency_status import (
+from app.runtime.extensions.contract.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
 )

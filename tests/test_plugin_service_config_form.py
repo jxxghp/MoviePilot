@@ -12,11 +12,11 @@ from fastapi import HTTPException
 
 from app.api.endpoints.service import config_form as service_config_form_endpoint
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.service import ServiceConfigForm
 
 # 一份合法的配置界面：组件树加默认数据二元组，形状与 get_form() 相同

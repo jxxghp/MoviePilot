@@ -9,11 +9,11 @@ from app.domain.context import MediaInfo, TorrentInfo
 from app.domain.filterrule import BUILTIN_RULE_SET, RuleParser
 from app.foundation.singleton import Singleton
 from app.modules.filter import FilterModule
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     FilterRuleDeclaration,
     FilterRuleGroupDeclaration,
 )
-from app.runtime.extensions.filter_rule_registry import (
+from app.runtime.extensions.registry.filter_rule import (
     PluginFilterRuleRegistry,
     plugin_filter_rule_registry,
 )
@@ -398,7 +398,7 @@ def test_projection_swallows_plugin_exception_without_blocking_others():
 def test_plugin_base_subclass_without_overrides_declares_nothing():
     """什么都不声明的插件行为与既有完全一致：两个新钩子都不算已实现。"""
     from app.plugins import _PluginBase
-    from app.runtime.extensions.contract import supports_extension_hook
+    from app.runtime.extensions.contract.extension import supports_extension_hook
 
     class _SilentPlugin(_PluginBase):
         """未覆写任何筛选规则钩子的插件。"""

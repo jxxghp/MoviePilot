@@ -11,7 +11,7 @@ import time
 from alembic import op
 import sqlalchemy as sa
 
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 revision = "27c3b2eb9b1e"

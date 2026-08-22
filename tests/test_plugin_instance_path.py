@@ -11,7 +11,7 @@ import pytest
 
 from app import plugins as plugins_module
 from app.plugins import plugin_instance_path
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 @pytest.fixture

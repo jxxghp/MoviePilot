@@ -7,7 +7,7 @@ import pytest
 from app.agent.tools.base import MoviePilotTool
 from app.foundation.singleton import Singleton
 from app.runtime.deprecation import policy as deprecation_policy
-from app.runtime.extensions.declaration import AgentToolDeclaration
+from app.runtime.extensions.contract.declaration import AgentToolDeclaration
 from app.runtime.extensions.plugin import agent_tool_capabilities
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager

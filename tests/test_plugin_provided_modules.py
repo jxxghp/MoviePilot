@@ -6,7 +6,7 @@ from typing import Iterator
 import pytest
 
 from app.runtime.deprecation import policy as deprecation_policy
-from app.runtime.extensions.declaration import ModuleDeclaration
+from app.runtime.extensions.contract.declaration import ModuleDeclaration
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.plugin import module_capabilities
 from app.runtime.extensions.plugin import projection as projection_module

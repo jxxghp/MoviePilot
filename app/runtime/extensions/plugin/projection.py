@@ -2,18 +2,18 @@
 
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
-from app.runtime.extensions.contract import (
+from app.runtime.extensions.contract.extension import (
     ExtensionDistribution,
     ExtensionFaultScope,
     ExtensionProvider,
     supports_extension_hook,
 )
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     extension_id_of,
     matches_extension,
     split_instance_key,
 )
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     declaration_action_identity,
     declaration_action_impl,
     declaration_action_kwargs,

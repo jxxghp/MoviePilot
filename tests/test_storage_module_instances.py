@@ -10,8 +10,8 @@ from typing import List, Optional, Tuple
 import pytest
 
 from app.modules._base.storage import StorageInstanceSpec, _StorageModuleBase
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.schemas.workflow import FileItem
 from tests.test_storage_backend_registry import BUILTIN_STORAGE_MODULES
 

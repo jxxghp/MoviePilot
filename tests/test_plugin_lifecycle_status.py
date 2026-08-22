@@ -6,7 +6,7 @@ from typing import Iterator
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.instance import instance_key
+from app.runtime.extensions.contract.instance import instance_key
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 

@@ -20,7 +20,7 @@ from app.api.deps import get_current_active_manage_user
 from app.api.endpoints import service as service_endpoint
 from app.api.endpoints.service import service_instance_selection
 from app.foundation.singleton import Singleton
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     ActionDeclaration,
     DashboardDeclaration,
     ServiceInstanceRequirement,
@@ -34,7 +34,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 from app.runtime.extensions.service_instance_requirement import (
     REQUIREMENT_FAMILY_ABSENT,
     REQUIREMENT_INSTANCE_ABSENT,

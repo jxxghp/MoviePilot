@@ -23,7 +23,7 @@ from app.runtime.extensions.command_arbitration import (
     PLUGIN_LAYER,
     BuiltinCommandArbiter,
 )
-from app.runtime.extensions.command_registry import plugin_command_registry
+from app.runtime.extensions.registry.command import plugin_command_registry
 from app.schemas.command import CommandOrigin
 
 

@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.adapters.web.security.access import verify_token
 from app.api.endpoints import media as media_endpoint
-from app.runtime.extensions.declaration import MediaSourceDeclaration
+from app.runtime.extensions.contract.declaration import MediaSourceDeclaration
 from app.runtime.extensions.module.media_source_faces import (
     media_source_capabilities,
     method_capability,

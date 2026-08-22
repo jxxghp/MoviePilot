@@ -15,7 +15,7 @@ from app.db.engine import build_sqlite_engine, get_engine
 from app.db.plugin.container import PluginDatabaseHandle
 from app.db.plugin.locator import postgres_schema_name, sqlite_db_path, sqlite_sidecar_paths
 from app.runtime.config import settings
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.log import logger
 
 _InstanceKey = Tuple[str, str]

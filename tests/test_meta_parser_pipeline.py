@@ -17,9 +17,9 @@ import pytest
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.parsepipeline import meta_to_parsed
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import MetaParserDeclaration
-from app.runtime.extensions.meta_parser_registry import (
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import MetaParserDeclaration
+from app.runtime.extensions.registry.meta_parser import (
     configure_meta_parser_order_reader,
     meta_parser_registry,
     meta_parser_token,

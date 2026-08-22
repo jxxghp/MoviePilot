@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     DEFAULT_INSTANCE_ID,
     describe_instance_candidates,
     extension_id_of,
@@ -12,7 +12,7 @@ from app.runtime.extensions.instance import (
     normalize_instance_id,
     split_instance_key,
 )
-from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.runtime.extensions.registry.plugin import PluginRegistry
 
 
 def test_default_instance_key_degrades_to_bare_extension_id() -> None:

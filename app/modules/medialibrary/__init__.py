@@ -8,7 +8,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.runtime.hostports.directories import directory_config_port
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.runtime.log import logger
 from app.runtime.hostports.mediatransfer import media_transfer_port
 from app.modules import _ModuleBase

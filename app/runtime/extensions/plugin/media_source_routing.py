@@ -17,11 +17,11 @@ from __future__ import annotations
 import inspect
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     declaration_media_source_identity,
     declaration_media_source_methods,
 )
-from app.runtime.extensions.module.contracts import get_multi_source_contract
+from app.runtime.extensions.contract.module_method import get_multi_source_contract
 from app.schemas.media import normalize_media_source
 
 _ASYNC_PREFIX = "async_"

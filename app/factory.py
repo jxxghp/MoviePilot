@@ -16,7 +16,7 @@ from app.adapters.web.security.access import (
     verify_token,
 )
 from app.application.security.token import create_access_token, decode_access_token
-from app.runtime.extensions.instance import matches_extension
+from app.runtime.extensions.contract.instance import matches_extension
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.config import settings
 from app.runtime.localization import LocaleHelper

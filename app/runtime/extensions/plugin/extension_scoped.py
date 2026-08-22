@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     DEFAULT_INSTANCE_ID,
     extension_id_of,
     split_instance_key,

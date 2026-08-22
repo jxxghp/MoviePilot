@@ -24,7 +24,7 @@ class FastAPIDynamicRouteRegistry:
         """注入应用、插件投影、认证依赖、日志端口和实例键匹配判据。
 
         :param route_matches: 判断路由路径首段（实例键）是否命中筛选条件的谓词，
-            签名与 `app.runtime.extensions.instance.matches_extension` 一致；
+            签名与 `app.runtime.extensions.contract.instance.matches_extension` 一致；
             适配器层不直接依赖插件运行时模块，由组合根注入具体实现
         """
         self._app = app

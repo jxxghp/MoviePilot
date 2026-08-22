@@ -32,8 +32,8 @@ from app.db.models.user import User
 from app.db.oper.user import UserOper
 from app.db.oper.user_identity import UserIdentityOper
 from app.runtime.extensions.auth_entries import list_auth_entries
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
@@ -44,8 +44,8 @@ from app.runtime.extensions.service_config import (
     service_supports_default_target,
 )
 from app.runtime.extensions.service_config_validation import service_config_records
-from app.runtime.extensions.service_family_registry import service_family_registry
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.system import AuthProviderConf
 from app.schemas.types import ModuleType, SystemConfigKey
 from app.schemas.user import AuthProviderInfo

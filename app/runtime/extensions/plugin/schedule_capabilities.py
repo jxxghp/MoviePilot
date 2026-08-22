@@ -20,7 +20,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     ScheduleDeclaration,
     declaration_impl,
     declaration_schedule_identity,

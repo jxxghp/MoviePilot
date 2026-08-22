@@ -3,7 +3,7 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
-from app.runtime.extensions.instance import describe_instance_candidates
+from app.runtime.extensions.contract.instance import describe_instance_candidates
 from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,

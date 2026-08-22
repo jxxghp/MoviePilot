@@ -23,10 +23,10 @@ from __future__ import annotations
 
 from typing import Dict, Protocol, Tuple, runtime_checkable
 
-from app.runtime.extensions.plugin.service_instance_contracts import (
+from app.runtime.extensions.contract.service_instance import (
     SERVICE_INSTANCE_REQUIRED_METHODS,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 
 
 def service_capabilities() -> Dict[str, str]:

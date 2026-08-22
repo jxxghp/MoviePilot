@@ -17,7 +17,7 @@ from app.application.orchestration.media import MediaChain
 from app.application.orchestration.storage import StorageChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
-from app.runtime.extensions.storage_registry import storage_backend_registry
+from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.api.principal import ApiPrincipal
 from app.api.deps import (
     get_current_active_manage_user,

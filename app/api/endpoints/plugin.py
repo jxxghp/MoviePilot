@@ -43,7 +43,7 @@ from app.application.commands import init_commands
 from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.cache import async_fresh
 from app.runtime.config import settings
-from app.runtime.extensions.instance import extension_id_of
+from app.runtime.extensions.contract.instance import extension_id_of
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.adapters.web.security.access import (
     resource_token_cookie,

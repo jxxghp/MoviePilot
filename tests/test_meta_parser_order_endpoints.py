@@ -23,8 +23,8 @@ from app.application.metaparser import (
     BUILTIN_META_PARSER_NAME,
     MetaParserPipelineService,
 )
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.meta_parser_registry import (
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.registry.meta_parser import (
     configure_meta_parser_order_reader,
     meta_parser_registry,
 )

@@ -17,7 +17,7 @@ from app.db.plugin.registry import (
 )
 from app.plugins import plugin_instance_path
 from app.runtime.config import settings
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 @pytest.fixture(autouse=True)

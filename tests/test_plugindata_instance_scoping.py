@@ -12,7 +12,7 @@ import pytest
 
 from app.db.models.plugindata import PluginData
 from app.db.oper.plugindata import PluginDataOper
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 @pytest.fixture(autouse=True)

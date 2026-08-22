@@ -13,7 +13,7 @@ from app.runtime.extensions.service_config import (
     service_capability,
     service_config_key,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
 from app.schemas.types import ModuleType, SystemConfigKey

@@ -40,7 +40,7 @@ from app.api.service_secrets import SECRET_MASK
 from app.application.service_config import get_configured_service_instance_configs
 from app.db.models.serviceconfig import BUILTIN_PROVIDER, ServiceConfig
 from app.db.oper.serviceconfig import ServiceConfigOper
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.service import (
     ServiceConfigProviderIssue,
     ServiceFamilyInfo,

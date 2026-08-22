@@ -21,8 +21,8 @@ from app.modules.smb import SmbModule
 from app.modules.smb.smb import SMB
 from app.modules.u115 import U115Module
 from app.modules.u115.u115 import U115Pan
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.storage_registry import (
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.registry.storage import (
     StorageBackendRegistry,
     storage_backend_identity,
     storage_backend_registry,

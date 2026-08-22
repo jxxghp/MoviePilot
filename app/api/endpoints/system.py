@@ -38,7 +38,7 @@ from app.application.orchestration.system import SystemChain
 from app.runtime.config import global_vars, settings
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_write_violation
 from app.application.module import ModuleManager

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     declaration_command_data,
     declaration_command_identity,
     declaration_command_override,

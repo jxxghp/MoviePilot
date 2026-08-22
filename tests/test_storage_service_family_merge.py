@@ -25,7 +25,7 @@ from app.application.storage_config import select_storage_config
 from app.modules._base.storage import StorageBase
 from app.plugins import _PluginBase
 from app.runtime.deprecation.notices import NOTICES
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
@@ -39,8 +39,8 @@ from app.runtime.extensions.service_config_validation import (
     service_config_records,
     service_config_write_violation,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.system import DownloaderConf, StorageConf
 from app.schemas.types import ModuleType, SystemConfigKey
 

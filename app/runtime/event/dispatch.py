@@ -11,7 +11,7 @@ from typing import Any
 from app.runtime.event.binding import EventBindingResolver, EventHandlerBinding
 from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
-from app.runtime.extensions.instance import split_instance_key
+from app.runtime.extensions.contract.instance import split_instance_key
 from app.runtime.log import logger, wrap_for_plugin_instance
 from app.schemas.types import EventType
 

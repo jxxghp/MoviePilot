@@ -19,8 +19,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.instance import describe_instance_candidates
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.instance import describe_instance_candidates
 from app.runtime.log import logger
 from app.schemas.file import FileURI
 

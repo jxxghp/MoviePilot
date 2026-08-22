@@ -6,7 +6,7 @@ from typing import Type
 
 from sqlalchemy.orm import DeclarativeBase
 
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 def plugin_declarative_base(

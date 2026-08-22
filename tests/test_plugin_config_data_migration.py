@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 
 from app.db.models.pluginconfig import PluginConfig
 from app.db.models.systemconfig import SystemConfig
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 MIGRATION = "database.versions.27c3b2eb9b1e_3_0_10"

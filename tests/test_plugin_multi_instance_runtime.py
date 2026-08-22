@@ -20,10 +20,10 @@ from app.plugins import _PluginBase
 from app.runtime.event.binding import EventBindingResolver, EventHandlerBinding
 from app.runtime.events import EventManager
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.runtime.extensions.registry.plugin import PluginRegistry
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
     configure_plugin_storage,

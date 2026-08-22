@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
-from app.runtime.extensions.instance import matches_extension
+from app.runtime.extensions.contract.instance import matches_extension
 
 _PREFIX = "/api/v1/plugin"
 _INSTANCE_KEYS = ["DemoPlugin", "DemoPlugin@second"]

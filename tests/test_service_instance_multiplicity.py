@@ -13,14 +13,14 @@ import pytest
 from app.api.endpoints.service import config_form as service_config_form_endpoint
 from app.application.downloader import DownloaderHelper
 from app.foundation.singleton import Singleton
-from app.runtime.extensions import service_instance_registry as registry_module
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.registry import service_instance as registry_module
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,
 )
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.service import ServiceConfigForm
 
 

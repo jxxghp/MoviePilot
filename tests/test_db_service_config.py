@@ -229,7 +229,7 @@ def test_builtin_provider_is_distinguishable_from_any_extension_identifier():
     的冒号出现在 ``@`` 之前，因此任何扩展实例键都构造不出它。留空则做不到这条区分，
     「内建也可禁用」那天会退回布尔式的「是不是插件」。
     """
-    from app.runtime.extensions.instance import instance_key
+    from app.runtime.extensions.contract.instance import instance_key
 
     head = BUILTIN_PROVIDER.split("@")[0]
     assert not head.isidentifier()

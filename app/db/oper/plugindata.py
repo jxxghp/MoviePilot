@@ -2,7 +2,7 @@ from typing import Any, Optional
 
 from app.db.base import DbOper
 from app.db.models.plugindata import PluginData
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 class PluginDataOper(DbOper):

@@ -151,7 +151,7 @@ def test_agent_tool_base_and_tags_are_the_canonical_objects():
 
 def test_agent_tool_written_against_the_sdk_passes_the_registration_contract():
     """只用 SDK 基类写出来的工具必须过得了登记期契约校验。"""
-    from app.runtime.extensions.declaration import AgentToolDeclaration
+    from app.runtime.extensions.contract.declaration import AgentToolDeclaration
     from app.runtime.extensions.plugin import agent_tool_capabilities
     from app.sdk.agent import MoviePilotTool
 
@@ -188,7 +188,7 @@ def test_service_instance_protocols_match_the_host_required_methods():
     把它们钉在一起：宿主改必填集而协议没跟上，或协议多写了一个宿主根本不判的方法，
     都在这里红。
     """
-    from app.runtime.extensions.plugin.service_instance_contracts import (
+    from app.runtime.extensions.contract.service_instance import (
         SERVICE_INSTANCE_REQUIRED_METHODS,
     )
     from app.sdk.service_instances import (
@@ -212,7 +212,7 @@ def test_service_instance_protocols_match_the_host_required_methods():
 
 def test_required_methods_accessor_reads_through_to_the_host_table():
     """必填集访问器直读宿主那张表，不在表里的族答空元组。"""
-    from app.runtime.extensions.plugin.service_instance_contracts import (
+    from app.runtime.extensions.contract.service_instance import (
         SERVICE_INSTANCE_REQUIRED_METHODS,
     )
     from app.sdk.service_instances import service_instance_required_methods
@@ -229,7 +229,7 @@ def test_declaring_the_protocol_stays_optional_for_service_instances():
     把鸭子类型改成强制继承会让走 ``factory`` 路径与既有的实现当场失效，因此协议只是
     写代码时的可读形态。本条同时压住两个方向：继承了的过，没继承但方法齐的也过。
     """
-    from app.runtime.extensions.plugin.service_instance_contracts import (
+    from app.runtime.extensions.contract.service_instance import (
         service_instance_shape_violation,
     )
     from app.sdk.service_instances import DownloaderInstance
@@ -272,8 +272,8 @@ def test_service_capabilities_reads_through_to_the_family_registry():
     SDK 若抄一份固定清单，这条断言的后半段就永远过不了——而那正是「族是登记出来的」
     这句话的实际含义。
     """
-    from app.runtime.extensions.contract import ExtensionDistribution
-    from app.runtime.extensions.service_family_registry import service_family_registry
+    from app.runtime.extensions.contract.extension import ExtensionDistribution
+    from app.runtime.extensions.registry.service_family import service_family_registry
     from app.sdk.service_instances import service_capabilities
 
     builtin = service_capabilities()

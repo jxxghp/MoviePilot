@@ -217,7 +217,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 - 类型枚举、41 个模块的 `get_type()`、按类型与按子类型的查找一并移除，
   其中按子类型查找早已无调用者。
 
-同期落地扩展实例的运行期标识（`app/runtime/extensions/instance.py`）：默认实例的实例键
+同期落地扩展实例的运行期标识（`app/runtime/extensions/contract/instance.py`）：默认实例的实例键
 退化为裸扩展标识，因此单实例扩展的取值与不区分实例时一致。实例键构造只约束不含分隔符，
 路径安全校验移到真正构造路径处——插件数据目录此前完全没有校验。
 
@@ -271,7 +271,7 @@ SDK 在宿主生产代码中零消费者（这是对的，SDK 面向插件），
 调用方实际询问的那一个源前缀方法名。
 
 六个多来源能力契约把源与类型降为参数，登记于
-`app/runtime/extensions/module/contracts.py` 的 `_MULTI_SOURCE_CONTRACTS`：
+`app/runtime/extensions/contract/module_method.py` 的 `_MULTI_SOURCE_CONTRACTS`：
 
 | 契约 | 覆盖来源 |
 |---|---|

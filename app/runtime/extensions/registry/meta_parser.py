@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
-from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.log import logger
 from app.schemas.metaparse import (
     BUILTIN_META_PARSER,

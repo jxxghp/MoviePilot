@@ -35,7 +35,7 @@ from app.runtime.extensions.service_config import (
     select_instance_configs,
     service_capability_configs,
 )
-from app.runtime.extensions.storage_registry import (
+from app.runtime.extensions.registry.storage import (
     create_storage_backend,
     storage_backend_identity,
     storage_backend_registry,

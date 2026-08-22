@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Optional
 
-from app.runtime.extensions.instance import (
+from app.runtime.extensions.contract.instance import (
     DEFAULT_INSTANCE_ID,
     describe_instance_candidates,
     instance_key,

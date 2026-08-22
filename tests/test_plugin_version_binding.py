@@ -23,7 +23,7 @@ from app.adapters.system.plugin.dependency import (
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.foundation.singleton import Singleton
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.plugin.layout import (
     plugin_version_dir_name,
     plugin_version_dirs,

@@ -27,7 +27,7 @@ from app.runtime.extensions.service_config_validation import (
     service_config_records,
     service_config_write_violation,
 )
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
 from app.schemas.types import MessageType, ModuleType
 

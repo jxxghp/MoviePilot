@@ -10,13 +10,13 @@ from __future__ import annotations
 import inspect
 from typing import Any, Optional
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     MetaParserDeclaration,
     declaration_impl,
     declaration_meta_parser_identity,
     declaration_meta_parser_priority,
 )
-from app.runtime.extensions.meta_parser_registry import (
+from app.runtime.extensions.registry.meta_parser import (
     META_PARSER_ID_RE,
     is_meta_parser_id,
 )

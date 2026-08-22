@@ -12,7 +12,7 @@ from app import plugins as plugins_module
 from app.db.plugin import registry as plugin_registry_module
 from app.db.plugin.base import plugin_declarative_base
 from app.plugins import _PluginBase
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 class _SamplePlugin(_PluginBase):

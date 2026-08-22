@@ -18,8 +18,8 @@ from app.runtime.extensions.command_arbitration import (
     PLUGIN_LAYER,
     BuiltinCommandArbiter,
 )
-from app.runtime.extensions.command_registry import CommandClaim, plugin_command_registry
-from app.runtime.extensions.instance import split_instance_key
+from app.runtime.extensions.registry.command import CommandClaim, plugin_command_registry
+from app.runtime.extensions.contract.instance import split_instance_key
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper

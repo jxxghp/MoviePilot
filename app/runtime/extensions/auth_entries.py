@@ -26,7 +26,7 @@ from app.runtime.extensions.service_config import (
     select_instance_configs,
     service_capability_configs,
 )
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.log import logger
 
 # 入口标识未显式指定时的派生形状，与存储令牌 ``u115@work`` 同形

@@ -28,14 +28,14 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Optional, Tuple
 
-from app.runtime.extensions.instance import describe_instance_candidates
+from app.runtime.extensions.contract.instance import describe_instance_candidates
 from app.runtime.extensions.service_config import (
     service_capability_configs,
     service_instance_default,
     service_instance_enabled,
     service_supports_default_target,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 
 # 选中的实例名在调用两侧共用的参数名：工作流节点按它存用户的选择，宿主解析后按它把
 # 实例名交回实现。两侧同名才使「用户选的」与「实现拿到的」不可能是两个东西。

@@ -25,8 +25,8 @@ from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.service_config import get_configured_service_instance_configs
 from app.db.models.serviceconfig import BUILTIN_PROVIDER
 from app.db.oper.serviceconfig import ServiceConfigNameConflictError
-from app.runtime.extensions.declaration import ServiceInstanceRequirement
-from app.runtime.extensions.instance import extension_id_of
+from app.runtime.extensions.contract.declaration import ServiceInstanceRequirement
+from app.runtime.extensions.contract.instance import extension_id_of
 from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import service_supports_default_target
 from app.runtime.extensions.service_config_validation import (
@@ -37,8 +37,8 @@ from app.runtime.extensions.service_instance_requirement import (
     service_instance_candidates,
     service_instance_reference_issue,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.service import ServiceConfigForm as _SchemaServiceConfigForm
 from app.schemas.service import (

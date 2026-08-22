@@ -7,13 +7,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo
 from app.domain.filterrule import BUILTIN_RULE_SET, RuleParser  # noqa: F401
-from app.runtime.extensions.filter_rule_registry import (
+from app.runtime.extensions.registry.filter_rule import (
     RULE_GROUP_KIND,
     RULE_KIND,
     FilterRuleClaim,
     plugin_filter_rule_registry,
 )
-from app.runtime.extensions.instance import split_instance_key
+from app.runtime.extensions.contract.instance import split_instance_key
 from app.schemas.rule import (
     CustomRule,
     FilterRuleConflict,

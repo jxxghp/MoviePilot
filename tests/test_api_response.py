@@ -11,7 +11,7 @@ from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
-from app.runtime.extensions.instance import matches_extension
+from app.runtime.extensions.contract.instance import matches_extension
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     ResponseAPIRoute,

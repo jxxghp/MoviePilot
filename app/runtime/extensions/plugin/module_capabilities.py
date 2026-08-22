@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from app.runtime.extensions.declaration import declaration_methods
+from app.runtime.extensions.contract.declaration import declaration_methods
 from app.runtime.extensions.plugin.method_table import method_table_violation
 
 

@@ -19,13 +19,13 @@ from app.api.endpoints.system import set_setting as set_setting_endpoint
 from app.runtime.deprecation import notices as notices_module
 from app.runtime.deprecation import policy as deprecation_policy
 from app.runtime.extensions import service_config as service_config_module
-from app.runtime.extensions import service_instance_registry as registry_module
-from app.runtime.extensions.config_schema import (
+from app.runtime.extensions.registry import service_instance as registry_module
+from app.runtime.extensions.contract.config_schema import (
     config_schema_violation,
     config_value_violations,
 )
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import ServiceInstanceDeclaration
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import ServiceInstanceDeclaration
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
@@ -34,7 +34,7 @@ from app.runtime.extensions.plugin.service_instance_capabilities import (
 from app.runtime.extensions.service_config import create_service_instance
 from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.service_config_validation import service_config_write_violation
-from app.runtime.extensions.service_instance_registry import (
+from app.runtime.extensions.registry.service_instance import (
     ServiceInstanceAdapter,
     ServiceInstanceEntry,
     service_instance_registry,

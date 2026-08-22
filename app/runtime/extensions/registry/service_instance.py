@@ -18,7 +18,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.service_config import (
     create_service_instance,
     select_instance_configs,

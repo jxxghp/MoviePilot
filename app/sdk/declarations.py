@@ -15,7 +15,7 @@
 同处的协议与 ``service_instance_required_methods()`` 回答。
 """
 
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,
     CommandDeclaration,

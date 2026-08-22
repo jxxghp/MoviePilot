@@ -1612,7 +1612,7 @@
         "line": 2718
       },
       {
-        "caller": "app.runtime.extensions.service_family_registry",
+        "caller": "app.runtime.extensions.registry.service_family",
         "line": 155
       },
       {
@@ -2553,67 +2553,67 @@
       {
         "kind": "import",
         "name": "ActionDeclaration",
-        "target": "app.runtime.extensions.declaration.ActionDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.ActionDeclaration"
       },
       {
         "kind": "import",
         "name": "AgentToolDeclaration",
-        "target": "app.runtime.extensions.declaration.AgentToolDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.AgentToolDeclaration"
       },
       {
         "kind": "import",
         "name": "CommandDeclaration",
-        "target": "app.runtime.extensions.declaration.CommandDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.CommandDeclaration"
       },
       {
         "kind": "import",
         "name": "DashboardDeclaration",
-        "target": "app.runtime.extensions.declaration.DashboardDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.DashboardDeclaration"
       },
       {
         "kind": "import",
         "name": "ExtensionDeclaration",
-        "target": "app.runtime.extensions.declaration.ExtensionDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.ExtensionDeclaration"
       },
       {
         "kind": "import",
         "name": "FilterRuleDeclaration",
-        "target": "app.runtime.extensions.declaration.FilterRuleDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.FilterRuleDeclaration"
       },
       {
         "kind": "import",
         "name": "FilterRuleGroupDeclaration",
-        "target": "app.runtime.extensions.declaration.FilterRuleGroupDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.FilterRuleGroupDeclaration"
       },
       {
         "kind": "import",
         "name": "MediaSourceDeclaration",
-        "target": "app.runtime.extensions.declaration.MediaSourceDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.MediaSourceDeclaration"
       },
       {
         "kind": "import",
         "name": "MetaParserDeclaration",
-        "target": "app.runtime.extensions.declaration.MetaParserDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.MetaParserDeclaration"
       },
       {
         "kind": "import",
         "name": "ModuleDeclaration",
-        "target": "app.runtime.extensions.declaration.ModuleDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.ModuleDeclaration"
       },
       {
         "kind": "import",
         "name": "ScheduleDeclaration",
-        "target": "app.runtime.extensions.declaration.ScheduleDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.ScheduleDeclaration"
       },
       {
         "kind": "import",
         "name": "ServiceInstanceDeclaration",
-        "target": "app.runtime.extensions.declaration.ServiceInstanceDeclaration"
+        "target": "app.runtime.extensions.contract.declaration.ServiceInstanceDeclaration"
       },
       {
         "kind": "import",
         "name": "ServiceInstanceRequirement",
-        "target": "app.runtime.extensions.declaration.ServiceInstanceRequirement"
+        "target": "app.runtime.extensions.contract.declaration.ServiceInstanceRequirement"
       }
     ],
     "app.sdk.events": [
@@ -3198,7 +3198,7 @@
       {
         "kind": "import",
         "name": "SERVICE_INSTANCE_REQUIRED_METHODS",
-        "target": "app.runtime.extensions.plugin.service_instance_contracts.SERVICE_INSTANCE_REQUIRED_METHODS"
+        "target": "app.runtime.extensions.contract.service_instance.SERVICE_INSTANCE_REQUIRED_METHODS"
       },
       {
         "kind": "import",
@@ -3223,7 +3223,7 @@
       {
         "kind": "import",
         "name": "service_family_registry",
-        "target": "app.runtime.extensions.service_family_registry.service_family_registry"
+        "target": "app.runtime.extensions.registry.service_family.service_family_registry"
       },
       {
         "kind": "FunctionDef",
@@ -3300,7 +3300,7 @@
       {
         "kind": "import",
         "name": "declared_service_instances",
-        "target": "app.runtime.extensions.service_instance_registry.declared_service_instances"
+        "target": "app.runtime.extensions.registry.service_instance.declared_service_instances"
       }
     ],
     "app.sdk.storage": [

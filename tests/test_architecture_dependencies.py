@@ -134,7 +134,9 @@ PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
     "app/adapters/system/plugin",
     "app/application/plugin",
+    "app/runtime/extensions/contract",
     "app/runtime/extensions/plugin",
+    "app/runtime/extensions/registry",
 )
 PLUGIN_LEGACY_ABI_NAMES = {
     "MoviePilotServerHelper",

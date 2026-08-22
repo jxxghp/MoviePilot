@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Optional
 
-from app.runtime.extensions.declaration import declaration_agent_tool_identity, declaration_impl
+from app.runtime.extensions.contract.declaration import declaration_agent_tool_identity, declaration_impl
 
 # 智能体工具基类，由启动组合根注入；未注入前契约校验跳过继承项，仅校验其余各项
 _agent_tool_base: Optional[type] = None

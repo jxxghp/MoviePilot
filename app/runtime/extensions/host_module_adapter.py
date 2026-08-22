@@ -15,7 +15,7 @@ from app.runtime.capabilities.model import (
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.config import settings
-from app.runtime.extensions.contract import (
+from app.runtime.extensions.contract.extension import (
     ExtensionDistribution,
     ExtensionFaultScope,
     ExtensionProvider,

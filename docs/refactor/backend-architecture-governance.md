@@ -394,7 +394,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 **关键文件**：
 - `app/runtime/extensions/plugin/loader.py`
 - `app/runtime/extensions/plugin/lifecycle.py`
-- `app/runtime/extensions/plugin/registry.py`
+- `app/runtime/extensions/registry/plugin.py`
 - `app/runtime/extensions/plugin/projection.py`
 - `app/runtime/extensions/plugin/storage.py`
 - `app/runtime/extensions/plugin/dependency.py`
@@ -500,7 +500,13 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 「什么时候跑 + 谁能 import」不同，不是主题词相同。按 D1–D4 顺序提问，第一个命中即定位。
 
 已落地：宿主端口槽归入 `app/runtime/hostports/`（D2）；`debounce.py` 归入
-`app/runtime/compat/`（D1，宿主零调用方，只由 `app.utils.debounce` 别名吊命）。
+`app/runtime/compat/`（D1，宿主零调用方，只由 `app.utils.debounce` 别名吊命）；
+扩展契约归入 `app/runtime/extensions/contract/`（D1，符号已随 SDK 交到扩展作者手里）；
+登记结果的持有态归入 `app/runtime/extensions/registry/`（D3 持有态）。
+
+`contract/` 与 `compat/` 同由 D1 admit，靠「宿主自己还走不走这条路」区分：宿主把所有
+调用方都指向它的，是仍在生效的契约；宿主一处都不再调用、只有已发布插件还 import 的，
+是兼容面。
 
 **`plugin_manager.py` 不在本轮搬迁范围内。** 它虽然同样命中判据，但迁移成本明显
 高于收益，且成本不在自身而在三处外部硬编码：
@@ -516,9 +522,14 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 #### 6.9.2 目录门禁的已知失效模式
 
 `tests/test_architecture_dependencies.py` 的 `PLUGIN_COMPONENT_ROOTS` 用 `rglob`
-扫描四个硬编码目录。目录一旦改名或搬走，`rglob` 扫空、断言列表为空、测试转绿，
-保护随之消失且无任何提示。改动这四个目录时必须同批更新常量，并用一处故意违规
+扫描一组硬编码目录。目录一旦改名或搬走，`rglob` 扫空、断言列表为空、测试转绿，
+保护随之消失且无任何提示。改动这些目录时必须同批更新常量，并用一处故意违规
 验证门禁仍会变红。
+
+覆盖面随目录重排而扩大：`app/runtime/extensions/plugin/` 里的文件被拆进多个阶段目录，
+这些目录同时收纳了原先不在门禁范围内的文件，因此新 root 列表覆盖的文件多于旧列表。
+`contract/instance.py` 的 `__all__` 就是这样浮出来的——门禁禁止组件模块自建导出清单，
+该模块的全部符号本就在同文件定义，删掉清单不改变任何导入行为。
 
 ## 7. 职责模型
 
@@ -620,7 +631,7 @@ __all__ = [
 MANIFEST = {
     # PluginManager 及兼容导入
     'app.core.plugin.PluginManager': 'app.runtime.extensions.plugin_manager.PluginManager',
-    'app.core.plugin.Plugin': 'app.runtime.extensions.plugin.registry.PluginRegistry.Plugin',
+    'app.core.plugin.Plugin': 'app.runtime.extensions.registry.plugin.PluginRegistry.Plugin',
     ...
     # ModuleManager 及兼容导入
     'app.core.module.ModuleManager': 'app.runtime.extensions.module_manager.ModuleManager',

@@ -4,7 +4,7 @@
 声明面上的枚举——族回答「这类服务长什么样」，宿主没有理由预先穷举它。
 
 本表登记的是族本身的元数据：能力标签、展示名称与归属。族里有哪些类型、每个类型
-按配置扇出几个实例，由 `app.runtime.extensions.service_instance_registry` 承载，
+按配置扇出几个实例，由 `app.runtime.extensions.registry.service_instance` 承载，
 两张表回答的不是同一个问题。「这一族配置存放在哪个配置键下、默认标记的作用域是族
 还是类型」同样不在本表，它们是宿主内部实现，收在
 `app.runtime.extensions.service_config`。
@@ -22,7 +22,7 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.log import logger
 from app.schemas.types import ModuleType
 

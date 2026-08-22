@@ -13,8 +13,8 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import pytest
 
-from app.runtime.extensions.contract import ExtensionDistribution
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.extension import ExtensionDistribution
+from app.runtime.extensions.contract.declaration import (
     MediaSourceDeclaration,
     ModuleDeclaration,
     ServiceInstanceDeclaration,
@@ -29,11 +29,11 @@ from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
-from app.runtime.extensions.plugin.service_instance_contracts import (
+from app.runtime.extensions.contract.service_instance import (
     SERVICE_INSTANCE_REQUIRED_METHODS,
     service_instance_shape_violation,
 )
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 from app.schemas.types import ModuleType
 
 _TRANSIENT_FAMILY_OWNER = "TransientFamilyOwner"

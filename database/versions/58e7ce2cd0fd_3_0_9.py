@@ -9,7 +9,7 @@ Create Date: 2026-08-19
 from alembic import op
 import sqlalchemy as sa
 
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
 revision = "58e7ce2cd0fd"

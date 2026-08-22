@@ -29,7 +29,7 @@ from app.plugins.githubsso.entry import (
 # 站点地址与 API 地址的取值形状：绝对的 http 或 https 地址
 _HTTP_URL_PATTERN = r"^https?://[^\s]+$"
 
-# 该类型配置内容的契约，取值落在 `app.runtime.extensions.config_schema` 的受控子集内
+# 该类型配置内容的契约，取值落在 `app.runtime.extensions.contract.config_schema` 的受控子集内
 CONFIG_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "title": "GitHub 单点登录",

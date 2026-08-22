@@ -44,17 +44,17 @@ from app.plugins.githubsso.oauth_state import (
     safe_return_path,
 )
 from app.runtime.extensions.auth_entries import list_auth_entries
-from app.runtime.extensions.config_schema import (
+from app.runtime.extensions.contract.config_schema import (
     config_schema_violation,
     config_value_violations,
 )
-from app.runtime.extensions.contract import ExtensionDistribution
+from app.runtime.extensions.contract.extension import ExtensionDistribution
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.service_instance_capabilities import (
     service_instance_declaration_violation,
 )
 from app.runtime.extensions.service_config import AUTH_CAPABILITY
-from app.runtime.extensions.service_instance_registry import service_instance_registry
+from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.types import SystemConfigKey
 from app.schemas.user import AuthProviderInfo

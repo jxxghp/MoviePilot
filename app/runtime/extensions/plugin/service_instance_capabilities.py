@@ -8,7 +8,7 @@
 
 构造形状之外还判一层实例形状：宿主把实例交出去之后，族级取用链上有几个无保护的
 直调，缺席即在背景回路里抛异常。这几个方法名收在
-`app.runtime.extensions.plugin.service_instance_contracts`，未登记必填集的族与
+`app.runtime.extensions.contract.service_instance`，未登记必填集的族与
 ``factory`` 路径都不判。
 
 存储族的构造协议另有一套，判定随之换一条：``impl`` 是按令牌取用的存储后端类，
@@ -26,8 +26,8 @@ import inspect
 from typing import Any, Optional
 
 from app.runtime.deprecation.policy import is_active as deprecation_is_active
-from app.runtime.extensions.config_schema import config_schema_violation
-from app.runtime.extensions.declaration import (
+from app.runtime.extensions.contract.config_schema import config_schema_violation
+from app.runtime.extensions.contract.declaration import (
     ServiceInstanceDeclaration,
     declaration_config_component,
     declaration_config_form,
@@ -37,12 +37,12 @@ from app.runtime.extensions.declaration import (
     declaration_service_instance_multi_instance,
 )
 from app.runtime.extensions.plugin.config_interface import config_interface_violation
-from app.runtime.extensions.plugin.service_instance_contracts import (
+from app.runtime.extensions.contract.service_instance import (
     service_instance_shape_violation,
 )
 from app.runtime.extensions.plugin.storage_capabilities import storage_backend_violation
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
-from app.runtime.extensions.service_family_registry import service_family_registry
+from app.runtime.extensions.registry.service_family import service_family_registry
 
 # 构造实例时由宿主固定填入的关键字参数名，其余关键字均来自用户配置内容
 _INSTANCE_NAME_KEYWORD = "name"

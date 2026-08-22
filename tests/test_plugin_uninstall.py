@@ -25,7 +25,7 @@ from app.db.oper.pluginconfig import PluginConfigOper
 from app.foundation.singleton import Singleton
 from app.plugins import _PluginBase
 from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
+from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
     configure_plugin_storage,
