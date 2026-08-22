@@ -1,7 +1,10 @@
+[build-system]
+requires = ["setuptools~=84.0.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "moviepilot"
-# MoviePilot 不作为 Python 包发布，产品版本继续由 version.py 管理。
-version = "0"
+dynamic = ["version"]
 requires-python = ">=3.14"
 dependencies = [
     "aiofiles~=25.1.0",
@@ -128,3 +131,9 @@ required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+
+[tool.setuptools]
+py-modules = ["version"]
+
+[tool.setuptools.dynamic]
+version = { attr = "version.APP_VERSION" }
