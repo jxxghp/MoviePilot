@@ -235,6 +235,13 @@ def configure_runtime_data_providers() -> None:
 
 def _build_outbox_dispatcher() -> OutboxDispatcher:
     """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
+    def dispatch_subscribe_deleted_report(message) -> None:
+        """重放订阅删除统计；未确认时抛错以进入有限重试。"""
+        if not MoviePilotServerHelper.sub_done(
+            message.payload.get("subscribe_info") or {}
+        ):
+            raise RuntimeError("订阅删除统计上报未确认")
+
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
@@ -251,6 +258,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 EventType.SubscribeDeleted,
                 message.payload,
             ),
+            "subscribe.deleted.report": dispatch_subscribe_deleted_report,
             "download.added": lambda message: EventManager().send_event(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),

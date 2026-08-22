@@ -105,6 +105,7 @@ def _command(
         calls.append(("report", payload))
         if report_error:
             raise report_error
+        return True
 
     return DeleteSubscribeCommand(
         repository=_Repository(candidate, calls),
@@ -224,15 +225,20 @@ async def test_delete_stages_outbox_before_commit_and_completes_after_event():
         "get",
         "delete",
         "outbox_stage",
+        "outbox_stage",
         "commit",
         "event",
         "outbox_complete",
         "report",
+        "outbox_complete",
     ]
     intent = calls[2][1]
     assert intent.topic == "subscribe.deleted"
-    assert intent.event_key == calls[4][2]["idempotency_key"]
-    assert calls[5][1] == intent.event_key
+    report_intent = calls[3][1]
+    assert report_intent.topic == "subscribe.deleted.report"
+    assert intent.event_key == calls[5][2]["idempotency_key"]
+    assert calls[6][1] == intent.event_key
+    assert calls[8][1] == report_intent.event_key
 
 
 @pytest.mark.asyncio
