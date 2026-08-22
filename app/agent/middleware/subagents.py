@@ -903,6 +903,18 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             await asyncio.gather(*cancellable_tasks, return_exceptions=True)
             logger.info(f"子代理任务取消完成: tasks={len(cancellable_tasks)}")
 
+    async def close(self) -> None:
+        """取消脱离当前 Agent 回合的子代理任务。"""
+        unfinished_records = [
+            record for record in self._tasks.values() if not record.task.done()
+        ]
+        if unfinished_records:
+            logger.info(
+                f"关闭子代理任务控制器，取消未完成任务: tasks={len(unfinished_records)}"
+            )
+        await self._cancel_records(unfinished_records)
+        self._tasks.clear()
+
     @staticmethod
     def _pipeline_description(
         *,
@@ -1156,13 +1168,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     async def aafter_agent(self, state: Any, runtime: Any) -> None:
         """Agent 结束时取消未完成的子代理任务，避免后台泄漏。"""
-        unfinished_records = [
-            record for record in self._tasks.values() if not record.task.done()
-        ]
-        if unfinished_records:
-            logger.info(f"Agent 结束，取消未完成子代理任务: tasks={len(unfinished_records)}")
-        await self._cancel_records(unfinished_records)
-        self._tasks.clear()
+        await self.close()
 
     async def awrap_tool_call(
         self,

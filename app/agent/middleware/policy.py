@@ -1,5 +1,6 @@
 """LangChain 工具调用的 MoviePilot 宿主策略中间件。"""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -144,6 +145,15 @@ class AgentPolicyMiddleware(AgentMiddleware):
             return False, POLICY_DENIED_MESSAGE
         try:
             result = await handler()
+        except asyncio.CancelledError as error:
+            if observation is not None:
+                call_policy_hook(
+                    "cancel",
+                    self.orchestrator.fail,
+                    observation,
+                    error,
+                )
+            raise
         except Exception as error:
             if observation is not None:
                 call_policy_hook(

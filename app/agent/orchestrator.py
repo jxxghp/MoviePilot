@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import inspect
 import json
 import re
 import traceback
@@ -246,6 +247,7 @@ class _CompiledAgentBundle:
     plugin_revision: int = -1
     mcp_config_signature: str = ""
     catalog_checked_at: Optional[datetime] = None
+    subagent_middlewares: tuple[Any, ...] = ()
 
 
 class _ThinkTagStripper:
@@ -395,6 +397,7 @@ class MoviePilotAgent:
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
         self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
+        self._subagent_middlewares: tuple[Any, ...] = ()
         self._last_agent_cache_hit = False
 
         # 流式token管理
@@ -1702,6 +1705,7 @@ class MoviePilotAgent:
         tool_catalog: ToolCatalogSnapshot,
         subagent_catalog: ToolCatalogSnapshot,
         mcp_config_signature: str,
+        subagent_middlewares: tuple[Any, ...] = (),
     ) -> Any:
         """保存当前会话可复用的 Agent 图。"""
         self._compiled_agent_bundle = _CompiledAgentBundle(
@@ -1714,7 +1718,9 @@ class MoviePilotAgent:
             plugin_revision=tool_catalog.plugin_revision,
             mcp_config_signature=mcp_config_signature,
             catalog_checked_at=datetime.now(),
+            subagent_middlewares=subagent_middlewares,
         )
+        self._subagent_middlewares = subagent_middlewares
         return agent
 
     @staticmethod
@@ -2021,6 +2027,7 @@ class MoviePilotAgent:
                 tool_catalog=tool_catalog,
                 subagent_catalog=subagent_catalog,
                 mcp_config_signature=mcp_config_signature,
+                subagent_middlewares=tuple(subagent_middlewares),
             )
         except Exception as e:
             logger.error(f"创建 Agent 失败: {e}")
@@ -2422,6 +2429,18 @@ class MoviePilotAgent:
         """
         清理智能体资源
         """
+        subagent_middlewares = self._subagent_middlewares
+        self._subagent_middlewares = ()
+        for middleware in subagent_middlewares:
+            close = getattr(middleware, "close", None)
+            if not callable(close):
+                continue
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as error:
+                logger.debug(f"关闭子代理中间件失败: {error}")
         self._pending_secret_confirmation = None
         self.protected_output_callback = None
         self._compiled_agent_bundle = None

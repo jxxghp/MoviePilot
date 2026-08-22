@@ -184,6 +184,8 @@ class ExecutionReceipt:
     result_summary: Optional[str] = None
     error_summary: Optional[str] = None
     duration_ms: int = 0
+    external_may_continue: bool = False
+    needs_reconcile: bool = False
 
 
 @dataclass(frozen=True)

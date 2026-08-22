@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import uuid
@@ -414,6 +415,10 @@ class MoviePilotToolsManager:
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
+        except asyncio.CancelledError as e:
+            if observation is not None and policy_orchestrator is not None:
+                call_policy_hook("cancel", policy_orchestrator.fail, observation, e)
+            raise
         except ToolExecutionTimeoutError as e:
             if observation is not None and policy_orchestrator is not None:
                 call_policy_hook("fail", policy_orchestrator.fail, observation, e)
