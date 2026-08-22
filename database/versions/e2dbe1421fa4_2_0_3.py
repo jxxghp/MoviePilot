@@ -5,14 +5,10 @@ Revises: 0fb94bf69b38
 Create Date: 2024-10-09 13:44:13.926529
 
 """
-import contextlib
-
 from alembic import op
 import sqlalchemy as sa
 
 from app.runtime.log import logger
-from app.db import SessionFactory
-from app.db.models import UserConfig
 
 # revision identifiers, used by Alembic.
 revision = 'e2dbe1421fa4'
@@ -72,8 +68,7 @@ def upgrade() -> None:
         except Exception as e:
             logger.error(f"Could not alter column {column_name} in table {table}: {e}")
 
-    with SessionFactory() as db:
-        UserConfig.truncate(db)
+    conn.execute(sa.delete(sa.table("userconfig")))
 
 
 def downgrade() -> None:

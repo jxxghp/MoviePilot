@@ -11,7 +11,8 @@ from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.schemas import FileItem, TransferInfo
+from app.schemas.file import FileItem
+from app.schemas.transfer import TransferInfo
 
 
 def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) -> None:
@@ -156,18 +157,25 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
             metadata,
             sa.Column("id", sa.Integer(), primary_key=True),
         )
-    config_oper = Mock()
-    config_oper.get.return_value = {
+    systemconfig = sa.Table(
+        "systemconfig",
+        metadata,
+        sa.Column("key", sa.String(), primary_key=True),
+        sa.Column("value", sa.JSON()),
+    )
+    custom_templates = {
         "organizeSuccess": "custom organize template",
         "downloadAdded": "custom download template",
     }
-    monkeypatch.setattr(
-        "app.db.oper.systemconfig.SystemConfigOper",
-        lambda: config_oper,
-    )
 
     with engine.begin() as connection:
         metadata.create_all(connection)
+        connection.execute(
+            systemconfig.insert().values(
+                key="NotificationTemplates",
+                value=custom_templates,
+            )
+        )
         context = MigrationContext.configure(connection)
         monkeypatch.setattr(migration, "op", Operations(context))
 
@@ -186,6 +194,11 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
             column["name"]
             for column in inspector.get_columns("transferhistory")
         }
+        stored_templates = connection.execute(
+            sa.select(systemconfig.c.value).where(
+                systemconfig.c.key == "NotificationTemplates"
+            )
+        ).scalar_one()
 
     assert {
         "audio_quality",
@@ -206,7 +219,7 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
         "sample_rate",
         "bitrate",
     }.issubset(transfer_columns)
-    config_oper.set.assert_not_called()
+    assert stored_templates == custom_templates
 
 
 def test_transfer_history_preserves_album_entity_context() -> None:

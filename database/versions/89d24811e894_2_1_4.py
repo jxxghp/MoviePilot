@@ -6,8 +6,8 @@ Create Date: 2025-05-03 17:29:07.635618
 
 """
 
-from app.db.oper.systemconfig import SystemConfigOper
-from app.schemas.types import SystemConfigKey
+from alembic import op
+import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '89d24811e894'
@@ -57,9 +57,25 @@ def upgrade() -> None:
             '{% if overview %}\\n简介：{{ overview }}{% endif %}'
 }"""
     }
-    _systemconfig = SystemConfigOper()
-    if not _systemconfig.get(SystemConfigKey.NotificationTemplates):
-        _systemconfig.set(SystemConfigKey.NotificationTemplates, value)
+    systemconfig = sa.table(
+        "systemconfig",
+        sa.column("key", sa.String()),
+        sa.column("value", sa.JSON()),
+    )
+    connection = op.get_bind()
+    key = "NotificationTemplates"
+    row = connection.execute(
+        sa.select(systemconfig.c.value).where(systemconfig.c.key == key)
+    ).first()
+    if not row or not row[0]:
+        if row:
+            connection.execute(
+                systemconfig.update().where(systemconfig.c.key == key).values(
+                    value=value
+                )
+            )
+        else:
+            connection.execute(systemconfig.insert().values(key=key, value=value))
 
     # ### end Alembic commands ###
 

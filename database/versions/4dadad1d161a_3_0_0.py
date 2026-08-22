@@ -6,9 +6,9 @@ Revises: e8b1c4d7a2f9
 Create Date: 2026-08-10
 """
 
-from app.db.oper.systemconfig import SystemConfigOper
+from alembic import op
+import sqlalchemy as sa
 from app.runtime.log import logger
-from app.schemas.types import SystemConfigKey
 
 # revision identifiers, used by Alembic.
 revision = "4dadad1d161a"
@@ -21,7 +21,17 @@ def upgrade() -> None:
     # V3 为大版本升级，通知模板直接覆盖用户旧设置，且迁移只执行一次；
     # 默认模板同时兼容影视与音乐（音乐的下载、入库通知补齐艺术家/专辑/音质信息）。
     # 覆盖前先将用户现有模板完整输出到日志，作为备份供用户恢复参考。
-    old_value = SystemConfigOper().get(SystemConfigKey.NotificationTemplates)
+    systemconfig = sa.table(
+        "systemconfig",
+        sa.column("key", sa.String()),
+        sa.column("value", sa.JSON()),
+    )
+    connection = op.get_bind()
+    key = "NotificationTemplates"
+    row = connection.execute(
+        sa.select(systemconfig.c.value).where(systemconfig.c.key == key)
+    ).first()
+    old_value = row[0] if row else None
     if old_value:
         logger.info(f"即将使用 V3 默认通知模板覆盖用户现有通知模板，现有模板内容备份如下：\n{old_value}")
     value = {
@@ -67,7 +77,14 @@ def upgrade() -> None:
             '{% if overview %}\\n简介：{{ overview }}{% endif %}'
 }"""
     }
-    SystemConfigOper().set(SystemConfigKey.NotificationTemplates, value)
+    if row and row[0] != value:
+        connection.execute(
+            systemconfig.update().where(systemconfig.c.key == key).values(
+                value=value
+            )
+        )
+    elif not row:
+        connection.execute(systemconfig.insert().values(key=key, value=value))
 
 
 def downgrade() -> None:

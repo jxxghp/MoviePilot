@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 from pathlib import Path
 import sys
@@ -5,10 +6,25 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 import uuid
 
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 import pytest
 from alembic.util import CommandError
 from fastapi import FastAPI
-from sqlalchemy import Column, Integer, MetaData, Table, create_engine, inspect, text
+import sqlalchemy as sa
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Integer,
+    JSON,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    event,
+    inspect,
+    text,
+)
 from sqlalchemy.engine.url import make_url
 
 from app.startup import database_initializer as db_init
@@ -82,7 +98,12 @@ def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> N
 
     db_init.prepare_database(before_alembic=lambda: calls.append("before_alembic"))
 
-    assert calls == ["backup", "create_all", "before_alembic", "alembic"]
+    assert calls == [
+        "backup",
+        "create_all",
+        "before_alembic",
+        "alembic",
+    ]
     assert logged_messages == [
         "数据库需要从版本 old 升级到 head，正在创建迁移前备份"
     ]
@@ -432,6 +453,315 @@ def downgrade():
     assert backup_revision == "001"
     assert active_revision == "002"
     assert active_columns == {"id", "migrated"}
+
+
+def test_migration_config_write_rolls_back_with_alembic_transaction(
+        monkeypatch,
+) -> None:
+    """配置 DML 不得脱离 Alembic 事务提前提交。"""
+    migration = importlib.import_module(
+        "database.versions.e8b1c4d7a2f9_2_2_18"
+    )
+    engine = create_engine("sqlite://")
+
+    metadata = MetaData()
+    systemconfig = Table(
+        "systemconfig",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("key", String),
+        Column("value", JSON),
+    )
+    for table_name in ("subscribe", "subscribehistory", "transferhistory"):
+        Table(table_name, metadata, Column("id", Integer, primary_key=True))
+    metadata.create_all(engine)
+
+    legacy_organize = """
+{
+    'title': '{{ title_year }}'
+            '{% if season_episode %} {{ season_episode }}{% endif %} 已入库',
+    'text': '{% if vote_average %}评分：{{ vote_average }}，{% endif %}'
+            '类型：{{ type }}'
+            '{% if category %}，类别：{{ category }}{% endif %}'
+            '{% if resource_term %}，质量：{{ resource_term }}{% endif %}，'
+            '共{{ file_count }}个文件，大小：{{ total_size }}'
+            '{% if err_msg %}，以下文件处理失败：{{ err_msg }}{% endif %}'
+}"""
+    legacy_download = """
+{
+    'title': '{{ title_year }}'
+            '{% if download_episodes %} {{ season_fmt }} {{ download_episodes }}{% else %}{{ season_episode }}{% endif %} 开始下载',
+    'text': '{% if site_name %}站点：{{ site_name }}{% endif %}'
+            '{% if resource_term %}\\n质量：{{ resource_term }}{% endif %}'
+            '{% if size %}\\n大小：{{ size }}{% endif %}'
+            '{% if torrent_title %}\\n种子：{{ torrent_title }}{% endif %}'
+            '{% if pubdate %}\\n发布时间：{{ pubdate }}{% endif %}'
+            '{% if freedate %}\\n免费时间：{{ freedate }}{% endif %}'
+            '{% if seeders %}\\n做种数：{{ seeders }}{% endif %}'
+            '{% if volume_factor %}\\n促销：{{ volume_factor }}{% endif %}'
+            '{% if hit_and_run %}\\nHit&Run：{{ hit_and_run }}{% endif %}'
+            '{% if labels %}\\n标签：{{ labels }}{% endif %}'
+            '{% if description %}\\n描述：{{ description }}{% endif %}'
+}"""
+    original_templates = {
+        "organizeSuccess": legacy_organize,
+        "downloadAdded": legacy_download,
+    }
+    with engine.begin() as connection:
+        connection.execute(
+            systemconfig.insert().values(
+                key="NotificationTemplates",
+                value=original_templates,
+            )
+        )
+
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        monkeypatch.setattr(
+            migration,
+            "op",
+            Operations(MigrationContext.configure(connection)),
+        )
+        config_write_seen = False
+
+        def fail_after_config_write(
+                _connection,
+                _cursor,
+                statement,
+                _parameters,
+                _context,
+                _executemany,
+        ) -> None:
+            nonlocal config_write_seen
+            if statement.lstrip().upper().startswith("UPDATE SYSTEMCONFIG"):
+                config_write_seen = True
+                raise RuntimeError("injected migration failure")
+
+        event.listen(engine, "after_cursor_execute", fail_after_config_write)
+        try:
+            with pytest.raises(RuntimeError, match="injected migration failure"):
+                migration.upgrade()
+        finally:
+            event.remove(engine, "after_cursor_execute", fail_after_config_write)
+            transaction.rollback()
+
+        assert config_write_seen
+
+    with engine.connect() as connection:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("subscribe")
+        }
+        # SQLite 默认驱动不回滚 DDL，但配置写入仍必须服从 Alembic 事务。
+        assert "audio_quality" in columns
+        stored_templates = connection.execute(
+            systemconfig.select().with_only_columns(systemconfig.c.value).where(
+                systemconfig.c.key == "NotificationTemplates"
+            )
+        ).scalar_one()
+        assert stored_templates == original_templates
+
+
+def test_initial_migration_rolls_back_user_and_storages_together(
+        monkeypatch,
+) -> None:
+    """2.0.0 管理员与存储初始化必须共享 Alembic 事务。"""
+    migration = importlib.import_module(
+        "database.versions.294b007932ef_2_0_0"
+    )
+    engine = create_engine("sqlite://")
+
+    metadata = MetaData()
+    Table(
+        "user",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String, nullable=False),
+        Column("email", String),
+        Column("hashed_password", String),
+        Column("is_active", Boolean),
+        Column("is_superuser", Boolean),
+        Column("avatar", String),
+        Column("is_otp", Boolean),
+        Column("otp_secret", String),
+        Column("permissions", JSON),
+        Column("settings", JSON),
+    )
+    systemconfig = Table(
+        "systemconfig",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("key", String),
+        Column("value", JSON),
+    )
+    metadata.create_all(engine)
+
+    monkeypatch.setattr(migration.settings, "SUPERUSER", "migration-admin")
+    monkeypatch.setattr(
+        migration.settings,
+        "SUPERUSER_PASSWORD",
+        "migration-password",
+    )
+    monkeypatch.setattr(
+        migration,
+        "get_password_hash",
+        lambda password: f"hashed:{password}",
+    )
+
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        monkeypatch.setattr(
+            migration,
+            "op",
+            Operations(MigrationContext.configure(connection)),
+        )
+
+        def fail_storages_write(
+                _connection,
+                _cursor,
+                statement,
+                _parameters,
+                _context,
+                _executemany,
+        ) -> None:
+            if statement.lstrip().upper().startswith("INSERT INTO SYSTEMCONFIG"):
+                raise RuntimeError("injected storages failure")
+
+        event.listen(engine, "after_cursor_execute", fail_storages_write)
+        try:
+            with pytest.raises(RuntimeError, match="injected storages failure"):
+                migration.upgrade()
+        finally:
+            event.remove(engine, "after_cursor_execute", fail_storages_write)
+            transaction.rollback()
+
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM user")).scalar_one() == 0
+        assert connection.execute(
+            text("SELECT COUNT(*) FROM systemconfig")
+        ).scalar_one() == 0
+
+
+def test_userconfig_cleanup_migration_uses_alembic_transaction(
+        monkeypatch,
+) -> None:
+    """2.0.3 用户配置清理必须随当前 Alembic 事务一起回滚。"""
+    migration = importlib.import_module(
+        "database.versions.e2dbe1421fa4_2_0_3"
+    )
+    engine = create_engine("sqlite://")
+
+    metadata = MetaData()
+    table_columns = {
+        "downloadhistory": (("note", JSON), ("media_category", String)),
+        "subscribe": (
+            ("note", JSON),
+            ("custom_words", String),
+            ("media_category", String),
+            ("filter_groups", JSON),
+        ),
+        "mediaserveritem": (("note", JSON),),
+        "message": (("note", JSON),),
+        "plugindata": (("value", JSON),),
+        "site": (("note", JSON),),
+        "sitestatistic": (("note", JSON),),
+        "systemconfig": (("value", JSON),),
+        "userconfig": (("value", JSON),),
+    }
+    tables = {
+        table_name: Table(
+            table_name,
+            metadata,
+            Column("id", Integer, primary_key=True),
+            *(Column(column_name, column_type) for column_name, column_type in columns),
+        )
+        for table_name, columns in table_columns.items()
+    }
+    metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            tables["userconfig"].insert().values(value={"retained": True})
+        )
+
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        monkeypatch.setattr(
+            migration,
+            "op",
+            Operations(MigrationContext.configure(connection)),
+        )
+        migration.upgrade()
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(tables["userconfig"])
+        ).scalar_one() == 0
+        transaction.rollback()
+
+    with engine.connect() as connection:
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(tables["userconfig"])
+        ).scalar_one() == 1
+
+
+def test_user_permission_migration_uses_alembic_transaction(
+        monkeypatch,
+) -> None:
+    """2.1.6 权限初始化必须保留原筛选语义并随迁移事务回滚。"""
+    migration = importlib.import_module(
+        "database.versions.3df653756eec_2_1_6"
+    )
+    engine = create_engine("sqlite://")
+
+    metadata = MetaData()
+    user = Table(
+        "user",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("is_superuser", Boolean),
+        Column("permissions", JSON),
+    )
+    metadata.create_all(engine)
+    existing_permissions = {"manage": True}
+    with engine.begin() as connection:
+        connection.execute(user.insert(), [
+            {"id": 1, "is_superuser": False, "permissions": None},
+            {"id": 2, "is_superuser": False, "permissions": existing_permissions},
+            {"id": 3, "is_superuser": True, "permissions": None},
+        ])
+
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        monkeypatch.setattr(
+            migration,
+            "op",
+            Operations(MigrationContext.configure(connection)),
+        )
+        migration.upgrade()
+        migrated = connection.execute(
+            sa.select(user.c.id, user.c.permissions).order_by(user.c.id)
+        ).all()
+        assert migrated == [
+            (
+                1,
+                {
+                    "discovery": True,
+                    "search": True,
+                    "subscribe": True,
+                    "manage": False,
+                },
+            ),
+            (2, existing_permissions),
+            (3, None),
+        ]
+        transaction.rollback()
+
+    with engine.connect() as connection:
+        assert connection.execute(
+            sa.select(user.c.id, user.c.permissions).order_by(user.c.id)
+        ).all() == [
+            (1, None),
+            (2, existing_permissions),
+            (3, None),
+        ]
 
 
 def test_local_setup_returns_failure_when_database_migration_fails(
