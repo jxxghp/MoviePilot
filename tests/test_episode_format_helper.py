@@ -27,7 +27,7 @@ def _patch_media_exts(monkeypatch):
         lambda: SimpleNamespace(
             video_extensions=(".mkv", ".mp4"),
             subtitle_extensions=(".srt", ".ass"),
-            audio_extensions=(".flac", ".mp3"),
+            audio_extensions=(".flac", ".mp3", ".mka"),
         ),
     )
 
