@@ -29,10 +29,14 @@ from app.sdk.auth import (
     list_auth_entries,
 )
 from app.sdk.config import settings
-from app.sdk.declarations import AUTH_CAPABILITY, ServiceInstanceDeclaration
+from app.sdk.declarations import ServiceInstanceDeclaration
 from app.sdk.extension import _PluginBase
 from app.sdk.logging import logger
 from app.sdk.services import declared_service_instances
+
+# 本插件声明的服务族能力标签。取值须是宿主服务族登记表里的族，本次运行认哪些族由
+# `app.sdk.service_instances` 的 ``service_capabilities()`` 回答
+SERVICE_CAPABILITY = "auth"
 
 # 本插件声明的登录入口类型标识，与用户配置里的 ``type`` 字段取值对应
 SERVICE_TYPE = "github"
@@ -189,7 +193,7 @@ class GithubSso(_PluginBase):
         """
         return [
             ServiceInstanceDeclaration(
-                capability=AUTH_CAPABILITY,
+                capability=SERVICE_CAPABILITY,
                 type=SERVICE_TYPE,
                 name="GitHub 单点登录",
                 icon="mdi-github",
@@ -358,7 +362,7 @@ class GithubSso(_PluginBase):
         :return: 握手实现；登记缺失或该条配置构造失败时为 None
         """
         instance = declared_service_instances(
-            AUTH_CAPABILITY, SERVICE_TYPE, owner
+            SERVICE_CAPABILITY, SERVICE_TYPE, owner
         ).get(name)
         return instance if isinstance(instance, GithubSsoEntry) else None
 

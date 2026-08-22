@@ -608,9 +608,11 @@ class _PluginBase(metaclass=ABCMeta):
 
         返回示例：
         [ServiceInstanceDeclaration(
-            capability="downloader",             # 能力标签，可选值为 downloader、
+            capability="downloader",             # 能力标签，宿主自带 downloader、
                                                   # mediaserver、notification、storage、
-                                                  # auth
+                                                  # auth 五族；本次运行的现有取值由
+                                                  # app.sdk.service_instances 的
+                                                  # service_capabilities() 答出
             type="my_downloader",                # 类型标识，与该族配置模型的 type
                                                   # 字段取值对应；与内建类型同名即构成
                                                   # 覆盖，用户为该类型配置的实例改由
@@ -665,6 +667,12 @@ class _PluginBase(metaclass=ABCMeta):
         - `capability="mediaserver"`：`is_inactive`、`reconnect`（同上）
         - `capability="notification"`：`get_state`（连通性测试直调）
 
+        这份名单在 app.sdk.service_instances 有出口：按族继承 DownloaderInstance、
+        MediaServerInstance、NotificationInstance 三个协议即可让类型检查器先一步指出
+        漏写的方法，继承与否不影响登记——形状按方法名判，不按 MRO 判；不继承任何协议、
+        只把方法写齐的实现照常通过。名单本身由同处的 service_instance_required_methods()
+        答出，能力标签的现有取值由 service_capabilities() 答出。
+
         名单之外的方法**一个都不必写空桩**：缺席即表示本实例不提供那项能力，宿主据此
         让开；写一个返回 None 的空桩反而是声称提供却什么都不做。存储族的形状另按
         `StorageBase` 的继承与抽象方法判定，登录认证族的握手走模块分发而不是实例方法，
@@ -672,8 +680,8 @@ class _PluginBase(metaclass=ABCMeta):
         实现形状由插件自己保证。
 
         声明存储类型改 `capability="storage"`，`type` 即存储标识（与内建标识相同即构成
-        覆盖），`impl` 给存储后端类——须继承 app.modules._base.storage.StorageBase 并
-        落地全部抽象方法：
+        覆盖），`impl` 给存储后端类——须继承 app.sdk.storage.StorageBase 并落地全部
+        抽象方法：
 
         [ServiceInstanceDeclaration(
             capability="storage",
@@ -940,7 +948,7 @@ class _PluginBase(metaclass=ABCMeta):
         [ToolClass1, ToolClass2, ...]
 
         对工具类的要求：
-        1、工具类必须继承自 app.agent.tools.base.MoviePilotTool
+        1、工具类必须继承自 app.sdk.agent.MoviePilotTool
         2、工具类需要实现 run 方法（异步方法）
         3、工具类需要定义 name 和 description 属性
         4、工具类可以定义 args_schema 来指定输入参数模型
@@ -956,10 +964,13 @@ class _PluginBase(metaclass=ABCMeta):
             name="my_tool",                      # 工具名，供 Agent 识别并调用
             description="工具功能说明",           # 工具描述，供 Agent 判断何时调用
             impl=MyTool,                         # 工具实现类，须继承
-                                                  # app.agent.tools.base.MoviePilotTool
+                                                  # app.sdk.agent.MoviePilotTool
                                                   # 并实现异步的 run 方法；不合契约的声明
                                                   # 会被拒绝登记，不留到调用时才失败
         )]
+
+        工具标签取 app.sdk.agent.ToolTag：只读子代理按 ToolTag.Read 筛选可用工具，
+        不带该标签的工具在只读场景里一次都不会被选中。
 
         也可直接返回实现类本身（不包 `AgentToolDeclaration`），宿主按类自身的 name、
         description 字段取用标识，兼容早期写法。

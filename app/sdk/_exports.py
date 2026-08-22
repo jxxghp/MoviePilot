@@ -207,6 +207,10 @@ SDK_REQUIRED_EXPORTS = {
 }
 
 SDK_DECLARED_EXPORTS = {
+    'app.sdk.agent': {
+        'MoviePilotTool': ('app.agent.tools.base', 'MoviePilotTool'),
+        'ToolTag': ('app.agent.tools.tags', 'ToolTag'),
+    },
     'app.sdk.auth': {
         'AuthEntry': ('app.runtime.extensions.auth_entries', 'AuthEntry'),
         'create_plugin_auth_ticket_for_identity': ('app.application.security.auth', 'create_plugin_auth_ticket_for_identity'),
@@ -252,7 +256,6 @@ SDK_DECLARED_EXPORTS = {
         'verify_backup': ('app.sdk.database', 'verify_backup'),
     },
     'app.sdk.declarations': {
-        'AUTH_CAPABILITY': ('app.runtime.extensions.service_config', 'AUTH_CAPABILITY'),
         'ActionDeclaration': ('app.runtime.extensions.declaration', 'ActionDeclaration'),
         'AgentToolDeclaration': ('app.runtime.extensions.declaration', 'AgentToolDeclaration'),
         'CommandDeclaration': ('app.runtime.extensions.declaration', 'CommandDeclaration'),
@@ -263,7 +266,6 @@ SDK_DECLARED_EXPORTS = {
         'MediaSourceDeclaration': ('app.runtime.extensions.declaration', 'MediaSourceDeclaration'),
         'MetaParserDeclaration': ('app.runtime.extensions.declaration', 'MetaParserDeclaration'),
         'ModuleDeclaration': ('app.runtime.extensions.declaration', 'ModuleDeclaration'),
-        'STORAGE_CAPABILITY': ('app.runtime.extensions.service_config', 'STORAGE_CAPABILITY'),
         'ScheduleDeclaration': ('app.runtime.extensions.declaration', 'ScheduleDeclaration'),
         'ServiceInstanceDeclaration': ('app.runtime.extensions.declaration', 'ServiceInstanceDeclaration'),
         'ServiceInstanceRequirement': ('app.runtime.extensions.declaration', 'ServiceInstanceRequirement'),
@@ -390,6 +392,13 @@ SDK_DECLARED_EXPORTS = {
         'verify_password': ('app.application.security.token', 'verify_password'),
         'verify_resource_token': ('app.adapters.web.security.access', 'verify_resource_token'),
         'verify_token': ('app.adapters.web.security.access', 'verify_token'),
+    },
+    'app.sdk.service_instances': {
+        'DownloaderInstance': ('app.sdk.service_instances', 'DownloaderInstance'),
+        'MediaServerInstance': ('app.sdk.service_instances', 'MediaServerInstance'),
+        'NotificationInstance': ('app.sdk.service_instances', 'NotificationInstance'),
+        'service_capabilities': ('app.sdk.service_instances', 'service_capabilities'),
+        'service_instance_required_methods': ('app.sdk.service_instances', 'service_instance_required_methods'),
     },
     'app.sdk.services': {
         'AsyncMediaServerQueryRepository': ('app.application.mediaserver', 'AsyncMediaServerQueryRepository'),

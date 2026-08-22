@@ -7,10 +7,12 @@
 消息渠道能力那一族的载体是 ``app.schemas`` 的 ``ChannelCapabilities``，不在本模块：
 它同时是渠道分发链路上的传输数据，本就属于 schema 公开面。
 
-``AUTH_CAPABILITY`` 与 ``STORAGE_CAPABILITY`` 是 ``ServiceInstanceDeclaration.capability``
-的取值，与声明类同处一处：它们是声明的词汇而不是独立能力。其余服务族的标签取
-``app.schemas`` 的 ``ModuleType``——族由宿主登记而不是写死在声明面上的枚举，SDK 照抄一份
-固定清单只会在新族登记后失真。
+``ServiceInstanceDeclaration.capability`` 的取值不在本模块以常量形式出现，一族都不给：
+族由宿主登记而不是写死在声明面上的枚举，SDK 照抄一份固定清单只会在新族登记后失真，而
+给一部分族配常量、另一部分族不配，等于把同一件事写成两种口径。标签本身是稳定字符串，
+照 ``type`` 字段的写法直接给字面量即可；本次运行的宿主认哪些族由
+`app.sdk.service_instances` 的 ``service_capabilities()`` 回答，那一族要实现什么方法由
+同处的协议与 ``service_instance_required_methods()`` 回答。
 """
 
 from app.runtime.extensions.declaration import (
@@ -28,12 +30,9 @@ from app.runtime.extensions.declaration import (
     ServiceInstanceDeclaration,
     ServiceInstanceRequirement,
 )
-from app.runtime.extensions.service_config import AUTH_CAPABILITY, STORAGE_CAPABILITY
 
 
 __all__ = [
-    "AUTH_CAPABILITY",
-    "STORAGE_CAPABILITY",
     "ActionDeclaration",
     "AgentToolDeclaration",
     "CommandDeclaration",

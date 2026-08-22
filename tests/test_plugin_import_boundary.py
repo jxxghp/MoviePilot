@@ -36,7 +36,7 @@ PLUGIN_ROOT = PROJECT_ROOT / "app" / "plugins"
 # 插件所在的包，插件包内导入按它加插件包名判定
 PLUGIN_PACKAGE = "app.plugins"
 # 随仓入库的参考实现，门禁的扫描范围；新增参考实现须同时登记在此
-REFERENCE_PLUGINS = frozenset({"githubsso", "p123disk"})
+REFERENCE_PLUGINS = frozenset({"githubsso", "p123disk", "servicehealth"})
 # 宿主提供的扩展基类所在处，不是插件，不参与判定
 HOST_BASE_ENTRY = "app/plugins/__init__.py"
 # 插件门面根包；下划线开头的子模块是 SDK 自己的生成物与内部实现，不对插件承诺
@@ -242,14 +242,19 @@ def test_plugins_only_import_the_sdk_and_public_surface():
 
 
 def test_the_boundary_gate_covers_the_reference_implementations():
-    """两个原生参考实现必须在本门禁的扫描范围内。
+    """三个原生参考实现必须在本门禁的扫描范围内。
 
     参考实现被搬走、改名，或登记清单被清空时上一条会无声通过——一条不扫任何文件的规则
     和没有规则是一回事。参考实现是「只用 SDK 也写得出来」的验收标准，它们在场即门禁在跑。
+
+    三个各压一族扩展点：``githubsso`` 声明登录认证族的服务实例类型，``p123disk`` 声明
+    存储族的服务实例类型，``servicehealth`` 声明智能体工具。三者要用的 SDK 出口互不重叠
+    ——登录票据与服务实例发现、存储基类、智能体工具基类与标签——一族缺席即那几个出口
+    「只用 SDK 也写得出来」无人担保。
     """
     scanned = {package for package, _path in reference_plugin_sources()}
 
-    assert {"githubsso", "p123disk"} <= scanned, (
+    assert {"githubsso", "p123disk", "servicehealth"} <= scanned, (
         f"参考实现不在扫描范围内，当前只扫到 {sorted(scanned)}"
     )
 

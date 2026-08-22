@@ -49,6 +49,13 @@ PACKAGE_LAYERS: dict[str, frozenset[str]] = {
 # 已知且被接受的方向负债：矩阵禁止但暂时保留的边，每条附清偿方向。
 # 边消失后条目可直接删除，留着不会导致失败。
 DEPENDENCY_DEBT: dict[tuple[str, str], str] = {
+    ("sdk", "agent"): (
+        "智能体工具基类 MoviePilotTool 现居 app.agent.tools.base，而扩展声明智能体工具时"
+        "必须继承它，SDK 不给出口就只能让扩展直接 import 宿主内部路径。同一处安家还逼得"
+        "app.runtime.extensions.plugin.agent_tool_capabilities 判不了继承，只能由启动"
+        "组合根经 configure_agent_tool_base 在运行期注入基类。"
+        "清偿方向：把该契约迁出 app.agent，SDK 与校验层即可直接 import。"
+    ),
     ("sdk", "modules"): (
         "存储后端契约 StorageBase 现居 app.modules._base.storage，而扩展声明存储类型时"
         "必须继承它，SDK 不给出口就只能让扩展直接 import 宿主内部路径。同一处安家还逼得"

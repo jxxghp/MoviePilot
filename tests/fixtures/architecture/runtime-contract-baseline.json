@@ -2347,6 +2347,18 @@
   "sdk_exports": {
     "app.sdk": [],
     "app.sdk._exports": [],
+    "app.sdk.agent": [
+      {
+        "kind": "import",
+        "name": "MoviePilotTool",
+        "target": "app.agent.tools.base.MoviePilotTool"
+      },
+      {
+        "kind": "import",
+        "name": "ToolTag",
+        "target": "app.agent.tools.tags.ToolTag"
+      }
+    ],
     "app.sdk.auth": [
       {
         "kind": "import",
@@ -2540,11 +2552,6 @@
     "app.sdk.declarations": [
       {
         "kind": "import",
-        "name": "AUTH_CAPABILITY",
-        "target": "app.runtime.extensions.service_config.AUTH_CAPABILITY"
-      },
-      {
-        "kind": "import",
         "name": "ActionDeclaration",
         "target": "app.runtime.extensions.declaration.ActionDeclaration"
       },
@@ -2592,11 +2599,6 @@
         "kind": "import",
         "name": "ModuleDeclaration",
         "target": "app.runtime.extensions.declaration.ModuleDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "STORAGE_CAPABILITY",
-        "target": "app.runtime.extensions.service_config.STORAGE_CAPABILITY"
       },
       {
         "kind": "import",
@@ -3165,6 +3167,68 @@
         "kind": "import",
         "name": "verify_token",
         "target": "app.adapters.web.security.access.verify_token"
+      }
+    ],
+    "app.sdk.service_instances": [
+      {
+        "kind": "import",
+        "name": "Dict",
+        "target": "typing.Dict"
+      },
+      {
+        "kind": "ClassDef",
+        "name": "DownloaderInstance",
+        "target": ""
+      },
+      {
+        "kind": "ClassDef",
+        "name": "MediaServerInstance",
+        "target": ""
+      },
+      {
+        "kind": "ClassDef",
+        "name": "NotificationInstance",
+        "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "Protocol",
+        "target": "typing.Protocol"
+      },
+      {
+        "kind": "import",
+        "name": "SERVICE_INSTANCE_REQUIRED_METHODS",
+        "target": "app.runtime.extensions.plugin.service_instance_contracts.SERVICE_INSTANCE_REQUIRED_METHODS"
+      },
+      {
+        "kind": "import",
+        "name": "Tuple",
+        "target": "typing.Tuple"
+      },
+      {
+        "kind": "import",
+        "name": "annotations",
+        "target": "__future__.annotations"
+      },
+      {
+        "kind": "import",
+        "name": "runtime_checkable",
+        "target": "typing.runtime_checkable"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "service_capabilities",
+        "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "service_family_registry",
+        "target": "app.runtime.extensions.service_family_registry.service_family_registry"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "service_instance_required_methods",
+        "target": ""
       }
     ],
     "app.sdk.services": [
