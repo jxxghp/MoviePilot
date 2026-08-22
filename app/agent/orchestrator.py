@@ -1696,7 +1696,23 @@ class MoviePilotAgent:
             return bundle.agent
         return None
 
-    def _cache_agent(
+    @staticmethod
+    async def _close_subagent_middleware_instances(
+        middlewares: tuple[Any, ...],
+    ) -> None:
+        """释放不再由 Agent 图持有的子代理控制器。"""
+        for middleware in middlewares:
+            close = getattr(middleware, "close", None)
+            if not callable(close):
+                continue
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as error:
+                logger.debug(f"关闭子代理中间件失败: {error}")
+
+    async def _cache_agent(
         self,
         *,
         signature: tuple[Any, ...],
@@ -1708,6 +1724,15 @@ class MoviePilotAgent:
         subagent_middlewares: tuple[Any, ...] = (),
     ) -> Any:
         """保存当前会话可复用的 Agent 图。"""
+        previous_middlewares = tuple(
+            middleware
+            for middleware in self._subagent_middlewares
+            if not any(
+                middleware is replacement
+                for replacement in subagent_middlewares
+            )
+        )
+        await self._close_subagent_middleware_instances(previous_middlewares)
         self._compiled_agent_bundle = _CompiledAgentBundle(
             signature=signature,
             agent=agent,
@@ -1722,6 +1747,13 @@ class MoviePilotAgent:
         )
         self._subagent_middlewares = subagent_middlewares
         return agent
+
+    async def _invalidate_cached_agent(self) -> None:
+        """使当前图失效，并释放只属于该图的子代理控制器。"""
+        subagent_middlewares = self._subagent_middlewares
+        self._subagent_middlewares = ()
+        self._compiled_agent_bundle = None
+        await self._close_subagent_middleware_instances(subagent_middlewares)
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
@@ -1791,6 +1823,7 @@ class MoviePilotAgent:
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
         :param streaming: 是否启用流式输出
         """
+        temporary_subagent_middlewares: tuple[Any, ...] = ()
         try:
             runtime_config = await self._resolve_llm_runtime_config()
             plugin_revision = _get_plugin_tools_revision()
@@ -1894,6 +1927,7 @@ class MoviePilotAgent:
                 policy_context=policy_context.for_subagent(),
                 catalog=subagent_catalog,
             )
+            temporary_subagent_middlewares = tuple(subagent_middlewares)
             # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
             tool_catalog = ToolCatalogSnapshot.from_tools(
                 [
@@ -1916,6 +1950,10 @@ class MoviePilotAgent:
             if cached_agent:
                 # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
                 cached_bundle.catalog_checked_at = datetime.now()
+                await self._close_subagent_middleware_instances(
+                    temporary_subagent_middlewares
+                )
+                temporary_subagent_middlewares = ()
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                 return cached_agent
             max_tools = settings.LLM_MAX_TOOLS
@@ -2020,7 +2058,7 @@ class MoviePilotAgent:
                 middleware=middlewares,
                 checkpointer=InMemorySaver(),
             )
-            return self._cache_agent(
+            cached_agent = await self._cache_agent(
                 signature=bundle_signature,
                 agent=agent,
                 streaming=streaming,
@@ -2029,9 +2067,19 @@ class MoviePilotAgent:
                 mcp_config_signature=mcp_config_signature,
                 subagent_middlewares=tuple(subagent_middlewares),
             )
+            temporary_subagent_middlewares = ()
+            return cached_agent
+        except asyncio.CancelledError:
+            await self._close_subagent_middleware_instances(
+                temporary_subagent_middlewares
+            )
+            raise
         except Exception as e:
+            await self._close_subagent_middleware_instances(
+                temporary_subagent_middlewares
+            )
             logger.error(f"创建 Agent 失败: {e}")
-            raise e
+            raise
 
     async def process(
             self,
@@ -2372,11 +2420,11 @@ class MoviePilotAgent:
 
         except asyncio.CancelledError:
             logger.info(f"Agent执行被取消: session_id={self.session_id}")
-            self._compiled_agent_bundle = None
+            await self._invalidate_cached_agent()
             execution_error = "任务已取消"
             raise
         except Exception as e:
-            self._compiled_agent_bundle = None
+            await self._invalidate_cached_agent()
             execution_error = str(e)
             if self._messages_have_image_input(messages) and self._is_unsupported_image_input_error(e):
                 logger.warning(
@@ -2429,21 +2477,9 @@ class MoviePilotAgent:
         """
         清理智能体资源
         """
-        subagent_middlewares = self._subagent_middlewares
-        self._subagent_middlewares = ()
-        for middleware in subagent_middlewares:
-            close = getattr(middleware, "close", None)
-            if not callable(close):
-                continue
-            try:
-                result = close()
-                if inspect.isawaitable(result):
-                    await result
-            except Exception as error:
-                logger.debug(f"关闭子代理中间件失败: {error}")
+        await self._invalidate_cached_agent()
         self._pending_secret_confirmation = None
         self.protected_output_callback = None
-        self._compiled_agent_bundle = None
         logger.info(f"MoviePilot智能体已清理: session_id={self.session_id}")
 
 

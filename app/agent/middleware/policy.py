@@ -7,11 +7,13 @@ from typing import Any
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_config
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agent.policy import (
+from app.agent.policy.contracts import (
+    ToolOrigin,
+    ToolPolicyContext,
+)
+from app.agent.policy.orchestrator import (
     DEFAULT_TOOL_POLICY_ORCHESTRATOR,
     AgentToolPolicyOrchestrator,
-    ToolPolicyContext,
-    ToolOrigin,
     call_policy_hook,
 )
 from app.agent.tools.catalog import ToolCatalogSnapshot
@@ -108,13 +110,21 @@ class AgentPolicyMiddleware(AgentMiddleware):
         arguments = tool_call.get("args") or {}
         if not isinstance(arguments, dict):
             arguments = {}
-        _, result = await self.execute_tool_call(
-            tool=request.tool,
-            arguments=arguments,
-            invocation_id=tool_call.get("id"),
-            handler=lambda: handler(request),
-            enforce_decision=False,
-        )
+        try:
+            _, result = await self.execute_tool_call(
+                tool=request.tool,
+                arguments=arguments,
+                invocation_id=tool_call.get("id"),
+                handler=lambda: handler(request),
+                enforce_decision=False,
+            )
+        except TimeoutError as error:
+            tool_name = str(getattr(request.tool, "name", None) or "unknown")
+            return ToolMessage(
+                content=str(error),
+                tool_call_id=str(tool_call.get("id") or ""),
+                name=tool_name,
+            )
         # 普通 ToolNode 保持 shadow 观测；已确认调用使用默认的强制决策语义。
         return result
 

@@ -525,6 +525,55 @@ def test_control_tool_pipeline_stops_after_failed_step():
     asyncio.run(_run_test())
 
 
+def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
+    """管道步骤忽略取消时，等待上限仍必须按时返回失败。"""
+
+    async def _run_test():
+        model = FakeListChatModel(responses=["ok"])
+        middleware = SubAgentTaskControlMiddleware(
+            model=model,
+            profiles=subagent_module._builtin_subagent_profiles(),
+            tools=[],
+        )
+        release = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def _ignore_cancel(self, *, description, subagent_type, task_id=None):
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled.set()
+                await release.wait()
+                return "late-result"
+
+        with patch.object(
+            subagent_module._SubAgentAgentProvider,
+            "run_task",
+            new=_ignore_cancel,
+        ):
+            pipeline = asyncio.create_task(
+                middleware._control_task(
+                    action="pipeline",
+                    description="慢任务",
+                    timeout_ms=10,
+                )
+            )
+            payload = json.loads(await asyncio.wait_for(pipeline, timeout=0.2))
+
+        assert payload["success"] is False
+        assert "等待超时" in payload["error"]
+        assert payload["tasks"][0]["status"] == "running"
+        assert cancelled.is_set()
+
+        release.set()
+        await asyncio.wait_for(
+            middleware._tasks[payload["tasks"][0]["task_id"]].task,
+            timeout=0.2,
+        )
+
+    asyncio.run(_run_test())
+
+
 def test_after_agent_cancels_unfinished_tasks():
     """Agent 结束时应取消仍在运行的异步子代理任务。"""
 

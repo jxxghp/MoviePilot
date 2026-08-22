@@ -128,7 +128,11 @@ class _TerminalSessionManager:
         """初始化会话表和并发保护锁。"""
         self._sessions: dict[str, _TerminalSession] = {}
         self._lock = asyncio.Lock()
-        self._closing = False
+        self._close_lock = asyncio.Lock()
+        self._closed = False
+        self._starting = 0
+        self._starts_idle = asyncio.Event()
+        self._starts_idle.set()
 
     @staticmethod
     def _normalize_bool(value: Any, default: bool = True) -> bool:
@@ -212,30 +216,55 @@ class _TerminalSessionManager:
         should_use_pty = self._normalize_bool(use_pty, default=True) and os.name == "posix"
 
         async with self._lock:
-            if self._closing:
-                raise RuntimeError("终端会话管理器正在关闭")
+            if self._closed:
+                raise RuntimeError("终端会话管理器已关闭")
             self._cleanup_finished_sessions_locked()
-            if self._active_session_count_locked() >= TERMINAL_CONCURRENCY_LIMIT:
+            if (
+                    self._active_session_count_locked() + self._starting
+                    >= TERMINAL_CONCURRENCY_LIMIT
+            ):
                 raise RuntimeError(
                     f"后台终端会话数已达到上限 {TERMINAL_CONCURRENCY_LIMIT}"
                 )
+            self._starting += 1
+            self._starts_idle.clear()
 
-        session = (
-            await self._start_pty_session(command, normalized_cwd, normalized_env)
-            if should_use_pty
-            else await self._start_pipe_session(command, normalized_cwd, normalized_env)
-        )
+        session: Optional[_TerminalSession] = None
+        reject_session = False
+        session_registered = False
+        session_released = False
+        try:
+            session = (
+                await self._start_pty_session(command, normalized_cwd, normalized_env)
+                if should_use_pty
+                else await self._start_pipe_session(
+                    command, normalized_cwd, normalized_env
+                )
+            )
 
-        async with self._lock:
-            if self._closing:
-                reject_session = True
-            else:
-                self._sessions[session.session_id] = session
-                reject_session = False
+            async with self._lock:
+                reject_session = self._closed
+                if not reject_session:
+                    self._sessions[session.session_id] = session
+                    session_registered = True
 
-        if reject_session:
-            await self._terminate_session(session)
-            raise RuntimeError("终端会话管理器正在关闭")
+            if reject_session:
+                await self._terminate_session(session)
+                session_released = True
+                raise RuntimeError("终端会话管理器已关闭")
+        except BaseException:
+            if session is not None and not session_registered and not session_released:
+                cleanup_task = asyncio.create_task(self._terminate_session(session))
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError:
+                    await cleanup_task
+            raise
+        finally:
+            async with self._lock:
+                self._starting -= 1
+                if self._starting == 0:
+                    self._starts_idle.set()
 
         logger.info(
             "启动后台终端会话: session_id=%s, pid=%s, use_pty=%s, command=%s",
@@ -486,23 +515,24 @@ class _TerminalSessionManager:
 
     async def close(self) -> None:
         """停止所有后台终端会话并释放 PTY、读取任务和会话记录。"""
-        async with self._lock:
-            if self._closing:
-                return
-            self._closing = True
-            sessions = list(self._sessions.values())
+        async with self._close_lock:
+            async with self._lock:
+                self._closed = True
 
-        try:
+            await self._starts_idle.wait()
+
+            async with self._lock:
+                sessions = list(self._sessions.values())
+
             await asyncio.gather(
                 *(self._terminate_session(session) for session in sessions),
                 return_exceptions=True,
             )
-        finally:
+
             async with self._lock:
                 for session in sessions:
                     session.close_pty()
                 self._sessions.clear()
-                self._closing = False
 
     async def _terminate_session(self, session: _TerminalSession) -> None:
         """以有限等待停止进程，并在必要时升级为 SIGKILL。"""
