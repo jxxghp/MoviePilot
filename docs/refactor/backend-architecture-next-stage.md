@@ -989,19 +989,15 @@ Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源�
 
 **实施记录（2026-08-21）**：
 
-- 新增 `scripts/architecture/async_blocking.py`，AST 扫描 `app/api`、`app/agent`、`app/application` 的
-  async 函数，覆盖直接 `open`/Path 读写遍历、`requests`、`time.sleep`、同步 `subprocess` 和目录遍历。
-- scanner 通过局部类型流识别 `aiofiles` 与 `anyio.AsyncPath`，不会把正确异步 I/O 记成债务；baseline
-  只允许调用减少/删除，新增或次数增长均在 CI architecture job 失败。
-- Web Agent 上传已从 `Path.open/write/unlink` 改为 `aiofiles` 写入和统一 `run_in_threadpool` 清理；当前仅保留
-  ActivityLog 为保证 `O_EXCL` 原子创建使用的一处 `os.open` 精确债务，不泛化豁免整个文件或目录。
+- `scripts/architecture/async_blocking.py` 扫描 canonical 主程序目录和顶层运行入口中的 async 函数，覆盖
+  同步 HTTP、Oper、Path、`shutil`、`subprocess`、`os`、`time.sleep` 与 `open`。
+- scanner 按 import 来源、局部别名、互斥分支和嵌套函数定义点解析符号；`AsyncRequestUtils`、
+  `anyio.Path`、延迟回调及受控 worker 内执行的同步函数不记为 async 直接阻塞。函数和 lambda 的默认值、
+  decorator 等定义时表达式仍在所在 async 执行体中检查。
+- baseline 只允许调用减少或删除，新增调用及次数增长均使 CI architecture job 失败；当前记录 10 条已确认
+  存量，包括 8 条文件元数据访问、1 条目录删除和 1 条同步 Oper 读取，由后续数据库与文件 adapter 叶迁移。
 - pytest 全局启用 `asyncio_debug`，专项测试验证实际 loop debug 状态；AST ratchet 与 46 个 Agent 流式回归
   通过。同步第三方 Module 仍由 dispatcher 的 `app.runtime.execution.run_in_threadpool` 兼容。
-- 2026-08-22 扫描范围扩大到 `app/chain`、`app/modules`、`app/startup` 与 `app/scheduler.py`；扩大后未发现
-  新存量，仍只保留 ActivityLog 的一处原子 `os.open` 精确债务，并由测试锁定扫描根目录。
-- 扫描进一步覆盖 `adapters/db/doctor/domain/foundation/monitor/runtime/schemas/workflow` 及 CLI、Command、
-  Factory、Main 顶层入口，明确排除插件源码和 SDK。AsyncPath 条件派生识别已修正；Release zip 解压读取和
-  ActivityLog `O_EXCL` 独占创建移入线程池，扩围后 async 阻塞 baseline 从 1 降为 0。
 
 ## 6. 推荐执行队列
 
