@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+import functools
+import inspect
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterator, Mapping, Protocol
+from typing import Any, Callable, Iterator, Mapping, Protocol, TypeVar, cast
 
 
 class MetricKind(StrEnum):
@@ -42,6 +44,11 @@ METRIC_SPECS = {
             MetricKind.COUNTER,
             frozenset({"method", "caller_type", "abi_source"}),
         ),
+        MetricSpec(
+            "compat.facade.hit",
+            MetricKind.COUNTER,
+            frozenset({"facade", "operation", "visibility", "abi_source"}),
+        ),
         MetricSpec("scheduler.job.duration", MetricKind.HISTOGRAM, frozenset({"owner", "outcome"})),
         MetricSpec("scheduler.job.overlap_skip", MetricKind.COUNTER, frozenset({"owner"})),
         MetricSpec("scheduler.job.retry", MetricKind.COUNTER, frozenset({"owner"})),
@@ -70,6 +77,73 @@ class NoopObservationPort:
 
 
 _observation_port: ObservationPort = NoopObservationPort()
+
+_FacadeClass = TypeVar("_FacadeClass", bound=type)
+
+
+def observe_compat_facade(facade: str) -> Callable[[_FacadeClass], _FacadeClass]:
+    """为旧 ABI Facade 的公开和私有方法记录低基数命中，不改变方法合同。"""
+
+    def decorate(cls: _FacadeClass) -> _FacadeClass:
+        for name, descriptor in tuple(vars(cls).items()):
+            if name.startswith("__") and name.endswith("__"):
+                continue
+            visibility = "private" if name.startswith("_") else "public"
+            if isinstance(descriptor, classmethod):
+                wrapped = _wrap_compat_method(
+                    descriptor.__func__, facade, name, visibility
+                )
+                setattr(cls, name, classmethod(wrapped))
+            elif isinstance(descriptor, staticmethod):
+                wrapped = _wrap_compat_method(
+                    descriptor.__func__, facade, name, visibility
+                )
+                setattr(cls, name, staticmethod(wrapped))
+            elif callable(descriptor):
+                setattr(
+                    cls,
+                    name,
+                    _wrap_compat_method(descriptor, facade, name, visibility),
+                )
+        return cls
+
+    return decorate
+
+
+def _wrap_compat_method(
+    method: Callable[..., Any],
+    facade: str,
+    operation: str,
+    visibility: str,
+) -> Callable[..., Any]:
+    """包装一个兼容方法并保持同步/异步调用形态及反射元数据。"""
+    if inspect.iscoroutinefunction(method):
+
+        @functools.wraps(method)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            record_metric(
+                "compat.facade.hit",
+                facade=facade,
+                operation=operation,
+                visibility=visibility,
+                abi_source="legacy_facade",
+            )
+            return await method(*args, **kwargs)
+
+        return cast(Callable[..., Any], async_wrapper)
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        record_metric(
+            "compat.facade.hit",
+            facade=facade,
+            operation=operation,
+            visibility=visibility,
+            abi_source="legacy_facade",
+        )
+        return method(*args, **kwargs)
+
+    return cast(Callable[..., Any], wrapper)
 
 
 def configure_observation(port: ObservationPort | None) -> None:

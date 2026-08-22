@@ -14,6 +14,7 @@ from app.foundation.crypto import RSAUtils
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.log import logger
+from app.runtime.observability import observe_compat_facade
 from app.runtime.config import settings
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
@@ -120,6 +121,7 @@ def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
     _plugin_catalog_factory = factory
 
 
+@observe_compat_facade("PluginManager")
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}

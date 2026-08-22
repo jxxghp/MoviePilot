@@ -1129,6 +1129,12 @@ startup 注入具体依赖
 
 阶段 5 的“拆分”是职责入口和组合依赖的拆分，不等于本轮把旧 `PluginHelper` 的全部 3,066 行算法复制到新文件。旧类仍是正式 V3 ABI，保留原类名、对象/静态方法和旧私有调用；新宿主路径使用上述 canonical client、package、dependency 和 Application command。后续如需继续内移算法，必须先增加旧私有调用命中统计和逐方法行为快照。
 
+**实施记录（2026-08-23）**：`app.runtime.observability.observe_compat_facade()` 为
+`PluginManager`、`PluginHelper`、`MoviePilotServerHelper` 的公开及旧私有方法记录
+`compat.facade.hit`。指标只使用 Facade 名称、稳定方法名、公开/私有可见性和固定 ABI 来源，保留
+同步/异步 descriptor、签名和对象身份；三类入口的离线测试已覆盖命中记录。该统计是迁移取证，不代表
+算法已全部内移，后续仍需按命中最高的方法建立行为快照后逐项迁移。
+
 这里的“兼容”分为两类，后续 AI 不得混淆：
 
 1. 已迁移、只需恢复旧模块路径的入口，统一登记到 `app/runtime/compat/manifest.py`，新实现模块不复制旧对象导出。
