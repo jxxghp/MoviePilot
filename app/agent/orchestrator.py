@@ -2865,10 +2865,7 @@ class AgentManager:
                 finally:
                     await self._finish_task_processing_status(task)
                     queue.task_done()
-                if (
-                        not self._accepting_tasks
-                        or session_id in self._session_cancel_requested
-                ):
+                if session_id in self._session_cancel_requested:
                     break
 
         except asyncio.CancelledError:
