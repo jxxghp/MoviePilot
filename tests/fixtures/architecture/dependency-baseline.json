@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6420,
-  "edge_sha256": "7c586d713c6014eb485763f8b7704d9421d95ba7d145910a33163dcb36882914",
+  "edge_count": 6419,
+  "edge_sha256": "bc2f57394915b9f90921a91cc4630a4426975ee765ece75a1aa0640080e41b4f",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3557,7 +3557,6 @@
     "app.db.models.user -> app.db.decorators",
     "app.db.models.userconfig -> app.db",
     "app.db.models.userconfig -> app.db.base",
-    "app.db.models.userconfig -> app.db.decorators",
     "app.db.models.workflow -> app.db",
     "app.db.models.workflow -> app.db.base",
     "app.db.models.workflow -> app.db.decorators",
