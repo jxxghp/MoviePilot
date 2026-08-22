@@ -41,6 +41,7 @@ def _bare_chain() -> ChainBase:
     """构造不执行初始化的识别链实例，并挂上无插件响应的事件管理器桩。"""
     chain = object.__new__(ChainBase)
     chain.eventmanager = Mock(check=Mock(return_value=False))
+    chain.runtime_config = SimpleNamespace(media_recognize_share=True)
     return chain
 
 
@@ -57,7 +58,6 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
         type=MediaType.MOVIE,
     )
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(chain, "run_module", Mock(side_effect=[None, media]))
     monkeypatch.setattr(chain, "_update_local_recognize_cache", Mock())
     monkeypatch.setattr(
@@ -86,7 +86,6 @@ def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
     chain = _bare_chain()
     meta = _build_meta("共享识别失败电影")
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(chain, "run_module", Mock(side_effect=[None, None]))
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -122,7 +121,6 @@ def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
         type=MediaType.MOVIE,
     )
     increment = _mock_counter(monkeypatch)
-    monkeypatch.setattr("app.chain._recognition.settings.MEDIA_RECOGNIZE_SHARE", True)
     monkeypatch.setattr(
         chain,
         "async_run_module",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Optional, Protocol
 
 
 class SystemConfigReader(Protocol):
@@ -80,6 +80,12 @@ class ChainRuntimeConfig:
     """Chain 在一次宿主生命周期内使用的基础配置快照。"""
 
     media_extensions: tuple[str, ...]
+    superuser: str = "admin"
+    media_recognize_share: bool = False
+    auxiliary_auth_enable: bool = False
+    global_image_cache: bool = False
+    auto_download_user: Optional[str] = None
+    resource_url: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

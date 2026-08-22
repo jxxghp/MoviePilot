@@ -567,6 +567,9 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 - 登录、仪表板和整理历史 API 不再直接导入 `settings`；`Scheduler` 已清除全部直接 `settings` 访问，
   用户认证配置改走 `SystemConfigService`；`StorageChain` 的媒体后缀改走 Chain snapshot。canonical 配置债务
   从 169/15 降到 164 个 settings import 文件/14 个 SystemConfigOper 构造点。
+- Chain snapshot 继续覆盖超级用户、共享识别、辅助认证、全局图片缓存、自动下载用户和资源页链接；
+  消息、识别、交互、推荐和用户链的 5 个直接 `settings` 导入被移除，当前低水位进一步降到
+  161 个 settings import 文件，插件 SDK 与兼容入口未改。
 - 直接调用 endpoint 和显式构造 `ChainRuntimeContext` 的旧测试/兼容入口仍有 fallback；正式 FastAPI 与
   Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
 

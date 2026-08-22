@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 166,
+    "count": 161,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -69,14 +69,10 @@
       "app/application/security/token.py",
       "app/application/security/url.py",
       "app/application/torrent.py",
-      "app/chain/_messaging.py",
-      "app/chain/_recognition.py",
       "app/chain/_transfer.py",
       "app/chain/download.py",
-      "app/chain/interaction.py",
       "app/chain/media.py",
       "app/chain/message.py",
-      "app/chain/recommend.py",
       "app/chain/scraping.py",
       "app/chain/search.py",
       "app/chain/site.py",
@@ -84,7 +80,6 @@
       "app/chain/system.py",
       "app/chain/torrents.py",
       "app/chain/transfer.py",
-      "app/chain/user.py",
       "app/cli.py",
       "app/db/base.py",
       "app/db/engine.py",

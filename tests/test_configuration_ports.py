@@ -1,7 +1,10 @@
 """配置快照与窄读写端口测试。"""
 
 import asyncio
+from dataclasses import FrozenInstanceError
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.application.configuration import (
     ApiRuntimeConfig,
@@ -78,5 +81,19 @@ def test_api_runtime_provider_returns_frozen_snapshot_per_request() -> None:
 
     assert before_reload.ai_agent_enable is False
     assert after_reload.ai_agent_enable is True
-    configure_runtime_configuration,
-    get_api_runtime_config_snapshot,
+
+
+def test_chain_runtime_config_is_an_instance_scoped_frozen_snapshot() -> None:
+    """Chain 配置应随实例固定，避免同一业务调用中途读取到 reload 后的新值。"""
+    snapshot = ChainRuntimeConfig(
+        media_extensions=(".mkv",),
+        superuser="root",
+        media_recognize_share=True,
+        resource_url="https://example.test/#/resource",
+    )
+
+    assert snapshot.superuser == "root"
+    assert snapshot.media_recognize_share is True
+    assert snapshot.resource_url == "https://example.test/#/resource"
+    with pytest.raises(FrozenInstanceError):
+        snapshot.superuser = "changed"  # type: ignore[misc]

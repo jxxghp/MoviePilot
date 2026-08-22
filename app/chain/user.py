@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any, Literal, Optional, Tuple, Union
 
 from app.chain import ChainBase
-from app.runtime.config import settings
 from app.application.security.token import get_password_hash, verify_password
 from app.application.chain.data import UserPortProxy as UserOper
 from app.runtime.log import logger
@@ -73,7 +72,7 @@ class UserChain(ChainBase):
                 return True, user_or_message
             else:
                 # 用户不存在或密码错误，考虑辅助认证
-                if settings.AUXILIARY_AUTH_ENABLE:
+                if self.runtime_config.auxiliary_auth_enable:
                     logger.warning("密码认证失败，尝试通过外部服务进行辅助认证 ...")
                     aux_success, aux_user_or_message = self.auxiliary_authenticate(credentials=credentials)
                     if aux_success:
@@ -91,7 +90,7 @@ class UserChain(ChainBase):
                     return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
         elif credentials.grant_type == "authorization_code":
             # 处理其他认证类型的分支
-            if settings.AUXILIARY_AUTH_ENABLE:
+            if self.runtime_config.auxiliary_auth_enable:
                 aux_success, aux_user_or_message = self.auxiliary_authenticate(credentials=credentials)
                 if aux_success:
                     return True, aux_user_or_message

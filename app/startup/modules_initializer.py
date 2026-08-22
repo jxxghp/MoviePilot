@@ -207,14 +207,20 @@ def _build_scheduler_runtime_config() -> SchedulerRuntimeConfig:
 
 
 def _build_chain_runtime_config() -> ChainRuntimeConfig:
-    """构建 Chain 通用媒体文件后缀配置快照。"""
+    """构建 Chain 在本次实例生命周期内使用的部署配置快照。"""
     return ChainRuntimeConfig(
         media_extensions=tuple(
             settings.RMT_MEDIAEXT
             + settings.DOWNLOAD_TMPEXT
             + settings.RMT_SUBEXT
             + settings.RMT_AUDIOEXT
-        )
+        ),
+        superuser=settings.SUPERUSER,
+        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
+        auxiliary_auth_enable=settings.AUXILIARY_AUTH_ENABLE,
+        global_image_cache=settings.GLOBAL_IMAGE_CACHE,
+        auto_download_user=settings.AUTO_DOWNLOAD_USER,
+        resource_url=settings.MP_DOMAIN("#/resource"),
     )
 
 
