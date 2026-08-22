@@ -426,7 +426,9 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
         timeout=15,
     )
 
-    state, message = SiteChain._SiteChain__sunnypt_test(site)
+    chain = object.__new__(SiteChain)
+    chain.runtime_config = SimpleNamespace(proxy=None, user_agent="MoviePilot-Test")
+    state, message = chain._SiteChain__sunnypt_test(site)
 
     assert state
     assert message == "连接成功"

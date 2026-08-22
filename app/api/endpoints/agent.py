@@ -44,7 +44,7 @@ from app.agent.runtime_loader import (
 )
 from app.chain.message import MessageChain
 from app.command import Command
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal
 from app.api.dependencies.agent import get_agent_chat_service
@@ -55,6 +55,7 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_service,
 )
 from app.application.security.user import get_configured_user_id_lookup
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
 from app.application.messaging.agent import agent_interaction_manager
 from app.application.messaging.agent import (
@@ -744,7 +745,7 @@ def _get_web_agent_upload_dir(user: ApiPrincipal, session_id: Optional[str]) -> 
     """
     server_session_id = _build_web_agent_session_id(user, session_id)
     safe_session_id = server_session_id.replace(":", "_")
-    upload_dir = settings.TEMP_PATH / "agent_uploads" / safe_session_id
+    upload_dir = get_api_runtime_config_snapshot().temp_path / "agent_uploads" / safe_session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
     return upload_dir
 
@@ -972,7 +973,7 @@ def _prepare_web_agent_audio_attachment_path(voice_path: str) -> Path:
         logger.warning("WebAgent 语音转 WAV 跳过：ffmpeg 不可用，path=%s", source_path)
         return source_path
 
-    voice_dir = settings.TEMP_PATH / "voice"
+    voice_dir = get_api_runtime_config_snapshot().temp_path / "voice"
     voice_dir.mkdir(parents=True, exist_ok=True)
     output_path = voice_dir / f"{source_path.stem}_web_{uuid.uuid4().hex[:8]}.wav"
     cmd = [
@@ -2113,7 +2114,7 @@ async def web_agent_stream(
 
         return build_sse_response(traditional_event_generator())
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _build_web_agent_error_response(
             "智能助手未启用，请先在系统设置中开启。",
             locale=locale,

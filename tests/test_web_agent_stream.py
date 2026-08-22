@@ -633,7 +633,10 @@ def test_prepare_web_agent_audio_attachment_converts_unsupported_audio(tmp_path)
             return SimpleNamespace(returncode=0, stderr="")
 
         run.side_effect = write_converted_file
-        with patch("app.api.endpoints.agent.settings", SimpleNamespace(TEMP_PATH=tmp_path)):
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ):
             output_path = _prepare_web_agent_audio_attachment_path(str(source_path))
 
     assert output_path == converted_path
@@ -684,7 +687,10 @@ def test_web_agent_stream_returns_error_when_voice_transcription_fails():
     request = SimpleNamespace()
     user = SimpleNamespace(id=1, name="admin")
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
         "app.api.endpoints.agent._transcribe_web_agent_audio_files",
         return_value=None,
     ) as transcribe_audio:
@@ -722,7 +728,10 @@ def test_web_agent_stream_does_not_block_event_loop_during_transcription():
         return await stream_task
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._resolve_web_agent_audio_refs",
             return_value=[Mock()],
         ), patch(
@@ -788,7 +797,10 @@ def test_web_agent_stream_binds_session_to_agent_manager():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._get_web_agent_type",
             return_value=FakeWebAgent,
         ):
@@ -884,7 +896,10 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._get_web_agent_type",
             return_value=FakeProtectedAgent,
         ), patch(
@@ -942,7 +957,10 @@ def test_web_agent_cancel_keeps_existing_display_history():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch.object(
             agent_manager,
             "matches_secret_confirmation",
             return_value=True,
@@ -982,7 +1000,10 @@ def test_web_agent_stream_rejects_confirmation_without_protected_capability():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch.object(
         agent_manager,
         "matches_secret_confirmation",
         return_value=True,
@@ -1008,7 +1029,10 @@ def test_web_agent_stream_keeps_confirmation_without_pending_on_normal_path():
         body = "".join(await _collect_streaming_response(response))
         return response, body
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch.object(
         agent_manager,
         "process_message",
         new=AsyncMock(return_value="普通回复"),
@@ -1076,7 +1100,10 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         return body
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch.object(
             agent_manager,
             "matches_secret_confirmation",
             return_value=True,
@@ -1116,7 +1143,10 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
         "app.api.endpoints.agent.WEB_AGENT_STREAM_HEARTBEAT_SECONDS",
         0.01,
     ), patch(
@@ -1188,7 +1218,10 @@ def test_web_agent_stop_finishes_stream_without_error():
         return "".join(received)
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._is_web_agent_traditional_message",
             return_value=False,
         ), patch(
@@ -1230,7 +1263,10 @@ def test_web_agent_stream_rechecks_running_service_before_enqueue():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
         "app.api.endpoints.agent._is_web_agent_traditional_message",
         return_value=False,
     ), patch(
@@ -1366,7 +1402,10 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         return "".join(received)
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._is_web_agent_traditional_message",
             return_value=False,
         ), patch(

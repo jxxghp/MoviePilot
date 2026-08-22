@@ -132,9 +132,18 @@ sys.modules["app.application.site.sites"] = sites
 
 from fastapi.security import HTTPAuthorizationCredentials
 from app import schemas
+from app.api.endpoints import anthropic, openai
 from app.api.endpoints.anthropic import messages as anthropic_messages
 from app.api.endpoints.openai import chat_completions, responses
+from app.application.configuration import ApiRuntimeConfig
 from app.runtime.config import settings
+
+runtime_config = ApiRuntimeConfig(
+    False, 60, False, settings.AI_AGENT_ENABLE,
+    api_token=settings.API_TOKEN,
+)
+anthropic.get_api_runtime_config_snapshot = lambda: runtime_config
+openai.get_api_runtime_config_snapshot = lambda: runtime_config
 
 credentials = HTTPAuthorizationCredentials(
     scheme="Bearer",
@@ -367,9 +376,16 @@ sys.modules["app.application.site.sites"] = sites
 from fastapi.security import HTTPAuthorizationCredentials
 from app import schemas
 from app.api.endpoints import anthropic, openai
+from app.application.configuration import ApiRuntimeConfig
 from app.runtime.config import settings
 
 settings.AI_AGENT_ENABLE = True
+runtime_config = ApiRuntimeConfig(
+    False, 60, False, True,
+    api_token=settings.API_TOKEN,
+)
+anthropic.get_api_runtime_config_snapshot = lambda: runtime_config
+openai.get_api_runtime_config_snapshot = lambda: runtime_config
 credentials = HTTPAuthorizationCredentials(
     scheme="Bearer",
     credentials=settings.API_TOKEN,

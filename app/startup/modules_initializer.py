@@ -178,6 +178,10 @@ def _build_api_runtime_config() -> ApiRuntimeConfig:
         access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
         ai_agent_enable=settings.AI_AGENT_ENABLE,
+        api_token=settings.API_TOKEN,
+        temp_path=settings.TEMP_PATH,
+        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
     )
 
 
@@ -222,6 +226,16 @@ def _build_chain_runtime_config() -> ChainRuntimeConfig:
         global_image_cache=settings.GLOBAL_IMAGE_CACHE,
         auto_download_user=settings.AUTO_DOWNLOAD_USER,
         resource_url=settings.MP_DOMAIN("#/resource"),
+        user_agent=settings.USER_AGENT,
+        proxy=settings.PROXY,
+        proxy_server=settings.PROXY_SERVER,
+        proxy_host=settings.PROXY_HOST,
+        cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
+        no_cache_site_key=settings.NO_CACHE_SITE_KEY,
+        refresh_batch_size=settings.CONF.refresh,
+        torrent_cache_size=settings.CONF.torrents,
+        site_url=settings.MP_DOMAIN("#/site"),
     )
 
 

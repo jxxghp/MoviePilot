@@ -23,7 +23,7 @@ from app.api.openai_utils import (
 )
 from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.agent.runtime_loader import get_running_agent_manager
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import anthropic_api_key_header
 
 ANTHROPIC_ERROR_RESPONSES = {
@@ -56,7 +56,7 @@ def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
     """
     Anthropic 兼容接口以 API_TOKEN 认证受信客户端，认证通过即按管理员级 Agent 集成处理。
     """
-    if not api_key or api_key != settings.API_TOKEN:
+    if not api_key or api_key != get_api_runtime_config_snapshot().api_token:
         return _anthropic_error_response(
             "invalid x-api-key",
             401,
@@ -212,7 +212,7 @@ async def messages(
     if auth_error:
         return auth_error
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _anthropic_error_response(
             "MoviePilot AI agent is disabled.",
             503,

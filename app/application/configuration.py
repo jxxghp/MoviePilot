@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional, Protocol
 
 
@@ -49,6 +50,10 @@ class ApiRuntimeConfig:
     access_token_expire_minutes: int
     btrfs_fsid_dedup: bool
     ai_agent_enable: bool
+    api_token: str | None = None
+    temp_path: Path = Path(".")
+    media_recognize_share: bool = False
+    subscribe_mode: str = "spider"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +91,16 @@ class ChainRuntimeConfig:
     global_image_cache: bool = False
     auto_download_user: Optional[str] = None
     resource_url: Optional[str] = None
+    user_agent: str = ""
+    proxy: Any = None
+    proxy_server: Any = None
+    proxy_host: Optional[str] = None
+    cookiecloud_blacklist: Any = None
+    subscribe_mode: str = "spider"
+    no_cache_site_key: str = ""
+    refresh_batch_size: int = 50
+    torrent_cache_size: int = 1000
+    site_url: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

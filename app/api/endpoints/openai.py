@@ -31,7 +31,7 @@ from app.agent.runtime_loader import (
     get_running_agent_manager,
 )
 from app.agent.contracts import ReplyMode
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
 
@@ -453,7 +453,7 @@ def _check_auth(
             error_type="authentication_error",
             code="invalid_api_key",
         )
-    if credentials.credentials != settings.API_TOKEN:
+    if credentials.credentials != get_api_runtime_config_snapshot().api_token:
         return _error_response(
             "Invalid bearer token.",
             401,
@@ -506,7 +506,7 @@ async def chat_completions(
     if auth_error:
         return auth_error
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _error_response(
             "MoviePilot AI agent is disabled.",
             503,
@@ -607,7 +607,7 @@ async def responses(
     if auth_error:
         return auth_error
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _error_response(
             "MoviePilot AI agent is disabled.",
             503,

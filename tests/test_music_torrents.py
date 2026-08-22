@@ -387,7 +387,15 @@ def test_music_cache_not_evicted_by_video_torrents():
     fake_settings.NO_CACHE_SITE_KEY = "no-cache-site.invalid"
 
     with (
-        patch("app.chain.torrents.settings", fake_settings),
+        patch.object(
+            chain,
+            "runtime_config",
+            SimpleNamespace(
+                torrent_cache_size=fake_settings.CONF.torrents,
+                refresh_batch_size=fake_settings.CONF.refresh,
+                no_cache_site_key=fake_settings.NO_CACHE_SITE_KEY,
+            ),
+        ),
         patch.object(chain, "load_cache", side_effect=_fake_load),
         patch.object(chain, "browse", side_effect=_fake_browse),
         patch.object(chain, "save_cache", save_cache),

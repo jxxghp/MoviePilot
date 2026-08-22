@@ -11,7 +11,7 @@ from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.api.response import ResponseAPIRouter
 from app.chain.tmdb import TmdbChain
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import verify_token
 from app.application.configuration import get_configured_system_config
 from app.api.dependencies.auth import get_current_active_superuser_async
@@ -40,7 +40,7 @@ async def tmdb_recognition_cache(
             "shared_recognized": get_configured_system_config().get(
                 SystemConfigKey.MediaRecognizeShareCount
             ) or 0,
-            "shared_recognize_enabled": settings.MEDIA_RECOGNIZE_SHARE,
+            "shared_recognize_enabled": get_api_runtime_config_snapshot().media_recognize_share,
             "data": cache_items,
         },
     )
