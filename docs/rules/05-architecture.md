@@ -94,11 +94,18 @@ Ask in order. The first hit decides placement; parallel answers are not allowed.
 |---|---|---|
 | D1 | Would deleting it break plugin code that is already written? | `extensions/contract/` when the host still routes every caller there; `compat/` when only already-published plugins still import it |
 | D2 | Is its shape a port slot — registered by the composition root, resolved by extensions? | `hostports/` |
-| D3 | At which moment of the extension lifecycle does it run? | registration → admission; held state → registry; query → projection; discovery and loading → lifecycle |
+| D3 | At which moment of the extension lifecycle does it run? | discovery and loading → `extensions/lifecycle/`; registration → `extensions/admission/`; held state → `extensions/registry/`; query → `extensions/projection/` |
 | D4 | None of the above | Process-level mechanism; stays flat at the runtime root |
 
 Tie-break: when two lifecycle phases both claim a module, it belongs to the
-earliest one.
+earliest one. The D3 row lists the four directories in that chronological
+order, so the earlier claimant is the one listed first.
+
+A hit on D1 or D2 only decides placement when the target directory's own rule
+admits the module. `contract/` admits a module when every public symbol it
+declares reaches extension authors through the SDK; `hostports/` admits one
+protocol plus one module-level `HostPort` instance. A module that hits the
+question but fails the rule falls through to the next question.
 
 Directories follow from the criterion, not from subject matter:
 
@@ -106,12 +113,12 @@ Directories follow from the criterion, not from subject matter:
 |---|---|---|
 | `app/runtime/*.py` (flat) | D4 | Process-level mechanisms owned by the process, not by any extension: deployment configuration, logging, cache, event facade, scheduling, threading, execution, rate limiting, process and reload state |
 | `app/runtime/hostports/` | D2 | Port slots only. Each module declares one protocol plus one module-level `HostPort` instance; `port.py` holds the generic. Every slot is injected in one place, by `app/startup/hostport_initializer.py` |
-| `app/runtime/extensions/` | D3 | Module, plugin, configured-service and managed-resource discovery, registration and lifecycle adapters, split by lifecycle phase |
-| `app/runtime/extensions/contract/` | D1 | Declaration types, distribution and hook probing, instance identity and the configuration-schema subset. Every symbol here is handed to extension authors through the SDK |
-| `app/runtime/extensions/admission/` | D3 registration | Declaration contract checks, extension-scoped deduplication, instance selection and registration arbitration. A declaration that breaks its contract is rejected at registration, never at call time |
+| `app/runtime/extensions/` | D3 | Module, plugin, configured-service and managed-resource discovery, registration and lifecycle adapters, split by lifecycle phase. Flat at this level: the host-internal service-configuration substrate that every phase reads and that runs at none of them, plus the modules named below that a gate or a hard-coded string holds in place |
+| `app/runtime/extensions/contract/` | D1 | Declaration types, distribution and hook probing, instance identity and the configuration-schema subset. Every symbol here is handed to extension authors through the SDK, and the package imports nothing from `app/runtime` |
+| `app/runtime/extensions/admission/` | D3 registration | Declaration contract checks, extension-scoped deduplication, instance selection, service-instance requirement shape checks and registration arbitration. A declaration that breaks its contract is rejected at registration, never at call time |
 | `app/runtime/extensions/registry/` | D3 held state | Registries that keep admitted extensions by coordinate and reclaim their entries. They only store and hand back registration results |
 | `app/runtime/extensions/projection/` | D3 query | Views and dispatch paths aggregated from a registration snapshot; a projection never changes what is registered |
-| `app/runtime/extensions/lifecycle/` | D3 discovery and loading | Versioned plugin source layout plus the persistence and external-system ports the loader resolves, all of which run before any registration |
+| `app/runtime/extensions/lifecycle/` | D3 discovery and loading | Manifest discovery, versioned plugin source layout, plugin persistence directory layout, the Capability Runtime adapters that materialize/start/stop host modules and managed resources, and the persistence and external-system ports the loader resolves |
 | `app/runtime/compat/` | D1 | Exact legacy import routing, resource preflight scanning and DEBUG diagnostics, plus modules the host itself no longer calls and only already-published plugins still import. `manifest.py` stays standard-library-only so the baseline script can load it without importing the host |
 
 `plugin_manager.py` and `module_manager.py` stay flat in
@@ -119,6 +126,28 @@ Directories follow from the criterion, not from subject matter:
 five hard-coded names in `scripts/sdk/exports.py`, one `__module__` assertion
 and fourteen patch-target strings in tests all spell their current path, and
 every one of those is a string match that stays green when it is wrong.
+
+`service_config.py` stays flat for a structural reason: the host-internal
+service-family landing table, the injected configuration readers and the single
+fan-out implementation are read from `admission/`, `registry/`, `projection/`
+and `lifecycle/` alike, and run at none of those moments. A substrate every
+phase imports belongs below the phase directories, not inside one of them.
+
+`service_registry.py` stays flat for a gate reason. It hits D1 — `app.helper.service`
+aliases this exact module and both of its public symbols are SDK exports — but
+`contract/` cannot take it. Modules under the plugin-component roots may not
+declare `__all__`, and this module's `__all__` is what makes
+`scripts/sdk/exports.py` require `ServiceConfigHelper` from `app.sdk.services`:
+without it `public_surface()` falls back to symbols defined in the module and
+the re-exported class silently drops out of the required-export list. It also
+imports `module_manager`, which would make the frozen contract package depend on
+the manager it is supposed to be independent of.
+
+Directories inside `app/runtime/extensions/` are scanned by `rglob` from
+`PLUGIN_COMPONENT_ROOTS` in `tests/test_architecture_dependencies.py`. Moving a
+file into or out of one of them changes what the gate covers without changing
+the assertion, so any such move must be validated by injecting one deliberate
+violation and confirming the gate turns red.
 
 A file name never repeats the phase its directory already states: the
 registration check for storage declarations is `admission/storage.py`, the
@@ -488,7 +517,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
 | `app/adapters/system/plugin/package.py` | Plugin package installation adapter |
 | `app/adapters/system/plugin/dependency.py` | Plugin dependency inspection and installation adapter |
-| `app/runtime/extensions/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
+| `app/runtime/extensions/lifecycle/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
 | `app/runtime/managed_resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
 | `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |

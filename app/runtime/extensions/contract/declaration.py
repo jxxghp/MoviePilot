@@ -53,7 +53,7 @@ class ServiceInstanceRequirement:
     不收窄就会把别家类型的实例也列进选择器，选中后要到运行时才炸。
 
     :param capability: 能力标签，取值须与服务族登记表中的族一致；判定见
-        `app.runtime.extensions.service_instance_requirement`
+        `app.runtime.extensions.admission.service_instance_requirement`
     :param types: 收窄到该族的哪几个类型标识，留空表示不收窄
     """
 

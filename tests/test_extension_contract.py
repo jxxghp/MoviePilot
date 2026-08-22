@@ -18,7 +18,7 @@ from app.runtime.extensions.contract.extension import (
     extension_capability_names,
     supports_extension_hook,
 )
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.lifecycle.host_module_adapter import (
     HostModuleExtension,
     HostModuleProviderSource,
 )

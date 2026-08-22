@@ -7,7 +7,7 @@ import pytest
 from app.modules import ServiceBase, _DownloaderBase
 from app.runtime.extensions import service_config as service_config_module
 from app.runtime.extensions import service_registry as service_registry_module
-from app.runtime.extensions.host_module_adapter import build_host_module_registry
+from app.runtime.extensions.lifecycle.host_module_adapter import build_host_module_registry
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     service_capability,

@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
-from app.runtime.extensions import paths as plugin_paths_module
+from app.runtime.extensions.lifecycle import paths as plugin_paths_module
 from app.db.models.plugindata import PluginData
 from app.db.models.pluginconfig import PluginConfig
 from app.db.oper.pluginconfig import PluginConfigOper

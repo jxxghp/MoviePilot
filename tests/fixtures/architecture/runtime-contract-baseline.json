@@ -1337,8 +1337,8 @@
           "target_name": "_PluginBase"
         },
         "plugin_instance_path": {
-          "replacement": "app.runtime.extensions.paths.plugin_instance_path",
-          "target_module": "app.runtime.extensions.paths",
+          "replacement": "app.runtime.extensions.lifecycle.paths.plugin_instance_path",
+          "target_module": "app.runtime.extensions.lifecycle.paths",
           "target_name": "plugin_instance_path"
         }
       },
@@ -2843,7 +2843,7 @@
       {
         "kind": "import",
         "name": "plugin_instance_path",
-        "target": "app.runtime.extensions.paths.plugin_instance_path"
+        "target": "app.runtime.extensions.lifecycle.paths.plugin_instance_path"
       },
       {
         "kind": "import",

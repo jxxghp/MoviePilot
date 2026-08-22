@@ -35,7 +35,7 @@ from app.runtime.extensions.service_config import (
     configure_service_instance_config_reader,
 )
 from app.runtime.extensions.registry.service_family import service_family_registry
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     REQUIREMENT_FAMILY_ABSENT,
     REQUIREMENT_INSTANCE_ABSENT,
     REQUIREMENT_INSTANCE_DISABLED,

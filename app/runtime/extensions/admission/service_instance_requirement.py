@@ -6,7 +6,7 @@
 以及在它消失时给出可辨的成因。
 
 **声明期只判形状，不判该族有没有登记。** 判据在取用时机：动作与仪表盘的声明校验不是
-装载期跑一次，而是每次投影都重跑（见 `plugin/projection.py` 的 ``provided_actions``
+装载期跑一次，而是每次投影都重跑（见 `projection/plugin.py` 的 ``provided_actions``
 与 ``provided_dashboards``）。把「族已登记」写进声明是否合规的判定，同一条声明就会
 因为提问时刻不同而一会儿合规一会儿不合规——某个带进新族的扩展晚一步登记，先前的
 拒绝理由自己就消失了。声明是否成立必须只取决于声明自身写了什么。
@@ -52,24 +52,6 @@ REQUIREMENT_INSTANCE_DISABLED = "instance_disabled"
 
 # 实例配置还在且已启用，但类型不在声明收窄的类型里
 REQUIREMENT_TYPE_EXCLUDED = "type_excluded"
-
-__all__ = [
-    "REQUIREMENT_FAMILY_ABSENT",
-    "REQUIREMENT_INSTANCE_ABSENT",
-    "REQUIREMENT_INSTANCE_DISABLED",
-    "REQUIREMENT_TYPE_EXCLUDED",
-    "SERVICE_INSTANCE_PARAM",
-    "ServiceInstanceCandidate",
-    "accepts_keyword",
-    "describe_candidates",
-    "projected_service_instance_requirement",
-    "requirement_capability",
-    "requirement_types",
-    "resolve_required_service_instance",
-    "service_instance_candidates",
-    "service_instance_reference_issue",
-    "service_instance_requirement_violation",
-]
 
 
 @dataclass(frozen=True, slots=True)

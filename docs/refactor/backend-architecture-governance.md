@@ -557,6 +557,76 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 `contract/instance.py` 的 `__all__` 就是这样浮出来的——门禁禁止组件模块自建导出清单，
 该模块的全部符号本就在同文件定义，删掉清单不改变任何导入行为。
 
+##### 6.9.1.1 `app/runtime/extensions/` 顶层残留文件的归属
+
+`extensions/` 顶层八个文件逐个按判据 D 判定，四个落位、四个留在顶层：
+
+| 文件 | 命中 | 去向 |
+| --- | --- | --- |
+| `host_module_adapter.py` | D3 发现加载（兼查询期，平局取最早） | `lifecycle/host_module_adapter.py` |
+| `managed_resource_adapter.py` | D3 发现加载 | `lifecycle/managed_resource_adapter.py` |
+| `paths.py` | D3 发现加载 | `lifecycle/paths.py` |
+| `service_instance_requirement.py` | D3 登记期（兼查询期，平局取最早） | `admission/service_instance_requirement.py` |
+| `module_manager.py` | D3 发现加载 | 顶层，硬编码未收紧前不搬 |
+| `plugin_manager.py` | D3 发现加载 | 顶层，硬编码未收紧前不搬 |
+| `service_config.py` | 判不出唯一归属 | 顶层，四个时刻共用的宿主内部底座 |
+| `service_registry.py` | D1，但 `contract/` 不收 | 顶层 |
+
+`host_module_adapter.py` 的主体是 manifest 发现、清单契约校验、激活判定与
+`HostModuleAdapter` 的 materialize/start/stop，全在登记之前；`HostModuleExtension`
+与 `HostModuleProviderSource` 属查询期，按「两个时刻同时认领时归最早的那个」随文件
+一并落在 `lifecycle/`。两个适配器文件里的 `Path(__file__).resolve().parents[2]` 随目录
+深度改为 `parents[3]`，否则模块与托管资源的发现根会指偏一级、扫不到任何 manifest。
+
+`paths.py` 命中 D1——已发布插件的 `from app.plugins import plugin_instance_path` 经
+`SYMBOL_ALIASES` 落到它——但 `contract/` 的规则是「符号随 SDK 交到扩展作者手里」，而
+`plugin_instance_path` 不在 SDK 任何一张清单里，插件的 canonical 取用路径是
+`_PluginBase.get_data_path()`。`contract/` 另有一条事实规则：整包不 import 任何
+`app.runtime`，只依赖 `app.foundation` 与 `app.schemas`；`paths.py` 要读 `settings`、
+写文件系统、打日志。它与 `lifecycle/layout.py` 是同一件事的两面——后者是插件源码目录的
+版本化布局与存量迁移，前者是插件持久化目录的实例化布局与存量迁移，故归发现加载期。
+
+`service_instance_requirement.py` 的声明形状判定在登记期、候选列举与调用目标裁决在
+查询期，平局取最早归 `admission/`。它的 `__all__` 按门禁删除：清单里的符号全部在同文件
+定义，且该模块不是任何兼容别名的目标，`scripts/sdk/exports.py` 不会对它调用
+`public_surface()`，删清单不改变 SDK 必需导出（`--check` 实测无差异）。
+
+**`service_config.py` 留在顶层。** 五个子包的规则没有一个收得下它：`contract/` 要求
+每个公开符号都是交出去的契约，而它二十余个公开符号里只有 `ServiceConfigHelper` 到得了
+SDK，其余是宿主内部实现、可以随时改；`admission/` 要求是登记那一刻的判定，而写入准入
+判定已经拆成 `admission/service_config.py`；`registry/` 只放登记结果，`_SERVICE_CONFIGS`
+是常量表；`projection/` 只读登记态，它读的是用户配置；`lifecycle/` 要求在发现装载卸载
+那一刻执行，而它在四个时刻都被读到、专属于哪一个都不成立。真正的理由是分层：
+`admission/`、`registry/`、`projection/` 与 `lifecycle/` 都 import 它，它一个都不 import，
+位置在四个时刻之下。把共用底座塞进其中一个时刻目录，等于让另外三个反向依赖某个兄弟包
+的内部。移出 `app/runtime/extensions/` 平铺到 `app/runtime/` 同样不行：依赖矩阵的
+`app.adapters ↛ app.runtime.extensions` 是前缀规则，移出即让该模块失去这条覆盖。
+
+**`service_registry.py` 留在顶层。** 它命中 D1 且与 `contract/` 的规则相符——
+`app.helper.service` 的 ModuleAlias 直指本模块，`ServiceBaseHelper` 与
+`ServiceConfigHelper` 两个公开符号都是 SDK 导出。落不进去的原因有二，都是硬的：
+
+- 门禁 `test_plugin_components_do_not_reexport_legacy_abi_names` 禁止组件根下的模块
+  自建 `__all__`，而本模块的 `__all__` 是载荷。`scripts/sdk/exports.py` 的
+  `public_surface()` 优先读 `__all__`，读不到才回落到「本模块定义的类与函数」；
+  `ServiceConfigHelper` 是从 `service_config` import 进来的，回落路径取不到它。实测
+  删掉 `__all__` 后 `scripts/sdk/exports.py --check` 报 `app.sdk.services` 的必需导出
+  少了 `ServiceConfigHelper`——已发布插件的 `from app.helper.service import
+  ServiceConfigHelper` 从此不再被 SDK 清单门禁保护，且删清单本身不会报错。
+- 它静态 import `module_manager`。落进 `contract/` 会让冻结声明面反向依赖管理器，
+  而 `contract/` 现在对 `app.runtime` 零依赖。
+
+五个子包全在 `PLUGIN_COMPONENT_ROOTS` 里，因此这条 `__all__` 禁令对 `contract/`、
+`admission/`、`registry/`、`projection/`、`lifecycle/` 一视同仁：本模块搬去哪个子包都撞同
+一道门禁。
+
+本批未改 `PLUGIN_COMPONENT_ROOTS` 常量：四个文件都是搬进既有 root，root 列表本身不变。
+覆盖面照例扩大，按 §6.9.1 的要求做了变异验证——在 `lifecycle/paths.py` 与
+`admission/service_instance_requirement.py` 各注入一个 `__all__`、在
+`lifecycle/host_module_adapter.py` 注入一个 `PluginManager` 类，门禁如期报出这三条，
+删除注入后恢复绿。`HOST_INTERNAL_EXPORTS` 的 5 个 `plugin_manager.*` 串本批不受影响，
+`scripts/sdk/exports.py --check` 全程无差异。
+
 ## 7. 职责模型
 
 ### 7.1 Package Ownership Matrix

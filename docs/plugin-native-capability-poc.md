@@ -9,7 +9,7 @@ Capability Runtime 装载、参与三级分发（广播/多播/单播/管道）�
 
 内核侧新增 `plugin_module` kind、把发现根从单一 `app/modules` 扩展为多根这两项
 接口，在本次验证过程中由另一条并行任务线直接实现并落地到了同一份工作区（
-`app/runtime/extensions/host_module_adapter.py`、`app/runtime/extensions/module_manager.py`）。
+`app/runtime/extensions/lifecycle/host_module_adapter.py`、`app/runtime/extensions/module_manager.py`）。
 下文的验证结果针对的是这份已落地的接口，不是事先假设的规格。
 
 ## 插件包

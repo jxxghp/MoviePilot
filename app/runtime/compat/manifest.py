@@ -889,9 +889,9 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             replacement="app.sdk.extension.PluginChian",
         ),
         "plugin_instance_path": SymbolAlias(
-            target_module="app.runtime.extensions.paths",
+            target_module="app.runtime.extensions.lifecycle.paths",
             target_name="plugin_instance_path",
-            replacement="app.runtime.extensions.paths.plugin_instance_path",
+            replacement="app.runtime.extensions.lifecycle.paths.plugin_instance_path",
         ),
     },
     "app.agent.orchestrator": {

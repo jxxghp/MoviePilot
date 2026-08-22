@@ -11,7 +11,7 @@ from app.runtime.extensions.contract.declaration import (
     declaration_action_kwargs,
     declaration_service_instance_requirement,
 )
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     service_instance_requirement_violation,
 )
 
@@ -25,7 +25,7 @@ def action_declaration_violation(declaration: Any) -> Optional[str]:
     kwargs 时须是映射。四项中任一不满足都拒绝登记，不留到调用时才失败。
 
     声明了 requires_service_instance 时只判它的形状，不判该能力标签有没有登记成
-    服务族；判据见 `app.runtime.extensions.service_instance_requirement`。
+    服务族；判据见 `app.runtime.extensions.admission.service_instance_requirement`。
 
     :param declaration: `ActionDeclaration` 实例，或插件直接交出的描述字典
     :return: 违反契约的描述；声明合规时为 None
