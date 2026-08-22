@@ -743,6 +743,16 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   插件若自行直接发送同名事件，该发送仍由插件负责，无法与插件自己的数据库写入自动组成原子事务。
 - 订阅外部统计上报仍是 post-commit 副作用，不在事件 intent 的重放 handler 中；因此当前可以宣称三种
   订阅事件具备宿主级 at-least-once 恢复，但不能宣称订阅通知和所有外部上报均已 durable。
+- `DownloadAdded`、`TransferComplete`、`TransferFailed` 也已逐项接入，而不是复用一个不分业务语义的
+  “万能消息总线”。下载历史、下载文件清单或整理历史与各自 intent 在独占同步 Session/UoW 中原子提交；
+  即时广播失败时 intent 保持 pending，三种恢复 handler 均继续使用有限重试与 dead-letter 策略。
+- 下载和整理事件保留插件原有运行时对象 ABI：即时发送仍含 `Context`、`FileItem`、`MetaInfo`、
+  `MediaInfo`、`TransferInfo`；outbox 单独存 JSON 快照，恢复 handler 无远端调用地重建这些对象。
+  `idempotency_key` 仍是唯一新增的可选公开字段，提醒插件按 at-least-once 语义自行去重。
+- 本切片同时把 `DownloadChain.download_single` 的提交后通知/任务编排抽成独立方法，并删除已经被
+  Application 删除命令替代的两个 `Subscribe` Model 级删除事务装饰器；Model decorator 基线从
+  178 降到 176，Oper 内显式 commit/rollback 仍为 0。strict mypy 门禁新增 Chain durable context、
+  payload 转换和启动适配器。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 

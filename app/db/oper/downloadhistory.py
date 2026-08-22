@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete, update as sqlalchemy_update
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -60,6 +61,15 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadHistory(**kwargs).create(self._db)
 
+    def stage_add(self, payload: dict) -> DownloadHistory:
+        """在调用方同步 Session 中暂存下载历史并返回已分配 ID 的记录。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("下载历史事务写入需要调用方提供同步 Session")
+        history = DownloadHistory(**payload)
+        self._db.add(history)
+        self._db.flush()
+        return history
+
     def add_files(self, file_items: List[dict]):
         """
         新增下载历史文件
@@ -67,6 +77,13 @@ class DownloadHistoryOper(DbOper):
         for file_item in file_items:
             downloadfile = DownloadFiles(**file_item)
             downloadfile.create(self._db)
+
+    def stage_add_files(self, file_items: List[dict]) -> None:
+        """在调用方事务内批量暂存下载文件，不逐条提交。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("下载文件事务写入需要调用方提供同步 Session")
+        self._db.add_all(DownloadFiles(**item) for item in file_items)
+        self._db.flush()
 
     def truncate_files(self):
         """

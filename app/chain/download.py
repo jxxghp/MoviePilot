@@ -105,6 +105,45 @@ class DownloadChain(ChainBase):
         }
         return note
 
+    def _after_download_history_commit(
+        self,
+        *,
+        context: Context,
+        media: MediaInfo | MusicInfo,
+        meta: MetaBase,
+        torrent: TorrentInfo,
+        channel: NotificationChannel | None,
+        source: str | None,
+        userid: str | None,
+        username: str | None,
+        download_episodes: list[int] | None,
+        download_dir: Path,
+        torrent_content: bytes,
+    ) -> None:
+        """保持下载历史提交后的通知和后处理顺序。"""
+        self.post_message(
+            Message(
+                channel=channel,
+                source=source if channel else None,
+                mtype=MessageType.Download,
+                ctype=ContentType.DownloadAdded,
+                image=media.get_message_image(),
+                link=settings.MP_DOMAIN('/#/downloading'),
+                userid=userid,
+                username=username,
+            ),
+            meta=meta,
+            mediainfo=media,
+            torrentinfo=torrent,
+            download_episodes=download_episodes,
+            username=username,
+        )
+        self._submit_download_added_task(
+            context=context,
+            download_dir=download_dir,
+            torrent_content=torrent_content,
+        )
+
     @staticmethod
     def _validate_music_album_resource(
             context: Context,
@@ -1161,35 +1200,33 @@ class DownloadChain(ChainBase):
             # 文件保存路径
             _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
 
-            # 登记下载记录
-            downloadhis = DownloadHistoryOper()
             media_source, media_id = resolve_media_identity(media=_media)
-            downloadhis.add(
-                path=download_path.as_posix(),
-                type=_media.type.value,
-                title=_media.title,
-                year=_media.year,
-                media_source=media_source,
-                media_id=media_id,
-                music_type=getattr(_media, "music_type", None),
-                seasons=_meta.season,
-                episodes=download_episodes or _meta.episode,
-                image=_media.get_backdrop_image(),
-                poster=_media.get_poster_image(),
-                downloader=_downloader,
-                download_hash=_hash,
-                torrent_name=_torrent.title,
-                torrent_description=_torrent.description,
-                torrent_site=_torrent.site_name,
-                userid=userid,
-                username=username,
-                channel=channel.value if channel else None,
-                date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                media_category=_media.category,
-                episode_group=_media.episode_group,
-                note=self._build_download_note(source, _media, _meta),
-                custom_words=custom_words
-            )
+            history_payload = {
+                "path": download_path.as_posix(),
+                "type": _media.type.value,
+                "title": _media.title,
+                "year": _media.year,
+                "media_source": media_source,
+                "media_id": media_id,
+                "music_type": getattr(_media, "music_type", None),
+                "seasons": _meta.season,
+                "episodes": download_episodes or _meta.episode,
+                "image": _media.get_backdrop_image(),
+                "poster": _media.get_poster_image(),
+                "downloader": _downloader,
+                "download_hash": _hash,
+                "torrent_name": _torrent.title,
+                "torrent_description": _torrent.description,
+                "torrent_site": _torrent.site_name,
+                "userid": userid,
+                "username": username,
+                "channel": channel.value if channel else None,
+                "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "media_category": _media.category,
+                "episode_group": _media.episode_group,
+                "note": self._build_download_note(source, _media, _meta),
+                "custom_words": custom_words,
+            }
 
             # 登记下载文件
             files_to_add = []
@@ -1213,42 +1250,51 @@ class DownloadChain(ChainBase):
                     "filepath": file,
                     "torrentname": _meta.org_string,
                 })
-            if files_to_add:
-                downloadhis.add_files(files_to_add)
-
-            # 下载成功发送消息
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source if channel else None,
-                    mtype=MessageType.Download,
-                    ctype=ContentType.DownloadAdded,
-                    image=_media.get_message_image(),
-                    link=settings.MP_DOMAIN('/#/downloading'),
-                    userid=userid,
-                    username=username
-                ),
-                meta=_meta,
-                mediainfo=_media,
-                torrentinfo=_torrent,
-                download_episodes=download_episodes,
-                username=username,
-            )
-            # 下载成功后处理
-            self._submit_download_added_task(
-                context=context,
-                download_dir=download_dir,
-                torrent_content=torrent_content,
-            )
-            # 广播事件
-            self.eventmanager.send_event(EventType.DownloadAdded, {
+            event_payload = {
                 "hash": _hash,
                 "context": context,
                 "username": username,
                 "downloader": _downloader,
                 "episodes": episodes or _meta.episode_list,
-                "source": source
-            })
+                "source": source,
+            }
+
+            def after_commit() -> None:
+                """在历史与 intent 提交后保持原有通知和任务编排。"""
+                self._after_download_history_commit(
+                    context=context,
+                    media=_media,
+                    meta=_meta,
+                    torrent=_torrent,
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    download_episodes=download_episodes,
+                    download_dir=download_dir,
+                    torrent_content=torrent_content,
+                )
+
+            durable_event_writer = getattr(self, "durable_event_writer", None)
+            if durable_event_writer:
+                durable_event_writer.download_added(
+                    history_payload=history_payload,
+                    file_payloads=files_to_add,
+                    event_payload=event_payload,
+                    after_commit=after_commit,
+                    publish=lambda payload: self.eventmanager.send_event(
+                        EventType.DownloadAdded,
+                        payload,
+                    ),
+                )
+            else:
+                # 显式注入旧测试上下文时保持兼容；正式启动上下文总会提供 durable writer。
+                downloadhis = DownloadHistoryOper()
+                downloadhis.add(**history_payload)
+                if files_to_add:
+                    downloadhis.add_files(files_to_add)
+                after_commit()
+                self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
         else:
             # 下载失败
             logger.error(f"{_media.title_year} 添加下载任务失败："

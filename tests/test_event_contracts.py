@@ -9,8 +9,12 @@ from app.runtime.event.contracts import (
     validate_event_payload,
 )
 from app.runtime.events import Event
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.schemas.event import ConfigChangeEventData
-from app.schemas.types import ChainEventType, EventType
+from app.schemas.file import FileItem
+from app.schemas.transfer import TransferInfo
+from app.schemas.types import ChainEventType, EventType, MediaType
 
 
 def test_every_event_enum_has_complete_contract() -> None:
@@ -59,6 +63,36 @@ def test_selected_user_side_effects_are_marked_durable_required() -> None:
         EventType.TransferFailed,
     ):
         assert get_event_contract(event_type).delivery is EventDelivery.DURABLE_REQUIRED
+
+
+def test_download_and_transfer_typed_contracts_accept_legacy_runtime_objects() -> None:
+    """新增 typed contract 只做诊断，不把插件收到的领域对象替换成 dict。"""
+    meta = MetaInfo("Demo.2026.mkv")
+    media = MediaInfo(type=MediaType.MOVIE, title="Demo", year="2026")
+    context = Context(meta_info=meta, media_info=media)
+    fileitem = FileItem(storage="local", path="/downloads/Demo.mkv", type="file")
+    transferinfo = TransferInfo(success=True, fileitem=fileitem)
+
+    assert validate_event_payload(
+        EventType.DownloadAdded,
+        {
+            "hash": "hash-1",
+            "context": context,
+            "downloader": "qb",
+            "episodes": [],
+        },
+    ) == ()
+    for event_type in (EventType.TransferComplete, EventType.TransferFailed):
+        assert validate_event_payload(
+            event_type,
+            {
+                "fileitem": fileitem,
+                "meta": meta,
+                "mediainfo": media,
+                "transferinfo": transferinfo,
+                "transfer_history_id": 1,
+            },
+        ) == ()
 
 
 def test_model_instance_remains_mutable_chain_payload() -> None:

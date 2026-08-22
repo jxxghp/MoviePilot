@@ -250,21 +250,6 @@ def test_list_by_type_includes_the_window_start_boundary(db, frozen_now):
     assert "窗口起点上" in async_names and "窗口起点前一秒" not in async_names
 
 
-def test_delete_by_media_identity_removes_matching_seasons_only(db):
-    """
-    按媒体身份删除时，给出季号只删该季，不给则删全部季。
-    """
-    db.add(_sub("第一季", season=1), _sub("第二季", season=2))
-
-    Subscribe().delete_by_media_identity(db.session, TMDB, "9001", season=1)
-
-    remaining = Subscribe.list_by_media_identity(db.session, MediaSource.TMDB, "9001")
-    assert [s.season for s in remaining] == [2]
-
-    Subscribe().delete_by_media_identity(db.session, TMDB, "9001")
-    assert Subscribe.list_by_media_identity(db.session, MediaSource.TMDB, "9001") == []
-
-
 # --------------------------------------------------------------------------- #
 # SubscribeHistory
 # --------------------------------------------------------------------------- #

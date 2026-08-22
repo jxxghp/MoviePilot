@@ -87,6 +87,23 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         "TRANSFER_THREADS",
     }
 
+    @staticmethod
+    def _transfer_result_payload(
+        task: TransferTask,
+        transferinfo: TransferInfo,
+        history_id: int | None = None,
+    ) -> dict[str, Any]:
+        """构造保持插件旧对象字段不变的整理结果事件 payload。"""
+        return {
+            "fileitem": task.fileitem,
+            "meta": task.meta,
+            "mediainfo": task.mediainfo,
+            "transferinfo": transferinfo,
+            "downloader": task.downloader,
+            "download_hash": task.download_hash,
+            "transfer_history_id": history_id,
+        }
+
     def __init__(self):
         """初始化文件整理处理链。"""
         super().__init__()
@@ -229,33 +246,54 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     fileid=task.fileitem.fileid if task.fileitem else None,
                 )
 
-                # 新增转移失败历史记录
-                history = add_transfer_fail(
-                    fileitem=task.fileitem,
-                    mode=transferinfo.transfer_type if transferinfo else "",
-                    downloader=task.downloader,
-                    download_hash=task.download_hash,
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
-                    transferinfo=transferinfo,
-                    transfer_history_oper=transferhis,
+                durable_transfer_failed = bool(
+                    getattr(self, "durable_event_writer", None)
+                    and self._is_media_file(task.fileitem)
                 )
+                if durable_transfer_failed:
+                    event_payload = self._transfer_result_payload(task, transferinfo)
+                    history = self.durable_event_writer.transfer_result(
+                        topic="transfer.failed",
+                        stage_history=lambda writer: add_transfer_fail(
+                            fileitem=task.fileitem,
+                            mode=transferinfo.transfer_type if transferinfo else "",
+                            downloader=task.downloader,
+                            download_hash=task.download_hash,
+                            meta=task.meta,
+                            mediainfo=task.mediainfo,
+                            transferinfo=transferinfo,
+                            transfer_history_oper=writer,
+                        ),
+                        event_payload=event_payload,
+                        publish=lambda payload: self.eventmanager.send_event(
+                            EventType.TransferFailed,
+                            payload,
+                        ),
+                    )
+                else:
+                    history = add_transfer_fail(
+                        fileitem=task.fileitem,
+                        mode=transferinfo.transfer_type if transferinfo else "",
+                        downloader=task.downloader,
+                        download_hash=task.download_hash,
+                        meta=task.meta,
+                        mediainfo=task.mediainfo,
+                        transferinfo=transferinfo,
+                        transfer_history_oper=transferhis,
+                    )
 
                 # 整理失败事件
                 if self._is_media_file(task.fileitem):
-                    # 主要媒体文件整理失败事件
-                    self.eventmanager.send_event(
-                        EventType.TransferFailed,
-                        {
-                            "fileitem": task.fileitem,
-                            "meta": task.meta,
-                            "mediainfo": task.mediainfo,
-                            "transferinfo": transferinfo,
-                            "downloader": task.downloader,
-                            "download_hash": task.download_hash,
-                            "transfer_history_id": history.id if history else None,
-                        },
-                    )
+                    if not durable_transfer_failed:
+                        # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
+                        self.eventmanager.send_event(
+                            EventType.TransferFailed,
+                            self._transfer_result_payload(
+                                task,
+                                transferinfo,
+                                history.id if history else None,
+                            ),
+                        )
                 elif self._is_subtitle_file(task.fileitem):
                     # 字幕整理失败事件
                     self.eventmanager.send_event(
@@ -350,33 +388,54 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 task.fileitem.storage if task.fileitem else None,
             )
 
-            # 新增task转移成功历史记录
-            history = add_transfer_success(
-                fileitem=task.fileitem,
-                mode=transferinfo.transfer_type if transferinfo else "",
-                downloader=task.downloader,
-                download_hash=task.download_hash,
-                meta=task.meta,
-                mediainfo=task.mediainfo,
-                transferinfo=transferinfo,
-                transfer_history_oper=transferhis,
+            durable_transfer_complete = bool(
+                getattr(self, "durable_event_writer", None)
+                and self._is_primary_media_file(task.fileitem, task.mediainfo)
             )
+            if durable_transfer_complete:
+                event_payload = self._transfer_result_payload(task, transferinfo)
+                history = self.durable_event_writer.transfer_result(
+                    topic="transfer.completed",
+                    stage_history=lambda writer: add_transfer_success(
+                        fileitem=task.fileitem,
+                        mode=transferinfo.transfer_type if transferinfo else "",
+                        downloader=task.downloader,
+                        download_hash=task.download_hash,
+                        meta=task.meta,
+                        mediainfo=task.mediainfo,
+                        transferinfo=transferinfo,
+                        transfer_history_oper=writer,
+                    ),
+                    event_payload=event_payload,
+                    publish=lambda payload: self.eventmanager.send_event(
+                        EventType.TransferComplete,
+                        payload,
+                    ),
+                )
+            else:
+                history = add_transfer_success(
+                    fileitem=task.fileitem,
+                    mode=transferinfo.transfer_type if transferinfo else "",
+                    downloader=task.downloader,
+                    download_hash=task.download_hash,
+                    meta=task.meta,
+                    mediainfo=task.mediainfo,
+                    transferinfo=transferinfo,
+                    transfer_history_oper=transferhis,
+                )
 
             # task整理完成事件
             if self._is_primary_media_file(task.fileitem, task.mediainfo):
-                # 主要媒体文件整理完成事件
-                self.eventmanager.send_event(
-                    EventType.TransferComplete,
-                    {
-                        "fileitem": task.fileitem,
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "transferinfo": transferinfo,
-                        "downloader": task.downloader,
-                        "download_hash": task.download_hash,
-                        "transfer_history_id": history.id if history else None,
-                    },
-                )
+                if not durable_transfer_complete:
+                    # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
+                    self.eventmanager.send_event(
+                        EventType.TransferComplete,
+                        self._transfer_result_payload(
+                            task,
+                            transferinfo,
+                            history.id if history else None,
+                        ),
+                    )
             elif self._is_subtitle_file(task.fileitem):
                 # 字幕整理完成事件
                 self.eventmanager.send_event(

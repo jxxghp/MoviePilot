@@ -7,6 +7,7 @@ from app.schemas.common import JsonData
 from app.schemas.types import MediaType, NotificationChannel
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource
 
 
@@ -727,6 +728,31 @@ class SubscribeDeletedEventData(BaseEventData):
 
     subscribe_id: int = Field(description="订阅 ID")
     subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="删除前订阅快照")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
+
+
+class DownloadAddedEventData(BaseEventData):
+    """DownloadAdded 广播事件的插件兼容 payload。"""
+
+    hash: str = Field(description="下载任务 hash")
+    context: Any = Field(description="下载上下文对象")
+    username: Optional[str] = Field(default=None, description="发起下载的用户")
+    downloader: Optional[str] = Field(default=None, description="下载器名称")
+    episodes: List[int] = Field(default_factory=list, description="下载剧集列表")
+    source: Optional[str] = Field(default=None, description="下载来源")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
+
+
+class TransferResultEventData(BaseEventData):
+    """TransferComplete/Failed 共用的插件兼容 payload。"""
+
+    fileitem: Optional[FileItem] = Field(default=None, description="源文件项")
+    meta: Any = Field(default=None, description="文件名解析对象")
+    mediainfo: Any = Field(default=None, description="媒体信息对象")
+    transferinfo: Optional[TransferInfo] = Field(default=None, description="整理结果")
+    downloader: Optional[str] = Field(default=None, description="下载器名称")
+    download_hash: Optional[str] = Field(default=None, description="下载任务 hash")
+    transfer_history_id: Optional[int] = Field(default=None, description="整理历史 ID")
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 

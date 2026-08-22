@@ -2,6 +2,7 @@ import time
 from typing import Any, List, Optional
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.transferhistory import TransferHistory
@@ -271,6 +272,24 @@ class TransferHistoryOper(DbOper):
             kwargs.get("src"),
             kwargs["src_storage"],
         )
+
+    def stage_replace_by_src(self, **kwargs) -> TransferHistory:
+        """在调用方事务内按源路径替换整理历史并返回已分配 ID 的新记录。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史事务写入需要调用方提供同步 Session")
+        kwargs["src_storage"] = kwargs.get("src_storage") or "local"
+        kwargs["date"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        self._db.execute(
+            sqlalchemy_delete(TransferHistory).where(
+                TransferHistory.src == kwargs.get("src"),
+                TransferHistory.src_storage == kwargs["src_storage"],
+            )
+        )
+        self._db.flush()
+        history = TransferHistory(**kwargs)
+        self._db.add(history)
+        self._db.flush()
+        return history
 
     def update_download_hash(self, historyid, download_hash):
         """

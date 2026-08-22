@@ -221,3 +221,53 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
         if call.args[0] == EventType.TransferFailed
     ]
     assert len(transfer_failed_events) == 1
+
+
+def test_default_callback_delegates_primary_failure_to_durable_writer():
+    """正式上下文存在 writer 时，主要媒体失败历史和事件必须走同一事务端口。"""
+    chain = make_transfer_chain()
+    chain.eventmanager = MagicMock()
+    chain.post_message = MagicMock()
+    chain.durable_event_writer = MagicMock()
+    task = _make_failed_task()
+    add_fail_calls = []
+    transfer_history_oper = make_history_oper(history=None)
+    transferinfo = TransferInfo(
+        success=False,
+        fileitem=task.fileitem,
+        message="copy failed",
+        transfer_type="copy",
+        need_notify=False,
+    )
+
+    def durable_transfer_result(**kwargs):
+        """执行 writer 收到的历史暂存与提交后发布回调。"""
+        history = kwargs["stage_history"](SimpleNamespace())
+        payload = dict(kwargs["event_payload"])
+        payload["transfer_history_id"] = history.id
+        payload["idempotency_key"] = f"transfer.failed:{history.id}:v1"
+        kwargs["publish"](payload)
+        return history
+
+    chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
+    with patch(
+        "app.chain.transfer.TransferHistoryOper",
+        return_value=transfer_history_oper,
+    ), patch(
+        "app.chain.transfer.add_transfer_fail",
+        make_fail_recorder(add_fail_calls),
+    ), patch(
+        "app.chain.transfer.settings.AI_AGENT_ENABLE",
+        False,
+    ):
+        state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
+
+    assert state is False
+    assert errmsg == "copy failed"
+    assert len(add_fail_calls) == 1
+    chain.durable_event_writer.transfer_result.assert_called_once()
+    topic = chain.durable_event_writer.transfer_result.call_args.kwargs["topic"]
+    assert topic == "transfer.failed"
+    event_type, event_payload = chain.eventmanager.send_event.call_args.args
+    assert event_type == EventType.TransferFailed
+    assert event_payload["idempotency_key"] == "transfer.failed:1:v1"

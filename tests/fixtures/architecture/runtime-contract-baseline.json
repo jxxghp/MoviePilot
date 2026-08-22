@@ -1441,10 +1441,10 @@
     "EventType.DownloadAdded": {
       "delivery": "durable_required",
       "error_behavior": "notify",
-      "legacy_reason": "现有插件 payload 尚未收敛为稳定 model，保留原始 dict ABI",
+      "legacy_reason": null,
       "mode": "broadcast",
       "ordering": "priority_queue",
-      "payload_contract": "legacy_dict",
+      "payload_contract": "DownloadAddedEventData",
       "sensitive_fields": [],
       "visibility": "plugin_public"
     },
@@ -1651,20 +1651,20 @@
     "EventType.TransferComplete": {
       "delivery": "durable_required",
       "error_behavior": "notify",
-      "legacy_reason": "现有插件 payload 尚未收敛为稳定 model，保留原始 dict ABI",
+      "legacy_reason": null,
       "mode": "broadcast",
       "ordering": "priority_queue",
-      "payload_contract": "legacy_dict",
+      "payload_contract": "TransferResultEventData",
       "sensitive_fields": [],
       "visibility": "plugin_public"
     },
     "EventType.TransferFailed": {
       "delivery": "durable_required",
       "error_behavior": "notify",
-      "legacy_reason": "现有插件 payload 尚未收敛为稳定 model，保留原始 dict ABI",
+      "legacy_reason": null,
       "mode": "broadcast",
       "ordering": "priority_queue",
-      "payload_contract": "legacy_dict",
+      "payload_contract": "TransferResultEventData",
       "sensitive_fields": [],
       "visibility": "plugin_public"
     },
@@ -2032,6 +2032,10 @@
         "producers": [
           {
             "caller": "app.chain.download",
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
             "count": 1
           }
         ]
@@ -2274,6 +2278,10 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
             "count": 1
           }
         ]
@@ -2283,6 +2291,10 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
             "count": 1
           }
         ]
@@ -2320,7 +2332,7 @@
         ]
       }
     },
-    "producer_count": 70
+    "producer_count": 76
   },
   "module_method_specs": {
     "download_file": {

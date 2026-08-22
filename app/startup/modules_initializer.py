@@ -107,6 +107,7 @@ from app.startup.subscription import (
     TransactionalSubscribeWriter,
     configure_transactional_subscription_scopes,
 )
+from app.startup.chain_events import TransactionalChainDurableEventWriter
 from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
@@ -114,6 +115,10 @@ from app.application.image import configure_wallpaper_providers
 from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
+)
+from app.application.chain.durable_events import (
+    restore_download_added,
+    restore_transfer_result,
 )
 from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
 from app.runtime.extensions.service_config import (
@@ -147,6 +152,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
         data_ports=get_chain_data_ports(),
+        durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
     )
 
 
@@ -216,6 +222,18 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             "subscribe.deleted": lambda message: EventManager().send_event(
                 EventType.SubscribeDeleted,
                 message.payload,
+            ),
+            "download.added": lambda message: EventManager().send_event(
+                EventType.DownloadAdded,
+                restore_download_added(message.payload),
+            ),
+            "transfer.completed": lambda message: EventManager().send_event(
+                EventType.TransferComplete,
+                restore_transfer_result(message.payload),
+            ),
+            "transfer.failed": lambda message: EventManager().send_event(
+                EventType.TransferFailed,
+                restore_transfer_result(message.payload),
             ),
         },
         close=session.close,

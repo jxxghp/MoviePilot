@@ -53,6 +53,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
         self.data_ports = context.data_ports or get_chain_data_ports()
+        self.durable_event_writer = context.durable_event_writer
         self._module_dispatcher = context.module_dispatcher_factory(
             module_catalog=self.modulemanager,
             plugin_catalog=self.pluginmanager,

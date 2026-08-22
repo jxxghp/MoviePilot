@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.application.chain.data import ChainDataPorts
+from app.application.chain.durable_events import ChainDurableEventWriter
 
 
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
@@ -28,6 +29,7 @@ class ChainRuntimeContext:
     message_queue_factory: MessageQueueFactory
     module_dispatcher_factory: ModuleDispatcherFactory
     data_ports: Optional[ChainDataPorts] = None
+    durable_event_writer: Optional[ChainDurableEventWriter] = None
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

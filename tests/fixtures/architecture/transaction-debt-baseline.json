@@ -2,11 +2,11 @@
   "model_decorators": {
     "by_kind": {
       "async_db_query": 49,
-      "async_db_update": 13,
+      "async_db_update": 12,
       "db_query": 75,
-      "db_update": 41
+      "db_update": 40
     },
-    "count": 178,
+    "count": 176,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -464,11 +464,6 @@
         "method": "SiteUserData.get_latest"
       },
       {
-        "decorator": "async_db_update",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_delete_by_media_identity"
-      },
-      {
         "decorator": "async_db_query",
         "file": "app/db/models/subscribe.py",
         "method": "Subscribe.async_exists"
@@ -512,11 +507,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/subscribe.py",
         "method": "Subscribe.async_list_by_username"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.delete_by_media_identity"
       },
       {
         "decorator": "db_query",
