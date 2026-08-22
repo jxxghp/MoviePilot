@@ -1,8 +1,12 @@
-"""存储实例配置的读写。
+"""存储实例配置的读写与存储服务的取用。
 
-对外只按存储令牌收发一个实例的配置：裸令牌 ``u115`` 落到该存储类型的兼容指针所指的
-那一份，具名令牌 ``u115@work`` 精确指向该类型下名为 ``work`` 的实例。配置的形状、
-整形规则与兼容指针的退场路径见 ``app.application.storage_config``。
+两件事各答各的问题。**按配置扇出实例**与下载器、媒体服务器、消息渠道同一条路径：
+同一张服务实例配置表、同一套筛选与单实例裁决，取服务经 `get_services()` 与
+`get_service()`。**按令牌寻址**是存储独有的一步：存储实例的标识写在持久化路径里
+（``u115@work:/media``），故还要回答「这个地址指的配置是哪一份」——裸令牌 ``u115``
+落到该存储类型的兼容指针所指的那一份，具名令牌 ``u115@work`` 精确指向该类型下名为
+``work`` 的实例。配置的形状、整形规则与兼容指针的退场路径见
+``app.application.storage_config``。
 """
 
 from typing import Any, List, Optional
@@ -13,15 +17,28 @@ from app.application.storage_config import (
     select_storage_config,
 )
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
+from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.runtime.log import logger
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import StorageConf as _SchemaStorageConf
+from app.schemas.types import SystemConfigKey
 
 
-class StorageHelper:
+class StorageHelper(ServiceBaseHelper[_SchemaStorageConf]):
     """
     存储帮助类
+
+    继承的部分回答「按配置扇出的实例有哪些」，本类自有的部分回答「某个存储令牌指的
+    配置是哪一份」。后者不由前者代答：服务发现按实例名索引整族实例，而令牌里的实例段
+    可以缺席，缺席时要按所属存储类型的兼容指针补全。
     """
+
+    def __init__(self):
+        """绑定存储配置键与配置模型。"""
+        super().__init__(
+            config_key=SystemConfigKey.Storages,
+            conf_type=_SchemaStorageConf,
+        )
 
     @staticmethod
     def get_storagies() -> List[_SchemaStorageConf]:

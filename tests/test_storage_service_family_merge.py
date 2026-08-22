@@ -12,9 +12,13 @@
 """
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
+from app.application.downloader import DownloaderHelper
+from app.application.mediaserver import MediaServerHelper
+from app.application.notification import NotificationHelper
 from app.application.service_config import (
     async_write_system_setting,
     get_configured_service_instance_configs,
@@ -41,6 +45,7 @@ from app.runtime.extensions.admission.service_config import (
 )
 from app.runtime.extensions.registry.service_family import service_family_registry
 from app.runtime.extensions.registry.service_instance import service_instance_registry
+from app.runtime.extensions.service_registry import ServiceBaseHelper
 from app.schemas.system import DownloaderConf, StorageConf
 from app.schemas.types import ModuleType, SystemConfigKey
 
@@ -481,6 +486,89 @@ def test_storage_rows_record_the_plugin_that_provides_the_type(storage_config):
         assert records[1]["provider"] is None
     finally:
         service_instance_registry.unregister_owner("DemoStoragePlugin")
+
+
+def _probe_instance(conf) -> SimpleNamespace:
+    """
+    按单条实例配置构造一个可分辨的存储实例替身
+
+    :param conf: 单条存储实例配置
+    :return: 带实例名与配置内容的替身对象
+    """
+    return SimpleNamespace(name=conf.name, config=dict(conf.config or {}))
+
+
+@pytest.fixture
+def probe_storage_type(storage_config):
+    """在服务实例类型目录里登记一个探针存储类型，用例结束后回收。
+
+    :return: 探针存储的类型标识
+    """
+    owner = "StorageDiscoveryProbePlugin"
+    service_instance_registry.register(
+        capability=STORAGE_CAPABILITY,
+        service_type="probe_storage",
+        name="探针存储",
+        owner=owner,
+        factory=_probe_instance,
+    )
+    try:
+        yield "probe_storage"
+    finally:
+        service_instance_registry.unregister_owner(owner)
+
+
+def test_four_families_share_one_service_discovery_base():
+    """四族共用同一个服务帮助基类，存储不再自带一套取服务实现。"""
+    for helper in (DownloaderHelper, MediaServerHelper, NotificationHelper, StorageHelper):
+        assert issubclass(helper, ServiceBaseHelper)
+
+
+def test_storage_services_come_from_the_shared_discovery(storage_config, probe_storage_type):
+    """存储按配置扇出的实例经与三族同一条服务发现取用，一份配置对上一个具名实例。"""
+    storage_config.save_storagies([
+        StorageConf(type=probe_storage_type, name="主号", config={"账号": "甲"}),
+        StorageConf(type=probe_storage_type, name="备号", config={"账号": "乙"}),
+    ])
+    helper = StorageHelper()
+
+    services = helper.get_services(type_filter=probe_storage_type)
+
+    assert sorted(services) == ["主号", "备号"]
+    assert services["主号"].type == probe_storage_type
+    assert services["主号"].instance.config == {"账号": "甲"}
+    assert services["备号"].instance.config == {"账号": "乙"}
+    assert helper.get_service("主号").instance is services["主号"].instance
+
+
+def test_storage_configs_count_as_enabled_without_an_enable_switch(
+    storage_config, probe_storage_type
+):
+    """存储配置模型没有启用开关，配了即生效，服务发现不得据此把整族滤掉。"""
+    storage_config.save_storagies([
+        StorageConf(type=probe_storage_type, name="主号", config={"账号": "甲"}),
+    ])
+
+    assert "enabled" not in StorageConf.model_fields
+    assert list(StorageHelper().get_configs()) == ["主号"]
+
+
+def test_token_addressing_stays_independent_of_service_discovery(
+    storage_config, probe_storage_type
+):
+    """按令牌寻址仍是另一层：令牌缺实例段时按兼容指针补全，服务发现按实例名索引，答不了地址。"""
+    storage_config.save_storagies([
+        StorageConf(type=probe_storage_type, name="主号", config={"账号": "甲"}),
+        StorageConf(
+            type=probe_storage_type, name="备号", bare_token_target=True,
+            config={"账号": "乙"},
+        ),
+    ])
+    helper = StorageHelper()
+
+    assert helper.get_storage(f"{probe_storage_type}@主号").config == {"账号": "甲"}
+    assert helper.get_storage(probe_storage_type).name == "备号"
+    assert helper.get_service(probe_storage_type) is None
 
 
 class _DemoStorage(StorageBase):

@@ -1,7 +1,12 @@
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 
 from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.service_config import ServiceConfigHelper, resolve_service_config_key
+from app.runtime.extensions.service_config import (
+    ServiceConfigHelper,
+    resolve_service_config_key,
+    service_capability,
+    service_instance_enabled,
+)
 from app.schemas.system import ServiceInfo
 from app.schemas.types import SystemConfigKey
 
@@ -29,13 +34,41 @@ class ServiceBaseHelper(Generic[TConf]):
         :param conf_type: 服务配置模型
         :raises ValueError: 配置键不是任何 `SystemConfigKey` 成员
         """
-        self.modulemanager = ModuleManager()
+        self._modulemanager: Optional[ModuleManager] = None
         self.config_key = resolve_service_config_key(config_key)
+        self.capability = service_capability(self.config_key.value)
         self.conf_type = conf_type
+
+    @property
+    def modulemanager(self) -> ModuleManager:
+        """
+        本族实例持有者所在的宿主模块目录
+
+        目录首次取用时才装配：装配会按当前配置把全部宿主模块启动一遍，而模块启动
+        本身要按服务令牌读配置、从而再次取用本类，构造期即装配会让两者相互嵌套。
+
+        :return: 宿主模块目录
+        """
+        if self._modulemanager is None:
+            self._modulemanager = ModuleManager()
+        return self._modulemanager
+
+    @modulemanager.setter
+    def modulemanager(self, value: ModuleManager) -> None:
+        """
+        替换本族实例持有者所在的宿主模块目录
+
+        :param value: 宿主模块目录
+        :return: 无返回值
+        """
+        self._modulemanager = value
 
     def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:
         """
         获取配置列表
+
+        启用态按族判定：族配置模型没有启用开关字段时该族「配了即生效」，存储族即
+        属此列，其开关是「有没有这条配置」本身。
 
         :param include_disabled: 是否包含禁用的配置，默认 False（仅返回启用的配置）
         :return: 配置字典
@@ -44,7 +77,8 @@ class ServiceBaseHelper(Generic[TConf]):
         return {
             config.name: config
             for config in configs
-            if (config.name and config.type and config.enabled) or include_disabled
+            if (config.name and config.type
+                and service_instance_enabled(self.capability, config)) or include_disabled
         } if configs else {}
 
     def get_config(self, name: str) -> Optional[TConf]:
