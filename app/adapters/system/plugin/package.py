@@ -19,6 +19,19 @@ from app.runtime.settings import RuntimeSettingsCompat
 settings = RuntimeSettingsCompat()
 
 
+async def _await_thread_operation(func, *args, **kwargs):
+    """取消请求到达时先等待文件操作收口，避免后台线程继续写运行目录。"""
+    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        try:
+            await asyncio.shield(task)
+        except BaseException:
+            pass
+        raise
+
+
 @dataclass(frozen=True, slots=True)
 class PluginPackageCheckpoint:
     """记录一次插件包变更前可用于补偿恢复的文件快照。"""
@@ -74,7 +87,7 @@ class PluginPackageManager:
 
     async def async_checkpoint(self, plugin_id: str) -> PluginPackageCheckpoint:
         """在线程池中创建插件包文件快照。"""
-        return await asyncio.to_thread(self.checkpoint, plugin_id)
+        return await _await_thread_operation(self.checkpoint, plugin_id)
 
     @staticmethod
     def commit(checkpoint: PluginPackageCheckpoint) -> None:
@@ -83,7 +96,7 @@ class PluginPackageManager:
 
     async def async_commit(self, checkpoint: PluginPackageCheckpoint) -> None:
         """在线程池中清理已提交的插件包快照。"""
-        await asyncio.to_thread(self.commit, checkpoint)
+        await _await_thread_operation(self.commit, checkpoint)
 
     @staticmethod
     def rollback(checkpoint: PluginPackageCheckpoint) -> None:
@@ -101,7 +114,7 @@ class PluginPackageManager:
 
     async def async_rollback(self, checkpoint: PluginPackageCheckpoint) -> None:
         """在线程池中恢复插件包文件快照。"""
-        await asyncio.to_thread(self.rollback, checkpoint)
+        await _await_thread_operation(self.rollback, checkpoint)
 
     def install(
         self,

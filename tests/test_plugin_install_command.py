@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -304,6 +305,96 @@ async def test_registration_failure_restores_instance_files_and_routes() -> None
         "reload",
         ("registrations", 2),
     ]
+
+
+@pytest.mark.asyncio
+async def test_same_plugin_install_lifecycle_is_serialized() -> None:
+    """同一插件的两个安装调用不得同时修改包、运行态和注册信息。"""
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    calls: list[str] = []
+
+    async def install(plugin_id, *_args):
+        calls.append(plugin_id)
+        if len(calls) == 1:
+            first_started.set()
+            await release_first.wait()
+        return True, "ok"
+
+    command = _command(installer=install)
+    first = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await first_started.wait()
+    second = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await asyncio.sleep(0.02)
+    assert calls == ["DemoPlugin"]
+
+    release_first.set()
+    results = await asyncio.gather(first, second)
+    assert all(result.success for result in results)
+    assert calls == ["DemoPlugin", "DemoPlugin"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_install_waits_for_rollback_before_releasing_lifecycle() -> None:
+    """取消安装后先完成包快照补偿，再允许同一插件的新调用进入。"""
+    install_started = asyncio.Event()
+    release_install = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def install(*_args):
+        install_started.set()
+        await release_install.wait()
+        return True, "ok"
+
+    command = _command(installer=install, rollback=rollback)
+    task = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await install_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_lifecycle_lock_blocks_plugin_install_until_settlement() -> None:
+    """启动同步持有全局资格时，插件安装不得穿过启动收口。"""
+    from app.application.plugin.lifecycle import plugin_lifecycle
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def startup_scope():
+        async with plugin_lifecycle.hold_startup():
+            entered.set()
+            await release.wait()
+
+    startup = asyncio.create_task(startup_scope())
+    await entered.wait()
+    plugin_context = plugin_lifecycle.hold("DemoPlugin")
+    plugin_scope = asyncio.create_task(plugin_context.__aenter__())
+    await asyncio.sleep(0.02)
+    assert plugin_scope.done() is False
+
+    release.set()
+    await plugin_scope
+    await plugin_context.__aexit__(None, None, None)
+    await startup
 
 
 @pytest.mark.asyncio

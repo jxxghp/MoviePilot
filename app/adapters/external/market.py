@@ -82,6 +82,19 @@ def _empty_installed_plugins() -> List[str]:
 _installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
 
 
+async def _await_thread_operation(func, *args, **kwargs):
+    """取消请求到达时先等待同步插件操作收口，避免目录写入继续进行。"""
+    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        try:
+            await asyncio.shield(task)
+        except BaseException:
+            pass
+        raise
+
+
 def configure_installed_plugins_provider(
     provider: InstalledPluginsProvider,
 ) -> None:
@@ -177,6 +190,7 @@ class PluginHelper(metaclass=WeakSingleton):
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
     # 串行化运行期依赖安装，避免多个包安装子进程和导入缓存刷新互相踩踏。
     _package_install_lock = threading.Lock()
+    PLUGIN_DEPENDENCY_INSTALL_TIMEOUT = 300
     # 同仓库的并发 Release 请求共享任务；事件循环参与键控，避免热重载或测试循环切换后复用失效任务。
     _release_task_lock = threading.Lock()
     _release_tasks: Dict[Tuple[asyncio.AbstractEventLoop, str, bool], asyncio.Task] = {}
@@ -2421,18 +2435,279 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return True, ""
 
-    async def __async_install_packages_with_fallback(
-            self,
-            dependency_file: Path,
-            find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
-        """
-        在线程池中执行插件依赖安装，避免同步包安装子进程阻塞事件循环。
-        """
-        return await asyncio.to_thread(
-            self.install_packages_with_fallback,
-            dependency_file,
-            find_links_dirs
+    @classmethod
+    async def __async_run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
+        """异步执行插件安装后的运行环境检查。"""
+        health_snapshot: Dict[str, Tuple[bool, str]] = {}
+        uv_check = cls.__build_runtime_uv_command("check")
+        if uv_check:
+            checks = [("uv check", uv_check)]
+        else:
+            health_snapshot["uv check"] = (False, "未找到 uv 可执行文件")
+            checks = []
+        checks.append(("核心依赖导入检查", [
+            sys.executable,
+            "-c",
+            cls._runtime_import_probe,
+        ]))
+        for check_name, command in checks:
+            health_snapshot[check_name] = (
+                await SystemUtils.execute_with_subprocess_async(
+                    command,
+                    timeout=30,
+                )
+            )
+        return health_snapshot
+
+    @classmethod
+    async def __async_repair_main_runtime_dependencies(
+            cls,
+            snapshot_file: Optional[Path] = None,
+    ) -> Tuple[bool, str]:
+        """异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。"""
+        repair_target = snapshot_file
+        repair_desc = "主程序依赖快照"
+        if repair_target and not repair_target.exists():
+            repair_target = None
+        if repair_target is None:
+            repair_target = settings.ROOT_PATH / "pyproject.toml"
+            repair_desc = "主程序 uv.lock"
+        if not repair_target.exists():
+            return False, f"恢复依赖文件不存在：{repair_target}"
+        if snapshot_file is None and not (settings.ROOT_PATH / "uv.lock").exists():
+            return False, f"恢复依赖文件不存在：{settings.ROOT_PATH / 'uv.lock'}"
+
+        request = cls.__build_package_install_request(
+            repair_target,
+            purpose="runtime-repair",
         )
+        strategies = (
+            build_package_install_strategies(request)
+            if snapshot_file is not None
+            else build_project_sync_strategies(request)
+        )
+        last_error = ""
+        for strategy in strategies:
+            logger.warning(
+                f"[UV] 运行环境异常，尝试使用策略：{strategy.strategy_name} 恢复{repair_desc}"
+            )
+            success, message = await SystemUtils.execute_with_subprocess_async(
+                strategy.command,
+                env=strategy.env,
+                safe_command=strategy.safe_log_command,
+                timeout=cls.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT,
+            )
+            if success:
+                cls.__refresh_import_system()
+                return True, message
+            last_error = message
+            logger.error(
+                f"[UV] 使用策略：{strategy.strategy_name} 恢复{repair_desc}失败：{message}"
+            )
+        return False, last_error or f"恢复{repair_desc}失败"
+
+    @classmethod
+    async def __async_repair_if_runtime_broken(
+            cls,
+            snapshot_file: Optional[Path],
+            baseline_health: Dict[str, Tuple[bool, str]],
+    ) -> Tuple[bool, str]:
+        """异步检查并修复安装过程中新增的主程序环境异常。"""
+        current_health = await cls.__async_run_runtime_healthcheck()
+        health_message = cls.__runtime_health_regression_message(
+            baseline_health,
+            current_health,
+        )
+        if not health_message:
+            return True, ""
+        repair_ok, repair_message = (
+            await cls.__async_repair_main_runtime_dependencies(snapshot_file)
+        )
+        if not repair_ok:
+            return False, (
+                f"插件依赖安装失败后主运行环境异常，且恢复失败："
+                f"{health_message}; {repair_message}"
+            )
+        restored_health = await cls.__async_run_runtime_healthcheck()
+        restored_message = cls.__runtime_health_regression_message(
+            baseline_health,
+            restored_health,
+        )
+        if restored_message:
+            return False, (
+                f"插件依赖安装失败后主运行环境异常，恢复后仍异常："
+                f"{restored_message}"
+            )
+        return True, "主运行环境已恢复"
+
+    async def async_install_packages_with_fallback(
+            self,
+            dependency_files: Path | Sequence[Path],
+            find_links_dirs: Optional[List[Path]] = None,
+    ) -> Tuple[bool, str]:
+        """通过可取消子进程异步安装一组插件依赖清单。"""
+        return await self.__async_install_packages_with_fallback(
+            dependency_files,
+            find_links_dirs,
+        )
+
+    @classmethod
+    async def __async_install_packages_with_fallback(
+            cls,
+            dependency_files: Path | Sequence[Path],
+            find_links_dirs: Optional[List[Path]] = None,
+    ) -> Tuple[bool, str]:
+        """异步安装插件依赖，并让取消能够终止 uv 子进程。"""
+        if isinstance(dependency_files, Path):
+            resolved_dependency_files = (dependency_files,)
+        else:
+            resolved_dependency_files = tuple(Path(item) for item in dependency_files)
+        if not resolved_dependency_files:
+            return False, "没有传入插件依赖清单"
+
+        candidate_dirs = []
+        for dependency_file in resolved_dependency_files:
+            wheels_dir = dependency_file.parent / "wheels"
+            if wheels_dir.is_dir():
+                candidate_dirs.append(wheels_dir)
+        if find_links_dirs:
+            candidate_dirs.extend(find_links_dirs)
+
+        resolved_dirs = []
+        seen_dirs = set()
+        for candidate_dir in candidate_dirs:
+            candidate_path = Path(candidate_dir)
+            if not candidate_path.is_dir():
+                continue
+            candidate_key = str(candidate_path.resolve())
+            if candidate_key in seen_dirs:
+                continue
+            seen_dirs.add(candidate_key)
+            resolved_dirs.append(candidate_path)
+
+        installed_packages = await _await_thread_operation(
+            cls.__get_installed_packages,
+        )
+        protected_packages = await _await_thread_operation(
+            cls.__get_protected_runtime_packages,
+            installed_packages,
+        )
+        for dependency_file in resolved_dependency_files:
+            check_ok, check_message = await _await_thread_operation(
+                cls.__validate_runtime_dependency_conflicts,
+                dependency_file,
+                protected_packages,
+            )
+            if not check_ok:
+                logger.error(f"[UV] 运行环境冲突预检失败：{check_message}")
+                return False, check_message
+
+        constraints_file = None
+        if protected_packages:
+            try:
+                constraints_file = await _await_thread_operation(
+                    cls.__create_runtime_constraints_file,
+                    protected_packages,
+                )
+            except Exception as err:
+                logger.error(f"[UV] 创建运行环境约束文件失败：{err}")
+                return False, f"创建运行环境约束文件失败：{err}"
+
+        request = cls.__build_package_install_request(
+            resolved_dependency_files,
+            find_links_dirs=resolved_dirs,
+            constraints_file=constraints_file,
+            purpose="plugin",
+        )
+        strategies = build_package_install_strategies(request)
+        acquired = False
+        try:
+            while not cls._package_install_lock.acquire(blocking=False):
+                await asyncio.sleep(0.01)
+            acquired = True
+            baseline_health = await cls.__async_run_runtime_healthcheck()
+            baseline_health_message = cls.__runtime_health_regression_message(
+                {},
+                baseline_health,
+            )
+            if baseline_health_message:
+                logger.warning(
+                    f"[UV] 安装前运行环境已存在异常，本次安装仅拦截新增异常："
+                    f"{baseline_health_message}"
+                )
+
+            last_error = ""
+            for strategy in strategies:
+                logger.debug(
+                    f"[UV] 尝试使用策略：{strategy.strategy_name} 安装依赖，"
+                    f"命令：{' '.join(strategy.safe_log_command)}"
+                )
+                success, message = await SystemUtils.execute_with_subprocess_async(
+                    strategy.command,
+                    env=strategy.env,
+                    safe_command=strategy.safe_log_command,
+                    timeout=cls.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT,
+                )
+                if success:
+                    current_health = await cls.__async_run_runtime_healthcheck()
+                    health_message = cls.__runtime_health_regression_message(
+                        baseline_health,
+                        current_health,
+                    )
+                    if health_message:
+                        logger.error(f"[UV] 依赖安装后运行环境自检失败：{health_message}")
+                        repair_ok, repair_message = (
+                            await cls.__async_repair_main_runtime_dependencies(
+                                constraints_file if protected_packages else None
+                            )
+                        )
+                        if repair_ok:
+                            restored_health = await cls.__async_run_runtime_healthcheck()
+                            restored_message = cls.__runtime_health_regression_message(
+                                baseline_health,
+                                restored_health,
+                            )
+                            if not restored_message:
+                                cls.__refresh_import_system()
+                                return False, (
+                                    f"依赖安装后运行环境自检失败，已自动恢复主程序依赖："
+                                    f"{health_message}"
+                                )
+                            return False, (
+                                f"依赖安装后运行环境自检失败，恢复主程序依赖后仍异常："
+                                f"{restored_message}"
+                            )
+                        return False, (
+                            f"依赖安装后运行环境自检失败，且自动恢复主程序依赖失败："
+                            f"{repair_message}"
+                        )
+
+                    cls.__refresh_import_system()
+                    return True, message
+
+                last_error = message
+                repair_ok, repair_message = await cls.__async_repair_if_runtime_broken(
+                    constraints_file if protected_packages else None,
+                    baseline_health,
+                )
+                logger.error(
+                    f"[UV] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}"
+                )
+                if not repair_ok or repair_message:
+                    return False, (
+                        f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
+                        f"{repair_message}"
+                    )
+            return False, (
+                f"[UV] 所有策略均安装依赖失败：{last_error}"
+                if last_error
+                else "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
+            )
+        finally:
+            if acquired:
+                cls._package_install_lock.release()
+            if constraints_file:
+                constraints_file.unlink(missing_ok=True)
 
     async def __async_backup_plugin(self, pid: str) -> str:
         """
@@ -2444,14 +2719,16 @@ class PluginHelper(metaclass=WeakSingleton):
         backup_dir = AsyncPath(settings.TEMP_PATH) / "plugin_backup" / pid.lower()
 
         if await plugin_dir.exists():
-            # 备份时清理已有的备份目录，防止残留文件影响
-            if await backup_dir.exists():
-                await aioshutil.rmtree(backup_dir, ignore_errors=True)
-                logger.debug(f"{pid} 旧的备份目录已清理 {backup_dir}")
+            try:
+                if await backup_dir.exists():
+                    await aioshutil.rmtree(backup_dir, ignore_errors=True)
+                    logger.debug(f"{pid} 旧的备份目录已清理 {backup_dir}")
 
-            # 异步复制目录
-            await self._async_copytree(plugin_dir, backup_dir)
-            logger.debug(f"{pid} 插件已备份到 {backup_dir}")
+                await self._async_copytree(plugin_dir, backup_dir)
+                logger.debug(f"{pid} 插件已备份到 {backup_dir}")
+            except asyncio.CancelledError:
+                await aioshutil.rmtree(backup_dir, ignore_errors=True)
+                raise
 
         return str(backup_dir) if await backup_dir.exists() else None
 
@@ -2558,7 +2835,12 @@ class PluginHelper(metaclass=WeakSingleton):
         :return: (是否成功, 错误信息)
         """
         if self.is_local_repo_url(repo_url):
-            return await asyncio.to_thread(self.install_local, pid, repo_url, force_install)
+            return await _await_thread_operation(
+                self.install_local,
+                pid,
+                repo_url,
+                force_install,
+            )
 
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
@@ -2663,35 +2945,46 @@ class PluginHelper(metaclass=WeakSingleton):
         异步安装流程，处理插件内容准备、依赖安装和注册
         """
         backup_dir = None
-        if not force_install:
-            backup_dir = await self.__async_backup_plugin(pid)
+        try:
+            if not force_install:
+                backup_dir = await self.__async_backup_plugin(pid)
 
-        await self.__async_remove_old_plugin(pid)
+            await self.__async_remove_old_plugin(pid)
 
-        success, message = await prepare_content()
-        if not success:
-            logger.error(f"{pid} 准备插件内容失败：{message}")
+            success, message = await prepare_content()
+            if not success:
+                logger.error(f"{pid} 准备插件内容失败：{message}")
+                if backup_dir:
+                    await self.__async_restore_plugin(pid, backup_dir)
+                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    await self.__async_remove_old_plugin(pid)
+                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                return False, message
+
+            dependencies_exist, dep_ok, dep_msg = (
+                await self.__async_install_dependencies_if_required(pid)
+            )
+            if dependencies_exist and not dep_ok:
+                logger.error(f"{pid} 依赖安装失败：{dep_msg}")
+                if backup_dir:
+                    await self.__async_restore_plugin(pid, backup_dir)
+                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    await self.__async_remove_old_plugin(pid)
+                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                return False, dep_msg
+
+            await _await_thread_operation(self.refresh_persistent_plugin_backup, pid)
+            return True, ""
+        except asyncio.CancelledError:
+            logger.warning(
+                f"{pid} 插件安装被取消，Python 依赖环境可能已经改变"
+            )
+            raise
+        finally:
             if backup_dir:
-                await self.__async_restore_plugin(pid, backup_dir)
-                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-            else:
-                await self.__async_remove_old_plugin(pid)
-                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
-            return False, message
-
-        dependencies_exist, dep_ok, dep_msg = await self.__async_install_dependencies_if_required(pid)
-        if dependencies_exist and not dep_ok:
-            logger.error(f"{pid} 依赖安装失败：{dep_msg}")
-            if backup_dir:
-                await self.__async_restore_plugin(pid, backup_dir)
-                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-            else:
-                await self.__async_remove_old_plugin(pid)
-                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
-            return False, dep_msg
-
-        await asyncio.to_thread(self.refresh_persistent_plugin_backup, pid)
-        return True, ""
+                await aioshutil.rmtree(backup_dir, ignore_errors=True)
 
     def __prepare_content_via_filelist_sync(self, pid: str, user_repo: str,
                                             package_version: Optional[str]) -> Tuple[bool, str]:

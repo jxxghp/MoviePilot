@@ -1,9 +1,12 @@
+import asyncio
 import errno
 import itertools
 import os
 import struct
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
@@ -153,6 +156,53 @@ def test_execute_with_subprocess_uses_safe_command_in_failure_message():
     assert "https://mirror.example/simple" in message
     assert "user:pass" not in message
     assert run_mock.call_args.args[0] == command
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_timeout_reaps_process():
+    """异步安装命令超时后应终止并回收子进程。"""
+    success, message = await SystemUtils.execute_with_subprocess_async(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        timeout=0.05,
+    )
+
+    assert success is False
+    assert "执行超时" in message
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_cancellation_reaps_process(tmp_path):
+    """调用方取消安装任务时，底层子进程不得继续运行。"""
+    marker = tmp_path / "pid"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import os, time; "
+            f"Path({str(marker)!r}).write_text(str(os.getpid())); time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pid = int(marker.read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"子进程仍在运行：{pid}")
 
 
 def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():

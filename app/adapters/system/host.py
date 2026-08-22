@@ -1,8 +1,10 @@
+import asyncio
 import datetime
 import hashlib
 import os
 import platform
 import re
+import signal
 import shutil
 import socket
 import struct
@@ -101,6 +103,7 @@ class SystemUtils:
             command: list,
             env: Optional[dict[str, str]] = None,
             safe_command: Optional[list[str]] = None,
+            timeout: Optional[float] = 300,
     ) -> Tuple[bool, str]:
         """
         执行命令并捕获标准输出和错误输出，记录日志。
@@ -108,6 +111,7 @@ class SystemUtils:
         :param command: 要执行的命令，以列表形式提供
         :param env: 传递给子进程的环境变量
         :param safe_command: 用于错误信息展示的脱敏命令
+        :param timeout: 子进程最长运行时间，None 表示不设置超时
         :return: (命令是否成功, 输出信息或错误信息)
         """
         display_command = safe_command or command
@@ -120,6 +124,7 @@ class SystemUtils:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
+                timeout=timeout,
             )
             # 合并 stdout 和 stderr
             output = SystemUtils.redact_url_userinfo(result.stdout + result.stderr)
@@ -140,7 +145,157 @@ class SystemUtils:
                 f"返回码：{e.returncode}，{'; '.join(output_parts)}"
             )
             return False, error_message
+        except subprocess.TimeoutExpired as e:
+            stdout = SystemUtils.redact_url_userinfo(
+                SystemUtils._decode_subprocess_output(e.stdout)
+            )
+            stderr = SystemUtils.redact_url_userinfo(
+                SystemUtils._decode_subprocess_output(e.stderr)
+            )
+            output = "；".join(
+                part for part in (
+                    f"标准输出：{stdout}" if stdout else "",
+                    f"错误输出：{stderr}" if stderr else "",
+                ) if part
+            )
+            if output:
+                output = f"，{output}"
+            timeout_text = "未设置" if timeout is None else f"{timeout:g} 秒"
+            return False, (
+                f"命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
+                f"执行超时（{timeout_text}）{output}"
+            )
         except Exception as e:
+            error_message = (
+                f"未知错误，命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
+                f"错误：{SystemUtils.redact_url_userinfo(str(e))}"
+            )
+            return False, error_message
+
+    @staticmethod
+    def _decode_subprocess_output(value: object) -> str:
+        """把 subprocess 的文本或字节输出统一成可脱敏的字符串。"""
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode(errors="replace").strip()
+        return str(value).strip()
+
+    @staticmethod
+    async def _terminate_async_subprocess(
+            process: asyncio.subprocess.Process,
+            communication_task: "asyncio.Task[tuple[bytes, bytes]]",
+            grace_seconds: float = 5,
+    ) -> None:
+        """终止安装子进程及其同组子进程，并确保句柄已回收。"""
+        if process.returncode is None:
+            try:
+                if os.name == "nt":
+                    process.terminate()
+                else:
+                    os.killpg(process.pid, signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                pass
+
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(communication_task),
+                timeout=grace_seconds,
+            )
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            try:
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(communication_task),
+                    timeout=grace_seconds,
+                )
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                communication_task.cancel()
+                await asyncio.gather(communication_task, return_exceptions=True)
+        finally:
+            try:
+                await process.wait()
+            except (ProcessLookupError, OSError):
+                pass
+
+    @staticmethod
+    async def execute_with_subprocess_async(
+            command: list,
+            env: Optional[dict[str, str]] = None,
+            safe_command: Optional[list[str]] = None,
+            timeout: Optional[float] = 300,
+    ) -> Tuple[bool, str]:
+        """异步执行可取消的子进程，超时或取消时回收整个进程组。"""
+        display_command = safe_command or command
+        process: Optional[asyncio.subprocess.Process] = None
+        communication_task: Optional["asyncio.Task[tuple[bytes, bytes]]"] = None
+        try:
+            creationflags = (
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                if os.name == "nt"
+                else 0
+            )
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                start_new_session=os.name != "nt",
+                creationflags=creationflags,
+            )
+            communication_task = asyncio.create_task(process.communicate())
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    asyncio.shield(communication_task),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                await SystemUtils._terminate_async_subprocess(
+                    process,
+                    communication_task,
+                )
+                timeout_text = "未设置" if timeout is None else f"{timeout:g} 秒"
+                return False, (
+                    f"命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
+                    f"执行超时（{timeout_text}）"
+                )
+            except asyncio.CancelledError:
+                await SystemUtils._terminate_async_subprocess(
+                    process,
+                    communication_task,
+                )
+                raise
+
+            output = SystemUtils.redact_url_userinfo(
+                SystemUtils._decode_subprocess_output(stdout)
+                + SystemUtils._decode_subprocess_output(stderr)
+            )
+            if process.returncode == 0:
+                return True, output
+            return False, (
+                f"命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
+                f"执行失败，返回码：{process.returncode}，"
+                f"{output or '无标准输出或错误输出'}"
+            )
+        except asyncio.CancelledError:
+            if process is not None and communication_task is not None:
+                await SystemUtils._terminate_async_subprocess(
+                    process,
+                    communication_task,
+                )
+            raise
+        except Exception as e:
+            if process is not None and communication_task is not None:
+                await SystemUtils._terminate_async_subprocess(
+                    process,
+                    communication_task,
+                )
             error_message = (
                 f"未知错误，命令：{' '.join(SystemUtils.redact_command_url_userinfo(display_command))}，"
                 f"错误：{SystemUtils.redact_url_userinfo(str(e))}"

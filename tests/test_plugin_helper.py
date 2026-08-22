@@ -9,7 +9,7 @@ import time
 import zipfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -1615,39 +1615,70 @@ demo = { index = "private" }
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
-    def test_async_package_install_runs_in_threadpool(self):
-        """
-        验证异步安装路径会把同步包安装派发到线程池，避免阻塞事件循环。
-        """
+    def test_async_package_install_uses_cancellable_subprocess(self):
+        """异步依赖安装应直接使用可取消的子进程执行器。"""
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         helper = PluginHelper()
-        requirements_file = Path("/tmp/demo-requirements.txt")
-        find_links_dirs = [Path("/tmp/demo-wheels")]
-        calls = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "demo-requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            find_links_dirs = [Path(temp_dir) / "wheels"]
 
-        async def run_install():
-            return await helper._PluginHelper__async_install_packages_with_fallback(
-                requirements_file,
-                find_links_dirs
+            async def run_install():
+                return await helper._PluginHelper__async_install_packages_with_fallback(
+                    requirements_file,
+                    find_links_dirs,
+                )
+
+            health = {
+                "uv check": (True, "ok"),
+                "核心依赖导入检查": (True, "ok"),
+            }
+            strategy = Mock(
+                strategy_name="uv:test",
+                command=["uv", "pip", "install"],
+                env={},
+                safe_log_command=["uv", "pip", "install"],
             )
 
-        async def fake_to_thread(func, *args, **kwargs):
-            calls.append((func, args, kwargs))
-            return True, "ok"
-
-        with patch("app.adapters.external.market.asyncio.to_thread", side_effect=fake_to_thread):
-            success, message = asyncio.run(run_install())
+            with patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_installed_packages",
+                    return_value={},
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_protected_runtime_packages",
+                    return_value={},
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__validate_runtime_dependency_conflicts",
+                    return_value=(True, ""),
+            ), patch(
+                    "app.adapters.external.market.build_package_install_strategies",
+                    return_value=[strategy],
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__async_run_runtime_healthcheck",
+                    side_effect=[health, health],
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__refresh_import_system",
+            ), patch(
+                    "app.adapters.external.market.SystemUtils.execute_with_subprocess_async",
+                    new=AsyncMock(return_value=(True, "ok")),
+            ) as execute_mock:
+                success, message = asyncio.run(run_install())
 
         assert success
         assert "ok" == message
-        assert 1 == len(calls)
-        assert helper.install_packages_with_fallback == calls[0][0]
-        assert (requirements_file, find_links_dirs) == calls[0][1]
-        assert {} == calls[0][2]
+        execute_mock.assert_awaited_once()
+        assert execute_mock.await_args.kwargs["timeout"] == (
+            PluginHelper.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT
+        )
 
     def test_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
