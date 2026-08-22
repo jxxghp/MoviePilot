@@ -1,10 +1,9 @@
-import importlib
 import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
-from app.application.configuration import get_runtime_settings
 from app.runtime.log import logger, log_settings
+from app.runtime.settings import get_runtime_setting
 
 try:
     import moviepilot_rust as _moviepilot_rust
@@ -17,11 +16,7 @@ else:
 
 def _rust_accel_enabled() -> bool:
     """读取 Rust 开关快照，组合根未装配时回退旧 Settings。"""
-    try:
-        return bool(get_runtime_settings().get("RUST_ACCEL"))
-    except RuntimeError:
-        legacy_settings = importlib.import_module("app.runtime.config").settings
-        return bool(legacy_settings.RUST_ACCEL)
+    return bool(get_runtime_setting("RUST_ACCEL"))
 
 
 def is_available() -> bool:

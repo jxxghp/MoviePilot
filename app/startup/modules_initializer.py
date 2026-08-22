@@ -25,6 +25,7 @@ from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.observability import record_metric
 from app.runtime.state import SystemHelper
+from app.runtime.settings import configure_runtime_setting_provider
 from app.runtime.thread import ThreadHelper
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.resource import (
@@ -596,6 +597,7 @@ async def init_modules() -> HostRuntime:
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
+    configure_runtime_setting_provider(lambda key: getattr(settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))

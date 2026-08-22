@@ -5,7 +5,6 @@ author: https://github.com/C5H12O5/syno-videoinfo-plugin
 import base64
 import concurrent
 import concurrent.futures
-import importlib
 import json
 import socket
 import struct
@@ -14,9 +13,9 @@ import urllib.request
 from threading import Lock
 from typing import Dict, Optional
 
-from app.application.configuration import get_runtime_settings
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.settings import get_runtime_setting
 from app.foundation.singleton import Singleton
 
 # DoH 关闭时需要释放线程池；保持惰性创建可避免未启用 DoH 时占用进程级资源
@@ -34,11 +33,7 @@ _orig_getaddrinfo = socket.getaddrinfo
 
 def _doh_setting(key: str):
     """读取 DoH 热更新配置，组合根未装配时兼容旧 Settings。"""
-    try:
-        return get_runtime_settings().get(key)
-    except RuntimeError:
-        legacy_settings = importlib.import_module("app.runtime.config").settings
-        return getattr(legacy_settings, key)
+    return get_runtime_setting(key)
 
 
 def _get_executor_locked() -> concurrent.futures.ThreadPoolExecutor:

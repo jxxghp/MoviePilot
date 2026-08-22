@@ -41,6 +41,7 @@ def configure_plugin_system_services():
         configure_transfer_retry_config,
     )
     from app.runtime.config import settings
+    from app.runtime.settings import configure_runtime_setting_provider
     from app.startup.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
@@ -70,6 +71,7 @@ def configure_plugin_system_services():
         )
     )
     configure_runtime_settings(RuntimeSettingsService(settings))
+    configure_runtime_setting_provider(lambda key: getattr(settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_transfer_retry_config(
