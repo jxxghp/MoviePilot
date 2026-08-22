@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6765,
-  "edge_sha256": "ded520e71c7fd0fb8a6ef8e06575e404c1e5036e81bf1020e608bb0f2e976704",
+  "edge_count": 6771,
+  "edge_sha256": "0458d21578866742fba0dc027354ffc50235d8b470b00f4f055c9c277b8f707d",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3015,6 +3015,11 @@
     "app.application.orchestration.recommend -> app.schemas",
     "app.application.orchestration.recommend -> app.schemas.media",
     "app.application.orchestration.recommend -> app.schemas.types",
+    "app.application.orchestration.scheduler -> app.application",
+    "app.application.orchestration.scheduler -> app.application.database",
+    "app.application.orchestration.scheduler -> app.application.messaging",
+    "app.application.orchestration.scheduler -> app.application.messaging.message",
+    "app.application.orchestration.scheduler -> app.application.orchestration",
     "app.application.orchestration.scraping -> app.adapters",
     "app.application.orchestration.scraping -> app.adapters.network",
     "app.application.orchestration.scraping -> app.adapters.network.http",
@@ -6014,6 +6019,7 @@
     "app.scheduler -> app.application.orchestration",
     "app.scheduler -> app.application.orchestration.mediaserver",
     "app.scheduler -> app.application.orchestration.recommend",
+    "app.scheduler -> app.application.orchestration.scheduler",
     "app.scheduler -> app.application.orchestration.site",
     "app.scheduler -> app.application.orchestration.subscribe",
     "app.scheduler -> app.application.orchestration.transfer",
@@ -6832,7 +6838,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 853,
+  "module_count": 854,
   "modules": [
     "app",
     "app.adapters",
@@ -7138,6 +7144,7 @@
     "app.application.orchestration.ports.system",
     "app.application.orchestration.ports.transfer",
     "app.application.orchestration.recommend",
+    "app.application.orchestration.scheduler",
     "app.application.orchestration.scraping",
     "app.application.orchestration.search",
     "app.application.orchestration.site",

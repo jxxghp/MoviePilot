@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.application.maintenance import CleanupPolicy, DataCleanupService
-from app.scheduler import SchedulerChain
+from app.application.orchestration.scheduler import SchedulerChain
 
 
 class FakeCleanupRepository:
@@ -121,7 +121,7 @@ def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
     governance.cleanup.return_value = {"enabled": True}
     progress = MagicMock()
 
-    with patch("app.scheduler.get_database_governance", return_value=governance):
+    with patch("app.application.orchestration.scheduler.get_database_governance", return_value=governance):
         result = SchedulerChain().cleanup(batch_size=7, progress_callback=progress)
 
     assert result == {"enabled": True}

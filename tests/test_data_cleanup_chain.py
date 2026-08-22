@@ -13,7 +13,7 @@ from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.runtime.config import settings
-from app.scheduler import SchedulerChain
+from app.application.orchestration.scheduler import SchedulerChain
 from app.application.maintenance import (
     DataCleanupService,
     read_cleanup_policy,
