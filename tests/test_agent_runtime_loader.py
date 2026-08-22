@@ -20,6 +20,17 @@ from app.runtime.capabilities.model import (
 
 
 @pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    Agent Capability Runtime 的启动/关闭路径直接使用 ``asyncio.create_task`` /
+    ``asyncio.get_running_loop`` 等仅限 asyncio 的原语，在 trio 后端下没有
+    running asyncio loop，必然以 ``RuntimeError: no running event loop`` 失败。
+    """
+    return "asyncio"
+
+
+@pytest.fixture
 def runtime_loader(monkeypatch):
     """为每个用例提供未构建、未关闭的 Agent Capability Runtime。"""
     from app.agent import runtime_loader as module

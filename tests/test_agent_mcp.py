@@ -14,6 +14,17 @@ from app.agent.tools.impl.mcp import (
 from app.schemas.agent import AgentMcpServerConfig
 
 
+@pytest.fixture
+def anyio_backend():
+    """使用 asyncio 后端运行 anyio 异步测试。
+
+    stdio MCP 服务端的启动与工具调用路径直接使用 ``asyncio`` 子进程原语，
+    在 trio 后端下没有 running asyncio loop，必然以
+    ``RuntimeError: no running event loop`` 失败。
+    """
+    return "asyncio"
+
+
 def _write_stdio_mcp_server(tmp_path):
     """写入一个用于测试的最小 stdio MCP 服务。"""
     server_path = tmp_path / "stdio_mcp_server.py"
