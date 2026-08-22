@@ -18,8 +18,16 @@ def test_plugin_static_file_resolves_instance_key_to_shared_plugin_directory(
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "remoteEntry.js").write_text("console.log('demo')")
 
+    # plugin.py 已迁移到 get_api_runtime_config_snapshot()（每次调用都从
+    # app.runtime.config.settings 重新构建 ApiRuntimeConfig），模块层不再
+    # 持有 settings 这个名字。settings.ROOT_PATH 是无 setter 的只读 property
+    # （恒等于源码仓库根目录），没法 monkeypatch 实例属性；因此改为在
+    # plugin_endpoint 命名空间里替换其直接 import 的
+    # get_api_runtime_config_snapshot，让快照的 root_path 指向 tmp_path。
     monkeypatch.setattr(
-        plugin_endpoint, "settings", SimpleNamespace(ROOT_PATH=tmp_path)
+        plugin_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(root_path=tmp_path),
     )
 
     response = asyncio.run(

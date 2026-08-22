@@ -128,6 +128,7 @@ def test_transferhistory_oper_async_accessors_match_sync(db):
     oper = TransferHistoryOper(db=db.session)
     oper.add(**_transfer_kwargs("AsyncTitle", "/data/op-async.mkv"))
     history = oper.get_by_src("/data/op-async.mkv")
+    db.session.commit()
 
     assert asyncio.run(oper.async_get(history.id)).id == history.id
     assert [h.title for h in asyncio.run(
@@ -222,6 +223,7 @@ def test_subscribe_oper_history_round_trip(db):
     oper.add_history(name="历史剧", type=MediaType.TV.value, media_source=TMDB,
                      media_id="2300", season=1, date="2026-08-13 10:00:00",
                      username="op-alice", best_version=False)
+    db.session.commit()
 
     assert oper.exist_history(media_source=MediaSource.TMDB, media_id="2300",
                               season=1) is True

@@ -8,9 +8,10 @@ from sqlalchemy.orm import sessionmaker
 from app import schemas
 from app.application.orchestration import mediaserver as MEDIA_SERVER_CHAIN_MODULE
 from app.application.orchestration.mediaserver import MediaServerChain
-from app.db import Base
+from app.db.base import Base
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.models.mediaserver import MediaServerItem
+from app.runtime.config import global_vars
 
 
 @pytest.fixture
@@ -329,3 +330,42 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
 
     assert library_calls == ["plex-a"]
     assert excluded_server_calls == [["plex-a", "plex-b"]]
+
+
+def test_sync_stops_without_emitting_completion_after_stop_signal(monkeypatch):
+    """系统停止发生在逐库同步期间时，不应再发送服务器或全局完成进度。"""
+    chain = object.__new__(MediaServerChain)
+    server = SimpleNamespace(name="plex", enabled=True)
+    progress = []
+
+    class FakeMediaServerOper:
+        """提供同步阶段所需的最小数据库端口。"""
+
+        def delete_excluded_servers(self, _servers):
+            """忽略测试中的媒体服务器清理。"""
+
+    def stop_during_sync(**_kwargs):
+        """模拟读取媒体条目时收到系统停止信号。"""
+        global_vars.stop_system()
+        return 0, 0
+
+    monkeypatch.setattr(MEDIA_SERVER_CHAIN_MODULE, "MediaServerOper", FakeMediaServerOper)
+    monkeypatch.setattr(
+        chain,
+        "_prepare_sync_contexts",
+        lambda _servers, _server: ([server], 1, {"plex": ([], {})}, 0),
+    )
+    monkeypatch.setattr(chain, "_sync_server_libraries", stop_during_sync)
+    monkeypatch.setattr(
+        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+        "get_mediaserver_configs",
+        lambda: [server],
+    )
+    global_vars.STOP_EVENT.clear()
+    try:
+        chain.sync(progress_callback=lambda **kwargs: progress.append(kwargs))
+    finally:
+        global_vars.STOP_EVENT.clear()
+
+    texts = [item.get("text") for item in progress]
+    assert not any(text and "同步完成" in text for text in texts)

@@ -2,6 +2,7 @@
 from typing import Any, Iterable, List, Optional
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.serviceconfig import BUILTIN_PROVIDER, ServiceConfig
@@ -204,17 +205,21 @@ class ServiceConfigOper(DbOper):
             is_default_target=False,
             provider=provider,
         )
+        def stage(session: Session) -> None:
+            """在调用方事务中暂存实例配置并立即 flush，使唯一约束冲突在本方法内可见。"""
+            session.add(record)
+            session.flush()
+
         try:
-            record.create(self._db)
+            self._execute_sync_write(stage)
         except IntegrityError as error:
             # 预检查与写入之间另一请求刚好写入了同名配置，由唯一约束兜底
             raise ServiceConfigNameConflictError(
                 self._conflict_message(capability, service_type, name)
             ) from error
-        # 重新查询而不是直接返回 record：未显式传入会话时 create() 内部自管理的会话
-        # 已在提交后关闭，record 的属性已过期且不再绑定会话，再次访问会抛
-        # DetachedInstanceError；重新查询得到的对象在本次调用内始终可安全读取。
-        return self.get(capability, service_type, name)
+        # flush 已分配主键并把字段写入当前事务，直接返回即可；是否提交由调用方
+        # （无显式会话时是本方法委托的兼容事务）决定，不在这里替调用方提前收尾。
+        return record
 
     def add_row(self, capability: str, record: dict) -> dict:
         """

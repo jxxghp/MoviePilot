@@ -20,6 +20,10 @@ from app.application.orchestration.ports import (
     SystemPorts,
     TransferPorts,
 )
+from app.application.configuration import (
+    ChainRuntimeConfig,
+    get_chain_runtime_config_snapshot,
+)
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -78,6 +82,19 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         # 渠道是一个族类，「谁能发消息」是查询而非通知，因此按能力索引取候选，
         # 代价为 O(k) 而非遍历全体模块的 O(n)
         self.messagequeue = context.message_queue_factory(self.multicast)
+
+    @property
+    def runtime_config(self) -> ChainRuntimeConfig:
+        """返回实例快照；兼容绕过构造器的旧调用并按需取得当前快照。"""
+        configuration = getattr(self, "_runtime_config", None)
+        if configuration is None:
+            return get_chain_runtime_config_snapshot()
+        return configuration
+
+    @runtime_config.setter
+    def runtime_config(self, configuration: ChainRuntimeConfig) -> None:
+        """保存显式注入的 Chain 配置快照。"""
+        self._runtime_config = configuration
 
     def load_cache(self, filename: str) -> Any:
         """

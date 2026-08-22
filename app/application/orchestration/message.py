@@ -21,7 +21,7 @@ from app.application.orchestration.site import SiteChain
 from app.application.orchestration.subscribe import SubscribeChain
 from app.application.orchestration.transfer import TransferChain
 from app.application.orchestration.interaction import MediaInteractionChain as _MediaInteractionChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.application.messaging.agent import agent_interaction_manager, parse_agent_choice_callback
 from app.application.messaging.interaction import InteractionContext, InteractionDispatch
 from app.application.messaging.media import media_interaction_manager
@@ -479,8 +479,13 @@ class MessageChain(ChainBase):
         if (
                 not no_ai_requested
                 and
-                settings.AI_AGENT_ENABLE
-                and (settings.AI_AGENT_GLOBAL or images or files or has_audio_input)
+                self.runtime_config.ai_agent_enable
+                and (
+                    self.runtime_config.ai_agent_global
+                    or images
+                    or files
+                    or has_audio_input
+                )
         ):
             return self._handle_ai_message(
                 text=text,
@@ -556,8 +561,13 @@ class MessageChain(ChainBase):
         if text.startswith("/"):
             return False
         if not (
-                settings.AI_AGENT_ENABLE
-                and (settings.AI_AGENT_GLOBAL or images or files or has_audio_input)
+                self.runtime_config.ai_agent_enable
+                and (
+                    self.runtime_config.ai_agent_global
+                    or images
+                    or files
+                    or has_audio_input
+                )
         ):
             return False
         if self._interaction_router().has_pending(userid):
@@ -1225,7 +1235,7 @@ class MessageChain(ChainBase):
         """
         try:
             # 检查AI智能体是否启用
-            if not settings.AI_AGENT_ENABLE:
+            if not self.runtime_config.ai_agent_enable:
                 self.post_message(
                     Message(
                         channel=channel,
@@ -1282,8 +1292,8 @@ class MessageChain(ChainBase):
             original_images = images
             all_files = list(files or [])
             if images and supports_image_input(
-                    provider=settings.LLM_PROVIDER,
-                    model=settings.LLM_MODEL,
+                    provider=self.runtime_config.llm_provider,
+                    model=self.runtime_config.llm_model,
             ):
                 images = self._download_attachments_to_data_urls(
                     images, channel, source
@@ -1831,7 +1841,7 @@ class MessageChain(ChainBase):
         将用户上传文件写入临时目录，并返回本地路径。
         """
         safe_name = self._sanitize_attachment_name(filename, mime_type)
-        base_dir = settings.TEMP_PATH / "agent_uploads" / session_id
+        base_dir = self.runtime_config.temporary_path / "agent_uploads" / session_id
         base_dir.mkdir(parents=True, exist_ok=True)
 
         file_id = uuid.uuid4().hex[:8]

@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,8 +23,12 @@ def _make_file(name: str, size: int = 150 * 1024 * 1024) -> FileItem:
 @pytest.fixture(autouse=True)
 def _patch_media_exts(monkeypatch):
     monkeypatch.setattr(
-        "app.application.formatting.settings.RMT_MEDIAEXT",
-        [".mkv", ".mp4"],
+        "app.application.formatting.get_chain_runtime_config_snapshot",
+        lambda: SimpleNamespace(
+            video_extensions=(".mkv", ".mp4"),
+            subtitle_extensions=(".srt", ".ass"),
+            audio_extensions=(".flac", ".mp3", ".mka"),
+        ),
     )
 
 

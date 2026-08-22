@@ -140,6 +140,10 @@ def test_oper_async_variants_match_sync_behaviour(db):
     """异步查询、列举与解绑必须与同步路径给出一致的结果。"""
     oper = UserIdentityOper(db=db.session)
     identity = oper.bind(6001, "github", "ext-async")
+    # bind() 不再替调用方隐式提交（Oper 不得借 Base 写包装吞掉调用方事务边界）；
+    # 本用例接下来要换一条独立的异步连接读取这行数据，必须自己提交这个由本用例
+    # 持有的同步会话，写入才会跨连接可见。
+    db.session.commit()
 
     found = asyncio.run(oper.async_get_by_provider_external_id("github", "ext-async"))
     assert found.user_id == 6001

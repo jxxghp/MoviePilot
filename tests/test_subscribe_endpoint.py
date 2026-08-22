@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -680,6 +680,7 @@ class SubscribeEndpointTest(TestCase):
         other = _EndpointSubscribe(id=21, username="bob")
         own = _EndpointSubscribe(id=22, username="alice")
         created = SimpleNamespace(async_create=AsyncMock())
+        session = SimpleNamespace(add=MagicMock(), flush=AsyncMock())
 
         with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
             subscribe_model.async_exists = AsyncMock(return_value=other)
@@ -690,7 +691,9 @@ class SubscribeEndpointTest(TestCase):
 
             sid, message = asyncio.run(
                 async_add_subscribe(
-                    subscribe_oper=SubscribeOper(db=object()),
+                    subscribe_oper=SubscribeOper(
+                        db=session
+                    ),
                     mediainfo=_EndpointMediaInfo(),
                     username="alice",
                     owner_scope=True,
@@ -702,7 +705,8 @@ class SubscribeEndpointTest(TestCase):
         self.assertEqual(message, "新增订阅成功")
         subscribe_model.async_exists.assert_not_awaited()
         self.assertEqual(subscribe_model.async_exists_by_username.await_count, 2)
-        created.async_create.assert_awaited_once()
+        session.add.assert_called_once_with(created)
+        session.flush.assert_awaited_once_with()
 
     def test_subscribe_history_scopes_regular_user_and_keeps_superuser_global(self):
         """

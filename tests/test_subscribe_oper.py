@@ -21,12 +21,17 @@ def _add(**kwargs):
     钉的是查重语义（谁被查、查几次、带哪些身份字段），所以从翻译入口进、把不带真会话
     的 Oper 注进去，两层的契约一次跑通。
     """
-    return add_subscribe(subscribe_oper=SubscribeOper(db=object()), **kwargs)
+    return add_subscribe(subscribe_oper=SubscribeOper(db=MagicMock()), **kwargs)
 
 
 async def _async_add(**kwargs):
     """异步写入路径，与 _add 共用注入方式。"""
-    return await async_add_subscribe(subscribe_oper=SubscribeOper(db=object()), **kwargs)
+    session = MagicMock()
+    session.flush = AsyncMock()
+    return await async_add_subscribe(
+        subscribe_oper=SubscribeOper(db=session),
+        **kwargs,
+    )
 
 
 def _media(episode_group):
@@ -51,18 +56,19 @@ def test_add_history_converts_boolean_integer_flags(monkeypatch):
     """
     captured = {}
 
-    def fake_create(self, _db):
+    def fake_stage_create(_oper, model):
         """
         截获待写入模型，避免测试依赖具体数据库方言的类型宽松行为。
         """
         captured.update({
-            "id": self.id,
-            "best_version": self.best_version,
-            "best_version_full": self.best_version_full,
-            "search_imdbid": self.search_imdbid,
+            "id": model.id,
+            "best_version": model.best_version,
+            "best_version_full": model.best_version_full,
+            "search_imdbid": model.search_imdbid,
         })
+        return model
 
-    monkeypatch.setattr(SubscribeHistory, "create", fake_create)
+    monkeypatch.setattr(SubscribeOper, "_stage_create", fake_stage_create)
 
     SubscribeOper().add_history(
         id=100,
@@ -103,7 +109,6 @@ def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
         call.kwargs["episode_group"] == episode_group
         for call in subscribe_model.exists.call_args_list
     )
-    created.create.assert_called_once()
 
 
 # 媒体身份的三种残缺形态。守卫写的是 ``not media_source or not media_id``——只测「两者都空」
@@ -164,7 +169,6 @@ def test_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
         result = _add(mediainfo=_media(None), season=1)
 
     assert result == (0, "新增订阅失败")
-    created.create.assert_called_once()
 
 
 def test_async_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
@@ -178,7 +182,6 @@ def test_async_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
             mediainfo=_media(None), season=1))
 
     assert result == (0, "新增订阅失败")
-    created.async_create.assert_awaited_once()
 
 
 def test_add_reports_existing_subscription_without_creating():
@@ -333,7 +336,6 @@ def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
         call.kwargs["episode_group"] == episode_group
         for call in subscribe_model.async_exists.await_args_list
     )
-    created.async_create.assert_awaited_once()
 
 
 def test_owner_scoped_add_forwards_episode_group_sync_and_async():

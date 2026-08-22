@@ -108,7 +108,7 @@ class AgentChatOper(DbOper):
         }
         payload = {key: value for key, value in payload.items() if value is not None}
         if chat:
-            chat.update(self._db, payload)
+            self._stage_update(chat, payload)
             return self.get(session_id=session_id, user_id=user_id) or self.get(session_id=session_id)
 
         chat = AgentChat(
@@ -127,7 +127,7 @@ class AgentChatOper(DbOper):
             created_at=now,
             updated_at=now,
         )
-        chat.create(self._db)
+        self._stage_create(chat)
         return self.get(session_id=session_id, user_id=user_id) or self.get(session_id=session_id)
 
     def save_agent_messages(
@@ -146,8 +146,8 @@ class AgentChatOper(DbOper):
             chat = self.ensure_session(session_id=session_id, user_id=user_id)
         if not chat:
             return
-        chat.update(
-            self._db,
+        self._stage_update(
+            chat,
             {
                 "agent_messages": messages or [],
                 "updated_at": self._now(),
@@ -185,8 +185,8 @@ class AgentChatOper(DbOper):
             return
         if self.has_custom_title(chat.title):
             return
-        chat.update(
-            self._db,
+        self._stage_update(
+            chat,
             {
                 "title": normalized_title,
                 "updated_at": self._now(),
@@ -225,8 +225,8 @@ class AgentChatOper(DbOper):
             if self.has_custom_title(chat.title)
             else self._normalize_title(title, normalized_messages)
         )
-        chat.update(
-            self._db,
+        self._stage_update(
+            chat,
             {
                 "title": normalized_title,
                 "preview": self._normalize_preview(normalized_messages),
@@ -304,7 +304,7 @@ class AgentChatOper(DbOper):
         chat = await self.async_get(session_id=session_id, user_id=user_id)
         if not chat:
             return False
-        await AgentChat.async_delete(self._db, chat.id)
+        await self._stage_async_delete(AgentChat, chat.id)
         return True
 
     async def async_stage_delete(

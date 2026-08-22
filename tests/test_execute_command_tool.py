@@ -175,15 +175,17 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
         ``agent_initializer.stop_agent()`` 的用例会通过
         ``close_materialized_terminal_sessions()`` 把它永久关闭且无法重开。
         这里替换成一个全新实例，使本测试类不受运行顺序或其它套件副作用影响。
+
+        ``execute_command.py`` 不再在模块层持有 ``terminal_session_manager``
+        这个名字，而是在每次 ``run()`` 时调用
+        ``_terminal_session.get_terminal_session_manager()`` 按需取用（关闭
+        后可重建，见 8849b8da1）。该函数读取的是 ``_terminal_session`` 模块自身
+        的全局变量，因此只需 patch 这一处即可让 execute_command 也用上新实例。
         """
         fresh_manager = _TerminalSessionManager()
         self._terminal_manager_patchers = [
             patch(
                 "app.agent.tools.impl._terminal_session.terminal_session_manager",
-                fresh_manager,
-            ),
-            patch(
-                "app.agent.tools.impl.execute_command.terminal_session_manager",
                 fresh_manager,
             ),
         ]

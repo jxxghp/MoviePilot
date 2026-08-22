@@ -119,8 +119,7 @@ class PluginConfigOper(DbOper):
         now = self._now()
         config = PluginConfig.get_by_instance(self._db, plugin_id, instance_id)
         if config:
-            config.update(self._db, {**payload, "updated_at": now})
-            return PluginConfig.get_by_instance(self._db, plugin_id, instance_id)
+            return self._stage_update(config, {**payload, "updated_at": now})
         config = PluginConfig(
             plugin_id=plugin_id,
             instance_id=instance_id,
@@ -128,8 +127,7 @@ class PluginConfigOper(DbOper):
             updated_at=now,
             **payload,
         )
-        config.create(self._db)
-        return config
+        return self._stage_create(config)
 
     async def async_upsert(self, plugin_id: str, instance_id: str, payload: dict) -> PluginConfig:
         """
@@ -142,8 +140,7 @@ class PluginConfigOper(DbOper):
         now = self._now()
         config = await PluginConfig.async_get_by_instance(self._db, plugin_id, instance_id)
         if config:
-            await config.async_update(self._db, {**payload, "updated_at": now})
-            return await PluginConfig.async_get_by_instance(self._db, plugin_id, instance_id)
+            return await self._stage_async_update(config, {**payload, "updated_at": now})
         config = PluginConfig(
             plugin_id=plugin_id,
             instance_id=instance_id,
@@ -151,7 +148,7 @@ class PluginConfigOper(DbOper):
             updated_at=now,
             **payload,
         )
-        return await config.async_create(self._db)
+        return await self._stage_async_create(config)
 
     def delete_instance(self, plugin_id: str, instance_id: str) -> bool:
         """

@@ -2,6 +2,7 @@
 from typing import List, Optional
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.user_identity import UserIdentity
@@ -66,16 +67,21 @@ class UserIdentityOper(DbOper):
             external_id=external_id,
             display_name=display_name,
         )
+
+        def stage(session: Session) -> None:
+            """在调用方事务中暂存身份绑定并立即 flush，使唯一约束冲突在本方法内可见。"""
+            session.add(identity)
+            session.flush()
+
         try:
-            identity.create(self._db)
+            self._execute_sync_write(stage)
         except IntegrityError as error:
             raise UserIdentityAlreadyBoundError(
                 f"该 {provider} 账号已绑定到其他用户，无法重复绑定"
             ) from error
-        # 重新查询而不是直接返回 identity：未显式传入会话时 create() 内部自管理的
-        # 会话已在提交后关闭，identity 的属性已过期且不再绑定会话，再次访问会抛
-        # DetachedInstanceError；重新查询得到的对象在本次调用内始终可安全读取。
-        return self.get_by_provider_external_id(provider, external_id)
+        # flush 已分配主键并把字段写入当前事务，直接返回即可；是否提交由调用方
+        # （无显式会话时是本方法委托的兼容事务）决定，不在这里替调用方提前收尾。
+        return identity
 
     def unbind(self, identity_id: int, user_id: int) -> bool:
         """解绑指定用户名下的身份绑定，不属于该用户时返回 False。"""

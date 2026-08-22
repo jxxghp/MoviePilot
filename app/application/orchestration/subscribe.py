@@ -23,7 +23,7 @@ from app.application.orchestration.mediaserver import MediaServerChain
 from app.application.orchestration.search import SearchChain
 from app.application.orchestration.tmdb import TmdbChain
 from app.application.orchestration.torrents import TorrentsChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -39,7 +39,10 @@ from app.application.orchestration.data import (
     SitePortProxy as SiteOper,
     SubscribePortProxy as SubscribeOper,
 )
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
@@ -105,6 +108,30 @@ class _SubscribePostCommitContext:
     userid: Optional[str]
     username: Optional[str]
     message: bool
+
+
+@dataclass(slots=True)
+class _SubscribeCreateContext:
+    """订阅新增各阶段共享的显式状态，避免同步与异步入口各自维护散落变量。"""
+
+    title: str
+    year: str
+    mtype: Optional[MediaType]
+    episode_group: Optional[str]
+    season: Optional[int]
+    channel: Optional[NotificationChannel]
+    source: Optional[str]
+    userid: Optional[str]
+    username: Optional[str]
+    message: bool
+    exist_ok: bool
+    options: Dict[str, Any]
+    explicit_identity: bool
+    media_source: Optional[MediaSource]
+    media_id: Optional[str]
+    requested_music_type: Optional[str]
+    metainfo: MetaBase
+    mediainfo: Optional[MediaInfo] = None
 
 
 def _system_config():
@@ -874,10 +901,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __subscribe_added_link(mtype: MediaType) -> str:
         """返回订阅类型对应的前端详情入口。"""
         if mtype == MediaType.TV:
-            return settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            return get_chain_runtime_config_snapshot().television_subscribe_url
         if mtype == MediaType.MUSIC:
-            return settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
-        return settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+            return get_chain_runtime_config_snapshot().music_subscribe_url
+        return get_chain_runtime_config_snapshot().movie_subscribe_url
 
     @staticmethod
     def __subscribe_report_payload(context: _SubscribePostCommitContext) -> dict:
@@ -970,6 +997,403 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             self.__subscribe_report_payload(context)
         )
 
+    @staticmethod
+    def __build_subscribe_create_context(
+        title: str,
+        year: str,
+        mtype: Optional[MediaType],
+        episode_group: Optional[str],
+        season: Optional[int],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Optional[str],
+        username: Optional[str],
+        message: bool,
+        exist_ok: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        options: Dict[str, Any],
+    ) -> Tuple[Optional[_SubscribeCreateContext], Optional[str]]:
+        """规范订阅新增输入，并在任何识别 I/O 前拒绝不完整的显式媒体身份。"""
+        explicit_identity = media_source is not None or media_id is not None
+        media_source, media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (not media_source or not media_id):
+            return None, "媒体来源和媒体 ID 必须同时提供"
+
+        metainfo = MetaMusic.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
+        if year:
+            metainfo.year = year
+        if mtype:
+            metainfo.type = mtype
+        if season is not None:
+            metainfo.type = MediaType.TV
+            metainfo.begin_season = season
+        if mtype == MediaType.MUSIC and media_id:
+            metainfo.media_id = str(media_id)
+
+        return _SubscribeCreateContext(
+            title=title,
+            year=year,
+            mtype=mtype,
+            episode_group=episode_group,
+            season=season,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            message=bool(message),
+            exist_ok=bool(exist_ok),
+            options=options,
+            explicit_identity=explicit_identity,
+            media_source=media_source,
+            media_id=media_id,
+            requested_music_type=options.get("music_type"),
+            metainfo=metainfo,
+        ), None
+
+    @staticmethod
+    def __normalize_recognized_subscribe_media(context: _SubscribeCreateContext) -> None:
+        """保留非 TMDB 影视标题清洗与从标题补季号的历史行为。"""
+        mediainfo = context.mediainfo
+        if (
+            context.mtype == MediaType.MUSIC
+            or not mediainfo
+            or mediainfo.media_source == MediaSource.TMDB
+        ):
+            return
+        meta = MetaInfo(mediainfo.title)
+        mediainfo.title = meta.name
+        if context.season is None:
+            context.season = meta.begin_season
+
+    def __recognize_subscribe_media(self, context: _SubscribeCreateContext) -> Optional[str]:
+        """同步识别订阅目标；显式身份失败时禁止按标题换成另一个媒体。"""
+        if context.media_source and context.media_id:
+            context.mediainfo = MediaChain().recognize_media(
+                meta=context.metainfo,
+                mtype=context.mtype,
+                media_source=context.media_source,
+                media_id=context.media_id,
+                music_type=context.requested_music_type,
+                episode_group=context.episode_group,
+                cache=False,
+            )
+        self.__normalize_recognized_subscribe_media(context)
+        if not context.mediainfo and not context.explicit_identity:
+            context.mediainfo = MediaChain().recognize_by_meta(
+                context.metainfo,
+                media_source=context.media_source,
+                episode_group=context.episode_group,
+                obtain_images=False,
+                music_type=context.requested_music_type,
+            )
+            if (
+                context.mtype == MediaType.MUSIC
+                and context.mediainfo
+                and not context.mediainfo.media_source
+            ):
+                context.mediainfo = None
+        return self.__validate_recognized_subscribe_media(context)
+
+    async def __async_recognize_subscribe_media(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> Optional[str]:
+        """异步识别订阅目标，并与同步入口共享相同的规范化和校验规则。"""
+        if context.media_source and context.media_id:
+            context.mediainfo = await MediaChain().async_recognize_media(
+                meta=context.metainfo,
+                mtype=context.mtype,
+                media_source=context.media_source,
+                media_id=context.media_id,
+                music_type=context.requested_music_type,
+                episode_group=context.episode_group,
+                cache=False,
+            )
+        self.__normalize_recognized_subscribe_media(context)
+        if not context.mediainfo and not context.explicit_identity:
+            context.mediainfo = await MediaChain().async_recognize_by_meta(
+                context.metainfo,
+                media_source=context.media_source,
+                episode_group=context.episode_group,
+                obtain_images=False,
+                music_type=context.requested_music_type,
+            )
+            if (
+                context.mtype == MediaType.MUSIC
+                and context.mediainfo
+                and not context.mediainfo.media_source
+            ):
+                context.mediainfo = None
+        return self.__validate_recognized_subscribe_media(context)
+
+    def __validate_recognized_subscribe_media(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> Optional[str]:
+        """校验识别结果以及音乐订阅实体，返回兼容旧入口的错误文案。"""
+        if not context.mediainfo:
+            logger.warning(
+                f"未识别到媒体信息，标题：{context.title}，媒体来源：{context.media_source}，"
+                f"媒体 ID：{context.media_id}"
+            )
+            return "未识别到媒体信息"
+        if context.mtype != MediaType.MUSIC:
+            return None
+        music_error = self._validate_music_subscribe_target(
+            context.mediainfo,
+            requested_music_type=context.requested_music_type,
+        )
+        if music_error:
+            logger.warning(f"音乐订阅目标校验失败：{context.title} - {music_error}")
+        return music_error
+
+    def __prepare_subscribe_episodes(self, context: _SubscribeCreateContext) -> Optional[str]:
+        """同步补齐电视剧季集信息，并保持外部集数刷新只能扩展创建目标。"""
+        mediainfo = context.mediainfo
+        if mediainfo.type != MediaType.TV:
+            context.season = None
+            return None
+        if context.season is None:
+            context.season = 1
+        if not context.options.get("total_episode"):
+            if not mediainfo.seasons or context.episode_group:
+                mediainfo = MediaChain().recognize_media(
+                    mtype=mediainfo.type,
+                    **_media_recognize_kwargs(mediainfo),
+                    episode_group=context.episode_group,
+                    cache=False,
+                )
+                context.mediainfo = mediainfo
+                error = self.__validate_subscribe_seasons(context)
+                if error:
+                    return error
+            current_total_episode = len(mediainfo.seasons.get(context.season) or [])
+            total_episode = self.__apply_episodes_refresh(
+                current_total_episode,
+                season=context.season,
+                mediainfo=mediainfo,
+                media_source=resolve_media_identity(media=mediainfo)[0],
+                media_id=resolve_media_identity(media=mediainfo)[1],
+                scene="create",
+            )
+            error = self.__store_subscribe_episode_total(
+                context,
+                current_total_episode,
+                total_episode,
+            )
+            if error:
+                return error
+        self.__fill_subscribe_lack_episode(context)
+        return None
+
+    async def __async_prepare_subscribe_episodes(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> Optional[str]:
+        """异步补齐电视剧季集信息，并复用同步入口的结果校验和字段写入规则。"""
+        mediainfo = context.mediainfo
+        if mediainfo.type != MediaType.TV:
+            context.season = None
+            return None
+        if context.season is None:
+            context.season = 1
+        if not context.options.get("total_episode"):
+            if not mediainfo.seasons or context.episode_group:
+                mediainfo = await MediaChain().async_recognize_media(
+                    mtype=mediainfo.type,
+                    **_media_recognize_kwargs(mediainfo),
+                    episode_group=context.episode_group,
+                    cache=False,
+                )
+                context.mediainfo = mediainfo
+                error = self.__validate_subscribe_seasons(context)
+                if error:
+                    return error
+            current_total_episode = len(mediainfo.seasons.get(context.season) or [])
+            total_episode = await self.__async_apply_episodes_refresh(
+                current_total_episode,
+                season=context.season,
+                mediainfo=mediainfo,
+                media_source=resolve_media_identity(media=mediainfo)[0],
+                media_id=resolve_media_identity(media=mediainfo)[1],
+                scene="create",
+            )
+            error = self.__store_subscribe_episode_total(
+                context,
+                current_total_episode,
+                total_episode,
+            )
+            if error:
+                return error
+        self.__fill_subscribe_lack_episode(context)
+        return None
+
+    @staticmethod
+    def __validate_subscribe_seasons(context: _SubscribeCreateContext) -> Optional[str]:
+        """校验补充识别结果是否仍包含创建电视剧订阅所需的季集信息。"""
+        if not context.mediainfo:
+            logger.error("媒体信息识别失败！")
+            return "媒体信息识别失败"
+        if not context.mediainfo.seasons:
+            logger.error(f"媒体信息中没有季集信息，标题：{context.title}")
+            return "媒体信息中没有季集信息"
+        return None
+
+    @staticmethod
+    def __store_subscribe_episode_total(
+        context: _SubscribeCreateContext,
+        current_total_episode: int,
+        total_episode: int,
+    ) -> Optional[str]:
+        """写入创建场景最终集数，阻止外部刷新把可靠的当前集数向下覆盖。"""
+        if current_total_episode and total_episode < current_total_episode:
+            total_episode = current_total_episode
+        if not total_episode:
+            logger.error(f"未获取到总集数，标题：{context.title}")
+            return f"未获取到第 {context.season} 季的总集数"
+        context.options["total_episode"] = total_episode
+        return None
+
+    @staticmethod
+    def __fill_subscribe_lack_episode(context: _SubscribeCreateContext) -> None:
+        """未显式指定缺失集数时沿用总集数，保持旧创建默认值。"""
+        if not context.options.get("lack_episode"):
+            context.options["lack_episode"] = context.options.get("total_episode")
+
+    def __finalize_subscribe_create_context(self, context: _SubscribeCreateContext) -> None:
+        """同步补图并写入规范媒体身份和订阅默认配置。"""
+        if context.mediainfo.type != MediaType.MUSIC:
+            self.obtain_images(mediainfo=context.mediainfo)
+        self.__apply_subscribe_create_defaults(context)
+
+    async def __async_finalize_subscribe_create_context(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> None:
+        """异步补图并写入规范媒体身份和订阅默认配置。"""
+        if context.mediainfo.type != MediaType.MUSIC:
+            await self.async_obtain_images(mediainfo=context.mediainfo)
+        self.__apply_subscribe_create_defaults(context)
+
+    def __apply_subscribe_create_defaults(self, context: _SubscribeCreateContext) -> None:
+        """以最终识别结果覆盖身份字段，并补齐当前媒体类型的默认订阅参数。"""
+        context.media_source, context.media_id = resolve_media_identity(media=context.mediainfo)
+        context.options.update({
+            "media_source": context.media_source,
+            "media_id": context.media_id,
+        })
+        context.options.update(
+            self.__get_default_kwargs(context.mediainfo.type, **context.options)
+        )
+
+    @staticmethod
+    def __subscribe_post_commit_context(
+        context: _SubscribeCreateContext,
+    ) -> _SubscribePostCommitContext:
+        """从创建阶段状态冻结提交后副作用需要的最小快照。"""
+        return _SubscribePostCommitContext(
+            title=context.title,
+            year=context.year,
+            metainfo=context.metainfo,
+            mediainfo=context.mediainfo,
+            media_source=context.media_source,
+            media_id=context.media_id,
+            season=context.season,
+            channel=context.channel,
+            source=context.source,
+            userid=context.userid,
+            username=context.username,
+            message=context.message,
+        )
+
+    def __persist_subscribe_create(self, context: _SubscribeCreateContext) -> Tuple[Optional[int], str]:
+        """同步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。"""
+        post_commit_context = self.__subscribe_post_commit_context(context)
+
+        def _after_commit(subscribe_id: int) -> None:
+            """把同步提交后的副作用委托给单一顺序实现。"""
+            self.__post_subscribe_added(subscribe_id, post_commit_context)
+
+        sid, err_msg = add_subscribe(
+            mediainfo=context.mediainfo,
+            season=context.season,
+            username=context.username,
+            after_commit=_after_commit,
+            **context.options,
+        )
+        if not sid:
+            self.__notify_subscribe_create_failure(context, err_msg)
+            return None, err_msg
+        return sid, err_msg
+
+    async def __async_persist_subscribe_create(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> Tuple[Optional[int], str]:
+        """异步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。"""
+        post_commit_context = self.__subscribe_post_commit_context(context)
+
+        async def _after_commit(subscribe_id: int) -> None:
+            """把异步提交后的副作用委托给单一顺序实现。"""
+            await self.__async_post_subscribe_added(subscribe_id, post_commit_context)
+
+        sid, err_msg = await async_add_subscribe(
+            mediainfo=context.mediainfo,
+            season=context.season,
+            username=context.username,
+            after_commit=_after_commit,
+            **context.options,
+        )
+        if not sid:
+            await self.__async_notify_subscribe_create_failure(context, err_msg)
+            return None, err_msg
+        return sid, err_msg
+
+    def __notify_subscribe_create_failure(
+        self,
+        context: _SubscribeCreateContext,
+        err_msg: str,
+    ) -> None:
+        """同步记录持久化失败，并按旧规则向原用户反馈。"""
+        logger.error(f"{context.mediainfo.title_year} {err_msg}")
+        if context.exist_ok or not context.message:
+            return
+        self.post_message(self.__subscribe_create_failure_message(context, err_msg))
+
+    async def __async_notify_subscribe_create_failure(
+        self,
+        context: _SubscribeCreateContext,
+        err_msg: str,
+    ) -> None:
+        """异步记录持久化失败，并按旧规则向原用户反馈。"""
+        logger.error(f"{context.mediainfo.title_year} {err_msg}")
+        if context.exist_ok or not context.message:
+            return
+        await self.async_post_message(self.__subscribe_create_failure_message(context, err_msg))
+
+    @staticmethod
+    def __subscribe_create_failure_message(
+        context: _SubscribeCreateContext,
+        err_msg: str,
+    ) -> _SchemaMessage:
+        """构造保持旧标题、图片和接收人字段的订阅失败消息。"""
+        return _SchemaMessage(
+            channel=context.channel,
+            source=context.source,
+            mtype=MessageType.Subscribe,
+            title=(
+                f"{context.mediainfo.title_year} {context.metainfo.season} "
+                "添加订阅失败！"
+            ),
+            text=err_msg,
+            image=context.mediainfo.get_message_image(),
+            userid=context.userid,
+        )
+
     def add(self, title: str, year: str,
             mtype: MediaType = None,
             episode_group: Optional[str] = None,
@@ -986,173 +1410,21 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         识别媒体信息并添加订阅
         """
-
         logger.info(f'开始添加订阅，标题：{title} ...')
-
-        explicit_identity = media_source is not None or media_id is not None
-        media_source, media_id = resolve_media_identity(
-            media_source=media_source,
-            media_id=media_id,
+        context, error = self.__build_subscribe_create_context(
+            title, year, mtype, episode_group, season, channel, source, userid,
+            username, message, exist_ok, media_source, media_id, kwargs,
         )
-        if explicit_identity and (not media_source or not media_id):
-            return None, "媒体来源和媒体 ID 必须同时提供"
-
-        mediainfo = None
-        requested_music_type = kwargs.get("music_type")
-        metainfo = MetaMusic.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
-        if year:
-            metainfo.year = year
-        if mtype:
-            metainfo.type = mtype
-        if season is not None:
-            metainfo.type = MediaType.TV
-            metainfo.begin_season = season
-        # 音乐身份同步落到 meta；显式来源与 ID 直接走统一识别入口，不允许失败后换目标。
-        if mtype == MediaType.MUSIC and media_id:
-            metainfo.media_id = str(media_id)
-        if media_source and media_id:
-            mediainfo = MediaChain().recognize_media(
-                meta=metainfo,
-                mtype=mtype,
-                media_source=media_source,
-                media_id=media_id,
-                music_type=requested_music_type,
-                episode_group=episode_group,
-                cache=False,
-            )
-
-        if (
-            mtype != MediaType.MUSIC
-            and mediainfo
-            and mediainfo.media_source != MediaSource.TMDB
-        ):
-            meta = MetaInfo(mediainfo.title)
-            mediainfo.title = meta.name
-            if season is None:
-                season = meta.begin_season
-
-        # 没有稳定音乐身份时才允许按名称识别；影视保留原有同源兜底行为。
-        if not mediainfo and not explicit_identity:
-            mediainfo = MediaChain().recognize_by_meta(
-                metainfo,
-                media_source=media_source,
-                episode_group=episode_group,
-                obtain_images=False,
-                music_type=requested_music_type,
-            )
-            # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
-            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.media_source:
-                mediainfo = None
-
-        # 识别失败
-        if not mediainfo:
-            logger.warn(
-                f"未识别到媒体信息，标题：{title}，媒体来源：{media_source}，"
-                f"媒体 ID：{media_id}"
-            )
-            return None, "未识别到媒体信息"
-
-        if mtype == MediaType.MUSIC:
-            music_error = self._validate_music_subscribe_target(
-                mediainfo,
-                requested_music_type=requested_music_type,
-            )
-            if music_error:
-                logger.warning(f"音乐订阅目标校验失败：{title} - {music_error}")
-                return None, music_error
-
-        # 总集数
-        if mediainfo.type == MediaType.TV:
-            if season is None:
-                season = 1
-            # 总集数
-            if not kwargs.get('total_episode'):
-                if not mediainfo.seasons or episode_group:
-                    # 补充媒体信息
-                    mediainfo = MediaChain().recognize_media(mtype=mediainfo.type,
-                                                     **_media_recognize_kwargs(mediainfo),
-                                                     episode_group=episode_group,
-                                                     cache=False)
-                    if not mediainfo:
-                        logger.error(f"媒体信息识别失败！")
-                        return None, "媒体信息识别失败"
-                    if not mediainfo.seasons:
-                        logger.error(f"媒体信息中没有季集信息，标题：{title}")
-                        return None, "媒体信息中没有季集信息"
-                current_total_episode = len(mediainfo.seasons.get(season) or [])
-                # 创建场景没有旧订阅事实，仅允许外部补正未知或扩展总集数。
-                total_episode = self.__apply_episodes_refresh(
-                    current_total_episode, season=season, mediainfo=mediainfo,
-                    media_source=resolve_media_identity(media=mediainfo)[0],
-                    media_id=resolve_media_identity(media=mediainfo)[1], scene="create")
-                if current_total_episode and total_episode < current_total_episode:
-                    total_episode = current_total_episode
-                if not total_episode:
-                    logger.error(f'未获取到总集数，标题：{title}')
-                    return None, f"未获取到第 {season} 季的总集数"
-                kwargs.update({
-                    'total_episode': total_episode
-                })
-            # 缺失集
-            if not kwargs.get('lack_episode'):
-                kwargs.update({
-                    'lack_episode': kwargs.get('total_episode')
-                })
-        else:
-            # 避免season为0的问题
-            season = None
-
-        # 更新媒体图片
-        if mediainfo.type != MediaType.MUSIC:
-            self.obtain_images(mediainfo=mediainfo)
-        media_source, media_id = resolve_media_identity(media=mediainfo)
-        kwargs.update({"media_source": media_source, "media_id": media_id})
-
-        # 添加订阅
-        kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
-
-        post_commit_context = _SubscribePostCommitContext(
-            title=title,
-            year=year,
-            metainfo=metainfo,
-            mediainfo=mediainfo,
-            media_source=media_source,
-            media_id=media_id,
-            season=season,
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=username,
-            message=bool(message),
-        )
-
-        def _after_commit(subscribe_id: int) -> None:
-            """把同步提交后的副作用委托给单一顺序实现。"""
-            self.__post_subscribe_added(subscribe_id, post_commit_context)
-
-        # 操作数据库
-        sid, err_msg = add_subscribe(
-            mediainfo=mediainfo,
-            season=season,
-            username=username,
-            after_commit=_after_commit,
-            **kwargs,
-        )
-        if not sid:
-            logger.error(f'{mediainfo.title_year} {err_msg}')
-            if not exist_ok and message:
-                # 失败发回原用户
-                self.post_message(_SchemaMessage(channel=channel,
-                                                       source=source,
-                                                       mtype=MessageType.Subscribe,
-                                                       title=f"{mediainfo.title_year} {metainfo.season} "
-                                                             f"添加订阅失败！",
-                                                       text=f"{err_msg}",
-                                                       image=mediainfo.get_message_image(),
-                                                       userid=userid))
-            return None, err_msg
-        # 返回结果
-        return sid, err_msg
+        if error:
+            return None, error
+        error = self.__recognize_subscribe_media(context)
+        if error:
+            return None, error
+        error = self.__prepare_subscribe_episodes(context)
+        if error:
+            return None, error
+        self.__finalize_subscribe_create_context(context)
+        return self.__persist_subscribe_create(context)
 
     async def async_add(self, title: str, year: str,
                         mtype: MediaType = None,
@@ -1170,176 +1442,21 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         异步识别媒体信息并添加订阅
         """
-
         logger.info(f'开始添加订阅，标题：{title} ...')
-
-        explicit_identity = media_source is not None or media_id is not None
-        media_source, media_id = resolve_media_identity(
-            media_source=media_source,
-            media_id=media_id,
+        context, error = self.__build_subscribe_create_context(
+            title, year, mtype, episode_group, season, channel, source, userid,
+            username, message, exist_ok, media_source, media_id, kwargs,
         )
-        if explicit_identity and (not media_source or not media_id):
-            return None, "媒体来源和媒体 ID 必须同时提供"
-
-        mediainfo = None
-        requested_music_type = kwargs.get("music_type")
-        metainfo = MetaMusic.parse_query(title) if mtype == MediaType.MUSIC else MetaInfo(title)
-        if year:
-            metainfo.year = year
-        if mtype:
-            metainfo.type = mtype
-        if season is not None:
-            metainfo.type = MediaType.TV
-            metainfo.begin_season = season
-        # 音乐身份同步落到 meta；显式来源与 ID 直接走统一识别入口，不允许失败后换目标。
-        if mtype == MediaType.MUSIC and media_id:
-            metainfo.media_id = str(media_id)
-        if media_source and media_id:
-            mediainfo = await MediaChain().async_recognize_media(
-                meta=metainfo,
-                mtype=mtype,
-                media_source=media_source,
-                media_id=media_id,
-                music_type=requested_music_type,
-                episode_group=episode_group,
-                cache=False,
-            )
-
-        if (
-            mtype != MediaType.MUSIC
-            and mediainfo
-            and mediainfo.media_source != MediaSource.TMDB
-        ):
-            meta = MetaInfo(mediainfo.title)
-            mediainfo.title = meta.name
-            if season is None:
-                season = meta.begin_season
-
-        # 没有稳定音乐身份时才允许按名称识别；影视保留原有同源兜底行为。
-        if not mediainfo and not explicit_identity:
-            mediainfo = await MediaChain().async_recognize_by_meta(
-                metainfo,
-                media_source=media_source,
-                episode_group=episode_group,
-                obtain_images=False,
-                music_type=requested_music_type,
-            )
-            # 音乐 recognize_by_meta 未命中远端时返回离线兜底，订阅创建要求真实命中
-            if mtype == MediaType.MUSIC and mediainfo and not mediainfo.media_source:
-                mediainfo = None
-
-        # 识别失败
-        if not mediainfo:
-            logger.warn(
-                f"未识别到媒体信息，标题：{title}，媒体来源：{media_source}，"
-                f"媒体 ID：{media_id}"
-            )
-            return None, "未识别到媒体信息"
-
-        if mtype == MediaType.MUSIC:
-            music_error = self._validate_music_subscribe_target(
-                mediainfo,
-                requested_music_type=requested_music_type,
-            )
-            if music_error:
-                logger.warning(f"音乐订阅目标校验失败：{title} - {music_error}")
-                return None, music_error
-
-        # 总集数
-        if mediainfo.type == MediaType.TV:
-            if season is None:
-                season = 1
-            # 总集数
-            if not kwargs.get('total_episode'):
-                if not mediainfo.seasons or episode_group:
-                    # 补充媒体信息
-                    mediainfo = await MediaChain().async_recognize_media(mtype=mediainfo.type,
-                                                                 **_media_recognize_kwargs(mediainfo),
-                                                                 episode_group=episode_group,
-                                                                 cache=False)
-                    if not mediainfo:
-                        logger.error(f"媒体信息识别失败！")
-                        return None, "媒体信息识别失败"
-                    if not mediainfo.seasons:
-                        logger.error(f"媒体信息中没有季集信息，标题：{title}")
-                        return None, "媒体信息中没有季集信息"
-                current_total_episode = len(mediainfo.seasons.get(season) or [])
-                # 创建场景没有旧订阅事实，仅允许外部补正未知或扩展总集数。
-                total_episode = await self.__async_apply_episodes_refresh(
-                    current_total_episode, season=season, mediainfo=mediainfo,
-                    media_source=resolve_media_identity(media=mediainfo)[0],
-                    media_id=resolve_media_identity(media=mediainfo)[1], scene="create")
-                if current_total_episode and total_episode < current_total_episode:
-                    total_episode = current_total_episode
-                if not total_episode:
-                    logger.error(f'未获取到总集数，标题：{title}')
-                    return None, f"未获取到第 {season} 季的总集数"
-                kwargs.update({
-                    'total_episode': total_episode
-                })
-            # 缺失集
-            if not kwargs.get('lack_episode'):
-                kwargs.update({
-                    'lack_episode': kwargs.get('total_episode')
-                })
-        else:
-            # 避免season为0的问题
-            season = None
-
-        # 更新媒体图片
-        if mediainfo.type != MediaType.MUSIC:
-            await self.async_obtain_images(mediainfo=mediainfo)
-        media_source, media_id = resolve_media_identity(media=mediainfo)
-        kwargs.update({"media_source": media_source, "media_id": media_id})
-
-        # 列新默认参数
-        kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
-
-        post_commit_context = _SubscribePostCommitContext(
-            title=title,
-            year=year,
-            metainfo=metainfo,
-            mediainfo=mediainfo,
-            media_source=media_source,
-            media_id=media_id,
-            season=season,
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=username,
-            message=bool(message),
-        )
-
-        async def _after_commit(subscribe_id: int) -> None:
-            """把异步提交后的副作用委托给单一顺序实现。"""
-            await self.__async_post_subscribe_added(
-                subscribe_id,
-                post_commit_context,
-            )
-
-        # 操作数据库
-        sid, err_msg = await async_add_subscribe(
-            mediainfo=mediainfo,
-            season=season,
-            username=username,
-            after_commit=_after_commit,
-            **kwargs,
-        )
-        if not sid:
-            logger.error(f'{mediainfo.title_year} {err_msg}')
-            if not exist_ok and message:
-                # 失败发回原用户
-                await self.async_post_message(_SchemaMessage(channel=channel,
-                                                                   source=source,
-                                                                   mtype=MessageType.Subscribe,
-                                                                   title=f"{mediainfo.title_year} {metainfo.season} "
-                                                                         f"添加订阅失败！",
-                                                                   text=f"{err_msg}",
-                                                                   image=mediainfo.get_message_image(),
-                                                                   userid=userid))
-            return None, err_msg
-        # 返回结果
-        return sid, err_msg
+        if error:
+            return None, error
+        error = await self.__async_recognize_subscribe_media(context)
+        if error:
+            return None, error
+        error = await self.__async_prepare_subscribe_episodes(context)
+        if error:
+            return None, error
+        await self.__async_finalize_subscribe_create_context(context)
+        return await self.__async_persist_subscribe_create(context)
 
     @staticmethod
     def _subscription_query() -> SubscriptionQueryService:
@@ -1376,6 +1493,25 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         return False
 
     def search(
+            self,
+            sid: Optional[int] = None,
+            state: Optional[str] = 'N',
+            manual: Optional[bool] = False,
+            progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """
+        执行订阅搜索。
+
+        保持定时任务、API 和插件使用的公开签名，搜索实现委托给内部执行阶段。
+        """
+        return self._execute_search(
+            sid=sid,
+            state=state,
+            manual=manual,
+            progress_callback=progress_callback,
+        )
+
+    def _execute_search(
             self,
             sid: Optional[int] = None,
             state: Optional[str] = 'N',
@@ -1811,7 +1947,82 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             self.get_states_for_search('R')
         )
 
+    def _prepare_match_torrents(
+            self,
+            torrents: Dict[str, List[Context]],
+    ) -> Dict[str, List[Context]]:
+        """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
+        processed_torrents: Dict[str, List[Context]] = {}
+        for domain, contexts in torrents.items():
+            if global_vars.is_system_stopped:
+                break
+            processed_torrents[domain] = []
+            for context in contexts:
+                if global_vars.is_system_stopped:
+                    break
+                if context.torrent_info and getattr(context.torrent_info, "category", None) in (
+                        MediaType.MUSIC,
+                        MediaType.MUSIC.value,
+                ):
+                    # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
+                    processed_torrents[domain].append(context)
+                    continue
+                if (
+                        not context.media_info
+                        or not resolve_media_identity(media=context.media_info)[1]
+                ) and context.media_recognize_fail_count < 3:
+                    logger.debug(
+                        f'尝试重新识别种子：{context.torrent_info.title}，当前失败次数：'
+                        f'{context.media_recognize_fail_count}/3'
+                    )
+                    re_mediainfo = MediaChain().recognize_by_meta(
+                        context.meta_info,
+                        obtain_images=False,
+                    )
+                    if re_mediainfo:
+                        re_mediainfo.clear()
+                        context.media_info = re_mediainfo
+                        context.match_source = self.__get_media_id_match_source(re_mediainfo)
+                        context.candidate_recognized = bool(
+                            resolve_media_identity(media=re_mediainfo)[1]
+                        )
+                        context.media_info_is_target = False
+                        context.media_recognize_fail_count = 0
+                        logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
+                    else:
+                        context.media_recognize_fail_count += 1
+                        logger.debug(
+                            f'种子 {context.torrent_info.title} 媒体识别失败，失败次数：'
+                            f'{context.media_recognize_fail_count}/3'
+                        )
+                elif context.media_recognize_fail_count >= 3:
+                    logger.debug(f'种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别')
+                processed_torrents[domain].append(context)
+        return processed_torrents
+
     def match(
+            self,
+            torrents: Dict[str, List[Context]],
+            progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """
+        从缓存中匹配订阅，并自动下载。
+
+        该入口保持订阅刷新、定时任务和插件调用的稳定签名，具体匹配流程由内部阶段执行。
+        """
+        if not torrents:
+            logger.warn('没有缓存资源，无法匹配订阅')
+            if progress_callback:
+                progress_callback(value=100, text="没有缓存资源，跳过订阅匹配")
+            return
+        if progress_callback:
+            progress_callback(value=0, text="正在预处理订阅资源 ...")
+        return self._execute_match(
+            torrents=torrents,
+            progress_callback=progress_callback,
+        )
+
+    def _execute_match(
             self,
             torrents: Dict[str, List[Context]],
             progress_callback: Optional[Callable[..., None]] = None,
@@ -1837,55 +2048,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if not lock_acquired:
                 return
 
-            # 预识别所有未识别的种子
-            processed_torrents: Dict[str, List[Context]] = {}
-            for domain, contexts in torrents.items():
-                if global_vars.is_system_stopped:
-                    break
-                processed_torrents[domain] = []
-                for context in contexts:
-                    if global_vars.is_system_stopped:
-                        break
-                    if context.torrent_info and getattr(context.torrent_info, "category", None) in (
-                            MediaType.MUSIC,
-                            MediaType.MUSIC.value,
-                    ):
-                        # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
-                        processed_torrents[domain].append(context)
-                        continue
-                    # 如果种子未识别且失败次数未超过3次，尝试识别
-                    if (
-                            not context.media_info
-                            or not resolve_media_identity(media=context.media_info)[1]
-                    ) and context.media_recognize_fail_count < 3:
-                        logger.debug(
-                            f'尝试重新识别种子：{context.torrent_info.title}，当前失败次数：{context.media_recognize_fail_count}/3')
-                        re_mediainfo = MediaChain().recognize_by_meta(
-                            context.meta_info,
-                            obtain_images=False,
-                        )
-                        if re_mediainfo:
-                            # 清理多余信息
-                            re_mediainfo.clear()
-                            # 更新种子缓存
-                            context.media_info = re_mediainfo
-                            context.match_source = self.__get_media_id_match_source(re_mediainfo)
-                            context.candidate_recognized = bool(
-                                resolve_media_identity(media=re_mediainfo)[1]
-                            )
-                            context.media_info_is_target = False
-                            # 重置失败次数
-                            context.media_recognize_fail_count = 0
-                            logger.debug(f'种子 {context.torrent_info.title} 重新识别成功')
-                        else:
-                            # 识别失败，增加失败次数
-                            context.media_recognize_fail_count += 1
-                            logger.debug(
-                                f'种子 {context.torrent_info.title} 媒体识别失败，失败次数：{context.media_recognize_fail_count}/3')
-                    elif context.media_recognize_fail_count >= 3:
-                        logger.debug(f'种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别')
-                    # 添加已预处理
-                    processed_torrents[domain].append(context)
+            processed_torrents = self._prepare_match_torrents(torrents)
 
             # 所有订阅
             subscribes = SubscribeOper().list(self.get_states_for_search('R'))
@@ -2938,11 +3101,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         subscribeoper.delete(subscribe.id)
         # 发送通知
         if mediainfo.type == MediaType.TV:
-            link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+            link = self.runtime_config.television_subscribe_url
         elif mediainfo.type == MediaType.MUSIC:
-            link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
+            link = self.runtime_config.music_subscribe_url
         else:
-            link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+            link = self.runtime_config.movie_subscribe_url
         # 完成订阅按规则发送消息
         self.post_message(
             _SchemaMessage(
@@ -3195,11 +3358,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if not default_subscribe_key:
             return None
 
-        # 默认订阅规则
-        if hasattr(settings, default_subscribe_key):
-            value = getattr(settings, default_subscribe_key)
-        else:
-            value = _system_config().get(default_subscribe_key)
+        # 默认订阅规则属于持久化用户配置，不再从部署 Settings 猜测同名属性。
+        value = _system_config().get(default_subscribe_key)
 
         if not value:
             return None
@@ -3259,7 +3419,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     info = _SchemaSubscribeEpisodeInfo()
                     info.title = episode.name
                     info.description = episode.overview
-                    info.backdrop = settings.TMDB_IMAGE_URL(episode.still_path, "w500")
+                    info.backdrop = self.runtime_config.tmdb_image_url(episode.still_path, "w500")
                     episodes[episode.episode_number] = info
         elif subscribe.type == MediaType.TV.value:
             # 根据开始结束集计算集信息
@@ -3347,31 +3507,54 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 else:
                     episodes[0].library.append(file_info)
 
-        # 合并所有媒体服务器已存在条目（逐台查询，不只取第一个命中）
+        self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
+
+        # 更新订阅信息
+        subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
+        subscribe_info.episodes = episodes
+        return subscribe_info
+
+    def _append_subscribe_media_servers(
+        self,
+        subscribe: Subscribe,
+        mediainfo: MediaInfo,
+        episodes: Dict[int, _SchemaSubscribeEpisodeInfo],
+    ) -> None:
+        """合并媒体服务器条目，跳过已经由本地媒体库记录覆盖的服务。"""
         mediaserver_chain = MediaServerChain()
         server_names = list(MediaServerHelper().get_services().keys())
 
-        def _has_server_entry(library_list: List[_SchemaSubscribeLibraryFileInfo],
-                              server_name: Optional[str],
-                              server_type: Optional[str]) -> bool:
+        def has_server_entry(
+            library_list: List[_SchemaSubscribeLibraryFileInfo],
+            server_name: Optional[str],
+            server_type: Optional[str],
+        ) -> bool:
+            """判断媒体库列表是否已经包含目标服务条目。"""
             for info in library_list or []:
                 if info.server and server_name and info.server == server_name:
                     return True
-                if info.server_type and server_type and info.server_type == server_type \
-                        and info.server == server_name \
-                        and (not info.file_path or str(info.file_path).startswith(("http://", "https://"))):
+                if (
+                    info.server_type
+                    and server_type
+                    and info.server_type == server_type
+                    and info.server == server_name
+                    and (
+                        not info.file_path
+                        or str(info.file_path).startswith(("http://", "https://"))
+                    )
+                ):
                     return True
             return False
 
         for server_name in server_names:
             exists_media = self.media_exists(mediainfo=mediainfo, server=server_name)
-            # 仅合并真实媒体服务器结果，跳过本地 FileManager 兜底（已由 media_files 覆盖）
             if not exists_media or not (exists_media.server or exists_media.server_type):
                 continue
-
             resolved_server = exists_media.server or server_name
             server_storage = exists_media.server_type or resolved_server
-            server_itemid = str(exists_media.itemid) if exists_media.itemid is not None else None
+            server_itemid = (
+                str(exists_media.itemid) if exists_media.itemid is not None else None
+            )
             series_detail_url = None
             if resolved_server and exists_media.itemid is not None:
                 series_detail_url = mediaserver_chain.get_play_url(
@@ -3379,42 +3562,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     item_id=exists_media.itemid,
                 )
 
-            if subscribe.type == MediaType.TV.value:
-                season_number = subscribe.season if subscribe.season is not None else 1
-                exist_episodes = (exists_media.seasons or {}).get(season_number) or []
-                episode_item_ids: Dict[int, str] = {}
-                if resolved_server and exists_media.itemid is not None:
-                    episode_item_ids = mediaserver_chain.get_season_episode_ids(
-                        server=resolved_server,
-                        item_id=exists_media.itemid,
-                        season=season_number,
-                    )
-                for episode_number in exist_episodes:
-                    episode_info = episodes.get(episode_number)
-                    if not episode_info:
-                        continue
-                    if _has_server_entry(episode_info.library, resolved_server, exists_media.server_type):
-                        continue
-                    episode_itemid = episode_item_ids.get(episode_number) or server_itemid
-                    detail_url = series_detail_url
-                    if resolved_server and episode_item_ids.get(episode_number):
-                        detail_url = mediaserver_chain.get_play_url(
-                            server=resolved_server,
-                            item_id=episode_itemid,
-                        ) or series_detail_url
-                    episode_info.library.append(
-                        _SchemaSubscribeLibraryFileInfo(
-                            storage=server_storage,
-                            file_path=detail_url,
-                            server=resolved_server,
-                            server_type=exists_media.server_type,
-                            itemid=str(episode_itemid) if episode_itemid is not None else None,
-                        )
-                    )
-            else:
+            if subscribe.type != MediaType.TV.value:
                 episode_info = episodes.get(0)
-                if episode_info and not _has_server_entry(
-                        episode_info.library, resolved_server, exists_media.server_type):
+                if episode_info and not has_server_entry(
+                    episode_info.library, resolved_server, exists_media.server_type
+                ):
                     episode_info.library.append(
                         _SchemaSubscribeLibraryFileInfo(
                             storage=server_storage,
@@ -3424,11 +3576,41 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             itemid=server_itemid,
                         )
                     )
+                continue
 
-        # 更新订阅信息
-        subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
-        subscribe_info.episodes = episodes
-        return subscribe_info
+            season_number = subscribe.season if subscribe.season is not None else 1
+            exist_episodes = (exists_media.seasons or {}).get(season_number) or []
+            episode_item_ids: Dict[int, str] = {}
+            if resolved_server and exists_media.itemid is not None:
+                episode_item_ids = mediaserver_chain.get_season_episode_ids(
+                    server=resolved_server,
+                    item_id=exists_media.itemid,
+                    season=season_number,
+                )
+            for episode_number in exist_episodes:
+                episode_info = episodes.get(episode_number)
+                if not episode_info or has_server_entry(
+                    episode_info.library, resolved_server, exists_media.server_type
+                ):
+                    continue
+                episode_itemid = episode_item_ids.get(episode_number) or server_itemid
+                detail_url = series_detail_url
+                if resolved_server and episode_item_ids.get(episode_number):
+                    detail_url = mediaserver_chain.get_play_url(
+                        server=resolved_server,
+                        item_id=episode_itemid,
+                    ) or series_detail_url
+                episode_info.library.append(
+                    _SchemaSubscribeLibraryFileInfo(
+                        storage=server_storage,
+                        file_path=detail_url,
+                        server=resolved_server,
+                        server_type=exists_media.server_type,
+                        itemid=(
+                            str(episode_itemid) if episode_itemid is not None else None
+                        ),
+                    )
+                )
 
     def check_and_handle_existing_media(self, subscribe: Subscribe, meta: MetaBase,
                                         mediainfo: MediaInfo, mediakey: Union[str, int]):

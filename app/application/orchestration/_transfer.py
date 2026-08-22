@@ -26,13 +26,16 @@ from app.application.orchestration.data import (
     DownloadHistoryPortProxy as DownloadHistoryOper,
     TransferHistoryPortProxy as TransferHistoryOper,
 )
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem
@@ -321,7 +324,7 @@ class FileFilterMixin:
         """
         if history.type == MediaType.MUSIC.value:
             return True
-        return src_path.suffix.lower() in settings.RMT_AUDIOEXT
+        return src_path.suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     def _recognize_music_retry_media(
             self,
@@ -1339,7 +1342,7 @@ class FailedRetryMixin:
                     userid=userid,
                     username=username,
                     title=f"整理记录 #{history_id} 已重新整理",
-                    link=settings.MP_DOMAIN("#/history"),
+                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -1353,7 +1356,7 @@ class FailedRetryMixin:
                 username=username,
                 title="重新整理失败",
                 text=errmsg,
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
                 save_history=False,
             )
         )
@@ -1370,7 +1373,7 @@ class FailedRetryMixin:
         由智能助手接管一条失败的整理记录。
         """
 
-        if not settings.AI_AGENT_ENABLE:
+        if not self.runtime_config.ai_agent_enable:
             self.post_message(
                 Message(
                     channel=channel,
@@ -1393,7 +1396,7 @@ class FailedRetryMixin:
                     username=username,
                     title="重新整理失败",
                     text=f"整理记录 #{history_id} 不存在",
-                    link=settings.MP_DOMAIN("#/history"),
+                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -1409,7 +1412,7 @@ class FailedRetryMixin:
                 username=username,
                 title=f"已将整理记录 #{history_id} 交给智能助手处理",
                 text="处理完成后会在这里回复结果。",
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
                 save_history=False,
             )
         )
@@ -1441,7 +1444,7 @@ class FailedRetryMixin:
                         title="智能助手整理完成",
                         text=final_output.strip()
                              or f"整理记录 #{history_id} 已由智能助手处理完成。",
-                        link=settings.MP_DOMAIN("#/history"),
+                        link=self.runtime_config.history_url,
                         save_history=False,
                     )
                 )
@@ -1454,7 +1457,7 @@ class FailedRetryMixin:
                         username=username,
                         title="智能助手整理失败",
                         text=str(e),
-                        link=settings.MP_DOMAIN("#/history"),
+                        link=self.runtime_config.history_url,
                         save_history=False,
                     )
                 )

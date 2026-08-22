@@ -250,7 +250,7 @@ class SubscribeOper(DbOper):
             if after_commit:
                 after_commit(subscribe.id)
             return subscribe.id, "订阅已存在"
-        Subscribe(**_persistable(payload)).create(self._db)
+        self._stage_create(Subscribe(**_persistable(payload)))
         subscribe = self._exists(identity, username)
         if not subscribe:
             return 0, "新增订阅失败"
@@ -274,7 +274,7 @@ class SubscribeOper(DbOper):
             if after_commit:
                 await after_commit(subscribe.id)
             return subscribe.id, "订阅已存在"
-        await Subscribe(**_persistable(payload)).async_create(self._db)
+        await self._stage_async_create(Subscribe(**_persistable(payload)))
         subscribe = await self._async_exists(identity, username)
         if not subscribe:
             return 0, "新增订阅失败"
@@ -489,13 +489,13 @@ class SubscribeOper(DbOper):
         """
         删除订阅
         """
-        Subscribe.delete(self._db, rid=sid)
+        self._stage_delete(Subscribe, sid)
 
     async def async_delete(self, sid: int):
         """
         异步删除订阅。
         """
-        await Subscribe.async_delete(self._db, rid=sid)
+        await self._stage_async_delete(Subscribe, sid)
 
     async def stage_delete(self, sid: int) -> None:
         """登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。"""
@@ -510,7 +510,7 @@ class SubscribeOper(DbOper):
         subscribe = await self.async_get(sid)
         if subscribe:
             payload = _normalize_integer_flags(payload)
-            await subscribe.async_update(self._db, payload)
+            await self._stage_async_update(subscribe, payload)
         return subscribe
 
     async def async_stage_update(
@@ -544,7 +544,7 @@ class SubscribeOper(DbOper):
         subscribe = self.get(sid)
         if subscribe:
             payload = _normalize_integer_flags(payload)
-            subscribe.update(self._db, payload)
+            self._stage_update(subscribe, payload)
         return subscribe
 
     def list_by_username(self, username: str, state: Optional[str] = None,
@@ -573,7 +573,7 @@ class SubscribeOper(DbOper):
         if "id" in kwargs:
             kwargs.pop("id")
         subscribe = SubscribeHistory(**kwargs)
-        subscribe.create(self._db)
+        self._stage_create(subscribe)
 
     def exist_history(
             self, media_source: MediaSource, media_id: str,

@@ -8,6 +8,7 @@ from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.application.security.token import create_access_token, get_password_hash
 from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot, get_chain_runtime_config_snapshot
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
@@ -319,7 +320,7 @@ class AuthService:
 
     def build_superuser_token_payload(self) -> _SchemaTokenPayload:
         """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
-        user = self._users.get_by_name(settings.SUPERUSER)
+        user = self._users.get_by_name(get_chain_runtime_config_snapshot().superuser)
         if not user or not user.is_superuser:
             raise PermissionError("用户权限不足")
         return _SchemaTokenPayload(
@@ -333,16 +334,17 @@ class AuthService:
     def build_token_response(self, user: AuthUser) -> _SchemaToken:
         """使用统一逻辑构造登录 Token 响应。"""
         level = SitesHelper().auth_level
+        config = get_api_runtime_config_snapshot()
         show_wizard = (
             not self._config.get(SystemConfigKey.SetupWizardState)
-            and not settings.ADVANCED_MODE
+            and not config.advanced_mode
         )
         return _SchemaToken(
             access_token=create_access_token(
                 userid=user.id,
                 username=user.name,
                 super_user=user.is_superuser,
-                expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+                expires_delta=timedelta(minutes=config.access_token_expire_minutes),
                 level=level,
             ),
             token_type="bearer",

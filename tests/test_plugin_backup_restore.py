@@ -1,6 +1,7 @@
 """插件持久化备份与 Docker 重置恢复合同测试。"""
 
 import errno
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,10 +16,15 @@ def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
     runtime_dir = tmp_path / "app" / "plugins"
     config_dir.mkdir(parents=True)
     runtime_dir.mkdir(parents=True)
+    runtime_config = replace(
+        system_module.get_chain_runtime_config_snapshot(),
+        root_path=tmp_path,
+        config_path=config_dir,
+    )
     monkeypatch.setattr(
         system_module,
-        "settings",
-        SimpleNamespace(ROOT_PATH=tmp_path, CONFIG_PATH=config_dir),
+        "get_chain_runtime_config_snapshot",
+        lambda: runtime_config,
     )
     monkeypatch.setattr(
         system_module.SystemUtils,

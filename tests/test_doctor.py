@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import sqlite3
 from types import SimpleNamespace
 
 from app.runtime.config import settings
-from app.doctor import checks, run_doctor
+from app.doctor import checks
 from app.doctor.formatters import format_json_report, format_text_report
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorSeverity
-from app.doctor.runner import DoctorRunner
+from app.doctor.runner import DoctorRunner, run_doctor
 
 
 def _current_log_timestamp() -> str:
@@ -31,6 +32,98 @@ def test_doctor_report_has_stable_json_shape(tmp_path, monkeypatch):
     assert isinstance(payload["findings"], list)
     assert all("affects_report_status" in item for item in payload["findings"])
     assert any(item["id"] == "runtime.paths" for item in payload["findings"])
+
+
+def test_doctor_reports_valid_backup_when_sqlite_database_is_corrupt(
+    tmp_path,
+    monkeypatch,
+):
+    """主数据库损坏时 Doctor 仍应离线校验备份并给出还原命令。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    (tmp_path / "user.db").write_bytes(b"not a sqlite database")
+    backup_dir = settings.DATABASE_BACKUP_PATH
+    backup_dir.mkdir(parents=True)
+    backup = backup_dir / "sqlite_20260822_030000.db"
+    with sqlite3.connect(backup) as connection:
+        connection.execute("CREATE TABLE entries (value TEXT NOT NULL)")
+    (backup_dir / "sqlite_20260822_040000.db").write_bytes(b"invalid newer backup")
+
+    runner = DoctorRunner()
+    checks._check_database(runner)
+
+    assert runner.report.find("database.sqlite_open_failed") is not None
+    finding = runner.report.find("database.backup_recovery")
+    assert finding is not None
+    assert finding.status == DoctorFindingStatus.Ok
+    assert finding.context["backups"][0]["valid"] is False
+    assert finding.context["backups"][1]["valid"] is True
+    assert finding.context["restore_command"] == (
+        "moviepilot database restore sqlite_20260822_030000.db --confirm"
+    )
+    assert finding.context["restore_command"] in finding.recommendation
+
+
+def test_doctor_distinguishes_missing_and_mismatched_backups(tmp_path, monkeypatch):
+    """无备份与仅存在其他数据库类型备份应生成不同诊断结论。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    runner = DoctorRunner()
+    checks._check_database_backups(runner)
+    missing = runner.report.find("database.backup_recovery")
+    assert missing is not None
+    assert missing.status == DoctorFindingStatus.Skipped
+
+    backup_dir = settings.DATABASE_BACKUP_PATH
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
+    runner = DoctorRunner()
+    checks._check_database_backups(runner)
+    mismatched = runner.report.find("database.backup_recovery")
+    assert mismatched is not None
+    assert mismatched.status == DoctorFindingStatus.Degraded
+    assert mismatched.context["mismatched"] == ["postgresql_20260822_030000.dump"]
+
+
+def test_doctor_reports_invalid_backup_without_modifying_it(tmp_path, monkeypatch):
+    """Doctor --fix 也只校验备份，不覆盖或删除无效文件。"""
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    backup_dir = settings.DATABASE_BACKUP_PATH
+    backup_dir.mkdir(parents=True)
+    backup = backup_dir / "sqlite_20260822_030000.db"
+    original = b"invalid sqlite backup"
+    backup.write_bytes(original)
+
+    runner = DoctorRunner(fix=True)
+    checks._check_database_backups(runner)
+
+    finding = runner.report.find("database.backup_recovery")
+    assert finding is not None
+    assert finding.status == DoctorFindingStatus.Failed
+    assert finding.affects_report_status is False
+    assert finding.context["backups"][0]["valid"] is False
+    assert backup.read_bytes() == original
+    assert runner.report.status.value == "healthy"
+
+
+def test_doctor_exposes_missing_pg_restore_in_text_finding(tmp_path, monkeypatch):
+    """PostgreSQL 离线校验工具缺失时应直接告诉用户如何补齐。"""
+    def missing_pg_restore(*_args, **_kwargs):
+        raise RuntimeError("未找到 pg_restore，请安装 PostgreSQL client 并加入 PATH")
+
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql")
+    backup_dir = settings.DATABASE_BACKUP_PATH
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
+    monkeypatch.setattr(checks, "verify_database_backup", missing_pg_restore)
+
+    runner = DoctorRunner()
+    checks._check_database_backups(runner)
+
+    finding = runner.report.find("database.backup_recovery")
+    assert finding is not None
+    assert finding.status == DoctorFindingStatus.Failed
+    assert "未找到 pg_restore" in finding.detail
+    assert "PostgreSQL client" in format_text_report(runner.report)
 
 
 def test_doctor_formatters_include_status_and_finding(tmp_path, monkeypatch):

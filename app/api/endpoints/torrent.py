@@ -9,22 +9,17 @@ from app.api.response import ResponseAPIRouter
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.torrents import TorrentsChain
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.domain.context import MediaInfo, MusicInfo
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfo
 from app.api.deps import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
 from app.schemas.types import (
-    MUSIC_ENTITY_RECORDING,
     MediaSource,
-    MediaType,
     MusicTargetEntityType,
 )
 from app.foundation.crypto import HashUtils
-from app.domain.media import is_music_media_source, normalize_music_type
 from app.schemas.media import resolve_media_identity
+from app.application.torrent_cache import TorrentCacheRecognitionService
 
 router = ResponseAPIRouter()
 
@@ -209,132 +204,19 @@ async def reidentify_cache(
     :param _: 当前用户，必须是超级用户
     """
 
-    torrents_chain = TorrentsChain()
-    media_chain = MediaChain()
-
     try:
-        # 获取当前缓存
-        cache_data = await torrents_chain.async_get_torrents()
-
-        if domain not in cache_data:
-            return _SchemaResponse(success=False, message=f"站点 {domain} 缓存不存在")
-
-        # 查找指定种子
-        target_context = None
-        for context in cache_data[domain]:
-            if (
-                HashUtils.md5(
-                    f"{context.torrent_info.title}{context.torrent_info.description}"
-                )
-                == torrent_hash
-            ):
-                target_context = context
-                break
-
-        if not target_context:
-            return _SchemaResponse(success=False, message="未找到指定的种子")
-
-        existing_music_type = normalize_music_type(
-            getattr(target_context.media_info, "music_type", None),
-            allow_artist=False,
+        service = TorrentCacheRecognitionService(TorrentsChain(), MediaChain())
+        success, message, data = await service.execute(
+            domain=domain,
+            torrent_hash=torrent_hash,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=music_type,
         )
-        normalized_music_type = normalize_music_type(
-            music_type,
-            allow_artist=False,
-        )
-        if music_type is not None and not normalized_music_type:
-            return _SchemaResponse(
-                success=False,
-                message="音乐实体类型无效，仅支持 recording 或 album",
-            )
-        is_music = (
-            getattr(target_context.media_info, "type", None) == MediaType.MUSIC
-            or isinstance(target_context.meta_info, MetaMusic)
-            or target_context.torrent_info.category
-            in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
-            or is_music_media_source(media_source)
-            or normalized_music_type is not None
-        )
-        if is_music and media_source and not is_music_media_source(media_source):
-            return _SchemaResponse(
-                success=False,
-                message="音乐重新识别只能使用音乐元数据源",
-            )
-        if is_music and not normalized_music_type:
-            normalized_music_type = existing_music_type or MUSIC_ENTITY_RECORDING
-
-        # 重识别沿用原媒体域；音乐标题必须使用 MetaMusic，避免误入影视模块。
-        if is_music:
-            meta = (
-                target_context.meta_info
-                if isinstance(target_context.meta_info, MetaMusic)
-                else MetaMusic.parse_query(target_context.torrent_info.title)
-            )
-        else:
-            meta = MetaInfo(
-                title=target_context.torrent_info.title,
-                subtitle=target_context.torrent_info.description,
-            )
-
-        has_explicit_id = media_source is not None or media_id is not None
-        if has_explicit_id and (not media_source or not media_id):
-            return _SchemaResponse(
-                success=False,
-                message="媒体来源和媒体 ID 必须同时提供",
-            )
-        if has_explicit_id:
-            # 手动指定媒体身份时执行精确识别。
-            mediainfo = await media_chain.async_recognize_media(
-                meta=meta,
-                media_source=media_source,
-                media_id=media_id,
-                mtype=MediaType.MUSIC if is_music else None,
-                music_type=normalized_music_type,
-            )
-        else:
-            # 未指定 ID 时按标题识别，请求级来源仍用于约束本次识别。
-            mediainfo = await media_chain.async_recognize_by_meta(
-                meta,
-                media_source=media_source,
-                mtype=MediaType.MUSIC if is_music else None,
-                music_type=normalized_music_type,
-            )
-
-        if not mediainfo:
-            # 失败占位仍保留原媒体域，避免音乐缓存被误写进影视缓存文件。
-            mediainfo = (
-                MusicInfo(
-                    music_type=normalized_music_type or MUSIC_ENTITY_RECORDING
-                )
-                if is_music
-                else MediaInfo()
-            )
-        else:
-            # 清理多余数据
-            mediainfo.clear()
-
-        # 更新上下文中的媒体信息
-        target_context.media_info = mediainfo
-
-        # 保存更新后的缓存：影视与音乐分别回写各自存储文件
-        video_cache, music_cache = torrents_chain.split_cache_contexts(cache_data)
-        video_file, music_file = torrents_chain.cache_files()
-        await torrents_chain.async_save_cache(video_cache, video_file)
-        await torrents_chain.async_save_cache(music_cache, music_file)
-
         return _SchemaResponse(
-            success=True,
-            message="重新识别完成",
-            data={
-                "media_name": mediainfo.title if mediainfo else "",
-                "media_year": mediainfo.year if mediainfo else "",
-                "media_type": mediainfo.type.value
-                if mediainfo and mediainfo.type
-                else "",
-                "media_source": getattr(mediainfo, "media_source", None),
-                "media_id": getattr(mediainfo, "media_id", None),
-                "music_type": getattr(mediainfo, "music_type", None),
-            },
+            success=success,
+            message=message,
+            data=data,
         )
     except Exception as e:
         return _SchemaResponse(success=False, message=f"重新识别失败：{str(e)}")

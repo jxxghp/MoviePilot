@@ -67,7 +67,7 @@ class WorkflowOper(DbOper):
         """
         wf = Workflow(**kwargs)
         if not wf.get_by_name(self._db, kwargs.get("name")):
-            wf.create(self._db)
+            self._stage_create(wf)
             return True, "新增工作流成功"
         return False, "工作流已存在"
 

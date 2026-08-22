@@ -18,6 +18,8 @@ from urllib.request import Request, urlopen
 
 import psutil
 
+from app.adapters.system.backup.database import verify_database_backup
+from app.adapters.system.backup.files import BackupFiles
 from app.runtime.config import settings
 from app.runtime.log import PLUGIN_LOG_FILENAME
 from app.runtime.compat.plugin_version_readiness import (
@@ -830,6 +832,116 @@ def _check_database(runner: DoctorRunnerProtocol) -> None:
         _check_postgresql_database(runner)
     else:
         _check_sqlite_database(runner)
+    _check_database_backups(runner)
+
+
+def _check_database_backups(runner: DoctorRunnerProtocol) -> None:
+    """列举并离线校验与当前数据库类型匹配的受管备份。"""
+    db_type = "postgresql" if settings.DB_TYPE.lower() == "postgresql" else "sqlite"
+    try:
+        paths = BackupFiles(settings.DATABASE_BACKUP_PATH).list()
+    except OSError as error:
+        runner.add(
+            finding_id="database.backup_recovery",
+            severity=DoctorSeverity.Error,
+            status=DoctorFindingStatus.Failed,
+            title="数据库备份目录无法读取",
+            detail=str(error),
+            recommendation="检查数据库备份目录是否存在且当前用户具有读取权限。",
+            context={"db_type": db_type},
+        )
+        return
+
+    matching = [path for path in paths if BackupFiles.database_type(path.name) == db_type]
+    mismatched = [path.name for path in paths if path not in matching]
+    if not paths:
+        runner.add(
+            finding_id="database.backup_recovery",
+            severity=DoctorSeverity.Info,
+            status=DoctorFindingStatus.Skipped,
+            title="未找到受管数据库备份",
+            detail=f"当前数据库类型为 {db_type}，备份目录中没有正式备份文件。",
+            recommendation="可执行 `moviepilot database backup` 创建一次可校验备份。",
+            affects_report_status=False,
+            context={"db_type": db_type, "backups": []},
+        )
+        return
+
+    if not matching:
+        runner.add(
+            finding_id="database.backup_recovery",
+            severity=DoctorSeverity.Warn,
+            status=DoctorFindingStatus.Degraded,
+            title="没有匹配当前数据库类型的备份",
+            detail=f"当前数据库类型为 {db_type}，仅找到其他类型备份：{', '.join(mismatched)}。",
+            recommendation="确认数据库类型配置，或执行 `moviepilot database backup` 创建当前类型备份。",
+            affects_report_status=False,
+            context={"db_type": db_type, "backups": [], "mismatched": mismatched},
+        )
+        return
+
+    backups = []
+    for path in matching:
+        try:
+            size = path.stat().st_size
+            verification = verify_database_backup(path, db_type=db_type)
+            valid = verification.valid
+            method = verification.method
+            detail = verification.detail
+        except (OSError, RuntimeError, ValueError) as error:
+            size = None
+            valid = False
+            method = "unavailable"
+            detail = str(error)
+        backups.append(
+            {
+                "name": path.name,
+                "db_type": db_type,
+                "size": size,
+                "valid": valid,
+                "method": method,
+                "detail": detail,
+            }
+        )
+
+    valid_backups = [backup for backup in backups if backup["valid"]]
+    context = {
+        "db_type": db_type,
+        "backups": backups,
+        "mismatched": mismatched,
+    }
+    if valid_backups:
+        newest = valid_backups[0]
+        command = f"moviepilot database restore {newest['name']} --confirm"
+        runner.add(
+            finding_id="database.backup_recovery",
+            severity=DoctorSeverity.Info,
+            status=DoctorFindingStatus.Ok,
+            title="存在可还原的数据库备份",
+            detail=f"已校验 {len(backups)} 个 {db_type} 备份，其中 {len(valid_backups)} 个可用。",
+            recommendation=f"需要恢复时先停止 MoviePilot，再执行 `{command}`。",
+            context={**context, "restore_command": command},
+        )
+        return
+
+
+    failures = "; ".join(
+        f"{backup['name']}: {backup['detail'] or backup['method']}"
+        for backup in backups
+    )
+    runner.add(
+        finding_id="database.backup_recovery",
+        severity=DoctorSeverity.Error,
+        status=DoctorFindingStatus.Failed,
+        title="数据库备份均未通过校验",
+        detail=(
+            f"已检查 {len(backups)} 个 {db_type} 备份，没有可直接还原的文件。"
+            f"校验结果：{failures}"
+        ),
+        recommendation="根据校验详情处理备份文件或 PostgreSQL client，再重新运行 doctor。",
+        affects_report_status=False,
+        context=context,
+    )
 
 
 def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:

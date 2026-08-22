@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Union, Optional
 
 from app.application.orchestration import ChainBase
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -70,8 +70,9 @@ class SystemChain(ChainBase):
 
         try:
             # 使用绝对路径确保准确性
-            plugins_dir = settings.ROOT_PATH / "app" / "plugins"
-            backup_dir = settings.CONFIG_PATH / "plugins_backup"
+            config = get_chain_runtime_config_snapshot()
+            plugins_dir = config.root_path / "app" / "plugins"
+            backup_dir = config.config_path / "plugins_backup"
 
             if not plugins_dir.exists():
                 logger.info("插件目录不存在，跳过备份")
@@ -134,8 +135,9 @@ class SystemChain(ChainBase):
             return
 
         # 使用绝对路径确保准确性
-        plugins_dir = settings.ROOT_PATH / "app" / "plugins"
-        backup_dir = settings.CONFIG_PATH / "plugins_backup"
+        config = get_chain_runtime_config_snapshot()
+        plugins_dir = config.root_path / "app" / "plugins"
+        backup_dir = config.config_path / "plugins_backup"
 
         if not backup_dir.exists():
             logger.info("插件备份目录不存在，跳过恢复")
@@ -365,8 +367,8 @@ class SystemChain(ChainBase):
         try:
             # 获取所有发布的版本列表
             response = RequestUtils(
-                proxies=settings.PROXY,
-                headers=settings.GITHUB_HEADERS
+                proxies=get_chain_runtime_config_snapshot().proxy,
+                headers=get_chain_runtime_config_snapshot().github_headers,
             ).get_res("https://api.github.com/repos/jxxghp/MoviePilot/releases")
             if response:
                 releases = [release['tag_name'] for release in response.json()]
@@ -392,8 +394,8 @@ class SystemChain(ChainBase):
         try:
             # 获取所有发布的版本列表
             response = RequestUtils(
-                proxies=settings.PROXY,
-                headers=settings.GITHUB_HEADERS
+                proxies=get_chain_runtime_config_snapshot().proxy,
+                headers=get_chain_runtime_config_snapshot().github_headers,
             ).get_res("https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases")
             if response:
                 releases = [release['tag_name'] for release in response.json()]
@@ -424,9 +426,10 @@ class SystemChain(ChainBase):
         获取前端版本
         """
         if SystemUtils.is_frozen() and SystemUtils.is_windows():
-            version_file = settings.CONFIG_PATH.parent / "nginx" / "html" / "version.txt"
+            config = get_chain_runtime_config_snapshot()
+            version_file = config.config_path.parent / "nginx" / "html" / "version.txt"
         else:
-            version_file = Path(settings.FRONTEND_PATH) / "version.txt"
+            version_file = get_chain_runtime_config_snapshot().frontend_path / "version.txt"
         if version_file.exists():
             try:
                 with open(version_file, 'r', encoding='utf-8', errors='replace') as f:

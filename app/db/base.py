@@ -21,7 +21,7 @@ T = TypeVar("T")
 
 
 def execute_dml(db: Session, statement: Executable,
-                execution_options: Optional[dict] = None) -> int:
+                execution_options: Optional[dict[str, Any]] = None) -> int:
     """
     执行 DML 语句并返回影响行数。
 
@@ -37,7 +37,7 @@ def execute_dml(db: Session, statement: Executable,
         result = db.execute(statement)
     else:
         result = db.execute(statement, execution_options=execution_options)
-    return cast(CursorResult[Any], result).rowcount
+    return int(cast(CursorResult[Any], result).rowcount)
 
 
 def get_id_column() -> Mapped[int]:
@@ -52,7 +52,7 @@ def get_id_column() -> Mapped[int]:
         return mapped_column(Integer, Sequence('id'), primary_key=True)
 
 
-class Base(DeclarativeBase):
+class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed 基类
     """
     声明式基类。
 
@@ -70,11 +70,11 @@ class Base(DeclarativeBase):
     id: Mapped[int]
 
     @db_update
-    def create(self, db: Session):
+    def create(self, db: Session) -> None:
         db.add(self)
 
     @async_db_update
-    async def async_create(self, db: AsyncSession):
+    async def async_create(self, db: AsyncSession) -> Self:
         db.add(self)
         await db.flush()
         return self
@@ -82,23 +82,30 @@ class Base(DeclarativeBase):
     @classmethod
     @db_query
     def get(cls, db: Session, rid: int) -> Optional[Self]:
-        return db.execute(select(cls).where(and_(cls.id == rid))).scalars().first()
+        return cast(
+            Optional[Self],
+            db.execute(select(cls).where(and_(cls.id == rid))).scalars().first(),
+        )
 
     @classmethod
     @async_db_query
     async def async_get(cls, db: AsyncSession, rid: int) -> Optional[Self]:
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
-        return result.scalars().first()
+        return cast(Optional[Self], result.scalars().first())
 
     @db_update
-    def update(self, db: Session, payload: dict):
+    def update(self, db: Session, payload: dict[str, Any]) -> None:
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)
 
     @async_db_update
-    async def async_update(self, db: AsyncSession, payload: dict):
+    async def async_update(
+        self,
+        db: AsyncSession,
+        payload: dict[str, Any],
+    ) -> None:
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
@@ -106,12 +113,12 @@ class Base(DeclarativeBase):
 
     @classmethod
     @db_update
-    def delete(cls, db: Session, rid):
+    def delete(cls, db: Session, rid: Any) -> None:
         db.execute(delete(cls).where(and_(cls.id == rid)))
 
     @classmethod
     @async_db_update
-    async def async_delete(cls, db: AsyncSession, rid):
+    async def async_delete(cls, db: AsyncSession, rid: Any) -> None:
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         user = result.scalars().first()
         if user:
@@ -119,12 +126,12 @@ class Base(DeclarativeBase):
 
     @classmethod
     @db_update
-    def truncate(cls, db: Session):
+    def truncate(cls, db: Session) -> None:
         db.execute(delete(cls))
 
     @classmethod
     @async_db_update
-    async def async_truncate(cls, db: AsyncSession):
+    async def async_truncate(cls, db: AsyncSession) -> None:
         await db.execute(delete(cls))
 
     @classmethod
@@ -138,12 +145,15 @@ class Base(DeclarativeBase):
         result = await db.execute(select(cls))
         return list(result.scalars().all())
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}  # noqa
 
-    @declared_attr.directive
+    @declared_attr.directive  # type: ignore[misc]  # SQLAlchemy decorator 缺少类型信息
     def __tablename__(cls) -> str:  # noqa: N805  declared_attr 的第一个参数即类本身
-        return cls.__name__.lower()
+        return str(cls.__name__).lower()
+
+
+TModel = TypeVar("TModel", bound=Base)
 
 
 class DbOper:
@@ -157,10 +167,10 @@ class DbOper:
 
     def _execute_sync_write(self, operation: Callable[[Session], T]) -> T:
         """在当前同步会话暂存，或委托组合根创建兼容事务。"""
-        if self._db is None:
+        if self._db is None or isinstance(self._db, AsyncSession):
+            # 旧调用可能在同一 Oper 上混用同步/异步方法；跨会话类型时使用匹配的
+            # 兼容事务，不能把 AsyncSession 交给同步 SQLAlchemy API。
             return run_sync_transaction(operation)
-        if not isinstance(self._db, Session):
-            raise TypeError("同步写操作不能使用 AsyncSession")
         return operation(self._db)
 
     async def _execute_async_write(
@@ -168,8 +178,87 @@ class DbOper:
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
         """在当前异步会话暂存，或委托组合根创建兼容事务。"""
-        if self._db is None:
+        if self._db is None or isinstance(self._db, Session):
+            # 与查询装饰器的历史行为一致：同步会话不会被错误传入异步模型写入，
+            # 而是由组合根另开匹配的异步事务。
             return await run_async_transaction(operation)
-        if not isinstance(self._db, AsyncSession):
-            raise TypeError("异步写操作不能使用同步 Session")
         return await operation(self._db)
+
+    def _stage_create(self, model: TModel) -> TModel:
+        """在显式同步事务中暂存新模型，不触发 Base 的兼容提交装饰器。"""
+        def stage(session: Session) -> TModel:
+            """把模型加入当前同步会话。"""
+            session.add(model)
+            return model
+
+        return self._execute_sync_write(stage)
+
+    async def _stage_async_create(self, model: TModel) -> TModel:
+        """在显式异步事务中暂存新模型并刷新主键。"""
+        async def stage(session: AsyncSession) -> TModel:
+            """把模型加入当前异步会话并刷新。"""
+            session.add(model)
+            await session.flush()
+            return model
+
+        return await self._execute_async_write(stage)
+
+    def _stage_update(self, model: TModel, payload: dict[str, Any]) -> TModel:
+        """在显式同步事务中更新模型字段，必要时重新附加游离对象。"""
+        def stage(session: Session) -> TModel:
+            """应用字段并把游离模型重新加入会话。"""
+            for key, value in payload.items():
+                setattr(model, key, value)
+            model_state = inspect(model, raiseerr=False)
+            if model_state is not None and model_state.detached:
+                session.add(model)
+            return model
+
+        return self._execute_sync_write(stage)
+
+    async def _stage_async_update(
+        self,
+        model: TModel,
+        payload: dict[str, Any],
+    ) -> TModel:
+        """在显式异步事务中更新模型字段，必要时重新附加游离对象。"""
+        async def stage(session: AsyncSession) -> TModel:
+            """应用字段并把游离模型重新加入会话。"""
+            for key, value in payload.items():
+                setattr(model, key, value)
+            model_state = inspect(model, raiseerr=False)
+            if model_state is not None and model_state.detached:
+                session.add(model)
+            return model
+
+        return await self._execute_async_write(stage)
+
+    def _stage_delete(self, model_type: type[Base], rid: Any) -> None:
+        """在显式同步事务中按主键删除模型。"""
+        self._execute_sync_write(
+            lambda session: session.execute(
+                delete(model_type).where(model_type.id == rid)
+            )
+        )
+
+    async def _stage_async_delete(self, model_type: type[Base], rid: Any) -> None:
+        """在显式异步事务中按主键删除模型。"""
+        async def stage(session: AsyncSession) -> None:
+            """执行当前异步事务内的按主键删除。"""
+            await session.execute(delete(model_type).where(model_type.id == rid))
+
+        await self._execute_async_write(stage)
+
+    def _stage_truncate(self, model_type: type[Base]) -> None:
+        """在显式同步事务中删除模型表的全部记录。"""
+        self._execute_sync_write(
+            lambda session: session.execute(delete(model_type))
+        )
+
+    async def _stage_async_truncate(self, model_type: type[Base]) -> None:
+        """在显式异步事务中删除模型表的全部记录。"""
+        async def stage(session: AsyncSession) -> None:
+            """执行当前异步事务内的全表删除。"""
+            await session.execute(delete(model_type))
+
+        await self._execute_async_write(stage)

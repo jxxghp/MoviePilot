@@ -6,6 +6,7 @@ Oper 层大多是模型方法的薄封装，但薄封装恰恰是最容易出错
 验证 Oper 的对外契约，而不是验证它调了哪个模型方法。
 """
 import asyncio
+from unittest.mock import Mock
 
 import pytest
 
@@ -29,6 +30,18 @@ from app.db.oper.workflow import WorkflowOper
 from app.schemas.types import MediaSource, MediaType
 
 TMDB = str(MediaSource.TMDB)
+
+
+def test_oper_with_explicit_session_does_not_commit_caller_transaction(db, monkeypatch):
+    """显式会话写入只暂存，提交权必须留给 Application UoW。"""
+    commit = Mock(wraps=db.session.commit)
+    monkeypatch.setattr(db.session, "commit", commit)
+
+    UserOper(db=db.session).add(name="op-uow-owner", hashed_password="x")
+
+    assert User.get_by_name(db.session, "op-uow-owner") is not None
+    commit.assert_not_called()
+    db.session.rollback()
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +102,7 @@ def test_site_oper_async_accessors_match_sync(db):
     oper = SiteOper(db=db.session)
     oper.add(**_site_kwargs("异步站点", "op-async.test"))
     site = oper.get_by_domain("op-async.test")
+    db.session.commit()
 
     assert asyncio.run(oper.async_get(site.id)).id == site.id
     assert asyncio.run(oper.async_get_by_domain("op-async.test")).id == site.id
@@ -164,6 +178,7 @@ def test_site_oper_userdata_readers(db):
     oper = SiteOper(db=db.session)
     oper.update_userdata("op-read.test", "站点", {"upload": 50})
     today = oper.get_userdata_by_domain("op-read.test")[0].updated_day
+    db.session.commit()
 
     assert any(r.domain == "op-read.test" for r in oper.get_userdata())
     assert any(r.domain == "op-read.test" for r in oper.get_userdata_by_date(today))
@@ -374,6 +389,7 @@ def test_workflow_oper_event_list_and_async_accessors(db):
     oper = WorkflowOper(db=db.session)
     oper.add(**_workflow_kwargs("op-wf-event", trigger_type="event"))
     flow = oper.get_by_name("op-wf-event")
+    db.session.commit()
 
     assert {w.name for w in oper.get_event_triggered_workflows()} >= {"op-wf-event"}
     assert asyncio.run(oper.async_get(flow.id)).id == flow.id
@@ -414,6 +430,7 @@ def test_user_oper_async_accessors_match_sync(db):
     oper = UserOper(db=db.session)
     oper.add(name="op-user-async", hashed_password="x")
     user = oper.get_by_name("op-user-async")
+    db.session.commit()
 
     assert asyncio.run(oper.async_get_by_name("op-user-async")).id == user.id
     assert asyncio.run(oper.async_get_by_id(user.id)).id == user.id
@@ -527,6 +544,7 @@ def test_mediaserver_oper_get_item_id_and_async_twins(db):
     """
     oper = MediaServerOper(db=db.session)
     oper.add(**_server_item("ms-id", media_id="5400"))
+    db.session.commit()
 
     assert oper.get_item_id(media_source=TMDB, media_id="5400", mtype="电影") == "ms-id"
     assert oper.get_item_id(media_source=TMDB, media_id="5999", mtype="电影") is None
@@ -648,6 +666,7 @@ def test_downloadhistory_oper_async_delete(db):
     oper.add(path="/downloads/ad", type=MediaType.TV.value, title="AD",
              download_hash="oh-ad", date="2026-08-13 10:00:00")
     history = oper.get_by_hash("oh-ad")
+    db.session.commit()
 
     asyncio.run(oper.async_delete_history(history.id))
 

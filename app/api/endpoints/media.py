@@ -21,7 +21,7 @@ from app.api.response import ResponseAPIRouter
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.scraping import ScrapingChain
 from app.application.orchestration.tmdb import TmdbChain
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.runtime.extensions.projection.media_source_faces import ordered_capabilities
 from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -218,7 +218,8 @@ def _build_recognize_metainfo(
     if (
         ("/" in title or "\\" in title)
         and "://" not in title
-        and title_path.suffix.lower() in settings.RMT_MEDIAEXT
+        and title_path.suffix.lower()
+        in get_api_runtime_config_snapshot().media_extensions
     ):
         metainfo = MetaInfoPath(
             title_path,
@@ -437,7 +438,8 @@ async def search(
         return []
 
     # 排序和分页
-    setting_order = settings.SEARCH_SOURCE.split(",") if settings.SEARCH_SOURCE else []
+    search_source = get_api_runtime_config_snapshot().search_source
+    setting_order = search_source.split(",") if search_source else []
     sort_order = {source: index for index, source in enumerate(setting_order)}
 
     sorted_result = sorted(result, key=lambda x: sort_order.get(__get_source(x), 4))

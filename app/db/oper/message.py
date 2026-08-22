@@ -99,7 +99,7 @@ class MessageOper(DbOper):
             if k not in Message.__table__.columns.keys():  # noqa
                 kwargs.pop(k)
 
-        return await Message(**kwargs).async_create(self._db)
+        return await self._stage_async_create(Message(**kwargs))
 
     def list_by_page(self, page: int = 1, count: int = 30) -> list[Message]:
         """

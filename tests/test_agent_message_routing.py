@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import Future
+from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent import MoviePilotAgent
@@ -65,6 +66,7 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
 def test_explicit_ai_message_is_not_recorded_to_message_history():
     """显式 /ai 消息不登记到数据库或实时消息队列。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
@@ -90,6 +92,7 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
 def test_agent_queue_full_is_reported_to_the_originating_channel():
     """消息队列满时应消费 Future 异常并向原渠道返回可重试提示。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
     failed = Future()
     failed.set_exception(AgentManagerQueueFullError("session-1", 8))
@@ -121,6 +124,7 @@ def test_agent_queue_full_is_reported_to_the_originating_channel():
 def test_message_chain_passes_stable_channel_admin_principal_to_agent():
     """消息链应将渠道适配器生成的管理员事实传给 Agent。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
@@ -144,6 +148,7 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
 def test_message_chain_does_not_trust_channel_display_username():
     """消息链应保留适配器给出的明确非管理员结论。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
@@ -167,6 +172,7 @@ def test_message_chain_does_not_trust_channel_display_username():
 def test_message_chain_uses_same_admin_contract_for_slack():
     """管理员事实透传应复用于其他消息渠道，而不是 Telegram 特判。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
@@ -272,6 +278,7 @@ def test_send_message_tool_disables_notification_history():
 def test_agent_choice_callback_is_not_recorded_to_message_history():
     """Agent 按钮选择回传不登记到数据库或实时消息队列。"""
     chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     request = agent_interaction_manager.create_request(
         session_id="session-choice",
         user_id="10001",

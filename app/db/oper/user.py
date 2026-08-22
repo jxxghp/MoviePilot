@@ -33,7 +33,7 @@ class UserOper(DbOper):
         新增用户
         """
         user = User(**kwargs)
-        user.create(self._db)
+        self._stage_create(user)
 
     def get_by_name(self, name: str) -> Optional[User]:
         """

@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Match, Optional, Tuple, Union
 
 import anitopy
 
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.domain.metainfo import MetaInfoPath
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -580,11 +580,12 @@ class EpisodeFormatRuleHelper:
     def _get_file_kind(item: FileItem) -> str:
         """按扩展名把样本归类为视频、字幕、音频或其他。"""
         extension = f".{(item.extension or '').lower().lstrip('.')}" if item.extension else ""
-        if extension in settings.RMT_MEDIAEXT:
+        config = get_chain_runtime_config_snapshot()
+        if extension in config.video_extensions:
             return "media"
-        if extension in settings.RMT_SUBEXT:
+        if extension in config.subtitle_extensions:
             return "subtitle"
-        if extension in settings.RMT_AUDIOEXT:
+        if extension in config.audio_extensions:
             return "audio"
         return "other"
 

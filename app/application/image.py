@@ -2,9 +2,9 @@ from typing import Callable, Optional, List
 
 from app.adapters.media.image import ImageHelper  # noqa: F401  推荐链路与旧插件使用的图片抓取入口
 from app.adapters.network.http import RequestUtils
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.foundation.singleton import Singleton
 from app.runtime.cache import cached
-from app.runtime.config import settings
 
 
 WallpaperProvider = Callable[[], Optional[str]]
@@ -58,13 +58,14 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取登录页面壁纸
         """
-        if settings.WALLPAPER == "bing":
+        wallpaper = get_chain_runtime_config_snapshot().wallpaper
+        if wallpaper == "bing":
             return self.get_bing_wallpaper()
-        elif settings.WALLPAPER == "mediaserver":
+        elif wallpaper == "mediaserver":
             return self.get_mediaserver_wallpaper()
-        elif settings.WALLPAPER == "customize":
+        elif wallpaper == "customize":
             return self.get_customize_wallpaper()
-        elif settings.WALLPAPER == "tmdb":
+        elif wallpaper == "tmdb":
             return self.get_tmdb_wallpaper()
         return ''
 
@@ -72,13 +73,14 @@ class WallpaperHelper(metaclass=Singleton):
         """
         获取登录页面壁纸列表
         """
-        if settings.WALLPAPER == "bing":
+        wallpaper = get_chain_runtime_config_snapshot().wallpaper
+        if wallpaper == "bing":
             return self.get_bing_wallpapers(num)
-        elif settings.WALLPAPER == "mediaserver":
+        elif wallpaper == "mediaserver":
             return self.get_mediaserver_wallpapers(num)
-        elif settings.WALLPAPER == "customize":
+        elif wallpaper == "customize":
             return self.get_customize_wallpapers()
-        elif settings.WALLPAPER == "tmdb":
+        elif wallpaper == "tmdb":
             return self.get_tmdb_wallpapers(num)
         return []
 
@@ -184,19 +186,20 @@ class WallpaperHelper(metaclass=Singleton):
             return _result
 
         # 判断是否存在自定义壁纸api
-        if settings.CUSTOMIZE_WALLPAPER_API_URL:
+        config = get_chain_runtime_config_snapshot()
+        if config.customize_wallpaper_api_url:
             wallpaper_list = []
-            resp = RequestUtils(timeout=15).get_res(settings.CUSTOMIZE_WALLPAPER_API_URL)
+            resp = RequestUtils(timeout=15).get_res(config.customize_wallpaper_api_url)
             if resp and resp.status_code == 200:
                 # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')
                 if content_type and content_type.lower().startswith('image/'):
-                    wallpaper_list.append(settings.CUSTOMIZE_WALLPAPER_API_URL)
+                    wallpaper_list.append(config.customize_wallpaper_api_url)
                 else:
                     try:
                         result = resp.json()
                         if isinstance(result, list) or isinstance(result, dict) or isinstance(result, str):
-                            wallpaper_list = find_files_with_suffixes(result, settings.SECURITY_IMAGE_SUFFIXES)
+                            wallpaper_list = find_files_with_suffixes(result, config.security_image_suffixes)
                     except Exception as err:
                         print(str(err))
             return wallpaper_list

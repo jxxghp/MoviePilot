@@ -248,7 +248,9 @@ sequenceDiagram
 - **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
   上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。认证、消息、历史、媒体服务器、站点、
   订阅、工作流和请求事务均使用命名 runtime 字段，不再通过字符串仓储键定位；API、Scheduler、Chain
-  从 `HostRuntime.configuration` 获取 frozen 配置快照。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
+  从 `HostRuntime.configuration` 获取 frozen 配置快照。系统设置管理 API 通过
+  `HostRuntime.settings` 的窄服务读写可变部署设置，业务域不接触 Settings 实例；生产与测试组合根统一
+  复用 `startup/configuration.py` 的映射。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
@@ -375,7 +377,8 @@ flowchart LR
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
   `transaction-debt-baseline.json` 当前冻结 123 个只读查询装饰器；原有 45 个同步/异步写装饰器
-  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。
+  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。宿主 Oper 也不得调用 Base 保留的
+  `create/update/delete/truncate` 兼容包装器；AST 门禁保证显式 Session 的提交权不会被底层抢走。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/plugins_initializer.py` 创建独占会话，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。

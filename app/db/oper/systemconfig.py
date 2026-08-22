@@ -43,12 +43,12 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 if old_value != value:
                     # 假值（False/0/None/空容器）同样落库而不是删除记录：
                     # 读取端以「无记录」表示未配置并回落默认值，删除会使布尔开关的关闭态无法持久化
-                    conf.update(self._db, {"value": value})
+                    self._stage_update(conf, {"value": value})
                     return True
                 return None
             else:
                 conf = SystemConfig(key=key, value=value)
-                conf.create(self._db)
+                self._stage_create(conf)
                 return True
 
     async def async_set(self, key: Union[str, SystemConfigKey], value: Any) -> Optional[bool]:
@@ -78,10 +78,10 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             if conf:
                 # 假值（False/0/None/空容器）同样落库而不是删除记录：
                 # 读取端以「无记录」表示未配置并回落默认值，删除会使布尔开关的关闭态无法持久化
-                await conf.async_update(self._db, {"value": value})
+                await self._stage_async_update(conf, {"value": value})
             else:
                 conf = SystemConfig(key=key, value=value)
-                await conf.async_create(self._db)
+                await self._stage_async_create(conf)
             # 数据库更新成功后，再更新缓存
             with self._rlock:
                 self.__SYSTEMCONF[key] = copy.deepcopy(value)
@@ -132,5 +132,5 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             # 写入数据库
             conf = SystemConfig.get_by_key(self._db, key)
             if conf:
-                conf.delete(self._db, conf.id)
+                self._stage_delete(SystemConfig, conf.id)
             return True

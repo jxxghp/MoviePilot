@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from dataclasses import replace
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -174,6 +175,10 @@ class TestAgentInteraction(unittest.TestCase):
 
     def test_agent_interaction_callback_routes_selected_value_back_to_agent(self):
         chain = MessageChain()
+        chain.runtime_config = replace(
+            chain.runtime_config,
+            ai_agent_enable=True,
+        )
         request = agent_interaction_manager.create_request(
             session_id="session-choice",
             user_id="10001",

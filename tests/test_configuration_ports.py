@@ -10,6 +10,7 @@ from app.application.configuration import (
     ApiRuntimeConfig,
     ChainRuntimeConfig,
     RuntimeConfiguration,
+    RuntimeSettingsService,
     SchedulerRuntimeConfig,
     SystemConfigService,
     TransferRetryConfig,
@@ -18,6 +19,47 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_transfer_retry_config,
 )
+
+
+class _MutableSettings:
+    """记录管理设置服务的读取和更新操作。"""
+
+    def __init__(self) -> None:
+        """初始化一组可变测试设置。"""
+        self.VALUE = "before"
+
+    def model_dump(self, *, include=None, exclude=None):
+        """按白名单返回设置字典。"""
+        values = {"VALUE": self.VALUE, "SECRET": "hidden"}
+        if include is not None:
+            values = {key: value for key, value in values.items() if key in include}
+        if exclude is not None:
+            values = {key: value for key, value in values.items() if key not in exclude}
+        return values
+
+    def update_settings(self, env):
+        """批量更新并返回逐项结果。"""
+        for key, value in env.items():
+            setattr(self, key, value)
+        return {key: (True, "") for key in env}
+
+    def update_setting(self, key, value):
+        """更新单个设置。"""
+        setattr(self, key, value)
+        return True, ""
+
+
+def test_runtime_settings_service_hides_mutable_settings_implementation() -> None:
+    """管理 API 通过窄服务读取和修改设置，不依赖全局 Settings 类型。"""
+    settings = _MutableSettings()
+    service = RuntimeSettingsService(settings)
+
+    assert service.contains("VALUE")
+    assert service.get("VALUE") == "before"
+    assert service.snapshot(include={"VALUE"}) == {"VALUE": "before"}
+    assert service.update("VALUE", "after") == (True, "")
+    assert service.update_many({"VALUE": "final"}) == {"VALUE": (True, "")}
+    assert service.get("VALUE") == "final"
 
 
 def test_system_config_service_supports_separate_reader_and_writer() -> None:

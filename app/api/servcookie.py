@@ -15,7 +15,7 @@ from app.schemas.servcookie import CookieDecryptedPayload as _SchemaCookieDecryp
 from app.schemas.servcookie import CookieEncryptedPayload as _SchemaCookieEncryptedPayload
 from app.schemas.servcookie import CookiePassword as _SchemaCookiePassword
 from app.api.response import ERROR_RESPONSES
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.runtime.log import logger
 from app.foundation.crypto import CryptoJsUtils, HashUtils
 
@@ -52,7 +52,7 @@ async def verify_server_enabled() -> bool:
     """
     校验CookieCloud服务路由是否打开
     """
-    if not settings.COOKIECLOUD_ENABLE_LOCAL:
+    if not get_api_runtime_config_snapshot().cookiecloud_enable_local:
         raise HTTPException(status_code=400, detail="本地CookieCloud服务器未启用")
     return True
 
@@ -65,7 +65,9 @@ async def verify_update_auth(
     """
     校验CookieCloud上传接口的可选共享认证头。
     """
-    expected_header = (settings.COOKIECLOUD_AUTH_HEADER or "").strip()
+    expected_header = (
+        get_api_runtime_config_snapshot().cookiecloud_auth_header or ""
+    ).strip()
     if not expected_header:
         return True
 
@@ -124,7 +126,7 @@ async def update_cookie(req: _SchemaCookieData) -> _SchemaCookieActionResponse:
     """
     上传Cookie数据
     """
-    file_path = AsyncPath(settings.COOKIE_PATH) / f"{req.uuid}.json"
+    file_path = AsyncPath(get_api_runtime_config_snapshot().cookie_path) / f"{req.uuid}.json"
     content = json.dumps({"encrypted": req.encrypted})
     async with aiofiles.open(file_path, encoding="utf-8", mode="w") as file:
         await file.write(content)
@@ -140,7 +142,7 @@ async def load_encrypt_data(uuid: str) -> _SchemaCookieEncryptedPayload:
     """
     加载本地加密原始数据
     """
-    file_path = AsyncPath(settings.COOKIE_PATH) / f"{uuid}.json"
+    file_path = AsyncPath(get_api_runtime_config_snapshot().cookie_path) / f"{uuid}.json"
 
     # 检查文件是否存在
     if not await file_path.exists():

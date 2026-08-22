@@ -14,7 +14,7 @@ MODULE_ROOT = Path(__file__).parents[1] / "app" / "modules"
 
 
 def test_every_module_has_quality_view_with_owner_and_reason() -> None:
-    """所有存量模块都必须能解析为 assessed 或有理由的 legacy profile。"""
+    """所有宿主模块都必须显式完成 assessed 登记，未知扩展才允许 legacy。"""
     modules = {
         path.name
         for path in MODULE_ROOT.iterdir()
@@ -22,12 +22,16 @@ def test_every_module_has_quality_view_with_owner_and_reason() -> None:
     }
 
     assert modules
+    assert modules == set(MODULE_QUALITY_PROFILES)
     for module in modules:
         profile = get_module_quality_profile(module)
         assert profile.owner
-        assert profile.level in ModuleQualityLevel
-        if profile.level is ModuleQualityLevel.LEGACY:
-            assert profile.exemption_reason
+        assert profile.level is ModuleQualityLevel.ASSESSED
+        assert profile.exemption_reason
+
+    assert get_module_quality_profile("third-party-unknown").level is (
+        ModuleQualityLevel.LEGACY
+    )
 
 
 def test_assessed_profiles_only_use_declared_rules() -> None:
