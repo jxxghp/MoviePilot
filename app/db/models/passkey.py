@@ -5,7 +5,22 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from datetime import datetime
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, async_db_query
+from app.db.decorators import async_db_query, db_query, run_legacy_sync_query
+
+
+def _get_by_user_id_statement(model: type["PassKey"], user_id: int):
+    """构造按用户筛选启用 PassKey 的查询语句。"""
+    return select(model).where(model.user_id == user_id, model.is_active.is_(True))
+
+
+def _get_by_credential_id_statement(
+        model: type["PassKey"], credential_id: str,
+):
+    """构造按凭证 ID 筛选启用 PassKey 的查询语句。"""
+    return select(model).where(
+        model.credential_id == credential_id,
+        model.is_active.is_(True),
+    )
 
 
 class PassKey(Base):
@@ -36,36 +51,64 @@ class PassKey(Base):
     transports: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
-    @db_query
-    def get_by_user_id(cls, db: Session, user_id: int):
-        """获取用户的所有PassKey"""
-        return list(db.execute(
-            select(cls).where(cls.user_id == user_id, cls.is_active.is_(True))
-        ).scalars().all())
+    def get_by_user_id(
+            cls,
+            db: Session | int | None = None,
+            user_id: int | None = None,
+    ):
+        """获取用户的所有 PassKey，并保留无 Session 的旧插件调用方式。"""
+        if user_id is None and isinstance(db, int):
+            user_id, db = db, None
+        if user_id is None:
+            raise TypeError("user_id is required")
+
+        def query(session: Session):
+            """在给定会话中执行启用凭证查询。"""
+            return list(session.execute(
+                _get_by_user_id_statement(cls, user_id)
+            ).scalars().all())
+
+        if isinstance(db, Session):
+            return query(db)
+        return run_legacy_sync_query(query)
 
     @classmethod
     @async_db_query
     async def async_get_by_user_id(cls, db: AsyncSession, user_id: int):
         """异步获取用户的所有PassKey"""
         result = await db.execute(
-            select(cls).filter(cls.user_id == user_id, cls.is_active.is_(True))
+            _get_by_user_id_statement(cls, user_id)
         )
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
-    def get_by_credential_id(cls, db: Session, credential_id: str):
-        """根据凭证ID获取PassKey"""
-        return db.execute(
-            select(cls).where(cls.credential_id == credential_id, cls.is_active.is_(True))
-        ).scalars().first()
+    def get_by_credential_id(
+            cls,
+            db: Session | str | None = None,
+            credential_id: str | None = None,
+    ):
+        """按凭证 ID 获取 PassKey，并保留无 Session 的旧插件调用方式。"""
+        if credential_id is None and isinstance(db, str):
+            credential_id, db = db, None
+        if credential_id is None:
+            raise TypeError("credential_id is required")
+
+        def query(session: Session):
+            """在给定会话中执行启用凭证查询。"""
+            return session.execute(
+                _get_by_credential_id_statement(cls, credential_id)
+            ).scalars().first()
+
+        if isinstance(db, Session):
+            return query(db)
+        return run_legacy_sync_query(query)
 
     @classmethod
     @async_db_query
     async def async_get_by_credential_id(cls, db: AsyncSession, credential_id: str):
         """异步根据凭证ID获取PassKey"""
         result = await db.execute(
-            select(cls).filter(cls.credential_id == credential_id, cls.is_active.is_(True))
+            _get_by_credential_id_statement(cls, credential_id)
         )
         return result.scalars().first()
 

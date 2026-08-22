@@ -212,6 +212,21 @@ def test_passkey_listing_excludes_inactive_credentials(db):
         {"cred-active-1", "cred-active-2"}
 
 
+def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
+    """PassKeyOper 的宿主查询使用调用方 Session，不创建兼容事务。"""
+    db.add(_passkey(9002, "cred-oper"), _passkey(9002, "cred-oper-inactive", is_active=False))
+    monkeypatch.setattr(
+        "app.db.oper.passkey.run_sync_transaction",
+        lambda _query: pytest.fail("显式 Session 查询不应创建兼容事务"),
+    )
+
+    oper = PassKeyOper(db.session)
+
+    assert [item.credential_id for item in oper.list_by_user_id(9002)] == ["cred-oper"]
+    assert oper.get_by_credential_id("cred-oper").user_id == 9002
+    assert oper.get_by_credential_id("cred-oper-inactive") is None
+
+
 def test_passkey_lookup_by_credential_id_skips_inactive(db):
     """
     按凭据 ID 查找同样必须忽略停用记录，否则停用的密钥仍可完成认证。
@@ -221,6 +236,20 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
     assert PassKey.get_by_credential_id(db.session, "cred-live").user_id == 9003
     assert PassKey.get_by_credential_id(db.session, "cred-dead") is None
     assert asyncio.run(PassKey.async_get_by_credential_id(credential_id="cred-dead")) is None
+
+
+def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db, monkeypatch):
+    """旧插件不传 Session 时仍应获得短会话查询，而不恢复 Model 装饰器。"""
+    db.add(_passkey(9004, "cred-legacy"))
+    monkeypatch.setattr(
+        "app.db.models.passkey.run_legacy_sync_query",
+        lambda operation: operation(db.session),
+    )
+
+    assert [item.credential_id for item in PassKey.get_by_user_id(user_id=9004)] == [
+        "cred-legacy"
+    ]
+    assert PassKey.get_by_credential_id("cred-legacy").user_id == 9004
 
 
 def test_passkey_get_by_id_ignores_active_flag(db):

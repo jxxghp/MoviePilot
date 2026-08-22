@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 
-from app.runtime.config import settings
-
-
-def init_routers(app: FastAPI):
+def init_routers(app: FastAPI, api_prefix: str = "/api/v1"):
     """
     初始化路由
+
+    :param app: 需要挂载路由的 FastAPI 应用
+    :param api_prefix: v1 API 根路径，由启动组合根传入
     """
     from app.api.router_specs import API_V1_ROUTER_SPECS
     from app.api.servarr import arr_router
@@ -14,7 +14,7 @@ def init_routers(app: FastAPI):
     for spec in API_V1_ROUTER_SPECS:
         app.include_router(
             spec.router,
-            prefix=f"{settings.API_V1_STR}{spec.prefix}",
+            prefix=f"{api_prefix}{spec.prefix}",
             tags=list(spec.tags),
         )
     # Radarr、Sonarr路由

@@ -13,6 +13,7 @@ from app.db.models.agenttask import AgentTask
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message
 from app.db.models.plugindata import PluginData
+from app.db.oper.agenttask import AgentTaskOper
 
 
 @pytest.fixture(autouse=True)
@@ -305,6 +306,38 @@ def test_agenttask_get_for_user_enforces_ownership(db):
     assert AgentTask.get_for_user(db.session, task_id).id == task_id
     assert AgentTask.get_for_user(db.session, task_id, user_id="alice").id == task_id
     assert AgentTask.get_for_user(db.session, task_id, user_id="bob") is None
+
+
+def test_agenttask_model_queries_keep_no_session_plugin_abi(db, monkeypatch):
+    """旧插件省略 Session 时仍可按原关键字参数查询 Agent 任务。"""
+    task_id = AgentTask.add_task(db.session, **_task("legacy", user_id="legacy-user"))
+    monkeypatch.setattr(
+        "app.db.models.agenttask.run_legacy_sync_query",
+        lambda operation: operation(db.session),
+    )
+
+    assert AgentTask.get_for_user(
+        task_id=task_id,
+        user_id="legacy-user",
+    ).id == task_id
+    assert [task.id for task in AgentTask.list_for_user(user_id="legacy-user")] == [task_id]
+
+
+def test_agenttask_oper_reads_with_explicit_session(db, monkeypatch):
+    """AgentTaskOper 的宿主查询使用调用方 Session，不再经过旧事务兼容执行器。"""
+    task_id = AgentTask.add_task(db.session, **_task("canonical", user_id="alice"))
+
+    monkeypatch.setattr(
+        "app.db.oper.agenttask.run_sync_transaction",
+        lambda _query: pytest.fail("显式 Session 查询不应创建兼容事务"),
+    )
+
+    oper = AgentTaskOper(db.session)
+    task = oper.get(task_id, user_id="alice")
+    tasks = oper.list(user_id="alice", enabled=True)
+
+    assert task is not None and task.id == task_id
+    assert [item.id for item in tasks] == [task_id]
 
 
 def test_agenttask_list_for_user_filters_by_owner_and_enabled(db):

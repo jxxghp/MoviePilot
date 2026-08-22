@@ -3,10 +3,10 @@
     "by_kind": {
       "async_db_query": 56,
       "async_db_update": 5,
-      "db_query": 87,
+      "db_query": 83,
       "db_update": 11
     },
-    "count": 159,
+    "count": 155,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -27,16 +27,6 @@
         "decorator": "db_query",
         "file": "app/db/models/agentchat.py",
         "method": "AgentChat.list_by_page"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agenttask.py",
-        "method": "AgentTask.get_for_user"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agenttask.py",
-        "method": "AgentTask.list_for_user"
       },
       {
         "decorator": "db_query",
@@ -201,17 +191,7 @@
       {
         "decorator": "db_query",
         "file": "app/db/models/passkey.py",
-        "method": "PassKey.get_by_credential_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/passkey.py",
         "method": "PassKey.get_by_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.get_by_user_id"
       },
       {
         "decorator": "async_db_update",

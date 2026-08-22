@@ -31,6 +31,18 @@ _R = TypeVar("_R")
 # 接管、返回值原样透传」。否则调用方传 None 或传异步会话都会被判成类型不符，而这恰恰是
 # 装饰器存在的理由（各 Oper 的 self._db 常态就是 None）。
 
+
+def run_legacy_sync_query(operation: Callable[[Session], _R]) -> _R:
+    """为已移除查询装饰器的旧 Model ABI 提供一次性同步会话。"""
+    db = ScopedSession()
+    try:
+        return operation(db)
+    finally:
+        try:
+            db.close()
+        except Exception as close_err:  # noqa: BLE001 兼容查询释放失败不改变返回语义
+            logger.error(f"释放数据库会话失败：{close_err}")
+
 def _get_args_db(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],

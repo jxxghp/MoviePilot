@@ -4,9 +4,16 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
-from app.db.models.agenttask import AgentTask
+from app.db.models.agenttask import (
+    AgentTask,
+    _get_for_user_statement,
+    _list_for_user_statement,
+)
 from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.uow import run_sync_transaction
 
 
 class AgentTaskOper(DbOper):
@@ -45,7 +52,19 @@ class AgentTaskOper(DbOper):
         """
         查询单个 Agent 定时任务。
         """
-        return AgentTask.get_for_user(self._db, task_id=task_id, user_id=user_id)
+        def query(session: Session) -> Optional[AgentTask]:
+            """在调用方会话中读取单个任务。"""
+            return session.execute(
+                _get_for_user_statement(
+                    AgentTask,
+                    task_id=task_id,
+                    user_id=user_id,
+                )
+            ).scalars().first()
+
+        if isinstance(self._db, Session):
+            return query(self._db)
+        return run_sync_transaction(query)
 
     def list(
             self,
@@ -55,7 +74,19 @@ class AgentTaskOper(DbOper):
         """
         查询 Agent 定时任务列表。
         """
-        return AgentTask.list_for_user(self._db, user_id=user_id, enabled=enabled)
+        def query(session: Session) -> list[AgentTask]:
+            """在调用方会话中读取任务列表。"""
+            return list(session.execute(
+                _list_for_user_statement(
+                    AgentTask,
+                    user_id=user_id,
+                    enabled=enabled,
+                )
+            ).scalars().all())
+
+        if isinstance(self._db, Session):
+            return query(self._db)
+        return run_sync_transaction(query)
 
     def update(
             self,

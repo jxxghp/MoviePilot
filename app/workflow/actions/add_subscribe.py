@@ -1,6 +1,7 @@
 from app.workflow.actions import BaseAction
 from app.application.orchestration.subscribe import SubscribeChain
-from app.runtime.config import settings, global_vars
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.runtime.config import global_vars
 from app.domain.context import MediaInfo
 from app.application.orchestration.data import SubscribePortProxy as SubscribeOper
 from app.runtime.log import logger
@@ -65,7 +66,7 @@ class AddSubscribeAction(BaseAction):
                                               season=mediainfo.season,
                                               media_source=mediainfo.media_source,
                                               media_id=mediainfo.media_id,
-                                              username=settings.SUPERUSER)
+                                              username=get_chain_runtime_config_snapshot().superuser)
             if sid:
                 self._added_subscribes.append(sid)
                 # 保存缓存

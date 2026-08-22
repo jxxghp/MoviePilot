@@ -5,7 +5,8 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.application.orchestration.storage import StorageChain
-from app.runtime.config import global_vars, settings
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
@@ -56,10 +57,15 @@ class ScanFileAction(BaseAction):
             self._has_error = True
             return context
         files = storagechain.list_files(fileitem, recursion=True)
+        runtime_config = get_chain_runtime_config_snapshot()
+        media_exts = (
+            runtime_config.media_extensions
+            + runtime_config.subtitle_extensions
+            + runtime_config.audio_extensions
+        )
         for file in files:
             if global_vars.is_workflow_stopped(workflow_id):
                 break
-            media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
             if not file.extension or f".{file.extension.lower()}" not in media_exts:
                 continue
             # 添加文件到队列，而不是目录

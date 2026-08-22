@@ -368,7 +368,8 @@ def test_lifespan_warms_engines_before_any_initializer(monkeypatch):
     monkeypatch.setattr(lifecycle, "get_engine", lambda: calls.append("sync_engine"))
     monkeypatch.setattr(lifecycle, "get_global_async_engine",
                         lambda: calls.append("async_engine"))
-    monkeypatch.setattr(lifecycle, "init_routers", lambda _app: calls.append("init_routers"))
+    monkeypatch.setattr(lifecycle, "init_routers",
+                        lambda _app, _prefix: calls.append("init_routers"))
     async def _init_modules():
         """init_modules 在 v3 是协程，桩也必须可 await。"""
         calls.append("init_modules")

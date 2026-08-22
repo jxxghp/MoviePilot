@@ -46,6 +46,7 @@ from app.application.configuration import (
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
+from app.application.subscription.complete import get_subscription_completion_scope
 from app.application.subscription.contract import (
     build_subscribe_meta as _build_subscribe_meta,
     subscribe_media_key,
@@ -958,9 +959,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
-        MoviePilotServerHelper.sub_reg_async(
+        if not MoviePilotServerHelper.sub_reg_durable(
             self.__subscribe_report_payload(context)
-        )
+        ):
+            raise RuntimeError("订阅新增统计上报未确认")
 
     async def __async_post_subscribe_added(
         self,
@@ -993,9 +995,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
-        await MoviePilotServerHelper.async_sub_reg(
+        if not await MoviePilotServerHelper.async_sub_reg_durable(
             self.__subscribe_report_payload(context)
-        )
+        ):
+            raise RuntimeError("订阅新增统计上报未确认")
 
     @staticmethod
     def __build_subscribe_create_context(
@@ -3094,44 +3097,39 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         # 完成订阅
         msgstr = "订阅" if not subscribe.best_version else "洗版"
         logger.info(f'{mediainfo.title_year} 完成{msgstr}')
-        # 新增订阅历史
-        subscribeoper = SubscribeOper()
-        subscribeoper.add_history(**subscribe.to_dict())
-        # 删除订阅
-        subscribeoper.delete(subscribe.id)
-        # 发送通知
+
+        # 完成命令在同一 Session/UoW 中写历史、删除订阅并暂存可恢复副作用。
         if mediainfo.type == MediaType.TV:
             link = self.runtime_config.television_subscribe_url
         elif mediainfo.type == MediaType.MUSIC:
             link = self.runtime_config.music_subscribe_url
         else:
             link = self.runtime_config.movie_subscribe_url
-        # 完成订阅按规则发送消息
-        self.post_message(
-            _SchemaMessage(
-                mtype=MessageType.Subscribe,
-                ctype=ContentType.SubscribeComplete,
-                image=mediainfo.get_message_image(),
-                link=link,
-                username=subscribe.username
-            ),
-            meta=meta,
-            mediainfo=mediainfo,
-            msgstr=msgstr,
-            username=subscribe.username
-        )
-        # 发送事件
-        eventmanager.send_event(EventType.SubscribeComplete, {
-            "subscribe_id": subscribe.id,
-            "subscribe_info": subscribe.to_dict(),
-            "mediainfo": mediainfo.to_dict(),
-        })
-        # 统计订阅
-        MoviePilotServerHelper.sub_done_async({
-            "media_source": subscribe.media_source,
-            "media_id": subscribe.media_id,
-            "season": subscribe.season,
-        })
+
+        def notify() -> None:
+            """提交成功后发送完成通知，保持历史消息 ABI。"""
+            self.post_message(
+                _SchemaMessage(
+                    mtype=MessageType.Subscribe,
+                    ctype=ContentType.SubscribeComplete,
+                    image=mediainfo.get_message_image(),
+                    link=link,
+                    username=subscribe.username,
+                ),
+                meta=meta,
+                mediainfo=mediainfo,
+                msgstr=msgstr,
+                username=subscribe.username,
+            )
+
+        with get_subscription_completion_scope() as command:
+            command.execute(
+                subscribe_id=subscribe.id,
+                subscribe_info=subscribe.to_dict(),
+                mediainfo=mediainfo.to_dict(),
+                notify=notify,
+                report=MoviePilotServerHelper.sub_done_durable,
+            )
 
     def _interaction_handler(self) -> "SubscribeInteractionHandler":
         """构造 /subscribes 交互处理器，业务动作由本链提供。"""

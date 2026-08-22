@@ -205,7 +205,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         LifecycleComponent(
             name="路由",
             dependencies=("数据端口装配",),
-            start=lambda: init_routers(app),
+            start=lambda: init_routers(app, settings.API_V1_STR),
             start_order=60,
             start_timeout_seconds=30,
         ),

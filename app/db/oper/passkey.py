@@ -2,8 +2,15 @@
 
 from typing import Any, Optional
 
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
-from app.db.models.passkey import PassKey
+from app.db.models.passkey import (
+    PassKey,
+    _get_by_credential_id_statement,
+    _get_by_user_id_statement,
+)
+from app.db.uow import run_sync_transaction
 
 
 class PassKeyOper(DbOper):
@@ -11,7 +18,15 @@ class PassKeyOper(DbOper):
 
     def list_by_user_id(self, user_id: int) -> list[PassKey]:
         """读取用户启用的 PassKey。"""
-        return PassKey.get_by_user_id(self._db, user_id)
+        def query(session: Session) -> list[PassKey]:
+            """在调用方会话中读取用户启用的 PassKey。"""
+            return list(session.execute(
+                _get_by_user_id_statement(PassKey, user_id)
+            ).scalars().all())
+
+        if isinstance(self._db, Session):
+            return query(self._db)
+        return run_sync_transaction(query)
 
     def list(self) -> list[PassKey]:
         """读取全部 PassKey，用于判断系统是否已配置通行密钥。"""
@@ -19,7 +34,15 @@ class PassKeyOper(DbOper):
 
     def get_by_credential_id(self, credential_id: str) -> Optional[PassKey]:
         """按凭证 ID 读取启用的 PassKey。"""
-        return PassKey.get_by_credential_id(self._db, credential_id)
+        def query(session: Session) -> Optional[PassKey]:
+            """在调用方会话中按凭证 ID 读取启用的 PassKey。"""
+            return session.execute(
+                _get_by_credential_id_statement(PassKey, credential_id)
+            ).scalars().first()
+
+        if isinstance(self._db, Session):
+            return query(self._db)
+        return run_sync_transaction(query)
 
     def create(self, payload: dict[str, Any]) -> PassKey:
         """创建 PassKey 凭证。"""

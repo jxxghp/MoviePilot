@@ -4,7 +4,33 @@ from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import db_query
+from app.db.decorators import run_legacy_sync_query
+
+
+def _get_for_user_statement(
+        model: type["AgentTask"],
+        task_id: int,
+        user_id: Optional[str] = None,
+):
+    """构造按任务 ID 与可选用户归属收窄的查询语句。"""
+    statement = select(model).where(model.id == task_id)
+    if user_id is not None:
+        statement = statement.where(model.user_id == user_id)
+    return statement
+
+
+def _list_for_user_statement(
+        model: type["AgentTask"],
+        user_id: Optional[str] = None,
+        enabled: Optional[bool] = None,
+):
+    """构造按用户、启用状态和创建时间排序的任务列表语句。"""
+    statement = select(model)
+    if user_id is not None:
+        statement = statement.where(model.user_id == user_id)
+    if enabled is not None:
+        statement = statement.where(model.enabled.is_(enabled))
+    return statement.order_by(model.created_at.desc(), model.id.desc())
 
 
 class AgentTask(Base):
@@ -59,40 +85,49 @@ class AgentTask(Base):
         return task.id
 
     @classmethod
-    @db_query
     def get_for_user(
             cls,
-            db: Session,
-            task_id: int,
+            db: Session | int | None = None,
+            task_id: int | None = None,
             user_id: Optional[str] = None,
     ) -> Optional["AgentTask"]:
         """
-        按任务 ID 和可选用户 ID 查询 Agent 定时任务。
+        按任务 ID 和可选用户 ID 查询，并保留无 Session 的旧插件调用方式。
         """
-        statement = select(cls).where(cls.id == task_id)
-        if user_id is not None:
-            statement = statement.where(cls.user_id == user_id)
-        return db.execute(statement).scalars().first()
+        if task_id is None and isinstance(db, int):
+            task_id, db = db, None
+        if task_id is None:
+            raise TypeError("task_id is required")
+
+        def query(session: Session) -> Optional["AgentTask"]:
+            """在给定会话中读取单个 Agent 任务。"""
+            return session.execute(
+                _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
+            ).scalars().first()
+
+        if isinstance(db, Session):
+            return query(db)
+        return run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
     def list_for_user(
             cls,
-            db: Session,
+            db: Session | None = None,
             user_id: Optional[str] = None,
             enabled: Optional[bool] = None,
     ) -> list["AgentTask"]:
         """
-        按用户和启用状态查询 Agent 定时任务。
+        按用户和启用状态查询，并保留无 Session 的旧插件调用方式。
         """
-        statement = select(cls)
-        if user_id is not None:
-            statement = statement.where(cls.user_id == user_id)
-        if enabled is not None:
-            statement = statement.where(cls.enabled.is_(enabled))
-        return list(db.execute(
-            statement.order_by(cls.created_at.desc(), cls.id.desc())
-        ).scalars().all())
+        def query(session: Session) -> list["AgentTask"]:
+            """在给定会话中读取 Agent 任务列表。"""
+            return list(session.execute(
+                _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
+            ).scalars().all())
+
+        if isinstance(db, Session):
+            return query(db)
+        return run_legacy_sync_query(query)
 
     @classmethod
     def update_task(

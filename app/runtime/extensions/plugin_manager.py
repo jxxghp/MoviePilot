@@ -26,6 +26,7 @@ from app.foundation.paths import ensure_path_segment
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.log import bind_plugin_instance, logger
+from app.runtime.observability import observe_compat_facade
 from app.runtime.config import settings
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
@@ -336,6 +337,7 @@ def _configure_plugin_database_lifecycle(
     _plugin_database_destroy = destroy
 
 
+@observe_compat_facade("PluginManager")
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}

@@ -180,6 +180,17 @@ class SiteInteractionHandler:
             username: str,
             text: str,
     ) -> bool:
+        """处理 /sites 文本交互并保持消息链公开 ABI。"""
+        return self._handle_text_interaction(channel, source, userid, username, text)
+
+    def _handle_text_interaction(
+            self,
+            channel: NotificationChannel,
+            source: str,
+            userid: Union[str, int],
+            username: str,
+            text: str,
+    ) -> bool:
         """
         处理 /sites 文本补充输入。
         """

@@ -105,10 +105,33 @@ def _command(
         calls.append(("report", payload))
         if report_error:
             raise report_error
+        return True
 
     return DeleteSubscribeCommand(
         repository=_Repository(candidate, calls),
         unit_of_work=_UnitOfWork(calls, commit_error),
+        publish_deleted=publish,
+        report_deleted=report,
+        outbox=outbox,
+    )
+
+
+def _async_report_command(candidate, calls, result=True, error=None, outbox=None):
+    """构造异步统计 reporter，验证命令可等待真实远端确认。"""
+    async def publish(payload):
+        """记录删除事件。"""
+        calls.append(("event", payload["subscribe_id"], payload))
+
+    async def report(payload):
+        """记录异步统计并按需返回未确认或抛错。"""
+        calls.append(("report", payload))
+        if error:
+            raise error
+        return result
+
+    return DeleteSubscribeCommand(
+        repository=_Repository(candidate, calls),
+        unit_of_work=_UnitOfWork(calls),
         publish_deleted=publish,
         report_deleted=report,
         outbox=outbox,
@@ -224,15 +247,20 @@ async def test_delete_stages_outbox_before_commit_and_completes_after_event():
         "get",
         "delete",
         "outbox_stage",
+        "outbox_stage",
         "commit",
         "event",
         "outbox_complete",
         "report",
+        "outbox_complete",
     ]
     intent = calls[2][1]
     assert intent.topic == "subscribe.deleted"
-    assert intent.event_key == calls[4][2]["idempotency_key"]
-    assert calls[5][1] == intent.event_key
+    report_intent = calls[3][1]
+    assert report_intent.topic == "subscribe.deleted.report"
+    assert intent.event_key == calls[5][2]["idempotency_key"]
+    assert calls[6][1] == intent.event_key
+    assert calls[8][1] == report_intent.event_key
 
 
 @pytest.mark.asyncio
@@ -256,6 +284,64 @@ async def test_delete_outbox_stage_failure_rolls_back_business_delete():
         "delete",
         "outbox_stage",
         "rollback",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_reporter_completes_report_intent_only_after_confirmation():
+    """异步 reporter 确认成功后才允许收口统计 intent。"""
+    calls = []
+    command = _async_report_command(_candidate(), calls, outbox=_Outbox(calls))
+
+    assert await command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
+
+    assert [call[0] for call in calls] == [
+        "get", "delete", "outbox_stage", "outbox_stage", "commit",
+        "event", "outbox_complete", "report", "outbox_complete",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_reporter_false_keeps_report_intent_pending():
+    """异步 reporter 未确认时必须保留待重试统计 intent。"""
+    calls = []
+    command = _async_report_command(_candidate(), calls, result=False, outbox=_Outbox(calls))
+
+    with pytest.raises(RuntimeError, match="未确认"):
+        await command.execute(
+            7,
+            SubscribeDeletionActor(username="alice", is_superuser=False),
+        )
+
+    assert [call[0] for call in calls] == [
+        "get", "delete", "outbox_stage", "outbox_stage", "commit",
+        "event", "outbox_complete", "report",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_reporter_error_keeps_report_intent_pending():
+    """异步 reporter 异常时必须保留待重试统计 intent。"""
+    calls = []
+    command = _async_report_command(
+        _candidate(),
+        calls,
+        error=RuntimeError("remote failed"),
+        outbox=_Outbox(calls),
+    )
+
+    with pytest.raises(RuntimeError, match="remote failed"):
+        await command.execute(
+            7,
+            SubscribeDeletionActor(username="alice", is_superuser=False),
+        )
+
+    assert [call[0] for call in calls] == [
+        "get", "delete", "outbox_stage", "outbox_stage", "commit",
+        "event", "outbox_complete", "report",
     ]
 
 

@@ -3,10 +3,10 @@ from typing import List, Optional, Union
 from pydantic import Field
 
 from app.workflow.actions import BaseAction, ActionChain
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
 from app.schemas.message import Message
-from app.runtime.config import settings
 
 
 class SendMessageParams(ActionParams):
@@ -58,7 +58,7 @@ class SendMessageAction(BaseAction):
                         userid=params.userid,
                         title="【工作流执行结果】",
                         text=msg_text,
-                        link=settings.MP_DOMAIN("#/workflow")
+                        link=get_chain_runtime_config_snapshot().workflow_url
                     )
                 )
 

@@ -14,9 +14,13 @@ from app.runtime.extensions.contract.extension import (
     ExtensionProviderSource,
 )
 from app.runtime.extensions.lifecycle.host_module_adapter import HostModuleProviderSource
-from app.runtime.extensions.contract.module_method import get_module_method_contract
+from app.runtime.extensions.contract.module_method import (
+    get_module_method_contract,
+    is_explicit_module_method,
+)
 from app.runtime.extensions.projection.plugin import PluginProviderSource
 from app.runtime.log import logger
+from app.runtime.observability import record_metric
 from app.schemas.exception import RateLimitExceededException
 
 
@@ -293,6 +297,7 @@ class ModuleInvocationDispatcher:
         """
         try:
             self._announce_invocation(provider, method)
+            self._record_legacy_hit(provider, method)
             return provider.invoke(*args, **kwargs)
         except RateLimitExceededException as err:
             self._report_rate_limit(provider, method, err, **kwargs)
@@ -317,6 +322,7 @@ class ModuleInvocationDispatcher:
         """
         try:
             self._announce_invocation(provider, method)
+            self._record_legacy_hit(provider, method)
             return await self._async_call(provider.invoke, *args, **kwargs)
         except RateLimitExceededException as err:
             self._report_rate_limit(provider, method, err, **kwargs)
@@ -344,6 +350,7 @@ class ModuleInvocationDispatcher:
         for provider in providers:
             try:
                 self._announce_invocation(provider, method)
+                self._record_legacy_hit(provider, method)
                 if self.is_valid_empty(result):
                     result = provider.invoke(*args, **kwargs)
                 elif provider.relays_result and ObjectUtils.check_signature(
@@ -383,6 +390,7 @@ class ModuleInvocationDispatcher:
         for provider in providers:
             try:
                 self._announce_invocation(provider, method)
+                self._record_legacy_hit(provider, method)
                 if self.is_valid_empty(result):
                     result = await self._async_call(provider.invoke, *args, **kwargs)
                 elif provider.relays_result and ObjectUtils.check_signature(
@@ -417,6 +425,29 @@ class ModuleInvocationDispatcher:
                 provider.display_name,
                 method,
             )
+
+    _LEGACY_HIT_LABELS = {
+        ExtensionFaultScope.PLUGIN: ("plugin", "third_party_plugin"),
+        ExtensionFaultScope.HOST: ("system", "host_module"),
+    }
+
+    @classmethod
+    def _record_legacy_hit(cls, provider: ExtensionProvider, method: str) -> None:
+        """记录未进入首批显式能力族清单的方法命中，便于按真实调用逐项迁移。
+
+        :param provider: 即将被调用的提供者记录
+        :param method: 模块方法名称
+        :return: 无返回值
+        """
+        if is_explicit_module_method(method):
+            return
+        caller_type, abi_source = cls._LEGACY_HIT_LABELS[provider.fault_scope]
+        record_metric(
+            "module.contract.legacy_hit",
+            method=method,
+            caller_type=caller_type,
+            abi_source=abi_source,
+        )
 
     def _report_fault(
         self,

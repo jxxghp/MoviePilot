@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 137,
+    "count": 131,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -141,13 +141,7 @@
       "app/startup/domain_initializer.py",
       "app/startup/lifecycle/__init__.py",
       "app/startup/modules_initializer.py",
-      "app/startup/plugins_initializer.py",
-      "app/startup/routers_initializer.py",
-      "app/workflow/actions/add_subscribe.py",
-      "app/workflow/actions/fetch_medias.py",
-      "app/workflow/actions/fetch_rss.py",
-      "app/workflow/actions/scan_file.py",
-      "app/workflow/actions/send_message.py"
+      "app/startup/plugins_initializer.py"
     ]
   },
   "system_config_oper_constructions": {
@@ -193,66 +187,10 @@
         "name": "SystemConfigOper"
       },
       {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
-        "file": "app/startup/plugins_initializer.py",
-        "name": "SystemConfigOper"
-      },
-      {
         "file": "app/workflow/actions/__init__.py",
         "name": "SystemConfigOper"
       }
     ],
-    "count": 25
+    "count": 11
   }
 }

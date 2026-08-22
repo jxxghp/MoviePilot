@@ -456,10 +456,7 @@ def source(_: _SchemaTokenPayload = Depends(verify_token)) -> list[_SchemaMediaS
     return _registered_media_sources()
 
 
-@router.post(
-    "/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None]
-)
-def scrape(
+def _scrape_impl(
     fileitem: _SchemaFileItem,
     storage: Optional[str] = "local",
     media_source: Optional[MediaSource] = None,
@@ -564,6 +561,22 @@ def scrape(
         overwrite=True,
     )
     return _SchemaResponse(success=True, message=f"{fileitem.path} 刮削完成")
+
+
+@router.post(
+    "/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None]
+)
+def scrape(
+    fileitem: _SchemaFileItem,
+    storage: Optional[str] = "local",
+    media_source: Optional[MediaSource] = None,
+    media_id: Optional[str] = None,
+    type_name: Optional[MediaType] = None,
+    music_type: Optional[str] = None,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> Any:
+    """刮削媒体信息的兼容公开入口。"""
+    return _scrape_impl(fileitem, storage, media_source, media_id, type_name, music_type, _)
 
 
 @router.get(

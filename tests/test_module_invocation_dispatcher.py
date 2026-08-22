@@ -222,6 +222,71 @@ def test_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
     plugin_error.assert_called_once()
 
 
+def test_unknown_plugin_method_records_legacy_abi_hit(monkeypatch) -> None:
+    """未知第三方方法继续执行，同时记录可迁移的 legacy ABI 来源。"""
+    hits = []
+    monkeypatch.setattr(
+        "app.runtime.extensions.projection.dispatcher.record_metric",
+        lambda name, **labels: hits.append((name, labels)),
+    )
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={("P1", "插件一"): {"third_party_custom": lambda: "ok"}},
+    )
+
+    assert dispatcher.dispatch("third_party_custom") == "ok"
+    assert hits == [
+        (
+            "module.contract.legacy_hit",
+            {
+                "method": "third_party_custom",
+                "caller_type": "plugin",
+                "abi_source": "third_party_plugin",
+            },
+        )
+    ]
+
+
+def test_unknown_host_method_records_legacy_abi_hit(monkeypatch) -> None:
+    """宿主临时新增而未登记的方法保持执行并留下迁移信号。"""
+    hits = []
+    monkeypatch.setattr(
+        "app.runtime.extensions.projection.dispatcher.record_metric",
+        lambda name, **labels: hits.append((name, labels)),
+    )
+
+    class LegacyModule:
+        """提供未进入清单的宿主兼容方法。"""
+
+        @staticmethod
+        def get_name() -> str:
+            """返回测试模块名称。"""
+            return "旧模块"
+
+        @staticmethod
+        def get_priority() -> int:
+            """返回稳定测试优先级。"""
+            return 1
+
+        @staticmethod
+        def third_party_host() -> str:
+            """返回兼容方法结果。"""
+            return "ok"
+
+    dispatcher, _, _, _ = _dispatcher(modules=[LegacyModule()])
+
+    assert dispatcher.dispatch("third_party_host") == "ok"
+    assert hits == [
+        (
+            "module.contract.legacy_hit",
+            {
+                "method": "third_party_host",
+                "caller_type": "system",
+                "abi_source": "host_module",
+            },
+        )
+    ]
+
+
 @pytest.mark.asyncio
 async def test_async_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
     """异步路径下坏插件同样被隔离，嵌套补丁场景不再冒泡击穿调度。"""

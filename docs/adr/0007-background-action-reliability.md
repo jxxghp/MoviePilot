@@ -19,9 +19,11 @@ MoviePilot 保持模块化单体，不把所有后台动作迁到分布式队列
 `durable-required` 是目标语义，不代表当前实现已经 durable。ARCH-251 前，Event Registry 中标记该值的
 事件仍应在风险报告中说明崩溃窗口。
 
-截至 2026-08-22，宿主正式装配的 `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`、
-`DownloadAdded`、`TransferComplete`、`TransferFailed` 广播已由业务事务内的 outbox intent 提供
-at-least-once 恢复；payload 保持插件 dict/对象 ABI，并增加可选幂等键。下载和整理的 outbox 只保存
+截至 2026-08-23，宿主正式装配的 `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`、
+`SubscribeComplete`、`DownloadAdded`、`TransferComplete`、`TransferFailed` 广播已由业务事务内的 outbox
+intent 提供 at-least-once 恢复；订阅完成的历史新增、订阅删除、完成事件和完成统计 intent 同事务提交，
+提交后通知/事件/统计仍按原顺序执行，事件与统计失败保持独立 pending。payload 保持插件 dict/对象 ABI，
+并增加可选幂等键。下载和整理的 outbox 只保存
 可 JSON 序列化的快照，重放时恢复旧对象字段。这不覆盖第三方插件自行发送的裸事件，也不代表订阅通知
 和外部统计上报已经全部 durable。
 

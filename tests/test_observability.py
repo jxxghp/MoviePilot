@@ -1,6 +1,7 @@
 """低基数指标合同、no-op 与 HTTP adapter 测试。"""
 
 from dataclasses import dataclass, field
+import inspect
 from typing import Mapping
 
 import httpx
@@ -11,9 +12,12 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
 from app.adapters.observability import otel
+from app.adapters.external.market import PluginHelper
+from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.db.engine import _register_database_pool_metrics
 from app.runtime.extensions.lifecycle.observation import observe_plugin_lifecycle
+from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.runtime.observability import (
     METRIC_SPECS,
@@ -174,3 +178,52 @@ def test_plugin_lifecycle_failed_status_records_error_outcome() -> None:
     spec, _, labels = port.records[-1]
     assert spec.name == "plugin.lifecycle.duration"
     assert labels == {"operation": "start", "outcome": "error"}
+
+
+def test_legacy_facades_record_public_and_private_hits() -> None:
+    """三个正式旧 ABI Facade 的公开/私有调用都应留下可审计命中。"""
+    port = RecordingObservationPort()
+    configure_observation(port)
+
+    assert PluginHelper.is_local_repo_url("local://example")
+    assert PluginManager._normalize_plugin_label("example") == "example"
+    assert MoviePilotServerHelper._has_header({}, "X-Test") is False
+    assert inspect.iscoroutinefunction(MoviePilotServerHelper.async_subscribe_done)
+    assert str(inspect.signature(MoviePilotServerHelper.async_subscribe_done)) == (
+        "(payload: Dict[str, Any])"
+    )
+
+    hits = [
+        (spec.name, labels)
+        for spec, _value, labels in port.records
+        if spec.name == "compat.facade.hit"
+    ]
+    assert hits == [
+        (
+            "compat.facade.hit",
+            {
+                "facade": "PluginHelper",
+                "operation": "is_local_repo_url",
+                "visibility": "public",
+                "abi_source": "legacy_facade",
+            },
+        ),
+        (
+            "compat.facade.hit",
+            {
+                "facade": "PluginManager",
+                "operation": "_normalize_plugin_label",
+                "visibility": "private",
+                "abi_source": "legacy_facade",
+            },
+        ),
+        (
+            "compat.facade.hit",
+            {
+                "facade": "MoviePilotServerHelper",
+                "operation": "_has_header",
+                "visibility": "private",
+                "abi_source": "legacy_facade",
+            },
+        ),
+    ]

@@ -1219,22 +1219,7 @@ async def get_message(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get(
-    "/logging",
-    summary="实时日志",
-    response_model=None,
-    response_class=StreamingResponse,
-    responses={
-        200: {
-            "description": "实时日志流或完整日志文本",
-            "content": {
-                "text/event-stream": {"schema": {"type": "string"}},
-                "text/plain": {"schema": {"type": "string"}},
-            },
-        }
-    },
-)
-async def get_logging(
+async def _get_logging_impl(
     request: Request,
     length: Optional[int] = 50,
     logfile: Optional[str] = "moviepilot.log",
@@ -1358,6 +1343,33 @@ async def get_logging(
     else:
         # 返回SSE流响应
         return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+
+@router.get(
+    "/logging",
+    summary="实时日志",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={200: {"description": "实时日志流或完整日志文本", "content": {"text/event-stream": {"schema": {"type": "string"}}, "text/plain": {"schema": {"type": "string"}}}}},
+)
+async def get_logging(
+    request: Request,
+    length: Optional[int] = 50,
+    logfile: Optional[str] = "moviepilot.log",
+    plugin_id: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
+):
+    """实时日志的兼容公开入口。
+
+    :param request: 请求对象
+    :param length: 返回行数，为 -1 时返回纯文本而非事件流
+    :param logfile: 主程序日志文件名
+    :param plugin_id: 插件标识，给出时改取该插件实例的日志并忽略 logfile
+    :param instance_id: 实例标识，为空时取默认实例
+    :return: 事件流或纯文本响应
+    """
+    return await _get_logging_impl(request, length, logfile, plugin_id, instance_id, _)
 
 
 @router.get(

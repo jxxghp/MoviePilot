@@ -1953,19 +1953,7 @@ async def stop_web_agent_session_task(
     )
 
 
-@router.post(
-    "/stream",
-    summary="Web智能助手流式对话",
-    response_model=None,
-    response_class=StreamingResponse,
-    responses={
-        200: {
-            "description": "Agent SSE 事件流",
-            "content": {"text/event-stream": {"schema": {"type": "string"}}},
-        }
-    },
-)
-async def web_agent_stream(
+async def _web_agent_stream_impl(
     payload: _SchemaAgentWebChatRequest,
     request: Request,
     current_user: ApiPrincipal = Depends(get_current_active_user),
@@ -2311,3 +2299,24 @@ async def web_agent_stream(
             ),
         },
     )
+
+
+@router.post(
+    "/stream",
+    summary="Web智能助手流式对话",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "Agent SSE 事件流",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def web_agent_stream(
+    payload: _SchemaAgentWebChatRequest,
+    request: Request,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> StreamingResponse:
+    """Web 智能助手流式对话的稳定公开路由入口。"""
+    return await _web_agent_stream_impl(payload, request, current_user)

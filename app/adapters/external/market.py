@@ -43,6 +43,7 @@ from app.adapters.system.plugin.manifest import (
     load_dependency_manifest,
 )
 from app.runtime.log import logger
+from app.runtime.observability import observe_compat_facade
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
 
@@ -165,6 +166,7 @@ def merge_plugin_market_repos(
     return merged_repos
 
 
+@observe_compat_facade("PluginHelper")
 class PluginHelper(metaclass=WeakSingleton):
     """
     插件市场管理，下载安装插件到本地

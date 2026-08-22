@@ -31,10 +31,13 @@ def test_subscription_and_outbox_intent_commit_together() -> None:
     result = command.execute({}, {"name": "demo"}, "user")
 
     assert result == (42, "ok")
-    assert calls == ["subscription", "outbox", "commit"]
-    intent = outbox.stage.call_args.args[0]
+    assert calls == ["subscription", "outbox", "outbox", "commit"]
+    intent = outbox.stage.call_args_list[0].args[0]
     assert intent.event_key == "subscribe.added:42:unknown:unknown:v1"
     assert intent.payload["subscribe_id"] == 42
+    report_intent = outbox.stage.call_args_list[1].args[0]
+    assert report_intent.topic == "subscribe.added.report"
+    assert report_intent.event_key.endswith(":report")
 
 
 def test_outbox_stage_failure_rolls_back_business_transaction() -> None:

@@ -2657,7 +2657,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.application.orchestration.subscribe",
+            "caller": "app.startup.modules_initializer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.ports.subscription",
             "count": 1
           }
         ]
@@ -2798,7 +2802,7 @@
         ]
       }
     },
-    "producer_count": 82
+    "producer_count": 83
   },
   "module_method_specs": {
     "async_discover": {
