@@ -46,6 +46,73 @@ class ProcessRunner(Protocol):
         """执行命令并返回结果。"""
 
 
+def verify_database_backup(
+    artifact: Path,
+    *,
+    db_type: str,
+    runner: ProcessRunner = subprocess.run,
+    tool_resolver: Callable[[str], str | None] = shutil.which,
+    pg_restore: str = "pg_restore",
+) -> DatabaseBackupCheck:
+    """在不访问活动数据库的前提下校验一个受管备份文件。"""
+    if db_type == "sqlite":
+        method = "PRAGMA integrity_check"
+        try:
+            # 正式备份不会再变化，immutable 可避免只读校验创建 WAL 旁路文件。
+            uri = f"{artifact.resolve().as_uri()}?mode=ro&immutable=1"
+            with closing(sqlite3.connect(uri, uri=True)) as connection:
+                rows = connection.execute("PRAGMA integrity_check").fetchall()
+        except sqlite3.Error as error:
+            return DatabaseBackupCheck(False, method, str(error))
+        valid = bool(rows) and all(row[0] == "ok" for row in rows)
+        detail = None if valid else "; ".join(str(row[0]) for row in rows)
+        return DatabaseBackupCheck(valid, method, detail)
+
+    if db_type == "postgresql":
+        method = "pg_restore --list"
+        executable = _require_tool(pg_restore, tool_resolver)
+        result = runner(
+            [executable, "--list", str(artifact)],
+            env=_postgres_environment(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        valid = result.returncode == 0 and bool(result.stdout.strip())
+        detail = None if valid else f"pg_restore 退出码 {result.returncode}"
+        return DatabaseBackupCheck(valid, method, detail)
+
+    raise ValueError(f"不支持的数据库备份类型：{db_type}")
+
+
+def _require_tool(
+    executable: str,
+    tool_resolver: Callable[[str], str | None],
+) -> str:
+    resolved = tool_resolver(executable)
+    if resolved is None:
+        raise RuntimeError(
+            f"未找到 {executable}，请安装与服务端同主版本或更高的 "
+            "PostgreSQL client 并加入 PATH"
+        )
+    return resolved
+
+
+def _postgres_environment(
+    *,
+    password: str | None = None,
+    sslmode: str | None = None,
+) -> dict[str, str]:
+    environment = dict(os.environ)
+    environment.pop("PGPASSWORD", None)
+    environment.pop("PGSSLMODE", None)
+    if password:
+        environment["PGPASSWORD"] = password
+    if sslmode:
+        environment["PGSSLMODE"] = sslmode
+    return environment
+
+
 class SQLiteBackupBackend:
     """使用 SQLite 在线备份 API 管理活动文件数据库。"""
 
@@ -71,17 +138,7 @@ class SQLiteBackupBackend:
 
     def verify(self, artifact: Path) -> DatabaseBackupCheck:
         """通过 SQLite integrity_check 校验备份内容。"""
-        method = "PRAGMA integrity_check"
-        try:
-            # 已发布前的临时快照不会再变化；immutable 避免 WAL 模式为只读校验创建旁路文件。
-            uri = f"{artifact.resolve().as_uri()}?mode=ro&immutable=1"
-            with closing(sqlite3.connect(uri, uri=True)) as connection:
-                rows = connection.execute("PRAGMA integrity_check").fetchall()
-        except sqlite3.Error as error:
-            return DatabaseBackupCheck(False, method, str(error))
-        valid = bool(rows) and all(row[0] == "ok" for row in rows)
-        detail = None if valid else "; ".join(str(row[0]) for row in rows)
-        return DatabaseBackupCheck(valid, method, detail)
+        return verify_database_backup(artifact, db_type=self.db_type)
 
     def restore(self, artifact: Path) -> None:
         """在 CLI 离线进程中原子替换活动 SQLite 文件。"""
@@ -137,14 +194,13 @@ class PostgreSQLBackupBackend:
 
     def verify(self, artifact: Path) -> DatabaseBackupCheck:
         """通过 pg_restore 目录读取校验 custom-format 归档。"""
-        method = "pg_restore --list"
-        result = self._run(
-            [self._require_tool(self._pg_restore), "--list", str(artifact)],
-            include_password=False,
+        return verify_database_backup(
+            artifact,
+            db_type=self.db_type,
+            runner=self._runner,
+            tool_resolver=self._tool_resolver,
+            pg_restore=self._pg_restore,
         )
-        valid = result.returncode == 0 and bool(result.stdout.strip())
-        detail = None if valid else f"pg_restore 退出码 {result.returncode}"
-        return DatabaseBackupCheck(valid, method, detail)
 
     def restore(self, artifact: Path) -> None:
         """在 CLI 离线进程中覆盖当前 PostgreSQL 数据库内容。"""
@@ -189,21 +245,16 @@ class PostgreSQLBackupBackend:
         )
 
     def _require_tool(self, executable: str) -> str:
-        resolved = self._tool_resolver(executable)
-        if resolved is None:
-            raise RuntimeError(
-                f"未找到 {executable}，请安装与服务端同主版本或更高的 "
-                "PostgreSQL client 并加入 PATH"
-            )
-        return resolved
+        return _require_tool(executable, self._tool_resolver)
 
     def _environment(self, *, include_password: bool) -> dict[str, str]:
-        environment = dict(os.environ)
-        environment.pop("PGPASSWORD", None)
-        environment.pop("PGSSLMODE", None)
-        if include_password and self._engine.url.password:
-            environment["PGPASSWORD"] = str(self._engine.url.password)
+        password = (
+            str(self._engine.url.password)
+            if include_password and self._engine.url.password
+            else None
+        )
         sslmode = self._engine.url.query.get("sslmode")
-        if sslmode:
-            environment["PGSSLMODE"] = str(sslmode)
-        return environment
+        return _postgres_environment(
+            password=password,
+            sslmode=str(sslmode) if sslmode else None,
+        )

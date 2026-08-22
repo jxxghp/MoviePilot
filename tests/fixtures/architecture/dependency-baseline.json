@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6379,
-  "edge_sha256": "1c619d72157004590838a85c497330b8ca462d3bc1eb490fd5e7bac97e6190b8",
+  "edge_count": 6382,
+  "edge_sha256": "d94f2e60efcc1697fe8dfa0ad23cbc99c38fd4873caf889ae1c44769c69fdcc3",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3659,6 +3659,9 @@
     "app.db.session -> app.runtime.observability",
     "app.doctor.checks -> app.adapters",
     "app.doctor.checks -> app.adapters.system",
+    "app.doctor.checks -> app.adapters.system.backup",
+    "app.doctor.checks -> app.adapters.system.backup.database",
+    "app.doctor.checks -> app.adapters.system.backup.files",
     "app.doctor.checks -> app.adapters.system.host",
     "app.doctor.checks -> app.doctor",
     "app.doctor.checks -> app.doctor.models",

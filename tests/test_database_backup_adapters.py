@@ -6,12 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
 from app.adapters.system.backup.database import (
     PostgreSQLBackupBackend,
     SQLiteBackupBackend,
+    verify_database_backup,
 )
 
 
@@ -32,6 +34,15 @@ def test_sqlite_backup_includes_committed_wal_data(tmp_path: Path) -> None:
     with sqlite3.connect(artifact) as connection:
         assert connection.execute("SELECT value FROM entries").fetchone() == ("from-wal",)
     engine.dispose()
+
+
+def test_sqlite_backup_can_be_verified_without_active_engine(tmp_path: Path) -> None:
+    """Doctor 等离线入口不应为校验备份而构造活动数据库引擎。"""
+    artifact = tmp_path / "backup.db"
+    with sqlite3.connect(artifact) as connection:
+        connection.execute("CREATE TABLE entries (value TEXT NOT NULL)")
+
+    assert verify_database_backup(artifact, db_type="sqlite").valid is True
 
 
 def test_sqlite_restore_replaces_database_and_removes_old_wal_files(tmp_path: Path) -> None:
@@ -64,6 +75,11 @@ class _Runner:
             Path(command[command.index("--file") + 1]).write_bytes(b"PGDMP")
         stdout = "; archive listing" if command[:2] == ["pg_restore", "--list"] else ""
         return subprocess.CompletedProcess(command, 0, stdout, "")
+
+
+class _FailedRunner:
+    def __call__(self, command, **_kwargs):
+        return subprocess.CompletedProcess(command, 1, "", "invalid archive")
 
 
 def _postgres_backend(runner: _Runner) -> PostgreSQLBackupBackend:
@@ -112,6 +128,55 @@ def test_postgresql_verify_and_restore_use_pg_restore(tmp_path: Path) -> None:
     assert "--single-transaction" in restore_command
     assert "--clean" in restore_command
     assert restore_kwargs["env"]["PGPASSWORD"] == "secret"
+
+
+def test_postgresql_backup_can_be_verified_without_active_engine(tmp_path: Path) -> None:
+    """PostgreSQL 归档校验只依赖 pg_restore，不连接活动数据库。"""
+    runner = _Runner()
+    artifact = tmp_path / "backup.dump"
+    artifact.write_bytes(b"PGDMP")
+
+    result = verify_database_backup(
+        artifact,
+        db_type="postgresql",
+        runner=runner,
+        tool_resolver=lambda executable: executable,
+    )
+
+    assert result.valid is True
+    command, kwargs = runner.calls[0]
+    assert command == ["pg_restore", "--list", str(artifact)]
+    assert "PGPASSWORD" not in kwargs["env"]
+    assert "PGSSLMODE" not in kwargs["env"]
+
+
+def test_postgresql_offline_verify_rejects_invalid_archive(tmp_path: Path) -> None:
+    """pg_restore 无法读取归档目录时备份必须判定为无效。"""
+    artifact = tmp_path / "backup.dump"
+    artifact.write_bytes(b"invalid")
+
+    result = verify_database_backup(
+        artifact,
+        db_type="postgresql",
+        runner=_FailedRunner(),
+        tool_resolver=lambda executable: executable,
+    )
+
+    assert result.valid is False
+    assert result.detail == "pg_restore 退出码 1"
+
+
+def test_postgresql_offline_verify_reports_missing_client(tmp_path: Path) -> None:
+    """缺少 pg_restore 时离线校验应给出可执行的安装提示。"""
+    artifact = tmp_path / "backup.dump"
+    artifact.write_bytes(b"PGDMP")
+
+    with pytest.raises(RuntimeError, match="PostgreSQL client"):
+        verify_database_backup(
+            artifact,
+            db_type="postgresql",
+            tool_resolver=lambda _executable: None,
+        )
 
 
 def test_postgresql_source_install_reports_missing_native_client() -> None:
