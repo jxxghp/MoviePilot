@@ -159,3 +159,13 @@ def test_compatibility_api_router_keeps_public_contract():
         )
     }
     assert expected_paths <= paths
+
+
+def test_init_routers_accepts_composition_root_api_prefix():
+    """路由初始化应使用组合根传入的 API 前缀。"""
+    from app.startup.routers_initializer import init_routers
+
+    app = FastAPI()
+    init_routers(app, "/custom/v1")
+
+    assert "/custom/v1/system/ping" in app.openapi()["paths"]

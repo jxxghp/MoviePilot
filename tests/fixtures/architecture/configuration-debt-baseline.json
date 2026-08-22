@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 125,
+    "count": 124,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -134,8 +134,7 @@
       "app/startup/domain_initializer.py",
       "app/startup/lifecycle/__init__.py",
       "app/startup/modules_initializer.py",
-      "app/startup/plugins_initializer.py",
-      "app/startup/routers_initializer.py"
+      "app/startup/plugins_initializer.py"
     ]
   },
   "system_config_oper_constructions": {
