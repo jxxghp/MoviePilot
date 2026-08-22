@@ -15,10 +15,10 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.runtime.config import settings
 from app.application.configuration import (
     SystemConfigReader,
     get_configured_system_config as SystemConfigOper,
+    get_runtime_settings,
 )
 from app.runtime.log import logger
 
@@ -128,7 +128,7 @@ class QuerySystemSettingsTool(MoviePilotTool):
     def _load_setting_value(self, spec: SettingSpec):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
-            return getattr(settings, spec.key)
+            return get_runtime_settings().get(spec.key)
         return self._get_system_config().get(spec.systemconfig_key)
 
     @staticmethod

@@ -284,7 +284,7 @@ class RuntimeSettingsService:
 
     def update(self, key: str, value: Any) -> tuple[Optional[bool], str]:
         """更新单个部署设置。"""
-        return self._settings.update_setting(key=key, value=value)
+        return self._settings.update_setting(key, value)
 
 
 class SystemConfigService:

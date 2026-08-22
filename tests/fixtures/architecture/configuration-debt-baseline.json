@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 103,
+    "count": 101,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/agent/capabilities/adapter.py",
@@ -26,13 +26,11 @@
       "app/agent/tools/impl/add_download_tasks.py",
       "app/agent/tools/impl/create_agent_task.py",
       "app/agent/tools/impl/query_agent_tasks.py",
-      "app/agent/tools/impl/query_system_settings.py",
       "app/agent/tools/impl/recognize_media.py",
       "app/agent/tools/impl/scrape_metadata.py",
       "app/agent/tools/impl/search_web.py",
       "app/agent/tools/impl/send_voice_message.py",
       "app/agent/tools/impl/update_agent_task.py",
-      "app/agent/tools/impl/update_system_settings.py",
       "app/cli.py",
       "app/db/base.py",
       "app/db/engine.py",

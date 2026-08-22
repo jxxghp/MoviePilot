@@ -1040,6 +1040,8 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 服务端和评分专项 184 项测试与 Pylint 通过，配置债务由 107 个文件降至 105 个文件。
 用户模型的 `get_by_name` 与 `get_by_id` 同步查询改为显式 Session 执行，并以一次性短会话保留旧插件
 无 Session ABI；用户查询与兼容专项 75 项测试、Pylint 及架构基线通过，查询装饰器由 119 个降至 117 个。
+随后将 Agent 系统设置查询/更新工具切换到已装配的 `RuntimeSettingsService` 窄端口，保留工具构造和
+设置更新返回 ABI；配置债务由 103 个文件降至 101 个文件，系统设置工具专项测试与架构基线通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
