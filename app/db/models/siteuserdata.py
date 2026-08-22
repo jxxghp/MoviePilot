@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query, db_update
+from app.db.decorators import async_db_query, db_query
 
 
 class SiteUserData(Base):
@@ -138,7 +138,6 @@ class SiteUserData(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_update
     def delete_before(
         cls,
         db: Session,

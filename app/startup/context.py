@@ -81,22 +81,27 @@ class SyncSessionProvider(Protocol):
         ...
 
 
-class CompatibilityApiData(Protocol):
-    """未迁移 API 领域继续使用的结构化兼容 Facade。"""
+class RepositoryFactory(Protocol):
+    """由请求 Session 构造某一明确领域仓储的通用工厂。"""
 
-    sync_session: SyncSessionProvider
-    async_session: AsyncSessionProvider
-
-    def repository(self, name: str, session: object) -> object:
-        """按旧能力名构造请求级仓储。"""
+    def __call__(self, session: object) -> object:
+        """绑定请求会话并返回领域仓储。"""
         ...
 
-    def standalone_repository(self, name: str) -> object:
-        """按旧能力名构造独立仓储。"""
+
+class StandaloneRepositoryFactory(Protocol):
+    """构造自持有兼容事务边界的领域仓储。"""
+
+    def __call__(self) -> object:
+        """返回无需请求 Session 的领域仓储。"""
         ...
 
-    def transaction(self, name: str, session: object) -> object:
-        """按旧能力名构造事务端口。"""
+
+class SyncUnitOfWorkFactory(Protocol):
+    """由同步请求 Session 构造事务端口的工厂。"""
+
+    def __call__(self, session: object) -> object:
+        """绑定请求会话并返回同步事务端口。"""
         ...
 
 
@@ -107,6 +112,57 @@ class AgentChatRuntime:
     async_session: AsyncSessionProvider
     repository: AgentChatRepositoryFactory
     transaction: AsyncUnitOfWorkFactory
+
+
+@dataclass(frozen=True, slots=True)
+class PersistenceRuntime:
+    """全部 HTTP 业务领域共享的请求会话与事务工厂。"""
+
+    sync_session: SyncSessionProvider
+    async_session: AsyncSessionProvider
+    sync_transaction: SyncUnitOfWorkFactory
+    async_transaction: AsyncUnitOfWorkFactory
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticationRuntime:
+    """认证、用户管理与 PassKey API 的显式数据工厂。"""
+
+    user_repository: RepositoryFactory
+    standalone_user: StandaloneRepositoryFactory
+    system_config: StandaloneRepositoryFactory
+    passkey: StandaloneRepositoryFactory
+
+
+@dataclass(frozen=True, slots=True)
+class MessagingRuntime:
+    """消息历史 API 的显式仓储工厂。"""
+
+    repository: RepositoryFactory
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryRuntime:
+    """下载、整理、媒体服务器与 Dashboard 领域的数据工厂。"""
+
+    download_repository: RepositoryFactory
+    transfer_repository: RepositoryFactory
+    media_server_repository: RepositoryFactory
+
+
+@dataclass(frozen=True, slots=True)
+class SiteRuntime:
+    """站点读写领域的显式仓储工厂。"""
+
+    repository: RepositoryFactory
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRuntime:
+    """工作流定义、状态与缓存操作所需的数据工厂。"""
+
+    repository: RepositoryFactory
+    system_config: StandaloneRepositoryFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +181,11 @@ class HostRuntime:
     """宿主组合根构建且在一个 FastAPI lifespan 内共享的运行时对象。"""
 
     agent_chat: AgentChatRuntime
+    persistence: PersistenceRuntime
+    authentication: AuthenticationRuntime
+    messaging: MessagingRuntime
+    history: HistoryRuntime
+    site: SiteRuntime
     subscription: SubscriptionRuntime
+    workflow: WorkflowRuntime
     configuration: RuntimeConfiguration
-    compatibility_api_data: CompatibilityApiData

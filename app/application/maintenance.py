@@ -45,6 +45,10 @@ class CleanupRepository(Protocol):
         """返回一次维护运行共用的数据库会话上下文。"""
         ...
 
+    def unit_of_work(self, db: Any) -> "CleanupUnitOfWork":
+        """返回绑定到当前维护会话的事务边界。"""
+        ...
+
     def delete_messages(self, db: Any, cutoff: str, limit: int) -> int:
         """删除早于截止时间的消息。"""
         ...
@@ -67,6 +71,18 @@ class CleanupRepository(Protocol):
 
     def delete_download_failures(self, db: Any, cutoff: str, limit: int) -> int:
         """删除已经过期的下载失败冷却记录。"""
+        ...
+
+
+class CleanupUnitOfWork(Protocol):
+    """数据维护每一批删除所需的最小事务能力。"""
+
+    def commit(self) -> None:
+        """提交当前批次。"""
+        ...
+
+    def rollback(self) -> None:
+        """回滚失败批次并恢复会话可用状态。"""
         ...
 
 
@@ -175,16 +191,19 @@ class DataCleanupService:
                     value=plan_index / total_plans * 100,
                     text=f"正在清理数据表 {plan.name} ...",
                 )
+            unit_of_work = self._repository.unit_of_work(db)
             table_report = self._cleanup_in_batches(
                 db=db,
                 table_name=plan.name,
                 delete_batch=plan.delete_batch,
+                unit_of_work=unit_of_work,
             )
             table_report["cutoff"] = plan.cutoff
             table_report["retention_days"] = plan.retention_days
             report["tables"][plan.name] = table_report
             report["total_deleted"] += table_report["deleted"]
         except Exception as err:
+            self._repository.unit_of_work(db).rollback()
             errors.append(f"{plan.name}: {str(err)}")
             logger.error(f"数据表 {plan.name} 清理失败：{str(err)}")
             report["tables"][plan.name] = {
@@ -279,12 +298,13 @@ class DataCleanupService:
             ),
         ]
 
-    @staticmethod
     def _cleanup_in_batches(
+        self,
         *,
         db: Any,
         table_name: str,
         delete_batch: Callable[[Any], int],
+        unit_of_work: CleanupUnitOfWork,
     ) -> Dict[str, int]:
         """循环执行单表分批删除，直到持久化端口返回零。"""
         total_deleted = 0
@@ -293,6 +313,7 @@ class DataCleanupService:
             deleted = delete_batch(db) or 0
             if deleted <= 0:
                 break
+            unit_of_work.commit()
             batches += 1
             total_deleted += deleted
             logger.info(

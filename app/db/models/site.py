@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query
 
 
 class Site(Base):
@@ -102,11 +102,11 @@ class Site(Base):
         return list(db.execute(select(cls.domain).where(cls.id.in_(ids))).scalars().all())
 
     @classmethod
-    @db_update
     def reset(cls, db: Session):
+        """在调用方持有的同步事务中暂存清空操作。"""
         db.execute(delete(cls))
 
     @classmethod
-    @async_db_update
     async def async_reset(cls, db: AsyncSession):
+        """在调用方持有的异步事务中暂存清空操作。"""
         await db.execute(delete(cls))

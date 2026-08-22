@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query, db_update
+from app.db.decorators import async_db_query, db_query
 
 
 class Message(Base):
@@ -40,7 +40,6 @@ class Message(Base):
         Index('ix_message_reg_time_id', 'reg_time', 'id'),
     )
 
-    @db_update
     def create_and_to_dict(self, db: Session) -> dict:
         """
         创建消息记录并返回写入后的字段字典。
@@ -134,7 +133,6 @@ class Message(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_update
     def delete_before(
         cls,
         db: Session,

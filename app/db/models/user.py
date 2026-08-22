@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query
 
 
 class User(Base):
@@ -60,56 +60,46 @@ class User(Base):
         )
         return result.scalars().first()
 
-    @db_update
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)
         if user:
-            user.delete(db, user.id)
+            db.delete(user)
         return True
 
-    @async_db_update
     async def async_delete_by_name(self, db: AsyncSession, name: str):
         user = await self.async_get_by_name(db, name)
         if user:
-            await user.async_delete(db, user.id)
+            await db.delete(user)
         return True
 
-    @db_update
     def delete_by_id(self, db: Session, user_id: int):
         user = self.get_by_id(db, user_id)
         if user:
-            user.delete(db, user.id)
+            db.delete(user)
         return True
 
     @classmethod
-    @async_db_update
     async def async_delete_by_id(cls, db: AsyncSession, user_id: int):
         """异步按用户 ID 删除用户，供 UserOper 通过类方法调用。"""
         user = await cls.async_get_by_id(db, user_id)
         if user:
-            await user.async_delete(db, user.id)
+            await db.delete(user)
         return True
 
-    @db_update
     def update_otp_by_name(self, db: Session, name: str, otp: bool, secret: str):
         user = self.get_by_name(db, name)
         if user:
-            user.update(db, {
-                'is_otp': otp,
-                'otp_secret': secret
-            })
+            user.is_otp = otp
+            user.otp_secret = secret
             return True
         return False
 
     @classmethod
-    @async_db_update
     async def async_update_otp_by_name(cls, db: AsyncSession, name: str, otp: bool, secret: str):
         """异步按用户名更新 OTP 状态，供 UserOper 通过类方法调用。"""
         user = await cls.async_get_by_name(db, name)
         if user:
-            await user.async_update(db, {
-                'is_otp': otp,
-                'otp_secret': secret
-            })
+            user.is_otp = otp
+            user.otp_secret = secret
             return True
         return False

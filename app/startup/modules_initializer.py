@@ -23,6 +23,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.observability import record_metric
 from app.runtime.state import SystemHelper
 from app.runtime.thread import ThreadHelper
 from app.adapters.network.doh import DohHelper
@@ -80,7 +81,11 @@ from app.db.session import (
     get_async_db,
     get_db,
 )
-from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+from app.db.uow import (
+    SqlAlchemyAsyncUnitOfWork,
+    SqlAlchemyUnitOfWork,
+    configure_transaction_runners,
+)
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
@@ -114,7 +119,18 @@ from app.startup.subscription import (
 from app.startup.chain_events import TransactionalChainDurableEventWriter
 from app.startup.download_failure import TransactionalDownloadFailureRepository
 from app.startup.workflow import TransactionalWorkflowExecutionService
-from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
+from app.startup.transaction import TransactionalWriteRunner
+from app.startup.context import (
+    AgentChatRuntime,
+    AuthenticationRuntime,
+    HistoryRuntime,
+    HostRuntime,
+    MessagingRuntime,
+    PersistenceRuntime,
+    SiteRuntime,
+    SubscriptionRuntime,
+    WorkflowRuntime,
+)
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
 from app.application.image import configure_wallpaper_providers
@@ -320,6 +336,10 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             ),
         },
         close=session.close,
+        failure_observer=lambda dead: record_metric(
+            "scheduler.job.dead_letter" if dead else "scheduler.job.retry",
+            owner="outbox",
+        ),
     )
 
 
@@ -535,6 +555,15 @@ async def init_modules() -> HostRuntime:
     """
     启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
+    # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
+    transaction_runner = TransactionalWriteRunner(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    configure_transaction_runners(
+        sync=transaction_runner.sync,
+        async_=transaction_runner.async_,
+    )
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
         sync_session=get_db,
@@ -572,6 +601,25 @@ async def init_modules() -> HostRuntime:
             repository=AgentChatOper,
             transaction=SqlAlchemyAsyncUnitOfWork,
         ),
+        persistence=PersistenceRuntime(
+            sync_session=get_db,
+            async_session=get_async_db,
+            sync_transaction=SqlAlchemyUnitOfWork,
+            async_transaction=SqlAlchemyAsyncUnitOfWork,
+        ),
+        authentication=AuthenticationRuntime(
+            user_repository=UserOper,
+            standalone_user=UserOper,
+            system_config=SystemConfigOper,
+            passkey=PassKeyOper,
+        ),
+        messaging=MessagingRuntime(repository=MessageOper),
+        history=HistoryRuntime(
+            download_repository=DownloadHistoryOper,
+            transfer_repository=TransferHistoryOper,
+            media_server_repository=MediaServerOper,
+        ),
+        site=SiteRuntime(repository=SiteOper),
         subscription=SubscriptionRuntime(
             async_session=get_async_db,
             repository=SubscribeOper,
@@ -579,11 +627,15 @@ async def init_modules() -> HostRuntime:
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
         ),
+        workflow=WorkflowRuntime(
+            repository=WorkflowOper,
+            system_config=SystemConfigOper,
+        ),
         configuration=runtime_configuration,
-        compatibility_api_data=api_data,
     )
     configure_runtime_configuration(host_runtime.configuration)
-    configure_api_data_runtime(host_runtime.compatibility_api_data)
+    # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
+    configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_legacy_writer(workflow_execution)

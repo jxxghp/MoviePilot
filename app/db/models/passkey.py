@@ -1,11 +1,11 @@
 from typing import Optional
-from sqlalchemy import Integer, String, Boolean, DateTime, Text, select, ForeignKey
+from sqlalchemy import Integer, String, Boolean, DateTime, Text, select, ForeignKey, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from datetime import datetime
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query
 
 
 class PassKey(Base):
@@ -85,19 +85,17 @@ class PassKey(Base):
         return result.scalars().first()
 
     @classmethod
-    @db_update
     def delete_by_id(cls, db: Session, passkey_id: int, user_id: int):
         """删除指定用户的PassKey"""
         passkey = db.execute(
             select(cls).where(cls.id == passkey_id, cls.user_id == user_id)
         ).scalars().first()
         if passkey:
-            passkey.delete(db, passkey.id)
+            db.delete(passkey)
             return True
         return False
 
     @classmethod
-    @async_db_update
     async def async_delete_by_id(cls, db: AsyncSession, passkey_id: int, user_id: int):
         """异步删除指定用户的PassKey"""
         result = await db.execute(
@@ -108,24 +106,22 @@ class PassKey(Base):
         )
         passkey = result.scalars().first()
         if passkey:
-            await passkey.async_delete(db, passkey.id)
+            await db.delete(passkey)
             return True
         return False
 
-    @db_update
     def update_last_used(self, db: Session, sign_count: int):
         """更新最后使用时间和签名计数"""
-        self.update(db, {
-            'last_used_at': datetime.now(),
-            'sign_count': sign_count
-        })
+        db.execute(update(type(self)).where(type(self).id == self.id).values(
+            last_used_at=datetime.now(),
+            sign_count=sign_count,
+        ))
         return True
 
-    @async_db_update
     async def async_update_last_used(self, db: AsyncSession, sign_count: int):
         """异步更新最后使用时间和签名计数"""
-        await self.async_update(db, {
-            'last_used_at': datetime.now(),
-            'sign_count': sign_count
-        })
+        await db.execute(update(type(self)).where(type(self).id == self.id).values(
+            last_used_at=datetime.now(),
+            sign_count=sign_count,
+        ))
         return True

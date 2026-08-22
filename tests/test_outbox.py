@@ -62,11 +62,13 @@ def test_dispatcher_retries_then_dead_letters_with_stable_key() -> None:
         ClaimedOutboxMessage(1, "subscribe.added:42:v1", "subscribe.added", {}, 1, 2),
     ]
     handler = MagicMock(side_effect=RuntimeError("temporary"))
+    failure_observer = MagicMock()
     dispatcher = OutboxDispatcher(
         repository,
         {"subscribe.added": handler},
         max_attempts=2,
         clock=lambda: now,
+        failure_observer=failure_observer,
     )
 
     assert dispatcher.dispatch_one() is True
@@ -76,6 +78,10 @@ def test_dispatcher_retries_then_dead_letters_with_stable_key() -> None:
     assert [call.args[0].event_key for call in handler.call_args_list] == [
         "subscribe.added:42:v1",
         "subscribe.added:42:v1",
+    ]
+    assert [call.args[0] for call in failure_observer.call_args_list] == [
+        False,
+        True,
     ]
 
 

@@ -246,9 +246,9 @@ sequenceDiagram
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
 - **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
-  上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。Agent 会话已迁移，不再通过
-  字符串仓储键定位；API、Scheduler、Chain 从 `HostRuntime.configuration` 获取 frozen 配置快照，
-  `ApiDataPorts` 暂作未迁移领域的同实例兼容 Facade。
+  上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。认证、消息、历史、媒体服务器、站点、
+  订阅、工作流和请求事务均使用命名 runtime 字段，不再通过字符串仓储键定位；API、Scheduler、Chain
+  从 `HostRuntime.configuration` 获取 frozen 配置快照。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
@@ -376,7 +376,8 @@ flowchart LR
   成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
-  `transaction-debt-baseline.json` 将存量 168 个 Model 事务装饰器冻结为只降不增低水位。
+  `transaction-debt-baseline.json` 当前冻结 123 个只读查询装饰器；原有 45 个同步/异步写装饰器
+  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/plugins_initializer.py` 创建独占会话，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。

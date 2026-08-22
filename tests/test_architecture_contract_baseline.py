@@ -120,13 +120,15 @@ def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
 
 
 def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
-    """事务 fixture 必须冻结存量 Model 自动提交，并保持 Oper 自提交为零。"""
+    """事务 fixture 必须保持 Model 写装饰器归零，并冻结剩余查询债务。"""
     baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
     assert baseline["schema_version"] == 1
-    assert baseline["model_decorators"]["count"] == 168
-    assert sum(baseline["model_decorators"]["by_kind"].values()) == 168
+    assert baseline["model_decorators"]["count"] == 123
+    assert sum(baseline["model_decorators"]["by_kind"].values()) == 123
+    assert baseline["model_decorators"]["by_kind"]["db_update"] == 0
+    assert baseline["model_decorators"]["by_kind"]["async_db_update"] == 0
     assert baseline["model_transaction_calls"] == {"count": 0, "calls": []}
     assert baseline["model_session_factories"] == {"count": 0, "calls": []}
     assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}

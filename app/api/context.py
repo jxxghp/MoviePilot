@@ -1,6 +1,6 @@
 """从 FastAPI AppState 读取类型化宿主能力。"""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from typing import cast
 
 from fastapi import Depends, Request
@@ -37,6 +37,21 @@ def get_api_runtime_config(
 ) -> ApiRuntimeConfig:
     """为当前请求创建稳定的 API 配置快照。"""
     return runtime.configuration.api()
+
+
+def get_sync_session(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> Generator[object, None, None]:
+    """从 HostRuntime 生成请求独占的同步数据库会话。"""
+    yield from runtime.persistence.sync_session()
+
+
+async def get_async_session(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> AsyncGenerator[object, None]:
+    """从 HostRuntime 生成请求独占的异步数据库会话。"""
+    async for session in runtime.persistence.async_session():
+        yield session
 
 
 def resolve_api_runtime_config(value: object) -> ApiRuntimeConfig:

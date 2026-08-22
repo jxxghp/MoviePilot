@@ -61,19 +61,32 @@ class MediaServerOper(DbOper):
         """
         清空媒体服务器数据
         """
-        MediaServerItem.empty(self._db, server)
+        self._execute_sync_write(
+            lambda session: MediaServerItem.empty(session, server)
+        )
 
     def delete_stale(self, server: str, sync_time: str) -> int:
         """
         删除本轮同步未更新的旧数据
         """
-        return MediaServerItem.delete_stale(self._db, server, sync_time)
+        return self._execute_sync_write(
+            lambda session: MediaServerItem.delete_stale(
+                session,
+                server,
+                sync_time,
+            )
+        )
 
     def delete_excluded_servers(self, servers: list[str]) -> int:
         """
         删除未启用或已移除媒体服务器的数据
         """
-        return MediaServerItem.delete_excluded_servers(self._db, servers)
+        return self._execute_sync_write(
+            lambda session: MediaServerItem.delete_excluded_servers(
+                session,
+                servers,
+            )
+        )
 
     def exists(self, **kwargs) -> Optional[MediaServerItem]:
         """

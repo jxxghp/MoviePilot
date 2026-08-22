@@ -258,6 +258,7 @@ def test_message_oper_listing_entry_points(db):
     oper = MessageOper(db=db.session)
     oper.add(title="分页消息", text="正文", source="op-msg-2",
              reg_time="2026-08-13 10:00:00")
+    db.session.commit()
 
     assert [m.title for m in oper.list_by_page(page=1, count=1)] == ["分页消息"]
     assert [m.title for m in asyncio.run(oper.async_list_by_page(page=1, count=1))] == \

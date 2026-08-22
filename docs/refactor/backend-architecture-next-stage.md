@@ -501,6 +501,15 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 - fake Runtime 请求测试证明仓储与 UoW 共享同一请求会话，且无需加载真实 DB engine、
   PluginManager 或其他运行时服务；旧 `configure_api_data_ports()` 调用形态继续可用。
 
+**收口记录（2026-08-22）**：
+
+- `HostRuntime` 已覆盖认证/用户/PassKey、消息、下载与整理历史、媒体服务器、站点、订阅、
+  工作流、请求 Session/UoW 和配置快照等全部正式 API 业务领域。每个能力均为命名字段，
+  不再由 `repository("name")` 或 `transaction("name")` 在运行时猜测。
+- `app/api/dependencies/` 的正式领域模块已清除 `app.api.data` 与
+  `app.api.dependencies.data` 依赖，并增加静态测试防止回退。旧 `ApiDataPorts` 只作为旧导入
+  ABI 的全局转发保留，不再挂入 `HostRuntime`，也不参与正式 FastAPI 请求装配。
+
 #### ARCH-231：按领域拆分 API dependency 与 presentation
 
 **目标**：`app/api/deps.py` 从 512 行集中装配点变成兼容聚合入口，端点只负责 HTTP 解析、鉴权依赖和结果映射。
@@ -786,6 +795,11 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   失败和重置均由 Application command 显式 commit/rollback。`WorkflowOper()` 的旧方法名、参数和返回值
   继续可用，无 Session 调用委托组合根服务，显式 Session 调用只暂存；同步 Model 自动提交装饰器移除 6 个，
   事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
+- 剩余 45 个同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
+  站点快照、媒体服务器、插件数据、TransferPending 等写入由调用方 Session 和 UoW 收口；无 Session
+  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 123 个查询装饰器，
+  `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
+- 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -868,8 +882,10 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
   request path 充当 label。
 - 2026-08-22 扩展接线覆盖 SQLAlchemy checkout/checkin、异步回退配额 wait/timeout、Module 真实
   `TimeoutError`、插件 start/initialize/stop/reload，以及 Agent 活跃任务、取消结果、供应商耗时和输入/
-  输出 token。自定义 Agent provider 统一归类为 `custom`，不会暴露配置名称；Scheduler retry/dead-letter
-  属于本轮明确暂停的 Outbox worker 范围，目录合同保留但不在本轮接线。
+  输出 token。自定义 Agent provider 统一归类为 `custom`，不会暴露配置名称。
+- Outbox dispatcher 的有限重试和 dead-letter 已分别接入 `scheduler.job.retry` 与
+  `scheduler.job.dead_letter`，只使用固定 `owner=outbox` 低基数标签；观测失败端口由 Startup 注入，
+  Application 不依赖具体 OTel SDK。
 - 专项测试覆盖 exporter 缺失、非法标签、全目录高基数审计、成功/失败 outcome、动态 URL 路由模板；
   既有 API、Event、Module、Scheduler 与健康探针回归保持通过。
 

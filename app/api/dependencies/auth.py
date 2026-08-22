@@ -1,58 +1,89 @@
 """用户身份、授权与认证服务依赖。"""
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.adapters.web.security.access import verify_token
-from app.api.data import get_async_db, get_db
-from app.api.dependencies.data import repository, standalone_repository
-from app.application.security.auth import AuthService
-from app.application.security.passkeys import PasskeyService
-from app.application.security.user import UserService
+from app.api.context import get_async_session, get_host_runtime, get_sync_session
+from app.application.security.auth import (
+    AuthConfigRepository,
+    AuthPasskeyRepository,
+    AuthService,
+    AuthUserRepository,
+)
+from app.application.security.passkeys import PasskeyRepository, PasskeyService
+from app.application.security.user import (
+    AsyncUnitOfWork,
+    UserRepository,
+    UserService,
+)
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.startup.context import HostRuntime
 
 
 def get_user_service(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> UserService:
     """组装用户管理应用服务。"""
-    return UserService(repository=repository("user", db))
-
-
-def get_auth_service() -> AuthService:
-    """组装同步认证应用服务。"""
-    return AuthService(
-        users=standalone_repository("user"),
-        config=standalone_repository("system_config"),
-        passkeys=standalone_repository("passkey"),
+    return UserService(
+        repository=cast(
+            UserRepository, runtime.authentication.user_repository(db)
+        ),
+        unit_of_work=cast(
+            AsyncUnitOfWork, runtime.persistence.async_transaction(db)
+        ),
     )
 
 
-def get_passkey_service() -> PasskeyService:
+def get_auth_service(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> AuthService:
+    """组装同步认证应用服务。"""
+    return AuthService(
+        users=cast(AuthUserRepository, runtime.authentication.standalone_user()),
+        config=cast(AuthConfigRepository, runtime.authentication.system_config()),
+        passkeys=cast(AuthPasskeyRepository, runtime.authentication.passkey()),
+    )
+
+
+def get_passkey_service(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> PasskeyService:
     """组装 PassKey 应用服务。"""
-    return PasskeyService(repository=standalone_repository("passkey"))
+    return PasskeyService(repository=cast(
+        PasskeyRepository, runtime.authentication.passkey()
+    ))
 
 
 def get_current_user(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_session),
     token_data: _SchemaTokenPayload = Depends(verify_token),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
     """读取令牌对应用户，不存在时返回 403。"""
-    user = repository("user", db).get_by_id(token_data.sub)
+    user_repository = cast(
+        AuthUserRepository, runtime.authentication.user_repository(db)
+    )
+    user = user_repository.get_by_id(token_data.sub)
     if not user:
         raise HTTPException(status_code=403, detail="用户不存在")
     return user
 
 
 async def get_current_user_async(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
     token_data: _SchemaTokenPayload = Depends(verify_token),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
     """异步读取令牌对应用户，不存在时返回 403。"""
-    user = await repository("user", db).async_get_by_id(token_data.sub)
+    user_repository = cast(
+        UserRepository, runtime.authentication.user_repository(db)
+    )
+    user = await user_repository.async_get_by_id(token_data.sub)
     if not user:
         raise HTTPException(status_code=403, detail="用户不存在")
     return user

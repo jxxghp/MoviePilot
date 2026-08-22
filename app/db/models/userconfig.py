@@ -3,7 +3,7 @@ from sqlalchemy import String, UniqueConstraint, JSON, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, db_update
+from app.db.decorators import db_query
 
 
 class UserConfig(Base):
@@ -30,9 +30,9 @@ class UserConfig(Base):
             select(cls).where(cls.username == username, cls.key == key)
         ).scalars().first()
 
-    @db_update
     def delete_by_key(self, db: Session, username: str, key: str):
+        """在调用方持有的事务中暂存指定用户配置删除。"""
         userconfig = self.get_by_key(db=db, username=username, key=key)
         if userconfig:
-            userconfig.delete(db=db, rid=userconfig.id)
+            db.delete(userconfig)
         return True

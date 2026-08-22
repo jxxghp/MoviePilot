@@ -1,6 +1,8 @@
 """类型化 HostRuntime 与 FastAPI AppState 注入测试。"""
 
+import ast
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,19 +13,27 @@ from app.api.context import (
     get_agent_chat_repository,
     get_agent_chat_transaction,
 )
-from app.api.data import (
-    ApiDataPorts,
-    configure_api_data_runtime,
-    get_api_data_ports,
-)
 from app.startup import lifecycle
-from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
+from app.startup.context import (
+    AgentChatRuntime,
+    AuthenticationRuntime,
+    HistoryRuntime,
+    HostRuntime,
+    MessagingRuntime,
+    PersistenceRuntime,
+    SiteRuntime,
+    SubscriptionRuntime,
+    WorkflowRuntime,
+)
 from app.application.configuration import (
     ApiRuntimeConfig,
     ChainRuntimeConfig,
     RuntimeConfiguration,
     SchedulerRuntimeConfig,
 )
+
+
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 class _Repository:
@@ -45,6 +55,20 @@ class _UnitOfWork:
         """模拟提交。"""
 
     async def rollback(self) -> None:
+        """模拟回滚。"""
+
+
+class _SyncUnitOfWork:
+    """记录绑定会话的同步事务替身。"""
+
+    def __init__(self, session: object) -> None:
+        """保存与仓储相同的请求会话。"""
+        self.session = session
+
+    def commit(self) -> None:
+        """模拟提交。"""
+
+    def rollback(self) -> None:
         """模拟回滚。"""
 
 
@@ -73,25 +97,41 @@ def _runtime() -> HostRuntime:
         if False:
             yield object()
 
-    compatibility = ApiDataPorts(
-        sync_session=sync_session,
-        async_session=async_session,
-        repositories={},
-        standalone={},
-        unit_of_work={},
-    )
     return HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=async_session,
             repository=_Repository,
             transaction=_UnitOfWork,
         ),
+        persistence=PersistenceRuntime(
+            sync_session=sync_session,
+            async_session=async_session,
+            sync_transaction=_SyncUnitOfWork,
+            async_transaction=_UnitOfWork,
+        ),
+        authentication=AuthenticationRuntime(
+            user_repository=_Repository,
+            standalone_user=lambda: _Repository(object()),
+            system_config=lambda: _Repository(object()),
+            passkey=lambda: _Repository(object()),
+        ),
+        messaging=MessagingRuntime(repository=_Repository),
+        history=HistoryRuntime(
+            download_repository=_Repository,
+            transfer_repository=_Repository,
+            media_server_repository=_Repository,
+        ),
+        site=SiteRuntime(repository=_Repository),
         subscription=SubscriptionRuntime(
             async_session=async_session,
             repository=_Repository,
             history_repository=_Repository,
             transaction=_UnitOfWork,
             outbox=_Outbox,
+        ),
+        workflow=WorkflowRuntime(
+            repository=_Repository,
+            system_config=lambda: _Repository(object()),
         ),
         configuration=RuntimeConfiguration(
             api=lambda: ApiRuntimeConfig(False, 60, False, True),
@@ -101,18 +141,20 @@ def _runtime() -> HostRuntime:
             ),
             chain=lambda: ChainRuntimeConfig(media_extensions=(".mkv",)),
         ),
-        compatibility_api_data=compatibility,
     )
 
 
-def test_host_runtime_is_frozen_slotted_and_reuses_compatibility_facade() -> None:
-    """运行时不可动态扩字段，旧 Facade 必须指向同一个端口实例。"""
+def test_host_runtime_is_frozen_slotted_and_covers_all_api_domains() -> None:
+    """运行时不可动态扩字段，且全部正式 API 领域都有命名能力。"""
     runtime = _runtime()
 
-    configure_api_data_runtime(runtime.compatibility_api_data)
-
     assert not hasattr(runtime, "__dict__")
-    assert get_api_data_ports() is runtime.compatibility_api_data
+    assert runtime.authentication.user_repository is _Repository
+    assert runtime.messaging.repository is _Repository
+    assert runtime.history.download_repository is _Repository
+    assert runtime.site.repository is _Repository
+    assert runtime.subscription.repository is _Repository
+    assert runtime.workflow.repository is _Repository
     with pytest.raises(FrozenInstanceError):
         runtime.agent_chat = runtime.agent_chat
 
@@ -135,6 +177,30 @@ def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"same_session": True}
+
+
+def test_official_api_dependencies_do_not_use_string_data_locator() -> None:
+    """正式业务依赖只能读取 HostRuntime 命名领域，禁止回退字符串注册表。"""
+    dependency_root = PROJECT_ROOT / "app" / "api" / "dependencies"
+    official_modules = {
+        "agent.py",
+        "auth.py",
+        "history.py",
+        "site.py",
+        "subscription.py",
+        "workflow.py",
+    }
+    for filename in official_modules:
+        tree = ast.parse(
+            (dependency_root / filename).read_text(encoding="utf-8")
+        )
+        imported_modules = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        assert "app.api.data" not in imported_modules
+        assert "app.api.dependencies.data" not in imported_modules
 
 
 @pytest.mark.asyncio

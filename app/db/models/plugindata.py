@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, db_update, async_db_query
+from app.db.decorators import db_query, async_db_query
 
 
 class PluginData(Base):
@@ -49,13 +49,13 @@ class PluginData(Base):
         return result.scalar_one_or_none()
 
     @classmethod
-    @db_update
     def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str):
+        """在调用方事务中暂存单个插件键删除。"""
         db.execute(delete(cls).where(cls.plugin_id == plugin_id, cls.key == key))
 
     @classmethod
-    @db_update
     def del_plugin_data(cls, db: Session, plugin_id: str):
+        """在调用方事务中暂存插件全部数据删除。"""
         db.execute(delete(cls).where(cls.plugin_id == plugin_id))
 
     @classmethod

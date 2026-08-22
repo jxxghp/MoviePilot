@@ -10,6 +10,7 @@ import asyncio
 import pytest
 
 from app.db.models.workflow import Workflow
+from app.db.session import async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +25,18 @@ def _flow(name: str, trigger_type: str = "timer", state: str = "W",
     return Workflow(name=name, description=name, timer="0 * * * *",
                     trigger_type=trigger_type, state=state, run_count=run_count,
                     actions=[], flows=[], context={}, execution_state={})
+
+
+async def _stage_async_action(workflow_id: int, action_id: str) -> None:
+    """用独占异步会话提交一次模型级暂存，模拟 Application UoW 边界。"""
+    async with async_session_scope() as session:
+        await Workflow.async_update_current_action(
+            session,
+            wid=workflow_id,
+            action_id=action_id,
+            context={},
+        )
+        await session.commit()
 
 
 # --------------------------------------------------------------------------- #
@@ -230,8 +243,7 @@ def test_update_current_action_matches_async_twin(db):
         Workflow.update_current_action(db.session, sync_flow.id, action, {})
         # 同步 Model 方法只暂存 SQL；由测试持有的事务边界先提交，避免与异步会话争锁。
         db.session.commit()
-        asyncio.run(Workflow.async_update_current_action(
-            wid=async_flow.id, action_id=action, context={}))
+        asyncio.run(_stage_async_action(async_flow.id, action))
 
     assert Workflow.get_by_name(db.session, "wf-sync-action").current_action == \
         Workflow.get_by_name(db.session, "wf-async-action").current_action

@@ -146,14 +146,16 @@ class OutboxDispatcher:
         lease_seconds: int = 60,
         clock: Callable[[], datetime] | None = None,
         close: Callable[[], None] | None = None,
+        failure_observer: Callable[[bool], None] | None = None,
     ) -> None:
-        """注入持久端口、topic handler 和有界重试策略。"""
+        """注入持久端口、topic handler、有界重试策略与失败观测端口。"""
         self._repository = repository
         self._handlers = handlers
         self._max_attempts = max_attempts
         self._lease_seconds = lease_seconds
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._close = close or (lambda: None)
+        self._failure_observer = failure_observer or (lambda _dead: None)
 
     def dispatch_one(self) -> bool:
         """处理一条到期消息；无消息返回 False，handler 失败留待重试。"""
@@ -176,6 +178,7 @@ class OutboxDispatcher:
                 last_error=str(error)[:4000],
                 dead=dead,
             )
+            self._failure_observer(dead)
             return True
         self._repository.complete(message.message_id, now)
         return True

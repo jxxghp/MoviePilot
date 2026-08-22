@@ -3,15 +3,19 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.context import get_agent_chat_repository, get_agent_chat_transaction
-from app.api.data import get_async_db
-from app.api.dependencies.data import repository
+from app.api.context import (
+    get_agent_chat_repository,
+    get_agent_chat_transaction,
+    get_async_session,
+    get_host_runtime,
+)
 from app.application.messaging.chat import (
     AgentChatService,
     AsyncAgentChatRepository,
     AsyncUnitOfWork,
 )
 from app.application.messaging.message import MessageQueryService
+from app.startup.context import HostRuntime
 
 
 def get_agent_chat_service(
@@ -23,7 +27,8 @@ def get_agent_chat_service(
 
 
 def get_message_query_service(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> MessageQueryService:
     """组装消息历史异步查询服务。"""
-    return MessageQueryService(repository=repository("message", db))
+    return MessageQueryService(repository=runtime.messaging.repository(db))

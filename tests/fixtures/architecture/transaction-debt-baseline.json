@@ -2,11 +2,11 @@
   "model_decorators": {
     "by_kind": {
       "async_db_query": 49,
-      "async_db_update": 12,
+      "async_db_update": 0,
       "db_query": 74,
-      "db_update": 33
+      "db_update": 0
     },
-    "count": 168,
+    "count": 123,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -29,11 +29,6 @@
         "method": "AgentChat.list_by_page"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttask.py",
-        "method": "AgentTask.add_task"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/agenttask.py",
         "method": "AgentTask.get_for_user"
@@ -44,54 +39,14 @@
         "method": "AgentTask.list_for_user"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttask.py",
-        "method": "AgentTask.update_task"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.begin_run"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.delete_task_and_runs"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.finish_run"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/agenttaskrun.py",
         "method": "AgentTaskRun.get_by_run_id"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.interrupt_task"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/agenttaskrun.py",
         "method": "AgentTaskRun.list_for_task"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/downloadfailure.py",
-        "method": "DownloadFailure.delete_expired"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/downloadhistory.py",
-        "method": "DownloadFiles.delete_by_fullpath"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/downloadhistory.py",
-        "method": "DownloadFiles.delete_orphans"
       },
       {
         "decorator": "db_query",
@@ -127,11 +82,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/downloadhistory.py",
         "method": "DownloadHistory.async_list_by_title"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/downloadhistory.py",
-        "method": "DownloadHistory.delete_before"
       },
       {
         "decorator": "db_query",
@@ -194,21 +144,6 @@
         "method": "MediaServerItem.async_get_by_itemid"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/mediaserver.py",
-        "method": "MediaServerItem.delete_excluded_servers"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/mediaserver.py",
-        "method": "MediaServerItem.delete_stale"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/mediaserver.py",
-        "method": "MediaServerItem.empty"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/mediaserver.py",
         "method": "MediaServerItem.exist_by_media_identity"
@@ -239,16 +174,6 @@
         "method": "Message.async_list_sent_by_page"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/message.py",
-        "method": "Message.create_and_to_dict"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/message.py",
-        "method": "Message.delete_before"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/message.py",
         "method": "Message.exists_by_source"
@@ -257,11 +182,6 @@
         "decorator": "db_query",
         "file": "app/db/models/message.py",
         "method": "Message.list_by_page"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.async_delete_by_id"
       },
       {
         "decorator": "async_db_query",
@@ -279,16 +199,6 @@
         "method": "PassKey.async_get_by_user_id"
       },
       {
-        "decorator": "async_db_update",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.async_update_last_used"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.delete_by_id"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/passkey.py",
         "method": "PassKey.get_by_credential_id"
@@ -304,11 +214,6 @@
         "method": "PassKey.get_by_user_id"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.update_last_used"
-      },
-      {
         "decorator": "async_db_query",
         "file": "app/db/models/plugindata.py",
         "method": "PluginData.async_get_plugin_data"
@@ -322,16 +227,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/plugindata.py",
         "method": "PluginData.async_get_plugin_data_by_plugin_id"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.del_plugin_data"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.del_plugin_data_by_key"
       },
       {
         "decorator": "db_query",
@@ -369,11 +264,6 @@
         "method": "Site.async_list_order_by_pri"
       },
       {
-        "decorator": "async_db_update",
-        "file": "app/db/models/site.py",
-        "method": "Site.async_reset"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/site.py",
         "method": "Site.get_actives"
@@ -392,11 +282,6 @@
         "decorator": "db_query",
         "file": "app/db/models/site.py",
         "method": "Site.list_order_by_pri"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/site.py",
-        "method": "Site.reset"
       },
       {
         "decorator": "async_db_query",
@@ -419,11 +304,6 @@
         "method": "SiteStatistic.get_by_domain"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/sitestatistic.py",
-        "method": "SiteStatistic.reset"
-      },
-      {
         "decorator": "async_db_query",
         "file": "app/db/models/siteuserdata.py",
         "method": "SiteUserData.async_get_by_domain"
@@ -432,11 +312,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/siteuserdata.py",
         "method": "SiteUserData.async_get_latest"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/siteuserdata.py",
-        "method": "SiteUserData.delete_before"
       },
       {
         "decorator": "db_query",
@@ -569,11 +444,6 @@
         "method": "SystemConfig.async_get_by_key"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/systemconfig.py",
-        "method": "SystemConfig.delete_by_key"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/systemconfig.py",
         "method": "SystemConfig.get_by_key"
@@ -612,11 +482,6 @@
         "decorator": "db_query",
         "file": "app/db/models/transferhistory.py",
         "method": "TransferHistory.count_by_title"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/transferhistory.py",
-        "method": "TransferHistory.delete_before"
       },
       {
         "decorator": "db_query",
@@ -684,49 +549,14 @@
         "method": "TransferHistory.monthly_media_statistics"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/transferhistory.py",
-        "method": "TransferHistory.replace_by_src"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/transferhistory.py",
         "method": "TransferHistory.statistic"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/transferhistory.py",
-        "method": "TransferHistory.update_download_hash"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/transferpending.py",
-        "method": "TransferPending.clear"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/transferpending.py",
-        "method": "TransferPending.discard"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/transferpending.py",
         "method": "TransferPending.list_all"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/transferpending.py",
-        "method": "TransferPending.register"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.async_delete_by_id"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.async_delete_by_name"
       },
       {
         "decorator": "async_db_query",
@@ -739,21 +569,6 @@
         "method": "User.async_get_by_name"
       },
       {
-        "decorator": "async_db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.async_update_otp_by_name"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.delete_by_id"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.delete_by_name"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/user.py",
         "method": "User.get_by_id"
@@ -764,24 +579,9 @@
         "method": "User.get_by_name"
       },
       {
-        "decorator": "db_update",
-        "file": "app/db/models/user.py",
-        "method": "User.update_otp_by_name"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/userconfig.py",
-        "method": "UserConfig.delete_by_key"
-      },
-      {
         "decorator": "db_query",
         "file": "app/db/models/userconfig.py",
         "method": "UserConfig.get_by_key"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_fail"
       },
       {
         "decorator": "async_db_query",
@@ -802,31 +602,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/workflow.py",
         "method": "Workflow.async_get_timer_triggered_workflows"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_reset"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_start"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_success"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_update_current_action"
-      },
-      {
-        "decorator": "async_db_update",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_update_state"
       },
       {
         "decorator": "db_query",

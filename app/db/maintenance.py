@@ -7,6 +7,7 @@ from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
+from app.db.uow import SqlAlchemyUnitOfWork
 
 
 class DatabaseCleanupRepository:
@@ -19,6 +20,11 @@ class DatabaseCleanupRepository:
     def session(self) -> ContextManager[Any]:
         """创建一次维护运行共用的数据库会话。"""
         return self._session_factory()
+
+    @staticmethod
+    def unit_of_work(db: Any) -> SqlAlchemyUnitOfWork:
+        """把当前维护 Session 适配成显式批次事务边界。"""
+        return SqlAlchemyUnitOfWork(db)
 
     @staticmethod
     def delete_messages(db: Any, cutoff: str, limit: int) -> int:

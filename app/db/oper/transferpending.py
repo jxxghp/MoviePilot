@@ -20,11 +20,14 @@ class TransferPendingOper(DbOper):
         :param src_path: 源文件路径
         :return: 登记记录
         """
-        return TransferPending.register(
-            self._db,
-            storage=storage,
-            src_path=src_path,
-            now_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return self._execute_sync_write(
+            lambda session: TransferPending.register(
+                session,
+                storage=storage,
+                src_path=src_path,
+                now_time=now_time,
+            )
         )
 
     def discard(self, storage: str, src_path: str) -> int:
@@ -34,7 +37,13 @@ class TransferPendingOper(DbOper):
         :param src_path: 源文件路径
         :return: 删除的记录数
         """
-        return TransferPending.discard(self._db, storage=storage, src_path=src_path)
+        return self._execute_sync_write(
+            lambda session: TransferPending.discard(
+                session,
+                storage=storage,
+                src_path=src_path,
+            )
+        )
 
     def list_all(self, limit: Optional[int] = 5000) -> List[Tuple[str, str]]:
         """
@@ -56,4 +65,4 @@ class TransferPendingOper(DbOper):
         清空全部待整理登记。
         :return: 删除的记录数
         """
-        return TransferPending.clear(self._db)
+        return self._execute_sync_write(TransferPending.clear)

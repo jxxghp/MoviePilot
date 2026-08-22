@@ -127,7 +127,9 @@ class DownloadHistoryOper(DbOper):
         按fullpath删除下载文件记录
         :param fullpath: 数据key
         """
-        DownloadFiles.delete_by_fullpath(self._db, fullpath)
+        self._execute_sync_write(
+            lambda session: DownloadFiles.delete_by_fullpath(session, fullpath)
+        )
 
     def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
         """暂存指定完整路径的下载文件记录删除。"""

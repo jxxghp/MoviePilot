@@ -264,14 +264,18 @@ class TransferHistoryOper(DbOper):
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
-        TransferHistory.replace_by_src(self._db, **kwargs)
+        def stage(session: Session) -> Optional[TransferHistory]:
+            """在同一事务替换记录并返回兼容查询投影。"""
+            TransferHistory.replace_by_src(session, **kwargs)
+            return TransferHistory.get_by_src(
+                session,
+                kwargs.get("src"),
+                kwargs["src_storage"],
+            )
+
         # 保持 add_force 的既有返回契约：返回可被调用方安全读取字段的查询结果，
         # 而非事务提交后可能已脱离会话的新建实例。
-        return TransferHistory.get_by_src(
-            self._db,
-            kwargs.get("src"),
-            kwargs["src_storage"],
-        )
+        return self._execute_sync_write(stage)
 
     def stage_replace_by_src(self, **kwargs) -> TransferHistory:
         """在调用方事务内按源路径替换整理历史并返回已分配 ID 的新记录。"""
@@ -295,7 +299,13 @@ class TransferHistoryOper(DbOper):
         """
         补充转移记录download_hash
         """
-        TransferHistory.update_download_hash(self._db, historyid, download_hash)
+        self._execute_sync_write(
+            lambda session: TransferHistory.update_download_hash(
+                session,
+                historyid,
+                download_hash,
+            )
+        )
 
     def list_by_date(self, date: str) -> List[TransferHistory]:
         """

@@ -24,13 +24,31 @@ class PassKeyOper(DbOper):
     def create(self, payload: dict[str, Any]) -> PassKey:
         """创建 PassKey 凭证。"""
         passkey = PassKey(**payload)
-        passkey.create(self._db)
+        self._execute_sync_write(lambda session: self._stage_create(session, passkey))
         return passkey
+
+    @staticmethod
+    def _stage_create(session: Any, passkey: PassKey) -> None:
+        """在调用方事务中暂存凭证并分配主键。"""
+        session.add(passkey)
+        session.flush()
 
     def update_last_used(self, passkey: PassKey, sign_count: int) -> bool:
         """更新凭证最后使用时间和签名计数。"""
-        return bool(passkey.update_last_used(self._db, sign_count))
+        return bool(self._execute_sync_write(
+            lambda session: passkey.update_last_used(session, sign_count)
+        ))
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
         """删除指定用户的凭证。"""
-        return bool(PassKey.delete_by_id(self._db, passkey_id, user_id))
+        return bool(self._execute_sync_write(
+            lambda session: PassKey.delete_by_id(session, passkey_id, user_id)
+        ))
+
+    async def async_delete_by_id(self, passkey_id: int, user_id: int) -> bool:
+        """在独立异步事务中删除指定用户的凭证。"""
+        return bool(await self._execute_async_write(
+            lambda session: PassKey.async_delete_by_id(
+                session, passkey_id, user_id
+            )
+        ))

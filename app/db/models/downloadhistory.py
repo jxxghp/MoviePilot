@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query, db_update
+from app.db.decorators import async_db_query, db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
@@ -295,7 +295,6 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @db_update
     def delete_before(
         cls,
         db: Session,
@@ -367,14 +366,12 @@ class DownloadFiles(Base):
         return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 
     @classmethod
-    @db_update
     def delete_by_fullpath(cls, db: Session, fullpath: str):
         db.execute(
             update(cls).where(cls.fullpath == fullpath, cls.state == 1).values(state=0)
         )
 
     @classmethod
-    @db_update
     def delete_orphans(
         cls,
         db: Session,

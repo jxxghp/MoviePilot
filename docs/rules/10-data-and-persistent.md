@@ -84,9 +84,9 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records the
-  existing Model transaction decorators. The current 168 legacy decorators are
+  existing Model transaction decorators. The current 123 decorators are query-only
   migration debt: they may decrease but must never increase or move to a new
-  Model method.
+  Model method. Both `db_update` and `async_db_update` must remain at zero.
 - New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
   `async_db_update`, create a Session, or call `commit()` / `rollback()`.
 - Oper receives a caller-owned Session and may query, add, update, delete, or

@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import (
+    get_async_session,
+    get_host_runtime,
     get_subscription_history_repository,
     get_subscription_outbox,
     get_subscription_repository,
     get_subscription_transaction,
+    get_sync_session,
 )
-from app.api.data import get_async_db, get_db
-from app.api.dependencies.data import repository
 from app.application.outbox import AsyncOutboxTransaction
 from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
@@ -36,6 +37,7 @@ from app.application.subscription.search import SearchSubscriptionsCommand
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
+from app.startup.context import HostRuntime
 
 
 async def _publish_subscribe_deleted(
@@ -93,7 +95,8 @@ def get_delete_subscriptions_by_identity_command(
 
 def get_search_subscriptions_command(
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SearchSubscriptionsCommand:
     """组装手工订阅搜索用例，并把调度延迟到响应后的后台任务。"""
     def schedule_search(subscribe_id: int | None, state: str | None) -> None:
@@ -107,19 +110,20 @@ def get_search_subscriptions_command(
         )
 
     return SearchSubscriptionsCommand(
-        repository=repository("subscribe", db),
+        repository=runtime.subscription.repository(db),
         schedule_search=schedule_search,
     )
 
 
 def get_subscription_query_service(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SubscriptionQueryService:
     """组装订阅和订阅历史异步查询服务。"""
     return SubscriptionQueryService(
-        repository=repository("subscribe", db),
-        async_repository=repository("subscribe", db),
-        history_repository=repository("subscribe_history", db),
+        repository=runtime.subscription.repository(db),
+        async_repository=runtime.subscription.repository(db),
+        history_repository=runtime.subscription.history_repository(db),
     )
 
 
@@ -142,18 +146,25 @@ def get_subscription_mutation_service(
 
 
 def get_subscription_sync_mutation_service(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SubscriptionMutationService:
     """组装同步订阅查询服务，供文件信息接口使用。"""
-    return SubscriptionMutationService(repository=repository("subscribe", db))
+    return SubscriptionMutationService(
+        repository=cast(
+            SubscriptionMutationRepository,
+            runtime.subscription.repository(db),
+        )
+    )
 
 
 def get_servarr_subscription_service(
-    async_db: AsyncSession = Depends(get_async_db),
-    db: Session = Depends(get_db),
+    async_db: AsyncSession = Depends(get_async_session),
+    db: Session = Depends(get_sync_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> ServarrSubscriptionService:
     """组装 Servarr 兼容路由的请求级订阅数据用例。"""
     return ServarrSubscriptionService(
-        async_repository=repository("subscribe", async_db),
-        sync_repository=repository("subscribe", db),
+        async_repository=runtime.subscription.repository(async_db),
+        sync_repository=runtime.subscription.repository(db),
     )

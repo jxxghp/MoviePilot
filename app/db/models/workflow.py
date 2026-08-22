@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query
 
 
 class Workflow(Base):
@@ -135,8 +135,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_update_state(cls, db: AsyncSession, wid: int, state: str):
+        """在调用方持有的异步事务中暂存工作流状态。"""
         await db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
@@ -146,8 +146,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_start(cls, db: AsyncSession, wid: int):
+        """在调用方持有的异步事务中暂存运行中状态。"""
         await db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
@@ -163,8 +163,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_fail(cls, db: AsyncSession, wid: int, result: str):
+        """在调用方持有的异步事务中暂存失败结果。"""
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -187,8 +187,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_success(cls, db: AsyncSession, wid: int, result: Optional[str] = None):
+        """在调用方持有的异步事务中暂存成功结果。"""
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -212,8 +212,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_reset(cls, db: AsyncSession, wid: int, reset_count: Optional[bool] = False):
+        """在调用方持有的异步事务中暂存执行状态重置。"""
         await db.execute(update(cls).where(cls.id == wid).values(
             state='W',
             result=None,
@@ -243,9 +243,9 @@ class Workflow(Base):
         return True
 
     @classmethod
-    @async_db_update
     async def async_update_current_action(cls, db: AsyncSession, wid: int, action_id: str, context: dict,
                                           execution_state: Optional[dict] = None):
+        """在调用方持有的异步事务中暂存动作进度。"""
         # 先获取当前current_action
         result = await db.execute(select(cls.current_action).where(cls.id == wid))
         current_action = result.scalar()
