@@ -130,6 +130,8 @@ RETIRED_CANONICAL_FILES = (
     "app/application/plugins.py",
     "app/application/subscribe.py",
 )
+# 空壳目录扫描豁免的 app/ 下顶级目录：目录内容由插件仓自治，属运行期数据。
+SHELL_SCAN_EXEMPT_ROOTS = frozenset({"plugins"})
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
     "app/adapters/system/plugin",
@@ -329,6 +331,53 @@ def test_legacy_source_directories_do_not_exist():
         if (APP_ROOT / root_name).exists()
     ]
     assert leftovers == []
+
+
+def _shell_directories() -> list[str]:
+    """收集 `app/` 下不含任何真实文件的空壳目录。
+
+    `__pycache__` 目录自身及其内容不计为真实文件；`SHELL_SCAN_EXEMPT_ROOTS`
+    列出的顶级目录整棵子树不参与扫描。判据是目录递归为空而非是否含 `.py`：
+    零 `.py` 的资源目录（`locales`、能力清单、人格预设）是合法的。
+
+    返回：空壳目录相对仓库根的路径列表，按字典序排序。
+    """
+    directories: set[Path] = set()
+    populated: set[Path] = set()
+    for entry in APP_ROOT.rglob("*"):
+        relative = entry.relative_to(APP_ROOT)
+        if "__pycache__" in relative.parts:
+            continue
+        if relative.parts[0] in SHELL_SCAN_EXEMPT_ROOTS:
+            continue
+        if entry.is_dir():
+            directories.add(entry)
+        else:
+            populated.update(entry.parents)
+    return sorted(
+        str(directory.relative_to(PROJECT_ROOT))
+        for directory in directories - populated
+    )
+
+
+def test_no_shell_directories_remain():
+    """切分或搬迁后不得留下空壳目录。
+
+    没有 `__init__.py` 的目录仍是可导入的命名空间包，本仓的 `app/plugins/`
+    正依赖这一行为。因此只剩 `__pycache__` 的目录不是碍眼而已：
+    `import` 与 `importlib.util.find_spec` 对已退役路径继续成功并返回空包，
+    凭 `ImportError` 判断路径是否退役的调用方会静默走错分支。
+    """
+    shells = _shell_directories()
+    details = "\n".join(f"  - {shell}" for shell in shells)
+    assert shells == [], (
+        f"发现 {len(shells)} 个空壳目录（递归不含任何非 __pycache__ 文件）：\n"
+        f"{details}\n"
+        "判为残留的理由：目录在仓库中零文件，却仍是可被 import 解析的命名空间包，"
+        "使已退役路径的 import 与 find_spec 继续成功。\n"
+        "处理方式：连同目录内的 __pycache__ 一并删除该目录；"
+        "若属插件仓运行期数据，应加入 SHELL_SCAN_EXEMPT_ROOTS。"
+    )
 
 
 def test_retired_canonical_filenames_do_not_return():
