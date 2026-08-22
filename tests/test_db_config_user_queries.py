@@ -212,6 +212,21 @@ def test_passkey_listing_excludes_inactive_credentials(db):
         {"cred-active-1", "cred-active-2"}
 
 
+def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
+    """PassKeyOper 的宿主查询使用调用方 Session，不创建兼容事务。"""
+    db.add(_passkey(9002, "cred-oper"), _passkey(9002, "cred-oper-inactive", is_active=False))
+    monkeypatch.setattr(
+        "app.db.oper.passkey.run_sync_transaction",
+        lambda _query: pytest.fail("显式 Session 查询不应创建兼容事务"),
+    )
+
+    oper = PassKeyOper(db.session)
+
+    assert [item.credential_id for item in oper.list_by_user_id(9002)] == ["cred-oper"]
+    assert oper.get_by_credential_id("cred-oper").user_id == 9002
+    assert oper.get_by_credential_id("cred-oper-inactive") is None
+
+
 def test_passkey_lookup_by_credential_id_skips_inactive(db):
     """
     按凭据 ID 查找同样必须忽略停用记录，否则停用的密钥仍可完成认证。

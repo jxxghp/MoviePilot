@@ -3,10 +3,10 @@
     "by_kind": {
       "async_db_query": 49,
       "async_db_update": 0,
-      "db_query": 72,
+      "db_query": 70,
       "db_update": 0
     },
-    "count": 121,
+    "count": 119,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -191,17 +191,7 @@
       {
         "decorator": "db_query",
         "file": "app/db/models/passkey.py",
-        "method": "PassKey.get_by_credential_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/passkey.py",
         "method": "PassKey.get_by_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.get_by_user_id"
       },
       {
         "decorator": "async_db_query",

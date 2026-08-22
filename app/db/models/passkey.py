@@ -8,6 +8,21 @@ from app.db.base import Base, get_id_column
 from app.db.decorators import db_query, async_db_query
 
 
+def _get_by_user_id_statement(model: type["PassKey"], user_id: int):
+    """构造按用户筛选启用 PassKey 的查询语句。"""
+    return select(model).where(model.user_id == user_id, model.is_active.is_(True))
+
+
+def _get_by_credential_id_statement(
+        model: type["PassKey"], credential_id: str,
+):
+    """构造按凭证 ID 筛选启用 PassKey 的查询语句。"""
+    return select(model).where(
+        model.credential_id == credential_id,
+        model.is_active.is_(True),
+    )
+
+
 class PassKey(Base):
     """
     用户PassKey凭证表
@@ -36,11 +51,10 @@ class PassKey(Base):
     transports: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
-    @db_query
     def get_by_user_id(cls, db: Session, user_id: int):
         """获取用户的所有PassKey"""
         return list(db.execute(
-            select(cls).where(cls.user_id == user_id, cls.is_active.is_(True))
+            _get_by_user_id_statement(cls, user_id)
         ).scalars().all())
 
     @classmethod
@@ -48,16 +62,15 @@ class PassKey(Base):
     async def async_get_by_user_id(cls, db: AsyncSession, user_id: int):
         """异步获取用户的所有PassKey"""
         result = await db.execute(
-            select(cls).filter(cls.user_id == user_id, cls.is_active.is_(True))
+            _get_by_user_id_statement(cls, user_id)
         )
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
     def get_by_credential_id(cls, db: Session, credential_id: str):
         """根据凭证ID获取PassKey"""
         return db.execute(
-            select(cls).where(cls.credential_id == credential_id, cls.is_active.is_(True))
+            _get_by_credential_id_statement(cls, credential_id)
         ).scalars().first()
 
     @classmethod
@@ -65,7 +78,7 @@ class PassKey(Base):
     async def async_get_by_credential_id(cls, db: AsyncSession, credential_id: str):
         """异步根据凭证ID获取PassKey"""
         result = await db.execute(
-            select(cls).filter(cls.credential_id == credential_id, cls.is_active.is_(True))
+            _get_by_credential_id_statement(cls, credential_id)
         )
         return result.scalars().first()
 
