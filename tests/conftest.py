@@ -119,7 +119,9 @@ def configure_plugin_system_services():
     )
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.messaging.chat import (
+        AgentChatService,
         AgentChatPersistenceService,
+        configure_agent_chat_service,
         configure_agent_chat_persistence,
     )
     from app.runtime.cache import AsyncFileCache, FileCache
@@ -265,6 +267,7 @@ def configure_plugin_system_services():
             async_executor=database_executor,
         )
     )
+    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
     from app.adapters.external.market import (
         PluginHelper,
         VERSION_BACKWARD_COMPATIBLE_FLAGS,

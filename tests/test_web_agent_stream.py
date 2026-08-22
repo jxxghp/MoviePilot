@@ -175,28 +175,29 @@ def test_build_web_agent_session_id_reuses_accessible_history():
     assert _build_web_agent_session_id(user, "telegram-session") == "telegram-session"
 
 
-def test_build_web_agent_session_id_async_uses_worker_persistence():
-    """异步 Web 会话解析应通过 AgentChat worker 端口读取历史。"""
+def test_build_web_agent_session_id_async_uses_native_async_persistence():
+    """异步 Web 会话解析应通过 native async 会话服务读取历史。"""
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
-    persistence = SimpleNamespace(
-        async_get=AsyncMock(
+    service = SimpleNamespace(
+        get=AsyncMock(
             return_value=SimpleNamespace(
                 user_id="telegram-user",
                 username="tester",
+                agent_messages=[],
             )
         )
     )
 
     with patch(
-        "app.api.endpoints.agent.get_configured_agent_chat_persistence",
-        return_value=persistence,
+        "app.api.endpoints.agent.get_configured_agent_chat_service",
+        return_value=service,
     ):
         session_id = asyncio.run(
             _build_web_agent_session_id_async(user, "telegram-session")
         )
 
     assert session_id == "telegram-session"
-    persistence.async_get.assert_awaited_once_with("telegram-session")
+    service.get.assert_awaited_once_with("telegram-session")
 
 
 def test_apply_web_agent_display_event_updates_snapshot():

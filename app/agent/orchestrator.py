@@ -82,6 +82,7 @@ def _get_plugin_tools_revision() -> int:
 from app.application.agentdata import AgentTaskPort as AgentTaskOper
 from app.application.agentdata import UserPort as UserOper
 from app.application.messaging.chat import (
+    get_configured_agent_chat_service,
     get_configured_agent_chat_persistence,
     has_custom_agent_chat_title,
 )
@@ -579,7 +580,7 @@ class MoviePilotAgent:
             return
         self._tool_context["chat_title_prepared"] = True
         try:
-            chat = await get_configured_agent_chat_persistence().async_get(
+            chat = await get_configured_agent_chat_service().get(
                 session_id=self.session_id,
                 user_id=self.user_id,
             )

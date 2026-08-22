@@ -29,6 +29,7 @@ def _chat() -> SimpleNamespace:
         created_at=None,
         updated_at=None,
         display_messages=[],
+        agent_messages=[],
     )
 
 

@@ -85,14 +85,6 @@ class AsyncAgentChatRepository(Protocol):
 class SyncAgentChatRepository(Protocol):
     """仅包含 Agent 编排所需同步持久化方法的适配器端口。"""
 
-    def get(
-        self,
-        session_id: str,
-        user_id: Optional[str] = None,
-    ) -> Optional[Any]:
-        """读取服务端会话。"""
-        ...
-
     def append_display_messages(
         self,
         session_id: str,
@@ -165,6 +157,7 @@ class AgentChatRecord:
     created_at: Any
     updated_at: Any
     messages: list[dict]
+    agent_messages: list[dict]
 
 
 class AsyncUnitOfWork(Protocol):
@@ -222,9 +215,16 @@ class AgentChatService:
             return None
         return projected
 
-    async def get(self, session_id: str) -> Optional[AgentChatRecord]:
+    async def get(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[AgentChatRecord]:
         """读取不附带授权判断的会话投影。"""
-        record = await self._repository.async_get(session_id=session_id)
+        record = await self._repository.async_get(
+            session_id=session_id,
+            user_id=user_id,
+        )
         if record is None:
             return None
         return self._project(record)
@@ -338,11 +338,12 @@ class AgentChatService:
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=list(record.display_messages or []),
+            agent_messages=list(record.agent_messages or []),
         )
 
 
 class AgentChatPersistenceService:
-    """把 Agent 编排所需的同步短事务委托给有界数据库 worker。"""
+    """把 Agent 编排所需的同步持久化操作委托给有界数据库 worker。"""
 
     def __init__(
         self,
@@ -354,22 +355,9 @@ class AgentChatPersistenceService:
         self._async_executor = async_executor
 
     async def _run(self, operation: Callable[[SyncAgentChatRepository], T]) -> T:
-        """在线程 worker 中执行一个完整的同步 AgentChat 短事务。"""
+        """在线程 worker 中执行一个同步 AgentChat 持久化操作。"""
         return await self._async_executor.run(
             lambda: operation(self._repository())
-        )
-
-    async def async_get(
-        self,
-        session_id: str,
-        user_id: Optional[str] = None,
-    ) -> Optional[Any]:
-        """异步读取会话，实际查询由有界 worker 承接。"""
-        return await self._run(
-            lambda repository: repository.get(
-                session_id=session_id,
-                user_id=user_id,
-            )
         )
 
     async def async_append_display_messages(
@@ -383,9 +371,9 @@ class AgentChatPersistenceService:
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> None:
         """异步追加展示消息，等待同步事务取得确定终态。"""
-        return await self._run(
+        await self._run(
             lambda repository: repository.append_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -397,6 +385,7 @@ class AgentChatPersistenceService:
                 client_session_id=client_session_id,
             )
         )
+        return None
 
     async def async_save_display_messages(
         self,
@@ -409,9 +398,9 @@ class AgentChatPersistenceService:
         source: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         client_session_id: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> None:
         """异步保存展示消息快照，实际写入由有界 worker 承接。"""
-        return await self._run(
+        await self._run(
             lambda repository: repository.save_display_messages(
                 session_id=session_id,
                 user_id=user_id,
@@ -423,6 +412,7 @@ class AgentChatPersistenceService:
                 client_session_id=client_session_id,
             )
         )
+        return None
 
     async def async_save_agent_messages(
         self,

@@ -5,13 +5,11 @@ from __future__ import annotations
 import asyncio
 import threading
 from uuid import uuid4
-from types import SimpleNamespace
 
 import pytest
 
-from app.application.messaging.chat import AgentChatPersistenceService
+from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
 from app.db.oper.agentchat import AgentChatOper
-from app.db.models.agentchat import AgentChat
 from app.db.worker import DatabaseWorker
 
 
@@ -39,10 +37,6 @@ class _Repository:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
 
-    def get(self, **kwargs):
-        self.calls.append(("get", kwargs))
-        return SimpleNamespace(agent_messages=[])
-
     def append_display_messages(self, **kwargs):
         self.calls.append(("append_display_messages", kwargs))
         return None
@@ -60,7 +54,7 @@ class _Repository:
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> None:
-    """同步查询和写入都必须经过一次 worker admission。"""
+    """同步 AgentChat 写入必须经过一次 worker admission。"""
     executor = _Executor()
     repository = _Repository()
     service = AgentChatPersistenceService(
@@ -69,7 +63,6 @@ async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> No
     )
     caller_thread_id = threading.get_ident()
 
-    await service.async_get("session-1", user_id="1")
     await service.async_append_display_messages(
         session_id="session-1",
         user_id="1",
@@ -91,10 +84,9 @@ async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> No
         title="标题",
     )
 
-    assert executor.calls == 5
+    assert executor.calls == 4
     assert executor.worker_thread_id != caller_thread_id
     assert [name for name, _kwargs in repository.calls] == [
-        "get",
         "append_display_messages",
         "save_display_messages",
         "save_agent_messages",
@@ -125,17 +117,18 @@ async def test_agent_chat_persistence_propagates_worker_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() -> None:
-    """真实 AgentChat Oper 经 worker 写入后可被后续 worker 查询恢复。"""
+    """真实 AgentChat Oper 经 worker 写入后可被 native async 查询恢复。"""
     worker = DatabaseWorker(max_workers=1, capacity=4)
     await worker.start()
     session_id = f"worker-{uuid4().hex}"
-    service = AgentChatPersistenceService(
+    persistence = AgentChatPersistenceService(
         repository=AgentChatOper,
         async_executor=worker,
     )
+    query = AgentChatService(repository=AgentChatOper())
 
     try:
-        await service.async_save_display_messages(
+        await persistence.async_save_display_messages(
             session_id=session_id,
             user_id="worker-user",
             username="worker-user",
@@ -143,12 +136,16 @@ async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() 
             source="worker-test",
             messages=[{"role": "user", "content": "worker"}],
         )
-        chat = await service.async_get(session_id, user_id="worker-user")
+        chat = await query.get(
+            session_id,
+            user_id="worker-user",
+        )
         assert chat is not None
         assert chat.message_count == 1
-        assert chat.display_messages[0]["content"] == "worker"
+        assert chat.messages[0]["content"] == "worker"
     finally:
-        chat = AgentChatOper().get(session_id=session_id, user_id="worker-user")
-        if chat is not None:
-            AgentChat.delete(rid=chat.id)
+        await AgentChatOper().async_delete(
+            session_id=session_id,
+            user_id="worker-user",
+        )
         await worker.shutdown()

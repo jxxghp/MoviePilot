@@ -518,12 +518,12 @@ async def _build_web_agent_session_id_async(
     user: ApiPrincipal,
     session_id: Optional[str],
 ) -> str:
-    """异步解析 Web Agent 会话 ID，历史查询经有界数据库 worker 承接。"""
+    """异步解析 Web Agent 会话 ID，并复用异步会话查询端口。"""
     seed = str(session_id or "").strip() or uuid.uuid4().hex
     if seed.startswith(WEB_AGENT_SESSION_PREFIX):
         return seed
     try:
-        existing_chat = await get_configured_agent_chat_persistence().async_get(seed)
+        existing_chat = await get_configured_agent_chat_service().get(seed)
         if existing_chat and AgentChatService.can_access(existing_chat, user):
             return seed
     except Exception as e:
@@ -663,9 +663,7 @@ async def _save_web_agent_display_snapshot(
     保存 WebAgent 当前展示消息快照。
     """
     try:
-        existing_chat = await get_configured_agent_chat_persistence().async_get(
-            session_id
-        )
+        existing_chat = await get_configured_agent_chat_service().get(session_id)
         await get_configured_agent_chat_persistence().async_save_display_messages(
             session_id=session_id,
             user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
