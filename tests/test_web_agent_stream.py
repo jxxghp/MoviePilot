@@ -1355,9 +1355,10 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
             await asyncio.sleep(0.001)
         assert snapshot_started.is_set()
         assert not snapshot_finished.is_set()
+        await iterator.aclose()
+        assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
-        await iterator.aclose()
         return "".join(received)
 
     try:
@@ -1432,9 +1433,10 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         assert snapshot_started.is_set()
         assert not snapshot_finished.is_set()
 
+        await iterator.aclose()
+        assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
-        await iterator.aclose()
         return "".join(received)
 
     try:
