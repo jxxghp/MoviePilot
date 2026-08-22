@@ -6,7 +6,7 @@ depends_on = []
 
 [metadata]
 name = "DingTalk"
-type = "notification"
+service_capability = "notification"
 subtype = "DingTalk"
 priority = 11
 

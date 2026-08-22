@@ -6,9 +6,8 @@ depends_on = []
 
 [metadata]
 name = "IMDb"
-type = "mediarecognize"
-subtype = "IMDb"
 priority = 4
+media_sources = ["imdb"]
 
 [activation]
 policy = "bootstrap"
