@@ -207,7 +207,8 @@ part of migrated-capability cleanup:
 - `app/doctor/`
 - `app/modules/`
 - `app/monitor/`
-- `app/plugins/`
+- `app/plugins/`（扩展的安装挂载点，纯数据目录：不放任何宿主源码，连
+  `__init__.py` 都没有，`app.plugins` 是命名空间包）
 - `app/schemas/`
 - `app/startup/`
 - `app/testing/`
@@ -240,6 +241,11 @@ Use these questions in order before creating or moving a migrated capability:
    `app/adapters/external`.
 10. Is it public to plugins or only preserving an old path? Curate it in
     `app/sdk` or map it in `app/runtime/compat`; never move implementation there.
+    Sole exception: `_PluginBase` itself. It is not a re-export of an
+    implementation living elsewhere — it *is* the extension ABI, and its only
+    other possible home, `app/plugins/`, must stay a pure data directory so a
+    container volume can cover it. Its public surface is pinned by
+    `SDK_PLUGIN_BASE_SURFACE` in `app/sdk/_exports.py`.
 
 Do not create generic `common`, `helper` or `utils` buckets. Reuse does not erase
 ownership.
@@ -406,7 +412,8 @@ policy. `app/db` therefore has no dependency on `app/domain`.
   Application/Oper，不把领域对象或 HTTP 依赖重新引回 DB 层。
 - 物理模块仍存在但公开符号已经迁走时（例如 `app.domain.media` 的身份原语、
   `app.schemas` 的整理工作项），兼容 Finder 在标准 Loader 执行后叠加白名单符号路由；
-  canonical 模块不得为兼容而反向 import `app.runtime.compat`。
+  canonical 模块不得为兼容而反向 import `app.runtime.compat`。命名空间包同样适用：
+  `app.plugins` 没有 `__init__.py`，兼容 Finder 直接给它挂叠加层。
 - Canonical implementation packages may not import `app/runtime/compat` or
   `app/sdk`.
 - Host code uses canonical paths. Only `app/plugins/` and compatibility tests

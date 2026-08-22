@@ -113,13 +113,18 @@ def isolate_config_dir() -> str:
 
 
 def _expose_plugin_source(path: Path) -> None:
-    """让插件仓源码通过生产运行时的 ``app.plugins.<id>`` 命名空间导入。"""
+    """让插件仓源码通过生产运行时的 ``app.plugins.<id>`` 命名空间导入。
+
+    ``app.plugins`` 是命名空间包，``__path__`` 为动态重算的 ``_NamespacePath``，
+    只支持追加、不支持按位置插入；改为整体赋值一份列表，插件仓源码稳定排在最前。
+    """
     from importlib import import_module
 
     plugins_package = import_module("app.plugins")
     value = str(path)
-    if value not in plugins_package.__path__:
-        plugins_package.__path__.insert(0, value)
+    search_path = list(plugins_package.__path__)
+    if value not in search_path:
+        plugins_package.__path__ = [value, *search_path]
 
 
 def ensure_sites_stub() -> None:

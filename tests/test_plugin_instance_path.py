@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import plugins as plugins_module
-from app.plugins import plugin_instance_path
+from app.runtime.extensions import paths as plugin_paths_module
+from app.runtime.extensions.paths import plugin_instance_path
 from app.runtime.extensions.instance import DEFAULT_INSTANCE_ID
 
 
@@ -23,7 +23,7 @@ def plugin_data_root(
     root = tmp_path / "plugins"
     root.mkdir()
     monkeypatch.setattr(
-        plugins_module,
+        plugin_paths_module,
         "settings",
         SimpleNamespace(PLUGIN_DATA_PATH=root),
     )
@@ -97,7 +97,7 @@ def test_fresh_plugin_skips_migration(plugin_data_root: Path) -> None:
 
     assert target == plugin_data_root / "FreshPlugin" / "default" / "data"
     assert target.is_dir()
-    sentinel = plugin_data_root / "FreshPlugin" / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = plugin_data_root / "FreshPlugin" / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert sentinel.is_file()
 
 
@@ -116,7 +116,7 @@ def test_legacy_layout_is_migrated_into_default_instance(
     assert target == plugin_data_root / "LegacyPlugin" / "default" / "data"
     assert (target / "state.json").read_text(encoding="utf-8") == '{"k": 1}'
     assert (target / "sub" / "nested.txt").read_text(encoding="utf-8") == "nested"
-    sentinel = plugin_data_root / "LegacyPlugin" / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = plugin_data_root / "LegacyPlugin" / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert sentinel.is_file()
     # 迁移只搬整目录，不残留其它中转目录
     leftovers = [
@@ -134,7 +134,7 @@ def test_migration_is_idempotent_on_second_call(plugin_data_root: Path) -> None:
     (legacy_root / "state.json").write_text("v1", encoding="utf-8")
 
     first = plugin_instance_path("RepeatPlugin", DEFAULT_INSTANCE_ID, "data")
-    sentinel = plugin_data_root / "RepeatPlugin" / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = plugin_data_root / "RepeatPlugin" / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     sentinel_mtime = sentinel.stat().st_mtime_ns
 
     second = plugin_instance_path("RepeatPlugin", DEFAULT_INSTANCE_ID, "data")
@@ -158,7 +158,7 @@ def test_migration_resumes_after_interrupted_first_rename(
     assert target == plugin_data_root / plugin_dir_name / "default" / "data"
     assert (target / "state.json").read_text(encoding="utf-8") == "survived"
     assert not staging.exists()
-    sentinel = plugin_data_root / plugin_dir_name / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = plugin_data_root / plugin_dir_name / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert sentinel.is_file()
 
 
@@ -178,7 +178,7 @@ def test_migration_resumes_after_interrupted_second_rename(
     assert target == plugin_root / "default" / "data"
     assert (target / "state.json").read_text(encoding="utf-8") == "still there"
     assert not staging.exists()
-    sentinel = plugin_root / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = plugin_root / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert sentinel.is_file()
 
 
@@ -200,7 +200,7 @@ def test_cross_device_rename_abandons_migration(
 
     assert target == legacy_root
     assert (target / "state.json").read_text(encoding="utf-8") == "kept"
-    sentinel = legacy_root / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = legacy_root / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert not sentinel.exists()
     leftovers = [
         entry
@@ -229,5 +229,5 @@ def test_migration_failure_returns_usable_fallback_path(
     assert target == legacy_root
     assert target.is_dir()
     assert (target / "state.json").read_text(encoding="utf-8") == "still usable"
-    sentinel = legacy_root / plugins_module._INSTANCE_LAYOUT_SENTINEL_NAME
+    sentinel = legacy_root / plugin_paths_module._INSTANCE_LAYOUT_SENTINEL_NAME
     assert not sentinel.exists()

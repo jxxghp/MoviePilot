@@ -21,7 +21,7 @@ import pytest
 
 from app.agent.tools.base import MoviePilotTool
 from app.modules._base.storage import StorageBase
-from app.plugins import _PluginBase
+from app.sdk.extension import _PluginBase
 from app.runtime.extensions.declaration import (
     ActionDeclaration,
     AgentToolDeclaration,

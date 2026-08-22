@@ -12,11 +12,11 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
-from app import plugins as plugins_module
+from app.runtime.extensions import paths as plugin_paths_module
 from app.db.models.pluginconfig import PluginConfig
 from app.db.models.plugindata import PluginData
 from app.foundation.singleton import Singleton
-from app.plugins import _PluginBase
+from app.sdk.extension import _PluginBase
 from app.runtime.event.binding import EventBindingResolver, EventHandlerBinding
 from app.runtime.events import EventManager
 from app.runtime.extensions import plugin_manager as plugin_manager_module
@@ -187,7 +187,7 @@ def plugin_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """把插件数据根目录指向临时目录。"""
     root = tmp_path / "plugins"
     root.mkdir()
-    monkeypatch.setattr(plugins_module, "settings", SimpleNamespace(PLUGIN_DATA_PATH=root))
+    monkeypatch.setattr(plugin_paths_module, "settings", SimpleNamespace(PLUGIN_DATA_PATH=root))
     return root
 
 
