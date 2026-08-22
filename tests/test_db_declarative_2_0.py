@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import DeclarativeBase
 
-from app.db import Base
+from app.db.base import Base
 from app.db.models import load_all_models
 
 

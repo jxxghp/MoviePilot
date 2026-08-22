@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
-from app.agent import AgentManager
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
+    AgentManager,
     AgentManagerQueueFullError,
     AgentManagerUnavailableError,
 )
