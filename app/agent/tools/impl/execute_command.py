@@ -21,7 +21,7 @@ from app.agent.tools.impl._terminal_session import (
     TERMINAL_DEFAULT_READ_BYTES,
     TERMINAL_MAX_READ_BYTES,
     TERMINAL_WAIT_DEFAULT_MS,
-    terminal_session_manager,
+    get_terminal_session_manager,
 )
 from app.runtime.log import logger
 
@@ -528,6 +528,7 @@ class ExecuteCommandTool(MoviePilotTool):
         )
 
         try:
+            terminal_session_manager = get_terminal_session_manager()
             if normalized_action == "start":
                 start_command = self._require_command(command)
                 self._validate_command(
