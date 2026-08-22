@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app import schemas
 from app.chain import mediaserver as MEDIA_SERVER_CHAIN_MODULE
 from app.chain.mediaserver import MediaServerChain
-from app.db import Base
+from app.db.base import Base
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.models.mediaserver import MediaServerItem
 from app.runtime.config import global_vars

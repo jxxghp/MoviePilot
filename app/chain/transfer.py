@@ -14,7 +14,7 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
 from app.runtime.config import global_vars
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic

@@ -1,6 +1,6 @@
 import threading
 from datetime import datetime
-from typing import Callable, Dict, List, Union, Optional, Generator, Any
+from typing import Callable, Dict, List, Union, Optional, Generator, Any, Tuple
 
 from app.chain import ChainBase
 from app.runtime.config import global_vars
