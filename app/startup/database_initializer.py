@@ -10,7 +10,9 @@ from alembic.util import CommandError
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.db.base import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models

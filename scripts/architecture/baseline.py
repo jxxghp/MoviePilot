@@ -100,7 +100,8 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
             if not isinstance(node, ast.ImportFrom):
                 continue
             if node.module == "app.runtime.config" and any(
-                alias.name == "settings" for alias in node.names
+                alias.name == "settings" and alias.asname in (None, "settings")
+                for alias in node.names
             ):
                 imports_settings = True
             if node.module == "app.db.oper.systemconfig":

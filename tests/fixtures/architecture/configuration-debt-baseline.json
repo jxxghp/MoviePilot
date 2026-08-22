@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 15,
+    "count": 8,
     "files": [
       "app/db/base.py",
       "app/db/engine.py",
@@ -18,14 +18,7 @@
       "app/modules/qbittorrent/__init__.py",
       "app/modules/redis/__init__.py",
       "app/modules/rtorrent/__init__.py",
-      "app/modules/transmission/__init__.py",
-      "app/startup/agent_initializer.py",
-      "app/startup/database.py",
-      "app/startup/database_initializer.py",
-      "app/startup/domain_initializer.py",
-      "app/startup/lifecycle/__init__.py",
-      "app/startup/modules_initializer.py",
-      "app/startup/plugins_initializer.py"
+      "app/modules/transmission/__init__.py"
     ]
   },
   "system_config_oper_constructions": {

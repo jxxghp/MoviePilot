@@ -17,7 +17,10 @@ except ImportError as e:
 
 from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.config import settings as legacy_settings
+
+settings = RuntimeSettingsCompat()
 from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -613,7 +616,7 @@ async def init_modules() -> HostRuntime:
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
-    configure_runtime_setting_provider(lambda key: getattr(settings, key))
+    configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
