@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
 
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.log import logger
 
 
@@ -329,19 +329,14 @@ class DataCleanupService:
 
 def read_cleanup_policy() -> CleanupPolicy:
     """读取并规范化当前数据清理配置，单次运行期间保持快照一致。"""
+    config = get_chain_runtime_config_snapshot()
     return CleanupPolicy(
-        enabled=bool(settings.DATA_CLEANUP_ENABLE),
-        message_days=_normalize_days(settings.DATA_CLEANUP_MESSAGE_DAYS),
-        download_history_days=_normalize_days(
-            settings.DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS
-        ),
-        site_userdata_days=_normalize_days(settings.DATA_CLEANUP_SITE_USERDATA_DAYS),
-        transfer_history_days=_normalize_days(
-            settings.DATA_CLEANUP_TRANSFER_HISTORY_DAYS
-        ),
-        download_failure_days=_normalize_days(
-            settings.DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS
-        ),
+        enabled=bool(config.data_cleanup_enable),
+        message_days=_normalize_days(config.data_cleanup_message_days),
+        download_history_days=_normalize_days(config.data_cleanup_download_history_days),
+        site_userdata_days=_normalize_days(config.data_cleanup_site_userdata_days),
+        transfer_history_days=_normalize_days(config.data_cleanup_transfer_history_days),
+        download_failure_days=_normalize_days(config.data_cleanup_download_failure_days),
     )
 
 

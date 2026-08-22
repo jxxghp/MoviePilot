@@ -150,6 +150,12 @@ class ChainRuntimeConfig:
     global_image_cache: bool = False
     encoding_detection_performance_mode: bool = False
     encoding_detection_min_confidence: float = 0.5
+    data_cleanup_enable: bool = False
+    data_cleanup_message_days: Any = 0
+    data_cleanup_download_history_days: Any = 0
+    data_cleanup_site_userdata_days: Any = 0
+    data_cleanup_transfer_history_days: Any = 0
+    data_cleanup_download_failure_days: Any = 0
     download_subtitle: bool = True
     music_metadata_to_simplified: bool = True
     recognize_plugin_first: bool = False
