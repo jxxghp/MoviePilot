@@ -40,6 +40,34 @@ def test_subscription_and_outbox_intent_commit_together() -> None:
     assert report_intent.event_key.endswith(":report")
 
 
+def test_subscription_notification_snapshot_is_part_of_same_transaction() -> None:
+    """订阅新增通知快照与事件、统计意图一起暂存，便于崩溃恢复。"""
+    calls = []
+    repository = MagicMock()
+    repository.stage_add.side_effect = lambda *_args: calls.append("subscription") or _Staged()
+    outbox = MagicMock()
+    outbox.stage.side_effect = lambda *_args: calls.append("outbox")
+    unit_of_work = MagicMock()
+    unit_of_work.commit.side_effect = lambda: calls.append("commit")
+    command = CreateSubscriptionCommand(repository, unit_of_work, outbox=outbox)
+
+    command.execute(
+        {},
+        {"name": "demo"},
+        "user",
+        notification={"title": "订阅成功", "text": "demo"},
+    )
+
+    intents = [call.args[0] for call in outbox.stage.call_args_list]
+    assert [intent.topic for intent in intents] == [
+        "subscribe.added",
+        "subscribe.added.notification",
+        "subscribe.added.report",
+    ]
+    assert intents[1].payload["message"]["text"] == "demo"
+    assert calls[-1] == "commit"
+
+
 def test_outbox_stage_failure_rolls_back_business_transaction() -> None:
     """intent 无法持久化时订阅行不得单独提交。"""
     repository = MagicMock()
