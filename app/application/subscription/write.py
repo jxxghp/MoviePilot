@@ -159,10 +159,13 @@ class CreateSubscriptionCommand:
             staged = self._repository.stage_add(identity, payload, username)
             if staged.created:
                 if self._outbox:
-                    self._outbox.stage(
-                        _subscribe_added_intent(staged.subscribe_id, payload, username),
-                        datetime.now(timezone.utc),
-                    )
+                    now = datetime.now(timezone.utc)
+                    for intent in _subscribe_added_intents(
+                        staged.subscribe_id,
+                        payload,
+                        username,
+                    ):
+                        self._outbox.stage(intent, now)
                 self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
@@ -202,10 +205,13 @@ class AsyncCreateSubscriptionCommand:
             )
             if staged.created:
                 if self._outbox:
-                    await self._outbox.stage(
-                        _subscribe_added_intent(staged.subscribe_id, payload, username),
-                        datetime.now(timezone.utc),
-                    )
+                    now = datetime.now(timezone.utc)
+                    for intent in _subscribe_added_intents(
+                        staged.subscribe_id,
+                        payload,
+                        username,
+                    ):
+                        await self._outbox.stage(intent, now)
                 await self._unit_of_work.commit()
         except Exception:
             await self._unit_of_work.rollback()
@@ -215,20 +221,29 @@ class AsyncCreateSubscriptionCommand:
         return staged.subscribe_id, staged.message
 
 
-def _subscribe_added_intent(
+def _subscribe_added_intents(
     subscribe_id: int,
     payload: dict,
     username: str | None,
-) -> OutboxIntent:
-    """构造版本化订阅新增事件，event key 同时作为 handler 幂等键。"""
-    return OutboxIntent(
-        event_key=subscription_added_event_key(subscribe_id, payload),
-        topic="subscribe.added",
-        payload={
-            "subscribe_id": subscribe_id,
-            "username": username,
-            "mediainfo": dict(payload),
-        },
+) -> tuple[OutboxIntent, OutboxIntent]:
+    """构造订阅新增事件与外部统计的同事务 durable intents。"""
+    event_key = subscription_added_event_key(subscribe_id, payload)
+    event_payload = {
+        "subscribe_id": subscribe_id,
+        "username": username,
+        "mediainfo": dict(payload),
+    }
+    return (
+        OutboxIntent(
+            event_key=event_key,
+            topic="subscribe.added",
+            payload=event_payload,
+        ),
+        OutboxIntent(
+            event_key=subscription_added_report_key(subscribe_id, payload),
+            topic="subscribe.added.report",
+            payload={"subscribe_info": dict(payload)},
+        ),
     )
 
 
@@ -239,6 +254,11 @@ def subscription_added_event_key(subscribe_id: int, payload: dict) -> str:
         f"{payload.get('media_source') or 'unknown'}:"
         f"{payload.get('media_id') or 'unknown'}:v1"
     )
+
+
+def subscription_added_report_key(subscribe_id: int, payload: dict) -> str:
+    """返回与新增事件身份一致但可独立重试的统计幂等键。"""
+    return f"{subscription_added_event_key(subscribe_id, payload)}:report"
 
 
 _configured_subscribe_writer: Callable[[], SubscribeWriter] | None = None

@@ -9,6 +9,7 @@ from app.adapters.external.server import (
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
+from app.runtime.config import settings
 from app.schemas.types import MediaSource
 
 
@@ -237,3 +238,19 @@ class MoviePilotServerHelperTests(unittest.TestCase):
                 "tmdbid": 99,
             })
         )
+
+    def test_durable_subscribe_report_treats_disabled_sharing_as_success(self):
+        """用户关闭统计分享时，durable intent 应视为无需远端投递。"""
+        with patch.object(settings, "SUBSCRIBE_STATISTIC_SHARE", False), patch.object(
+            MoviePilotServerHelper,
+            "sub_reg",
+        ) as reporter:
+            self.assertTrue(MoviePilotServerHelper.sub_reg_durable({"media_id": "1"}))
+            reporter.assert_not_called()
+
+        with patch.object(settings, "SUBSCRIBE_STATISTIC_SHARE", False), patch.object(
+            MoviePilotServerHelper,
+            "sub_done",
+        ) as reporter:
+            self.assertTrue(MoviePilotServerHelper.sub_done_durable({"media_id": "1"}))
+            reporter.assert_not_called()

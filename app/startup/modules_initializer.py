@@ -237,10 +237,17 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
     """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
     def dispatch_subscribe_deleted_report(message) -> None:
         """重放订阅删除统计；未确认时抛错以进入有限重试。"""
-        if not MoviePilotServerHelper.sub_done(
+        if not MoviePilotServerHelper.sub_done_durable(
             message.payload.get("subscribe_info") or {}
         ):
             raise RuntimeError("订阅删除统计上报未确认")
+
+    def dispatch_subscribe_added_report(message) -> None:
+        """重放订阅新增统计；未确认时抛错以进入有限重试。"""
+        if not MoviePilotServerHelper.sub_reg_durable(
+            message.payload.get("subscribe_info") or {}
+        ):
+            raise RuntimeError("订阅新增统计上报未确认")
 
     session = SessionFactory()
     return OutboxDispatcher(
@@ -250,6 +257,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 EventType.SubscribeAdded,
                 message.payload,
             ),
+            "subscribe.added.report": dispatch_subscribe_added_report,
             "subscribe.modified": lambda message: EventManager().send_event(
                 EventType.SubscribeModified,
                 message.payload,

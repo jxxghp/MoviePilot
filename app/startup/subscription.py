@@ -14,6 +14,7 @@ from app.application.subscription.write import (
     AsyncCreateSubscriptionCommand,
     CreateSubscriptionCommand,
     subscription_added_event_key,
+    subscription_added_report_key,
 )
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
@@ -76,6 +77,10 @@ class TransactionalSubscribeWriter:
                         subscription_added_event_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
                     )
+                    outbox.complete_by_event_key(
+                        subscription_added_report_key(subscribe_id, payload),
+                        datetime.now(timezone.utc),
+                    )
 
             return command.execute(identity, payload, username, delivered)
         finally:
@@ -103,6 +108,10 @@ class TransactionalSubscribeWriter:
                     await after_commit(subscribe_id)
                     await outbox.complete_by_event_key(
                         subscription_added_event_key(subscribe_id, payload),
+                        datetime.now(timezone.utc),
+                    )
+                    await outbox.complete_by_event_key(
+                        subscription_added_report_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
                     )
 
@@ -145,7 +154,7 @@ async def delete_subscribe_scope():
             repository=SubscribeOper(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             publish_deleted=_publish_deleted,
-            report_deleted=MoviePilotServerHelper.async_sub_done,
+            report_deleted=MoviePilotServerHelper.async_sub_done_durable,
             outbox=SqlAlchemyAsyncOutboxStager(session),
         )
 

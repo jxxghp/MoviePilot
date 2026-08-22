@@ -10,6 +10,7 @@ from app.runtime.config import settings
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
+from app.runtime.observability import observe_compat_facade
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaType,
@@ -38,6 +39,7 @@ def configure_server_application_services(
     _server_sharing_service = sharing_service
 
 
+@observe_compat_facade("MoviePilotServerHelper")
 class MoviePilotServerHelper:
     """
     MoviePilot 服务端请求辅助工具。
@@ -871,6 +873,20 @@ class MoviePilotServerHelper:
         return bool(res is not None and res.status_code == 200)
 
     @classmethod
+    def sub_reg_durable(cls, sub: dict) -> bool:
+        """同步上报新增统计；明确禁用时视为无需投递。"""
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return True
+        return cls.sub_reg(sub)
+
+    @classmethod
+    async def async_sub_reg_durable(cls, sub: dict) -> bool:
+        """异步上报新增统计；明确禁用时视为无需投递。"""
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return True
+        return await cls.async_sub_reg(sub)
+
+    @classmethod
     def sub_done(cls, sub: dict) -> bool:
         """
         完成订阅统计。
@@ -893,6 +909,20 @@ class MoviePilotServerHelper:
             return False
         res = await cls.async_subscribe_done(payload)
         return bool(res is not None and res.status_code == 200)
+
+    @classmethod
+    def sub_done_durable(cls, sub: dict) -> bool:
+        """同步上报完成统计；明确禁用时视为无需投递。"""
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return True
+        return cls.sub_done(sub)
+
+    @classmethod
+    async def async_sub_done_durable(cls, sub: dict) -> bool:
+        """异步上报完成统计；明确禁用时视为无需投递。"""
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return True
+        return await cls.async_sub_done(sub)
 
     @classmethod
     def sub_reg_async(cls, sub: dict) -> bool:
