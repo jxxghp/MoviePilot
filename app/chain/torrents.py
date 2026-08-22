@@ -725,9 +725,7 @@ class TorrentsChain(ChainBase):
                             target_cache[domain].append(context)
                         # 如果超过了限制条数则移除掉前面的，音乐与影视各自独立计算配额
                         if len(target_cache[domain]) > self.runtime_config.torrent_cache_size:
-                            target_cache[domain] = target_cache[domain][
-                                -self.runtime_config.torrent_cache_size:
-                            ]
+                            target_cache[domain] = target_cache[domain][-self.runtime_config.torrent_cache_size:]
                 finally:
                     torrents.clear()
                     music_torrents.clear()
