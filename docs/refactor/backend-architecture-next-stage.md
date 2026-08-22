@@ -433,7 +433,9 @@ flowchart TB
   无 Session 的旧 Oper 入口继续由组合根兼容事务执行器承接。随后 PassKey 的宿主同步查询迁移到
   `PassKeyOper`，其按用户/凭证的启用状态过滤由显式 Session 测试覆盖；异步 Model 查询保留旧 ABI。
   查询装饰器低水位由 123 降至 119，归属过滤、启用状态过滤和创建时间/主键稳定排序由 canonical
-  Oper 测试覆盖。
+  Oper 测试覆盖。`PassKey.get_by_user_id/get_by_credential_id` 与
+  `AgentTask.get_for_user/list_for_user` 同时保留旧插件省略 Session 的同步调用方式；该路径显式委托
+  一次性兼容查询会话，不重新增加 Model 查询装饰器，也不影响宿主显式 Session 的事务所有权。
 
 #### ARCH-222：按风险迁移其余写用例
 

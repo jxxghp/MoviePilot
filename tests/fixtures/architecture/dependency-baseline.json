@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6413,
-  "edge_sha256": "02b7d1b32347dbd9be15ab2634c196dd36806fa9db89b0f8989ac6cc152c2b73",
+  "edge_count": 6414,
+  "edge_sha256": "aea2c4a5f65a9800bc69a83990efd368ba0ec7a9b19e40f38f8d0df6c222ae26",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3473,6 +3473,7 @@
     "app.db.models.agentchat -> app.db.decorators",
     "app.db.models.agenttask -> app.db",
     "app.db.models.agenttask -> app.db.base",
+    "app.db.models.agenttask -> app.db.decorators",
     "app.db.models.agenttaskrun -> app.db",
     "app.db.models.agenttaskrun -> app.db.base",
     "app.db.models.agenttaskrun -> app.db.decorators",

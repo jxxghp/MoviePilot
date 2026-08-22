@@ -308,6 +308,21 @@ def test_agenttask_get_for_user_enforces_ownership(db):
     assert AgentTask.get_for_user(db.session, task_id, user_id="bob") is None
 
 
+def test_agenttask_model_queries_keep_no_session_plugin_abi(db, monkeypatch):
+    """旧插件省略 Session 时仍可按原关键字参数查询 Agent 任务。"""
+    task_id = AgentTask.add_task(db.session, **_task("legacy", user_id="legacy-user"))
+    monkeypatch.setattr(
+        "app.db.models.agenttask.run_legacy_sync_query",
+        lambda operation: operation(db.session),
+    )
+
+    assert AgentTask.get_for_user(
+        task_id=task_id,
+        user_id="legacy-user",
+    ).id == task_id
+    assert [task.id for task in AgentTask.list_for_user(user_id="legacy-user")] == [task_id]
+
+
 def test_agenttask_oper_reads_with_explicit_session(db, monkeypatch):
     """AgentTaskOper 的宿主查询使用调用方 Session，不再经过旧事务兼容执行器。"""
     task_id = AgentTask.add_task(db.session, **_task("canonical", user_id="alice"))

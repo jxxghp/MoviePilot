@@ -238,6 +238,20 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
     assert asyncio.run(PassKey.async_get_by_credential_id(credential_id="cred-dead")) is None
 
 
+def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db, monkeypatch):
+    """旧插件不传 Session 时仍应获得短会话查询，而不恢复 Model 装饰器。"""
+    db.add(_passkey(9004, "cred-legacy"))
+    monkeypatch.setattr(
+        "app.db.models.passkey.run_legacy_sync_query",
+        lambda operation: operation(db.session),
+    )
+
+    assert [item.credential_id for item in PassKey.get_by_user_id(user_id=9004)] == [
+        "cred-legacy"
+    ]
+    assert PassKey.get_by_credential_id("cred-legacy").user_id == 9004
+
+
 def test_passkey_get_by_id_ignores_active_flag(db):
     """
     按主键取记录是管理用途，不应过滤停用状态——否则管理端看不到自己刚停用的凭据。
