@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Protocol, Union
 
+from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
-from app.runtime.config import settings
 from app.runtime.log import logger
 from app.schemas.history import (
     DownloadHistory as DownloadHistoryView,
@@ -480,7 +480,7 @@ def is_skip_action(action: str) -> bool:
     return action in (HistoryGateAction.SKIP, HistoryGateAction.SKIP_RETRY_EXHAUSTED)
 
 
-def max_failed_retries() -> int:
+def max_failed_retries(config: TransferRetryConfig | None = None) -> int:
     """
     读取失败重试上限并钳制到合法区间。
 
@@ -488,7 +488,7 @@ def max_failed_retries() -> int:
     永久漏件，无限重试会让永久失败的文件反复刷通知，两端都不接受。
     :return: 合法的最大重试次数
     """
-    raw = settings.TRANSFER_MAX_FAILED_RETRIES
+    raw = (config or get_transfer_retry_config()).max_failed_retries
     try:
         value = int(raw)
     except (TypeError, ValueError):

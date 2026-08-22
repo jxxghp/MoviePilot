@@ -15,7 +15,6 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import fresh, async_fresh
-from app.runtime.config import settings
 from app.runtime.events import Event
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
@@ -24,8 +23,8 @@ from app.schemas.types import ChainEventType, MediaSource, MediaType, SystemConf
 
 class RecognitionMixin:
 
-    @staticmethod
     def _can_use_media_recognize_share(
+            self,
             meta: Optional[MetaBase],
             media_source: Optional[MediaSource],
             media_id: Optional[str],
@@ -34,7 +33,7 @@ class RecognitionMixin:
         仅在名称识别场景下使用共享识别，显式ID识别不再重复回查
         """
         return bool(
-            settings.MEDIA_RECOGNIZE_SHARE
+            self.runtime_config.media_recognize_share
             and meta
             and not media_source
             and not media_id
@@ -515,4 +514,3 @@ class RecognitionMixin:
             f"（{plugin_info.media_source}:{plugin_info.media_id}）"
         )
         return plugin_info
-

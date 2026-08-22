@@ -30,20 +30,9 @@ class ScrapeFileAction(BaseAction):
         self._scraped_files = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "刮削文件"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "刮削媒体信息和图片"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return ScrapeFileParams().model_dump()
+    name = "刮削文件"
+    description = "刮削媒体信息和图片"
+    data = ScrapeFileParams().model_dump()
 
     @property
     def success(self) -> bool:

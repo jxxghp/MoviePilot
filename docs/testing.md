@@ -145,7 +145,9 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境，通过 `tests/run.py --shard N/TOTAL` 把全量测试文件稳定分到 4 个独立 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。
-- **PR**：产品代码、测试基础设施、依赖或运行行为发生变化时，运行 `uv run --locked --no-sync python tests/run.py`，默认以 4 个独立 pytest 进程完成全量；需要断点、输出顺序或测试污染诊断时使用 `--serial`。确认本次改动涉及的路径通过且 socket 探针零真实出站。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更按实际内容执行文本、结构和 diff 检查，CI 仍会运行全量门禁。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。独立 `architecture` job 先运行宿主依赖、运行契约和基线 CLI 快速门禁；全量测试再通过 `tests/run.py --shard N/TOTAL` 稳定分到 4 个 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。
+- **跨仓观察**：`.github/workflows/architecture-observe.yml` 每周或手工检出官方插件仓最新 `main`，使用 `--check-plugins` 比较公开导入、Hook 和动态 API 契约。它只上传 `official-plugin-architecture-report.json`，不会自动刷新 fixture；语义变化必须人工审查后显式执行 `--write-plugins`。
+- **静态检查**：`.github/workflows/pylint.yml` 对指向 `v3` 的 PR、推送和手工触发运行 Pylint。PR/推送改动到的 Python 文件是硬门禁；`app/` 全量扫描保留为建议性 JSON 构建工件，存量告警不会掩盖或阻塞本次增量治理。
+- **PR 本地验证**：提交前运行受影响测试和适用的静态检查。涉及依赖或锁文件、共享测试基建、数据库、启动链、跨模块生命周期、兼容层或大范围行为变化时，运行 `uv run --locked --no-sync python tests/run.py` 完成本地全量；需要断点、输出顺序或测试污染诊断时使用 `--serial`。所有测试都应确认受影响路径通过且 socket 探针无真实出站，验证说明准确标注执行范围。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更执行适用的文本、结构和 diff 检查，CI 继续运行全量门禁。
 - 覆盖率不参与常规 PR / push 的合并门禁；需要覆盖率制品时手动触发 `Unit Tests` workflow，独立的 `Coverage Report` job 会通过 `tests/run.py --serial` 跑串行全量并上传 JSON / XML 报告。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。

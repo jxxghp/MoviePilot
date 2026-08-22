@@ -13,14 +13,17 @@ from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
 from app.application.messaging.message import MessageTemplateHelper
-from app.runtime.config import settings
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message
 from app.schemas.transfer import TransferInfo
-from app.schemas.message import ChannelCapability, ChannelCapabilityManager
-from app.schemas.notification import ChannelRef, resolve_channel
+from app.schemas.notification import (
+    ChannelCapability,
+    ChannelCapabilityManager,
+    ChannelRef,
+    resolve_channel,
+)
 from app.schemas.types import EventType, NotificationChannel
 
 
@@ -174,7 +177,9 @@ class NotificationMixin:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
-                        send_message.targets = useroper.get_settings(settings.SUPERUSER)
+                        send_message.targets = useroper.get_settings(
+                            self.runtime_config.superuser
+                        )
                         admin_sended = True
                     elif action == "user" and send_message.username:
                         # 发送对应用户
@@ -194,7 +199,7 @@ class NotificationMixin:
                                 )
                                 # 读取管理员消息IDS
                                 send_message.targets = useroper.get_settings(
-                                    settings.SUPERUSER
+                                    self.runtime_config.superuser
                                 )
                                 admin_sended = True
                             else:
@@ -203,7 +208,7 @@ class NotificationMixin:
                                     f"用户 {send_message.username} 不存在，消息无法发送到对应用户"
                                 )
                                 continue
-                        elif send_message.username == settings.SUPERUSER:
+                        elif send_message.username == self.runtime_config.superuser:
                             # 管理员同名已发送
                             admin_sended = True
                     else:
@@ -290,7 +295,9 @@ class NotificationMixin:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
-                        send_message.targets = useroper.get_settings(settings.SUPERUSER)
+                        send_message.targets = useroper.get_settings(
+                            self.runtime_config.superuser
+                        )
                         admin_sended = True
                     elif action == "user" and send_message.username:
                         # 发送对应用户
@@ -310,7 +317,7 @@ class NotificationMixin:
                                 )
                                 # 读取管理员消息IDS
                                 send_message.targets = useroper.get_settings(
-                                    settings.SUPERUSER
+                                    self.runtime_config.superuser
                                 )
                                 admin_sended = True
                             else:
@@ -319,7 +326,7 @@ class NotificationMixin:
                                     f"用户 {send_message.username} 不存在，消息无法发送到对应用户"
                                 )
                                 continue
-                        elif send_message.username == settings.SUPERUSER:
+                        elif send_message.username == self.runtime_config.superuser:
                             # 管理员同名已发送
                             admin_sended = True
                     else:

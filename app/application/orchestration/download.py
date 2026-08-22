@@ -106,6 +106,45 @@ class DownloadChain(ChainBase):
         }
         return note
 
+    def _after_download_history_commit(
+        self,
+        *,
+        context: Context,
+        media: MediaInfo | MusicInfo,
+        meta: MetaBase,
+        torrent: TorrentInfo,
+        channel: NotificationChannel | None,
+        source: str | None,
+        userid: str | None,
+        username: str | None,
+        download_episodes: list[int] | None,
+        download_dir: Path,
+        torrent_content: bytes,
+    ) -> None:
+        """保持下载历史提交后的通知和后处理顺序。"""
+        self.post_message(
+            Message(
+                channel=channel,
+                source=source if channel else None,
+                mtype=MessageType.Download,
+                ctype=ContentType.DownloadAdded,
+                image=media.get_message_image(),
+                link=settings.MP_DOMAIN('/#/downloading'),
+                userid=userid,
+                username=username,
+            ),
+            meta=meta,
+            mediainfo=media,
+            torrentinfo=torrent,
+            download_episodes=download_episodes,
+            username=username,
+        )
+        self._submit_download_added_task(
+            context=context,
+            download_dir=download_dir,
+            torrent_content=torrent_content,
+        )
+
     @staticmethod
     def _validate_music_album_resource(
             context: Context,
@@ -1000,6 +1039,51 @@ class DownloadChain(ChainBase):
         # 返回 种子文件路径，种子目录名，种子文件清单
         return content, download_folder, files
 
+    @staticmethod
+    def _apply_resource_download_event(
+            context: Context,
+            episodes: Optional[Set[int]],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            downloader: Optional[str],
+            save_path: Optional[str],
+            userid: Union[str, int, None],
+            username: Optional[str],
+    ) -> tuple[Optional[str], Optional[str]]:
+        """应用资源下载事件覆盖，并校验事件返回的下载目录。"""
+        event_data = ResourceDownloadEventData(
+            context=context,
+            episodes=episodes or context.meta_info.episode_list,
+            channel=channel,
+            origin=source,
+            downloader=downloader,
+            options={
+                "save_path": save_path,
+                "userid": userid,
+                "username": username,
+                "media_category": context.media_info.category,
+            },
+        )
+        event = eventmanager.send_event(ChainEventType.ResourceDownload, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            if event_data.cancel:
+                logger.debug(
+                    "Resource download canceled by event: %s,Reason: %s",
+                    event_data.source,
+                    event_data.reason,
+                )
+                return save_path, "下载被事件取消"
+            if event_data.options and "save_path" in event_data.options:
+                save_path = event_data.options.get("save_path")
+        if save_path is None:
+            return None, None
+        try:
+            return validate_download_save_path(save_path), None
+        except ValueError as err:
+            logger.warn(str(err))
+            return save_path, str(err)
+
     def download_single(self, context: Context,
                         torrent_file: Path = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
@@ -1039,40 +1123,12 @@ class DownloadChain(ChainBase):
         _media = MediaChain().supplement_tmdb_info(_media, _meta)
         context.media_info = _media
 
-        # 发送资源下载事件，允许外部拦截下载
-        event_data = ResourceDownloadEventData(
-            context=context,
-            episodes=episodes or context.meta_info.episode_list,
-            channel=channel,
-            origin=source,
-            downloader=downloader,
-            options={
-                "save_path": save_path,
-                "userid": userid,
-                "username": username,
-                "media_category": _media.category
-            }
+        save_path, event_error = self._apply_resource_download_event(
+            context, episodes, channel, source, downloader, save_path,
+            userid, username,
         )
-        # 触发资源下载事件
-        event = eventmanager.send_event(ChainEventType.ResourceDownload, event_data)
-        if event and event.event_data:
-            event_data: ResourceDownloadEventData = event.event_data
-            # 如果事件被取消，跳过资源下载
-            if event_data.cancel:
-                logger.debug(
-                    f"Resource download canceled by event: {event_data.source},"
-                    f"Reason: {event_data.reason}")
-                return (None, "下载被事件取消") if return_detail else None
-            # 如果事件修改了下载路径，使用新路径
-            if event_data.options and "save_path" in event_data.options:
-                save_path = event_data.options.get("save_path")
-
-        if save_path is not None:
-            try:
-                save_path = validate_download_save_path(save_path)
-            except ValueError as err:
-                logger.warn(str(err))
-                return (None, str(err)) if return_detail else None
+        if event_error:
+            return (None, event_error) if return_detail else None
 
         # 实际下载的集数
         download_episodes = episode_rules.format_ranges(list(episodes)) if episodes else None
@@ -1162,35 +1218,33 @@ class DownloadChain(ChainBase):
             # 文件保存路径
             _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
 
-            # 登记下载记录
-            downloadhis = DownloadHistoryOper()
             media_source, media_id = resolve_media_identity(media=_media)
-            downloadhis.add(
-                path=download_path.as_posix(),
-                type=_media.type.value,
-                title=_media.title,
-                year=_media.year,
-                media_source=media_source,
-                media_id=media_id,
-                music_type=getattr(_media, "music_type", None),
-                seasons=_meta.season,
-                episodes=download_episodes or _meta.episode,
-                image=_media.get_backdrop_image(),
-                poster=_media.get_poster_image(),
-                downloader=_downloader,
-                download_hash=_hash,
-                torrent_name=_torrent.title,
-                torrent_description=_torrent.description,
-                torrent_site=_torrent.site_name,
-                userid=userid,
-                username=username,
-                channel=channel_identity(channel),
-                date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                media_category=_media.category,
-                episode_group=_media.episode_group,
-                note=self._build_download_note(source, _media, _meta),
-                custom_words=custom_words
-            )
+            history_payload = {
+                "path": download_path.as_posix(),
+                "type": _media.type.value,
+                "title": _media.title,
+                "year": _media.year,
+                "media_source": media_source,
+                "media_id": media_id,
+                "music_type": getattr(_media, "music_type", None),
+                "seasons": _meta.season,
+                "episodes": download_episodes or _meta.episode,
+                "image": _media.get_backdrop_image(),
+                "poster": _media.get_poster_image(),
+                "downloader": _downloader,
+                "download_hash": _hash,
+                "torrent_name": _torrent.title,
+                "torrent_description": _torrent.description,
+                "torrent_site": _torrent.site_name,
+                "userid": userid,
+                "username": username,
+                "channel": channel_identity(channel),
+                "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "media_category": _media.category,
+                "episode_group": _media.episode_group,
+                "note": self._build_download_note(source, _media, _meta),
+                "custom_words": custom_words,
+            }
 
             # 登记下载文件
             files_to_add = []
@@ -1214,42 +1268,51 @@ class DownloadChain(ChainBase):
                     "filepath": file,
                     "torrentname": _meta.org_string,
                 })
-            if files_to_add:
-                downloadhis.add_files(files_to_add)
-
-            # 下载成功发送消息
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source if channel else None,
-                    mtype=MessageType.Download,
-                    ctype=ContentType.DownloadAdded,
-                    image=_media.get_message_image(),
-                    link=settings.MP_DOMAIN('/#/downloading'),
-                    userid=userid,
-                    username=username
-                ),
-                meta=_meta,
-                mediainfo=_media,
-                torrentinfo=_torrent,
-                download_episodes=download_episodes,
-                username=username,
-            )
-            # 下载成功后处理
-            self._submit_download_added_task(
-                context=context,
-                download_dir=download_dir,
-                torrent_content=torrent_content,
-            )
-            # 广播事件
-            self.eventmanager.send_event(EventType.DownloadAdded, {
+            event_payload = {
                 "hash": _hash,
                 "context": context,
                 "username": username,
                 "downloader": _downloader,
                 "episodes": episodes or _meta.episode_list,
-                "source": source
-            })
+                "source": source,
+            }
+
+            def after_commit() -> None:
+                """在历史与 intent 提交后保持原有通知和任务编排。"""
+                self._after_download_history_commit(
+                    context=context,
+                    media=_media,
+                    meta=_meta,
+                    torrent=_torrent,
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    download_episodes=download_episodes,
+                    download_dir=download_dir,
+                    torrent_content=torrent_content,
+                )
+
+            durable_event_writer = getattr(self, "durable_event_writer", None)
+            if durable_event_writer:
+                durable_event_writer.download_added(
+                    history_payload=history_payload,
+                    file_payloads=files_to_add,
+                    event_payload=event_payload,
+                    after_commit=after_commit,
+                    publish=lambda payload: self.eventmanager.send_event(
+                        EventType.DownloadAdded,
+                        payload,
+                    ),
+                )
+            else:
+                # 显式注入旧测试上下文时保持兼容；正式启动上下文总会提供 durable writer。
+                downloadhis = DownloadHistoryOper()
+                downloadhis.add(**history_payload)
+                if files_to_add:
+                    downloadhis.add_files(files_to_add)
+                after_commit()
+                self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
         else:
             # 下载失败
             logger.error(f"{_media.title_year} 添加下载任务失败："
@@ -1868,34 +1931,6 @@ class DownloadChain(ChainBase):
             logger.error("电视剧缺集检查需要有效的 media_source 和 media_id")
             return False, no_exists or {}
 
-        def __append_no_exists(_season: int, _episodes: list, _total: int, _start: int):
-            """
-            添加不存在的季集信息
-            {source:id: [
-                "season": int,
-                "episodes": list,
-                "total_episode": int,
-                "start_episode": int
-            ]}
-            """
-            mediakey = build_media_key(media_source, media_id)
-            if not no_exists.get(mediakey):
-                no_exists[mediakey] = {
-                    _season: NotExistMediaInfo(
-                        season=_season,
-                        episodes=_episodes,
-                        total_episode=_total,
-                        start_episode=_start
-                    )
-                }
-            else:
-                no_exists[mediakey][_season] = NotExistMediaInfo(
-                    season=_season,
-                    episodes=_episodes,
-                    total_episode=_total,
-                    start_episode=_start
-                )
-
         if not no_exists:
             no_exists = {}
 
@@ -1961,8 +1996,10 @@ class DownloadChain(ChainBase):
                         continue
                     # 总集数
                     total_ep = totals.get(season) or len(episodes)
-                    __append_no_exists(_season=season, _episodes=[],
-                                       _total=total_ep, _start=min(episodes))
+                    self._append_no_exists(
+                        no_exists, media_source, media_id, season, [],
+                        total_ep, min(episodes)
+                    )
                 return False, no_exists
             else:
                 # 存在一些，检查每季缺失的季集
@@ -1990,18 +2027,41 @@ class DownloadChain(ChainBase):
                             # 全部集存在
                             continue
                         # 添加不存在的季集信息
-                        __append_no_exists(_season=season, _episodes=lack_episodes,
-                                           _total=season_total, _start=min(lack_episodes))
+                        self._append_no_exists(
+                            no_exists, media_source, media_id, season,
+                            lack_episodes, season_total, min(lack_episodes)
+                        )
                     else:
                         # 全季不存在
-                        __append_no_exists(_season=season, _episodes=[],
-                                           _total=season_total, _start=min(episodes))
+                        self._append_no_exists(
+                            no_exists, media_source, media_id, season, [],
+                            season_total, min(episodes)
+                        )
             # 存在不完整的剧集
             if no_exists:
                 logger.debug(f"媒体库中已存在部分剧集，缺失：{no_exists}")
                 return False, no_exists
             # 全部存在
             return True, no_exists
+
+    @staticmethod
+    def _append_no_exists(
+            no_exists: Dict[str, Dict[int, NotExistMediaInfo]],
+            media_source: Optional[MediaSource],
+            media_id: Optional[str],
+            season: int,
+            episodes: list,
+            total: int,
+            start: int,
+    ) -> None:
+        """把一季缺失信息合并到标准媒体身份对应的结果中。"""
+        media_key = build_media_key(media_source, media_id)
+        no_exists.setdefault(media_key, {})[season] = NotExistMediaInfo(
+            season=season,
+            episodes=episodes,
+            total_episode=total,
+            start_episode=start,
+        )
 
     def remote_downloading(self, channel: NotificationChannel, userid: Union[str, int] = None, source: Optional[str] = None):
         """

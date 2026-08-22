@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Union
+from typing import Any, ClassVar, Union
 
 from app.application.orchestration import ChainBase
 from app.db.oper.systemconfig import SystemConfigOper
@@ -17,6 +17,11 @@ class BaseAction(ABC):
     工作流动作基类
     """
 
+    # 工作流编辑器和运行管理器读取的动作级静态元数据。
+    name: ClassVar[str]
+    description: ClassVar[str]
+    data: ClassVar[dict[str, Any]]
+
     # 动作ID
     _action_id = None
     # 完成标志
@@ -33,24 +38,6 @@ class BaseAction(ABC):
         self._done_flag = False
         self._message = ""
         self.systemconfigoper = SystemConfigOper()
-
-    @classmethod
-    @property
-    @abstractmethod
-    def name(cls) -> str:  # noqa
-        pass
-
-    @classmethod
-    @property
-    @abstractmethod
-    def description(cls) -> str:  # noqa
-        pass
-
-    @classmethod
-    @property
-    @abstractmethod
-    def data(cls) -> dict:  # noqa
-        pass
 
     @classmethod
     def get_contract(cls) -> dict:

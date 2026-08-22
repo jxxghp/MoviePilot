@@ -18,10 +18,24 @@ class FakeCleanupRepository:
         self.failing_table = failing_table
         self.calls: list[str] = []
         self._message_results = iter((2, 1, 0))
+        self.commits = 0
+        self.rollbacks = 0
 
     def session(self):
         """返回无需真实数据库的上下文。"""
         return nullcontext(object())
+
+    def unit_of_work(self, db):
+        """返回记录提交和回滚次数的测试事务边界。"""
+        return self
+
+    def commit(self) -> None:
+        """记录一个成功清理批次。"""
+        self.commits += 1
+
+    def rollback(self) -> None:
+        """记录一个失败清理批次。"""
+        self.rollbacks += 1
 
     def _delete(self, name: str) -> int:
         """记录删除调用并按配置模拟结果或异常。"""
@@ -87,6 +101,8 @@ def test_cleanup_service_owns_batching_report_and_progress() -> None:
     assert report["tables"]["message"]["deleted"] == 3
     assert report["tables"]["message"]["batches"] == 2
     assert report["total_deleted"] == 3
+    assert repository.commits == 2
+    assert repository.rollbacks == 0
     assert repository.calls == [
         "message",
         "message",
@@ -113,6 +129,7 @@ def test_cleanup_service_finishes_other_tables_before_raising_partial_failure() 
         service.execute(batch_size=2)
 
     assert repository.calls[-1] == "downloadfailure"
+    assert repository.rollbacks == 1
 
 
 def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:

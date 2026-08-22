@@ -1,11 +1,12 @@
 import asyncio
 import time
 
-import httpx
+import httpx2
 import pytest
 
 from app.adapters.network import http as http_module
 from app.adapters.network.http import AsyncRequestUtils
+from app.sdk.network import AsyncRequestUtils as SdkAsyncRequestUtils
 
 PROXY = "http://proxy.example:7890"
 URL = "https://raw.githubusercontent.com/demo/repo/main/package.json"
@@ -24,7 +25,7 @@ def _fake_dispatch(calls, fail_when):
         calls.append(http2)
         if fail_when(http2):
             if raise_exception:
-                raise httpx.RemoteProtocolError("tunnel closed")
+                raise httpx2.RemoteProtocolError("tunnel closed")
             return None
         return "ok"
 
@@ -92,7 +93,7 @@ def test_timeout_does_not_trip_breaker_or_retry(monkeypatch):
 
     async def fake(_self, http2, _cookies_dict, _method, _url, _raise_exception, **_kwargs):
         calls.append(http2)
-        raise httpx.ConnectTimeout("proxy slow")
+        raise httpx2.ConnectTimeout("proxy slow")
 
     monkeypatch.setattr(AsyncRequestUtils, "_dispatch_request", fake)
 
@@ -112,12 +113,12 @@ def test_timeout_still_raises_when_raise_exception_enabled(monkeypatch):
 
     async def fake(_self, http2, _cookies_dict, _method, _url, _raise_exception, **_kwargs):
         calls.append(http2)
-        raise httpx.ConnectTimeout("proxy slow")
+        raise httpx2.ConnectTimeout("proxy slow")
 
     monkeypatch.setattr(AsyncRequestUtils, "_dispatch_request", fake)
 
     utils = AsyncRequestUtils(proxies={"https": PROXY})
-    with pytest.raises(httpx.ConnectTimeout):
+    with pytest.raises(httpx2.ConnectTimeout):
         asyncio.run(utils.request("get", URL, raise_exception=True))
 
     assert calls == [True]
@@ -154,3 +155,70 @@ def test_no_proxy_configured_skips_breaker_logic(monkeypatch):
 
     assert result == "ok"
     assert calls == [True]
+
+
+def test_internal_client_uses_httpx2_transport(monkeypatch):
+    """宿主自建客户端使用 HTTPX2，并返回对应响应对象。"""
+
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json={"client": "httpx2"}, request=request)
+
+    monkeypatch.setattr(
+        http_module,
+        "_get_shared_async_transport",
+        lambda **_kwargs: httpx2.MockTransport(respond),
+    )
+
+    response = asyncio.run(
+        AsyncRequestUtils().get_res("https://example.com/data", raise_exception=True)
+    )
+
+    assert isinstance(response, httpx2.Response)
+    assert response.json() == {"client": "httpx2"}
+
+
+def test_plugin_sdk_uses_httpx2_by_default(monkeypatch):
+    """插件 SDK 默认复用宿主 HTTPX2 客户端合同。"""
+
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, request=request)
+
+    monkeypatch.setattr(
+        http_module,
+        "_get_shared_async_transport",
+        lambda **_kwargs: httpx2.MockTransport(respond),
+    )
+
+    response = asyncio.run(
+        SdkAsyncRequestUtils().get_res(
+            "https://example.com/sdk", raise_exception=True
+        )
+    )
+
+    assert SdkAsyncRequestUtils is AsyncRequestUtils
+    assert isinstance(response, httpx2.Response)
+
+
+def test_legacy_http_module_uses_httpx2_by_default(monkeypatch):
+    """旧插件 HTTP 导入入口随宿主默认客户端迁移到 HTTPX2。"""
+    import importlib
+
+    legacy_http = importlib.import_module("app.utils.http")
+
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, request=request)
+
+    monkeypatch.setattr(
+        http_module,
+        "_get_shared_async_transport",
+        lambda **_kwargs: httpx2.MockTransport(respond),
+    )
+
+    response = asyncio.run(
+        legacy_http.AsyncRequestUtils().get_res(
+            "https://example.com/legacy", raise_exception=True
+        )
+    )
+
+    assert legacy_http.AsyncRequestUtils is AsyncRequestUtils
+    assert isinstance(response, httpx2.Response)

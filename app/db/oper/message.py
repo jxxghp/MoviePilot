@@ -62,7 +62,8 @@ class MessageOper(DbOper):
             if k not in Message.__table__.columns.keys():  # noqa
                 kwargs.pop(k)
 
-        return Message(**kwargs).create_and_to_dict(self._db)
+        message = Message(**kwargs)
+        return self._execute_sync_write(message.create_and_to_dict)
 
     async def async_add(self,
                         channel: Optional[ChannelRef] = None,

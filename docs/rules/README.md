@@ -56,7 +56,7 @@ This repository maintains a structured documentation library covering the full d
 
 * **11 Code Quality and Security**
   * File: `11-quality-and-security.md`
-  * Scope: Testing requirements, pylint gates, safety scans, authentication patterns, and input validation rules.
+  * Scope: Testing requirements, pylint gates, dependency vulnerability scans, authentication patterns, and input validation rules.
 
 * **12 Collaboration, Versioning, Build, and Release**
   * File: `12-collaboration-and-distribution.md`

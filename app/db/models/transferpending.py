@@ -4,7 +4,7 @@ from sqlalchemy import Index, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import db_query, db_update
+from app.db.decorators import db_query
 
 
 class TransferPending(Base):
@@ -35,7 +35,6 @@ class TransferPending(Base):
     )
 
     @classmethod
-    @db_update
     def register(cls, db: Session, storage: str, src_path: str,
                  now_time: str) -> Optional["TransferPending"]:
         """
@@ -58,7 +57,6 @@ class TransferPending(Base):
         return pending
 
     @classmethod
-    @db_update
     def discard(cls, db: Session, storage: str, src_path: str) -> int:
         """
         注销一个待整理文件登记，整理到达终态（成功或失败）时调用。
@@ -93,7 +91,6 @@ class TransferPending(Base):
         ).scalars().all())
 
     @classmethod
-    @db_update
     def clear(cls, db: Session) -> int:
         """
         清空全部待整理登记。

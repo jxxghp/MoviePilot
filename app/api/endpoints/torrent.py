@@ -8,11 +8,14 @@ from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.torrents import TorrentsChain
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.api.deps import get_current_active_superuser, get_current_active_superuser_async
+from app.api.deps import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+)
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
@@ -38,7 +41,7 @@ async def torrents_cache(_: object = Depends(get_current_active_superuser_async)
     torrents_chain = TorrentsChain()
 
     # 获取spider和rss两种缓存
-    if settings.SUBSCRIBE_MODE == "rss":
+    if get_api_runtime_config_snapshot().subscribe_mode == "rss":
         cache_info = await torrents_chain.async_get_torrents("rss")
     else:
         cache_info = await torrents_chain.async_get_torrents("spider")

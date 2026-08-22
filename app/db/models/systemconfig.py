@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query
+from app.db.decorators import db_query, async_db_query
 
 
 class SystemConfig(Base):
@@ -28,9 +28,9 @@ class SystemConfig(Base):
         result = await db.execute(select(cls).where(cls.key == key))
         return result.scalar_one_or_none()
 
-    @db_update
     def delete_by_key(self, db: Session, key: str):
+        """在调用方持有的事务中暂存指定配置删除。"""
         systemconfig = self.get_by_key(db, key)
         if systemconfig:
-            systemconfig.delete(db, systemconfig.id)
+            db.delete(systemconfig)
         return True

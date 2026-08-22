@@ -8,7 +8,11 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.api.response import ResponseAPIRoute
+from app.adapters.web.correlation import CorrelationIdMiddleware
+from app.adapters.web.metrics import HttpMetricsMiddleware
+from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
 from app.adapters.web.security.access import (
     configure_token_codec,
@@ -19,8 +23,10 @@ from app.application.security.token import create_access_token, decode_access_to
 from app.runtime.extensions.contract.instance import matches_extension
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.config import settings
+from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
-from app.runtime.log import logger
+from app.runtime.log import configure_correlation_id_provider, logger
+from app.runtime.observability import configure_observation
 from app.schemas.openai import (
     AnthropicErrorDetail,
     AnthropicErrorResponse,
@@ -291,6 +297,8 @@ def create_app() -> FastAPI:
     """
     创建并配置 FastAPI 应用实例。
     """
+    configure_correlation_id_provider(get_correlation_id)
+    configure_observation(build_observation_port())
     _app = FastAPI(
         title=settings.PROJECT_NAME,
         version=APP_VERSION,
@@ -306,6 +314,8 @@ def create_app() -> FastAPI:
     _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
     # 主程序静态路由统一使用 ResponseAPIRoute；动态插件注册时会显式覆盖为原生 APIRoute。
     _app.router.route_class = ResponseAPIRoute
+    # 编排器探针使用原生 APIRoute 和最小响应，不进入业务响应包络或版本前缀。
+    install_health_routes(_app)
 
     # 配置 CORS 中间件
     _app.add_middleware(
@@ -315,6 +325,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    _app.add_middleware(CorrelationIdMiddleware)
+    _app.add_middleware(HttpMetricsMiddleware)
 
     @_app.middleware("http")
     async def locale_context_middleware(

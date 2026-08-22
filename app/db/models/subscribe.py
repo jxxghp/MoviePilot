@@ -1,12 +1,12 @@
 import time
 from typing import Any, Optional
 
-from sqlalchemy import Integer, String, Float, JSON, Index, delete, or_, select
+from sqlalchemy import Integer, String, Float, JSON, Index, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import async_db_query, db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
@@ -362,36 +362,6 @@ class Subscribe(Base):
             query = query.filter(cls.season == season)
         result = await db.execute(query)
         return result.scalars().first()
-
-    @db_update
-    def delete_by_media_identity(
-            self, db: Session, media_source: MediaSource, media_id: str,
-            season: Optional[int] = None,
-    ) -> bool:
-        """按规范媒体身份删除订阅。"""
-        model = type(self)
-        statement = delete(model).where(
-            model.media_source == media_source,
-            model.media_id == str(media_id),
-        )
-        if season is not None:
-            statement = statement.where(model.season == season)
-        db.execute(statement, execution_options={"synchronize_session": False})
-        return True
-
-    @async_db_update
-    async def async_delete_by_media_identity(
-            self, db: AsyncSession, media_source: MediaSource, media_id: str,
-            season: Optional[int] = None,
-    ) -> bool:
-        """异步按规范媒体身份删除订阅。"""
-        rows = await self.async_list_by_media_identity(
-            db, media_source=media_source, media_id=media_id
-        )
-        for row in rows:
-            if season is None or row.season == season:
-                await row.async_delete(db, row.id)
-        return True
 
     @classmethod
     @db_query

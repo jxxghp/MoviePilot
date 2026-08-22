@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
@@ -23,6 +24,13 @@ _DISCOVER_BOARDS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class BangumiConfigSnapshot:
+    """Bangumi 模块一次配置 generation 使用的稳定网络快照。"""
+
+    proxy: Any
+
+
 class BangumiModule(_ModuleBase):
     """
     Bangumi媒体信息匹配
@@ -31,11 +39,13 @@ class BangumiModule(_ModuleBase):
 
     bangumiapi: BangumiApi = None
     scraper: MediaScraperHelper = None
+    _config: BangumiConfigSnapshot = BangumiConfigSnapshot(proxy=None)
 
     def init_module(self) -> None:
         """
         初始化Bangumi客户端
         """
+        self._config = BangumiConfigSnapshot(proxy=settings.PROXY)
         self.bangumiapi = BangumiApi()
         self.scraper = MediaScraperHelper()
 
@@ -50,7 +60,7 @@ class BangumiModule(_ModuleBase):
         """
         测试模块连接性
         """
-        ret = RequestUtils(proxies=settings.PROXY).get_res("https://api.bgm.tv/")
+        ret = RequestUtils(proxies=self._config.proxy).get_res("https://api.bgm.tv/")
         if ret and ret.status_code == 200:
             return True, ""
         elif ret:

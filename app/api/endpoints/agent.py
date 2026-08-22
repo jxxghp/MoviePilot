@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, AsyncIterator, Callable, Optional, Union
 
+import aiofiles
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
@@ -33,6 +34,7 @@ from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRe
 from app.schemas.message import Message as _SchemaMessage
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
+from app.api.presentation.sse import build_sse_error_response, build_sse_response
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
@@ -42,7 +44,7 @@ from app.agent.runtime_loader import (
 )
 from app.application.orchestration.message import MessageChain
 from app.runtime.command import Command
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal
 from app.api.deps import get_agent_chat_service, get_current_active_user
@@ -52,6 +54,7 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_service,
 )
 from app.application.security.user import get_configured_user_id_lookup
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
 from app.application.messaging.agent import agent_interaction_manager
 from app.application.messaging.agent import (
@@ -695,6 +698,21 @@ def _build_web_agent_sse(
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def _build_web_agent_error_response(
+    message: str,
+    *,
+    locale: Optional[str],
+) -> StreamingResponse:
+    """Map a rejected WebAgent request to one terminal SSE error event."""
+    return build_sse_error_response(
+        _build_web_agent_sse(
+            "error",
+            {"message": message},
+            locale=locale,
+        )
+    )
+
+
 def _sanitize_web_agent_upload_name(
     filename: Optional[str], mime_type: Optional[str] = None
 ) -> str:
@@ -727,7 +745,7 @@ def _get_web_agent_upload_dir(user: ApiPrincipal, session_id: Optional[str]) -> 
     """
     server_session_id = _build_web_agent_session_id(user, session_id)
     safe_session_id = server_session_id.replace(":", "_")
-    upload_dir = settings.TEMP_PATH / "agent_uploads" / safe_session_id
+    upload_dir = get_api_runtime_config_snapshot().temp_path / "agent_uploads" / safe_session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
     return upload_dir
 
@@ -742,7 +760,7 @@ async def _save_web_agent_upload(upload_file: UploadFile, target_path: Path) -> 
     """
     size = 0
     try:
-        with target_path.open("wb") as output:
+        async with aiofiles.open(target_path, "wb") as output:
             while True:
                 chunk = await upload_file.read(WEB_AGENT_UPLOAD_CHUNK_SIZE)
                 if not chunk:
@@ -753,9 +771,9 @@ async def _save_web_agent_upload(upload_file: UploadFile, target_path: Path) -> 
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="附件超过 32MB，无法发送给智能助手",
                     )
-                output.write(chunk)
+                await output.write(chunk)
     except Exception:
-        target_path.unlink(missing_ok=True)
+        await run_in_threadpool(target_path.unlink, missing_ok=True)
         raise
     finally:
         await upload_file.close()
@@ -955,7 +973,7 @@ def _prepare_web_agent_audio_attachment_path(voice_path: str) -> Path:
         logger.warning("WebAgent 语音转 WAV 跳过：ffmpeg 不可用，path=%s", source_path)
         return source_path
 
-    voice_dir = settings.TEMP_PATH / "voice"
+    voice_dir = get_api_runtime_config_snapshot().temp_path / "voice"
     voice_dir.mkdir(parents=True, exist_ok=True)
     output_path = voice_dir / f"{source_path.stem}_web_{uuid.uuid4().hex[:8]}.wav"
     cmd = [
@@ -999,20 +1017,11 @@ def _get_web_agent_registered_file(ref: str) -> Optional[dict[str, Any]]:
     return _WEB_AGENT_FILE_REGISTRY.get(file_id)
 
 
-def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
-    """
-    转写 WebAgent 上传的本地录音附件。
-
-    Web 面板上传后的音频已经保存在短期文件登记表里，不能再像第三方渠道那样
-    走模块下载逻辑；这里直接读取临时文件并调用当前音频输入 provider。
-    """
-    if not audio_refs:
-        return None
-    if not AgentCapabilityManager.is_audio_input_available():
-        logger.warning("WebAgent 音频输入能力未配置或未启用，跳过语音识别")
-        return None
-
-    transcripts = []
+def _resolve_web_agent_audio_refs(
+    audio_refs: list[str],
+) -> list[tuple[str, Path, str]]:
+    """在调用协程中解析音频引用，返回不依赖登记表的文件快照。"""
+    audio_files = []
     for audio_ref in audio_refs:
         file_info = _get_web_agent_registered_file(audio_ref)
         if not file_info:
@@ -1020,6 +1029,29 @@ def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
             continue
 
         file_path = Path(file_info["path"])
+        audio_files.append(
+            (audio_ref, file_path, file_info.get("name") or file_path.name)
+        )
+    return audio_files
+
+
+def _transcribe_web_agent_audio_files(
+    audio_files: list[tuple[str, Path, str]],
+) -> Optional[str]:
+    """
+    转写 WebAgent 上传的本地录音附件。
+
+    文件信息已在调用协程中从短期登记表解析，阻塞文件读取和 provider 调用可在
+    worker 中执行，避免跨线程访问登记表。
+    """
+    if not audio_files:
+        return None
+    if not AgentCapabilityManager.is_audio_input_available():
+        logger.warning("WebAgent 音频输入能力未配置或未启用，跳过语音识别")
+        return None
+
+    transcripts = []
+    for audio_ref, file_path, file_name in audio_files:
         try:
             content = file_path.read_bytes()
         except OSError as err:
@@ -1028,12 +1060,20 @@ def _transcribe_web_agent_audio_refs(audio_refs: list[str]) -> Optional[str]:
 
         transcript = AgentCapabilityManager.transcribe_audio(
             content=content,
-            filename=file_info.get("name") or file_path.name,
+            filename=file_name,
         )
         if transcript:
             transcripts.append(transcript)
 
     return "\n".join(transcripts).strip() if transcripts else None
+
+
+async def _transcribe_web_agent_audio_input(audio_refs: list[str]) -> Optional[str]:
+    """解析并在线程池中转写 WebAgent 音频引用。"""
+    audio_files = _resolve_web_agent_audio_refs(audio_refs)
+    if not audio_files:
+        return None
+    return await asyncio.to_thread(_transcribe_web_agent_audio_files, audio_files)
 
 
 def _merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[str]) -> str:
@@ -1962,15 +2002,9 @@ async def web_agent_stream(
         getattr(request, "headers", {}).get("X-MoviePilot-Agent-Interaction") == "1"
     )
     if is_secret_confirmation_control and not protected_transport_supported:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "当前客户端不支持安全交付敏感设置，未执行操作。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "当前客户端不支持安全交付敏感设置，未执行操作。",
+            locale=locale,
         )
     is_traditional_message = (
         _is_web_agent_traditional_message(prompt)
@@ -1979,27 +2013,15 @@ async def web_agent_stream(
     if is_traditional_message:
         denied_message = _ensure_web_agent_command_allowed(current_user)
         if denied_message:
-            return StreamingResponse(
-                iter([
-                    _build_web_agent_sse(
-                        "error",
-                        {"message": denied_message},
-                        locale=locale,
-                    )
-                ]),
-                media_type="text/event-stream",
+            return _build_web_agent_error_response(
+                denied_message,
+                locale=locale,
             )
         unknown_command_message = _get_web_agent_unknown_command_message(prompt)
         if unknown_command_message:
-            return StreamingResponse(
-                iter([
-                    _build_web_agent_sse(
-                        "error",
-                        {"message": unknown_command_message},
-                        locale=locale,
-                    )
-                ]),
-                media_type="text/event-stream",
+            return _build_web_agent_error_response(
+                unknown_command_message,
+                locale=locale,
             )
 
         user_attachments = _build_web_agent_input_attachments(
@@ -2086,66 +2108,34 @@ async def web_agent_stream(
                     return
             yield _build_web_agent_sse("done", {}, locale=locale)
 
-        return StreamingResponse(
-            traditional_event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+        return build_sse_response(traditional_event_generator())
 
-    if not settings.AI_AGENT_ENABLE:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "智能助手未启用，请先在系统设置中开启。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
+        return _build_web_agent_error_response(
+            "智能助手未启用，请先在系统设置中开启。",
+            locale=locale,
         )
 
     manager = get_running_agent_manager()
     if manager is None:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "智能助手服务尚未就绪，请稍后重试。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "智能助手服务尚未就绪，请稍后重试。",
+            locale=locale,
         )
 
-    transcript = _transcribe_web_agent_audio_refs(payload.audio_refs or [])
+    transcript = await _transcribe_web_agent_audio_input(payload.audio_refs or [])
     prompt = _merge_web_agent_prompt_with_transcript(prompt, transcript)
     display_prompt = _merge_web_agent_prompt_with_transcript(display_prompt, transcript)
     has_audio_input = bool(transcript)
     if not prompt and payload.audio_refs and not payload.images and not payload.files:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "语音识别失败，请稍后重试。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "语音识别失败，请稍后重试。",
+            locale=locale,
         )
     if not prompt and not payload.images and not payload.files and not payload.audio_refs:
-        return StreamingResponse(
-            iter([
-                _build_web_agent_sse(
-                    "error",
-                    {"message": "请输入要发送给智能助手的内容或选择附件。"},
-                    locale=locale,
-                )
-            ]),
-            media_type="text/event-stream",
+        return _build_web_agent_error_response(
+            "请输入要发送给智能助手的内容或选择附件。",
+            locale=locale,
         )
 
     MessageChain().bind_user_session(str(current_user.id), session_id)
@@ -2311,13 +2301,9 @@ async def web_agent_stream(
             await event_publisher.aclose()
             # 客户端断线后保留 Agent 继续执行；发布器关闭后不再接受受保护结果。
 
-    return StreamingResponse(
+    return build_sse_response(
         event_generator(),
-        media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
             **(
                 {"X-MoviePilot-Agent-Control": "secret-confirmation"}
                 if is_secret_confirmation_control

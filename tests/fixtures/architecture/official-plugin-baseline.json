@@ -1111,48 +1111,59 @@
         "response_model": null
       }
     ],
-    "plugins.v2/chatgpt/__init__.py": [
+    "plugins.v2/courseorganizer/__init__.py": [
       {
         "auth": "'bear'",
-        "endpoint": "get_cache_stats",
-        "endpoint_return": "dict",
+        "endpoint": "get_review_route",
+        "endpoint_return": "Any",
         "methods": [
           "GET"
         ],
-        "path": "/cache_stats",
+        "path": "/review",
         "response_class": null,
         "response_model": null
       },
       {
         "auth": "'bear'",
-        "endpoint": "clear_cache",
-        "endpoint_return": "dict",
+        "endpoint": "save_review_route",
+        "endpoint_return": "Any",
         "methods": [
-          "GET"
+          "POST"
         ],
-        "path": "/clear_cache",
+        "path": "/review",
         "response_class": null,
         "response_model": null
       },
       {
         "auth": "'bear'",
-        "endpoint": "clear_usage_stats",
-        "endpoint_return": "dict",
+        "endpoint": "refresh_review_route",
+        "endpoint_return": "Any",
         "methods": [
-          "GET"
+          "POST"
         ],
-        "path": "/clear_usage_stats",
+        "path": "/review/refresh",
         "response_class": null,
         "response_model": null
       },
       {
         "auth": "'bear'",
-        "endpoint": "get_usage_stats",
-        "endpoint_return": "dict",
+        "endpoint": "associate_tmdb_route",
+        "endpoint_return": "Any",
         "methods": [
-          "GET"
+          "POST"
         ],
-        "path": "/usage_stats",
+        "path": "/review/tmdb/associate",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "search_tmdb_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "POST"
+        ],
+        "path": "/review/tmdb/search",
         "response_class": null,
         "response_model": null
       }
@@ -2501,6 +2512,52 @@
         "response_model": null
       }
     ],
+    "plugins.v3/chatgpt/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "get_cache_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/cache_stats",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_cache",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_cache",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "clear_usage_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_usage_stats",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "get_usage_stats",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/usage_stats",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
     "plugins.v3/doubanrank/__init__.py": [
       {
         "auth": null,
@@ -2638,7 +2695,7 @@
       ]
     },
     "get_api": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2656,6 +2713,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -2708,6 +2766,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -2716,6 +2775,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2728,7 +2788,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 79,
+      "file_count": 82,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2745,6 +2805,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -2796,6 +2857,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -2804,6 +2866,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2827,7 +2890,7 @@
       ]
     },
     "get_form": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2845,6 +2908,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -2897,6 +2961,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -2905,6 +2970,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2923,7 +2989,7 @@
       ]
     },
     "get_page": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2941,6 +3007,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -2993,6 +3060,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3001,6 +3069,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3009,13 +3078,14 @@
       ]
     },
     "get_render_mode": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/clashruleprovider/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/fullscreenposterwall/__init__.py",
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/oidcauth/__init__.py",
@@ -3025,7 +3095,7 @@
       ]
     },
     "get_service": {
-      "file_count": 47,
+      "file_count": 48,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -3035,6 +3105,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -3081,7 +3152,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 82,
+      "file_count": 86,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3100,6 +3171,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -3152,6 +3224,8 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/chatgpt/openai.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3160,6 +3234,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3168,7 +3243,7 @@
       ]
     },
     "init_plugin": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3186,6 +3261,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -3238,6 +3314,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3246,6 +3323,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3254,7 +3332,7 @@
       ]
     },
     "stop_service": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3272,6 +3350,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -3324,6 +3403,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3332,6 +3412,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3348,11 +3429,12 @@
       ]
     },
     "app.agent.llm": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/airecognizerenhancer/__init__.py",
-        "plugins.v2/chatgpt/openai.py",
-        "plugins.v2/qbuploadlimiter/__init__.py"
+        "plugins.v2/courseorganizer/providers.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v3/chatgpt/openai.py"
       ]
     },
     "app.agent.llm.helper": {
@@ -3415,10 +3497,11 @@
       ]
     },
     "app.chain.media": {
-      "file_count": 9,
+      "file_count": 10,
       "files": [
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins.v2/courseorganizer/providers.py",
         "plugins.v2/doubanrank/__init__.py",
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
@@ -3548,7 +3631,7 @@
       ]
     },
     "app.core.config": {
-      "file_count": 70,
+      "file_count": 73,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
@@ -3584,6 +3667,7 @@
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
         "plugins.v2/contractcheck/siteuserinfo/__init__.py",
+        "plugins.v2/courseorganizer/providers.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -3594,6 +3678,7 @@
         "plugins.v2/ffmpegthumb/__init__.py",
         "plugins.v2/fullscreenposterwall/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/imdbsource/imdbapi.py",
         "plugins.v2/imdbsource/imdbhelper.py",
         "plugins.v2/invitessignin/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
@@ -3619,7 +3704,8 @@
         "plugins.v2/tvdbdiscover/__init__.py",
         "plugins.v2/tvfirstwatch/__init__.py",
         "plugins.v2/updatewechatip/__init__.py",
-        "plugins.v2/wechatclawbot/__init__.py"
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins.v3/chatgpt/__init__.py"
       ]
     },
     "app.core.context": {
@@ -3645,7 +3731,7 @@
       ]
     },
     "app.core.event": {
-      "file_count": 40,
+      "file_count": 41,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -3686,7 +3772,8 @@
         "plugins.v2/tvfirstwatch/__init__.py",
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
-        "plugins.v2/wxpusher/__init__.py"
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/chatgpt/__init__.py"
       ]
     },
     "app.core.meta": {
@@ -3880,8 +3967,9 @@
       ]
     },
     "app.db.user_oper": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/oidcauth/__init__.py"
       ]
@@ -4036,7 +4124,7 @@
       ]
     },
     "app.log": {
-      "file_count": 97,
+      "file_count": 99,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -4082,6 +4170,7 @@
         "plugins.v2/contractcheck/__init__.py",
         "plugins.v2/contractcheck/siteuserinfo/__init__.py",
         "plugins.v2/contractcheck/siteuserinfo/nexus_php.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -4134,7 +4223,8 @@
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wechatclawbot/ilink/client.py",
-        "plugins.v2/wxpusher/__init__.py"
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/chatgpt/__init__.py"
       ]
     },
     "app.modules.bangumi": {
@@ -4210,7 +4300,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 81,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4228,6 +4318,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -4280,6 +4371,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -4288,6 +4380,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4322,9 +4415,10 @@
       ]
     },
     "app.plugins.chatgpt.openai": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/chatgpt/__init__.py"
+        "plugins.v2/chatgpt/__init__.py",
+        "plugins.v3/chatgpt/__init__.py"
       ]
     },
     "app.plugins.ffmpegthumb.ffmpeg_helper": {
@@ -4334,24 +4428,21 @@
       ]
     },
     "app.plugins.imdbsource.imdbhelper": {
-      "file_count": 2,
+      "file_count": 1,
       "files": [
-        "plugins.v2/imdbsource/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v2/imdbsource/__init__.py"
       ]
     },
     "app.plugins.imdbsource.officialapi": {
-      "file_count": 2,
+      "file_count": 1,
       "files": [
-        "plugins.v2/imdbsource/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v2/imdbsource/__init__.py"
       ]
     },
     "app.plugins.imdbsource.schema": {
-      "file_count": 2,
+      "file_count": 1,
       "files": [
-        "plugins.v2/imdbsource/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v2/imdbsource/__init__.py"
       ]
     },
     "app.plugins.iyuuautoseed.iyuu_helper": {
@@ -4385,7 +4476,7 @@
       ]
     },
     "app.schemas": {
-      "file_count": 48,
+      "file_count": 50,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
@@ -4426,9 +4517,11 @@
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/schema/imdbapi.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -4437,14 +4530,26 @@
         "plugins.v3/tvdbdiscover/__init__.py"
       ]
     },
+    "app.schemas.context": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/imdbsource/schema/imdbapi.py"
+      ]
+    },
     "app.schemas.event": {
       "file_count": 1,
       "files": [
         "plugins.v2/hrblocker/__init__.py"
       ]
     },
+    "app.schemas.exception": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/imdbsource/officialapi.py"
+      ]
+    },
     "app.schemas.types": {
-      "file_count": 65,
+      "file_count": 67,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4500,12 +4605,14 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4522,9 +4629,8 @@
       ]
     },
     "app.sdk.cache": {
-      "file_count": 5,
+      "file_count": 4,
       "files": [
-        "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
@@ -4532,7 +4638,7 @@
       ]
     },
     "app.sdk.config": {
-      "file_count": 20,
+      "file_count": 21,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
@@ -4546,6 +4652,7 @@
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
@@ -4557,7 +4664,7 @@
       ]
     },
     "app.sdk.events": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -4566,6 +4673,7 @@
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4588,12 +4696,12 @@
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
-        "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4622,7 +4730,7 @@
       ]
     },
     "app.sdk.network": {
-      "file_count": 17,
+      "file_count": 16,
       "files": [
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -4632,7 +4740,6 @@
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
-        "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
@@ -4839,15 +4946,17 @@
       ]
     }
   },
-  "schema_version": 2,
-  "source": {
-    "head": "ddb41dbcbbea21196154a7f6d5fdba3aa34a5e4a",
-    "python_file_count": 231,
+  "provenance": {
+    "head": "fd0363711dbba96e31a27ad56b2e87c3524096a4",
+    "python_file_count": 238,
+    "source_sha256": "f07ff2e8c95080cbbf6d229376464e61dc74061c1a8d371b5ea2cf00148413de"
+  },
+  "schema_version": 3,
+  "scope": {
     "repository": "MoviePilot-Plugins",
     "roots": [
       "plugins.v2",
       "plugins.v3"
-    ],
-    "source_sha256": "63663538bd7f5b7c6a9f318ab58ad35d8c5ab68bd7d798d07a5dcdf600f062ad"
+    ]
   }
 }

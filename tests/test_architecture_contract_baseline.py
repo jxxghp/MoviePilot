@@ -13,8 +13,18 @@ BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 
 def test_architecture_contract_baselines_match_current_source():
     """宿主依赖图和公开运行契约变化必须显式刷新基线。"""
+    baseline_paths = (
+        BASELINE_ROOT / "dependency-baseline.json",
+        BASELINE_ROOT / "runtime-contract-baseline.json",
+        BASELINE_ROOT / "transaction-debt-baseline.json",
+        BASELINE_ROOT / "configuration-debt-baseline.json",
+    )
+    contents_before = {
+        path: path.read_bytes()
+        for path in baseline_paths
+    }
     result = subprocess.run(
-        [sys.executable, "scripts/architecture/baseline.py", "--check"],
+        [sys.executable, "scripts/architecture/baseline.py", "--check-host"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -22,6 +32,10 @@ def test_architecture_contract_baselines_match_current_source():
     )
 
     assert result.returncode == 0, result.stderr
+    assert {
+        path: path.read_bytes()
+        for path in baseline_paths
+    } == contents_before
 
 
 def test_official_plugin_baseline_records_external_source():
@@ -29,9 +43,10 @@ def test_official_plugin_baseline_records_external_source():
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["source"]["repository"] == "MoviePilot-Plugins"
-    assert len(baseline["source"]["head"]) == 40
-    assert baseline["source"]["roots"] == ["plugins.v2", "plugins.v3"]
+    assert baseline["schema_version"] == 3
+    assert baseline["scope"]["repository"] == "MoviePilot-Plugins"
+    assert baseline["scope"]["roots"] == ["plugins.v2", "plugins.v3"]
+    assert len(baseline["provenance"]["head"]) == 40
     assert all(
         not path.startswith("app/plugins/")
         for contract in (*baseline["imports"].values(), *baseline["hooks"].values())
@@ -41,6 +56,18 @@ def test_official_plugin_baseline_records_external_source():
         not path.startswith("app/plugins/")
         for path in baseline["api_routes"]
     )
+
+
+def test_dependency_baseline_records_nonempty_host_graph() -> None:
+    """宿主依赖 fixture 不得因收集器提前返回而被静默写成空值。"""
+    baseline_path = BASELINE_ROOT / "dependency-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["module_count"] == len(baseline["modules"])
+    assert baseline["edge_count"] == len(baseline["edges"])
+    assert baseline["module_count"] > 0
+    assert baseline["edge_count"] > 0
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
@@ -81,6 +108,50 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
         assert len(contract["samples_ms"]) == baseline["repeat"]
         assert contract["min_ms"] <= contract["median_ms"] <= contract["max_ms"]
         assert contract["loaded_module_count"] > 0
+
+
+def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
+    """运行契约 fixture 只保存稳定语义，源码位置必须按需诊断。"""
+    baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 2
+    assert '"line"' not in json.dumps(baseline)
+
+
+def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
+    """事务 fixture 必须保持 Model 写装饰器归零，并冻结剩余查询债务。"""
+    baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["model_decorators"]["count"] == 123
+    assert sum(baseline["model_decorators"]["by_kind"].values()) == 123
+    assert baseline["model_decorators"]["by_kind"]["db_update"] == 0
+    assert baseline["model_decorators"]["by_kind"]["async_db_update"] == 0
+    assert baseline["model_transaction_calls"] == {"count": 0, "calls": []}
+    assert baseline["model_session_factories"] == {"count": 0, "calls": []}
+    assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}
+    assert baseline["oper_session_factories"] == {"count": 0, "calls": []}
+
+
+def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
+    """配置债务基线必须排除插件兼容面，并冻结两个可下降的直接访问集合。"""
+    baseline_path = BASELINE_ROOT / "configuration-debt-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    assert baseline["schema_version"] == 1
+    assert baseline["scope"]["excluded"] == [
+        "app/plugins",
+        "app/sdk",
+        "app/runtime/compat",
+    ]
+    assert baseline["settings_imports"]["count"] == len(
+        baseline["settings_imports"]["files"]
+    )
+    assert baseline["system_config_oper_constructions"]["count"] == len(
+        baseline["system_config_oper_constructions"]["calls"]
+    )
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():

@@ -16,7 +16,8 @@ from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.dashboard import DashboardChain
 from app.application.orchestration.storage import StorageChain
-from app.runtime.config import settings
+from app.api.context import get_api_runtime_config, resolve_api_runtime_config
+from app.application.configuration import ApiRuntimeConfig
 from app.adapters.web.security.access import verify_apitoken
 from app.api.deps import get_current_active_superuser, get_dashboard_query_service
 from app.application.dashboard import DashboardQueryService
@@ -52,7 +53,11 @@ def _build_storage() -> _SchemaStorage:
     return _SchemaStorage(total_storage=total, used_storage=total - available)
 
 
-def _build_downloader(name: Optional[str] = None) -> _SchemaDownloaderInfo:
+def _build_downloader(
+    name: Optional[str] = None,
+    *,
+    btrfs_fsid_dedup: bool = False,
+) -> _SchemaDownloaderInfo:
     """
     构建下载器统计信息。
     """
@@ -60,7 +65,7 @@ def _build_downloader(name: Optional[str] = None) -> _SchemaDownloaderInfo:
     download_dirs = DirectoryHelper().get_local_download_dirs()
     _, free_space = SystemUtils.space_usage(
         [Path(d.download_path) for d in download_dirs],
-        btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
+        btrfs_fsid_dedup=btrfs_fsid_dedup,
     )
     # 下载器信息
     downloader_info = _SchemaDownloaderInfo()
@@ -136,12 +141,18 @@ def system_info(_: Any = Depends(get_current_active_superuser)) -> Any:
 
 @router.get("/downloader", summary="下载器信息", response_model=_SchemaDownloaderInfo)
 def downloader(
-    name: Optional[str] = None, _: Any = Depends(get_current_active_superuser)
+    name: Optional[str] = None,
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
+    _: Any = Depends(get_current_active_superuser),
 ) -> Any:
     """
     查询下载器信息
     """
-    return _build_downloader(name)
+    runtime_config = resolve_api_runtime_config(runtime_config)
+    return _build_downloader(
+        name,
+        btrfs_fsid_dedup=runtime_config.btrfs_fsid_dedup,
+    )
 
 
 @router.get(
@@ -149,11 +160,17 @@ def downloader(
     summary="下载器信息（API_TOKEN）",
     response_model=_SchemaDownloaderInfo,
 )
-def downloader2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+def downloader2(
+    _: Annotated[str, Depends(verify_apitoken)],
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
+) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
-    return _build_downloader()
+    runtime_config = resolve_api_runtime_config(runtime_config)
+    return _build_downloader(
+        btrfs_fsid_dedup=runtime_config.btrfs_fsid_dedup,
+    )
 
 
 @router.get("/schedule", summary="后台服务", response_model=List[_SchemaScheduleInfo])

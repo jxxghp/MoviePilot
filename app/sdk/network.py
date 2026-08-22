@@ -24,7 +24,7 @@ from app.adapters.network.urlsafety import (
     UrlSafetyDiagnosis,
     UrlSafetyReason,
 )
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
 
 __all__ = [

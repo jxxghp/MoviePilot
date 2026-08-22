@@ -116,8 +116,8 @@ class SiteOper(DbOper):
         Site.delete(self._db, sid)
 
     def reset(self) -> None:
-        """清空站点表，保留站点模型细节在数据库适配层。"""
-        Site.reset(self._db)
+        """清空站点表；兼容入口的事务由组合根统一持有。"""
+        self._execute_sync_write(Site.reset)
 
     async def stage_reset(self) -> None:
         """暂存清空站点表，由应用事务统一提交。"""

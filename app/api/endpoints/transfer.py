@@ -19,10 +19,8 @@ from app.application.orchestration.media import MediaChain
 from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings, global_vars
 from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.api.deps import (
-    get_current_active_manage_user,
-    get_transfer_history_lookup_service,
-)
+from app.api.dependencies.auth import get_current_active_manage_user
+from app.api.dependencies.history import get_transfer_history_lookup_service
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService
 from app.runtime.log import logger
@@ -304,12 +302,26 @@ def manual_transfer(
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    手动转移，文件或历史记录，支持自定义剧集识别格式
+    解析手动整理 HTTP 请求并委托兼容用例处理器。
+
     :param transer_item: 手工整理项
     :param background: 后台运行
     :param history_query: 整理历史投影服务
     :param _: Token校验
     """
+    return _execute_manual_transfer(
+        transer_item=transer_item,
+        background=background,
+        history_query=history_query,
+    )
+
+
+def _execute_manual_transfer(
+    transer_item: ManualTransferItem,
+    background: Optional[bool],
+    history_query: TransferHistoryLookupService,
+) -> Any:
+    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
     force = False
     downloader = None
     download_hash = None

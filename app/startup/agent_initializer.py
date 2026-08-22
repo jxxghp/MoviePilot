@@ -3,6 +3,7 @@ from typing import Any
 from app.agent.runtime_loader import (
     activate_agent_service,
     begin_agent_shutdown,
+    close_materialized_terminal_sessions,
     get_agent_manager as get_runtime_agent_manager,
     get_running_agent_manager as get_runtime_running_agent_manager,
     is_tool_factory_materialized,
@@ -78,14 +79,14 @@ def _get_prompt_manager() -> Any:
 
 def _get_capability_manager() -> Any:
     """首个多模态调用才导入 Agent 能力管理器。"""
-    from app.agent.llm import AgentCapabilityManager
+    from app.agent.llm.capability import AgentCapabilityManager
 
     return AgentCapabilityManager
 
 
 def _get_llm_helper() -> Any:
     """首个模型能力查询才导入 LLM helper。"""
-    from app.agent.llm import LLMHelper
+    from app.agent.llm.helper import LLMHelper
 
     return LLMHelper
 
@@ -232,6 +233,8 @@ async def stop_agent():
         if is_tool_factory_materialized():
             from app.agent.tools.base import shutdown_blocking_executors
 
-            shutdown_blocking_executors(cancel_futures=True)
+            shutdown_blocking_executors(wait=False, cancel_futures=True)
     except Exception as e:
         logger.error(f"停止AI智能体时发生错误: {e}")
+    finally:
+        await close_materialized_terminal_sessions()

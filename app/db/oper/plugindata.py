@@ -1,5 +1,8 @@
 from typing import Any, Optional
 
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
 from app.db.models.plugindata import PluginData
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
@@ -92,10 +95,27 @@ class PluginDataOper(DbOper):
         :param key: 数据key，为空时删除该范围下的全部数据
         :param instance_id: 实例标识，为 None 时跨全部实例删除
         """
-        if key:
-            PluginData.del_plugin_data_by_key(self._db, plugin_id, key, instance_id)
-        else:
-            PluginData.del_plugin_data(self._db, plugin_id, instance_id)
+        def stage(session: Session) -> None:
+            """把兼容删除入口映射到调用方或组合根持有的事务。"""
+            if key:
+                PluginData.del_plugin_data_by_key(session, plugin_id, key, instance_id)
+            else:
+                PluginData.del_plugin_data(session, plugin_id, instance_id)
+
+        self._execute_sync_write(stage)
+
+    def stage_delete(self, plugin_id: str) -> None:
+        """暂存目标插件全部数据删除并 flush，不提交调用方事务。
+
+        与 ``del_data`` 不同，本方法跨该插件全部实例删除且不接受 ``instance_id``
+        收窄——它服务的是插件卸载场景，需要清空该插件在宿主内的全部实例数据。
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("插件数据暂存删除需要调用方提供 Session")
+        self._db.execute(
+            delete(PluginData).where(PluginData.plugin_id == plugin_id)
+        )
+        self._db.flush()
 
     def truncate(self):
         """

@@ -411,6 +411,8 @@ class SystemConfigKey(Enum):
     UserCustomCSS = "UserCustomCSS"
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
+    # 共享源码插件的虚拟运行实例
+    PluginInstances = "PluginInstances"
     # 插件文件夹分组配置
     PluginFolders = "PluginFolders"
     # 默认电影订阅规则
@@ -509,6 +511,7 @@ class NotificationChannel(Enum):
     Telegram = "Telegram"
     Slack = "Slack"
     Discord = "Discord"
+    DingTalk = "钉钉"
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
     Web = "Web"
@@ -622,6 +625,8 @@ class MediaRecognizeType(Enum):
     Bangumi = "Bangumi"
     # AniList
     AniList = "AniList"
+    # IMDb
+    IMDb = "IMDb"
     # MusicBrainz
     MusicBrainz = "MusicBrainz"
     # TheAudioDB

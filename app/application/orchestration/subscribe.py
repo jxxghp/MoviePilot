@@ -3,6 +3,7 @@ import json
 import random
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
@@ -86,6 +87,24 @@ else:
 # 不再指向数据库 Oper。
 SystemConfigOper = get_configured_system_config
 _DEFAULT_SYSTEM_CONFIG_PROVIDER = get_configured_system_config
+
+
+@dataclass(frozen=True, slots=True)
+class _SubscribePostCommitContext:
+    """订阅提交后副作用所需的不可变业务快照。"""
+
+    title: str
+    year: str
+    metainfo: MetaBase
+    mediainfo: MediaInfo
+    media_source: Optional[MediaSource]
+    media_id: Optional[str]
+    season: Optional[int]
+    channel: Optional[NotificationChannel]
+    source: Optional[str]
+    userid: Optional[str]
+    username: Optional[str]
+    message: bool
 
 
 def _system_config():
@@ -851,6 +870,106 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             })
         return defaults
 
+    @staticmethod
+    def __subscribe_added_link(mtype: MediaType) -> str:
+        """返回订阅类型对应的前端详情入口。"""
+        if mtype == MediaType.TV:
+            return settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
+        if mtype == MediaType.MUSIC:
+            return settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
+        return settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
+
+    @staticmethod
+    def __subscribe_report_payload(context: _SubscribePostCommitContext) -> dict:
+        """构造保持旧字段和值语义的订阅统计上报。"""
+        mediainfo = context.mediainfo
+        music_type = getattr(mediainfo, "music_type", None)
+        return {
+            "name": context.title,
+            "year": context.year,
+            "type": context.metainfo.type.value,
+            "media_source": context.media_source,
+            "media_id": context.media_id,
+            "music_type": music_type,
+            "total_tracks": getattr(mediainfo, "total_tracks", None)
+            if music_type == MUSIC_ENTITY_ALBUM else None,
+            "season": context.season,
+            "poster": mediainfo.get_poster_image(),
+            "backdrop": mediainfo.get_backdrop_image(),
+            "vote": mediainfo.vote_average,
+            "description": mediainfo.overview,
+        }
+
+    def __post_subscribe_added(
+        self,
+        subscribe_id: int,
+        context: _SubscribePostCommitContext,
+    ) -> None:
+        """同步执行提交后消息、事件和统计，异常不再触碰数据库事务。"""
+        if context.message:
+            self.post_message(
+                _SchemaMessage(
+                    channel=context.channel,
+                    source=context.source,
+                    mtype=MessageType.Subscribe,
+                    ctype=ContentType.SubscribeAdded,
+                    image=context.mediainfo.get_message_image(),
+                    link=self.__subscribe_added_link(context.mediainfo.type),
+                    userid=context.userid,
+                    username=context.username,
+                ),
+                meta=context.metainfo,
+                mediainfo=context.mediainfo,
+                username=context.username,
+            )
+        eventmanager.send_event(EventType.SubscribeAdded, {
+            "subscribe_id": subscribe_id,
+            "idempotency_key": (
+                f"subscribe.added:{subscribe_id}:"
+                f"{context.media_source}:{context.media_id}:v1"
+            ),
+            "username": context.username,
+            "mediainfo": context.mediainfo.to_dict(),
+        })
+        MoviePilotServerHelper.sub_reg_async(
+            self.__subscribe_report_payload(context)
+        )
+
+    async def __async_post_subscribe_added(
+        self,
+        subscribe_id: int,
+        context: _SubscribePostCommitContext,
+    ) -> None:
+        """异步执行提交后消息、事件和统计，保持与同步入口相同顺序。"""
+        if context.message:
+            await self.async_post_message(
+                _SchemaMessage(
+                    channel=context.channel,
+                    source=context.source,
+                    mtype=MessageType.Subscribe,
+                    ctype=ContentType.SubscribeAdded,
+                    image=context.mediainfo.get_message_image(),
+                    link=self.__subscribe_added_link(context.mediainfo.type),
+                    userid=context.userid,
+                    username=context.username,
+                ),
+                meta=context.metainfo,
+                mediainfo=context.mediainfo,
+                username=context.username,
+            )
+        await eventmanager.async_send_event(EventType.SubscribeAdded, {
+            "subscribe_id": subscribe_id,
+            "idempotency_key": (
+                f"subscribe.added:{subscribe_id}:"
+                f"{context.media_source}:{context.media_id}:v1"
+            ),
+            "username": context.username,
+            "mediainfo": context.mediainfo.to_dict(),
+        })
+        await MoviePilotServerHelper.async_sub_reg(
+            self.__subscribe_report_payload(context)
+        )
+
     def add(self, title: str, year: str,
             mtype: MediaType = None,
             episode_group: Optional[str] = None,
@@ -992,8 +1111,33 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         # 添加订阅
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
+        post_commit_context = _SubscribePostCommitContext(
+            title=title,
+            year=year,
+            metainfo=metainfo,
+            mediainfo=mediainfo,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            message=bool(message),
+        )
+
+        def _after_commit(subscribe_id: int) -> None:
+            """把同步提交后的副作用委托给单一顺序实现。"""
+            self.__post_subscribe_added(subscribe_id, post_commit_context)
+
         # 操作数据库
-        sid, err_msg = add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = add_subscribe(
+            mediainfo=mediainfo,
+            season=season,
+            username=username,
+            after_commit=_after_commit,
+            **kwargs,
+        )
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -1007,51 +1151,6 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                                                        image=mediainfo.get_message_image(),
                                                        userid=userid))
             return None, err_msg
-        elif message:
-            if mediainfo.type == MediaType.TV:
-                link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
-            elif mediainfo.type == MediaType.MUSIC:
-                link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
-            else:
-                link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
-            # 订阅成功按规则发送消息
-            self.post_message(
-                _SchemaMessage(
-                    channel=channel,
-                    source=source,
-                    mtype=MessageType.Subscribe,
-                    ctype=ContentType.SubscribeAdded,
-                    image=mediainfo.get_message_image(),
-                    link=link,
-                    userid=userid,
-                    username=username
-                ),
-                meta=metainfo,
-                mediainfo=mediainfo,
-                username=username
-            )
-        # 发送事件
-        eventmanager.send_event(EventType.SubscribeAdded, {
-            "subscribe_id": sid,
-            "username": username,
-            "mediainfo": mediainfo.to_dict(),
-        })
-        # 统计订阅
-        MoviePilotServerHelper.sub_reg_async({
-            "name": title,
-            "year": year,
-            "type": metainfo.type.value,
-            "media_source": media_source,
-            "media_id": media_id,
-            "music_type": getattr(mediainfo, "music_type", None),
-            "total_tracks": getattr(mediainfo, "total_tracks", None)
-            if getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM else None,
-            "season": season,
-            "poster": mediainfo.get_poster_image(),
-            "backdrop": mediainfo.get_backdrop_image(),
-            "vote": mediainfo.vote_average,
-            "description": mediainfo.overview
-        })
         # 返回结果
         return sid, err_msg
 
@@ -1196,8 +1295,36 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         # 列新默认参数
         kwargs.update(self.__get_default_kwargs(mediainfo.type, **kwargs))
 
+        post_commit_context = _SubscribePostCommitContext(
+            title=title,
+            year=year,
+            metainfo=metainfo,
+            mediainfo=mediainfo,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            message=bool(message),
+        )
+
+        async def _after_commit(subscribe_id: int) -> None:
+            """把异步提交后的副作用委托给单一顺序实现。"""
+            await self.__async_post_subscribe_added(
+                subscribe_id,
+                post_commit_context,
+            )
+
         # 操作数据库
-        sid, err_msg = await async_add_subscribe(mediainfo=mediainfo, season=season, username=username, **kwargs)
+        sid, err_msg = await async_add_subscribe(
+            mediainfo=mediainfo,
+            season=season,
+            username=username,
+            after_commit=_after_commit,
+            **kwargs,
+        )
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -1211,51 +1338,6 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                                                                    image=mediainfo.get_message_image(),
                                                                    userid=userid))
             return None, err_msg
-        elif message:
-            if mediainfo.type == MediaType.TV:
-                link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
-            elif mediainfo.type == MediaType.MUSIC:
-                link = settings.MP_DOMAIN('#/subscribe/music?tab=mysub')
-            else:
-                link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
-            # 订阅成功按规则发送消息
-            await self.async_post_message(
-                _SchemaMessage(
-                    channel=channel,
-                    source=source,
-                    mtype=MessageType.Subscribe,
-                    ctype=ContentType.SubscribeAdded,
-                    image=mediainfo.get_message_image(),
-                    link=link,
-                    userid=userid,
-                    username=username
-                ),
-                meta=metainfo,
-                mediainfo=mediainfo,
-                username=username
-            )
-        # 发送事件
-        await eventmanager.async_send_event(EventType.SubscribeAdded, {
-            "subscribe_id": sid,
-            "username": username,
-            "mediainfo": mediainfo.to_dict(),
-        })
-        # 统计订阅
-        await MoviePilotServerHelper.async_sub_reg({
-            "name": title,
-            "year": year,
-            "type": metainfo.type.value,
-            "media_source": media_source,
-            "media_id": media_id,
-            "music_type": getattr(mediainfo, "music_type", None),
-            "total_tracks": getattr(mediainfo, "total_tracks", None)
-            if getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM else None,
-            "season": season,
-            "poster": mediainfo.get_poster_image(),
-            "backdrop": mediainfo.get_backdrop_image(),
-            "vote": mediainfo.vote_average,
-            "description": mediainfo.overview
-        })
         # 返回结果
         return sid, err_msg
 
@@ -1270,6 +1352,28 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         判断订阅是否已存在
         """
         return cls._subscription_query().exists(mediainfo, meta)
+
+    def _acquire_run_lock(
+            self,
+            operation: str,
+            progress_callback: Optional[Callable[..., None]],
+    ) -> bool:
+        """获取订阅任务锁，超时时统一记录并结束本轮进度。"""
+        if self._rlock.acquire(blocking=True, timeout=self._LOCK_TIMOUT):
+            logger.debug(f"{operation} lock acquired at {datetime.now()}")
+            return True
+        operation_label = {"search": "搜索", "match": "匹配"}[operation]
+        progress_text = {
+            "search": "订阅搜索锁等待超时，已跳过本轮",
+            "match": "订阅匹配锁等待超时，已跳过本轮",
+        }[operation]
+        logger.error(f"订阅{operation_label}锁等待超时，已中止本轮执行")
+        if progress_callback:
+            progress_callback(
+                value=100,
+                text=progress_text,
+            )
+        return False
 
     def search(
             self,
@@ -1288,12 +1392,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         lock_acquired = False
         try:
-            if lock_acquired := self._rlock.acquire(
-                    blocking=True, timeout=self._LOCK_TIMOUT
-            ):
-                logger.debug(f"search lock acquired at {datetime.now()}")
-            else:
-                logger.warn("search上锁超时")
+            lock_acquired = self._acquire_run_lock("search", progress_callback)
+            if not lock_acquired:
+                return
 
             subscribeoper = SubscribeOper()
             if sid:
@@ -1732,12 +1833,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         lock_acquired = False
         try:
-            if lock_acquired := self._rlock.acquire(
-                    blocking=True, timeout=self._LOCK_TIMOUT
-            ):
-                logger.debug(f"match lock acquired at {datetime.now()}")
-            else:
-                logger.warn("match上锁超时")
+            lock_acquired = self._acquire_run_lock("match", progress_callback)
+            if not lock_acquired:
+                return
 
             # 预识别所有未识别的种子
             processed_torrents: Dict[str, List[Context]] = {}
@@ -1929,20 +2027,21 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             )[1]:
                                 logger.debug(
                                     f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
-                                if TorrentHelper.match_torrent(mediainfo=mediainfo,
-                                                               torrent_meta=torrent_meta,
-                                                               torrent=torrent_info):
-                                    # 匹配成功
-                                    logger.info(
-                                        f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                    torrent_mediainfo = mediainfo
-                                    # 更新种子缓存
-                                    _context.media_info = mediainfo
-                                    _context.match_source = "title"
-                                    _context.candidate_recognized = False
-                                    _context.media_info_is_target = True
-                                else:
+                                if not self.__is_title_match_allowed(
+                                        mediainfo=mediainfo,
+                                        torrent_meta=torrent_meta,
+                                        torrent_info=torrent_info,
+                                ):
                                     continue
+                                # 匹配成功
+                                logger.info(
+                                    f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                                torrent_mediainfo = mediainfo
+                                # 更新种子缓存
+                                _context.media_info = mediainfo
+                                _context.match_source = "title"
+                                _context.candidate_recognized = False
+                                _context.media_info_is_target = True
 
                             # 直接比对媒体信息
                             if torrent_mediainfo and resolve_media_identity(
@@ -3673,6 +3772,30 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         return "unknown"
 
     @staticmethod
+    def __is_title_match_allowed(
+            mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+            torrent_info: TorrentInfo,
+    ) -> bool:
+        """判断资源是否可以通过标题兜底匹配订阅目标。"""
+        if not TorrentHelper.match_torrent(
+                mediainfo=mediainfo,
+                torrent_meta=torrent_meta,
+                torrent=torrent_info,
+        ):
+            return False
+        if not TorrentHelper.requires_identity_disambiguation(
+                mediainfo=mediainfo,
+                torrent_meta=torrent_meta,
+        ):
+            return True
+        logger.info(
+            f'{torrent_info.site_name} - {torrent_info.title} '
+            f'仅通过无年份别名命中且候选媒体身份无法确认，已跳过'
+        )
+        return False
+
+    @staticmethod
     def __reconcile_candidate_media(
             target_mediainfo: MediaInfo,
             candidate_mediainfo: MediaInfo,
@@ -3741,13 +3864,26 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
             return None
 
+        evidence_matched, evidence = TorrentHelper.match_same_work_evidence(
+            target_mediainfo=target_mediainfo,
+            candidate_mediainfo=candidate_mediainfo,
+            torrent_meta=torrent_meta,
+        )
+        if not evidence_matched:
+            logger.debug(
+                f'{torrent_info.site_name} - {torrent_info.title} 候选媒体ID冲突且缺少同作品证据：'
+                f'{evidence}；{conflict_text}'
+            )
+            return None
+
         context.media_info = target_mediainfo
         context.match_source = "title"
         context.candidate_recognized = False
         context.media_info_is_target = True
         logger.debug(
             f'{target_mediainfo.title_year} 候选媒体ID冲突（{conflict_text}），'
-            f'经标题或别名复核匹配到订阅目标：{torrent_info.site_name} - {torrent_info.title}'
+            f'经标题或别名及{evidence}复核匹配到订阅目标：'
+            f'{torrent_info.site_name} - {torrent_info.title}'
         )
         return target_mediainfo
 

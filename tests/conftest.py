@@ -6,6 +6,7 @@
 import sys
 
 import pytest
+from sqlalchemy.orm import Session
 
 # 必须早于首个牵入 app.runtime.config 的 import（app.db / app.application.orchestration.* 都会牵入）：引擎本身已惰性，
 # import app.db 不再连库，但 settings 在 import 期就把 CONFIG_DIR 读进字段并建好配置目录，之后
@@ -28,14 +29,34 @@ def configure_plugin_system_services():
         decode_access_token,
     )
     from app.api.data import configure_api_data_ports
-    from app.application.configuration import SystemConfigService, configure_system_config
+    from app.application.configuration import (
+        ApiRuntimeConfig,
+        ChainRuntimeConfig,
+        RuntimeConfiguration,
+        SchedulerRuntimeConfig,
+        SystemConfigService,
+        TransferRetryConfig,
+        configure_runtime_configuration,
+        configure_system_config,
+        configure_transfer_retry_config,
+    )
     from app.application.service_config import (
         ServiceInstanceConfigService,
         configure_service_instance_configs,
         get_configured_service_instance_configs,
     )
-    from app.db.session import get_async_db, get_db
-    from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+    from app.runtime.config import settings
+    from app.db.session import (
+        SessionFactory,
+        async_session_scope,
+        get_async_db,
+        get_db,
+    )
+    from app.db.uow import (
+        SqlAlchemyAsyncUnitOfWork,
+        SqlAlchemyUnitOfWork,
+        configure_transaction_runners,
+    )
     from app.db.oper.serviceconfig import ServiceConfigOper
     from app.db.oper.systemconfig import SystemConfigOper
     from app.runtime.extensions.service_config import (
@@ -43,6 +64,22 @@ def configure_plugin_system_services():
     )
 
     configure_token_codec(create_access_token, decode_access_token)
+    configure_runtime_configuration(
+        RuntimeConfiguration(
+            api=lambda: ApiRuntimeConfig(
+                advanced_mode=settings.ADVANCED_MODE,
+                access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+                btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
+                ai_agent_enable=settings.AI_AGENT_ENABLE,
+            ),
+            scheduler=lambda: SchedulerRuntimeConfig(
+                False, settings.TZ, 1, False, "", None, None, False, 24,
+                "rss", 30, False, None, None, settings.AI_AGENT_ENABLE,
+                None, False, None,
+            ),
+            chain=lambda: ChainRuntimeConfig(media_extensions=()),
+        )
+    )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_service_instance_configs(
         ServiceInstanceConfigService(repository=ServiceConfigOper())
@@ -50,7 +87,13 @@ def configure_plugin_system_services():
     configure_service_instance_config_reader(
         lambda capability: get_configured_service_instance_configs().read(capability)
     )
+    configure_transfer_retry_config(
+        lambda: TransferRetryConfig(
+            max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
+        )
+    )
     from app.application.orchestration.data import configure_chain_data_ports
+    from app.application.subscription.write import configure_subscribe_writer
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.application.module import configure_module_runtime
     from app.application.orchestration.context import (
@@ -79,16 +122,37 @@ def configure_plugin_system_services():
     from app.db.oper.transferhistory import TransferHistoryOper
     from app.db.oper.transferpending import TransferPendingOper
     from app.db.oper.user import UserOper
-    from app.db.oper.workflow import WorkflowOper
+    from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
     from app.db.oper.user_identity import UserIdentityOper
+    from app.startup.subscription import TransactionalSubscribeWriter
+    from app.startup.workflow import TransactionalWorkflowExecutionService
+    from app.startup.transaction import TransactionalWriteRunner
+
+    def compatibility_sync_session() -> Session:
+        """动态读取可被存量隔离数据库用例替换的 ScopedSession。"""
+        from app.db import decorators
+
+        return decorators.ScopedSession()
+
+    transaction_runner = TransactionalWriteRunner(
+        sync_session=compatibility_sync_session,
+        async_session=async_session_scope,
+    )
+    configure_transaction_runners(
+        sync=transaction_runner.sync,
+        async_=transaction_runner.async_,
+    )
+
+    configure_workflow_legacy_writer(
+        TransactionalWorkflowExecutionService(SessionFactory)
+    )
 
     configure_api_data_ports(
         sync_session=get_db,
         async_session=get_async_db,
         repositories={
-            "agent_chat": AgentChatOper,
             "download_history": DownloadHistoryOper,
             "media_server": MediaServerOper,
             "message": MessageOper,
@@ -111,6 +175,12 @@ def configure_plugin_system_services():
             "async": SqlAlchemyAsyncUnitOfWork,
             "sync": SqlAlchemyUnitOfWork,
         },
+    )
+    configure_subscribe_writer(
+        lambda: TransactionalSubscribeWriter(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
     )
 
     from app.application.security.auth import configure_auth_identity_ports

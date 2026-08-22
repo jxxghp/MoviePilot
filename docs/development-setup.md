@@ -61,7 +61,10 @@ uv sync --locked --no-dev --no-install-project
 ./scripts/start-local.sh logs --follow
 ```
 
-默认会使用 `DEBUG=true` 和 `DEV=true`，与 IDE 开发启动保持一致；如果不需要热重载，可以这样启动以降低资源占用：
+默认会使用 `DEBUG=true` 和 `DEV=true`，与 IDE 开发启动保持一致。开发热重载通过
+`app.factory:create_app` 的 import string/factory 入口运行，文件变化后由 Uvicorn 重新创建
+应用结构；不会尝试在 reload 进程间传递已经实例化的 FastAPI 对象。如果不需要热重载，
+可以这样启动以降低资源占用：
 
 ```bash
 DEV=false ./scripts/start-local.sh
@@ -119,6 +122,17 @@ dependencies = ["example-package>=1,<2"]
 - 仅有 `requirements.txt` 的历史插件继续按原方式安装；
 - 宿主不消费插件自己的 `uv.lock`，因为多个插件共享同一主程序环境，不能分别同步独立锁文件。
 
+### 3.2 异步 HTTP 客户端边界
+
+主程序自建的 `AsyncRequestUtils` 使用 HTTPX2，`app.sdk.network.AsyncRequestUtils` 与旧插件
+入口 `app.utils.http.AsyncRequestUtils` 共享同一实现。未显式传入客户端时，返回的响应与抛出的
+请求异常均来自 `httpx2`；直接依赖响应类型或异常类型的 V3 代码应导入 `httpx2`。
+
+OpenAI、Anthropic、Google GenAI、LangChain、CloakBrowser 等第三方 SDK 继续使用它们声明的
+HTTPX 版本。不得调用 `httpx2.alias_httpx()` 在进程内替换 `httpx`，否则会同时改变第三方 SDK、
+测试工具和插件的导入结果。确需复用调用方自管客户端时，向 `AsyncRequestUtils` 传入
+`httpx2.AsyncClient`。
+
 ### 4. 准备资源与插件目录
 
 本地源码开发时，主程序需要读取资源文件和插件源码。相关文件需要放到主程序实际加载的目录下：
@@ -147,20 +161,20 @@ python -m scripts.generate_plugin_market_default \
   --config-file app/runtime/config.py
 ```
 
-### 5. 运行安全检查
+### 5. 运行依赖漏洞检查
 
-我们使用 `safety` 工具检查 `pyproject.toml` 与 `uv.lock` 中是否存在已知安全漏洞。该检查是
-依赖变更的人工门禁，当前不属于自动 CI。
-
-#### 执行安全检查
-
-可以通过 `uvx` 在隔离工具环境中运行 `safety`，无需把它加入主程序依赖：
+正式发布会使用固定版本的 `pip-audit` 检查 `uv.lock` 锁定的运行时依赖。依赖变更后也可以在
+本地执行同一检查：
 
 ```bash
-uvx safety scan --target . --policy-file safety.policy.yml
+uv export --quiet --locked --no-dev --no-emit-project \
+  --output-file /tmp/moviepilot-audit-requirements.txt
+uvx --from pip-audit==2.10.1 pip-audit \
+  --require-hashes --disable-pip --strict --progress-spinner off \
+  --requirement /tmp/moviepilot-audit-requirements.txt
 ```
 
-Safety 直接识别项目清单和锁文件，不需要生成或维护 requirements 文件。
+导出文件由 `uv.lock` 生成且保留哈希，不作为项目依赖清单提交。
 
 ### 6. 提交代码前的检查
 
@@ -168,7 +182,7 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
 
 1. **确认依赖分层正确**：运行时包进入 `[project].dependencies`；测试、覆盖率、静态检查和构建辅助进入 `[dependency-groups].dev`；插件依赖不并入主程序运行时依赖。
 
-2. **运行安全检查**：确保 `safety` 检查通过，没有新的安全漏洞。
+2. **运行依赖漏洞检查**：确保锁定的运行时依赖通过 `pip-audit`。
 
 3. **运行测试**：如果项目中包含测试，请确保所有测试都通过。运行以下命令以执行测试：
 
@@ -181,9 +195,24 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
    参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。覆盖率报告
    按需通过 `Unit Tests` workflow 的手动触发串行生成，不阻塞常规 PR / push 门禁。
 
+4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
+   任何检查命令都不会写入 fixture。
+
+   ```bash
+   uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
+   uv run --locked --no-sync python scripts/architecture/baseline.py \
+     --check-plugins --plugin-repo ../MoviePilot-Plugins \
+     --report official-plugin-architecture-report.json
+   uv run --locked --no-sync pylint app/
+   ```
+
+   GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构门禁，并对本次改动的 Python
+   文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
+   或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
-- [Safety CLI 官方文档](https://docs.safetycli.com/)
+- [pip-audit](https://github.com/pypa/pip-audit)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)

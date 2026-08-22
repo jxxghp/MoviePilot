@@ -9,13 +9,19 @@ from app.api.deps import get_current_active_user_async
 from app.runtime.config import settings
 
 
-def _v1_routes(app: FastAPI) -> list[APIRoute]:
-    """返回最终应用中的 v1 API 路由。"""
+def _v1_routes(app: FastAPI) -> list[Any]:
+    """返回最终应用中可执行的 v1 API 路由上下文。"""
+    routes: list[Any] = []
+    for route in app.routes:
+        effective_route_contexts = getattr(route, "effective_route_contexts", None)
+        if callable(effective_route_contexts):
+            routes.extend(effective_route_contexts())
+        elif isinstance(route, APIRoute):
+            routes.append(route)
     return [
         route
-        for route in app.routes
-        if isinstance(route, APIRoute)
-        and route.path.startswith(f"{settings.API_V1_STR}/")
+        for route in routes
+        if route.path.startswith(f"{settings.API_V1_STR}/")
     ]
 
 
@@ -91,13 +97,11 @@ def test_direct_v1_routes_and_openapi_match_compatibility_router():
     direct_app = FastAPI()
     init_routers(direct_app)
 
-    compatibility_routes = [
-        route
-        for route in compatibility_app.routes
-        if isinstance(route, APIRoute)
-    ]
+    compatibility_routes = _v1_routes(compatibility_app)
     direct_routes = _v1_routes(direct_app)
 
+    assert compatibility_routes
+    assert direct_routes
     assert [_route_contract(route) for route in direct_routes] == [
         _route_contract(route) for route in compatibility_routes
     ]
@@ -141,12 +145,17 @@ def test_compatibility_api_router_keeps_public_contract():
     from app.api.router_specs import API_V1_ROUTER_SPECS
 
     assert type(api_router) is APIRouter
-    assert len(api_router.routes) == sum(
-        len(spec.router.routes) for spec in API_V1_ROUTER_SPECS
-    )
-    assert all(
-        isinstance(route, APIRoute)
-        and route.path.startswith("/")
-        and not route.path.startswith(f"{settings.API_V1_STR}/")
-        for route in api_router.routes
-    )
+    app = FastAPI()
+    app.include_router(api_router, prefix=settings.API_V1_STR)
+    paths = set(app.openapi()["paths"])
+    expected_paths = {
+        f"{settings.API_V1_STR}{spec.prefix}{route.path}"
+        for spec in API_V1_ROUTER_SPECS
+        for route in spec.router.routes
+        if (
+            isinstance(route, APIRoute)
+            and route.include_in_schema
+            and ":path}" not in route.path
+        )
+    }
+    assert expected_paths <= paths

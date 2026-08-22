@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-18*
+> *Last Updated: 2026-08-21*
 
 ---
 
@@ -166,7 +166,7 @@ flowchart TB
 |---|---|---|
 | `app/foundation/` | 无状态、无配置、无 I/O 的底层原语：反射/动态导入、加密、DOM、单例、文本、URL、版本比较 | `reflection.py`、`crypto.py`、`singleton.py` |
 | `app/domain/` | 纯 MoviePilot 业务语义：媒体上下文、识别解析、站点状态解释、磁力语义、NFO 刮削 | `context.py`、`metainfo.py`、`meta/`、`scraper.py` |
-| `app/runtime/` | 进程级运行机制：配置、事件、完整日志、缓存契约与内存后端、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`log.py`、`cache.py` |
+| `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`topology.py`、`events.py`、`log.py`、`cache.py` |
 | `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；旧管理器文件保留稳定 ABI 门面，具体实现拆在主题子包 | `module_manager.py`、`plugin_manager.py`、`plugin/` |
 | `app/runtime/compat/` | 仅标准库的精确旧模块、包与符号导入路由；不是业务实现，也不是通用 re-export 层 | `manifest.py`、`imports.py` |
 | `app/adapters/network/` | 通用 HTTP、浏览器、DNS、Cloudflare、IP 传输机制 | `http.py`、`browser.py` |
@@ -210,19 +210,21 @@ sequenceDiagram
     Factory->>Factory: create_app()：异常处理器 / CORS / 本地化中间件
     Factory->>Init: register_api_app(app) 注入插件路由服务
     Factory-->>Life: lifespan 绑定到 app
-    Main->>Main: init_db() + update_db()（Alembic 迁移）
     Main->>FastAPI: Server.run() 触发 lifespan 启动
 
     Life->>Life: configure_cache_dependencies()<br/>（必须先于业务模块导入）
+    Life->>Init: prepare_database() + revision/head 校验
     Life->>Init: configure_default_user_agent（注入 UA）
     Life->>Init: configure_domain_dependencies（领域层依赖注入）
     Life->>Init: get_engine() / get_global_async_engine() 预热 + fail-fast
     Life->>Init: check_connection_budget() 连接预算核算
     Life->>Init: init_routers(app) 注册 API 路由
-    Life->>Init: init_modules() 发现并初始化模块
+    Life->>Init: init_modules() 发现并初始化模块，返回 HostRuntime
+    Life->>FastAPI: app.state.host_runtime = HostRuntime
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
     Life->>Init: init_command() / init_workflow()
     Life->>Init: replay_pending_transfers()（后台回放未整理文件）
+    Life->>Life: 发布 database_ready + lifecycle_ready
     Life->>FastAPI: yield，交还控制权
     Note over Life,FastAPI: 运行期……
     FastAPI->>Life: 收到停止信号
@@ -235,9 +237,23 @@ sequenceDiagram
 
 - **缓存装配先于业务导入**：缓存装饰器会在业务模块 import 时创建后端，
   因此 `configure_cache_dependencies()` 在 `lifecycle.py` 顶部即执行。
+- **Uvicorn 入口分流**：生产单 worker 使用带协作停止语义的 `MoviePilotServer`；开发 reload
+  和安全模式多 worker 使用 `app.factory:create_app` import string/factory，由 supervisor
+  创建应用实例。`app.factory:app` 继续保留给既有 ASGI supervisor 和测试使用。
+- **数据库准备唯一入口**：建表、迁移、迁移前备份和 Alembic head 校验统一由 lifespan
+  最早的“数据库准备”组件执行，`app.main` 不再主动迁移。主程序、外部 supervisor、factory
+  和 TestClient 因而共享同一 fail-fast 语义。
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
+- **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
+  上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。认证、消息、历史、媒体服务器、站点、
+  订阅、工作流和请求事务均使用命名 runtime 字段，不再通过字符串仓储键定位；API、Scheduler、Chain
+  从 `HostRuntime.configuration` 获取 frozen 配置快照。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
+- **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
+- **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
+  到达当前 head 且生命周期完成后返回 200，启动失败或关停阶段返回 503。两者不公开路径、
+  revision、插件和异常详情，深入诊断继续使用 Doctor。
 - **关停隔离**：每个关停步骤由 `run_shutdown_step` 独立捕获异常，保证后续资源仍有机会释放。
 
 ---
@@ -309,6 +325,9 @@ flowchart TB
 `EventManager`（`app/runtime/events.py`）提供进程级事件总线，用于解耦跨切面反应
 （整理完成后刷新媒体库、配置变更后重载模块、消息分发等）：
 
+宿主内建 `EventType` / `ChainEventType` 均在事件注册表中绑定 typed payload。开放插件事件允许
+额外字段，校验只生成诊断；分发给既有插件的仍是原始 dict/model 对象，不改变事件 ABI。
+
 ```mermaid
 sequenceDiagram
     participant T as TransferChain
@@ -331,13 +350,18 @@ SQLAlchemy 查询。`models/` 与 `oper/` 按文件一一镜像（站点族聚�
 
 ```mermaid
 flowchart LR
-    Caller["Chain / Application / 端点 / Module"]
+    Entry["API / Scheduler / Agent<br/>逻辑操作入口"]
+    Command["Application Command<br/>事务所有者"]
+    UoW["app/db/uow.py<br/>commit / rollback"]
     Oper["app/db/oper/*.py<br/>SubscribeOper / TransferHistoryOper ..."]
     Models["app/db/models/*.py<br/>SQLAlchemy 模型"]
     Engine["app/db/engine.py<br/>同步 + 异步引擎"]
     DB[("PostgreSQL / SQLite")]
 
-    Caller --> Oper --> Models --> Engine --> DB
+    Entry --> Command --> Oper --> Models --> Engine --> DB
+    Entry --> UoW --> Engine
+    Command -.提交或回滚.-> UoW
+    Command -.commit 后副作用.-> Effects["Event / Scheduler / Report"]
     Models -.before_insert/before_update.-> Norm["_identity.py<br/>media_source/media_id 归一化"]
 ```
 
@@ -345,6 +369,16 @@ flowchart LR
   归 `app/application/`（见 `application/subscription/write.py`、`application/history.py`）。
   订阅新增、查询、变更、删除、身份和搜索契约已经统一收口在 `application/subscription/`，
   不再保留主题包之外的第二个写入入口。
+- 规范写入口中的 Oper 只 stage mutation，不创建独立 Session、不提交；Application Command
+  通过请求或任务入口注入的 UnitOfWork 统一 `commit/rollback`，事件、刷新和上报只在 commit
+  成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
+  `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
+  只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
+  `transaction-debt-baseline.json` 当前冻结 123 个只读查询装饰器；原有 45 个同步/异步写装饰器
+  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。
+- 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
+  Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
+  `startup/plugins_initializer.py` 创建独占会话，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。
 - 每次表结构变更必须新增 `database/versions/` 下的 Alembic 迁移。
 - 运行期业务配置使用 `SystemConfigKey` 枚举 + `SystemConfigOper`，禁止裸字符串键；
   用户级配置使用 `UserConfigOper`。
@@ -356,6 +390,7 @@ flowchart LR
 | **Config Reload** | 继承 `ConfigReloadMixin` 并声明 `CONFIG_WATCH`，配置变更时自动重建长生命周期对象（如下载器客户端重连） |
 | **Singleton** | `EventManager`、`ModuleManager`、`PluginManager` 等全局共享管理器继承 `foundation/singleton.py` 的 `Singleton` |
 | **Managed Resource** | 可选进程级技术资源（浏览器、虚拟显示等）以 data-only `capability.toml` 声明，`runtime/extensions` 解释生命周期，`startup` 构建 Runtime，消费者经 `runtime/managed_resources.py` 显式获取；插件使用浏览器走 `app.sdk.browser` |
+| **Observability** | `runtime/observability` 定义低基数指标和默认 no-op 端口，Startup 可选装配 OTel；HTTP、DB、Event、Module、Scheduler、插件生命周期和 Agent 只提交白名单标签 |
 
 ---
 
@@ -604,6 +639,8 @@ flowchart LR
 详细的迁移批次、风险、验证命令和插件兼容矩阵见
 [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) 与
 [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md)。
+第一阶段分层收口后的进程拓扑、事务所有权、类型化运行时契约、后台可靠性和可观测性路线见
+[`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md)。
 
 ---
 
@@ -621,3 +658,4 @@ flowchart LR
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
 | [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) | 分阶段架构治理、边界门禁与迁移验收 |
 | [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md) | 模块迁移与插件兼容层实施矩阵 |
+| [`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md) | 对标优秀 Python 后端后的二阶段任务、验收与回滚方案 |

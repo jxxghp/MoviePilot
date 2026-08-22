@@ -7,11 +7,14 @@ import uuid
 
 import pytest
 from alembic.util import CommandError
+from fastapi import FastAPI
 from sqlalchemy import Column, Integer, MetaData, Table, create_engine, inspect, text
 from sqlalchemy.engine.url import make_url
 
 from app.startup import database_initializer as db_init
 from app.startup.bindings import database as startup_database
+from app.startup import lifecycle
+from app.runtime.health import get_application_health
 
 
 LOCAL_SETUP_PATH = (
@@ -270,6 +273,60 @@ def test_migration_lineage_wraps_unknown_revision() -> None:
             ("future",),
             ("head",),
         )
+
+
+def test_verify_database_revision_requires_current_head(monkeypatch) -> None:
+    """readiness 的数据库校验必须拒绝升级后仍未到 head 的状态。"""
+    engine = object()
+    config = object()
+    monkeypatch.setattr(db_init, "get_engine", lambda: engine)
+    monkeypatch.setattr(db_init, "_build_alembic_config", lambda _: config)
+    monkeypatch.setattr(
+        db_init,
+        "_migration_state",
+        lambda *_: (True, ("old",), ("head",)),
+    )
+
+    with pytest.raises(RuntimeError, match="仍未到达当前 head"):
+        db_init.verify_database_revision()
+
+
+def test_verify_database_revision_accepts_current_head(monkeypatch) -> None:
+    """活动 revision 与唯一目标 head 一致时允许发布数据库就绪。"""
+    engine = object()
+    config = object()
+    monkeypatch.setattr(db_init, "get_engine", lambda: engine)
+    monkeypatch.setattr(db_init, "_build_alembic_config", lambda _: config)
+    monkeypatch.setattr(
+        db_init,
+        "_migration_state",
+        lambda *_: (True, ("head",), ("head",)),
+    )
+
+    db_init.verify_database_revision()
+
+
+def test_lifecycle_database_component_marks_ready_after_head_check(
+    monkeypatch,
+) -> None:
+    """数据库组件必须按迁移、head 校验、发布状态的顺序执行。"""
+    app = FastAPI()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        db_init,
+        "prepare_database",
+        lambda: calls.append("prepare"),
+    )
+    monkeypatch.setattr(
+        db_init,
+        "verify_database_revision",
+        lambda: calls.append("verify"),
+    )
+
+    lifecycle.prepare_database_component(app)
+
+    assert calls == ["prepare", "verify"]
+    assert get_application_health(app).database_ready is True
 
 
 def test_prepare_database_creates_real_sqlite_restore_point_before_upgrade(

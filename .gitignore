@@ -9,7 +9,6 @@ dist/
 rust/**/target/
 nginx/
 test.py
-safety_report.txt
 app/application/site/*.bin
 # 站点数据的运行期下载产物。上游 v3 架构重构后落点从 app/application/site 移到了
 # app/helper，同目录的 .so/.pyd 由上面的通配兜住，只有 .bin 漏了网

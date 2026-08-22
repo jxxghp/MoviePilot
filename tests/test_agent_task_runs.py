@@ -7,12 +7,16 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
-from app.agent import AgentManager
+from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
-from app.db import Engine, SessionFactory
+from app.db.engine import get_engine
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.session import SessionFactory
+
+
+Engine = get_engine()
 
 
 def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
@@ -135,17 +139,15 @@ def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:
     first_task = _add_task("run-rollback-first")
     second_task = _add_task("run-rollback-second")
     run_id = uuid4().hex
-    assert AgentTaskRun.begin_run(
-        None,
+    assert AgentTaskOper().begin_run(
         task_id=first_task.id,
         run_id=run_id,
         trigger_source="scheduled",
         started_at="2026-08-13 20:00:00",
-    ) == run_id
+    ).run_id == run_id
 
     with pytest.raises(IntegrityError):
-        AgentTaskRun.begin_run(
-            None,
+        AgentTaskOper().begin_run(
             task_id=second_task.id,
             run_id=run_id,
             trigger_source="manual",

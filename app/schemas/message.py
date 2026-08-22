@@ -272,6 +272,8 @@ class Message(BaseModel):
     disable_web_page_preview: Optional[bool] = None
     # 消息文本格式；Telegram 支持 MarkdownV2、HTML、plain，飞书直发支持 plain
     parse_mode: Optional[str] = None
+    # Telegram Rich Message 完整 Markdown 正文；其他渠道可使用 text 作为回退
+    rich_message: Optional[str] = None
     # 是否写入消息历史
     save_history: bool = True
 

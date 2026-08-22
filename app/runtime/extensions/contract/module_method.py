@@ -310,3 +310,14 @@ def get_multi_source_contract(method: str) -> MultiSourceCapabilityContract | No
 def is_explicit_module_method(method: str) -> bool:
     """判断方法是否已进入首批显式能力族清单。"""
     return get_module_method_contract(method) is not _DEFAULT_CONTRACT
+
+
+def list_explicit_module_contracts() -> dict[str, ModuleMethodContract]:
+    """返回逐方法登记的显式契约副本。
+
+    只含 ``_METHOD_CONTRACTS`` 里逐个点名的方法，按前缀兜底命中的不在其中——
+    前缀规则覆盖的方法集合随模块增删而变，收进快照会让基线在与契约无关的改动上抖动。
+
+    :return: 方法名到显式契约的映射副本
+    """
+    return dict(_METHOD_CONTRACTS)

@@ -1580,186 +1580,638 @@
       "app.utils"
     ]
   },
+  "event_specs": {
+    "ChainEventType.AgentLLMProvider": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "AgentLLMProviderEventData",
+      "sensitive_fields": [
+        "api_key"
+      ],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.AuthIntercept": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "AuthInterceptCredentials",
+      "sensitive_fields": [
+        "token"
+      ],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.AuthVerification": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "AuthCredentials",
+      "sensitive_fields": [
+        "password",
+        "token",
+        "mfa_code"
+      ],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.CommandRegister": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "CommandRegisterEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.DiscoverSource": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "DiscoverSourceEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.MediaRecognize": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "MediaRecognizeEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.MediaRecognizeConvert": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "MediaRecognizeConvertEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.MusicMediaRecognize": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "MusicMediaRecognizeEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.MusicNameRecognize": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "MusicNameRecognizeEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.NameRecognize": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "NameRecognizeEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.PluginDataReset": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "PluginDataResetEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.RecommendSource": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "RecommendSourceEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.ResourceDownload": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "ResourceDownloadEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.ResourceSelection": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "ResourceSelectionEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.StorageOperSelection": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "StorageOperSelectionEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.SubscribeCompletionCheck": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "SubscribeCompletionCheckEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.SubscribeEpisodesRefresh": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "SubscribeEpisodesRefreshEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.TransferIntercept": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "TransferInterceptEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.TransferOverwriteCheck": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "TransferOverwriteCheckEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.TransferRename": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "TransferRenameEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.TransferRenameBuild": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "TransferRenameBuildEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.WorkflowExecution": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "payload_contract": "ActionContext",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.AgentTokensUsage": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "AgentTokensUsageEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.AudioTransferComplete": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.AudioTransferFailed": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.CommandExcute": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "CommandExecuteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.ConfigChanged": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "ConfigChangeEventData",
+      "sensitive_fields": [],
+      "visibility": "host_only"
+    },
+    "EventType.DownloadAdded": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "DownloadAddedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.DownloadDeleted": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "DownloadDeletedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.DownloadFileDeleted": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "DownloadFileDeletedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.HistoryDeleted": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "HistoryDeletedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.MessageAction": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "MessageActionEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.MetadataScrape": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "MetadataScrapeEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.ModuleReload": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "EmptyEventData",
+      "sensitive_fields": [],
+      "visibility": "host_only"
+    },
+    "EventType.NoticeMessage": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "NoticeMessageEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.PluginAction": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "PluginActionEventData",
+      "sensitive_fields": [],
+      "visibility": "target_plugin"
+    },
+    "EventType.PluginReload": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "PluginReloadEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.PluginTriggered": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "PluginTriggeredEventData",
+      "sensitive_fields": [],
+      "visibility": "target_plugin"
+    },
+    "EventType.SiteDeleted": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SiteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SiteRefreshed": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SiteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SiteUpdated": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SiteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubscribeAdded": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SubscribeAddedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubscribeComplete": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SubscribeCompleteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubscribeDeleted": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SubscribeDeletedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubscribeModified": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SubscribeModifiedEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubtitleTransferComplete": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SubtitleTransferFailed": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.SystemError": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "SystemErrorEventData",
+      "sensitive_fields": [],
+      "visibility": "host_only"
+    },
+    "EventType.TransferComplete": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.TransferFailed": {
+      "delivery": "durable_required",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "TransferResultEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.UserMessage": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "UserMessageEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.WebhookMessage": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "WebhookEventInfo",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    },
+    "EventType.WorkflowExecute": {
+      "delivery": "ephemeral",
+      "error_behavior": "notify",
+      "legacy_reason": null,
+      "mode": "broadcast",
+      "ordering": "priority_queue",
+      "payload_contract": "WorkflowExecuteEventData",
+      "sensitive_fields": [],
+      "visibility": "plugin_public"
+    }
+  },
   "events": {
     "consumer_count": 16,
     "dynamic_consumers": [
       {
         "caller": "app.adapters.system.fsproxy",
-        "line": 392
+        "count": 1
       },
       {
         "caller": "app.agent.llm.provider",
-        "line": 2307
+        "count": 1
       },
       {
         "caller": "app.application.orchestration.transfer",
-        "line": 619
+        "count": 1
       },
       {
         "caller": "app.db.oper.transferpending",
-        "line": 23
+        "count": 1
       },
       {
         "caller": "app.modules._base.storage",
-        "line": 666
+        "count": 1
       },
       {
         "caller": "app.runtime.events",
-        "line": 145
-      },
-      {
-        "caller": "app.runtime.events",
-        "line": 472
-      },
-      {
-        "caller": "app.runtime.events",
-        "line": 476
+        "count": 3
       },
       {
         "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2529
-      },
-      {
-        "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2615
-      },
-      {
-        "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2711
-      },
-      {
-        "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2755
-      },
-      {
-        "caller": "app.runtime.extensions.plugin_manager",
-        "line": 2791
+        "count": 5
       },
       {
         "caller": "app.runtime.extensions.registry.service_family",
-        "line": 155
+        "count": 1
       },
       {
         "caller": "app.startup.hostport_initializer",
-        "line": 92
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 93
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 94
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 95
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 96
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 97
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 98
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 99
-      },
-      {
-        "caller": "app.startup.hostport_initializer",
-        "line": 109
+        "count": 9
       },
       {
         "caller": "app.testing.bootstrap",
-        "line": 111
+        "count": 1
       },
       {
         "caller": "app.workflow",
-        "line": 311
+        "count": 1
       }
     ],
     "dynamic_producers": [
       {
         "caller": "app.agent.tools.impl._filter_rule_utils",
-        "line": 433
+        "count": 1
       },
       {
         "caller": "app.agent.tools.impl.update_system_settings",
-        "line": 289
+        "count": 1
       },
       {
         "caller": "app.api.endpoints.system",
-        "line": 958
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 1076
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 1130
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "line": 1149
+        "count": 4
       },
       {
         "caller": "app.application.orchestration._messaging",
-        "line": 215
-      },
-      {
-        "caller": "app.application.orchestration._messaging",
-        "line": 225
-      },
-      {
-        "caller": "app.application.orchestration._messaging",
-        "line": 331
-      },
-      {
-        "caller": "app.application.orchestration._messaging",
-        "line": 341
+        "count": 4
       },
       {
         "caller": "app.application.orchestration._recognition",
-        "line": 460
-      },
-      {
-        "caller": "app.application.orchestration._recognition",
-        "line": 500
+        "count": 2
       },
       {
         "caller": "app.application.orchestration.user",
-        "line": 160
-      },
-      {
-        "caller": "app.application.orchestration.user",
-        "line": 223
+        "count": 2
       },
       {
         "caller": "app.modules._base.mediaserver",
-        "line": 56
+        "count": 1
       },
       {
         "caller": "app.modules.navidrome",
-        "line": 81
+        "count": 1
       },
       {
         "caller": "app.modules.plex",
-        "line": 85
+        "count": 1
       },
       {
         "caller": "app.runtime.command",
-        "line": 516
+        "count": 1
       },
       {
         "caller": "app.runtime.extensions.module_manager",
-        "line": 232
+        "count": 1
       }
     ],
     "event_count": 53,
@@ -1769,7 +2221,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 1276
+            "count": 1
           }
         ]
       },
@@ -1786,11 +2238,11 @@
         "producers": [
           {
             "caller": "app.modules._base.notification",
-            "line": 99
+            "count": 1
           },
           {
             "caller": "app.runtime.command",
-            "line": 282
+            "count": 1
           }
         ]
       },
@@ -1799,7 +2251,7 @@
         "producers": [
           {
             "caller": "app.api.endpoints.discover",
-            "line": 31
+            "count": 1
           }
         ]
       },
@@ -1812,11 +2264,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.media",
-            "line": 1502
-          },
-          {
-            "caller": "app.application.orchestration.media",
-            "line": 2048
+            "count": 2
           }
         ]
       },
@@ -1829,11 +2277,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.media",
-            "line": 815
-          },
-          {
-            "caller": "app.application.orchestration.media",
-            "line": 1753
+            "count": 2
           }
         ]
       },
@@ -1842,11 +2286,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.media",
-            "line": 753
-          },
-          {
-            "caller": "app.application.orchestration.media",
-            "line": 1691
+            "count": 2
           }
         ]
       },
@@ -1854,8 +2294,12 @@
         "consumers": [],
         "producers": [
           {
+            "caller": "app.api.dependencies.plugin",
+            "count": 1
+          },
+          {
             "caller": "app.api.deps",
-            "line": 388
+            "count": 1
           }
         ]
       },
@@ -1864,11 +2308,11 @@
         "producers": [
           {
             "caller": "app.api.endpoints.recommend",
-            "line": 42
+            "count": 1
           },
           {
             "caller": "app.workflow.actions.fetch_medias",
-            "line": 111
+            "count": 1
           }
         ]
       },
@@ -1877,7 +2321,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1057
+            "count": 1
           }
         ]
       },
@@ -1886,7 +2330,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1424
+            "count": 1
           }
         ]
       },
@@ -1895,11 +2339,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 1105
-          },
-          {
-            "caller": "app.application.orchestration.transfer",
-            "line": 1121
+            "count": 2
           }
         ]
       },
@@ -1908,7 +2348,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 2824
+            "count": 1
           }
         ]
       },
@@ -1917,11 +2357,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 3567
-          },
-          {
-            "caller": "app.application.orchestration.subscribe",
-            "line": 3589
+            "count": 2
           }
         ]
       },
@@ -1930,11 +2366,7 @@
         "producers": [
           {
             "caller": "app.application.transferhandler",
-            "line": 985
-          },
-          {
-            "caller": "app.application.transferhandler",
-            "line": 1107
+            "count": 2
           }
         ]
       },
@@ -1943,7 +2375,7 @@
         "producers": [
           {
             "caller": "app.application.transferhandler",
-            "line": 510
+            "count": 1
           }
         ]
       },
@@ -1952,7 +2384,7 @@
         "producers": [
           {
             "caller": "app.application.transferhandler",
-            "line": 1331
+            "count": 1
           }
         ]
       },
@@ -1961,7 +2393,7 @@
         "producers": [
           {
             "caller": "app.application.transferhandler",
-            "line": 1310
+            "count": 1
           }
         ]
       },
@@ -1970,7 +2402,7 @@
         "producers": [
           {
             "caller": "app.workflow.actions.send_event",
-            "line": 46
+            "count": 1
           }
         ]
       },
@@ -1979,7 +2411,7 @@
         "producers": [
           {
             "caller": "app.agent.orchestrator",
-            "line": 870
+            "count": 1
           }
         ]
       },
@@ -1988,7 +2420,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 399
+            "count": 1
           }
         ]
       },
@@ -1997,7 +2429,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 278
+            "count": 1
           }
         ]
       },
@@ -2005,17 +2437,17 @@
         "consumers": [
           {
             "caller": "app.runtime.command",
-            "line": 518
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.agent.tools.impl.run_slash_command",
-            "line": 86
+            "count": 1
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 445
+            "count": 1
           }
         ]
       },
@@ -2023,19 +2455,19 @@
         "consumers": [
           {
             "caller": "app.runtime.extensions.module_manager",
-            "line": 58
+            "count": 1
           },
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 3746
+            "count": 1
           },
           {
             "caller": "app.runtime.reload",
-            "line": 81
+            "count": 1
           },
           {
             "caller": "app.startup.agent_initializer",
-            "line": 122
+            "count": 1
           }
         ],
         "producers": []
@@ -2045,7 +2477,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 1245
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           }
         ]
       },
@@ -2054,7 +2490,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2090
+            "count": 1
           }
         ]
       },
@@ -2062,13 +2498,17 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.download",
-            "line": 2074
+            "count": 1
           }
         ],
         "producers": [
           {
+            "caller": "app.api.dependencies.history",
+            "count": 1
+          },
+          {
             "caller": "app.api.deps",
-            "line": 374
+            "count": 1
           }
         ]
       },
@@ -2081,19 +2521,11 @@
         "producers": [
           {
             "caller": "app.application.messaging.plugin",
-            "line": 414
-          },
-          {
-            "caller": "app.application.messaging.plugin",
-            "line": 445
-          },
-          {
-            "caller": "app.application.messaging.plugin",
-            "line": 475
+            "count": 3
           },
           {
             "caller": "app.application.orchestration.message",
-            "line": 689
+            "count": 1
           }
         ]
       },
@@ -2101,17 +2533,13 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.scraping",
-            "line": 598
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.application.orchestration._transfer",
-            "line": 465
-          },
-          {
-            "caller": "app.application.orchestration._transfer",
-            "line": 640
+            "count": 2
           }
         ]
       },
@@ -2119,7 +2547,7 @@
         "consumers": [
           {
             "caller": "app.runtime.command",
-            "line": 552
+            "count": 1
           }
         ],
         "producers": []
@@ -2128,7 +2556,7 @@
         "consumers": [
           {
             "caller": "app.api.endpoints.agent",
-            "line": 1334
+            "count": 1
           }
         ],
         "producers": []
@@ -2141,13 +2569,13 @@
         "consumers": [
           {
             "caller": "app.scheduler.plugins",
-            "line": 31
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.runtime.extensions.plugin_manager",
-            "line": 1686
+            "count": 1
           }
         ]
       },
@@ -2159,17 +2587,21 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.search",
-            "line": 2864
+            "count": 1
           },
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 3044
+            "count": 1
           }
         ],
         "producers": [
           {
+            "caller": "app.api.dependencies.site",
+            "count": 1
+          },
+          {
             "caller": "app.api.deps",
-            "line": 220
+            "count": 1
           }
         ]
       },
@@ -2178,11 +2610,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.site",
-            "line": 75
-          },
-          {
-            "caller": "app.application.orchestration.site",
-            "line": 164
+            "count": 2
           }
         ]
       },
@@ -2190,29 +2618,25 @@
         "consumers": [
           {
             "caller": "app.application.orchestration.site",
-            "line": 587
-          },
-          {
-            "caller": "app.application.orchestration.site",
-            "line": 629
-          },
-          {
-            "caller": "app.application.orchestration.site",
-            "line": 652
+            "count": 3
           }
         ],
         "producers": [
           {
             "caller": "app.agent.tools.impl.update_site",
-            "line": 200
+            "count": 1
+          },
+          {
+            "caller": "app.api.dependencies.site",
+            "count": 1
           },
           {
             "caller": "app.api.deps",
-            "line": 215
+            "count": 1
           },
           {
             "caller": "app.application.orchestration.site",
-            "line": 567
+            "count": 1
           }
         ]
       },
@@ -2221,11 +2645,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 1034
+            "count": 2
           },
           {
-            "caller": "app.application.orchestration.subscribe",
-            "line": 1238
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           }
         ]
       },
@@ -2234,7 +2658,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.subscribe",
-            "line": 2862
+            "count": 1
           }
         ]
       },
@@ -2242,12 +2666,20 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.agent.tools.impl.delete_subscribe",
-            "line": 70
+            "caller": "app.api.dependencies.subscription",
+            "count": 1
           },
           {
             "caller": "app.api.deps",
-            "line": 86
+            "count": 1
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.subscription",
+            "count": 1
           }
         ]
       },
@@ -2255,20 +2687,20 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.agent.tools.impl.update_subscribe",
-            "line": 316
+            "caller": "app.api.dependencies.subscription",
+            "count": 1
           },
           {
             "caller": "app.api.endpoints.subscribe",
-            "line": 296
+            "count": 3
           },
           {
-            "caller": "app.api.endpoints.subscribe",
-            "line": 329
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           },
           {
-            "caller": "app.api.endpoints.subscribe",
-            "line": 389
+            "caller": "app.startup.subscription",
+            "count": 1
           }
         ]
       },
@@ -2277,7 +2709,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 385
+            "count": 1
           }
         ]
       },
@@ -2286,7 +2718,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 264
+            "count": 1
           }
         ]
       },
@@ -2295,19 +2727,15 @@
         "producers": [
           {
             "caller": "app.application.orchestration.ports.dispatch",
-            "line": 74
-          },
-          {
-            "caller": "app.application.orchestration.ports.dispatch",
-            "line": 100
+            "count": 2
           },
           {
             "caller": "app.runtime.events",
-            "line": 121
+            "count": 1
           },
           {
             "caller": "app.runtime.scheduler",
-            "line": 297
+            "count": 1
           }
         ]
       },
@@ -2316,7 +2744,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 371
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           }
         ]
       },
@@ -2325,7 +2757,11 @@
         "producers": [
           {
             "caller": "app.application.orchestration.transfer",
-            "line": 250
+            "count": 2
+          },
+          {
+            "caller": "app.startup.modules_initializer",
+            "count": 1
           }
         ]
       },
@@ -2334,7 +2770,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.message",
-            "line": 507
+            "count": 1
           }
         ]
       },
@@ -2343,7 +2779,7 @@
         "producers": [
           {
             "caller": "app.application.orchestration.webhook",
-            "line": 29
+            "count": 1
           }
         ]
       },
@@ -2351,18 +2787,321 @@
         "consumers": [
           {
             "caller": "app.workflow.service",
-            "line": 1160
+            "count": 1
           }
         ],
         "producers": [
           {
             "caller": "app.workflow",
-            "line": 379
+            "count": 1
           }
         ]
       }
     },
-    "producer_count": 67
+    "producer_count": 82
+  },
+  "module_method_specs": {
+    "async_discover": {
+      "aggregation": "legacy",
+      "family": "media-discovery",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_discover_board": {
+      "aggregation": "legacy",
+      "family": "media-discovery",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_match_media": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_media_credits": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_media_detail": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_media_recommend": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_media_similar": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_obtain_images": {
+      "aggregation": "pipeline",
+      "family": "media-recognition",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_person_credits": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "async_person_detail": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "discover": {
+      "aggregation": "legacy",
+      "family": "media-discovery",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "discover_board": {
+      "aggregation": "legacy",
+      "family": "media-discovery",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "download_file": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "finalize_message": {
+      "aggregation": "legacy",
+      "family": "messaging",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "get_file_item": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "get_folder": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "get_parent_item": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "list_files": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "match_media": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_category": {
+      "aggregation": "legacy",
+      "family": "media-recognition",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_credits": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_detail": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_exists": {
+      "aggregation": "legacy",
+      "family": "media-library",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_files": {
+      "aggregation": "legacy",
+      "family": "media-library",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_recommend": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "media_similar": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "mediaserver_iteminfo": {
+      "aggregation": "legacy",
+      "family": "media-server",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "mediaserver_items": {
+      "aggregation": "legacy",
+      "family": "media-server",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "mediaserver_play_url": {
+      "aggregation": "legacy",
+      "family": "media-server",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "mediaserver_tv_episodes": {
+      "aggregation": "legacy",
+      "family": "media-server",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "obtain_images": {
+      "aggregation": "pipeline",
+      "family": "media-recognition",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "person_credits": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "person_detail": {
+      "aggregation": "legacy",
+      "family": "media-metadata",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "recognize_media": {
+      "aggregation": "legacy",
+      "family": "media-recognition",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "register_commands": {
+      "aggregation": "legacy",
+      "family": "messaging",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "rename_file": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "scheduler_job": {
+      "aggregation": "legacy",
+      "family": "scheduling",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "search_medias": {
+      "aggregation": "legacy",
+      "family": "media-recognition",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "send_message": {
+      "aggregation": "legacy",
+      "family": "messaging",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "snapshot_storage": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "storage_manage": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "upload_file": {
+      "aggregation": "legacy",
+      "family": "storage",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    },
+    "webhook_parser": {
+      "aggregation": "legacy",
+      "family": "integration",
+      "plugin_short_circuit": true,
+      "supports_async": true,
+      "supports_sync": true
+    }
   },
   "run_module": {
     "call_count": 0,
@@ -2371,7 +3110,7 @@
     "method_count": 0,
     "methods": {}
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "sdk_exports": {
     "app.sdk": [],
     "app.sdk._exports": [],

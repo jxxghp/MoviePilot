@@ -13,9 +13,9 @@ from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.application.orchestration.user import MfaRequired, UserChain
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
 from app.application.security.token import create_access_token
-from app.runtime.config import settings
-from app.application.configuration import get_configured_system_config
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.api.context import get_api_runtime_config, resolve_api_runtime_config
+from app.application.configuration import ApiRuntimeConfig, get_configured_system_config
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
@@ -39,10 +39,12 @@ def login_access_token(
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     otp_password: Annotated[str | None, Form()] = None,
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
 ) -> Any:
     """
     获取认证Token
     """
+    runtime_config = resolve_api_runtime_config(runtime_config)
     success, user_or_message = UserChain().user_authenticate(
         username=form_data.username, password=form_data.password, mfa_code=otp_password
     )
@@ -69,13 +71,13 @@ def login_access_token(
     # 是否显示配置向导
     show_wizard = (
         not get_configured_system_config().get(SystemConfigKey.SetupWizardState)
-        and not settings.ADVANCED_MODE
+        and not runtime_config.advanced_mode
     )
     access_token = create_access_token(
         userid=user_or_message.id,
         username=user_or_message.name,
         super_user=user_or_message.is_superuser,
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        expires_delta=timedelta(minutes=runtime_config.access_token_expire_minutes),
         level=level,
     )
     set_or_refresh_resource_token_cookie(

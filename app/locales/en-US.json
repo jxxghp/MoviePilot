@@ -158,10 +158,9 @@
     "认证请求已失效": "The authentication request has expired",
     "通行密钥已删除": "Passkey deleted",
     "通行密钥不存在或无权删除": "The passkey does not exist or you do not have permission to delete it",
-    "已解绑": "Unbound",
-    "绑定不存在": "The binding does not exist",
     "验证失败": "Verification failed",
     "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
+    "插件分身创建成功": "Plugin clone created successfully",
     "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",
     "未识别到TMDB媒体信息": "Unable to recognize TMDB media information",
     "未知的媒体ID": "Unknown media ID",
@@ -309,6 +308,8 @@
     "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "WeChat ClawBot notification is not enabled or the configuration has not been saved. Please save and enable this channel first",
     "请输入至少一个有效的站点 ID": "Enter at least one valid site ID",
     "所有订阅搜索完成": "All subscription searches are complete",
+    "订阅搜索锁等待超时，已跳过本轮": "Subscription search lock timed out, this round was skipped",
+    "订阅匹配锁等待超时，已跳过本轮": "Subscription matching lock timed out, this round was skipped",
     "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "Enter subscription IDs separated by spaces, or enter all",
     "请输入至少一个有效的订阅 ID": "Enter at least one valid subscription ID",
     "格式错误，请输入：cookie <id> <username> <password> [2fa_code/secret]": "Invalid format. Enter: cookie <id> <username> <password> [2fa_code/secret]",
@@ -413,6 +414,8 @@
     "订阅元数据更新完成": "Subscription metadata update completed",
     "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
     "订阅日历预缓存完成": "Subscription calendar precache completed",
+    "已解绑": "Unbound",
+    "绑定不存在": "The binding does not exist",
     "服务实例配置缺少类型标识或实例名": "The service instance configuration is missing a type identifier or an instance name",
     "内建识别": "Built-in Recognition",
     "内建识别环由宿主固定执行，无法启停": "The built-in recognition stage is run by the host and cannot be switched on or off",
@@ -438,14 +441,6 @@
     "读取 GitHub 所属组织失败：对端返回的不是组织列表": "Failed to read the GitHub organizations: the peer did not return an organization list"
   },
   "message_patterns": [
-    {
-      "source": "名称解析环 {parser} 未登记",
-      "target": "Name parsing stage {parser} is not registered"
-    },
-    {
-      "source": "名称解析环 {parser} 在顺序里出现了多次",
-      "target": "Name parsing stage {parser} appears more than once in the order"
-    },
     {
       "source": "工具 '{tool}' 未找到",
       "target": "Tool '{tool}' was not found"
@@ -759,10 +754,6 @@
       "target": "Unsupported organization method: {transfer_type}"
     },
     {
-      "source": "不支持的日志等级：{level}",
-      "target": "Unsupported log level: {level}"
-    },
-    {
       "source": "{path} {transfer_type} 失败",
       "target": "{path} {transfer_type} failed"
     },
@@ -781,10 +772,6 @@
     {
       "source": "存储 {storage} 不支持 {transfer_type} 整理方式",
       "target": "Storage {storage} does not support the {transfer_type} organization method"
-    },
-    {
-      "source": "服务能力 {capability} 不支持声明服务实例",
-      "target": "Service capability {capability} does not support declaring service instances"
     },
     {
       "source": "【{storage}】{path} 复制文件失败",
@@ -873,6 +860,14 @@
     {
       "source": "文件夹 '{folder}' 中的插件已更新",
       "target": "Plugins in folder '{folder}' have been updated"
+    },
+    {
+      "source": "创建插件分身失败：{reason}",
+      "target": "Failed to create plugin clone: {reason}"
+    },
+    {
+      "source": "请先卸载该插件的分身：{instances}",
+      "target": "Uninstall this plugin's instances first: {instances}"
     },
     {
       "source": "{domain} 站点己存在",
@@ -1453,6 +1448,22 @@
     {
       "source": "{seconds}秒",
       "target": "{seconds}s"
+    },
+    {
+      "source": "名称解析环 {parser} 未登记",
+      "target": "Name parsing stage {parser} is not registered"
+    },
+    {
+      "source": "名称解析环 {parser} 在顺序里出现了多次",
+      "target": "Name parsing stage {parser} appears more than once in the order"
+    },
+    {
+      "source": "不支持的日志等级：{level}",
+      "target": "Unsupported log level: {level}"
+    },
+    {
+      "source": "服务能力 {capability} 不支持声明服务实例",
+      "target": "Service capability {capability} does not support declaring service instances"
     },
     {
       "source": "服务类型 {type} 只接受一份配置，当前已启用 {count} 份，且没有唯一的默认调用目标；请在设置页把其中一份设为默认调用目标，或停用多余的配置。可选配置：{candidates}",

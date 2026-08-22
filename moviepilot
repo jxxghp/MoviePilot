@@ -104,7 +104,7 @@ Usage:
 
 Options:
   deps:
-    --python PYTHON   用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本
+    --python PYTHON   用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.14+ 版本
     --venv PATH       虚拟环境目录，默认 ./venv
     --recreate        删除并重建虚拟环境
     --config-dir PATH 指定配置目录
@@ -144,7 +144,7 @@ show_setup_help() {
 Usage: moviepilot setup [OPTIONS]
 
 Options:
-  --python PYTHON           用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.12+ 版本
+  --python PYTHON           用于创建虚拟环境的 Python 解释器，默认自动选择本地 3.14+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
   --recreate                删除并重建虚拟环境
   --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
@@ -190,7 +190,7 @@ Options:
   --ref REF                 后端 Git 版本，默认 latest
   --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
-  --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.12+ 版本
+  --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.14+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
   --recreate                删除并重建虚拟环境
   --skip-resources          更新 all 时跳过资源同步
@@ -258,7 +258,7 @@ python_version_ok() {
   local python_bin="$1"
   "$python_bin" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 14) else 1)
 PY
 }
 
@@ -376,7 +376,7 @@ require_bootstrap_python() {
   if [ -n "$python_bin" ]; then
     return 0
   fi
-  echo "未找到可用的 Python 3.12+ 解释器，请先安装 Python 3.12 或更高版本" >&2
+  echo "未找到可用的 Python 3.14+ 解释器，请先安装 Python 3.14 或更高版本" >&2
   exit 1
 }
 
@@ -427,7 +427,7 @@ bootstrap_python_for_args() {
     local external_python
     external_python="$(find_external_python "$target_venv" || true)"
     if [ -z "$external_python" ]; then
-      echo "重建虚拟环境需要 venv 外部的 Python 3.12+ 解释器" >&2
+      echo "重建虚拟环境需要 venv 外部的 Python 3.14+ 解释器" >&2
       return 1
     fi
     printf '%s\n' "$external_python"

@@ -79,13 +79,16 @@ uv run --locked --no-sync pylint app/application/orchestration/download.py
 ## Security Scan
 
 ```bash
-# Scan pyproject.toml and uv.lock
-uvx safety scan --target . --policy-file=safety.policy.yml
+uv export --quiet --locked --no-dev --no-emit-project \
+  --output-file /tmp/moviepilot-audit-requirements.txt
+uvx --from pip-audit==2.10.1 pip-audit \
+  --require-hashes --disable-pip --strict --progress-spinner off \
+  --requirement /tmp/moviepilot-audit-requirements.txt
 ```
 
 **Rules:**
-- Run manually after runtime or development dependency changes; this is not currently an automated CI job.
-- No new high-severity vulnerabilities may be introduced.
+- Run after runtime dependency changes; the release workflow enforces the same audit before publishing images.
+- Any Python vulnerability reported by this audit blocks publishing until the dependency or explicit audit policy is updated.
 
 ---
 

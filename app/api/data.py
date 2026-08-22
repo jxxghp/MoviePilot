@@ -48,6 +48,12 @@ class ApiDataPorts:
 _ports: ApiDataPorts | None = None
 
 
+def configure_api_data_runtime(ports: ApiDataPorts) -> None:
+    """让旧全局 Facade 委托启动组合根创建的同一个端口实例。"""
+    global _ports
+    _ports = ports
+
+
 def configure_api_data_ports(
     *,
     sync_session: SessionProvider,
@@ -57,14 +63,13 @@ def configure_api_data_ports(
     unit_of_work: dict[str, UnitOfWorkFactory],
 ) -> None:
     """由启动组合根登记 API 数据实现，切断 API 对数据库实现包的直接导入。"""
-    global _ports
-    _ports = ApiDataPorts(
+    configure_api_data_runtime(ApiDataPorts(
         sync_session=sync_session,
         async_session=async_session,
         repositories=repositories,
         standalone=standalone,
         unit_of_work=unit_of_work,
-    )
+    ))
 
 
 def get_api_data_ports() -> ApiDataPorts:

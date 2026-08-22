@@ -5,13 +5,15 @@ from pathlib import Path
 
 
 def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
-    """Bookworm 镜像必须从签名的 PGDG 源安装固定主版本客户端。"""
+    """Trixie 镜像必须从签名的 PGDG 源安装固定主版本客户端。"""
     dockerfile = (
         Path(__file__).resolve().parents[1] / "docker" / "Dockerfile"
     ).read_text(encoding="utf-8")
 
     assert re.search(
-        r"^FROM python:[^\s]+-slim-bookworm AS base$", dockerfile, re.MULTILINE
+        r"^FROM python:3\.14\.7-slim-trixie AS base$",
+        dockerfile,
+        re.MULTILINE,
     )
     assert "https://www.postgresql.org/media/keys/ACCC4CF8.asc" in dockerfile
     for curl_option in (
@@ -25,7 +27,7 @@ def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
     keyring = "/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc"
     assert f"chmod 0644 {keyring}" in dockerfile
     assert f"signed-by={keyring}" in dockerfile
-    assert "https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" in dockerfile
+    assert "https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" in dockerfile
     assert re.search(r"^\s+postgresql-client-18 \\$", dockerfile, re.MULTILINE)
     assert not re.search(r"^\s+postgresql-client \\$", dockerfile, re.MULTILINE)
 

@@ -65,8 +65,9 @@ def _candidate(subscribe_id, username):
 
 def _command(candidates, calls, commit_error=None, failing_event_id=None):
     """构造带可观察事件错误处理的批量删除用例。"""
-    async def publish(subscribe_id, payload):
+    async def publish(payload):
         """记录事件并按订阅编号注入失败。"""
+        subscribe_id = payload["subscribe_id"]
         calls.append(("event", subscribe_id, payload))
         if subscribe_id == failing_event_id:
             raise RuntimeError("event failed")

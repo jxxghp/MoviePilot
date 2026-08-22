@@ -26,16 +26,18 @@ from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.adapters.web.security.access import verify_token
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
     get_current_active_superuser,
     get_current_active_superuser_async,
+)
+from app.api.dependencies.site import (
     get_site_mutation_command,
     get_site_query_service,
     get_site_sync_query_service,
 )
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.application.scheduling import Scheduler
 from app.schemas.types import SystemConfigKey, MediaType

@@ -14,8 +14,8 @@ from app.schemas.workflow import Subscribe as _SchemaSubscribe
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.subscribe import SubscribeChain
 from app.runtime.config import settings
-from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
+from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.application.subscription.delete import (
@@ -36,9 +36,11 @@ from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
 from app.application.configuration import get_configured_system_config
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_user,
     get_current_active_user_async,
+)
+from app.api.dependencies.subscription import (
     get_delete_subscribe_command,
     get_delete_subscriptions_by_identity_command,
     get_search_subscriptions_command,
@@ -292,16 +294,16 @@ async def update_subscribe(
     )
     if not change:
         return _SchemaResponse(success=False, message="订阅不存在")
-    # 发送订阅调整事件
-    await eventmanager.async_send_event(
-        EventType.SubscribeModified,
-        SubscribeModifiedEventData(
-            subscribe_id=subscribe_in.id,
-            old_subscribe_info=change.old,
-            subscribe_info=change.new,
-            scene="update",
-        ).to_dict(),
-    )
+    if not change.event_published:
+        await eventmanager.async_send_event(
+            EventType.SubscribeModified,
+            SubscribeModifiedEventData(
+                subscribe_id=subscribe_in.id,
+                old_subscribe_info=change.old,
+                subscribe_info=change.new,
+                scene="update",
+            ).to_dict(),
+        )
     return _SchemaResponse(success=True)
 
 
@@ -325,16 +327,16 @@ async def update_subscribe_status(
     change = await mutation.update_status(subid, state, actor)
     if not change:
         return _SchemaResponse(success=False, message="订阅不存在")
-    # 发送订阅调整事件
-    await eventmanager.async_send_event(
-        EventType.SubscribeModified,
-        SubscribeModifiedEventData(
-            subscribe_id=subid,
-            old_subscribe_info=change.old,
-            subscribe_info=change.new,
-            scene="status",
-        ).to_dict(),
-    )
+    if not change.event_published:
+        await eventmanager.async_send_event(
+            EventType.SubscribeModified,
+            SubscribeModifiedEventData(
+                subscribe_id=subid,
+                old_subscribe_info=change.old,
+                subscribe_info=change.new,
+                scene="status",
+            ).to_dict(),
+        )
     return _SchemaResponse(success=True)
 
 
@@ -386,15 +388,16 @@ async def reset_subscribes(
     )
     change = await mutation.reset(subid, actor)
     if change:
-        await eventmanager.async_send_event(
-            EventType.SubscribeModified,
-            SubscribeModifiedEventData(
-                subscribe_id=subid,
-                old_subscribe_info=change.old,
-                subscribe_info=change.new,
-                scene="reset",
-            ).to_dict(),
-        )
+        if not change.event_published:
+            await eventmanager.async_send_event(
+                EventType.SubscribeModified,
+                SubscribeModifiedEventData(
+                    subscribe_id=subid,
+                    old_subscribe_info=change.old,
+                    subscribe_info=change.new,
+                    scene="reset",
+                ).to_dict(),
+            )
         return _SchemaResponse(success=True)
     return _SchemaResponse(success=False, message="订阅不存在")
 

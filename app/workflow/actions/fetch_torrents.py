@@ -41,20 +41,9 @@ class FetchTorrentsAction(BaseAction):
         super().__init__(action_id)
         self._torrents = []
 
-    @classmethod
-    @property
-    def name(cls) -> str:  # noqa
-        return "搜索站点资源"
-
-    @classmethod
-    @property
-    def description(cls) -> str:  # noqa
-        return "搜索站点种子资源列表"
-
-    @classmethod
-    @property
-    def data(cls) -> dict:  # noqa
-        return FetchTorrentsParams().model_dump()
+    name = "搜索站点资源"
+    description = "搜索站点种子资源列表"
+    data = FetchTorrentsParams().model_dump()
 
     @property
     def success(self) -> bool:

@@ -19,7 +19,7 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
 from app.adapters.web.security.access import verify_apikey
-from app.api.deps import get_servarr_subscription_service
+from app.api.dependencies.subscription import get_servarr_subscription_service
 from app.schemas.servarr import RadarrMovie
 from app.schemas.servarr import SonarrSeries
 from app.schemas.types import MediaSource, MediaType

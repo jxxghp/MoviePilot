@@ -24,14 +24,16 @@ class AgentTaskOper(DbOper):
         新增 Agent 定时任务。
         """
         now = self._now()
-        task_id = AgentTask.add_task(
-            self._db,
-            **kwargs,
-            enabled=True,
-            last_status="waiting",
-            run_count=0,
-            created_at=now,
-            updated_at=now,
+        task_id = self._execute_sync_write(
+            lambda session: AgentTask.add_task(
+                session,
+                **kwargs,
+                enabled=True,
+                last_status="waiting",
+                run_count=0,
+                created_at=now,
+                updated_at=now,
+            )
         )
         return self.get(task_id)
 
@@ -81,38 +83,50 @@ class AgentTaskOper(DbOper):
         if not normalized_payload:
             return False
         normalized_payload["updated_at"] = self._now()
-        return AgentTask.update_task(
-            self._db,
-            task_id=task_id,
-            payload=normalized_payload,
-            user_id=user_id,
+        return self._execute_sync_write(
+            lambda session: AgentTask.update_task(
+                session,
+                task_id=task_id,
+                payload=normalized_payload,
+                user_id=user_id,
+            )
         )
 
     def delete(self, task_id: int, user_id: Optional[str] = None) -> bool:
         """
         删除非运行中的 Agent 定时任务及其运行历史。
         """
-        return AgentTaskRun.delete_task_and_runs(
-            self._db,
-            task_id=task_id,
-            user_id=user_id,
+        return self._execute_sync_write(
+            lambda session: AgentTaskRun.delete_task_and_runs(
+                session,
+                task_id=task_id,
+                user_id=user_id,
+            )
         )
 
     def begin_run(
             self,
             task_id: int,
             trigger_source: str = "scheduled",
+            *,
+            run_id: Optional[str] = None,
+            started_at: Optional[str] = None,
     ) -> Optional[AgentTaskRun]:
         """
         原子创建一次运行并返回其任务快照。
+
+        可选运行 ID 和开始时间用于恢复/幂等验证；正常调度入口由本方法生成。
         """
-        run_id = uuid4().hex
-        created_run_id = AgentTaskRun.begin_run(
-            self._db,
-            task_id=task_id,
-            run_id=run_id,
-            trigger_source=trigger_source,
-            started_at=self._now(),
+        resolved_run_id = run_id or uuid4().hex
+        resolved_started_at = started_at or self._now()
+        created_run_id = self._execute_sync_write(
+            lambda session: AgentTaskRun.begin_run(
+                session,
+                task_id=task_id,
+                run_id=resolved_run_id,
+                trigger_source=trigger_source,
+                started_at=resolved_started_at,
+            )
         )
         return self.get_run(created_run_id) if created_run_id else None
 
@@ -124,11 +138,15 @@ class AgentTaskOper(DbOper):
         """
         将遗留的运行中任务标记为中断且结果未知。
         """
-        return AgentTaskRun.interrupt_task(
-            self._db,
-            task_id=task_id,
-            result=(result or "")[:20000],
-            finished_at=self._now(),
+        finished_at = self._now()
+        normalized_result = (result or "")[:20000]
+        return self._execute_sync_write(
+            lambda session: AgentTaskRun.interrupt_task(
+                session,
+                task_id=task_id,
+                result=normalized_result,
+                finished_at=finished_at,
+            )
         )
 
     def get_run(self, run_id: str) -> Optional[AgentTaskRun]:
@@ -157,13 +175,17 @@ class AgentTaskOper(DbOper):
             disable_date_task: bool = False,
     ) -> bool:
         """收口精确运行并更新仍匹配的任务投影。"""
-        return AgentTaskRun.finish_run(
-            self._db,
-            run_id=run_id,
-            success=success,
-            result=(result or "")[:20000],
-            finished_at=self._now(),
-            disable_date_task=disable_date_task,
+        finished_at = self._now()
+        normalized_result = (result or "")[:20000]
+        return self._execute_sync_write(
+            lambda session: AgentTaskRun.finish_run(
+                session,
+                run_id=run_id,
+                success=success,
+                result=normalized_result,
+                finished_at=finished_at,
+                disable_date_task=disable_date_task,
+            )
         )
 
     def finish(

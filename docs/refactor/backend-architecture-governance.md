@@ -687,7 +687,7 @@ SDK，其余是宿主内部实现、可以随时改；`admission/` 要求是登�
 ./.venv/bin/python -m pytest tests/test_architecture_dependencies.py -q
 28 passed
 
-./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
+python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
 ✓ Passed
 
 ./.venv/bin/python tests/run.py
@@ -777,14 +777,57 @@ class PluginBase:
     async def search_torrents(self, title: str, **kwargs) -> List[TorrentInfo]:
         """插件若实现，必须遵守 IndexerModule.search_torrents 签名"""
         pass
+
+### 11.4 测试执行与边界覆盖
+
+先运行本批次聚焦测试。涉及发布级公共行为时，使用仓库完整门禁：
+
+```bash
+python tests/run.py
 ```
 
-### 11.4 2026-08-18 当前验证快照（收口批次）
+本地若遇到已知二进制 `sites` 扩展导致的 `137/SIGKILL`，应按仓库既有测试 Stub 方案隔离；不能把进程被杀误报为断言失败，也不能因此跳过所有验证。
+
+按变更边界追加测试：
+
+| 变更边界 | 必测内容 |
+| --- | --- |
+| Event | 顺序、优先级、并发、handler 快照、目标插件、异常、热卸载 |
+| Module | 插件优先、短路、列表合并、签名接力、sync/async、限流 |
+| Plugin | hook 空值/异常、状态、配置、服务、API、页面、更新、热重载 |
+| API | 路径、鉴权、响应信封/raw、状态码、OpenAPI、stream disconnect |
+| DB | commit/rollback、并发、权限过滤、提交后副作用、同步/异步 |
+| Startup | 主入口、`app.factory:app`、安全模式、部分失败、逆序关闭 |
+| SDK/Compat | 旧路径、新路径、符号集合、对象身份、pickle/反射（如适用） |
+| Agent | Provider 配置、工具 schema、流事件、取消、usage、插件工具 |
+
+### 11.5 非功能回归
+
+每个阶段至少记录，并将结果写入 `tests/fixtures/architecture/`：
+
+- 冷导入 `app.factory` 耗时。
+- 正常和安全模式生命周期耗时；当前基线使用 `scripts/startup/performance.py` 的 no-op 组件采样，明确不启动真实插件、网络或用户数据库。
+- 隔离采样的线程数、后台任务数和数据库连接数范围；真实生产连接数由部署监控另行采集。
+- 架构模块数、边数、自有 SCC、目标禁止边数量。
+- 目标文件行数、方法最大行数、出度。
+
+默认不要求每项立即变小，但不得无解释显著恶化。启动和请求关键路径超过 10% 的回归必须调查。
+
+当前可复现命令：
+
+```bash
+python scripts/startup/performance.py --write --repeat 3
+python scripts/architecture/baseline.py --check-host
+python scripts/architecture/baseline.py \
+  --check-plugins --plugin-repo ../MoviePilot-Plugins
+```
+
+### 11.6 2026-08-18 当前验证快照（收口批次）
 
 | 范围 | 命令 | 结果 |
 | --- | --- | --- |
 | 后端完整门禁 | `./.venv/bin/python tests/run.py` | 4,914 passed、2 failed、3 skipped（2026-08-18）；失败为未修改的 Agent 图片能力测试，架构专项不受影响 |
-| 架构与插件快照 | `./.venv/bin/python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
+| 架构与插件快照 | 分别运行 `--check-host` 与 `--check-plugins --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
 | 前端联邦 API 客户端 | `yarn test:run src/api/__tests__/client.spec.ts src/api/__tests__/index.spec.ts` | 36 passed |
 | 前端类型检查 | `yarn typecheck` | 通过 |
 | V3 插件契约与版本门禁 | `../MoviePilot/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q` | 16 passed |

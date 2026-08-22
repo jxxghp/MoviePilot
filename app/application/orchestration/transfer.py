@@ -4,6 +4,7 @@ import re
 import threading
 import traceback
 import uuid
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
@@ -58,9 +59,12 @@ from app.runtime.reload import ConfigReloadMixin
 from app.application.transfer import (
     FailedRetryScheduler,
     JobManager,
+    TransferFailureNotification,
+    TransferFailureNotificationAggregator,
     TransferQueue,
     TransferQueueService,
     TransferTask,
+    build_transfer_failure_group_key,
     job_lock,
 )
 from app.application.orchestration._transfer import (EpisodeFormatMixin, FailedRetryMixin,
@@ -90,6 +94,23 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         "TRANSFER_THREADS",
     }
 
+    @staticmethod
+    def _transfer_result_payload(
+        task: TransferTask,
+        transferinfo: TransferInfo,
+        history_id: int | None = None,
+    ) -> dict[str, Any]:
+        """构造保持插件旧对象字段不变的整理结果事件 payload。"""
+        return {
+            "fileitem": task.fileitem,
+            "meta": task.meta,
+            "mediainfo": task.mediainfo,
+            "transferinfo": transferinfo,
+            "downloader": task.downloader,
+            "download_hash": task.download_hash,
+            "transfer_history_id": history_id,
+        }
+
     def __init__(self):
         """初始化文件整理处理链。"""
         super().__init__()
@@ -111,6 +132,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self.jobview = JobManager()
         # Agent重试管理器
         self.retry_scheduler = FailedRetryScheduler()
+        # 整理失败通知聚合器
+        self.failure_notification_aggregator = TransferFailureNotificationAggregator()
         # 待整理文件落盘登记，用于进程重启后回放内存队列里未完成的任务
         self._pendingoper = TransferPendingOper()
         # 转移成功的文件清单
@@ -232,33 +255,54 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     fileid=task.fileitem.fileid if task.fileitem else None,
                 )
 
-                # 新增转移失败历史记录
-                history = add_transfer_fail(
-                    fileitem=task.fileitem,
-                    mode=transferinfo.transfer_type if transferinfo else "",
-                    downloader=task.downloader,
-                    download_hash=task.download_hash,
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
-                    transferinfo=transferinfo,
-                    transfer_history_oper=transferhis,
+                durable_transfer_failed = bool(
+                    getattr(self, "durable_event_writer", None)
+                    and self._is_media_file(task.fileitem)
                 )
+                if durable_transfer_failed:
+                    event_payload = self._transfer_result_payload(task, transferinfo)
+                    history = self.durable_event_writer.transfer_result(
+                        topic="transfer.failed",
+                        stage_history=lambda writer: add_transfer_fail(
+                            fileitem=task.fileitem,
+                            mode=transferinfo.transfer_type if transferinfo else "",
+                            downloader=task.downloader,
+                            download_hash=task.download_hash,
+                            meta=task.meta,
+                            mediainfo=task.mediainfo,
+                            transferinfo=transferinfo,
+                            transfer_history_oper=writer,
+                        ),
+                        event_payload=event_payload,
+                        publish=lambda payload: self.eventmanager.send_event(
+                            EventType.TransferFailed,
+                            payload,
+                        ),
+                    )
+                else:
+                    history = add_transfer_fail(
+                        fileitem=task.fileitem,
+                        mode=transferinfo.transfer_type if transferinfo else "",
+                        downloader=task.downloader,
+                        download_hash=task.download_hash,
+                        meta=task.meta,
+                        mediainfo=task.mediainfo,
+                        transferinfo=transferinfo,
+                        transfer_history_oper=transferhis,
+                    )
 
                 # 整理失败事件
                 if self._is_media_file(task.fileitem):
-                    # 主要媒体文件整理失败事件
-                    self.eventmanager.send_event(
-                        EventType.TransferFailed,
-                        {
-                            "fileitem": task.fileitem,
-                            "meta": task.meta,
-                            "mediainfo": task.mediainfo,
-                            "transferinfo": transferinfo,
-                            "downloader": task.downloader,
-                            "download_hash": task.download_hash,
-                            "transfer_history_id": history.id if history else None,
-                        },
-                    )
+                    if not durable_transfer_failed:
+                        # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
+                        self.eventmanager.send_event(
+                            EventType.TransferFailed,
+                            self._transfer_result_payload(
+                                task,
+                                transferinfo,
+                                history.id if history else None,
+                            ),
+                        )
                 elif self._is_subtitle_file(task.fileitem):
                     # 字幕整理失败事件
                     self.eventmanager.send_event(
@@ -288,28 +332,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         },
                     )
 
-                # 发送失败消息
-                self.post_message(
-                    Message(
-                        mtype=MessageType.Manual,
-                        title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
-                        text="\n".join(
-                            [
-                                f"原因：{transferinfo.message or '未知'}",
-                                (
-                                    f"如果按钮不可用，可回复：\n```\n/redo {history.id}\n```"
-                                    if history
-                                    else ""
-                                ),
-                            ]
-                        ).strip(),
-                        image=task.mediainfo.get_message_image(),
-                        username=task.username,
-                        link=settings.MP_DOMAIN("#/history"),
-                        buttons=self.build_failed_transfer_buttons(
-                            history.id if history else None
-                        ),
-                    )
+                self.queue_failed_transfer_notification(
+                    task=task,
+                    transferinfo=transferinfo,
+                    history_id=history.id if history else None,
                 )
 
             # 设置任务失败
@@ -324,11 +350,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 try:
                     # 使用 download_hash 或源文件父目录作为分组键，
                     # 同一批次（如同一个种子）的失败记录会被合并为一次agent调用
-                    group_key = (
-                        task.download_hash or str(task.fileitem.path).rsplit("/", 1)[0]
-                        if task.fileitem
-                        else ""
-                    )
+                    group_key = build_transfer_failure_group_key(task)
                     asyncio.run_coroutine_threadsafe(
                         self.retry_scheduler.schedule_retry(
                             history.id, group_key=group_key
@@ -353,33 +375,54 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 task.fileitem.storage if task.fileitem else None,
             )
 
-            # 新增task转移成功历史记录
-            history = add_transfer_success(
-                fileitem=task.fileitem,
-                mode=transferinfo.transfer_type if transferinfo else "",
-                downloader=task.downloader,
-                download_hash=task.download_hash,
-                meta=task.meta,
-                mediainfo=task.mediainfo,
-                transferinfo=transferinfo,
-                transfer_history_oper=transferhis,
+            durable_transfer_complete = bool(
+                getattr(self, "durable_event_writer", None)
+                and self._is_primary_media_file(task.fileitem, task.mediainfo)
             )
+            if durable_transfer_complete:
+                event_payload = self._transfer_result_payload(task, transferinfo)
+                history = self.durable_event_writer.transfer_result(
+                    topic="transfer.completed",
+                    stage_history=lambda writer: add_transfer_success(
+                        fileitem=task.fileitem,
+                        mode=transferinfo.transfer_type if transferinfo else "",
+                        downloader=task.downloader,
+                        download_hash=task.download_hash,
+                        meta=task.meta,
+                        mediainfo=task.mediainfo,
+                        transferinfo=transferinfo,
+                        transfer_history_oper=writer,
+                    ),
+                    event_payload=event_payload,
+                    publish=lambda payload: self.eventmanager.send_event(
+                        EventType.TransferComplete,
+                        payload,
+                    ),
+                )
+            else:
+                history = add_transfer_success(
+                    fileitem=task.fileitem,
+                    mode=transferinfo.transfer_type if transferinfo else "",
+                    downloader=task.downloader,
+                    download_hash=task.download_hash,
+                    meta=task.meta,
+                    mediainfo=task.mediainfo,
+                    transferinfo=transferinfo,
+                    transfer_history_oper=transferhis,
+                )
 
             # task整理完成事件
             if self._is_primary_media_file(task.fileitem, task.mediainfo):
-                # 主要媒体文件整理完成事件
-                self.eventmanager.send_event(
-                    EventType.TransferComplete,
-                    {
-                        "fileitem": task.fileitem,
-                        "meta": task.meta,
-                        "mediainfo": task.mediainfo,
-                        "transferinfo": transferinfo,
-                        "downloader": task.downloader,
-                        "download_hash": task.download_hash,
-                        "transfer_history_id": history.id if history else None,
-                    },
-                )
+                if not durable_transfer_complete:
+                    # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
+                    self.eventmanager.send_event(
+                        EventType.TransferComplete,
+                        self._transfer_result_payload(
+                            task,
+                            transferinfo,
+                            history.id if history else None,
+                        ),
+                    )
             elif self._is_subtitle_file(task.fileitem):
                 # 字幕整理完成事件
                 self.eventmanager.send_event(
@@ -487,6 +530,109 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         StorageChain().delete_media_file(t.fileitem, delete_self=False)
 
         return ret_status, ret_message
+
+    def queue_failed_transfer_notification(
+            self,
+            *,
+            task: TransferTask,
+            transferinfo: TransferInfo,
+            history_id: Optional[int],
+            manual_identity: bool = False,
+    ) -> None:
+        """按配置逐条发送或按媒体聚合整理失败通知，供第三方整理补丁复用。"""
+        notification = TransferFailureNotification(
+            media_title=(
+                task.mediainfo.title_year
+                if task.mediainfo
+                else task.fileitem.name if task.fileitem else "未知媒体"
+            ),
+            season_episode=getattr(task.meta, "season_episode", "") or "",
+            reason=transferinfo.message or "未知",
+            history_id=history_id,
+            image=(
+                task.mediainfo.get_message_image()
+                if task.mediainfo and hasattr(task.mediainfo, "get_message_image")
+                else None
+            ),
+            username=task.username,
+            manual_identity=manual_identity,
+        )
+        if not settings.TRANSFER_FAILURE_NOTIFICATION_AGGREGATION:
+            self._send_transfer_failure_notifications([notification])
+            return
+        try:
+            self.failure_notification_aggregator.schedule(
+                group_key=build_transfer_failure_group_key(task),
+                notification=notification,
+                callback=self._send_transfer_failure_notifications,
+                loop=global_vars.loop,
+            )
+        except Exception as err:
+            logger.error(f"加入整理失败通知聚合缓冲失败，将立即发送：{err}")
+            self._send_transfer_failure_notifications([notification])
+
+    def _send_transfer_failure_notifications(
+            self,
+            notifications: List[TransferFailureNotification],
+    ) -> None:
+        """把一个媒体分组的失败快照渲染为单条消息。"""
+        if not notifications:
+            return
+        first = notifications[0]
+        history_ids = [item.history_id for item in notifications if item.history_id]
+        if len(notifications) == 1:
+            history_hint = (
+                (
+                    "如果按钮不可用，可回复：\n"
+                    f"```\n/redo {history_ids[0]}\n"
+                    f"/redo {history_ids[0]} [media_source]|[media_id]|[类型]\n```\n"
+                    "自动重试或手动识别整理。"
+                    if first.manual_identity
+                    else f"如果按钮不可用，可回复：\n```\n/redo {history_ids[0]}\n```"
+                )
+                if history_ids
+                else ""
+            )
+            text = "\n".join([f"原因：{first.reason}", history_hint]).strip()
+            buttons = self.build_failed_transfer_buttons(
+                history_ids[0] if history_ids else None
+            )
+            title = (
+                f"{first.media_title} 未识别到媒体信息，无法入库！"
+                if first.manual_identity
+                else f"{first.media_title} {first.season_episode} 入库失败！"
+            )
+        else:
+            reason_counts = Counter(item.reason for item in notifications)
+            reason_lines = [
+                f"- {reason} × {count}"
+                for reason, count in reason_counts.most_common()
+            ]
+            history_text = "、".join(f"#{history_id}" for history_id in history_ids)
+            text_parts = [
+                f"失败文件：{len(notifications)} 个",
+                "原因统计：",
+                *reason_lines,
+            ]
+            if history_text:
+                text_parts.extend([f"整理记录：{history_text}", "可在整理历史中批量处理。"])
+            text = "\n".join(text_parts)
+            buttons = [[{
+                "text": "批量处理",
+                "url": settings.MP_DOMAIN("#/history"),
+            }]]
+            title = f"{first.media_title} 入库失败（{len(notifications)} 个文件）"
+        self.post_message(
+            Message(
+                mtype=MessageType.Manual,
+                title=title,
+                text=text,
+                image=first.image,
+                username=first.username,
+                link=settings.MP_DOMAIN("#/history"),
+                buttons=buttons,
+            )
+        )
 
     def __get_transfer_target_dir_path(
             self, transferinfo: Optional[TransferInfo]
@@ -947,33 +1093,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         download_hash=task.download_hash,
                         transfer_history_oper=transferhis,
                     )
-                    self.post_message(
-                        Message(
-                            mtype=MessageType.Manual,
-                            title=f"{task.fileitem.name} 未识别到媒体信息，无法入库！",
-                            # 历史落库失败时 his 为 None（add_transfer_fail 末尾的
-                            # get_by_src 查不到即返回 None），此时 /redo 无 ID 可用，
-                            # 只省去这段指引而不是让整条通知连同后续的作业清理、
-                            # 种子完成标记一起崩在 NoneType 上
-                            text="\n".join(
-                                [
-                                    "原因：未识别到媒体信息",
-                                    (
-                                        "如果按钮不可用，可回复：\n"
-                                        f"```\n/redo {his.id}\n"
-                                        f"/redo {his.id} [media_source]|[media_id]|[类型]\n```\n"
-                                        "自动重试或手动识别整理。"
-                                        if his
-                                        else ""
-                                    ),
-                                ]
-                            ).strip(),
-                            username=task.username,
-                            link=settings.MP_DOMAIN("#/history"),
-                            buttons=self.build_failed_transfer_buttons(
-                                his.id if his else None
-                            ),
-                        )
+                    self.queue_failed_transfer_notification(
+                        task=task,
+                        transferinfo=TransferInfo(
+                            success=False,
+                            fileitem=task.fileitem,
+                            message="未识别到媒体信息",
+                            transfer_type=task.transfer_type,
+                        ),
+                        history_id=his.id if his else None,
+                        manual_identity=True,
                     )
                     # 任务失败，直接移除task
                     self.jobview.remove_task(task.fileitem)
@@ -989,12 +1118,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     ):
                         try:
                             # 使用 download_hash 或源文件父目录作为分组键
-                            group_key = (
-                                task.download_hash
-                                or str(task.fileitem.path).rsplit("/", 1)[0]
-                                if task.fileitem
-                                else ""
-                            )
+                            group_key = build_transfer_failure_group_key(task)
                             asyncio.run_coroutine_threadsafe(
                                 self.retry_scheduler.schedule_retry(
                                     his.id, group_key=group_key

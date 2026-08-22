@@ -5,6 +5,7 @@ import pytest
 
 from app.application.workflow import (
     WorkflowDefinitionCommand,
+    WorkflowExecutionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
 )
@@ -42,6 +43,53 @@ def _command(workflow=None, commit_error=None):
         "delete_cache": Mock(),
     }
     return WorkflowMutationCommand(**dependencies), dependencies
+
+
+def _execution_command(commit_error=None):
+    """构造可观察的工作流执行状态事务命令。"""
+    repository = Mock()
+    repository.stage_start = Mock(return_value=True)
+    repository.stage_success = Mock(return_value=True)
+    repository.stage_fail = Mock(return_value=True)
+    repository.stage_step = Mock(return_value=True)
+    repository.stage_execution_reset = Mock(return_value=True)
+    unit_of_work = Mock()
+    unit_of_work.commit = Mock(side_effect=commit_error)
+    unit_of_work.rollback = Mock()
+    return WorkflowExecutionCommand(
+        repository=repository,
+        unit_of_work=unit_of_work,
+    ), repository, unit_of_work
+
+
+def test_execution_step_is_staged_before_unit_of_work_commit():
+    """工作流进度写入必须由应用命令暂存后统一提交。"""
+    command, repository, unit_of_work = _execution_command()
+
+    result = command.step(7, "action-1", {"value": 1}, {"runtime": {}})
+
+    assert result is True
+    repository.stage_step.assert_called_once_with(
+        7,
+        "action-1",
+        {"value": 1},
+        {"runtime": {}},
+    )
+    unit_of_work.commit.assert_called_once_with()
+    unit_of_work.rollback.assert_not_called()
+
+
+def test_execution_commit_failure_rolls_back():
+    """执行状态提交失败时必须回滚并保留原始异常。"""
+    command, repository, unit_of_work = _execution_command(
+        RuntimeError("commit failed")
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        command.fail(7, "failed")
+
+    repository.stage_fail.assert_called_once_with(7, "failed")
+    unit_of_work.rollback.assert_called_once_with()
 
 
 @pytest.mark.asyncio

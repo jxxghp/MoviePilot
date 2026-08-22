@@ -6,11 +6,15 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.events import eventmanager
-from app.application.agentdata import SubscribePort as SubscribeOper
-from app.adapters.external.server import MoviePilotServerHelper
+from app.application.subscription.delete import (
+    SubscribeDeletionActor,
+    get_delete_subscribe_scope,
+)
+from app.application.subscription.mutation import (
+    SubscriptionActor,
+    get_subscription_mutation_scope,
+)
 from app.runtime.log import logger
-from app.schemas.types import EventType
 
 
 class DeleteSubscribeInput(BaseModel):
@@ -45,32 +49,21 @@ class DeleteSubscribeTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: subscribe_id={subscribe_id}")
 
         try:
-            subscribe_oper = SubscribeOper()
-            # 获取订阅信息
-            subscribe = await subscribe_oper.async_get(subscribe_id)
+            async with get_subscription_mutation_scope() as mutation:
+                subscribe = await mutation.get_accessible(
+                    subscribe_id,
+                    SubscriptionActor(name="agent", is_superuser=True),
+                )
             if not subscribe:
                 return f"订阅 ID {subscribe_id} 不存在"
 
-            # 在删除之前获取订阅信息（用于事件）
-            subscribe_info = subscribe.to_dict()
-
-            await subscribe_oper.async_delete(subscribe_id)
-            # 分享订阅统计刷新本身已异步化，这里只需要在删除后触发即可。
-            MoviePilotServerHelper.sub_done_async(
-                {
-                    "media_source": subscribe.media_source,
-                    "media_id": subscribe.media_id,
-                    "music_type": subscribe.music_type,
-                    "total_tracks": subscribe.total_tracks,
-                    "season": subscribe.season,
-                }
-            )
-
-            # 发送事件
-            await eventmanager.async_send_event(
-                EventType.SubscribeDeleted,
-                {"subscribe_id": subscribe_id, "subscribe_info": subscribe_info},
-            )
+            async with get_delete_subscribe_scope() as command:
+                deleted = await command.execute(
+                    subscribe_id,
+                    SubscribeDeletionActor(username="agent", is_superuser=True),
+                )
+            if not deleted:
+                return f"订阅 ID {subscribe_id} 不存在"
 
             return f"成功删除订阅：{subscribe.name} ({subscribe.year})"
         except Exception as e:

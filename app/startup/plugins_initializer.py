@@ -27,6 +27,7 @@ from app.runtime.extensions.contract.dependency import (
 )
 from app.application.messaging.message import MessageHelper
 from app.application.plugin.catalog import PluginCatalogService
+from app.application.plugin.data import DeletePluginDataCommand
 from app.adapters.external.plugin.client import PluginMarketClient
 from app.runtime.extensions.admission.instance_selection import (
     PluginInstanceTarget,
@@ -41,7 +42,7 @@ from app.runtime.extensions.lifecycle.system import (
     configure_plugin_system,
 )
 from app.runtime.managed_resources import acquire_managed_resource
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import (
     PluginHelper,
@@ -64,6 +65,8 @@ from app.adapters.system.host import SystemUtils
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.pluginconfig import PluginConfigOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import SessionFactory
+from app.db.uow import SqlAlchemyUnitOfWork
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 from app.runtime.log import (
     configure_plugin_log_dir_resolver,
@@ -78,6 +81,18 @@ from app.schemas.types import SystemConfigKey
 async def _async_write_plugin_config(key, value):
     """通过数据库操作器异步保存插件运行时配置。"""
     return await SystemConfigOper().async_set(key, value)
+
+
+def _delete_plugin_data(plugin_id: str) -> None:
+    """用独占同步会话执行插件重置的数据删除事务。"""
+    session = SessionFactory()
+    try:
+        DeletePluginDataCommand(
+            repository=PluginDataOper(session),
+            unit_of_work=SqlAlchemyUnitOfWork(session),
+        ).execute(plugin_id)
+    finally:
+        session.close()
 
 
 def _read_plugin_instance_config(plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID):
@@ -345,7 +360,7 @@ def configure_plugin_services() -> None:
         write=lambda key, value: SystemConfigOper().set(key, value),
         async_write=_async_write_plugin_config,
         delete=lambda key: SystemConfigOper().delete(key),
-        delete_data=lambda plugin_id: PluginDataOper().del_data(plugin_id),
+        delete_data=_delete_plugin_data,
         read_config=_read_plugin_instance_config,
         write_config=_write_plugin_instance_config,
         async_write_config=_async_write_plugin_instance_config,

@@ -30,20 +30,9 @@ class AddSubscribeAction(BaseAction):
         self._added_subscribes = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str:  # noqa
-        return "添加订阅"
-
-    @classmethod
-    @property
-    def description(cls) -> str:  # noqa
-        return "根据媒体列表添加订阅"
-
-    @classmethod
-    @property
-    def data(cls) -> dict:  # noqa
-        return AddSubscribeParams().model_dump()
+    name = "添加订阅"
+    description = "根据媒体列表添加订阅"
+    data = AddSubscribeParams().model_dump()
 
     @property
     def success(self) -> bool:

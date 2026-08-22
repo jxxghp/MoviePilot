@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
+import inspect
 import json
 import re
+import time
 import traceback
 import uuid
 import warnings
@@ -21,7 +23,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
-from app.agent.llm import LLMHelper
+from app.agent.llm.helper import LLMHelper
 from app.agent.llm.server_tools import ServerToolRegistry
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity_log import (
@@ -51,7 +53,7 @@ from app.agent.middleware.subagents import (
 from app.agent.middleware.tool_selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent.prompt import prompt_manager
-from app.agent.policy import (
+from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
     ToolOrigin,
@@ -68,6 +70,7 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.application.orchestration.agent import AgentChain
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
+from app.runtime.observability import record_metric
 from app.application.plugin.runtime import get_plugin_manager
 
 
@@ -87,6 +90,37 @@ from app.schemas.types import ChainEventType, EventType, NotificationChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
+
+
+_KNOWN_AGENT_PROVIDER_TYPES = (
+    "anthropic",
+    "azure",
+    "deepseek",
+    "gemini",
+    "ollama",
+    "openai",
+)
+
+
+def _agent_provider_metric_type(provider: object) -> str:
+    """把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。"""
+    normalized = str(provider or "").strip().lower()
+    if not normalized:
+        return "unknown"
+    for provider_type in _KNOWN_AGENT_PROVIDER_TYPES:
+        if provider_type in normalized:
+            return provider_type
+    return "custom"
+
+
+def _agent_task_metric_type(source: object, channel: object = None) -> str:
+    """把 Agent 来源归一为交互、调度、后台三类稳定标签。"""
+    normalized = str(source or "").strip().lower()
+    if normalized in {"scheduler", "scheduled", "heartbeat", "agent_task"}:
+        return "scheduled"
+    if channel:
+        return "interactive"
+    return "background"
 
 
 def _finish_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -395,6 +429,7 @@ class MoviePilotAgent:
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
         self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
+        self._subagent_middlewares: tuple[Any, ...] = ()
         self._last_agent_cache_hit = False
 
         # 流式token管理
@@ -705,6 +740,24 @@ class MoviePilotAgent:
         self._session_usage.total_cache_write_input_tokens += cache_write_input_tokens
         self._session_usage.total_uncached_input_tokens += uncached_input_tokens
         self._session_usage.cache_usage_available |= cache_usage_available
+        provider_type = _agent_provider_metric_type(
+            (self._llm_provider_selection or {}).get("provider")
+            or settings.LLM_PROVIDER
+        )
+        if input_tokens:
+            record_metric(
+                "agent.token_usage",
+                input_tokens,
+                provider_type=provider_type,
+                direction="input",
+            )
+        if output_tokens:
+            record_metric(
+                "agent.token_usage",
+                output_tokens,
+                provider_type=provider_type,
+                direction="output",
+            )
 
         if not is_current_request:
             return
@@ -1692,7 +1745,23 @@ class MoviePilotAgent:
             return bundle.agent
         return None
 
-    def _cache_agent(
+    @staticmethod
+    async def _close_subagent_middleware_instances(
+        middlewares: tuple[Any, ...],
+    ) -> None:
+        """释放不再由 Agent 图持有的子代理控制器。"""
+        for middleware in middlewares:
+            close = getattr(middleware, "close", None)
+            if not callable(close):
+                continue
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as error:
+                logger.debug(f"关闭子代理中间件失败: {error}")
+
+    async def _cache_agent(
         self,
         *,
         signature: tuple[Any, ...],
@@ -1701,8 +1770,18 @@ class MoviePilotAgent:
         tool_catalog: ToolCatalogSnapshot,
         subagent_catalog: ToolCatalogSnapshot,
         mcp_config_signature: str,
+        subagent_middlewares: tuple[Any, ...] = (),
     ) -> Any:
         """保存当前会话可复用的 Agent 图。"""
+        previous_middlewares = tuple(
+            middleware
+            for middleware in self._subagent_middlewares
+            if not any(
+                middleware is replacement
+                for replacement in subagent_middlewares
+            )
+        )
+        await self._close_subagent_middleware_instances(previous_middlewares)
         self._compiled_agent_bundle = _CompiledAgentBundle(
             signature=signature,
             agent=agent,
@@ -1714,7 +1793,15 @@ class MoviePilotAgent:
             mcp_config_signature=mcp_config_signature,
             catalog_checked_at=datetime.now(),
         )
+        self._subagent_middlewares = subagent_middlewares
         return agent
+
+    async def _invalidate_cached_agent(self) -> None:
+        """使当前图失效，并释放只属于该图的子代理控制器。"""
+        subagent_middlewares = self._subagent_middlewares
+        self._subagent_middlewares = ()
+        self._compiled_agent_bundle = None
+        await self._close_subagent_middleware_instances(subagent_middlewares)
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
@@ -1784,6 +1871,7 @@ class MoviePilotAgent:
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
         :param streaming: 是否启用流式输出
         """
+        temporary_subagent_middlewares: tuple[Any, ...] = ()
         try:
             runtime_config = await self._resolve_llm_runtime_config()
             plugin_revision = _get_plugin_tools_revision()
@@ -1887,6 +1975,7 @@ class MoviePilotAgent:
                 policy_context=policy_context.for_subagent(),
                 catalog=subagent_catalog,
             )
+            temporary_subagent_middlewares = tuple(subagent_middlewares)
             # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
             tool_catalog = ToolCatalogSnapshot.from_tools(
                 [
@@ -1909,6 +1998,10 @@ class MoviePilotAgent:
             if cached_agent:
                 # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
                 cached_bundle.catalog_checked_at = datetime.now()
+                await self._close_subagent_middleware_instances(
+                    temporary_subagent_middlewares
+                )
+                temporary_subagent_middlewares = ()
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                 return cached_agent
             max_tools = settings.LLM_MAX_TOOLS
@@ -2013,17 +2106,28 @@ class MoviePilotAgent:
                 middleware=middlewares,
                 checkpointer=InMemorySaver(),
             )
-            return self._cache_agent(
+            cached_agent = await self._cache_agent(
                 signature=bundle_signature,
                 agent=agent,
                 streaming=streaming,
                 tool_catalog=tool_catalog,
                 subagent_catalog=subagent_catalog,
                 mcp_config_signature=mcp_config_signature,
+                subagent_middlewares=tuple(subagent_middlewares),
             )
+            temporary_subagent_middlewares = ()
+            return cached_agent
+        except asyncio.CancelledError:
+            await self._close_subagent_middleware_instances(
+                temporary_subagent_middlewares
+            )
+            raise
         except Exception as e:
+            await self._close_subagent_middleware_instances(
+                temporary_subagent_middlewares
+            )
             logger.error(f"创建 Agent 失败: {e}")
-            raise e
+            raise
 
     async def process(
             self,
@@ -2225,6 +2329,7 @@ class MoviePilotAgent:
         """
         execution_success = False
         execution_error: Optional[str] = None
+        metric_started_at = time.perf_counter()
         self._agent_started_at = datetime.now()
         self._llm_runtime_config = None
         self._llm_provider_selection = {}
@@ -2364,11 +2469,11 @@ class MoviePilotAgent:
 
         except asyncio.CancelledError:
             logger.info(f"Agent执行被取消: session_id={self.session_id}")
-            self._compiled_agent_bundle = None
+            await self._invalidate_cached_agent()
             execution_error = "任务已取消"
             raise
         except Exception as e:
-            self._compiled_agent_bundle = None
+            await self._invalidate_cached_agent()
             execution_error = str(e)
             if self._messages_have_image_input(messages) and self._is_unsupported_image_input_error(e):
                 logger.warning(
@@ -2381,6 +2486,15 @@ class MoviePilotAgent:
             await self._dispatch_execution_notice(friendly_message)
             return friendly_message, {}
         finally:
+            selection = self._llm_provider_selection or {}
+            record_metric(
+                "agent.provider.duration",
+                time.perf_counter() - metric_started_at,
+                provider_type=_agent_provider_metric_type(
+                    selection.get("provider") or settings.LLM_PROVIDER
+                ),
+                outcome="success" if execution_success else "error",
+            )
             self._send_agent_tokens_usage_event(
                 success=execution_success,
                 error=execution_error,
@@ -2394,6 +2508,12 @@ class MoviePilotAgent:
         发送 Agent 消息；后台任务不绑定原渠道，交由通知链广播。
         """
         broadcast = self.is_background
+        rich_message = (
+            message
+            if not broadcast
+            and self.channel == NotificationChannel.Telegram.value
+            else None
+        )
         self._save_assistant_display_message_once(message)
         await AgentChain().async_post_message(
             Message(
@@ -2406,6 +2526,7 @@ class MoviePilotAgent:
                 original_chat_id=None if broadcast else self.original_chat_id,
                 title=title,
                 text=message,
+                rich_message=rich_message,
                 save_history=False,
             )
         )
@@ -2414,9 +2535,9 @@ class MoviePilotAgent:
         """
         清理智能体资源
         """
+        await self._invalidate_cached_agent()
         self._pending_secret_confirmation = None
         self.protected_output_callback = None
-        self._compiled_agent_bundle = None
         logger.info(f"MoviePilot智能体已清理: session_id={self.session_id}")
 
 
@@ -2447,12 +2568,30 @@ class _MessageTask:
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
     agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None
     completion_future: Optional[asyncio.Future] = None
+    enqueued_at: Optional[float] = None
 
 
 class AgentManagerUnavailableError(RuntimeError):
     """AgentManager 未运行或已开始关闭，不能再接收新任务。"""
 
     code = "agent_manager_unavailable"
+
+
+class AgentManagerQueueFullError(RuntimeError):
+    """Agent 会话的待处理消息达到容量上限。"""
+
+    code = "agent_manager_queue_full"
+
+    def __init__(self, session_id: str, limit: int):
+        self.session_id = session_id
+        self.limit = limit
+        super().__init__(
+            f"Agent 会话当前排队消息已达上限（{limit} 条），请稍后重试"
+        )
+
+
+AGENT_SESSION_QUEUE_MAX_SIZE = 8
+AGENT_MANAGER_SHUTDOWN_TIMEOUT = 10.0
 
 
 class AgentManager:
@@ -2472,6 +2611,14 @@ class AgentManager:
         self._idle_cleanup_task: Optional[asyncio.Task] = None
         self._idle_session_ttl = timedelta(hours=24)
         self._idle_cleanup_interval = 60 * 60
+        self._session_queue_rejections: Dict[str, int] = {}
+        self._session_last_queue_wait_ms: Dict[str, float] = {}
+        self._session_shutdown_pending: Dict[str, asyncio.Task] = {}
+        self._session_cleanup_pending: set[str] = set()
+        self._session_deferred_cleanup_tasks: Dict[str, asyncio.Task] = {}
+        self._session_cancel_requested: set[str] = set()
+        self._close_finalizer_task: Optional[asyncio.Task] = None
+        self._shutdown_timeout = AGENT_MANAGER_SHUTDOWN_TIMEOUT
         # 接收门禁与队列写入共用一把锁，确保关闭开始后不会再创建 worker。
         self._lifecycle_lock = asyncio.Lock()
         self._accepting_tasks = False
@@ -2493,6 +2640,20 @@ class AgentManager:
 
         queue = self._session_queues.get(session_id)
         status["pending_messages"] = queue.qsize() if queue else 0
+        status["queue_capacity"] = AGENT_SESSION_QUEUE_MAX_SIZE
+        status["queue_saturated"] = bool(queue and queue.full())
+        status["queue_rejections"] = self._session_queue_rejections.get(
+            session_id,
+            0,
+        )
+        status["last_queue_wait_ms"] = self._session_last_queue_wait_ms.get(
+            session_id,
+            0.0,
+        )
+        pending_shutdown = self._session_shutdown_pending.get(session_id)
+        status["shutdown_pending"] = bool(
+            pending_shutdown and not pending_shutdown.done()
+        )
         status["is_processing"] = (
                 session_id in self._session_workers
                 and not self._session_workers[session_id].done()
@@ -2536,6 +2697,8 @@ class AgentManager:
         关闭管理器
         """
         async with self._lifecycle_lock:
+            if self._close_finalizer_task and not self._close_finalizer_task.done():
+                return
             # 门禁必须先关闭；锁内完成清理可阻止等待中的请求在收口期间重新入队。
             self._accepting_tasks = False
             if self._idle_cleanup_task:
@@ -2545,16 +2708,20 @@ class AgentManager:
                 except asyncio.CancelledError:
                     pass
                 self._idle_cleanup_task = None
-            # 取消所有会话worker
-            for task in list(self._session_workers.values()):
+            # 先取消所有 worker，再以有限等待收口，避免关闭阶段无限挂起。
+            workers = list(self._session_workers.items())
+            for session_id, task in workers:
+                self._session_cancel_requested.add(session_id)
                 task.cancel()
-            # 等待所有worker结束
-            for session_id, task in list(self._session_workers.items()):
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            self._session_workers.clear()
+            timed_out_workers = []
+            for session_id, task in workers:
+                stopped = await self._wait_for_worker_shutdown(
+                    session_id,
+                    task,
+                    reason="manager_close",
+                )
+                if not stopped:
+                    timed_out_workers.append((session_id, task))
             for queue in list(self._session_queues.values()):
                 self._discard_queued_messages(
                     queue,
@@ -2562,6 +2729,32 @@ class AgentManager:
                 )
             self._session_queues.clear()
             self._session_last_used.clear()
+            self._session_queue_rejections.clear()
+            self._session_last_queue_wait_ms.clear()
+
+            if timed_out_workers:
+                timed_out_session_ids = {
+                    session_id for session_id, _ in timed_out_workers
+                }
+                for session_id, task in workers:
+                    if session_id in timed_out_session_ids:
+                        continue
+                    if self._session_workers.get(session_id) is task:
+                        self._session_workers.pop(session_id, None)
+                for session_id, agent in list(self.active_agents.items()):
+                    if session_id not in timed_out_session_ids:
+                        await agent.cleanup()
+                        self.active_agents.pop(session_id, None)
+                logger.error(
+                    "AgentManager 关闭时仍有 worker 未收敛，"
+                    f"保留 {len(timed_out_workers)} 个会话资源直到 worker 结束"
+                )
+                self._close_finalizer_task = asyncio.create_task(
+                    self._finish_deferred_close(timed_out_workers)
+                )
+                return
+
+            self._session_workers.clear()
             for agent in list(self.active_agents.values()):
                 await agent.cleanup()
             self.active_agents.clear()
@@ -2669,15 +2862,44 @@ class AgentManager:
         )
         async with self._lifecycle_lock:
             if not self._accepting_tasks:
+                if completion_future and not completion_future.done():
+                    completion_future.cancel()
                 raise AgentManagerUnavailableError("AgentManager 未运行或已关闭")
+            pending_shutdown = self._session_shutdown_pending.get(session_id)
+            if pending_shutdown:
+                if pending_shutdown.done():
+                    self._session_shutdown_pending.pop(session_id, None)
+                else:
+                    if completion_future and not completion_future.done():
+                        completion_future.cancel()
+                    raise AgentManagerUnavailableError(
+                        f"Agent 会话 {session_id} 仍在停止，暂时不能接收新任务"
+                    )
             self._record_session_activity(session_id, user_id)
 
             # 获取或创建会话队列
             if session_id not in self._session_queues:
-                self._session_queues[session_id] = asyncio.Queue()
+                self._session_queues[session_id] = asyncio.Queue(
+                    maxsize=AGENT_SESSION_QUEUE_MAX_SIZE
+                )
 
             queue = self._session_queues[session_id]
             queue_size = queue.qsize()
+
+            if queue.full():
+                self._session_queue_rejections[session_id] = (
+                    self._session_queue_rejections.get(session_id, 0) + 1
+                )
+                logger.warning(
+                    f"会话 {session_id} 的 Agent 排队已满，拒绝新消息 "
+                    f"(上限: {AGENT_SESSION_QUEUE_MAX_SIZE})"
+                )
+                if completion_future and not completion_future.done():
+                    completion_future.cancel()
+                raise AgentManagerQueueFullError(
+                    session_id=session_id,
+                    limit=AGENT_SESSION_QUEUE_MAX_SIZE,
+                )
 
             # 如果队列中已有等待的消息，通知用户消息已排队
             if queue_size > 0 or (
@@ -2689,8 +2911,9 @@ class AgentManager:
                     f"(队列中待处理: {queue_size} 条)"
                 )
 
-            # 放入队列并创建 worker 与关闭门禁保持原子关系。
-            await queue.put(task)
+            # 非阻塞入队与 worker 创建在同一生命周期锁内完成，关闭期间不会留下悬挂入队。
+            task.enqueued_at = asyncio.get_running_loop().time()
+            queue.put_nowait(task)
             if (
                     session_id not in self._session_workers
                     or self._session_workers[session_id].done()
@@ -2722,11 +2945,38 @@ class AgentManager:
                     logger.debug(f"会话 {session_id} 的消息队列空闲，worker退出")
                     break
 
+                task_type = _agent_task_metric_type(task.source, task.channel)
+                active_metric_recorded = False
                 try:
+                    if task.enqueued_at is not None:
+                        queue_wait_ms = max(
+                            0.0,
+                            (
+                                asyncio.get_running_loop().time()
+                                - task.enqueued_at
+                            )
+                            * 1000,
+                        )
+                        self._session_last_queue_wait_ms[session_id] = round(
+                            queue_wait_ms,
+                            3,
+                        )
                     await self._start_task_processing_status(task)
+                    record_metric(
+                        "agent.active_tasks",
+                        1,
+                        task_type=task_type,
+                    )
+                    active_metric_recorded = True
                     result = await self._process_message_internal(task)
                     if task.completion_future and not task.completion_future.done():
-                        task.completion_future.set_result(result)
+                        if (
+                                not self._accepting_tasks
+                                or session_id in self._session_cancel_requested
+                        ):
+                            task.completion_future.cancel()
+                        else:
+                            task.completion_future.set_result(result)
                 except asyncio.CancelledError:
                     if task.completion_future and not task.completion_future.done():
                         if self._accepting_tasks:
@@ -2741,8 +2991,16 @@ class AgentManager:
                     if task.completion_future and not task.completion_future.done():
                         task.completion_future.set_exception(e)
                 finally:
+                    if active_metric_recorded:
+                        record_metric(
+                            "agent.active_tasks",
+                            -1,
+                            task_type=task_type,
+                        )
                     await self._finish_task_processing_status(task)
                     queue.task_done()
+                if session_id in self._session_cancel_requested:
+                    break
 
         except asyncio.CancelledError:
             logger.info(f"会话 {session_id} 的worker被取消")
@@ -2751,6 +3009,7 @@ class AgentManager:
             current_worker = asyncio.current_task()
             if self._session_workers.get(session_id) is current_worker:
                 self._session_workers.pop(session_id, None)  # noqa
+            self._session_cancel_requested.discard(session_id)
             # 如果队列为空，清理队列
             if (
                     self._session_queues.get(session_id) is queue
@@ -2875,6 +3134,15 @@ class AgentManager:
     async def _stop_current_task_locked(self, session_id: str):
         """在 lifecycle 互斥域内停止会话 worker。"""
         stopped = False
+        active_agent = self.active_agents.get(session_id)
+        task_type = (
+            _agent_task_metric_type(
+                getattr(active_agent, "source", None),
+                getattr(active_agent, "channel", None),
+            )
+            if active_agent
+            else "unknown"
+        )
 
         worker = self._session_workers.get(session_id)
         queue = self._session_queues.get(session_id)
@@ -2883,15 +3151,17 @@ class AgentManager:
 
         # 先摘下旧队列再等待 worker 退出；lifecycle 锁保证清理期间不会并发建立新队列。
         if worker:
+            self._session_cancel_requested.add(session_id)
             worker.cancel()
         if queue:
             self._discard_queued_messages(queue)
         if worker:
-            try:
-                await worker
-            except asyncio.CancelledError:
-                pass
-            if self._session_workers.get(session_id) is worker:
+            stopped_cleanly = await self._wait_for_worker_shutdown(
+                session_id,
+                worker,
+                reason="stop_current_task",
+            )
+            if stopped_cleanly and self._session_workers.get(session_id) is worker:
                 self._session_workers.pop(session_id, None)  # noqa
             stopped = True
         if queue:
@@ -2904,14 +3174,21 @@ class AgentManager:
                 and not new_queue.empty()
                 and (not current_worker or current_worker.done())
         ):
-            self._session_workers[session_id] = asyncio.create_task(
-                self._session_worker(session_id)
-            )
+            if session_id not in self._session_shutdown_pending:
+                self._session_workers[session_id] = asyncio.create_task(
+                    self._session_worker(session_id)
+                )
 
         if stopped:
             logger.info(f"会话 {session_id} 的Agent推理已应急停止")
         else:
             logger.debug(f"会话 {session_id} 没有正在执行的Agent任务")
+
+        record_metric(
+            "agent.cancel",
+            task_type=task_type,
+            outcome="stopped" if stopped else "not_found",
+        )
 
         return stopped
 
@@ -2924,20 +3201,42 @@ class AgentManager:
 
     async def _clear_session_locked(self, session_id: str, user_id: str) -> None:
         """在 lifecycle 互斥域内释放会话、Agent 与记忆。"""
+        if session_id in self._session_cleanup_pending:
+            return
         self._session_last_used.pop(session_id, None)
         # 取消该会话的worker
         if session_id in self._session_workers:
-            self._session_workers[session_id].cancel()
-            try:
-                await self._session_workers[session_id]
-            except asyncio.CancelledError:
-                pass
-            self._session_workers.pop(session_id, None)  # noqa
+            worker = self._session_workers[session_id]
+            self._session_cleanup_pending.add(session_id)
+            self._session_cancel_requested.add(session_id)
+            worker.cancel()
+            stopped_cleanly = await self._wait_for_worker_shutdown(
+                session_id,
+                worker,
+                reason="clear_session",
+            )
+            if not stopped_cleanly:
+                queue = self._session_queues.pop(session_id, None)
+                if queue:
+                    self._discard_queued_messages(queue)
+                worker.add_done_callback(
+                    lambda done: self._schedule_deferred_session_cleanup(
+                        session_id,
+                        user_id,
+                        worker,
+                    )
+                )
+                return
+            if self._session_workers.get(session_id) is worker:
+                self._session_workers.pop(session_id, None)  # noqa
+            self._session_cleanup_pending.discard(session_id)
 
         # 清理队列时同步结束未执行请求，避免 wait_for_completion 调用方永久等待。
         queue = self._session_queues.pop(session_id, None)
         if queue:
             self._discard_queued_messages(queue)
+        self._session_queue_rejections.pop(session_id, None)
+        self._session_last_queue_wait_ms.pop(session_id, None)
 
         # 清理agent
         if session_id in self.active_agents:
@@ -2946,6 +3245,116 @@ class AgentManager:
             del self.active_agents[session_id]
             memory_manager.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
+
+    def _schedule_deferred_session_cleanup(
+            self,
+            session_id: str,
+            user_id: str,
+            worker: asyncio.Task,
+    ) -> None:
+        """worker 超时后延迟释放会话资源，避免与仍在运行的 Agent 竞态。"""
+        if session_id in self._session_shutdown_pending:
+            cleanup_task = asyncio.create_task(
+                self._finish_deferred_session_cleanup(
+                    session_id=session_id,
+                    user_id=user_id,
+                    worker=worker,
+                )
+            )
+            self._session_deferred_cleanup_tasks[session_id] = cleanup_task
+
+    async def _finish_deferred_session_cleanup(
+            self,
+            session_id: str,
+            user_id: str,
+            worker: asyncio.Task,
+    ) -> None:
+        """等待超时 worker 真正结束后，再完成 clear_session 的资源释放。"""
+        try:
+            await worker
+        except BaseException:
+            pass
+        async with self._lifecycle_lock:
+            if self._session_workers.get(session_id) is worker:
+                self._session_workers.pop(session_id, None)
+            self._session_shutdown_pending.pop(session_id, None)
+            self._session_cleanup_pending.discard(session_id)
+            self._session_deferred_cleanup_tasks.pop(session_id, None)
+            self._session_queue_rejections.pop(session_id, None)
+            self._session_last_queue_wait_ms.pop(session_id, None)
+            agent = self.active_agents.pop(session_id, None)
+            if agent:
+                await agent.cleanup()
+                memory_manager.clear_memory(session_id, user_id)
+                logger.info(f"会话 {session_id} 的记忆已清空")
+
+    async def _finish_deferred_close(
+            self,
+            workers: list[tuple[str, asyncio.Task]],
+    ) -> None:
+        """关闭超时后等待遗留 worker，再释放共享 Agent 资源。"""
+        try:
+            await asyncio.gather(
+                *(worker for _, worker in workers),
+                return_exceptions=True,
+            )
+            async with self._lifecycle_lock:
+                for session_id, worker in workers:
+                    if self._session_workers.get(session_id) is worker:
+                        self._session_workers.pop(session_id, None)
+                    agent = self.active_agents.pop(session_id, None)
+                    if agent:
+                        await agent.cleanup()
+                for session_id, agent in list(self.active_agents.items()):
+                    await agent.cleanup()
+                    self.active_agents.pop(session_id, None)
+                self._session_shutdown_pending.clear()
+                self._session_cancel_requested.clear()
+                await memory_manager.close()
+        finally:
+            self._close_finalizer_task = None
+
+    async def _wait_for_worker_shutdown(
+            self,
+            session_id: str,
+            worker: asyncio.Task,
+            *,
+            reason: str,
+    ) -> bool:
+        """有限等待 worker 结束，超时会话保持停止态直到旧 worker 收敛。"""
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(worker),
+                timeout=self._shutdown_timeout,
+            )
+            return True
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            self._session_shutdown_pending[session_id] = worker
+
+            def _clear_pending(done: asyncio.Task) -> None:
+                if (
+                        self._session_shutdown_pending.get(session_id) is done
+                        and session_id not in self._session_cleanup_pending
+                ):
+                    self._session_shutdown_pending.pop(session_id, None)
+                    logger.info(
+                        f"会话 {session_id} 的 Agent worker 已在超时后收敛"
+                    )
+
+            worker.add_done_callback(_clear_pending)
+            logger.error(
+                f"会话 {session_id} 的 Agent worker 关闭超时，"
+                f"已阻止新任务进入，reason={reason}, timeout={self._shutdown_timeout:g}s"
+            )
+            return False
+        except Exception as error:
+            logger.error(
+                f"等待会话 {session_id} 的 Agent worker 关闭失败，"
+                f"reason={reason}: {error}"
+            )
+            return True
 
     async def run_background_prompt(
             self,

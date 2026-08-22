@@ -21,7 +21,7 @@ from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
 from app.application.service_config import read_system_setting
 from app.application.mediaserver import MediaServerHelper, MediaServerQueryService
-from app.api.deps import get_mediaserver_query_service
+from app.api.dependencies.history import get_mediaserver_query_service
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from app.schemas.media import build_media_key, resolve_media_identity

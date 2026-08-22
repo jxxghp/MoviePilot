@@ -15,9 +15,11 @@ app/application/history.py 里整理历史的写入路径同构。
 下方 _translate 单点承担，两条链路只在「怎么查、怎么写」上分叉。
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Optional, Protocol, Tuple
 
+from app.application.outbox import OutboxIntent
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
@@ -25,6 +27,23 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 # 身份不完整时的固定返回。身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，
 # 而后续按身份去重也会失效，所以必须在查询与建模之前短路
 INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
+
+AfterCommitEffect = Callable[[int], None]
+AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
+
+
+class SubscriptionOutboxStager(Protocol):
+    """同步订阅事务暂存 durable intent 的最小端口。"""
+
+    def stage(self, intent: OutboxIntent, now: datetime) -> None:
+        """把意图加入当前业务事务。"""
+
+
+class AsyncSubscriptionOutboxStager(Protocol):
+    """异步订阅事务暂存 durable intent 的最小端口。"""
+
+    async def stage(self, intent: OutboxIntent, now: datetime) -> None:
+        """把意图加入当前异步业务事务。"""
 
 
 class SubscribeWriter(Protocol):
@@ -35,16 +54,191 @@ class SubscribeWriter(Protocol):
         identity: dict,
         payload: dict,
         username: Optional[str] = None,
+        after_commit: Optional[AfterCommitEffect] = None,
     ) -> Tuple[int, str]:
-        """同步新增订阅。"""
+        """同步新增订阅，并在事务成功后执行外部副作用。"""
 
     async def async_add(
         self,
         identity: dict,
         payload: dict,
         username: Optional[str] = None,
+        after_commit: Optional[AsyncAfterCommitEffect] = None,
     ) -> Tuple[int, str]:
-        """异步新增订阅。"""
+        """异步新增订阅，并在事务成功后执行外部副作用。"""
+
+
+class StagedSubscription(Protocol):
+    """订阅仓储暂存结果的结构化端口，避免 Application 反向约束适配器类型。"""
+
+    @property
+    def subscribe_id(self) -> int:
+        """返回已创建或已存在的订阅 ID。"""
+        ...
+
+    @property
+    def message(self) -> str:
+        """返回兼容旧入口的结果说明。"""
+        ...
+
+    @property
+    def created(self) -> bool:
+        """标识本次是否暂存了一条新记录。"""
+        ...
+
+
+class SubscriptionStagingRepository(Protocol):
+    """新增订阅命令需要的无提交仓储端口。"""
+
+    def stage_add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> StagedSubscription:
+        """暂存同步新增，命中重复订阅时不写入。"""
+        ...
+
+    async def async_stage_add(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+    ) -> StagedSubscription:
+        """暂存异步新增，命中重复订阅时不写入。"""
+        ...
+
+
+class UnitOfWork(Protocol):
+    """同步订阅新增命令使用的最小事务端口。"""
+
+    def commit(self) -> None:
+        """提交当前逻辑操作。"""
+        ...
+
+    def rollback(self) -> None:
+        """回滚当前逻辑操作。"""
+        ...
+
+
+class AsyncUnitOfWork(Protocol):
+    """异步订阅新增命令使用的最小事务端口。"""
+
+    async def commit(self) -> None:
+        """提交当前逻辑操作。"""
+        ...
+
+    async def rollback(self) -> None:
+        """回滚当前逻辑操作。"""
+        ...
+
+
+class CreateSubscriptionCommand:
+    """暂存并提交一条同步订阅，重复请求保持历史返回且不产生提交。"""
+
+    def __init__(
+        self,
+        repository: SubscriptionStagingRepository,
+        unit_of_work: UnitOfWork,
+        outbox: SubscriptionOutboxStager | None = None,
+    ) -> None:
+        """注入无提交仓储和事务所有者。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+        self._outbox = outbox
+
+    def execute(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+        after_commit: Optional[AfterCommitEffect] = None,
+    ) -> Tuple[int, str]:
+        """执行同步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
+        try:
+            staged = self._repository.stage_add(identity, payload, username)
+            if staged.created:
+                if self._outbox:
+                    self._outbox.stage(
+                        _subscribe_added_intent(staged.subscribe_id, payload, username),
+                        datetime.now(timezone.utc),
+                    )
+                self._unit_of_work.commit()
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+        if staged.subscribe_id and after_commit:
+            after_commit(staged.subscribe_id)
+        return staged.subscribe_id, staged.message
+
+
+class AsyncCreateSubscriptionCommand:
+    """暂存并提交一条异步订阅，事务成功后才把结果交给副作用调用方。"""
+
+    def __init__(
+        self,
+        repository: SubscriptionStagingRepository,
+        unit_of_work: AsyncUnitOfWork,
+        outbox: AsyncSubscriptionOutboxStager | None = None,
+    ) -> None:
+        """注入无提交异步仓储和事务所有者。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+        self._outbox = outbox
+
+    async def execute(
+        self,
+        identity: dict,
+        payload: dict,
+        username: Optional[str] = None,
+        after_commit: Optional[AsyncAfterCommitEffect] = None,
+    ) -> Tuple[int, str]:
+        """执行异步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
+        try:
+            staged = await self._repository.async_stage_add(
+                identity,
+                payload,
+                username,
+            )
+            if staged.created:
+                if self._outbox:
+                    await self._outbox.stage(
+                        _subscribe_added_intent(staged.subscribe_id, payload, username),
+                        datetime.now(timezone.utc),
+                    )
+                await self._unit_of_work.commit()
+        except Exception:
+            await self._unit_of_work.rollback()
+            raise
+        if staged.subscribe_id and after_commit:
+            await after_commit(staged.subscribe_id)
+        return staged.subscribe_id, staged.message
+
+
+def _subscribe_added_intent(
+    subscribe_id: int,
+    payload: dict,
+    username: str | None,
+) -> OutboxIntent:
+    """构造版本化订阅新增事件，event key 同时作为 handler 幂等键。"""
+    return OutboxIntent(
+        event_key=subscription_added_event_key(subscribe_id, payload),
+        topic="subscribe.added",
+        payload={
+            "subscribe_id": subscribe_id,
+            "username": username,
+            "mediainfo": dict(payload),
+        },
+    )
+
+
+def subscription_added_event_key(subscribe_id: int, payload: dict) -> str:
+    """由订阅 ID 与媒体身份构造重试期间稳定、重建后不碰撞的幂等键。"""
+    return (
+        f"subscribe.added:{subscribe_id}:"
+        f"{payload.get('media_source') or 'unknown'}:"
+        f"{payload.get('media_id') or 'unknown'}:v1"
+    )
 
 
 _configured_subscribe_writer: Callable[[], SubscribeWriter] | None = None
@@ -130,6 +324,7 @@ def _translate(
 def add_subscribe(
     mediainfo: MediaInfo | MusicInfo,
     subscribe_oper: Optional[SubscribeWriter] = None,
+    after_commit: Optional[AfterCommitEffect] = None,
     **kwargs,
 ) -> Tuple[int, str]:
     """
@@ -137,6 +332,7 @@ def add_subscribe(
 
     :param mediainfo: 识别结果
     :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
+    :param after_commit: 数据提交后执行的消息、事件或上报编排
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -145,12 +341,20 @@ def add_subscribe(
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
     oper = _get_subscribe_writer(subscribe_oper)
-    return oper.add(identity=identity, payload=payload, username=username)
+    if after_commit is None:
+        return oper.add(identity=identity, payload=payload, username=username)
+    return oper.add(
+        identity=identity,
+        payload=payload,
+        username=username,
+        after_commit=after_commit,
+    )
 
 
 async def async_add_subscribe(
     mediainfo: MediaInfo | MusicInfo,
     subscribe_oper: Optional[SubscribeWriter] = None,
+    after_commit: Optional[AsyncAfterCommitEffect] = None,
     **kwargs,
 ) -> Tuple[int, str]:
     """
@@ -158,6 +362,7 @@ async def async_add_subscribe(
 
     :param mediainfo: 识别结果
     :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
+    :param after_commit: 数据提交后执行的异步消息、事件或上报编排
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -166,12 +371,27 @@ async def async_add_subscribe(
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
     oper = _get_subscribe_writer(subscribe_oper)
-    return await oper.async_add(identity=identity, payload=payload, username=username)
+    if after_commit is None:
+        return await oper.async_add(identity=identity, payload=payload, username=username)
+    return await oper.async_add(
+        identity=identity,
+        payload=payload,
+        username=username,
+        after_commit=after_commit,
+    )
 
 
 __all__ = [
+    "AfterCommitEffect",
+    "AsyncCreateSubscriptionCommand",
+    "AsyncAfterCommitEffect",
+    "AsyncUnitOfWork",
+    "CreateSubscriptionCommand",
     "INCOMPLETE_IDENTITY",
+    "StagedSubscription",
+    "SubscriptionStagingRepository",
     "SubscribeWriter",
+    "UnitOfWork",
     "add_subscribe",
     "async_add_subscribe",
     "configure_subscribe_writer",

@@ -19,11 +19,15 @@ from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
 )
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
+from app.api.context import get_api_runtime_config, resolve_api_runtime_config
+from app.application.configuration import ApiRuntimeConfig
 from app.adapters.web.security.access import verify_token
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
+)
+from app.api.dependencies.history import (
     get_download_history_mutation_command,
     get_history_query_service,
     get_transfer_history_mutation_command,
@@ -242,12 +246,14 @@ def delete_transfer_history(
 async def ai_redo_transfer_history(
     history_id: int,
     query: HistoryQueryService = Depends(get_history_query_service),
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
-    if not settings.AI_AGENT_ENABLE:
+    runtime_config = resolve_api_runtime_config(runtime_config)
+    if not runtime_config.ai_agent_enable:
         return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
 
     history = await query.get_transfer(history_id)
@@ -273,12 +279,14 @@ async def ai_redo_transfer_history(
 async def batch_ai_redo_transfer_history(
     payload: _SchemaBatchTransferHistoryRedoRequest,
     query: HistoryQueryService = Depends(get_history_query_service),
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
     """
-    if not settings.AI_AGENT_ENABLE:
+    runtime_config = resolve_api_runtime_config(runtime_config)
+    if not runtime_config.ai_agent_enable:
         return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
 
     history_ids = normalize_history_ids(payload.history_ids)

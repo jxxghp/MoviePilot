@@ -30,7 +30,7 @@ from app.application.security.passkeys import (
     PasskeyService,
 )
 from app.api.principal import ApiPrincipal
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_user,
     get_current_active_user_async,
     get_user_service,

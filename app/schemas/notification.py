@@ -252,6 +252,18 @@ class ChannelCapabilityManager:
             max_message_length=1800,
             fallback_enabled=True,
         ),
+        NotificationChannel.DingTalk: ChannelCapabilities(
+            channel=NotificationChannel.DingTalk,
+            capabilities={
+                ChannelCapability.MARKDOWN,
+                ChannelCapability.RICH_TEXT,
+                ChannelCapability.IMAGES,
+                ChannelCapability.LINKS,
+            },
+            # 自定义机器人 Markdown 文本上限为 20000 字节，预留标题和图片链接空间。
+            max_message_length=18000,
+            fallback_enabled=True,
+        ),
         NotificationChannel.SynologyChat: ChannelCapabilities(
             channel=NotificationChannel.SynologyChat,
             capabilities={

@@ -13,7 +13,7 @@ from app.db.oper.message import MessageOper
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
-from app.schemas import MediaSource, MediaType, MessageType
+from app.schemas.types import MediaSource, MediaType, MessageType
 
 
 class _FakeResponse:
@@ -426,7 +426,9 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
         timeout=15,
     )
 
-    state, message = SiteChain._SiteChain__sunnypt_test(site)
+    chain = object.__new__(SiteChain)
+    chain.runtime_config = SimpleNamespace(proxy=None, user_agent="MoviePilot-Test")
+    state, message = chain._SiteChain__sunnypt_test(site)
 
     assert state
     assert message == "连接成功"

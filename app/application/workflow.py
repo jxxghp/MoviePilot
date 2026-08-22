@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 from collections.abc import Awaitable
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional, Protocol
+from typing import Any, Callable, Mapping, Optional, Protocol, TypeVar
 
 
 WORKFLOW_TRIGGER_TIMER = "timer"
@@ -101,6 +101,117 @@ class UnitOfWork(Protocol):
         ...
 
 
+class WorkflowExecutionRepository(Protocol):
+    """工作流执行状态写入所需的最小暂存端口。"""
+
+    def stage_start(self, workflow_id: int) -> bool:
+        """暂存运行中状态。"""
+        ...
+
+    def stage_success(
+            self,
+            workflow_id: int,
+            result: Optional[str] = None,
+    ) -> bool:
+        """暂存成功状态和执行次数。"""
+        ...
+
+    def stage_fail(self, workflow_id: int, result: str) -> bool:
+        """暂存失败状态和错误信息。"""
+        ...
+
+    def stage_step(
+            self,
+            workflow_id: int,
+            action_id: str,
+            context: dict[str, Any],
+            execution_state: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """暂存动作进度和执行上下文。"""
+        ...
+
+    def stage_execution_reset(
+            self,
+            workflow_id: int,
+            reset_count: bool = False,
+    ) -> bool:
+        """暂存执行状态重置。"""
+        ...
+
+
+_ExecutionResult = TypeVar("_ExecutionResult")
+
+
+class WorkflowExecutionCommand:
+    """在一个显式 UnitOfWork 中提交单次工作流执行状态变更。"""
+
+    def __init__(
+            self,
+            *,
+            repository: WorkflowExecutionRepository,
+            unit_of_work: UnitOfWork,
+    ) -> None:
+        """保存工作流执行仓储和事务端口。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+
+    def start(self, workflow_id: int) -> bool:
+        """提交工作流运行中状态。"""
+        return self._commit(lambda: self._repository.stage_start(workflow_id))
+
+    def success(
+            self,
+            workflow_id: int,
+            result: Optional[str] = None,
+    ) -> bool:
+        """提交工作流成功状态。"""
+        return self._commit(
+            lambda: self._repository.stage_success(workflow_id, result)
+        )
+
+    def fail(self, workflow_id: int, result: str) -> bool:
+        """提交工作流失败状态。"""
+        return self._commit(
+            lambda: self._repository.stage_fail(workflow_id, result)
+        )
+
+    def step(
+            self,
+            workflow_id: int,
+            action_id: str,
+            context: dict[str, Any],
+            execution_state: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """提交工作流动作进度。"""
+        return self._commit(
+            lambda: self._repository.stage_step(
+                workflow_id,
+                action_id,
+                context,
+                execution_state,
+            )
+        )
+
+    def reset(self, workflow_id: int, reset_count: bool = False) -> bool:
+        """提交工作流执行状态重置。"""
+        return self._commit(
+            lambda: self._repository.stage_execution_reset(
+                workflow_id,
+                reset_count,
+            )
+        )
+
+    def _commit(self, operation: Callable[[], _ExecutionResult]) -> _ExecutionResult:
+        """提交暂存操作；失败时回滚并原样传播异常。"""
+        try:
+            result = operation()
+            self._unit_of_work.commit()
+            return result
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+
+
 class WorkflowMutationCommand:
     """协调工作流状态、定义、调度和事件注册变更。"""
 
@@ -175,6 +286,9 @@ class WorkflowMutationCommand:
             values["trigger_type"] = WORKFLOW_TRIGGER_TIMER
 
         updated = self._repository.stage_update(workflow_id, values)
+        if not updated:
+            self._unit_of_work.rollback()
+            return WorkflowMutationResult(False, "工作流不存在")
         self._commit()
         self._remove_timer(updated)
         if (

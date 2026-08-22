@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 from typing import Any
 
@@ -132,6 +133,18 @@ def is_tool_factory_materialized() -> bool:
     )
 
 
+async def close_materialized_terminal_sessions() -> None:
+    """关闭已物化的终端会话管理器，不触发新的 Agent 工具导入。"""
+    module = sys.modules.get("app.agent.tools.impl._terminal_session")
+    manager = getattr(module, "terminal_session_manager", None) if module else None
+    close = getattr(manager, "close", None)
+    if callable(close):
+        await close()
+
+
 async def begin_agent_shutdown() -> None:
     """不可逆关闭首用闸门，并等待全部同步及异步能力释放。"""
-    await _ensure_runtime().shutdown_async(reason="application_shutdown")
+    try:
+        await _ensure_runtime().shutdown_async(reason="application_shutdown")
+    finally:
+        await close_materialized_terminal_sessions()

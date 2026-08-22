@@ -41,6 +41,16 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     # 自洽了，而且额度核算还会去连库。
     for name in ("get_engine", "get_global_async_engine", "check_connection_budget"):
         monkeypatch.setattr(lifecycle, name, MagicMock())
+    database_prepare = MagicMock(
+        side_effect=lambda app: lifecycle.get_application_health(
+            app
+        ).mark_database_ready()
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "prepare_database_component",
+        database_prepare,
+    )
 
     system_chain = MagicMock()
     monkeypatch.setattr(lifecycle, "SystemChain", MagicMock(return_value=system_chain))
@@ -125,6 +135,7 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
     asyncio.run(run_lifespan())
 
     lifecycle.init_modules.assert_awaited_once_with()
+    lifecycle.prepare_database_component.assert_called_once()
     lifecycle.configure_plugin_services.assert_called_once_with()
     for name in (
         "init_plugins",
@@ -195,6 +206,7 @@ def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
     asyncio.run(run_lifespan())
 
     lifecycle.init_modules.assert_awaited_once_with()
+    lifecycle.prepare_database_component.assert_called_once()
     for name in (
         "init_plugins",
         "init_scheduler",
@@ -241,6 +253,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
     safe_names = {item["name"] for item in safe}
 
     assert normal_start == [
+        "数据库准备",
         "HTTP 基础能力",
         "领域依赖装配",
         "数据库引擎预热",
@@ -267,6 +280,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "HTTP 基础能力",
     ]
     assert safe_names == {
+        "数据库准备",
         "HTTP 基础能力",
         "领域依赖装配",
         "数据库引擎预热",
@@ -326,11 +340,8 @@ def test_lifespan_creates_global_async_engine_at_startup(monkeypatch):
 def test_lifespan_creates_sync_engine_at_startup(monkeypatch):
     """启动期也必须把同步引擎建出来一次，把首次创建钉在单线程期
 
-    「init_db() 会在启动期单线程预热同步引擎」这个前提只对 run_application() 入口成立。
-    外部 supervisor 直挂 ASGI app（`gunicorn -k uvicorn.workers.UvicornWorker
-    app.factory:app`、`uvicorn app.main:app`）时 run_application() 不执行、init_db() 也就
-    不执行，同步引擎的首次创建退到运行期——而那时 init_scheduler() / init_monitor() 已经
-    放出上百个线程，引擎构建里那段 PRAGMA journal_mode 会让它们一起堵在创建锁上。
+    数据库准备已统一进入 lifespan，所有受支持 ASGI 入口都会先由 init_db() 创建同步引擎；
+    随后的显式预热仍用于冻结顺序契约，确保同步/异步引擎都早于 Router、Module 和后台线程。
     """
     _patch_lifespan(monkeypatch)
     created = []
@@ -432,12 +443,7 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         lambda *_args: calls.append("signal"),
     )
     monkeypatch.setattr(main, "start_tray", lambda: calls.append("tray"))
-    monkeypatch.setattr(
-        main,
-        "prepare_database",
-        lambda: calls.append("prepare_database"),
-    )
-    monkeypatch.setattr(main.Server, "run", lambda: calls.append("server"))
+    monkeypatch.setattr(main, "run_api_server", lambda: calls.append("server"))
 
     main.run_application()
 
@@ -446,7 +452,6 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
         "signal",
         "signal",
         "tray",
-        "prepare_database",
         "server",
     ]
 
@@ -458,26 +463,27 @@ def test_asgi_and_main_entrypoints_share_the_same_app_instance():
     assert main.app is factory.app
 
 
-def test_application_does_not_start_server_after_migration_failure(monkeypatch):
-    """数据库迁移失败时不得启动 API 服务。"""
-    from app import main
-
+def test_lifespan_does_not_yield_after_migration_failure(monkeypatch):
+    """数据库迁移失败时 lifespan 必须 fail-fast 且不得发布 ready。"""
     migration_error = RuntimeError("migration failed")
-    server_run = MagicMock()
-    monkeypatch.setattr(main.signal, "signal", MagicMock())
-    monkeypatch.setattr(main, "start_tray", MagicMock())
+    _patch_lifespan(monkeypatch)
     monkeypatch.setattr(
-        main,
-        "prepare_database",
+        lifecycle,
+        "prepare_database_component",
         MagicMock(side_effect=migration_error),
     )
-    monkeypatch.setattr(main.Server, "run", server_run)
+    app = FastAPI()
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(app):
+            pytest.fail("数据库迁移失败后不应进入服务阶段")
 
     with pytest.raises(RuntimeError) as raised:
-        main.run_application()
+        asyncio.run(run_lifespan())
 
     assert raised.value is migration_error
-    server_run.assert_not_called()
+    assert app.state.moviepilot_health.is_ready is False
+    assert app.state.moviepilot_health.phase.value == "failed"
 
 
 def test_uvicorn_preserves_stop_requested_before_serve(monkeypatch):
@@ -654,7 +660,7 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
                 raise RuntimeError("eviction close failed")
 
     monkeypatch.setattr(http_utils, "_MAX_SHARED_TRANSPORTS_PER_LOOP", 1)
-    monkeypatch.setattr(http_utils.httpx, "AsyncHTTPTransport", FakeTransport)
+    monkeypatch.setattr(http_utils.httpx2, "AsyncHTTPTransport", FakeTransport)
     async def run_test():
         transport_kwargs = {
             "proxy": None,

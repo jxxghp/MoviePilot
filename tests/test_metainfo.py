@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -158,6 +159,29 @@ def test_torrent_title_match_ignores_question_mark_variants():
         torrent_meta=torrent_meta,
         torrent=torrent,
     )
+
+
+def test_torrent_title_match_rejects_season_absent_from_target_series():
+    """无年份同名剧的资源季超出目标剧季范围时应拒绝。"""
+    mediainfo = MediaInfo(
+        title="家族计划",
+        original_title="가족계획",
+        names=["Family Matters"],
+        type=MediaType.TV,
+        year="2024",
+        number_of_seasons=1,
+        seasons={1: list(range(1, 7))},
+        season_years={1: "2024"},
+    )
+    torrent_meta = MetaInfo("Family Matters S02 1080p WEBRip DD2.0 x264-TrollHD")
+    torrent = SimpleNamespace(
+        site_name="测试站点",
+        title=torrent_meta.org_string,
+        category=MediaType.TV.value,
+        description=None,
+    )
+
+    assert not TorrentHelper.match_torrent(mediainfo, torrent_meta, torrent)
 
 
 def test_python_metainfo_fallback_preserves_xxx_movie_title():

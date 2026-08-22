@@ -3,11 +3,11 @@ import re
 import traceback
 from typing import Callable, Dict, List, Union, Optional
 
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
 from app.application.orchestration import ChainBase
 from app.application.orchestration.media import MediaChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.domain.context import TorrentInfo, Context, MediaInfo
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -40,7 +40,7 @@ class TorrentsChain(ChainBase):
         """
         返回缓存文件列表
         """
-        if settings.SUBSCRIBE_MODE == 'spider':
+        if self.runtime_config.subscribe_mode == 'spider':
             return self._spider_file
         return self._rss_file
 
@@ -67,7 +67,7 @@ class TorrentsChain(ChainBase):
         """
 
         if not stype:
-            stype = settings.SUBSCRIBE_MODE
+            stype = self.runtime_config.subscribe_mode
 
         # 读取缓存
         if stype == 'spider':
@@ -92,7 +92,7 @@ class TorrentsChain(ChainBase):
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
         if not stype:
-            stype = settings.SUBSCRIBE_MODE
+            stype = self.runtime_config.subscribe_mode
         music_file = self._music_spider_file if stype == 'spider' else self._music_rss_file
         music_cache = self.load_cache(music_file) or {}
         # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
@@ -105,7 +105,7 @@ class TorrentsChain(ChainBase):
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
         if not stype:
-            stype = settings.SUBSCRIBE_MODE
+            stype = self.runtime_config.subscribe_mode
         if stype == 'spider':
             return self._spider_file, self._music_spider_file
         return self._rss_file, self._music_rss_file
@@ -135,7 +135,7 @@ class TorrentsChain(ChainBase):
         """
 
         if not stype:
-            stype = settings.SUBSCRIBE_MODE
+            stype = self.runtime_config.subscribe_mode
 
         # 异步读取缓存
         if stype == 'spider':
@@ -456,7 +456,7 @@ class TorrentsChain(ChainBase):
                     site=site.get("id"),
                     site_name=site.get("name"),
                     site_cookie=site.get("cookie"),
-                    site_ua=site.get("ua") or settings.USER_AGENT,
+                    site_ua=site.get("ua") or self.runtime_config.user_agent,
                     site_proxy=site.get("proxy"),
                     site_order=site.get("pri"),
                     site_downloader=site.get("downloader"),
@@ -545,14 +545,14 @@ class TorrentsChain(ChainBase):
             """
             判断站点是否不需要缓存
             """
-            for url_key in settings.NO_CACHE_SITE_KEY.split(','):
+            for url_key in self.runtime_config.no_cache_site_key.split(','):
                 if url_key in _domain:
                     return True
             return False
 
         # 刷新类型
         if not stype:
-            stype = settings.SUBSCRIBE_MODE
+            stype = self.runtime_config.subscribe_mode
 
         # 刷新站点
         if not sites:
@@ -636,10 +636,10 @@ class TorrentsChain(ChainBase):
             # 音乐与影视按同一公共参数独立计算刷新配额，并分别写入各自缓存，音乐不会被影视资源挤出
             music_torrents = [
                 t for t in torrents if t.category == MediaType.MUSIC.value
-            ][:settings.CONF.refresh]
+            ][:self.runtime_config.refresh_batch_size]
             torrents = [
                 t for t in torrents if t.category != MediaType.MUSIC.value
-            ][:settings.CONF.refresh]
+            ][:self.runtime_config.refresh_batch_size]
             if torrents or music_torrents:
                 if __is_no_cache_site(domain):
                     # 不需要缓存的站点，直接处理
@@ -724,8 +724,8 @@ class TorrentsChain(ChainBase):
                         else:
                             target_cache[domain].append(context)
                         # 如果超过了限制条数则移除掉前面的，音乐与影视各自独立计算配额
-                        if len(target_cache[domain]) > settings.CONF.torrents:
-                            target_cache[domain] = target_cache[domain][-settings.CONF.torrents:]
+                        if len(target_cache[domain]) > self.runtime_config.torrent_cache_size:
+                            target_cache[domain] = target_cache[domain][-self.runtime_config.torrent_cache_size:]
                 finally:
                     torrents.clear()
                     music_torrents.clear()
@@ -814,7 +814,7 @@ class TorrentsChain(ChainBase):
             rss_url, errmsg = RssHelper().get_rss_link(
                 url=site.get("url"),
                 cookie=site.get("cookie"),
-                ua=site.get("ua") or settings.USER_AGENT,
+                ua=site.get("ua") or self.runtime_config.user_agent,
                 proxy=True if site.get("proxy") else False,
                 timeout=site.get("timeout"),
             )
@@ -831,13 +831,13 @@ class TorrentsChain(ChainBase):
                     # 发送消息
                     self.post_message(
                         Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                     link=settings.MP_DOMAIN('#/site'))
+                                     link=self.runtime_config.site_url)
                     )
             else:
                 self.post_message(
                     Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                 link=settings.MP_DOMAIN('#/site')))
+                                 link=self.runtime_config.site_url))
         except Exception as e:
             logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
             self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                           link=settings.MP_DOMAIN('#/site')))
+                                           link=self.runtime_config.site_url))

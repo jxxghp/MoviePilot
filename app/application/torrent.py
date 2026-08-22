@@ -482,6 +482,13 @@ class TorrentHelper:
                                                                       str(int(mediainfo.year) + 1)]:
                     logger.debug(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
                     return False
+        # 无年份同名剧仅靠标题无法消歧，先用目标剧已知的季集拓扑排除不可能候选。
+        if mediainfo.type == MediaType.TV and not TorrentHelper._match_tv_topology(
+                mediainfo=mediainfo,
+                torrent_meta=torrent_meta,
+                torrent=torrent,
+        ):
+            return False
         # 比对标题和原语种标题
         if meta_names.intersection(media_titles):
             logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
@@ -514,6 +521,168 @@ class TorrentHelper:
         # 未匹配
         logger.debug(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
         return False
+
+    @staticmethod
+    def _match_tv_topology(
+            mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+            torrent: TorrentInfo,
+    ) -> bool:
+        """用目标剧已知的季集范围排除无年份同名候选。"""
+        begin_season = getattr(torrent_meta, "begin_season", None)
+        end_season = getattr(torrent_meta, "end_season", None)
+        if begin_season is None:
+            torrent_seasons = set()
+        elif end_season is None:
+            torrent_seasons = {begin_season}
+        else:
+            start, end = sorted((begin_season, end_season))
+            torrent_seasons = set(range(start, end + 1))
+
+        known_seasons = set()
+        for season_map in (
+                getattr(mediainfo, "seasons", None),
+                getattr(mediainfo, "season_years", None),
+        ):
+            for season in (season_map or {}).keys():
+                try:
+                    known_seasons.add(int(season))
+                except (TypeError, ValueError):
+                    continue
+        if not known_seasons:
+            try:
+                season_count = int(getattr(mediainfo, "number_of_seasons", None) or 0)
+            except (TypeError, ValueError):
+                season_count = 0
+            if season_count:
+                known_seasons = set(range(1, season_count + 1))
+
+        if torrent_seasons and known_seasons and not torrent_seasons.issubset(known_seasons):
+            logger.debug(
+                f'{torrent.site_name} - {torrent.title} 季范围 {sorted(torrent_seasons)} '
+                f'超出目标媒体季范围 {sorted(known_seasons)}'
+            )
+            return False
+
+        if len(torrent_seasons) != 1:
+            return True
+        season = next(iter(torrent_seasons))
+        target_episodes = (getattr(mediainfo, "seasons", None) or {}).get(season) or []
+        if not target_episodes and len(known_seasons) == 1:
+            try:
+                episode_count = int(getattr(mediainfo, "number_of_episodes", None) or 0)
+            except (TypeError, ValueError):
+                episode_count = 0
+            if episode_count:
+                target_episodes = list(range(1, episode_count + 1))
+        torrent_episodes = getattr(torrent_meta, "episode_list", None) or []
+        if target_episodes and torrent_episodes and max(torrent_episodes) > max(target_episodes):
+            logger.debug(
+                f'{torrent.site_name} - {torrent.title} 最大集数 {max(torrent_episodes)} '
+                f'超出目标媒体第 {season} 季总集数 {max(target_episodes)}'
+            )
+            return False
+        return True
+
+    @staticmethod
+    def requires_identity_disambiguation(
+            mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+    ) -> bool:
+        """判断无年份标题是否只通过目标别名命中，需进一步核验媒体身份。"""
+        if (
+                mediainfo.type != MediaType.TV
+                or getattr(torrent_meta, "year", None)
+                or not getattr(mediainfo, "year", None)
+        ):
+            return False
+        media_titles = {
+            text_tools.normalize_upper(value)
+            for value in (
+                getattr(mediainfo, "title", None),
+                getattr(mediainfo, "original_title", None),
+            )
+            if value
+        }
+        media_names = {
+            text_tools.normalize_upper(value)
+            for value in (getattr(mediainfo, "names", None) or [])
+            if value
+        }
+        meta_names = {
+            text_tools.normalize_upper(value)
+            for value in (
+                getattr(torrent_meta, "cn_name", None),
+                getattr(torrent_meta, "en_name", None),
+            )
+            if value
+        }
+        return bool(meta_names.intersection(media_names)) and not bool(
+            meta_names.intersection(media_titles)
+        )
+
+    @staticmethod
+    def match_same_work_evidence(
+            target_mediainfo: MediaInfo,
+            candidate_mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+    ) -> Tuple[bool, str]:
+        """判断媒体 ID 冲突时是否存在足以覆盖候选识别的同作品证据。"""
+        target_identity = resolve_media_identity(media=target_mediainfo)
+        candidate_identity = resolve_media_identity(media=candidate_mediainfo)
+        if all(target_identity) and target_identity == candidate_identity:
+            return True, f"媒体身份 {target_identity[0]}:{target_identity[1]}"
+
+        torrent_year = str(getattr(torrent_meta, "year", None) or "")[:4]
+        target_years = {
+            str(year)[:4]
+            for year in (
+                [getattr(target_mediainfo, "year", None)]
+                + list((getattr(target_mediainfo, "season_years", None) or {}).values())
+            )
+            if year
+        }
+        if torrent_year and torrent_year in target_years:
+            return True, f"资源年份 {torrent_year}"
+
+        for field in ("imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
+            target_id = getattr(target_mediainfo, field, None)
+            candidate_id = getattr(candidate_mediainfo, field, None)
+            if target_id and candidate_id and str(target_id) == str(candidate_id):
+                return True, f"共同 {field}"
+
+        target_year = str(getattr(target_mediainfo, "year", None) or "")[:4]
+        candidate_year = str(getattr(candidate_mediainfo, "year", None) or "")[:4]
+        if target_year and candidate_year and target_year != candidate_year:
+            return False, f"首播年份冲突 {candidate_year} != {target_year}"
+
+        target_original_title = text_tools.normalize_upper(
+            getattr(target_mediainfo, "original_title", None) or ""
+        )
+        candidate_original_title = text_tools.normalize_upper(
+            getattr(candidate_mediainfo, "original_title", None) or ""
+        )
+        if (
+                target_original_title
+                and candidate_original_title
+                and target_original_title != candidate_original_title
+        ):
+            return False, "原始标题冲突"
+
+        target_language = str(
+            getattr(target_mediainfo, "original_language", None) or ""
+        ).casefold()
+        candidate_language = str(
+            getattr(candidate_mediainfo, "original_language", None) or ""
+        ).casefold()
+        if target_language and candidate_language and target_language != candidate_language:
+            return False, f"原始语言冲突 {candidate_language} != {target_language}"
+
+        if target_year and candidate_year:
+            return True, f"共同首播年份 {target_year}"
+        if target_original_title and candidate_original_title:
+            return True, "共同原始标题"
+        return False, "资源无年份，候选与目标也没有可核验的共同元数据"
 
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,

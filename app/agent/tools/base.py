@@ -378,7 +378,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         except ToolExecutionTimeoutError as e:
             error_message = summarize_error(e)
             logger.warning(error_message)
-            result = error_message
+            raise
         except Exception as e:
             error_message = f"工具执行异常: {summarize_error(e)}"
             logger.error(f"Tool {self.name} execution failed: {summarize_error(e)}")
@@ -416,6 +416,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         except asyncio.TimeoutError as err:
             raise ToolExecutionTimeoutError(
                 f"工具 {self.name} 执行超时（超过 {timeout:g} 秒），已停止等待结果。"
+                "若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
             ) from err
 
     @staticmethod

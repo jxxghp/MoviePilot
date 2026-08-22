@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query, db_update
+from app.db.decorators import async_db_query, db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
@@ -555,14 +555,13 @@ class TransferHistory(Base):
         )).scalars().first()
 
     @classmethod
-    @db_update
     def update_download_hash(cls, db: Session, historyid: Optional[int] = None, download_hash: Optional[str] = None):
+        """在调用方事务中暂存下载任务哈希更新。"""
         db.execute(
             update(cls).where(cls.id == historyid).values(download_hash=download_hash)
         )
 
     @classmethod
-    @db_update
     def replace_by_src(cls, db: Session, **kwargs) -> "TransferHistory":
         """
         用同源存储的新记录原子替换旧整理历史。
@@ -600,7 +599,6 @@ class TransferHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @db_update
     def delete_before(
         cls,
         db: Session,

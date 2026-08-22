@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, db_update, async_db_query
+from app.db.decorators import db_query, async_db_query
 
 
 class SiteStatistic(Base):
@@ -41,6 +41,6 @@ class SiteStatistic(Base):
         return result.scalar_one_or_none()
 
     @classmethod
-    @db_update
     def reset(cls, db: Session):
+        """在调用方持有的事务中暂存统计表清空操作。"""
         db.execute(delete(cls))

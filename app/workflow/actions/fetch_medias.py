@@ -115,20 +115,9 @@ class FetchMediasAction(BaseAction):
             if event_data.extra_sources:
                 self.__inner_sources.extend([s.model_dump() for s in event_data.extra_sources])
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "获取媒体数据"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "获取榜单等媒体数据列表"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return FetchMediasParams().model_dump()
+    name = "获取媒体数据"
+    description = "获取榜单等媒体数据列表"
+    data = FetchMediasParams().model_dump()
 
     @property
     def success(self) -> bool:

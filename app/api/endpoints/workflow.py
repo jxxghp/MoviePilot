@@ -17,9 +17,11 @@ from app.application.workflow import (
 from app.workflow.service import WorkflowChain
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.workflow import WorkFlowManager
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
+)
+from app.api.dependencies.workflow import (
     get_workflow_definition_command,
     get_workflow_mutation_command,
     get_workflow_query_service,

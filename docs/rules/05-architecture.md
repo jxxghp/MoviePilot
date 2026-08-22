@@ -156,6 +156,21 @@ registry that holds them is `registry/storage.py`.
 `app/runtime/config.py` does not move. Three workflow paths under `.github/`
 and three assertions in `tests/test_plugin_market_default.py` name it literally.
 
+`topology.py` and `observability/` are admitted by D4: process topology policy is
+read by startup and by offline diagnostics alike, and the metric contracts are a
+no-op-capable facade the process owns. Neither belongs to any extension, so
+neither enters `extensions/`.
+
+`app/startup/` is the composition root and is not nested under runtime; lower
+runtime modules must not import it. It publishes its frozen, slotted
+`HostRuntime` through FastAPI `app.state`. API dependencies narrow that object to
+a domain runtime — `AgentChatRuntime`, for example — instead of adding a string
+key to a global service map; a legacy registry may delegate the same object while
+its domain migrates, but must not construct a second set of service instances.
+API, Scheduler and Chain deployment values are exposed as frozen snapshots from
+`HostRuntime.configuration`, so a canonical caller must not add a fresh direct
+`settings` import for a field an existing snapshot already carries.
+
 `app.schemas` and `app.db` are compatibility facades, not implementation
 dependency hubs. Host code imports concrete schema submodules; the schema root
 resolves its generated export manifest lazily for plugins and legacy callers.
@@ -552,6 +567,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
 | `app/application/orchestration/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
+| `app/runtime/topology.py` | Single-worker full-runtime policy and safe-mode topology validation |
 | `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
 | `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
 | `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |

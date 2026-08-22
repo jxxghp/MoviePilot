@@ -4,7 +4,7 @@
 避免 API 层同时承担 HTTP 编排和 ORM 适配职责。
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 
@@ -33,12 +33,27 @@ class UserRepository(Protocol):
         """更新用户 OTP 状态。"""
 
 
+class AsyncUnitOfWork(Protocol):
+    """用户写用例所需的异步事务边界。"""
+
+    async def commit(self) -> None:
+        """提交用户写入。"""
+
+    async def rollback(self) -> None:
+        """回滚失败的用户写入。"""
+
+
 class UserService:
     """用户管理应用服务。"""
 
-    def __init__(self, repository: UserRepository) -> None:
-        """创建用户服务。"""
+    def __init__(
+        self,
+        repository: UserRepository,
+        unit_of_work: AsyncUnitOfWork | None = None,
+    ) -> None:
+        """创建用户服务；旧独立仓储可暂不提供请求级 UoW。"""
         self._repository = repository
+        self._unit_of_work = unit_of_work
 
     async def list(self) -> list[Any]:
         """返回用户列表。"""
@@ -54,19 +69,35 @@ class UserService:
 
     async def create(self, payload: dict[str, Any]) -> Any | None:
         """创建用户。"""
-        return await self._repository.async_create(payload)
+        return await self._write(lambda: self._repository.async_create(payload))
 
     async def update(self, user_id: int, payload: dict[str, Any]) -> Any | None:
         """更新用户。"""
-        return await self._repository.async_update(user_id, payload)
+        return await self._write(
+            lambda: self._repository.async_update(user_id, payload)
+        )
 
     async def delete(self, user_id: int) -> None:
         """删除用户。"""
-        await self._repository.async_delete(user_id)
+        await self._write(lambda: self._repository.async_delete(user_id))
 
     async def update_otp(self, name: str, otp: bool, secret: str) -> None:
         """更新用户 OTP 状态。"""
-        await self._repository.async_update_otp_by_name(name, otp, secret)
+        await self._write(
+            lambda: self._repository.async_update_otp_by_name(name, otp, secret)
+        )
+
+    async def _write(self, operation: Callable[[], Awaitable[Any]]) -> Any:
+        """执行用户写入，并在正式请求路径统一提交或回滚。"""
+        try:
+            result = await operation()
+            if self._unit_of_work is not None:
+                await self._unit_of_work.commit()
+            return result
+        except Exception:
+            if self._unit_of_work is not None:
+                await self._unit_of_work.rollback()
+            raise
 
 
 _configured_user_id_lookup: Callable[[int], Any | None] | None = None

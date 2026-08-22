@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import Any, Callable, Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from lxml import etree
 
 from app.application.orchestration import ChainBase
 from app.application.orchestration._interaction import InteractionChainMixin
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.application.orchestration.data import SitePortProxy as SiteOper
 from app.application.configuration import get_configured_system_config
@@ -175,18 +175,17 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         return domain in self.special_site_test
 
-    @staticmethod
-    def __zhuque_test(site: Site) -> Tuple[bool, str]:
+    def __zhuque_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：zhuique
         """
         # 获取token
         token = None
-        user_agent = site.ua or settings.USER_AGENT
+        user_agent = site.ua or self.runtime_config.user_agent
         res = RequestUtils(
             ua=user_agent,
             cookies=site.cookie,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=site.url)
         if res is None:
@@ -207,7 +206,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 "User-Agent": f"{user_agent}"
             },
             cookies=site.cookie,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=f"{site.url}api/user/getInfo")
         if user_res is None:
@@ -220,12 +219,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{user_res.status_code} {user_res.reason}"
 
-    @staticmethod
-    def __mteam_test(site: Site) -> Tuple[bool, str]:
+    def __mteam_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：m-team
         """
-        user_agent = site.ua or settings.USER_AGENT
+        user_agent = site.ua or self.runtime_config.user_agent
         domain = site_rules.extract_domain(site.url)
         url = f"https://api.{domain}/api/member/profile"
         headers = {
@@ -235,7 +233,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).post_res(url=url)
         if res is None:
@@ -248,8 +246,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 
-    @staticmethod
-    def __sunnypt_test(site: Site) -> Tuple[bool, str]:
+    def __sunnypt_test(self, site: Site) -> Tuple[bool, str]:
         """
         通过 profile 接口测试 SunnyPT API Key 和下载权限
 
@@ -263,10 +260,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
         res = RequestUtils(
             headers={
                 "Accept": "application/json",
-                "User-Agent": site.ua or settings.USER_AGENT,
+                "User-Agent": site.ua or self.runtime_config.user_agent,
                 "X-API-Key": site.apikey,
             },
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15,
         ).get_res(url=f"{api_url}/profile")
         if res is None:
@@ -283,12 +280,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
             return False, "当前账号没有下载权限"
         return True, "连接成功"
 
-    @staticmethod
-    def __yema_test(site: Site) -> Tuple[bool, str]:
+    def __yema_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：yemapt
         """
-        user_agent = site.ua or settings.USER_AGENT
+        user_agent = site.ua or self.runtime_config.user_agent
         url = f"{site.url}api/consumer/fetchSelfDetail"
         headers = {
             "User-Agent": user_agent,
@@ -298,7 +294,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         res = RequestUtils(
             headers=headers,
             cookies=site.cookie,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -318,8 +314,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         site.url = f"{site.url}index.php"
         return self.__test(site)
 
-    @staticmethod
-    def __hddolby_test(site: Site) -> Tuple[bool, str]:
+    def __hddolby_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：hddolby
         """
@@ -331,7 +326,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -344,8 +339,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 
-    @staticmethod
-    def __rousi_test(site: Site) -> Tuple[bool, str]:
+    def __rousi_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：rousi
         """
@@ -357,7 +351,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=settings.PROXY if site.proxy else None,
+            proxies=self.runtime_config.proxy if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -477,7 +471,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         rss_url, errmsg = rsshelper.get_rss_link(
                             url=site_info.url,
                             cookie=cookie,
-                            ua=site_info.ua or settings.USER_AGENT,
+                            ua=site_info.ua or self.runtime_config.user_agent,
                             proxy=True if site_info.proxy else False,
                             timeout=site_info.timeout or 15
                         )
@@ -492,16 +486,16 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 siteoper.update_cookie(domain=domain, cookies=cookie)
                 _update_count += 1
             elif indexer:
-                if settings.COOKIECLOUD_BLACKLIST and any(
+                if self.runtime_config.cookiecloud_blacklist and any(
                         site_rules.extract_domain(domain) == site_rules.extract_domain(black_domain) for black_domain
-                        in str(settings.COOKIECLOUD_BLACKLIST).split(",")):
+                        in str(self.runtime_config.cookiecloud_blacklist).split(",")):
                     logger.warn(f"站点 {domain} 已在黑名单中，不添加站点")
                     continue
                 # 新增站点
                 domain_url = __indexer_domain(inx=indexer, sub_domain=domain)
                 proxy = False
                 res = RequestUtils(cookies=cookie,
-                                   ua=settings.USER_AGENT
+                                   ua=self.runtime_config.user_agent
                                    ).get_res(url=domain_url)
                 if res and res.status_code in [200, 500, 403]:
                     content = res.text
@@ -518,7 +512,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     logger.warn(f"站点 {indexer.get('name')} 连接状态码：{res.status_code}，无法添加站点")
                     continue
                 else:
-                    if not settings.PROXY_HOST:
+                    if not self.runtime_config.proxy_host:
                         _fail_count += 1
                         logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
                         continue
@@ -527,8 +521,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         logger.info(f"站点 {indexer.get('name')} 初次连接失败，尝试通过代理重试...")
                         proxy = True
                         res = RequestUtils(cookies=cookie,
-                                           ua=settings.USER_AGENT,
-                                           proxies=settings.PROXY
+                                           ua=self.runtime_config.user_agent,
+                                           proxies=self.runtime_config.proxy
                                            ).get_res(url=domain_url)
                         if res and res.status_code in [200, 500, 403]:
                             if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
@@ -547,7 +541,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     # 自动生成rss地址
                     rss_url, errmsg = rsshelper.get_rss_link(url=domain_url,
                                                              cookie=cookie,
-                                                             ua=settings.USER_AGENT,
+                                                             ua=self.runtime_config.user_agent,
                                                              proxy=proxy)
                     if errmsg:
                         logger.warn(errmsg)
@@ -616,7 +610,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
         icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
                                                      cookie=cookie,
-                                                     ua=settings.USER_AGENT)
+                                                     ua=self.runtime_config.user_agent)
         if icon_url:
             siteoper.update_icon(name=indexer.get("name"),
                                  domain=domain,
@@ -702,18 +696,17 @@ class SiteChain(InteractionChainMixin, ChainBase):
         except Exception as e:
             return False, f"{str(e)}！"
 
-    @staticmethod
-    def __test(site_info: Site) -> Tuple[bool, str]:
+    def __test(self, site_info: Site) -> Tuple[bool, str]:
         """
         通用站点测试
         """
         site_url = site_info.url
         site_cookie = site_info.cookie
-        ua = site_info.ua or settings.USER_AGENT
+        ua = site_info.ua or self.runtime_config.user_agent
         render = site_info.render
         public = site_info.public
-        proxies = settings.PROXY if site_info.proxy else None
-        proxy_server = settings.PROXY_SERVER if site_info.proxy else None
+        proxies = self.runtime_config.proxy if site_info.proxy else None
+        proxy_server = self.runtime_config.proxy_server if site_info.proxy else None
         timeout = site_info.timeout or 60
 
         # 访问链接
@@ -815,8 +808,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
-    @staticmethod
-    def update_cookie(site_info: Site,
+    def update_cookie(self, site_info: Site,
                       username: str, password: str, two_step_code: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
@@ -832,7 +824,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             username=username,
             password=password,
             two_step_code=two_step_code,
-            proxies=settings.PROXY_SERVER if site_info.proxy else None,
+            proxies=self.runtime_config.proxy_server if site_info.proxy else None,
             timeout=site_info.timeout or 60
         )
         if result:

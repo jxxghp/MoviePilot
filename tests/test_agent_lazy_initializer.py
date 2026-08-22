@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -242,4 +244,41 @@ async def test_stop_closes_tool_executor_after_factory_materialization(
 
     await agent_initializer.stop_agent()
 
-    cleanup.assert_called_once_with(cancel_futures=True)
+    cleanup.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+@pytest.mark.anyio
+async def test_stop_does_not_wait_for_running_blocking_tool(monkeypatch) -> None:
+    """应用关闭不得等待已经进入线程池且尚未返回的工具调用。"""
+    from app.agent.tools.base import MoviePilotTool
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def _blocking_call() -> str:
+        started.set()
+        release.wait()
+        return "done"
+
+    worker = asyncio.create_task(
+        MoviePilotTool.run_blocking("web", _blocking_call)
+    )
+    assert await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    monkeypatch.setattr(agent_initializer, "begin_agent_shutdown", AsyncMock())
+    monkeypatch.setattr(
+        agent_initializer,
+        "is_tool_factory_materialized",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        agent_initializer,
+        "agent_initializer",
+        agent_initializer.AgentInitializer(),
+    )
+
+    try:
+        await asyncio.wait_for(agent_initializer.stop_agent(), timeout=0.2)
+        assert worker.done() is False
+    finally:
+        release.set()
+        assert await asyncio.wait_for(worker, timeout=1) == "done"

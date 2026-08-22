@@ -137,6 +137,7 @@ class PromptManager:
             if caps:
                 markdown_spec = self._generate_formatting_instructions(caps)
         button_choice_spec = self._generate_button_choice_instructions(msg_channel)
+        rich_message_spec = self._generate_rich_message_instructions(msg_channel)
 
         # MoviePilot系统信息
         moviepilot_info = self._get_moviepilot_info()
@@ -148,6 +149,7 @@ class PromptManager:
             moviepilot_info=moviepilot_info,
             voice_reply_spec=voice_reply_spec,
             button_choice_spec=button_choice_spec,
+            rich_message_spec=rich_message_spec,
         )
 
         return base_prompt
@@ -350,6 +352,22 @@ class PromptManager:
             "write a final text reply after it, and do not repeat the same content "
             "as plain text. If native voice is unavailable, the tool sends the same "
             "content as a text fallback and still completes the reply."
+        )
+
+    @staticmethod
+    def _generate_rich_message_instructions(
+        channel: NotificationChannel = None,
+    ) -> str:
+        """根据渠道生成 Telegram Rich Message 回复提示。"""
+        if channel != NotificationChannel.Telegram:
+            return ""
+        return (
+            "- Telegram final replies: Prefer the `send_message` tool with its "
+            "`rich_message` argument. Put the complete reply in that argument using "
+            "GitHub-style Markdown; headings, lists, tables, blockquotes, code blocks, "
+            "and links are converted to Telegram Rich Message blocks. Do not also set "
+            "`message`, `title`, or `image_url` for the same reply. Use a normal plain "
+            "reply only when the response is very short and has no useful structure."
         )
 
     @staticmethod

@@ -7,7 +7,7 @@ from app.application.orchestration.douban import DoubanChain
 from app.application.orchestration.listenbrainz import ListenBrainzChain
 from app.application.orchestration.tmdb import TmdbChain
 from app.runtime.cache import cached, fresh
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.domain.context import MusicInfo
 from app.application.image import ImageHelper
 from app.runtime.log import logger
@@ -271,7 +271,7 @@ class RecommendChain(metaclass=Singleton):
         :param datas: 数据列表
         :param progress_callback: 定时服务进度更新回调
         """
-        if not settings.GLOBAL_IMAGE_CACHE:
+        if not self.runtime_config.global_image_cache:
             return
 
         total_num = len(datas)

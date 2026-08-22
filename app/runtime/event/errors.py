@@ -20,7 +20,7 @@ class EventErrorPolicy:
         self,
         *,
         notifier: Callable[[], Optional[EventErrorNotifier]],
-        emit_system_error: Callable[[dict], object],
+        emit_system_error: Callable[[dict[str, Any]], object],
     ) -> None:
         """注入通知读取器和 SystemError 发送回调。"""
         self._notifier = notifier

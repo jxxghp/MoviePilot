@@ -4,7 +4,8 @@ ORM 基类与数据访问基类。
 Base 提供声明式基类与通用的行为（字典转换、增删改查便利方法）；
 DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 """
-from typing import Any, List, Optional, Self, Union, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, List, Optional, Self, TypeVar, Union, cast
 
 from sqlalchemy import (CursorResult, Executable, Identity, Integer, Sequence,
                         and_, delete, inspect, select)
@@ -13,6 +14,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapp
 
 from app.runtime.config import settings
 from app.db.decorators import async_db_query, async_db_update, db_query, db_update
+from app.db.uow import run_async_transaction, run_sync_transaction
+
+
+T = TypeVar("T")
 
 
 def execute_dml(db: Session, statement: Executable,
@@ -147,4 +152,24 @@ class DbOper:
     """
 
     def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
+        """保存调用方会话；无会话写入由组合根兼容事务执行器承接。"""
         self._db = db
+
+    def _execute_sync_write(self, operation: Callable[[Session], T]) -> T:
+        """在当前同步会话暂存，或委托组合根创建兼容事务。"""
+        if self._db is None:
+            return run_sync_transaction(operation)
+        if not isinstance(self._db, Session):
+            raise TypeError("同步写操作不能使用 AsyncSession")
+        return operation(self._db)
+
+    async def _execute_async_write(
+        self,
+        operation: Callable[[AsyncSession], Awaitable[T]],
+    ) -> T:
+        """在当前异步会话暂存，或委托组合根创建兼容事务。"""
+        if self._db is None:
+            return await run_async_transaction(operation)
+        if not isinstance(self._db, AsyncSession):
+            raise TypeError("异步写操作不能使用同步 Session")
+        return await operation(self._db)

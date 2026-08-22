@@ -48,6 +48,8 @@ class SystemConfModel(BaseModel):
     bangumi: int = 0
     # AniList请求缓存数量
     anilist: int = 0
+    # IMDb请求缓存数量
+    imdb: int = 0
     # Fanart请求缓存数量
     fanart: int = 0
     # MusicBrainz请求缓存数量
@@ -133,7 +135,7 @@ class ConfigModel(BaseModel):
     # 数据库连接额度校验按它换算总用量。注意：当前主程序以单进程方式启动
     # （uvicorn.Config 的 workers 仅在多进程 supervisor 路径下生效），
     # 调大此项前需先解决调度器会在每个 worker 内重复执行的问题
-    API_WORKERS: int = 1
+    API_WORKERS: int = Field(default=1, ge=1)
     DB_TYPE: str = "sqlite"
     # 是否在控制台输出 SQL 语句，默认关闭
     DB_ECHO: bool = False
@@ -260,11 +262,11 @@ class ConfigModel(BaseModel):
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
 
     # ==================== 媒体元数据配置 ====================
-    # 媒体搜索来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
+    # 媒体搜索来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb"
-    # 媒体识别来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
+    # 媒体识别来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic
     RECOGNIZE_SOURCE: str = "themoviedb"
-    # 刮削来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
+    # 刮削来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic
     SCRAP_SOURCE: str = "themoviedb"
     # 电视剧动漫的分类genre_ids
     ANIME_GENREIDS: List[int] = Field(default=[16])
@@ -720,6 +722,8 @@ class ConfigModel(BaseModel):
     AI_AGENT_VERBOSE: bool = False
     # AI智能体自动重试整理失败记录开关
     AI_AGENT_RETRY_TRANSFER: bool = False
+    # 是否按媒体聚合整理失败通知，关闭时保持逐条发送
+    TRANSFER_FAILURE_NOTIFICATION_AGGREGATION: bool = True
 
     # 音频输入提供商：openai/openai_chat_audio/mimo/minimax
     AUDIO_INPUT_PROVIDER: str = "openai"
@@ -1122,6 +1126,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 tmdb=1024,
                 douban=512,
                 bangumi=512,
+                imdb=512,
                 fanart=512,
                 musicbrainz=512,
                 theaudiodb=512,
@@ -1136,6 +1141,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             tmdb=256,
             douban=256,
             bangumi=256,
+            imdb=256,
             fanart=128,
             musicbrainz=256,
             theaudiodb=256,

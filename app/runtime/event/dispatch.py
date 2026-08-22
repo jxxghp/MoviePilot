@@ -13,6 +13,8 @@ from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
 from app.runtime.extensions.contract.instance import split_instance_key
 from app.runtime.log import logger, wrap_for_plugin_instance
+from app.runtime.correlation import correlation_scope
+from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
 
 
@@ -132,6 +134,7 @@ class EventDispatcher:
                 event_type=event.event_type,
                 event_data=event_data,
                 priority=event.priority,
+                correlation_id=event.correlation_id,
             )
             if inspect.iscoroutinefunction(handler):
                 asyncio.run_coroutine_threadsafe(
@@ -161,16 +164,22 @@ class EventDispatcher:
         for method, binding, class_name, method_name in (
             EventBindingResolver.as_binding_sequence(resolved)
         ):
-            try:
-                _bind_instance_context(method, binding)(event)
-            except Exception as err:
-                self._error_handler(
-                    event=event,
-                    module_name=binding.owner_name,
-                    class_name=class_name,
-                    method_name=method_name,
-                    e=err,
-                )
+            with correlation_scope(event.correlation_id):
+                try:
+                    with observe_duration(
+                        "event.handler.duration",
+                        event_type=event.event_type.value,
+                        handler_type="bound" if class_name else "function",
+                    ):
+                        _bind_instance_context(method, binding)(event)
+                except Exception as err:
+                    self._error_handler(
+                        event=event,
+                        module_name=binding.owner_name,
+                        class_name=class_name,
+                        method_name=method_name,
+                        e=err,
+                    )
 
     async def invoke_async(self, handler: Callable, event: Any) -> None:
         """解析实例绑定，逐个按处理器类型选择协程、线程池或同步调用；声明类不可解析时整体跳过。"""
@@ -178,22 +187,28 @@ class EventDispatcher:
         for method, binding, class_name, method_name in (
             EventBindingResolver.as_binding_sequence(resolved)
         ):
-            try:
-                bound_method = _bind_instance_context(method, binding)
-                if inspect.iscoroutinefunction(bound_method):
-                    await bound_method(event)
-                elif binding.run_sync_in_threadpool or not class_name:
-                    await run_in_threadpool(bound_method, event)
-                else:
-                    bound_method(event)
-            except Exception as err:
-                self._error_handler(
-                    event=event,
-                    module_name=binding.owner_name,
-                    class_name=class_name,
-                    method_name=method_name,
-                    e=err,
-                )
+            with correlation_scope(event.correlation_id):
+                try:
+                    with observe_duration(
+                        "event.handler.duration",
+                        event_type=event.event_type.value,
+                        handler_type="bound" if class_name else "function",
+                    ):
+                        bound_method = _bind_instance_context(method, binding)
+                        if inspect.iscoroutinefunction(bound_method):
+                            await bound_method(event)
+                        elif binding.run_sync_in_threadpool or not class_name:
+                            await run_in_threadpool(bound_method, event)
+                        else:
+                            bound_method(event)
+                except Exception as err:
+                    self._error_handler(
+                        event=event,
+                        module_name=binding.owner_name,
+                        class_name=class_name,
+                        method_name=method_name,
+                        e=err,
+                    )
 
     @staticmethod
     def should_dispatch_to_target_plugin(

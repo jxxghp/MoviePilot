@@ -34,20 +34,9 @@ class ScanFileAction(BaseAction):
         self._fileitems = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "扫描目录"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "扫描目录文件到队列"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return ScanFileParams().model_dump()
+    name = "扫描目录"
+    description = "扫描目录文件到队列"
+    data = ScanFileParams().model_dump()
 
     @property
     def success(self) -> bool:

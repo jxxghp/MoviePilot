@@ -28,7 +28,10 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.api.deps import get_current_active_user, get_current_active_superuser
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_user,
+)
 from app.schemas.category import CategoryConfig
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType

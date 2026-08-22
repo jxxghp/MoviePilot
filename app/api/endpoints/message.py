@@ -22,7 +22,8 @@ from app.runtime.config import settings, global_vars
 from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
-from app.api.deps import get_current_active_superuser, get_message_query_service
+from app.api.dependencies.agent import get_message_query_service
+from app.api.dependencies.auth import get_current_active_superuser
 from app.application.messaging.message import MessageQueryService
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger

@@ -6,9 +6,12 @@
 缓存的池化引擎，漏掉任何一类都是连接泄漏。
 """
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 from app.runtime.config import global_vars, settings
 from app.db import engine as engine_module
@@ -88,6 +91,69 @@ def test_get_async_db_yields_session_from_scope(monkeypatch):
 
     assert asyncio.run(run()) == "SESSION"
     assert used == ["enter", "exit"], "会话作用域未正确进入/退出"
+
+
+def test_scoped_sessions_are_not_shared_across_worker_threads(monkeypatch):
+    """同步入口必须为并行工作线程提供不同 Session 实例。"""
+    registry = scoped_session(sessionmaker())
+    barrier = threading.Barrier(2)
+    monkeypatch.setattr(session_module, "_scoped_session", registry)
+
+    def open_in_thread() -> int:
+        """在线程内持有会话直到另一个线程也完成解析。"""
+        session = session_module.ScopedSession()
+        try:
+            barrier.wait(timeout=5)
+            return id(session)
+        finally:
+            registry.remove()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        session_ids = list(executor.map(lambda _: open_in_thread(), range(2)))
+
+    assert len(set(session_ids)) == 2
+
+
+def test_async_session_scopes_are_not_shared_across_tasks(monkeypatch):
+    """并发异步任务必须各自创建和关闭 AsyncSession 作用域。"""
+    created: list[object] = []
+
+    class FakeAsyncSession:
+        """记录每次作用域构造的独立异步会话替身。"""
+
+        def __init__(self, **_kwargs) -> None:
+            """创建可由异步上下文管理器返回的唯一实例。"""
+            created.append(self)
+
+        async def __aenter__(self):
+            """返回当前会话实例。"""
+            return self
+
+        async def __aexit__(self, *_exc) -> bool:
+            """模拟正常释放且不吞掉异常。"""
+            return False
+
+    monkeypatch.setattr(
+        session_module,
+        "_resolve_async_engine",
+        lambda: (object(), True),
+    )
+    monkeypatch.setattr(session_module, "AsyncSession", FakeAsyncSession)
+
+    async def open_in_task() -> int:
+        """进入一个任务私有的异步会话作用域。"""
+        async with session_module.async_session_scope() as session:
+            await asyncio.sleep(0)
+            return id(session)
+
+    async def run() -> list[int]:
+        """并发执行两个会话作用域。"""
+        return await asyncio.gather(open_in_task(), open_in_task())
+
+    session_ids = asyncio.run(run())
+
+    assert len(created) == 2
+    assert len(set(session_ids)) == 2
 
 
 def test_close_database_disposes_pooled_engines(monkeypatch):

@@ -27,6 +27,8 @@ except Exception:
 from app.application.orchestration.system import SystemChain
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.config import global_vars, settings
+from app.runtime.health import get_application_health
+from app.runtime.topology import validate_process_topology
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger, LoggerManager
@@ -48,7 +50,7 @@ from app.startup.scheduler_initializer import (
     init_scheduler,
     init_plugin_scheduler,
 )
-from app.db import check_connection_budget, get_engine, get_global_async_engine
+from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
 from app.startup.transfer_initializer import replay_pending_transfers
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.startup.lifecycle.components import (
@@ -127,20 +129,47 @@ async def run_startup_step(
         logger.info("启动%s完成，耗时=%.2fms", name, elapsed_ms)
 
 
+async def initialize_modules_component(app: FastAPI) -> None:
+    """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
+    runtime = await init_modules()
+    if runtime is not None:
+        app.state.host_runtime = runtime
+
+
 def prepare_plugin_restore() -> None:
     """先装配插件外部系统服务，再恢复插件及其依赖。"""
     configure_plugin_services()
     SystemChain().restore_plugins()
 
 
+def prepare_database_component(app: FastAPI) -> None:
+    """完成数据库建表、迁移与 head 校验后发布数据库就绪状态。"""
+    # Alembic 及全部 ORM 元数据只在 lifespan 真正启动时加载，create_app/import 阶段
+    # 继续保持不建库、不加载迁移运行时的纯 ASGI 结构语义。
+    from app.startup.database_initializer import (
+        prepare_database,
+        verify_database_revision,
+    )
+
+    prepare_database()
+    verify_database_revision()
+    get_application_health(app).mark_database_ready()
+
+
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
     """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
     return (
         LifecycleComponent(
+            name="数据库准备",
+            start=lambda: prepare_database_component(app),
+            start_order=10,
+            start_timeout_seconds=300,
+        ),
+        LifecycleComponent(
             name="HTTP 基础能力",
             start=lambda: configure_default_user_agent(settings.USER_AGENT),
             stop=aclose_shared_async_transports,
-            start_order=10,
+            start_order=20,
             stop_order=80,
             start_timeout_seconds=30,
             stop_timeout_seconds=120,
@@ -149,21 +178,21 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="领域依赖装配",
             dependencies=("HTTP 基础能力",),
             start=configure_domain_dependencies,
-            start_order=20,
+            start_order=30,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
             name="数据库引擎预热",
-            dependencies=("领域依赖装配",),
+            dependencies=("数据库准备", "领域依赖装配"),
             start=lambda: (get_engine(), get_global_async_engine()),
-            start_order=30,
+            start_order=40,
             start_timeout_seconds=120,
         ),
         LifecycleComponent(
             name="数据库连接预算",
             dependencies=("数据库引擎预热",),
             start=check_connection_budget,
-            start_order=40,
+            start_order=50,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
@@ -177,15 +206,15 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="路由",
             dependencies=("数据端口装配",),
             start=lambda: init_routers(app),
-            start_order=50,
+            start_order=60,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
             name="模块服务",
             dependencies=("路由",),
-            start=init_modules,
+            start=lambda: initialize_modules_component(app),
             stop=stop_modules,
-            start_order=60,
+            start_order=70,
             stop_order=70,
             start_timeout_seconds=300,
             stop_timeout_seconds=300,
@@ -195,7 +224,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("模块服务",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=prepare_plugin_restore,
-            start_order=70,
+            start_order=80,
             start_timeout_seconds=300,
         ),
         LifecycleComponent(
@@ -204,7 +233,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_plugins,
             stop=stop_plugins,
-            start_order=80,
+            start_order=90,
             stop_order=60,
             start_timeout_seconds=300,
             stop_timeout_seconds=300,
@@ -215,7 +244,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_scheduler,
             stop=stop_scheduler,
-            start_order=90,
+            start_order=100,
             stop_order=50,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
@@ -226,7 +255,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_monitor,
             stop=stop_monitor,
-            start_order=100,
+            start_order=110,
             stop_order=40,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
@@ -236,7 +265,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("监控器",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=replay_pending_transfers,
-            start_order=110,
+            start_order=120,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
@@ -245,7 +274,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_command,
             stop=stop_command,
-            start_order=120,
+            start_order=130,
             stop_order=30,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
@@ -256,7 +285,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_workflow,
             stop=stop_workflow,
-            start_order=130,
+            start_order=140,
             stop_order=20,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
@@ -285,56 +314,51 @@ async def lifespan(app: FastAPI):
     """
     定义应用的生命周期事件
     """
-    print("Starting up...")
-    # 存储当前循环
-    global_vars.set_loop(asyncio.get_event_loop())
-    # 同步与异步引擎各预热一次。引擎改为惰性创建后，两者的首次创建时机都不再由启动路径
-    # 决定，这一步把它们拉回来。必须排在所有 init_* 之前，两个理由：
-    #
-    # 其一，fail-fast 的落点。异步驱动缺失、异步 URL 拼错这类问题若不在这里暴露，会一路
-    # 推迟到第一个异步查询——表现为用户请求 500 或调度任务静默失败，而不是启动即崩。
-    # 故意不 try/except：起不来就该起不来，吞掉它等于把 fail-fast 又还回去了。而既然会抛，
-    # 就必须抛在 init_routers / init_modules 之前——下面的 try/finally 关停块要到 yield 处
-    # 才开始，在它之后抛异常，已经初始化好的模块就拿不到 stop_modules() 了。
-    #
-    # 其二，同步引擎的首次创建要落在单线程期。init_db() 会顺带预热它，但那只对
-    # run_application() 入口成立；外部 supervisor 直挂 ASGI app（如
-    # `gunicorn -k uvicorn.workers.UvicornWorker app.factory:app`）时 init_db() 根本不执行，
-    # 首次创建便退到运行期——而那时 init_scheduler() / init_monitor() 已经放出上百个线程，
-    # 引擎构建里那段 PRAGMA journal_mode 会让它们一起堵在创建锁上。
-    #
-    # 代价：异步侧几乎为零，create_async_engine 只校验 URL 与驱动导入、不建立连接；同步侧
-    # 会连一次库、设一遍 journal mode，在事件循环上阻塞一小会儿——但那一次本来就免不了，
-    # 放在这里至少还独占着单线程，而且此刻 uvicorn 尚未开始接请求。
-    components = build_lifecycle_components(app)
-    enabled_components = tuple(
-        component
-        for component in components
-        if component.enabled(settings.MOVIEPILOT_SAFE_MODE)
-    )
-    logger.info(
-        "启用生命周期组件：%s",
-        ", ".join(component.name for component in enabled_components),
-    )
-    for component in sorted(
-        (item for item in enabled_components if item.start is not None),
-        key=lambda item: item.start_order or 0,
-    ):
-        await run_startup_step(
-            component.name,
-            component.start,
-            component.start_timeout_seconds,
+    health = get_application_health(app)
+    health.begin_startup()
+    try:
+        validate_process_topology(
+            workers=settings.API_WORKERS,
+            safe_mode=settings.MOVIEPILOT_SAFE_MODE,
         )
-    if settings.MOVIEPILOT_SAFE_MODE:
-        print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
-    # 插件同步到本地
-    sync_plugins_task = asyncio.create_task(
-        run_startup_step("插件同步与启动收尾", init_extra)
-    )
+        print("Starting up...")
+        # 存储当前循环
+        global_vars.set_loop(asyncio.get_event_loop())
+        components = build_lifecycle_components(app)
+        enabled_components = tuple(
+            component
+            for component in components
+            if component.enabled(settings.MOVIEPILOT_SAFE_MODE)
+        )
+        logger.info(
+            "启用生命周期组件：%s",
+            ", ".join(component.name for component in enabled_components),
+        )
+        for component in sorted(
+            (item for item in enabled_components if item.start is not None),
+            key=lambda item: item.start_order or 0,
+        ):
+            await run_startup_step(
+                component.name,
+                component.start,
+                component.start_timeout_seconds,
+            )
+        if settings.MOVIEPILOT_SAFE_MODE:
+            print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
+        # 插件同步到本地
+        sync_plugins_task = asyncio.create_task(
+            run_startup_step("插件同步与启动收尾", init_extra)
+        )
+        health.mark_ready()
+    except BaseException:
+        # Uvicorn 在 lifespan 抛错时不会开始接流量；状态仍需供嵌入式入口和测试诊断。
+        health.mark_failed()
+        raise
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
         yield
     finally:
+        health.mark_stopping()
         print("Shutting down...")
         global_vars.stop_system()
         # 插件恢复会在线程池中修改源码与依赖，必须完成后再进入资源关闭阶段。

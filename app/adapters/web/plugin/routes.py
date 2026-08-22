@@ -43,14 +43,20 @@ class FastAPIDynamicRouteRegistry:
             raise ValueError("Action must be 'add' or 'remove'")
 
         modified = False
-        existing_paths = {route.path: route for route in self._app.routes}
+        existing_paths = {
+            path: route
+            for route in self._app.routes
+            if (path := self._route_path(route)) is not None
+        }
         plugin_ids = [plugin_id] if plugin_id else self._plugin_ids()
         for current_id in plugin_ids:
             if self.remove(current_id):
                 modified = True
             if action != "add":
                 continue
-            for api in self._plugin_apis(current_id):
+            for source_api in self._plugin_apis(current_id):
+                api = dict(source_api)
+                api["dependencies"] = list(source_api.get("dependencies") or ())
                 api_path = f"{self._prefix}{api.get('path', '')}"
                 try:
                     api["path"] = api_path
@@ -94,9 +100,10 @@ class FastAPIDynamicRouteRegistry:
         base = f"{self._prefix}/"
         routes = []
         for route in self._app.routes:
-            if not route.path.startswith(base):
+            path = self._route_path(route)
+            if path is None or not path.startswith(base):
                 continue
-            segment = route.path[len(base):].split("/", 1)[0]
+            segment = path[len(base):].split("/", 1)[0]
             if self._route_matches(segment, plugin_id):
                 routes.append(route)
         removed = False
@@ -104,12 +111,18 @@ class FastAPIDynamicRouteRegistry:
             try:
                 self._app.routes.remove(route)
                 removed = True
-                self._logger.debug(f"Removed plugin route: {route.path}")
+                self._logger.debug(f"Removed plugin route: {self._route_path(route)}")
             except Exception as error:
                 self._logger.error(
-                    f"Error removing plugin route {route.path}: {str(error)}"
+                    f"Error removing plugin route {self._route_path(route)}: {str(error)}"
                 )
         return removed
+
+    @staticmethod
+    def _route_path(route: Any) -> Optional[str]:
+        """返回公开路由路径，跳过 FastAPI 内部的无路径 include 包装器。"""
+        path = getattr(route, "path", None)
+        return path if isinstance(path, str) else None
 
     def clean(self, existing_paths: dict) -> None:
         """清理 FastAPI 重建时可能重复的受保护文档路由。"""

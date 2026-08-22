@@ -3,6 +3,7 @@
 from unittest.mock import Mock
 
 from app.application.orchestration.context import ChainRuntimeContext
+from app.application.configuration import ChainRuntimeConfig
 from app.application.orchestration import context as chain_context
 from app.application.orchestration import ChainBase
 from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
@@ -20,6 +21,8 @@ def _context() -> ChainRuntimeContext:
         async_file_cache=Mock(),
         message_queue_factory=Mock(return_value=Mock()),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        configuration=ChainRuntimeConfig(media_extensions=(".mkv",)),
+        durable_event_writer=Mock(),
     )
 
 
@@ -33,6 +36,7 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.pluginmanager is context.plugin_manager
     assert chain.eventmanager is context.event_manager
     assert chain.messagehelper is context.message_helper
+    assert chain.durable_event_writer is context.durable_event_writer
     context.message_queue_factory.assert_called_once_with(chain.multicast)
 
 

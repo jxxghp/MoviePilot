@@ -54,8 +54,10 @@ class DownloadFailureOper(DbOper):
         """
         删除已过期较久的失败记录。
         """
-        return DownloadFailure.delete_expired(
-            self._db,
-            before_time=before_time,
-            limit=limit,
+        return self._execute_sync_write(
+            lambda session: DownloadFailure.delete_expired(
+                session,
+                before_time=before_time,
+                limit=limit,
+            )
         )

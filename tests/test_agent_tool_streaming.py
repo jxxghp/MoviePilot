@@ -7,7 +7,7 @@ import langchain.agents as langchain_agents
 if not hasattr(langchain_agents, "create_agent"):
     langchain_agents.create_agent = lambda *args, **kwargs: None
 
-from app.agent import _ThinkTagStripper
+from app.agent.orchestrator import _ThinkTagStripper
 from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
 from app.agent.tools.base import MoviePilotTool
@@ -365,7 +365,10 @@ class TestAgentToolStreaming:
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "send_direct_message"
-        assert run_in_threadpool_mock.await_args.args[1].mtype == MessageType.Agent
+        notification = run_in_threadpool_mock.await_args.args[1]
+        assert notification.mtype == MessageType.Agent
+        assert notification.text == "hello"
+        assert notification.rich_message == "hello"
         assert handler.has_sent_message
 
     def test_flush_edits_message_via_threadpool(self):
@@ -392,6 +395,12 @@ class TestAgentToolStreaming:
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "edit_message"
+        assert (
+            run_in_threadpool_mock.await_args.kwargs["metadata"][
+                "telegram_rich_message"
+            ]
+            == "hello world"
+        )
         assert handler._sent_text == "hello world"
 
     def test_stop_streaming_waits_inflight_initial_flush_before_final_edit(self):

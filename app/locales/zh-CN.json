@@ -22,6 +22,9 @@
       "FilterModule": {
         "name": "过滤器"
       },
+      "ImdbModule": {
+        "name": "IMDb"
+      },
       "IndexerModule": {
         "name": "站点索引"
       },

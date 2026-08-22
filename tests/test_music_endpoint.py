@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.api.apiv1 import api_router
 from app.api.endpoints import media as media_endpoints
 from app.api.endpoints.music import (
     explore_music,
@@ -22,7 +21,15 @@ from app.schemas.types import MediaSource, MediaType
 
 def test_music_routes_are_registered():
     """V1 API 应注册音乐详情识别、探索及艺术家专辑浏览路由。"""
-    routes = {(route.path, tuple(route.methods or [])) for route in api_router.routes}
+    from app.api.router_specs import API_V1_ROUTER_SPECS
+
+    routes = {
+        (f"{spec.prefix}{route.path}", tuple(route.methods or []))
+        for spec in API_V1_ROUTER_SPECS
+        for route in spec.router.routes
+        if spec.prefix == "/music" or spec.prefix == "/media"
+        or spec.prefix == "/recommend"
+    }
 
     assert any(path == "/music/recognize" and "POST" in methods for path, methods in routes)
     assert any(path == "/music/explore" and "GET" in methods for path, methods in routes)

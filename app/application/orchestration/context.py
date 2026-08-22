@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.application.orchestration.data import ChainDataPorts
+from app.application.orchestration.durable_events import ChainDurableEventWriter
+from app.application.configuration import ChainRuntimeConfig
 
 
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
@@ -28,6 +30,10 @@ class ChainRuntimeContext:
     message_queue_factory: MessageQueueFactory
     module_dispatcher_factory: ModuleDispatcherFactory
     data_ports: Optional[ChainDataPorts] = None
+    durable_event_writer: Optional[ChainDurableEventWriter] = None
+    configuration: ChainRuntimeConfig = field(
+        default_factory=lambda: ChainRuntimeConfig(media_extensions=())
+    )
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

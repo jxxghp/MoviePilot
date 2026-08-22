@@ -7,13 +7,39 @@
 import threading
 from typing import Dict, Optional, cast
 
-from sqlalchemy import NullPool, QueuePool, create_engine, text
+from sqlalchemy import NullPool, QueuePool, create_engine, event, text
 from sqlalchemy.engine import Engine as SyncEngine
 from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine, create_async_engine
+from sqlalchemy.pool import Pool
 
 from app.runtime.config import settings
 from app.db.diagnostics import _register_database_error_logging
 from app.runtime.log import logger
+from app.runtime.observability import record_metric
+
+
+def _database_backend_label() -> str:
+    """把数据库类型收敛为有限的观测标签。"""
+    return "postgresql" if settings.DB_TYPE.lower() == "postgresql" else "sqlite"
+
+
+def _register_database_pool_metrics(engine: SyncEngine) -> None:
+    """在 SQLAlchemy 池 checkout/checkin 边界维护当前借出连接数。"""
+    if not isinstance(engine.pool, Pool):
+        # 引擎构建单测允许注入不具备 PoolEvents 的轻量替身。
+        return
+    backend = _database_backend_label()
+
+    def record_checkout(*_args: object) -> None:
+        """连接借出后增加当前使用量。"""
+        record_metric("db.pool.checked_out", 1, backend=backend)
+
+    def record_checkin(*_args: object) -> None:
+        """连接归还后减少当前使用量。"""
+        record_metric("db.pool.checked_out", -1, backend=backend)
+
+    event.listen(engine.pool, "checkout", record_checkout)
+    event.listen(engine.pool, "checkin", record_checkin)
 
 
 def _async_pool_kwargs(pooled: bool) -> dict:
@@ -98,6 +124,7 @@ def build_sqlite_engine(url: str) -> SyncEngine:
     # 创建数据库引擎
     engine = create_engine(**_db_kwargs)
     _register_database_error_logging(engine)
+    _register_database_pool_metrics(engine)
 
     # 设置WAL模式。
     # 这是引擎构建里唯一的阻塞 I/O。调用方若在创建锁内构建引擎（如 get_engine()
@@ -131,6 +158,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         # 创建异步数据库引擎
         async_engine = create_async_engine(**_db_kwargs)
         _register_database_error_logging(async_engine.sync_engine)
+        _register_database_pool_metrics(async_engine.sync_engine)
 
         # 异步侧不再设置 WAL。journal_mode 是数据库文件级的持久属性，同步引擎已经设置过，
         # 这里重复设置本就是冗余的；而它原本用 asyncio.run() 完成，是异步引擎构建里唯一的
@@ -176,6 +204,7 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
         # 创建数据库引擎
         engine = create_engine(**_db_kwargs)
         _register_database_error_logging(engine)
+        _register_database_pool_metrics(engine)
         print(f"PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
 
         return engine
@@ -194,6 +223,7 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
         # 创建异步数据库引擎
         async_engine = create_async_engine(**_db_kwargs)
         _register_database_error_logging(async_engine.sync_engine)
+        _register_database_pool_metrics(async_engine.sync_engine)
         print(f"Async PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
 
         return async_engine

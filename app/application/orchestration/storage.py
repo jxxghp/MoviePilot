@@ -3,7 +3,6 @@ from typing import Any, Optional, List, Dict
 
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.application.orchestration import ChainBase
-from app.runtime.config import settings
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
 
@@ -148,7 +147,7 @@ class StorageChain(ChainBase):
         """
         删除媒体文件，以及不含媒体文件的目录
         """
-        media_exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
+        media_exts = self.runtime_config.media_extensions
         fileitem_path = Path(fileitem.path) if fileitem.path else Path("")
         if len(fileitem_path.parts) <= 2:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 根目录或一级目录不允许删除")

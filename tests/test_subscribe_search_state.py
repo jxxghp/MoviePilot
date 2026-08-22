@@ -34,6 +34,18 @@ class _SubscribeOper:
         self.updates.append((sid, payload))
 
 
+class _TimedOutLock:
+    """模拟订阅搜索锁在等待窗口内始终无法取得。"""
+
+    def acquire(self, **_kwargs):
+        """返回未取得锁，验证调用方不会越过互斥边界继续执行。"""
+        return False
+
+    def release(self):
+        """超时路径不应释放未持有的锁。"""
+        raise AssertionError("未持有的订阅锁不应被释放")
+
+
 def _new_subscribe(created_at: datetime) -> SimpleNamespace:
     """
     构造一个新建电影订阅。
@@ -90,3 +102,31 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
 
     media_chain.recognize_media.assert_called_once()
     assert _SubscribeOper.updates == [(31, {"state": "R"})]
+
+
+def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
+    """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
+    monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
+    subscribe_oper = Mock()
+    monkeypatch.setattr(subscribe_module, "SubscribeOper", subscribe_oper)
+    progress = Mock()
+
+    chain = object.__new__(SubscribeChain)
+    chain.search(state="N", progress_callback=progress)
+
+    subscribe_oper.assert_not_called()
+    progress.assert_called_once_with(
+        value=100,
+        text="订阅搜索锁等待超时，已跳过本轮",
+    )
+
+
+def test_subscribe_match_aborts_when_lock_times_out(monkeypatch) -> None:
+    """订阅匹配锁超时后必须中止，不能绕过防重复下载边界。"""
+    monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
+    progress = Mock()
+
+    chain = object.__new__(SubscribeChain)
+    chain.match({"example.org": []}, progress_callback=progress)
+
+    progress.assert_any_call(value=100, text="订阅匹配锁等待超时，已跳过本轮")

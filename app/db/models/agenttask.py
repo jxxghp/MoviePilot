@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import db_query, db_update
+from app.db.decorators import db_query
 
 
 class AgentTask(Base):
@@ -49,7 +49,6 @@ class AgentTask(Base):
     )
 
     @classmethod
-    @db_update
     def add_task(cls, db: Session, **kwargs: object) -> int:
         """
         新增 Agent 定时任务并返回任务 ID。
@@ -96,7 +95,6 @@ class AgentTask(Base):
         ).scalars().all())
 
     @classmethod
-    @db_update
     def update_task(
             cls,
             db: Session,

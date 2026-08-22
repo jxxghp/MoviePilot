@@ -307,6 +307,21 @@ class AgentChatOper(DbOper):
         await AgentChat.async_delete(self._db, chat.id)
         return True
 
+    async def async_stage_delete(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """暂存 Agent 会话删除并 flush，不提交请求级事务。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("Agent 会话暂存删除需要调用方提供 AsyncSession")
+        chat = await self.async_get(session_id=session_id, user_id=user_id)
+        if not chat:
+            return False
+        await self._db.delete(chat)
+        await self._db.flush()
+        return True
+
     @staticmethod
     def to_summary(chat: AgentChat) -> dict[str, Any]:
         """

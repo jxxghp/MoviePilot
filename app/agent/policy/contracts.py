@@ -184,6 +184,8 @@ class ExecutionReceipt:
     result_summary: Optional[str] = None
     error_summary: Optional[str] = None
     duration_ms: int = 0
+    external_may_continue: bool = False  # 中断后外部操作仍可能继续，不能视为已停止。
+    needs_reconcile: bool = False  # 调用方需查询外部实际状态后再决定补偿或重试。
 
 
 @dataclass(frozen=True)

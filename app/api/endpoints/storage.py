@@ -19,7 +19,7 @@ from app.application.orchestration.transfer import TransferChain
 from app.runtime.config import settings
 from app.runtime.extensions.registry.storage import storage_backend_registry
 from app.api.principal import ApiPrincipal
-from app.api.deps import (
+from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
 )

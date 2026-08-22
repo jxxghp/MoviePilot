@@ -40,20 +40,9 @@ class FetchRssAction(BaseAction):
         self._rss_torrents = []
         self._has_error = False
 
-    @classmethod
-    @property
-    def name(cls) -> str:  # noqa
-        return "获取RSS资源"
-
-    @classmethod
-    @property
-    def description(cls) -> str:  # noqa
-        return "订阅RSS地址获取资源"
-
-    @classmethod
-    @property
-    def data(cls) -> dict:  # noqa
-        return FetchRssParams().model_dump()
+    name = "获取RSS资源"
+    description = "订阅RSS地址获取资源"
+    data = FetchRssParams().model_dump()
 
     @property
     def success(self) -> bool:

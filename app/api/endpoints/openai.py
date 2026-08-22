@@ -1,12 +1,11 @@
 import asyncio
-import json
 import time
 import uuid
 from threading import Lock
 from typing import AsyncIterator, List, Optional, Tuple
 
 from fastapi import APIRouter, Request, Security
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.schemas.openai import OpenAIChatCompletionResponse as _SchemaOpenAIChatCompletionResponse
@@ -26,12 +25,13 @@ from app.api.openai_utils import (
     build_responses_input,
     build_session_id,
 )
+from app.api.presentation.sse import build_sse_response, encode_data_event
 from app.agent.runtime_loader import (
     get_moviepilot_agent_type,
     get_running_agent_manager,
 )
 from app.agent.contracts import ReplyMode
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
 
@@ -216,7 +216,8 @@ def _get_collecting_agent_type() -> type:
 
 
 def _sse_payload(data: dict) -> str:
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+    """保留旧测试入口并委托独立 OpenAI SSE wire mapper。"""
+    return encode_data_event(data)
 
 
 async def _stream_response(
@@ -345,6 +346,35 @@ def _is_manager_unavailable(error: BaseException) -> bool:
     return getattr(error, "code", None) == "agent_manager_unavailable"
 
 
+def _is_manager_queue_full(error: BaseException) -> bool:
+    """识别 Agent 会话排队已满，供兼容 API 返回可重试状态。"""
+    return getattr(error, "code", None) == "agent_manager_queue_full"
+
+
+def _manager_execution_error(error: BaseException) -> JSONResponse:
+    """把 AgentManager 稳定错误映射为 OpenAI 兼容错误响应。"""
+    if _is_manager_unavailable(error):
+        return _error_response(
+            "MoviePilot AI agent is unavailable.",
+            503,
+            error_type="server_error",
+            code="ai_agent_unavailable",
+        )
+    if _is_manager_queue_full(error):
+        return _error_response(
+            str(error),
+            429,
+            error_type="rate_limit_error",
+            code="ai_agent_queue_full",
+        )
+    return _error_response(
+        str(error),
+        500,
+        error_type="server_error",
+        code="agent_execution_failed",
+    )
+
+
 async def _run_managed_agent(
     *,
     manager,
@@ -423,7 +453,7 @@ def _check_auth(
             error_type="authentication_error",
             code="invalid_api_key",
         )
-    if credentials.credentials != settings.API_TOKEN:
+    if credentials.credentials != get_api_runtime_config_snapshot().api_token:
         return _error_response(
             "Invalid bearer token.",
             401,
@@ -476,7 +506,7 @@ async def chat_completions(
     if auth_error:
         return auth_error
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _error_response(
             "MoviePilot AI agent is disabled.",
             503,
@@ -519,7 +549,7 @@ async def chat_completions(
     session_id = build_session_id(session_key, SESSION_PREFIX)
     username = str(payload.user or "openai-client")
     if payload.stream:
-        return StreamingResponse(
+        return build_sse_response(
             _stream_response(
                 manager=manager,
                 session_id=session_id,
@@ -529,12 +559,6 @@ async def chat_completions(
                 images=images,
                 cleanup_session=not use_server_session,
             ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
         )
 
     collected_messages = []
@@ -550,19 +574,7 @@ async def chat_completions(
             stream_mode=False,
         )
     except Exception as exc:
-        if _is_manager_unavailable(exc):
-            return _error_response(
-                "MoviePilot AI agent is unavailable.",
-                503,
-                error_type="server_error",
-                code="ai_agent_unavailable",
-            )
-        return _error_response(
-            str(exc),
-            500,
-            error_type="server_error",
-            code="agent_execution_failed",
-        )
+        return _manager_execution_error(exc)
     finally:
         if not use_server_session:
             await manager.clear_session(session_id=session_id, user_id=session_key)
@@ -595,7 +607,7 @@ async def responses(
     if auth_error:
         return auth_error
 
-    if not settings.AI_AGENT_ENABLE:
+    if not get_api_runtime_config_snapshot().ai_agent_enable:
         return _error_response(
             "MoviePilot AI agent is disabled.",
             503,
@@ -650,19 +662,7 @@ async def responses(
             stream_mode=False,
         )
     except Exception as exc:
-        if _is_manager_unavailable(exc):
-            return _error_response(
-                "MoviePilot AI agent is unavailable.",
-                503,
-                error_type="server_error",
-                code="ai_agent_unavailable",
-            )
-        return _error_response(
-            str(exc),
-            500,
-            error_type="server_error",
-            code="agent_execution_failed",
-        )
+        return _manager_execution_error(exc)
     finally:
         if not payload.user:
             await manager.clear_session(session_id=session_id, user_id=session_key)

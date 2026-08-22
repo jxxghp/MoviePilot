@@ -13,6 +13,8 @@ from app.db.models.passkey import PassKey
 from app.db.models.systemconfig import SystemConfig
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
+from app.db.oper.passkey import PassKeyOper
+from app.db.oper.user import UserOper
 
 
 @pytest.fixture(autouse=True)
@@ -166,15 +168,20 @@ def test_user_async_mutations_match_sync_behaviour(db):
     """
     异步的删除与 OTP 更新必须与同步路径给出相同的存在性判断。
     """
+    async_id_user = db.add(User(name="mp-test-async-id", hashed_password="x"))
     db.add(User(name="mp-test-async-otp", hashed_password="x", is_otp=False))
+    oper = UserOper()
 
-    assert asyncio.run(User().async_update_otp_by_name(
+    assert asyncio.run(oper.async_update_otp_by_name(
         name="mp-test-async-otp", otp=True, secret="S2")) is True
-    assert asyncio.run(User().async_update_otp_by_name(
+    assert asyncio.run(oper.async_update_otp_by_name(
         name="mp-test-nobody", otp=True, secret="S2")) is False
 
-    assert asyncio.run(User().async_delete_by_name(name="mp-test-async-otp")) is True
+    assert asyncio.run(oper.async_delete_by_name(name="mp-test-async-otp")) is True
     assert User.get_by_name(db.session, "mp-test-async-otp") is None
+
+    asyncio.run(oper.async_delete(async_id_user.id))
+    assert User.get_by_id(db.session, async_id_user.id) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -247,8 +254,9 @@ def test_passkey_async_delete_enforces_the_same_ownership_rule(db):
     """
     victim = db.add(_passkey(9006, "cred-async-victim"))
 
-    assert asyncio.run(PassKey.async_delete_by_id(passkey_id=victim.id, user_id=9999)) is False
-    assert asyncio.run(PassKey.async_delete_by_id(passkey_id=victim.id, user_id=9006)) is True
+    oper = PassKeyOper()
+    assert asyncio.run(oper.async_delete_by_id(passkey_id=victim.id, user_id=9999)) is False
+    assert asyncio.run(oper.async_delete_by_id(passkey_id=victim.id, user_id=9006)) is True
     assert PassKey.get_by_id(db.session, victim.id) is None
 
 

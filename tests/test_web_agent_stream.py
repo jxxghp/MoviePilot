@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app import schemas
-from app.agent import ReplyMode, agent_manager
+from app.agent.contracts import ReplyMode
+from app.agent.orchestrator import agent_manager
 from app.api.endpoints.agent import (
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
@@ -26,7 +27,8 @@ from app.api.endpoints.agent import (
     _get_web_agent_type,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path,
-    _transcribe_web_agent_audio_refs,
+    _resolve_web_agent_audio_refs,
+    _transcribe_web_agent_audio_files,
     web_agent_stream,
     _resolve_web_agent_choice_payload,
     _split_web_agent_output,
@@ -633,14 +635,17 @@ def test_prepare_web_agent_audio_attachment_converts_unsupported_audio(tmp_path)
             return SimpleNamespace(returncode=0, stderr="")
 
         run.side_effect = write_converted_file
-        with patch("app.api.endpoints.agent.settings", SimpleNamespace(TEMP_PATH=tmp_path)):
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ):
             output_path = _prepare_web_agent_audio_attachment_path(str(source_path))
 
     assert output_path == converted_path
     assert output_path.read_bytes() == b"wav-bytes"
 
 
-def test_transcribe_web_agent_audio_refs_reads_registered_upload(tmp_path):
+def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):
     """WebAgent 上传录音应从临时附件登记表读取并转写为文本。"""
     voice_path = tmp_path / "recording.webm"
     voice_path.write_bytes(b"webm-bytes")
@@ -659,7 +664,11 @@ def test_transcribe_web_agent_audio_refs_reads_registered_upload(tmp_path):
             "app.api.endpoints.agent.AgentCapabilityManager.transcribe_audio",
             return_value="帮我推荐一部电影",
         ) as transcribe_audio:
-            transcript = _transcribe_web_agent_audio_refs(["message/agent/file/audio-test"])
+            audio_files = _resolve_web_agent_audio_refs(
+                ["message/agent/file/audio-test"]
+            )
+            _WEB_AGENT_FILE_REGISTRY.pop("audio-test", None)
+            transcript = _transcribe_web_agent_audio_files(audio_files)
     finally:
         _WEB_AGENT_FILE_REGISTRY.pop("audio-test", None)
 
@@ -680,14 +689,62 @@ def test_web_agent_stream_returns_error_when_voice_transcription_fails():
     request = SimpleNamespace()
     user = SimpleNamespace(id=1, name="admin")
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
-        "app.api.endpoints.agent._transcribe_web_agent_audio_refs",
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
+        "app.api.endpoints.agent._transcribe_web_agent_audio_files",
         return_value=None,
-    ):
+    ) as transcribe_audio:
         response = asyncio.run(web_agent_stream(payload, request, user))
         body = "".join(asyncio.run(_collect_streaming_response(response)))
 
+    transcribe_audio.assert_not_called()
     assert "error" in body
+    assert "语音识别失败" in body
+
+
+def test_web_agent_stream_does_not_block_event_loop_during_transcription():
+    """同步音频 provider 等待时，事件循环仍应让其他任务获得执行机会。"""
+    payload = schemas.AgentWebChatRequest(
+        text="",
+        session_id="browser-session",
+        audio_refs=["message/agent/file/audio-test"],
+    )
+    request = SimpleNamespace(headers={})
+    user = SimpleNamespace(id=1, name="admin")
+
+    transcription_started = ThreadEvent()
+    transcription_release = ThreadEvent()
+
+    def blocking_transcription(_audio_refs):
+        transcription_started.set()
+        assert transcription_release.wait(timeout=2)
+        return None
+
+    async def scenario():
+        stream_task = asyncio.create_task(web_agent_stream(payload, request, user))
+        assert await asyncio.to_thread(transcription_started.wait, 1)
+        assert stream_task.done() is False
+        transcription_release.set()
+        return await stream_task
+
+    try:
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
+            "app.api.endpoints.agent._resolve_web_agent_audio_refs",
+            return_value=[Mock()],
+        ), patch(
+            "app.api.endpoints.agent._transcribe_web_agent_audio_files",
+            side_effect=blocking_transcription,
+        ):
+            response = asyncio.run(scenario())
+    finally:
+        transcription_release.set()
+
+    body = "".join(asyncio.run(_collect_streaming_response(response)))
     assert "语音识别失败" in body
 
 
@@ -742,7 +799,10 @@ def test_web_agent_stream_binds_session_to_agent_manager():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._get_web_agent_type",
             return_value=FakeWebAgent,
         ):
@@ -838,7 +898,10 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._get_web_agent_type",
             return_value=FakeProtectedAgent,
         ), patch(
@@ -896,7 +959,10 @@ def test_web_agent_cancel_keeps_existing_display_history():
         return "".join(await _collect_streaming_response(response))
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch.object(
             agent_manager,
             "matches_secret_confirmation",
             return_value=True,
@@ -936,7 +1002,10 @@ def test_web_agent_stream_rejects_confirmation_without_protected_capability():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch.object(
         agent_manager,
         "matches_secret_confirmation",
         return_value=True,
@@ -962,7 +1031,10 @@ def test_web_agent_stream_keeps_confirmation_without_pending_on_normal_path():
         body = "".join(await _collect_streaming_response(response))
         return response, body
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch.object(
         agent_manager,
         "process_message",
         new=AsyncMock(return_value="普通回复"),
@@ -1030,7 +1102,10 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         return body
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch.object(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch.object(
             agent_manager,
             "matches_secret_confirmation",
             return_value=True,
@@ -1070,7 +1145,10 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
         "app.api.endpoints.agent.WEB_AGENT_STREAM_HEARTBEAT_SECONDS",
         0.01,
     ), patch(
@@ -1142,7 +1220,10 @@ def test_web_agent_stop_finishes_stream_without_error():
         return "".join(received)
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._is_web_agent_traditional_message",
             return_value=False,
         ), patch(
@@ -1184,7 +1265,10 @@ def test_web_agent_stream_rechecks_running_service_before_enqueue():
         response = await web_agent_stream(payload, request, user)
         return "".join(await _collect_streaming_response(response))
 
-    with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+    with patch(
+        "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(ai_agent_enable=True),
+    ), patch(
         "app.api.endpoints.agent._is_web_agent_traditional_message",
         return_value=False,
     ), patch(
@@ -1320,7 +1404,10 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         return "".join(received)
 
     try:
-        with patch("app.api.endpoints.agent.settings.AI_AGENT_ENABLE", True), patch(
+        with patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(ai_agent_enable=True),
+        ), patch(
             "app.api.endpoints.agent._is_web_agent_traditional_message",
             return_value=False,
         ), patch(

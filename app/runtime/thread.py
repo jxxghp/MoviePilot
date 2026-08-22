@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 
 from app.runtime.config import settings
 from app.foundation.singleton import Singleton
@@ -20,7 +21,8 @@ class ThreadHelper(metaclass=Singleton):
         :param kwargs: 参数
         :return: future
         """
-        return self.pool.submit(func, *args, **kwargs)
+        context = copy_context()
+        return self.pool.submit(context.run, func, *args, **kwargs)
 
     def shutdown(self):
         """

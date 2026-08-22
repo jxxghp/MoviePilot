@@ -8,7 +8,7 @@ from app.application.orchestration.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.application.site.sites import SitesHelper  # noqa
+    from app.application.site.sites import SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
 except ImportError as e:
     SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
@@ -21,6 +21,7 @@ from app.runtime.config import settings
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.observability import record_metric
 from app.runtime.state import SystemHelper
 from app.runtime.thread import ThreadHelper
 from app.adapters.network.doh import DohHelper
@@ -33,32 +34,102 @@ from app.application.messaging.message import (
     MessageQueueManager,
     stop_message,
 )
-from app.db.oper.message import MessageOper
 from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.extensions.projection.dispatcher import ModuleInvocationDispatcher
+from app.application.configuration import (
+    ApiRuntimeConfig,
+    ChainRuntimeConfig,
+    RuntimeConfiguration,
+    SchedulerRuntimeConfig,
+    SystemConfigService,
+    TransferRetryConfig,
+    configure_runtime_configuration,
+    configure_system_config,
+    configure_transfer_retry_config,
+)
+from app.application.database import configure_database_governance
+from app.application.plugin.runtime import configure_plugin_runtime
+from app.application.module import configure_module_runtime
+from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
+from app.application.security.user import configure_user_lookups
+from app.application.security.auth import AuthService, configure_auth_service
+from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.userconfig import (
+    UserConfigurationService,
+    configure_user_configuration,
+)
+from app.application.history import configure_transfer_history_provider
+from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
+from app.startup.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.application.site.query import SiteQueryService, configure_site_query_service
+from app.application.site.health import SiteHealthService, configure_site_health_service
+from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.application.agentdata import configure_agent_data_ports
+from app.api.data import ApiDataPorts, configure_api_data_runtime
+from app.application.subscription.write import configure_subscribe_writer
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
-from app.application.database import configure_database_governance
-from app.application.module import configure_module_runtime
-from app.application.plugin.runtime import configure_plugin_runtime
-from app.db import close_database
+from app.db.session import (
+    SessionFactory,
+    async_session_scope,
+    close_database,
+    get_async_db,
+    get_db,
+)
+from app.db.uow import (
+    SqlAlchemyAsyncUnitOfWork,
+    SqlAlchemyUnitOfWork,
+    configure_transaction_runners,
+)
 from app.db.oper.serviceconfig import ServiceConfigOper
 from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.agentchat import AgentChatOper
+from app.db.oper.agenttask import AgentTaskOper
+from app.db.oper.user import UserOper
+from app.db.oper.passkey import PassKeyOper
+from app.db.oper.userconfig import UserConfigOper
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.transferpending import TransferPendingOper
+from app.db.oper.mediaserver import MediaServerOper
+from app.db.oper.site import SiteOper
+from app.db.oper.message import MessageOper
+from app.db.oper.subscribehistory import SubscribeHistoryOper
+from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper
+from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
 from app.application.messaging.gateway import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import EventType, SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
 from app.startup.bindings.database import build_database_governance
 from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,
+)
+from app.startup.subscription import (
+    TransactionalSubscribeWriter,
+    configure_transactional_subscription_scopes,
+)
+from app.startup.chain_events import TransactionalChainDurableEventWriter
+from app.startup.download_failure import TransactionalDownloadFailureRepository
+from app.startup.workflow import TransactionalWorkflowExecutionService
+from app.startup.transaction import TransactionalWriteRunner
+from app.startup.context import (
+    AgentChatRuntime,
+    AuthenticationRuntime,
+    HistoryRuntime,
+    HostRuntime,
+    MessagingRuntime,
+    PersistenceRuntime,
+    SiteRuntime,
+    SubscriptionRuntime,
+    WorkflowRuntime,
 )
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
@@ -66,6 +137,14 @@ from app.application.image import configure_wallpaper_providers
 from app.application.orchestration.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
+)
+from app.application.orchestration.durable_events import (
+    restore_download_added,
+    restore_transfer_result,
+)
+from app.application.orchestration.data import (
+    configure_chain_data_ports,
+    get_chain_data_ports,
 )
 from app.application.service_config import (
     ServiceInstanceConfigService,
@@ -101,6 +180,9 @@ def build_default_chain_runtime_context() -> ChainRuntimeContext:
         async_file_cache=AsyncFileCache(),
         message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        configuration=_build_chain_runtime_config(),
+        data_ports=get_chain_data_ports(),
+        durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
     )
 
 
@@ -112,6 +194,82 @@ async def _async_get_subscribe(subscribe_id: int):
 async def _async_get_workflow(workflow_id: int):
     """通过数据库操作器异步读取工作流，供服务端共享用例使用。"""
     return await WorkflowOper().async_get(workflow_id)
+
+
+def _normalize_subscribe_rss_interval(value: object) -> int:
+    """把无效或过小的 RSS 间隔收敛为兼容的安全值。"""
+    try:
+        return max(int(value), 5)
+    except (TypeError, ValueError):
+        return 30
+
+
+def _build_api_runtime_config() -> ApiRuntimeConfig:
+    """从可热更新 settings 构建一次 API 请求配置快照。"""
+    return ApiRuntimeConfig(
+        advanced_mode=settings.ADVANCED_MODE,
+        access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
+        ai_agent_enable=settings.AI_AGENT_ENABLE,
+        api_token=settings.API_TOKEN,
+        temp_path=settings.TEMP_PATH,
+        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
+    )
+
+
+def _build_scheduler_runtime_config() -> SchedulerRuntimeConfig:
+    """从可热更新 settings 构建一次 Scheduler 操作配置快照。"""
+    return SchedulerRuntimeConfig(
+        dev=settings.DEV,
+        timezone=settings.TZ,
+        scheduler_workers=settings.CONF.scheduler,
+        db_backup_enable=settings.DB_BACKUP_ENABLE,
+        db_backup_cron=settings.DB_BACKUP_CRON,
+        cookiecloud_interval=settings.COOKIECLOUD_INTERVAL,
+        mediaserver_sync_interval=settings.MEDIASERVER_SYNC_INTERVAL,
+        subscribe_search=settings.SUBSCRIBE_SEARCH,
+        subscribe_search_interval=settings.SUBSCRIBE_SEARCH_INTERVAL,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
+        subscribe_rss_interval=_normalize_subscribe_rss_interval(
+            settings.SUBSCRIBE_RSS_INTERVAL
+        ),
+        data_cleanup_enable=settings.DATA_CLEANUP_ENABLE,
+        sitedata_refresh_interval=settings.SITEDATA_REFRESH_INTERVAL,
+        memory_gc_interval=settings.MEMORY_GC_INTERVAL,
+        ai_agent_enable=settings.AI_AGENT_ENABLE,
+        ai_agent_job_interval=settings.AI_AGENT_JOB_INTERVAL,
+        usage_statistic_share=settings.USAGE_STATISTIC_SHARE,
+        site_link=settings.MP_DOMAIN("#/site"),
+    )
+
+
+def _build_chain_runtime_config() -> ChainRuntimeConfig:
+    """构建 Chain 在本次实例生命周期内使用的部署配置快照。"""
+    return ChainRuntimeConfig(
+        media_extensions=tuple(
+            settings.RMT_MEDIAEXT
+            + settings.DOWNLOAD_TMPEXT
+            + settings.RMT_SUBEXT
+            + settings.RMT_AUDIOEXT
+        ),
+        superuser=settings.SUPERUSER,
+        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
+        auxiliary_auth_enable=settings.AUXILIARY_AUTH_ENABLE,
+        global_image_cache=settings.GLOBAL_IMAGE_CACHE,
+        auto_download_user=settings.AUTO_DOWNLOAD_USER,
+        resource_url=settings.MP_DOMAIN("#/resource"),
+        user_agent=settings.USER_AGENT,
+        proxy=settings.PROXY,
+        proxy_server=settings.PROXY_SERVER,
+        proxy_host=settings.PROXY_HOST,
+        cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
+        no_cache_site_key=settings.NO_CACHE_SITE_KEY,
+        refresh_batch_size=settings.CONF.refresh,
+        torrent_cache_size=settings.CONF.torrents,
+        site_url=settings.MP_DOMAIN("#/site"),
+    )
 
 
 def configure_runtime_data_providers() -> None:
@@ -160,6 +318,45 @@ def configure_runtime_data_providers() -> None:
             workflow_cache_clearer=(
                 MoviePilotServerHelper._clear_workflow_share_cache
             ),
+        ),
+    )
+
+
+def _build_outbox_dispatcher() -> OutboxDispatcher:
+    """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
+    session = SessionFactory()
+    return OutboxDispatcher(
+        repository=SqlAlchemyOutboxRepository(session),
+        handlers={
+            "subscribe.added": lambda message: EventManager().send_event(
+                EventType.SubscribeAdded,
+                message.payload,
+            ),
+            "subscribe.modified": lambda message: EventManager().send_event(
+                EventType.SubscribeModified,
+                message.payload,
+            ),
+            "subscribe.deleted": lambda message: EventManager().send_event(
+                EventType.SubscribeDeleted,
+                message.payload,
+            ),
+            "download.added": lambda message: EventManager().send_event(
+                EventType.DownloadAdded,
+                restore_download_added(message.payload),
+            ),
+            "transfer.completed": lambda message: EventManager().send_event(
+                EventType.TransferComplete,
+                restore_transfer_result(message.payload),
+            ),
+            "transfer.failed": lambda message: EventManager().send_event(
+                EventType.TransferFailed,
+                restore_transfer_result(message.payload),
+            ),
+        },
+        close=session.close,
+        failure_observer=lambda dead: record_metric(
+            "scheduler.job.dead_letter" if dead else "scheduler.job.retry",
+            owner="outbox",
         ),
     )
 
@@ -376,19 +573,158 @@ async def stop_modules():
     await run_step("临时文件", clear_temp)
 
 
-async def init_modules():
+async def init_modules() -> HostRuntime:
     """
-    启动模块
+    启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
     # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于模块加载完成注入。
     configure_host_ports()
     # 入口层经应用端口取用模块目录与插件目录，不直接构造运行时单例。
     configure_module_runtime(lambda: ModuleManager())
     configure_plugin_runtime(lambda: PluginManager())
+    # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
+    transaction_runner = TransactionalWriteRunner(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    configure_transaction_runners(
+        sync=transaction_runner.sync,
+        async_=transaction_runner.async_,
+    )
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
+    api_data = ApiDataPorts(
+        sync_session=get_db,
+        async_session=get_async_db,
+        repositories={
+            "download_history": DownloadHistoryOper,
+            "media_server": MediaServerOper,
+            "message": MessageOper,
+            "passkey": PassKeyOper,
+            "site": SiteOper,
+            "subscribe": SubscribeOper,
+            "subscribe_history": SubscribeHistoryOper,
+            "transfer_history": TransferHistoryOper,
+            "user": UserOper,
+            "workflow": WorkflowOper,
+        },
+        standalone={
+            "passkey": PassKeyOper,
+            "system_config": SystemConfigOper,
+            "user": UserOper,
+        },
+        unit_of_work={
+            "async": SqlAlchemyAsyncUnitOfWork,
+            "sync": SqlAlchemyUnitOfWork,
+        },
+    )
+    runtime_configuration = RuntimeConfiguration(
+        api=_build_api_runtime_config,
+        scheduler=_build_scheduler_runtime_config,
+        chain=_build_chain_runtime_config,
+    )
+    host_runtime = HostRuntime(
+        agent_chat=AgentChatRuntime(
+            async_session=get_async_db,
+            repository=AgentChatOper,
+            transaction=SqlAlchemyAsyncUnitOfWork,
+        ),
+        persistence=PersistenceRuntime(
+            sync_session=get_db,
+            async_session=get_async_db,
+            sync_transaction=SqlAlchemyUnitOfWork,
+            async_transaction=SqlAlchemyAsyncUnitOfWork,
+        ),
+        authentication=AuthenticationRuntime(
+            user_repository=UserOper,
+            standalone_user=UserOper,
+            system_config=SystemConfigOper,
+            passkey=PassKeyOper,
+        ),
+        messaging=MessagingRuntime(repository=MessageOper),
+        history=HistoryRuntime(
+            download_repository=DownloadHistoryOper,
+            transfer_repository=TransferHistoryOper,
+            media_server_repository=MediaServerOper,
+        ),
+        site=SiteRuntime(repository=SiteOper),
+        subscription=SubscriptionRuntime(
+            async_session=get_async_db,
+            repository=SubscribeOper,
+            history_repository=SubscribeHistoryOper,
+            transaction=SqlAlchemyAsyncUnitOfWork,
+            outbox=SqlAlchemyAsyncOutboxStager,
+        ),
+        workflow=WorkflowRuntime(
+            repository=WorkflowOper,
+            system_config=SystemConfigOper,
+        ),
+        configuration=runtime_configuration,
+    )
+    configure_runtime_configuration(host_runtime.configuration)
+    # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
+    configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
-    # 数据库健康探测、清理与备份统一走同一个治理门面，由启动组合根装配后各处按端口取用。
+    workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
+    configure_workflow_legacy_writer(workflow_execution)
+    configure_chain_data_ports(
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        workflow=lambda: WorkflowOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        transfer_pending=lambda: TransferPendingOper(),
+        media_server=lambda: MediaServerOper(),
+        download_failure=lambda: TransactionalDownloadFailureRepository(
+            SessionFactory
+        ),
+        user=lambda: UserOper(),
+    )
+    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_outbox_dispatcher(_build_outbox_dispatcher)
+    configure_transfer_retry_config(
+        lambda: TransferRetryConfig(
+            max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
+        )
+    )
     configure_database_governance(build_database_governance())
+    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
+    configure_user_lookups(
+        by_id=lambda user_id: UserOper().get_by_id(user_id),
+        by_name=lambda username: UserOper().get_by_name(username),
+        by_channel=lambda **bindings: UserOper().get_name(**bindings),
+    )
+    configure_auth_service(
+        AuthService(
+            users=UserOper(),
+            config=SystemConfigOper(),
+            passkeys=PassKeyOper(),
+        )
+    )
+    configure_passkey_service(PasskeyService(repository=PassKeyOper()))
+    configure_user_configuration(UserConfigurationService(repository=UserConfigOper()))
+    configure_transfer_history_provider(lambda: TransferHistoryOper())
+    configure_site_query_service(SiteQueryService(repository=SiteOper()))
+    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
+    configure_agent_data_ports(
+        agent_chat=lambda: AgentChatOper(),
+        agent_task=lambda: AgentTaskOper(),
+        user=lambda: UserOper(),
+        site=lambda: SiteOper(),
+        subscribe=lambda: SubscribeOper(),
+        subscribe_history=lambda: SubscribeHistoryOper(),
+        transfer_history=lambda: TransferHistoryOper(),
+        download_history=lambda: DownloadHistoryOper(),
+        workflow=lambda: WorkflowOper(),
+        plugin_data=lambda: PluginDataOper(),
+    )
+    configure_subscribe_writer(
+        lambda: TransactionalSubscribeWriter(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    )
+    configure_transactional_subscription_scopes()
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
@@ -432,3 +768,4 @@ async def init_modules():
     start_frontend()
     # 检查认证状态
     check_auth()
+    return host_runtime

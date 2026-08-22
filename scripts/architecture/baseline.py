@@ -19,6 +19,8 @@ APP_ROOT = PROJECT_ROOT / "app"
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 DEPENDENCY_BASELINE_PATH = BASELINE_ROOT / "dependency-baseline.json"
 RUNTIME_BASELINE_PATH = BASELINE_ROOT / "runtime-contract-baseline.json"
+TRANSACTION_BASELINE_PATH = BASELINE_ROOT / "transaction-debt-baseline.json"
+CONFIGURATION_BASELINE_PATH = BASELINE_ROOT / "configuration-debt-baseline.json"
 PLUGIN_BASELINE_PATH = BASELINE_ROOT / "official-plugin-baseline.json"
 PLUGIN_HOOKS = (
     "get_actions",
@@ -36,6 +38,31 @@ PLUGIN_HOOKS = (
     "get_state",
     "init_plugin",
     "stop_service",
+)
+MODEL_TRANSACTION_DECORATORS = {
+    "async_db_query",
+    "async_db_update",
+    "db_query",
+    "db_update",
+}
+SESSION_FACTORY_NAMES = {
+    "AsyncSession",
+    "AsyncSessionFactory",
+    "ScopedSession",
+    "Session",
+    "SessionFactory",
+    "async_session_scope",
+    "get_async_db",
+    "get_async_session_factory",
+    "get_db",
+    "get_scoped_session",
+    "get_session_factory",
+}
+
+CONFIGURATION_EXCLUDED_ROOTS = (
+    APP_ROOT / "plugins",
+    APP_ROOT / "sdk",
+    APP_ROOT / "runtime" / "compat",
 )
 
 
@@ -56,6 +83,58 @@ def discover_modules() -> dict[str, Path]:
 def parse_source(path: Path) -> ast.Module:
     """以仓库统一编码解析 Python 源码。"""
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+
+
+def collect_configuration_debt_baseline() -> dict[str, Any]:
+    """收集宿主 canonical 代码直接读取 settings 和构造数据库配置适配器的债务。"""
+    settings_files: list[str] = []
+    oper_calls: list[dict[str, Any]] = []
+    for path in sorted(APP_ROOT.rglob("*.py")):
+        if any(path.is_relative_to(root) for root in CONFIGURATION_EXCLUDED_ROOTS):
+            continue
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        tree = parse_source(path)
+        direct_oper_names: set[str] = set()
+        imports_settings = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module == "app.runtime.config" and any(
+                alias.name == "settings" for alias in node.names
+            ):
+                imports_settings = True
+            if node.module == "app.db.oper.systemconfig":
+                direct_oper_names.update(
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "SystemConfigOper"
+                )
+        if imports_settings:
+            settings_files.append(relative)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id in direct_oper_names:
+                oper_calls.append({"file": relative, "name": node.func.id})
+    return {
+        "schema_version": 1,
+        "scope": {
+            "root": "app",
+            "excluded": [
+                "app/plugins",
+                "app/sdk",
+                "app/runtime/compat",
+            ],
+        },
+        "settings_imports": {
+            "count": len(settings_files),
+            "files": settings_files,
+        },
+        "system_config_oper_constructions": {
+            "count": len(oper_calls),
+            "calls": oper_calls,
+        },
+    }
 
 
 def iter_import_candidates(
@@ -250,8 +329,142 @@ def collect_dependency_baseline() -> dict[str, Any]:
     }
 
 
-def collect_run_module_contracts() -> dict[str, Any]:
-    """收集字符串模块调度方法及其同步、异步调用位置。"""
+def _expression_name(node: ast.AST) -> str:
+    """返回调用或装饰器表达式的点分名称，无法静态解析时返回空串。"""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _expression_name(node.value)
+        return ".".join(part for part in (prefix, node.attr) if part)
+    if isinstance(node, ast.Call):
+        return _expression_name(node.func)
+    return ""
+
+
+def _iter_owned_functions(tree: ast.Module) -> list[tuple[str, ast.AST]]:
+    """收集模块函数与类方法的稳定限定名，不记录易漂移源码行号。"""
+    methods: list[tuple[str, ast.AST]] = []
+
+    def visit_class(node: ast.ClassDef, parents: tuple[str, ...]) -> None:
+        """递归访问嵌套类，并收集直接定义的方法。"""
+        class_path = (*parents, node.name)
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                methods.append((".".join((*class_path, child.name)), child))
+            elif isinstance(child, ast.ClassDef):
+                visit_class(child, class_path)
+
+    for statement in tree.body:
+        if isinstance(statement, ast.ClassDef):
+            visit_class(statement, ())
+        elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            methods.append((statement.name, statement))
+    return methods
+
+
+def _collect_method_calls(
+    root: Path,
+    *,
+    operations: set[str],
+) -> list[dict[str, str]]:
+    """按文件、方法和操作收集指定调用，作为只降不增的事务债务清单。"""
+    calls: list[dict[str, str]] = []
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        for method, node in _iter_owned_functions(parse_source(path)):
+            for call in ast.walk(node):
+                if not isinstance(call, ast.Call):
+                    continue
+                expression = _expression_name(call.func)
+                operation = expression.rsplit(".", 1)[-1]
+                if operation in operations:
+                    calls.append(
+                        {
+                            "file": relative,
+                            "method": method,
+                            "operation": operation,
+                        }
+                    )
+    return sorted(
+        calls,
+        key=lambda item: (item["file"], item["method"], item["operation"]),
+    )
+
+
+def collect_transaction_debt_baseline() -> dict[str, Any]:
+    """记录 Model 自动事务和 Oper 会话所有权债务，供 CI 执行单向 ratchet。"""
+    model_root = APP_ROOT / "db" / "models"
+    oper_root = APP_ROOT / "db" / "oper"
+    decorated_methods: list[dict[str, str]] = []
+    for path in sorted(model_root.rglob("*.py")):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        for method, node in _iter_owned_functions(parse_source(path)):
+            for decorator in node.decorator_list:
+                decorator_name = _expression_name(decorator).rsplit(".", 1)[-1]
+                if decorator_name in MODEL_TRANSACTION_DECORATORS:
+                    decorated_methods.append(
+                        {
+                            "decorator": decorator_name,
+                            "file": relative,
+                            "method": method,
+                        }
+                    )
+    decorated_methods.sort(
+        key=lambda item: (item["file"], item["method"], item["decorator"])
+    )
+    model_transaction_calls = _collect_method_calls(
+        model_root,
+        operations={"commit", "rollback"},
+    )
+    model_session_factories = _collect_method_calls(
+        model_root,
+        operations=SESSION_FACTORY_NAMES,
+    )
+    oper_transaction_calls = _collect_method_calls(
+        oper_root,
+        operations={"commit", "rollback"},
+    )
+    oper_session_factories = _collect_method_calls(
+        oper_root,
+        operations=SESSION_FACTORY_NAMES,
+    )
+    decorator_counts = {
+        decorator: sum(
+            item["decorator"] == decorator
+            for item in decorated_methods
+        )
+        for decorator in sorted(MODEL_TRANSACTION_DECORATORS)
+    }
+    return {
+        "schema_version": 1,
+        "scope": "app/db/models and app/db/oper transaction ownership debt",
+        "model_decorators": {
+            "count": len(decorated_methods),
+            "by_kind": decorator_counts,
+            "methods": decorated_methods,
+        },
+        "model_transaction_calls": {
+            "count": len(model_transaction_calls),
+            "calls": model_transaction_calls,
+        },
+        "model_session_factories": {
+            "count": len(model_session_factories),
+            "calls": model_session_factories,
+        },
+        "oper_transaction_calls": {
+            "count": len(oper_transaction_calls),
+            "calls": oper_transaction_calls,
+        },
+        "oper_session_factories": {
+            "count": len(oper_session_factories),
+            "calls": oper_session_factories,
+        },
+    }
+def _collect_run_module_locations() -> tuple[
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+]:
+    """扫描模块调度调用及其当前源码位置。"""
     calls: dict[str, list[dict[str, Any]]] = defaultdict(list)
     dynamic_calls: list[dict[str, Any]] = []
     for module_name, path in discover_modules().items():
@@ -274,18 +487,53 @@ def collect_run_module_contracts() -> dict[str, Any]:
                 calls[node.args[0].value].append(location)
             else:
                 dynamic_calls.append(location)
+    return calls, dynamic_calls
+
+
+def _aggregate_locations(
+    locations: list[dict[str, Any]],
+    fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """按稳定字段聚合调用位置，排除行号但保留调用次数。"""
+    counts: dict[tuple[Any, ...], int] = defaultdict(int)
+    for location in locations:
+        counts[tuple(location[field] for field in fields)] += 1
+    return [
+        {
+            **dict(zip(fields, values)),
+            "count": count,
+        }
+        for values, count in sorted(counts.items())
+    ]
+
+
+def collect_run_module_contracts() -> dict[str, Any]:
+    """收集不受源码行号变化影响的模块调度语义契约。"""
+    calls, dynamic_calls = _collect_run_module_locations()
     stable_calls = {
-        method: sorted(
-            locations,
-            key=lambda item: (item["caller"], item["line"], item["mode"]),
-        )
+        method: _aggregate_locations(locations, ("caller", "mode"))
         for method, locations in sorted(calls.items())
     }
     return {
         "method_count": len(stable_calls),
-        "call_count": sum(len(locations) for locations in stable_calls.values()),
+        "call_count": sum(len(locations) for locations in calls.values()),
         "dynamic_call_count": len(dynamic_calls),
         "methods": stable_calls,
+        "dynamic_calls": _aggregate_locations(dynamic_calls, ("caller", "mode")),
+    }
+
+
+def collect_run_module_diagnostics() -> dict[str, Any]:
+    """收集模块调度调用的当前源码位置，仅用于人工诊断。"""
+    calls, dynamic_calls = _collect_run_module_locations()
+    return {
+        "methods": {
+            method: sorted(
+                locations,
+                key=lambda item: (item["caller"], item["line"], item["mode"]),
+            )
+            for method, locations in sorted(calls.items())
+        },
         "dynamic_calls": sorted(
             dynamic_calls,
             key=lambda item: (item["caller"], item["line"], item["mode"]),
@@ -330,8 +578,14 @@ def _event_enum_members(enum_name: str) -> tuple[str, ...]:
     )
 
 
-def collect_event_contracts() -> dict[str, Any]:
-    """收集宿主事件枚举的生产者、消费者和动态调用位置。"""
+def _collect_event_locations() -> tuple[
+    list[str],
+    dict[str, list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    """扫描事件枚举及其生产、消费位置，供语义和诊断视图复用。"""
     event_members = _event_enum_members("EventType")
     chain_event_members = _event_enum_members("ChainEventType")
 
@@ -390,28 +644,70 @@ def collect_event_contracts() -> dict[str, Any]:
         *(f"EventType.{member}" for member in event_members),
         *(f"ChainEventType.{member}" for member in chain_event_members),
     ]
+    return (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    )
+
+
+def collect_event_contracts() -> dict[str, Any]:
+    """收集不受源码行号变化影响的宿主事件语义契约。"""
+    (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    ) = _collect_event_locations()
     contracts = {
         name: {
-            "producers": sorted(
+            "producers": _aggregate_locations(
                 producers.get(name, []),
-                key=lambda item: (item["caller"], item["line"]),
+                ("caller",),
             ),
-            "consumers": sorted(
+            "consumers": _aggregate_locations(
                 consumers.get(name, []),
-                key=lambda item: (item["caller"], item["line"]),
+                ("caller",),
             ),
         }
         for name in sorted(enum_names)
     }
     return {
         "event_count": len(contracts),
-        "producer_count": sum(
-            len(item["producers"]) for item in contracts.values()
-        ),
-        "consumer_count": sum(
-            len(item["consumers"]) for item in contracts.values()
-        ),
+        "producer_count": sum(len(items) for items in producers.values()),
+        "consumer_count": sum(len(items) for items in consumers.values()),
         "events": contracts,
+        "dynamic_producers": _aggregate_locations(dynamic_producers, ("caller",)),
+        "dynamic_consumers": _aggregate_locations(dynamic_consumers, ("caller",)),
+    }
+
+
+def collect_event_diagnostics() -> dict[str, Any]:
+    """收集事件生产与消费的当前源码位置，仅用于人工诊断。"""
+    (
+        enum_names,
+        producers,
+        consumers,
+        dynamic_producers,
+        dynamic_consumers,
+    ) = _collect_event_locations()
+    return {
+        "events": {
+            name: {
+                "producers": sorted(
+                    producers.get(name, []),
+                    key=lambda item: (item["caller"], item["line"]),
+                ),
+                "consumers": sorted(
+                    consumers.get(name, []),
+                    key=lambda item: (item["caller"], item["line"]),
+                ),
+            }
+            for name in sorted(enum_names)
+        },
         "dynamic_producers": sorted(
             dynamic_producers,
             key=lambda item: (item["caller"], item["line"]),
@@ -503,11 +799,64 @@ def collect_compat_manifest() -> dict[str, Any]:
 def collect_runtime_baseline() -> dict[str, Any]:
     """生成模块调度、SDK 和兼容层公开契约基线。"""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_module": collect_run_module_contracts(),
+        "module_method_specs": collect_module_method_specs(),
         "events": collect_event_contracts(),
+        "event_specs": collect_event_specs(),
         "sdk_exports": collect_sdk_exports(),
         "compat_manifest": collect_compat_manifest(),
+    }
+
+
+def collect_module_method_specs() -> dict[str, Any]:
+    """加载无运行资源副作用的 Module Contract V2 清单。"""
+    path = APP_ROOT / "runtime" / "extensions" / "contract" / "module_method.py"
+    spec = importlib.util.spec_from_file_location("architecture_module_contracts", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载模块契约清单：{path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        contracts = module.list_explicit_module_contracts()
+        return json_compatible(contracts)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+
+def collect_event_specs() -> dict[str, Any]:
+    """收集全部 enum 事件的稳定 payload、可见性与可靠性登记。"""
+    project_root = str(PROJECT_ROOT)
+    inserted = project_root not in sys.path
+    if inserted:
+        sys.path.insert(0, project_root)
+    try:
+        from app.runtime.event.contracts import EVENT_CONTRACTS
+    finally:
+        if inserted:
+            sys.path.remove(project_root)
+
+    return {
+        contract.event_name: {
+            "payload_contract": contract.payload_contract,
+            "mode": contract.mode,
+            "visibility": contract.visibility.value,
+            "delivery": contract.delivery.value,
+            "error_behavior": contract.error_behavior.value,
+            "ordering": contract.ordering,
+            "sensitive_fields": list(contract.sensitive_fields),
+            "legacy_reason": contract.legacy_reason,
+        }
+        for contract in EVENT_CONTRACTS.values()
+    }
+
+
+def collect_runtime_diagnostics() -> dict[str, Any]:
+    """生成带当前源码行号的运行契约诊断视图，不写入语义 fixture。"""
+    return {
+        "run_module": collect_run_module_diagnostics(),
+        "events": collect_event_diagnostics(),
     }
 
 
@@ -633,11 +982,13 @@ def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
             if hook in defined_names:
                 hook_files[hook].add(relative)
     return {
-        "schema_version": 2,
-        "source": {
+        "schema_version": 3,
+        "scope": {
             "repository": "MoviePilot-Plugins",
-            "head": git_head(plugin_repo),
             "roots": [root.name for root in roots],
+        },
+        "provenance": {
+            "head": git_head(plugin_repo),
             "python_file_count": len(paths),
             "source_sha256": digest.hexdigest(),
         },
@@ -668,53 +1019,402 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     )
 
 
-def check_json(path: Path, actual: dict[str, Any]) -> bool:
-    """比较当前扫描结果和已提交基线并输出可执行提示。"""
+def _display_path(path: Path) -> Path:
+    """优先返回仓库相对路径，便于 CLI 输出稳定可读。"""
+    try:
+        return path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return path
+
+
+def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
+    """把包含源码行号的 v1 运行契约转换为稳定语义结构。"""
+    if value.get("schema_version") != 1:
+        return value
+    run_module = value["run_module"]
+    events = value["events"]
+    return {
+        "schema_version": 2,
+        "run_module": {
+            **{
+                key: run_module[key]
+                for key in ("method_count", "call_count", "dynamic_call_count")
+            },
+            "methods": {
+                method: _aggregate_locations(locations, ("caller", "mode"))
+                for method, locations in run_module["methods"].items()
+            },
+            "dynamic_calls": _aggregate_locations(
+                run_module["dynamic_calls"],
+                ("caller", "mode"),
+            ),
+        },
+        "events": {
+            **{
+                key: events[key]
+                for key in ("event_count", "producer_count", "consumer_count")
+            },
+            "events": {
+                event_name: {
+                    "producers": _aggregate_locations(
+                        contract["producers"],
+                        ("caller",),
+                    ),
+                    "consumers": _aggregate_locations(
+                        contract["consumers"],
+                        ("caller",),
+                    ),
+                }
+                for event_name, contract in events["events"].items()
+            },
+            "dynamic_producers": _aggregate_locations(
+                events["dynamic_producers"],
+                ("caller",),
+            ),
+            "dynamic_consumers": _aggregate_locations(
+                events["dynamic_consumers"],
+                ("caller",),
+            ),
+        },
+        "sdk_exports": value["sdk_exports"],
+        "compat_manifest": value["compat_manifest"],
+    }
+
+
+def _migrate_plugin_baseline(value: dict[str, Any]) -> dict[str, Any]:
+    """把来源信息混排的 v2 插件基线转换为 scope/provenance 结构。"""
+    if value.get("schema_version") != 2:
+        return value
+    source = value["source"]
+    return {
+        "schema_version": 3,
+        "scope": {
+            "repository": source["repository"],
+            "roots": source["roots"],
+        },
+        "provenance": {
+            "head": source["head"],
+            "python_file_count": source["python_file_count"],
+            "source_sha256": source["source_sha256"],
+        },
+        "imports": value["imports"],
+        "hooks": value["hooks"],
+        "api_routes": value["api_routes"],
+    }
+
+
+def semantic_baseline(path: Path, value: dict[str, Any]) -> dict[str, Any]:
+    """返回参与门禁比较的稳定语义视图，并兼容读取旧 fixture。"""
+    if path.name == RUNTIME_BASELINE_PATH.name:
+        return _migrate_runtime_baseline(value)
+    if path.name == PLUGIN_BASELINE_PATH.name:
+        migrated = _migrate_plugin_baseline(value)
+        return {
+            key: item
+            for key, item in migrated.items()
+            if key != "provenance"
+        }
+    return value
+
+
+def transaction_ratchet_matches(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    """事务债务只允许删除既有条目，不允许新增或提高任一分类计数。"""
+    if expected.get("schema_version") != actual.get("schema_version"):
+        return False
+    if expected.get("scope") != actual.get("scope"):
+        return False
+    sections = (
+        ("model_decorators", "methods"),
+        ("model_transaction_calls", "calls"),
+        ("model_session_factories", "calls"),
+        ("oper_transaction_calls", "calls"),
+        ("oper_session_factories", "calls"),
+    )
+    for section, entries_key in sections:
+        expected_section = expected.get(section, {})
+        actual_section = actual.get(section, {})
+        if actual_section.get("count", 0) > expected_section.get("count", 0):
+            return False
+        expected_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in expected_section.get(entries_key, [])
+        }
+        actual_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in actual_section.get(entries_key, [])
+        }
+        if not actual_entries.issubset(expected_entries):
+            return False
+    expected_kinds = expected.get("model_decorators", {}).get("by_kind", {})
+    actual_kinds = actual.get("model_decorators", {}).get("by_kind", {})
+    return all(
+        count <= expected_kinds.get(decorator, 0)
+        for decorator, count in actual_kinds.items()
+    )
+
+
+def configuration_ratchet_matches(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    """配置债务只允许删除既有文件或构造点，不允许新增直接依赖。"""
+    if expected.get("schema_version") != actual.get("schema_version"):
+        return False
+    if expected.get("scope") != actual.get("scope"):
+        return False
+    sections = (
+        ("settings_imports", "files"),
+        ("system_config_oper_constructions", "calls"),
+    )
+    for section, entries_key in sections:
+        expected_section = expected.get(section, {})
+        actual_section = actual.get(section, {})
+        if actual_section.get("count", 0) > expected_section.get("count", 0):
+            return False
+        expected_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in expected_section.get(entries_key, [])
+        }
+        actual_entries = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in actual_section.get(entries_key, [])
+        }
+        if not actual_entries.issubset(expected_entries):
+            return False
+    return True
+
+
+def _compare_semantic_values(
+    expected: Any,
+    actual: Any,
+    path: str,
+    report: dict[str, list[dict[str, Any]]],
+) -> None:
+    """递归比较语义 JSON，把增删改记录为可审查条目。"""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        for key in sorted(expected_keys - actual_keys):
+            report["removed"].append(
+                {"path": f"{path}.{key}", "value": expected[key]}
+            )
+        for key in sorted(actual_keys - expected_keys):
+            report["added"].append(
+                {"path": f"{path}.{key}", "value": actual[key]}
+            )
+        for key in sorted(expected_keys & actual_keys):
+            _compare_semantic_values(
+                expected[key],
+                actual[key],
+                f"{path}.{key}",
+                report,
+            )
+        return
+    if isinstance(expected, list) and isinstance(actual, list):
+        expected_items = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+            for item in expected
+        }
+        actual_items = {
+            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+            for item in actual
+        }
+        for key in sorted(expected_items.keys() - actual_items.keys()):
+            report["removed"].append({"path": path, "value": expected_items[key]})
+        for key in sorted(actual_items.keys() - expected_items.keys()):
+            report["added"].append({"path": path, "value": actual_items[key]})
+        return
+    if expected != actual:
+        report["changed"].append(
+            {"path": path, "expected": expected, "actual": actual}
+        )
+
+
+def build_comparison_report(path: Path, actual: dict[str, Any]) -> dict[str, Any]:
+    """生成包含语义增删改和 provenance 的机器可读审查报告。"""
     expected = json.loads(path.read_text(encoding="utf-8"))
-    if expected == actual:
+    expected_semantic = semantic_baseline(path, expected)
+    actual_semantic = semantic_baseline(path, actual)
+    differences: dict[str, list[dict[str, Any]]] = {
+        "added": [],
+        "removed": [],
+        "changed": [],
+    }
+    _compare_semantic_values(expected_semantic, actual_semantic, "$", differences)
+    semantic_match = expected_semantic == actual_semantic
+    if path.name == TRANSACTION_BASELINE_PATH.name:
+        semantic_match = transaction_ratchet_matches(expected, actual)
+    elif path.name == CONFIGURATION_BASELINE_PATH.name:
+        semantic_match = configuration_ratchet_matches(expected, actual)
+    return {
+        "baseline": str(_display_path(path)),
+        "semantic_match": semantic_match,
+        "expected_provenance": expected.get("provenance"),
+        "actual_provenance": actual.get("provenance"),
+        **differences,
+    }
+
+
+def check_json(
+    path: Path,
+    actual: dict[str, Any],
+    *,
+    write_hint: str,
+) -> bool:
+    """比较当前扫描结果和已提交基线并输出限定范围的更新提示。"""
+    expected = json.loads(path.read_text(encoding="utf-8"))
+    if path.name == TRANSACTION_BASELINE_PATH.name:
+        if transaction_ratchet_matches(expected, actual):
+            if expected != actual:
+                print(
+                    "事务债务已下降；门禁继续通过，可在本任务提交中显式运行 "
+                    "scripts/architecture/baseline.py --write-host 固化新低水位",
+                    file=sys.stderr,
+                )
+            return True
+        print(
+            f"事务债务出现新增：{_display_path(path)}；"
+            "Model 自动事务、直接 commit/rollback 或 Oper 自建 Session 不得增长",
+            file=sys.stderr,
+        )
+        return False
+    if path.name == CONFIGURATION_BASELINE_PATH.name:
+        if configuration_ratchet_matches(expected, actual):
+            if expected != actual:
+                print(
+                    "配置债务已下降；门禁继续通过，可在本任务提交中显式运行 "
+                    "scripts/architecture/baseline.py --write-host 固化新低水位",
+                    file=sys.stderr,
+                )
+            return True
+        print(
+            f"配置债务出现新增：{_display_path(path)}；"
+            "宿主直接 settings 导入或 SystemConfigOper 构造不得增长",
+            file=sys.stderr,
+        )
+        return False
+    expected_semantic = semantic_baseline(path, expected)
+    actual_semantic = semantic_baseline(path, actual)
+    if expected_semantic == actual_semantic:
+        if expected != actual:
+            print(
+                f"基线语义未变化，但 schema/provenance 已变化：{_display_path(path)}",
+                file=sys.stderr,
+            )
         return True
     print(
-        f"架构基线已变化：{path.relative_to(PROJECT_ROOT)}；"
-        "确认变更符合边界后运行 scripts/architecture/baseline.py --write",
+        f"架构基线已变化：{_display_path(path)}；"
+        f"确认变更符合边界后运行 scripts/architecture/baseline.py {write_hint}",
         file=sys.stderr,
     )
     return False
 
 
-def parse_args() -> argparse.Namespace:
-    """解析基线写入、校验和外部插件仓参数。"""
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """解析限定宿主或插件范围的基线操作参数。"""
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
-    action.add_argument("--write", action="store_true", help="写入当前架构基线")
-    action.add_argument("--check", action="store_true", help="校验当前架构基线")
+    action.add_argument("--check-host", action="store_true", help="校验宿主架构基线")
+    action.add_argument("--check-plugins", action="store_true", help="校验官方插件基线")
+    action.add_argument("--write-host", action="store_true", help="写入宿主架构基线")
+    action.add_argument("--write-plugins", action="store_true", help="写入官方插件基线")
+    action.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
+    action.add_argument("--write", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--scope",
+        choices=("host", "plugins"),
+        help="旧 --check/--write 的必填兼容范围",
+    )
     parser.add_argument(
         "--plugin-repo",
         type=Path,
-        help="可选的独立 MoviePilot-Plugins 仓路径",
+        help="官方插件操作所需的独立 MoviePilot-Plugins 仓路径",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="随宿主检查打印当前运行契约源码位置",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="将检查结果写为独立 JSON 报告，不修改任何 fixture",
+    )
+    args = parser.parse_args(argv)
+    if args.check or args.write:
+        if not args.scope:
+            parser.error("旧 --check/--write 已弃用，必须同时指定 --scope host|plugins")
+        replacement = f"--{'check' if args.check else 'write'}-{args.scope}"
+        print(
+            f"警告：--{'check' if args.check else 'write'} --scope {args.scope} "
+            f"已弃用，请改用 {replacement}",
+            file=sys.stderr,
+        )
+        setattr(args, f"{'check' if args.check else 'write'}_{args.scope}", True)
+    elif args.scope:
+        parser.error("--scope 只能与旧 --check/--write 一起使用")
+    plugin_action = args.check_plugins or args.write_plugins
+    if plugin_action and not args.plugin_repo:
+        parser.error("插件基线操作必须指定 --plugin-repo")
+    if not plugin_action and args.plugin_repo:
+        parser.error("--plugin-repo 只能用于插件基线操作")
+    if args.diagnostics and not args.check_host:
+        parser.error("--diagnostics 只能与 --check-host 一起使用")
+    if args.report and not (args.check_host or args.check_plugins):
+        parser.error("--report 只能与检查操作一起使用")
+    return args
 
 
-def main() -> int:
-    """执行本仓基线以及可选官方插件基线的写入或校验。"""
-    args = parse_args()
-    baselines = [
-        (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
-        (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
-    ]
-    if args.plugin_repo:
+def main(argv: Optional[list[str]] = None) -> int:
+    """只对显式选择的宿主或插件基线执行检查或写入。"""
+    args = parse_args(argv)
+    host_action = args.check_host or args.write_host
+    if host_action:
+        baselines = [
+            (DEPENDENCY_BASELINE_PATH, collect_dependency_baseline()),
+            (RUNTIME_BASELINE_PATH, collect_runtime_baseline()),
+            (TRANSACTION_BASELINE_PATH, collect_transaction_debt_baseline()),
+            (CONFIGURATION_BASELINE_PATH, collect_configuration_debt_baseline()),
+        ]
+        write_hint = "--write-host"
+    else:
         plugin_repo = args.plugin_repo.resolve()
         if not plugin_repo.is_dir():
             raise SystemExit(f"插件仓不存在：{plugin_repo}")
-        baselines.append(
+        baselines = [
             (PLUGIN_BASELINE_PATH, collect_official_plugin_baseline(plugin_repo))
+        ]
+        write_hint = f"--write-plugins --plugin-repo {plugin_repo}"
+    if args.write_host or args.write_plugins:
+        display_paths = ", ".join(
+            str(_display_path(path)) for path, _baseline in baselines
         )
-    if args.write:
+        print(f"即将写入：{display_paths}")
         for path, baseline in baselines:
             write_json(path, baseline)
-            print(f"已写入 {path.relative_to(PROJECT_ROOT)}")
+            print(f"已写入 {_display_path(path)}")
         return 0
-    checks = [check_json(path, baseline) for path, baseline in baselines]
+    checks = [
+        check_json(path, baseline, write_hint=write_hint)
+        for path, baseline in baselines
+    ]
+    if args.report:
+        report_path = args.report.resolve()
+        report_value = {
+            "schema_version": 1,
+            "checks": [
+                build_comparison_report(path, baseline)
+                for path, baseline in baselines
+            ],
+        }
+        print(f"即将写入报告：{_display_path(report_path)}")
+        write_json(report_path, report_value)
+        print(f"已写入报告：{_display_path(report_path)}")
+    if args.diagnostics:
+        print(json.dumps(collect_runtime_diagnostics(), ensure_ascii=False, indent=2))
     return 0 if all(checks) else 1
 
 

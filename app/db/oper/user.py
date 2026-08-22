@@ -11,6 +11,8 @@ runtime 兼容映射指向 SDK 薄门面；canonical 数据访问模块仍只依
 """
 from typing import List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.base import DbOper
 from app.db.models.user import User
 
@@ -49,27 +51,53 @@ class UserOper(DbOper):
 
     async def async_create(self, payload: dict) -> Optional[User]:
         """异步创建用户。"""
-        return await User(**payload).async_create(self._db)
+        user = User(**payload)
+
+        async def stage(session: AsyncSession) -> User:
+            """在当前异步事务中暂存用户并分配主键。"""
+            session.add(user)
+            await session.flush()
+            return user
+
+        return await self._execute_async_write(stage)
 
     async def async_update(self, user_id: int, payload: dict) -> Optional[User]:
         """异步更新用户。"""
         user = await self.async_get_by_id(user_id)
         if user:
-            await user.async_update(self._db, payload)
+            async def stage(session: AsyncSession) -> User:
+                """在当前事务中更新用户字段，必要时重新附加游离对象。"""
+                for key, value in payload.items():
+                    setattr(user, key, value)
+                return await session.merge(user)
+
+            await self._execute_async_write(stage)
         return user
 
-    async def async_delete(self, user_id: int) -> None:
+    async def async_delete(self, user_id: int) -> bool:
         """异步删除用户。"""
-        await User().async_delete_by_id(self._db, user_id)
+        return bool(await self._execute_async_write(
+            lambda session: User.async_delete_by_id(session, user_id)
+        ))
+
+    async def async_delete_by_name(self, name: str) -> bool:
+        """在独立异步事务中按用户名删除用户。"""
+        return bool(await self._execute_async_write(
+            lambda session: User().async_delete_by_name(session, name)
+        ))
 
     async def async_update_otp_by_name(
         self,
         name: str,
         otp: bool,
         secret: str,
-    ) -> None:
+    ) -> bool:
         """异步更新用户 OTP 状态。"""
-        await User.async_update_otp_by_name(self._db, name, otp, secret)
+        return bool(await self._execute_async_write(
+            lambda session: User.async_update_otp_by_name(
+                session, name, otp, secret
+            )
+        ))
 
     async def async_get_by_name(self, name: str) -> Optional[User]:
         """

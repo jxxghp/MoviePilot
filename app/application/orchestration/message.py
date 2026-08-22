@@ -3,6 +3,7 @@ import base64
 import mimetypes
 import re
 import uuid
+from concurrent.futures import CancelledError as FutureCancelledError
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1138,14 +1139,25 @@ class MessageChain(ChainBase):
                     else ""
                 ),
             )
+        pending_messages = status.get("pending_messages", 0)
+        queue_capacity = status.get("queue_capacity")
+        pending_text = (
+            f"{pending_messages} / {queue_capacity}"
+            if queue_capacity
+            else str(pending_messages)
+        )
         lines.extend(
             [
                 f"当前会话累计 tokens: 输入 {cls._format_token_count(status.get('total_input_tokens'))} / 输出 {cls._format_token_count(status.get('total_output_tokens'))} / 总计 {cls._format_token_count(status.get('total_tokens'))}",
                 f"模型调用次数: {status.get('model_call_count', 0)}",
-                f"排队消息数: {status.get('pending_messages', 0)}",
+                f"排队消息数: {pending_text}",
                 f"最后更新: {status.get('last_updated_at') or '暂无'}",
             ]
         )
+        if status.get("queue_rejections"):
+            lines.append(f"排队拒绝次数: {status['queue_rejections']}")
+        if status.get("shutdown_pending"):
+            lines.append("会话状态: 正在停止")
         return "\n".join(lines)
 
     def remote_session_status(
@@ -1346,11 +1358,47 @@ class MessageChain(ChainBase):
             }
             if has_audio_input:
                 process_kwargs["has_audio_input"] = True
-            # 在事件循环中处理
-            asyncio.run_coroutine_threadsafe(
+            # 在事件循环中处理，并消费跨线程 Future 的失败，避免队列满时静默丢消息。
+            submission_future = asyncio.run_coroutine_threadsafe(
                 manager.process_message(**process_kwargs),
                 global_vars.loop,
             )
+
+            def _report_agent_submission_failure(completed) -> None:
+                try:
+                    completed.result()
+                except BaseException as error:
+                    if isinstance(
+                            error,
+                            (asyncio.CancelledError, FutureCancelledError),
+                    ):
+                        return
+                    error_code = getattr(error, "code", None)
+                    if error_code == "agent_manager_queue_full":
+                        title = "智能助手当前排队已满，请稍后重试"
+                    elif error_code == "agent_manager_unavailable":
+                        title = "智能助手服务暂不可用，请稍后重试"
+                    else:
+                        title = "智能助手处理失败，请查看日志"
+                    logger.warning(f"Agent 消息提交失败: {error}")
+                    try:
+                        self.post_message(
+                            Message(
+                                channel=channel,
+                                source=source,
+                                userid=userid,
+                                username=username,
+                                title=title,
+                                original_message_id=original_message_id,
+                                original_chat_id=original_chat_id,
+                                save_history=False,
+                            )
+                        )
+                    except Exception as report_error:
+                        logger.error(f"发送 Agent 提交失败提示失败: {report_error}")
+
+            if submission_future is not None:
+                submission_future.add_done_callback(_report_agent_submission_failure)
             return True
 
         except Exception as e:

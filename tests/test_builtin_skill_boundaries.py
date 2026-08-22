@@ -24,7 +24,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
     expected_versions = {
         "database-operation": "4",
         "moviepilot-api": "13",
-        "moviepilot-cli": "7",
+        "moviepilot-cli": "8",
         "moviepilot-update": "3",
         "organize-files": "3",
         "transfer-failed-retry": "4",

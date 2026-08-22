@@ -31,20 +31,9 @@ class InvokePluginAction(BaseAction):
         super().__init__(action_id)
         self._success = False
 
-    @classmethod
-    @property
-    def name(cls) -> str: # noqa
-        return "调用插件"
-
-    @classmethod
-    @property
-    def description(cls) -> str: # noqa
-        return "调用插件提供的动作"
-
-    @classmethod
-    @property
-    def data(cls) -> dict: # noqa
-        return InvokePluginParams().model_dump()
+    name = "调用插件"
+    description = "调用插件提供的动作"
+    data = InvokePluginParams().model_dump()
 
     @property
     def success(self) -> bool:

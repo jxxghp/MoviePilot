@@ -8,7 +8,6 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from app import schemas
 from app.api.endpoints import anthropic, openai
-from app.runtime.config import settings
 
 _API_TOKEN = "test-agent-protocol-token"
 
@@ -73,10 +72,18 @@ def test_streaming_protocols_reject_config_disable_before_manager_lookup() -> No
             ),
         )
 
-    with patch.object(settings, "AI_AGENT_ENABLE", False), patch.object(
-        settings,
-        "API_TOKEN",
-        _API_TOKEN,
+    runtime_config = SimpleNamespace(
+        ai_agent_enable=False,
+        api_token=_API_TOKEN,
+    )
+    with patch.object(
+        openai,
+        "get_api_runtime_config_snapshot",
+        return_value=runtime_config,
+    ), patch.object(
+        anthropic,
+        "get_api_runtime_config_snapshot",
+        return_value=runtime_config,
     ), patch.object(
         openai,
         "get_running_agent_manager",
@@ -111,10 +118,13 @@ def test_openai_stream_rejects_shutdown_race_and_cleans_request_session() -> Non
         )
         return await _collect(response)
 
-    with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
-        settings,
-        "API_TOKEN",
-        _API_TOKEN,
+    with patch.object(
+        openai,
+        "get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(
+            ai_agent_enable=True,
+            api_token=_API_TOKEN,
+        ),
     ), patch.object(
         openai,
         "get_running_agent_manager",
@@ -145,10 +155,13 @@ def test_anthropic_stream_rejects_shutdown_race_and_cleans_request_session() -> 
         )
         return await _collect(response)
 
-    with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
-        settings,
-        "API_TOKEN",
-        _API_TOKEN,
+    with patch.object(
+        anthropic,
+        "get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(
+            ai_agent_enable=True,
+            api_token=_API_TOKEN,
+        ),
     ), patch.object(
         anthropic,
         "get_running_agent_manager",

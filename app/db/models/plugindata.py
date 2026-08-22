@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, db_update, async_db_query
+from app.db.decorators import db_query, async_db_query
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
@@ -86,11 +86,10 @@ class PluginData(Base):
         return result.scalar_one_or_none()
 
     @classmethod
-    @db_update
     def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str,
                                 instance_id: Optional[str] = None):
         """
-        删除某插件指定键的数据。
+        在调用方事务中暂存单个插件键删除。
 
         与查询方法的默认范围刻意不对称：本方法默认 ``instance_id=None``，即跨该插件
         全部实例删除该键；显式传入实例标识时才收窄到那一个实例。
@@ -106,10 +105,9 @@ class PluginData(Base):
         db.execute(statement)
 
     @classmethod
-    @db_update
     def del_plugin_data(cls, db: Session, plugin_id: str, instance_id: Optional[str] = None):
         """
-        删除某插件的全部数据。
+        在调用方事务中暂存插件全部数据删除。
 
         与查询方法的默认范围刻意不对称：本方法默认 ``instance_id=None``，即跨该插件
         全部实例整插件清空；显式传入实例标识时才只清那一个实例。

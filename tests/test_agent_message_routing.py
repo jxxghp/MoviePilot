@@ -1,7 +1,9 @@
 import asyncio
+from concurrent.futures import Future
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent import MoviePilotAgent
+from app.agent.orchestrator import AgentManagerQueueFullError
 from app.agent.tools.impl.ask_user_choice import (
     AskUserChoiceTool,
     UserChoiceOptionInput,
@@ -83,6 +85,37 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
 
     record_user_message.assert_not_called()
     manager.process_message.assert_called_once()
+
+
+def test_agent_queue_full_is_reported_to_the_originating_channel():
+    """消息队列满时应消费 Future 异常并向原渠道返回可重试提示。"""
+    chain = MessageChain()
+    manager = Mock(process_message=AsyncMock())
+    failed = Future()
+    failed.set_exception(AgentManagerQueueFullError("session-1", 8))
+
+    def submit(coro, _loop):
+        coro.close()
+        return failed
+
+    with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch(
+        "app.chain.message.asyncio.run_coroutine_threadsafe",
+        side_effect=submit,
+    ), patch.object(chain, "post_message") as post_message:
+        assert chain._handle_ai_message(
+            text="/ai 检查状态",
+            channel=NotificationChannel.Telegram,
+            source="telegram-test",
+            userid="10001",
+            username="tester",
+        ) is True
+
+    notification = post_message.call_args.args[0]
+    assert notification.title == "智能助手当前排队已满，请稍后重试"
+    assert notification.userid == "10001"
+    assert notification.save_history is False
 
 
 def test_message_chain_passes_stable_channel_admin_principal_to_agent():

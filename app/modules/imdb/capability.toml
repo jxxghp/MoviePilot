@@ -1,0 +1,15 @@
+schema_version = 1
+id = "ImdbModule"
+kind = "host_module"
+entrypoint = "app.modules.imdb:ImdbModule"
+depends_on = []
+
+[metadata]
+name = "IMDb"
+type = "mediarecognize"
+subtype = "IMDb"
+priority = 4
+
+[activation]
+policy = "bootstrap"
+watch = ["PROXY_HOST"]

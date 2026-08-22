@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, db_update, async_db_query, async_db_update
+from app.db.decorators import db_query, async_db_query
 from app.db.models.user_identity import UserIdentity
 
 
@@ -61,58 +61,52 @@ class User(Base):
         )
         return result.scalars().first()
 
-    @db_update
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)
         if user:
             UserIdentity.delete_by_user_id(db, user.id)
-            user.delete(db, user.id)
+            db.delete(user)
         return True
 
-    @async_db_update
     async def async_delete_by_name(self, db: AsyncSession, name: str):
         user = await self.async_get_by_name(db, name)
         if user:
             await UserIdentity.async_delete_by_user_id(db, user.id)
-            await user.async_delete(db, user.id)
+            await db.delete(user)
         return True
 
-    @db_update
     def delete_by_id(self, db: Session, user_id: int):
         user = self.get_by_id(db, user_id)
         if user:
             # 数据库层已声明 user_id 外键 ON DELETE CASCADE，此处显式级联删除是因为
             # SQLite 默认不启用外键约束强制，不能只依赖数据库自动级联
             UserIdentity.delete_by_user_id(db, user_id)
-            user.delete(db, user.id)
+            db.delete(user)
         return True
 
-    @async_db_update
-    async def async_delete_by_id(self, db: AsyncSession, user_id: int):
-        user = await self.async_get_by_id(db, user_id)
+    @classmethod
+    async def async_delete_by_id(cls, db: AsyncSession, user_id: int):
+        """异步按用户 ID 删除用户，供 UserOper 通过类方法调用。"""
+        user = await cls.async_get_by_id(db, user_id)
         if user:
             await UserIdentity.async_delete_by_user_id(db, user_id)
-            await user.async_delete(db, user.id)
+            await db.delete(user)
         return True
 
-    @db_update
     def update_otp_by_name(self, db: Session, name: str, otp: bool, secret: str):
         user = self.get_by_name(db, name)
         if user:
-            user.update(db, {
-                'is_otp': otp,
-                'otp_secret': secret
-            })
+            user.is_otp = otp
+            user.otp_secret = secret
             return True
         return False
 
-    @async_db_update
-    async def async_update_otp_by_name(self, db: AsyncSession, name: str, otp: bool, secret: str):
-        user = await self.async_get_by_name(db, name)
+    @classmethod
+    async def async_update_otp_by_name(cls, db: AsyncSession, name: str, otp: bool, secret: str):
+        """异步按用户名更新 OTP 状态，供 UserOper 通过类方法调用。"""
+        user = await cls.async_get_by_name(db, name)
         if user:
-            await user.async_update(db, {
-                'is_otp': otp,
-                'otp_secret': secret
-            })
+            user.is_otp = otp
+            user.otp_secret = secret
             return True
         return False

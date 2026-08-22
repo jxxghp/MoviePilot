@@ -1,5 +1,6 @@
 """Agent 工具策略观测、脱敏回执与共享执行边界。"""
 
+import asyncio
 import time
 import uuid
 from collections.abc import Callable
@@ -9,12 +10,14 @@ from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 
 from app.agent.policy.contracts import (
+    ActionEffect,
     ConfirmationMode,
     ExecutionOutcome,
     ExecutionReceipt,
     MigrationState,
     PolicyDecision,
     PolicyObservation,
+    RecoveryMode,
     ToolInvocation,
     ToolPolicyContext,
 )
@@ -166,9 +169,31 @@ class AgentToolPolicyOrchestrator:
         return receipt
 
     @staticmethod
+    def _uncertain_external_state(
+        observation: PolicyObservation,
+        error: BaseException,
+    ) -> tuple[bool, bool]:
+        """标记取消或超时后无法确认的写操作终态。"""
+        interrupted = isinstance(error, (asyncio.CancelledError, TimeoutError))
+        read_only = observation.policy.effect in {
+            ActionEffect.SAFE_READ,
+            ActionEffect.SENSITIVE_READ,
+        }
+        if not interrupted or read_only:
+            return False, False
+        needs_reconcile = observation.policy.recovery not in {
+            RecoveryMode.TRANSACTION,
+            RecoveryMode.IDEMPOTENT,
+        }
+        return True, needs_reconcile
+
+    @staticmethod
     def fail(observation: PolicyObservation, error: BaseException) -> ExecutionReceipt:
         """生成失败回执 envelope，不把异常中的凭据写入日志。"""
         error_summary = summarize_error(error)
+        external_may_continue, needs_reconcile = (
+            AgentToolPolicyOrchestrator._uncertain_external_state(observation, error)
+        )
         receipt = ExecutionReceipt(
             invocation_id=observation.invocation.invocation_id,
             tool_name=observation.invocation.tool_name,
@@ -181,11 +206,15 @@ class AgentToolPolicyOrchestrator:
                 0,
                 int((time.monotonic() - observation.started_at) * 1000),
             ),
+            external_may_continue=external_may_continue,
+            needs_reconcile=needs_reconcile,
         )
         logger.error(
             f"Agent工具执行失败: tool={receipt.tool_name}, "
             f"origin={receipt.origin.value}, shadow={receipt.decision.shadow}, "
-            f"duration_ms={receipt.duration_ms}, error={error_summary}"
+            f"duration_ms={receipt.duration_ms}, error={error_summary}, "
+            f"external_may_continue={receipt.external_may_continue}, "
+            f"needs_reconcile={receipt.needs_reconcile}"
         )
         return receipt
 

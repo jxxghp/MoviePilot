@@ -21,9 +21,11 @@ from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 import app.db.engine as engine_module
 from app.db.engine import (_async_pool_enabled, _get_database_engine,
-                           get_engine, get_global_async_engine)
+                           _database_backend_label, get_engine,
+                           get_global_async_engine)
 from app.runtime.config import global_vars, settings
 from app.runtime.log import logger
+from app.runtime.observability import record_metric
 
 # 会话工厂同样惰性：sessionmaker 在构造时就要绑定引擎，模块级构造等于把引擎的
 # 创建时机重新拉回 import 期，惰性化就白做了。
@@ -198,14 +200,29 @@ async def _acquire_fallback_slot():
     变得无界。信号量是线程安全且与事件循环无关的，但不能在协程里阻塞获取，
     因此用非阻塞获取 + 异步让出。
     """
-    deadline = time.monotonic() + settings.DB_POOL_TIMEOUT
-    while not _fallback_slots.acquire(blocking=False):
-        if time.monotonic() >= deadline:
-            raise TimeoutError(
-                f"异步数据库连接配额已耗尽（上限 {settings.DB_ASYNC_FALLBACK_LIMIT}），"
-                f"等待超过 {settings.DB_POOL_TIMEOUT} 秒"
-            )
-        await asyncio.sleep(0.01)
+    started_at = time.monotonic()
+    deadline = started_at + settings.DB_POOL_TIMEOUT
+    outcome = "success"
+    try:
+        while not _fallback_slots.acquire(blocking=False):
+            if time.monotonic() >= deadline:
+                outcome = "timeout"
+                record_metric(
+                    "db.pool.timeout",
+                    backend=_database_backend_label(),
+                )
+                raise TimeoutError(
+                    f"异步数据库连接配额已耗尽（上限 {settings.DB_ASYNC_FALLBACK_LIMIT}），"
+                    f"等待超过 {settings.DB_POOL_TIMEOUT} 秒"
+                )
+            await asyncio.sleep(0.01)
+    finally:
+        record_metric(
+            "db.pool.wait",
+            time.monotonic() - started_at,
+            backend=_database_backend_label(),
+            outcome=outcome,
+        )
 
 
 @asynccontextmanager

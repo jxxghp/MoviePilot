@@ -11,7 +11,7 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
 from app.runtime.config import settings
-from app.db import Base
+from app.db.base import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models
 from app.runtime.log import logger
@@ -119,6 +119,18 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
         # 首次初始化需要先建立用户表，再把管理员密码交给 Alembic 基础迁移消费。
         before_alembic()
     update_db(alembic_cfg)
+
+
+def verify_database_revision() -> None:
+    """确认活动数据库已位于当前唯一 Alembic head，否则阻止 readiness。"""
+    engine = get_engine()
+    alembic_cfg = _build_alembic_config(engine)
+    _, current_heads, target_heads = _migration_state(engine, alembic_cfg)
+    if set(current_heads) != set(target_heads):
+        raise RuntimeError(
+            "数据库迁移完成后 revision 仍未到达当前 head："
+            f"current={current_heads}, target={target_heads}"
+        )
 
 
 def init_db():
