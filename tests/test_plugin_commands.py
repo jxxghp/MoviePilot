@@ -215,11 +215,10 @@ def test_grammar_check_agrees_with_builtin_preset_commands():
 
 
 def _preset_command_words() -> List[str]:
-    """读取内建命令词，避免为取一份常量而构造整个命令中枢。"""
-    import inspect
+    """读取内建命令词，清单由组合根持有，取用它不必构造命令中枢。"""
+    from app.startup.builtin_commands import builtin_commands
 
-    source = inspect.getsource(Command.__init__)
-    return re.findall(r'"(/[^"]+)": \{', source)
+    return list(builtin_commands())
 
 
 # ---------------------------------------------------------------- 契约校验：命令声明

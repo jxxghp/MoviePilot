@@ -2,14 +2,8 @@ import copy
 import threading
 import traceback
 from concurrent.futures import Future
-from typing import Any, List, Union, Dict, Optional
+from typing import Any, Callable, List, Union, Dict, Optional
 
-from app.application.orchestration.download import DownloadChain
-from app.application.orchestration.message import MessageChain
-from app.application.orchestration.site import SiteChain
-from app.application.orchestration.subscribe import SubscribeChain
-from app.application.orchestration.system import SystemChain
-from app.application.orchestration.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
 from app.runtime.extensions.admission.command_arbitration import (
     BUILTIN_LAYER,
@@ -21,10 +15,8 @@ from app.runtime.extensions.registry.command import CommandClaim, plugin_command
 from app.runtime.extensions.contract.instance import split_instance_key
 from app.application.messaging.gateway import CommandChain
 from app.application.messaging.message import MessageHelper
-from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
-from app.scheduler import Scheduler
 from app.schemas.command import CommandConflict, CommandLayer, CommandOrigin
 from app.schemas.message import Message
 from app.schemas.event import CommandRegisterEventData
@@ -32,6 +24,55 @@ from app.schemas.types import EventType, NotificationChannel, ChainEventType
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.foundation.collections import DictUtils
+
+
+# 内建命令清单的来源，由组合根在导入期注册
+_builtin_commands_provider: Optional[Callable[[], Dict[str, dict]]] = None
+
+
+def register_builtin_commands(provider: Callable[[], Dict[str, dict]]) -> None:
+    """
+    注册内建命令清单的来源
+
+    命令词与业务实现的绑定认识全部业务域，归组合根持有；命令中枢经本入口取用，
+    因而不反向依赖组合根。
+
+    :param provider: 交出内建命令表的可调用对象
+    :return: 无返回值
+    """
+    global _builtin_commands_provider
+    _builtin_commands_provider = provider
+
+
+def _resolve_builtin_commands() -> Dict[str, dict]:
+    """
+    取出内建命令表
+
+    :return: 命令词到命令表条目的映射
+    :raises RuntimeError: 组合根尚未注册内建命令清单
+    """
+    if _builtin_commands_provider is None:
+        raise RuntimeError(
+            "内建命令清单未注册：请先导入 app.startup.command_initializer 完成组合根装配"
+        )
+    return _builtin_commands_provider()
+
+
+def _command_callable(command: Dict[str, Any]) -> Optional[Callable]:
+    """
+    取出命令表条目的实现
+
+    插件命令与单独注册的命令在登记时就已绑定实现；内建命令交出的是解析器，
+    业务链在此刻才物化。
+
+    :param command: 命令表条目
+    :return: 命令实现；条目既无实现也无解析器时为 None
+    """
+    func = command.get("func")
+    if func is not None:
+        return func
+    provider = command.get("provider")
+    return provider() if provider else None
 
 
 def _command_layer(layer: str, entry: Dict[str, Any]) -> CommandLayer:
@@ -78,91 +119,7 @@ class Command(metaclass=Singleton):
         # 所有命令集合
         self._commands = {}
         # 内建命令集合
-        self._preset_commands = {
-            "/cookiecloud": {
-                "id": "cookiecloud",
-                "type": "scheduler",
-                "description": "同步站点",
-                "category": "站点",
-            },
-            "/sites": {
-                "func": SiteChain().remote_list,
-                "description": "管理站点",
-                "category": "站点",
-                "data": {},
-            },
-            "/mediaserver_sync": {
-                "id": "mediaserver_sync",
-                "type": "scheduler",
-                "description": "同步媒体服务器",
-                "category": "管理",
-            },
-            "/subscribes": {
-                "func": SubscribeChain().remote_list,
-                "description": "管理订阅",
-                "category": "订阅",
-                "data": {},
-            },
-            "/downloading": {
-                "func": DownloadChain().remote_downloading,
-                "description": "正在下载",
-                "category": "管理",
-                "data": {},
-            },
-            "/transfer": {
-                "id": "transfer",
-                "type": "scheduler",
-                "description": "下载文件整理",
-                "category": "管理",
-            },
-            "/redo": {
-                "func": TransferChain().remote_transfer,
-                "description": "手动整理",
-                "data": {},
-            },
-            "/clear_cache": {
-                "func": SystemChain().remote_clear_cache,
-                "description": "清理缓存",
-                "category": "管理",
-                "data": {},
-            },
-            "/restart": {
-                "func": SystemChain().restart,
-                "description": "重启系统",
-                "category": "管理",
-                "data": {},
-            },
-            "/version": {
-                "func": SystemChain().version,
-                "description": "当前版本",
-                "category": "管理",
-                "data": {},
-            },
-            "/clear_session": {
-                "func": MessageChain().remote_clear_session,
-                "description": "清除会话",
-                "category": "管理",
-                "data": {},
-            },
-            "/stop_agent": {
-                "func": MessageChain().remote_stop_agent,
-                "description": "停止推理",
-                "category": "管理",
-                "data": {},
-            },
-            "/session_status": {
-                "func": MessageChain().remote_session_status,
-                "description": "会话状态",
-                "category": "智能体",
-                "data": {},
-            },
-            "/skills": {
-                "func": SkillInteractionHandler(messenger=CommandChain()).remote_manage,
-                "description": "管理技能",
-                "category": "智能体",
-                "data": {},
-            },
-        }
+        self._preset_commands = _resolve_builtin_commands()
         # 插件命令集合
         self._plugin_commands = {}
         # 与内建命令同名却未声明接管意图、已作废的插件命令集合
@@ -175,8 +132,6 @@ class Command(metaclass=Singleton):
         self._other_commands = {}
         # 初始化锁
         self._rlock = threading.RLock()
-        # 定时服务管理
-        self.scheduler = Scheduler()
         # 消息管理器
         self.messagehelper = MessageHelper()
         # 初始化命令
@@ -436,7 +391,7 @@ class Command(metaclass=Singleton):
                 )
 
             # 执行定时任务
-            self.scheduler.start(job_id=command.get("id"))
+            _command_callable(command)()
 
             if userid:
                 CommandChain().post_message(
@@ -449,8 +404,9 @@ class Command(metaclass=Singleton):
                 )
         else:
             # 命令
+            func = _command_callable(command)
             cmd_data = copy.deepcopy(command["data"]) if command.get("data") else {}
-            args_num = ObjectUtils.arguments(command["func"])
+            args_num = ObjectUtils.arguments(func)
             if args_num > 0:
                 if cmd_data:
                     # 有内置参数直接使用内置参数
@@ -461,16 +417,16 @@ class Command(metaclass=Singleton):
                     if data_str:
                         data["arg_str"] = data_str
                     cmd_data["data"] = data
-                    command["func"](**cmd_data)
+                    func(**cmd_data)
                 elif args_num == 3:
                     # 没有输入参数，只输入渠道来源、用户ID和消息来源
-                    command["func"](channel, userid, source)
+                    func(channel, userid, source)
                 elif args_num > 3:
                     # 多个输入参数：用户输入、用户ID
-                    command["func"](data_str, channel, userid, source)
+                    func(data_str, channel, userid, source)
             else:
                 # 没有参数
-                command["func"]()
+                func()
 
     def _refresh_plugin_commands(self) -> None:
         """
