@@ -63,7 +63,7 @@ uvx --from pip-audit==2.10.1 pip-audit \
 
 - Run after runtime dependency changes; the release workflow audits the same locked dependency set before publishing images.
 - Any Python vulnerability reported by this audit blocks publishing until the dependency or explicit audit policy is updated.
-- Release candidates also scan Debian OS packages on amd64 and arm64. HIGH or CRITICAL findings with an available fix block publishing; unfixed upstream findings require a separate reachability and impact assessment.
+- Release candidates also scan OS and language packages on amd64 and arm64. HIGH or CRITICAL findings with an available fix block publishing; unfixed upstream findings require a separate reachability and impact assessment.
 - If upstream has no fix, assess reachability and impact before changing the audit policy; PR documentation alone does not bypass the gate.
 
 ---

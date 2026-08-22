@@ -1,12 +1,6 @@
 name: MoviePilot Builder v3
 on:
   workflow_dispatch:
-    inputs:
-      refresh_base_image:
-        description: 强制刷新基础镜像和系统包层
-        required: false
-        default: false
-        type: boolean
   push:
     branches:
       - v3
@@ -152,8 +146,7 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
-          pull: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_image }}
-          no-cache-filters: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_image && 'prepare_package,final' || '' }}
+          pull: true
           tags: moviepilot-v3-candidate:linux-amd64
           build-args: |
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
@@ -163,15 +156,16 @@ jobs:
           cache-from: type=gha,scope=moviepilot-v3-docker-amd64,version=2
           cache-to: type=gha,scope=moviepilot-v3-docker-amd64,mode=max,version=2
 
-      - name: Scan amd64 candidate OS packages
+      - name: Scan amd64 candidate vulnerabilities
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: moviepilot-v3-candidate:linux-amd64
           version: v0.70.0
           scanners: vuln
-          vuln-type: os
+          vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           exit-code: 1
 
       - name: Build arm64 candidate
@@ -182,8 +176,7 @@ jobs:
           platforms: linux/arm64/v8
           load: true
           push: false
-          pull: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_image }}
-          no-cache-filters: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_image && 'prepare_package,final' || '' }}
+          pull: true
           tags: moviepilot-v3-candidate:linux-arm64
           build-args: |
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
@@ -193,15 +186,16 @@ jobs:
           cache-from: type=gha,scope=moviepilot-v3-docker-arm64,version=2
           cache-to: type=gha,scope=moviepilot-v3-docker-arm64,mode=max,version=2
 
-      - name: Scan arm64 candidate OS packages
+      - name: Scan arm64 candidate vulnerabilities
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: moviepilot-v3-candidate:linux-arm64
           version: v0.70.0
           scanners: vuln
-          vuln-type: os
+          vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           exit-code: 1
 
       - name: Login DockerHub

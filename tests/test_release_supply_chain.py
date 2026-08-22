@@ -25,8 +25,8 @@ def _steps_by_name(workflow: dict) -> dict[str, dict]:
     }
 
 
-def test_base_image_refresh_is_explicit_and_apt_does_not_upgrade_in_place() -> None:
-    """基础镜像刷新必须显式，构建阶段不得无边界升级整套 Debian。"""
+def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
+    """基础镜像允许获得上游更新，构建阶段不得无边界升级整套 Debian。"""
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 
     assert "FROM python:3.14.7-slim-trixie AS base" in dockerfile
@@ -50,7 +50,7 @@ def test_release_audits_locked_runtime_dependencies_before_building() -> None:
 
 
 def test_release_scans_both_architectures_before_registry_login_and_publish() -> None:
-    """任一架构的最终 OS 包扫描失败时都不得登录仓库或发布镜像。"""
+    """任一架构的最终漏洞扫描失败时都不得登录仓库或发布镜像。"""
     workflow = _load_workflow()
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]
@@ -66,11 +66,13 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
         assert build["load"] is True
         assert build["push"] is False
         assert build["tags"] == tag
-        assert "inputs.refresh_base_image" in build["pull"]
-        assert "inputs.refresh_base_image" in build["no-cache-filters"]
-        assert "prepare_package,final" in build["no-cache-filters"]
+        assert build["pull"] is True
+        assert "no-cache-filters" not in build
 
-    for name in ("Scan amd64 candidate OS packages", "Scan arm64 candidate OS packages"):
+    for name in (
+        "Scan amd64 candidate vulnerabilities",
+        "Scan arm64 candidate vulnerabilities",
+    ):
         scan = indexed[name]
         assert scan["uses"] == (
             "aquasecurity/trivy-action@"
@@ -79,13 +81,14 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
         assert scan["with"].items() >= {
             "version": "v0.70.0",
             "scanners": "vuln",
-            "vuln-type": "os",
+            "vuln-type": "os,library",
             "severity": "HIGH,CRITICAL",
             "ignore-unfixed": True,
+            "trivyignores": ".trivyignore.yaml",
             "exit-code": 1,
         }.items()
 
-    last_scan = names.index("Scan arm64 candidate OS packages")
+    last_scan = names.index("Scan arm64 candidate vulnerabilities")
     assert last_scan < names.index("Login DockerHub")
     assert last_scan < names.index("Login GitHub Container Registry")
     assert last_scan < names.index("Publish multi-architecture image")
@@ -94,15 +97,9 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
 def test_publish_reuses_scanned_architecture_caches_without_refreshing_base() -> None:
     """发布构建复用已扫描候选缓存，不得在扫描后重新拉取未审计基础镜像。"""
     workflow = _load_workflow()
-    dispatch = workflow["on"]["workflow_dispatch"]["inputs"]["refresh_base_image"]
     publish = _steps_by_name(workflow)["Publish multi-architecture image"]["with"]
 
-    assert dispatch == {
-        "description": "强制刷新基础镜像和系统包层",
-        "required": False,
-        "default": False,
-        "type": "boolean",
-    }
+    assert workflow["on"]["workflow_dispatch"] is None
     assert publish["platforms"] == "linux/amd64\nlinux/arm64/v8\n"
     assert publish["push"] is True
     assert publish["pull"] is False
