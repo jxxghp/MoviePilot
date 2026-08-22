@@ -42,6 +42,7 @@ from app.application.configuration import (
     SystemConfigService,
     get_configured_system_config,
     TransferRetryConfig,
+    configure_token_runtime_config,
     configure_runtime_configuration,
     configure_runtime_settings,
     configure_system_config,
@@ -51,6 +52,7 @@ from app.startup.configuration import (
     build_api_runtime_config,
     build_chain_runtime_config,
     build_scheduler_runtime_config,
+    build_token_runtime_config,
 )
 from app.application.database import configure_database_governance
 from app.application.service import configure_service_directory
@@ -594,6 +596,7 @@ async def init_modules() -> HostRuntime:
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
+    configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。

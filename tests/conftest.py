@@ -34,6 +34,7 @@ def configure_plugin_system_services():
         RuntimeSettingsService,
         SystemConfigService,
         TransferRetryConfig,
+        configure_token_runtime_config,
         configure_runtime_configuration,
         configure_runtime_settings,
         configure_system_config,
@@ -44,6 +45,7 @@ def configure_plugin_system_services():
         build_api_runtime_config,
         build_chain_runtime_config,
         build_scheduler_runtime_config,
+        build_token_runtime_config,
     )
     from app.application.service import configure_service_directory
     from app.db.session import (
@@ -68,6 +70,7 @@ def configure_plugin_system_services():
         )
     )
     configure_runtime_settings(RuntimeSettingsService(settings))
+    configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(

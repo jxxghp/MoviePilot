@@ -1016,6 +1016,7 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 2026-08-23 将工作流动作 `FetchRssAction`、`ScanFileAction` 和 `AddSubscribeAction` 接入 `ChainRuntimeConfig` 快照，分别移除代理、媒体后缀和超级用户的全局 `settings` 读取；保留动作公开入口与工作流上下文行为，新增快照注入测试覆盖。配置债务由 130 个文件降至 127 个文件，宿主依赖与配置基线已更新。
 2026-08-23 将工作流动作 `FetchMediasAction` 和 `SendMessageAction` 接入 `ChainRuntimeConfig` 快照，分别移除内部 API 端口/令牌及工作流链接的全局 `settings` 读取；保留动作公开入口与消息载荷行为，新增快照注入测试覆盖。配置债务由 127 个文件降至 125 个文件，宿主依赖与配置基线已更新。
 2026-08-23 将 API 路由前缀作为组合根参数传入 `init_routers`，移除路由初始化模块对全局 `settings` 的直接读取；默认参数保留旧调用兼容性，并补充自定义前缀测试。配置债务由 125 个文件降至 124 个文件。
+2026-08-23 将令牌编解码的密钥与过期策略接入 `TokenRuntimeConfig` 快照；启动组合根统一装配，未装配时保留 SDK/旧插件的动态回退，公开令牌函数签名不变。配置债务由 124 个文件降至 123 个文件，并补充资源/认证令牌回归测试。
 
 **收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式

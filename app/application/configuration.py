@@ -73,6 +73,16 @@ class TransferRetryConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TokenRuntimeConfig:
+    """令牌编解码在一次宿主生命周期内使用的安全配置快照。"""
+
+    secret_key: str
+    resource_secret_key: str
+    access_token_expire_minutes: int
+    resource_access_token_expire_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class ApiRuntimeConfig:
     """单次 API 请求使用的宿主配置快照。"""
 
@@ -318,6 +328,7 @@ class SystemConfigService:
 
 _configured_system_config: SystemConfigService | None = None
 _transfer_retry_config_provider: Callable[[], TransferRetryConfig] | None = None
+_token_runtime_config_provider: Callable[[], TokenRuntimeConfig] | None = None
 _runtime_configuration: RuntimeConfiguration | None = None
 _runtime_settings_service: RuntimeSettingsService | None = None
 
@@ -348,6 +359,21 @@ def get_transfer_retry_config() -> TransferRetryConfig:
     if _transfer_retry_config_provider is None:
         raise RuntimeError("整理失败重试配置尚未装配")
     return _transfer_retry_config_provider()
+
+
+def configure_token_runtime_config(
+    provider: Callable[[], TokenRuntimeConfig],
+) -> None:
+    """由启动组合根登记令牌安全配置快照工厂。"""
+    global _token_runtime_config_provider
+    _token_runtime_config_provider = provider
+
+
+def get_token_runtime_config() -> TokenRuntimeConfig:
+    """返回当前令牌编解码使用的不可变配置快照。"""
+    if _token_runtime_config_provider is None:
+        raise RuntimeError("令牌运行时配置尚未装配")
+    return _token_runtime_config_provider()
 
 
 def configure_runtime_configuration(configuration: RuntimeConfiguration) -> None:

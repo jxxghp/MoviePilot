@@ -6,6 +6,7 @@ from app.application.configuration import (
     ApiRuntimeConfig,
     ChainRuntimeConfig,
     SchedulerRuntimeConfig,
+    TokenRuntimeConfig,
 )
 from app.runtime.config import Settings
 from app.schemas.types import MediaType
@@ -49,6 +50,16 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
         app_domain=settings.APP_DOMAIN,
         nginx_port=settings.NGINX_PORT,
         passkey_require_uv=settings.PASSKEY_REQUIRE_UV,
+    )
+
+
+def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
+    """从部署设置构建令牌编解码使用的安全配置快照。"""
+    return TokenRuntimeConfig(
+        secret_key=settings.SECRET_KEY,
+        resource_secret_key=settings.RESOURCE_SECRET_KEY,
+        access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        resource_access_token_expire_seconds=settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS,
     )
 
 

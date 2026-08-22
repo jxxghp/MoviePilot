@@ -4,6 +4,7 @@ import base64
 import datetime
 import hashlib
 import hmac
+import importlib
 import json
 import os
 import traceback
@@ -16,13 +17,29 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from cryptography.fernet import Fernet
 
-from app.runtime.config import settings
+from app.application.configuration import TokenRuntimeConfig, get_token_runtime_config
 from app.runtime.log import logger
 from app.schemas.token import TokenPayload
 
 BCRYPT_PASSWORD_MAX_BYTES = 72
 BCRYPT_ROUNDS = 12
 ALGORITHM = "HS256"
+
+
+def _token_config() -> TokenRuntimeConfig:
+    """读取启动快照；未装配时保留旧插件的独立调用兼容。"""
+    try:
+        return get_token_runtime_config()
+    except RuntimeError:
+        legacy_settings = importlib.import_module("app.runtime.config").settings
+        return TokenRuntimeConfig(
+            secret_key=legacy_settings.SECRET_KEY,
+            resource_secret_key=legacy_settings.RESOURCE_SECRET_KEY,
+            access_token_expire_minutes=legacy_settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+            resource_access_token_expire_seconds=(
+                legacy_settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS
+            ),
+        )
 
 
 class PasswordTooLongError(ValueError):
@@ -58,14 +75,15 @@ def create_access_token(
     purpose: Optional[str] = "authentication",
 ) -> str:
     """创建带身份、权限等级和用途声明的 JWT 访问令牌。"""
+    config = _token_config()
     if purpose == "resource":
         default_expire = timedelta(
-            seconds=settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS
+            seconds=config.resource_access_token_expire_seconds
         )
-        secret_key = settings.RESOURCE_SECRET_KEY
+        secret_key = config.resource_secret_key
     else:
-        default_expire = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        secret_key = settings.SECRET_KEY
+        default_expire = timedelta(minutes=config.access_token_expire_minutes)
+        secret_key = config.secret_key
 
     if expires_delta is not None:
         if expires_delta.total_seconds() <= 0:
@@ -92,12 +110,13 @@ def decode_access_token(
     purpose: str = "authentication",
 ) -> TokenPayload:
     """校验 JWT 签名和用途并返回框架无关的令牌载荷。"""
+    config = _token_config()
     if not token:
         raise TokenValidationError(f"{purpose} token not found")
     secret_key = (
-        settings.RESOURCE_SECRET_KEY
+        config.resource_secret_key
         if purpose == "resource"
-        else settings.SECRET_KEY
+        else config.secret_key
     )
     try:
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
