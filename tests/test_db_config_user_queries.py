@@ -133,6 +133,14 @@ def test_user_lookup_returns_none_when_absent(db):
     assert User.get_by_id(db.session, -1) is None
 
 
+def test_user_sync_queries_preserve_legacy_no_session_abi(db):
+    """旧插件省略 Session 时仍可按用户名和用户 ID 查询。"""
+    created = db.add(User(name="mp-legacy-query-user", hashed_password="secret"))
+
+    assert User.get_by_name("mp-legacy-query-user").id == created.id
+    assert User.get_by_id(created.id).name == "mp-legacy-query-user"
+
+
 def test_user_delete_by_name_and_by_id_remove_only_the_target(db):
     """
     按名、按 ID 删除都只能删掉目标用户。

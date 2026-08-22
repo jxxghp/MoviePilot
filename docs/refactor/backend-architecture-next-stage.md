@@ -72,7 +72,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
 | 直接读取 `settings` 的文件 | 107 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
-| Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
+| Model 上的 DB 查询装饰器 | 117 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
 | Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
 | Application 方法超过 150 行 | 8 | 最大 296 行 |
@@ -1031,6 +1031,8 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 Pylint 与架构基线通过，配置债务由 112 个文件降至 109 个文件。
 缓存 Redis 连接池、内存限制和文件缓存工厂随后改用 runtime 配置端口，保留旧模块级 Settings 覆盖入口；
 缓存专项 41 项测试与 Pylint 通过，配置债务由 109 个文件降至 107 个文件。
+用户模型的 `get_by_name` 与 `get_by_id` 同步查询改为显式 Session 执行，并以一次性短会话保留旧插件
+无 Session ABI；用户查询与兼容专项 75 项测试、Pylint 及架构基线通过，查询装饰器由 119 个降至 117 个。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

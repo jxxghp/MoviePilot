@@ -3,10 +3,10 @@
     "by_kind": {
       "async_db_query": 49,
       "async_db_update": 0,
-      "db_query": 70,
+      "db_query": 68,
       "db_update": 0
     },
-    "count": 119,
+    "count": 117,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -547,16 +547,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/user.py",
         "method": "User.async_get_by_name"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.get_by_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.get_by_name"
       },
       {
         "decorator": "db_query",
