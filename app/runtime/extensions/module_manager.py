@@ -12,7 +12,9 @@ from app.runtime.capabilities.model import (
     CapabilitySpec,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions.host_module_adapter import (
     HOST_MODULE_KIND,

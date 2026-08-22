@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 89,
+    "count": 84,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/agent/tools/impl/add_download_tasks.py",
@@ -88,11 +88,6 @@
       "app/modules/wechat/wechatbot.py",
       "app/modules/wechatclawbot/wechatclawbot.py",
       "app/runtime/extensions/host_module_adapter.py",
-      "app/runtime/extensions/module_manager.py",
-      "app/runtime/extensions/plugin/catalog.py",
-      "app/runtime/extensions/plugin_manager.py",
-      "app/runtime/state.py",
-      "app/runtime/thread.py",
       "app/startup/agent_initializer.py",
       "app/startup/database.py",
       "app/startup/database_initializer.py",

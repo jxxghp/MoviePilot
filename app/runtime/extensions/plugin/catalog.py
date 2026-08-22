@@ -7,7 +7,9 @@ from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
 from app.foundation.version import compare_version
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.storage import PluginStorage
 from app.runtime.extensions.plugin.system import PluginSystemServices
