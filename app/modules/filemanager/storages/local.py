@@ -6,7 +6,10 @@ from typing import Optional, List
 
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.directory import DirectoryHelper
 from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy

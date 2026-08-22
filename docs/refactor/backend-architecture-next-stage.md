@@ -1072,6 +1072,8 @@ TMDB、TVDB 与 TriMedia 模块切换到动态运行时配置，缓存、重试�
 文件降至 24 个，TMDB、媒体源与 TriMedia 专项测试通过。
 Doctor、factory、main 与 CLI 的部署读取切换到动态运行时端口，CLI 仍保留 `Settings` 类型清单和旧命令 ABI；
 配置债务由 24 个文件降至 19 个，Doctor、启动、CLI 与数据库迁移专项测试通过。
+FS proxy、Local/WebPush 存储适配以及 Module host adapter 切换到动态运行时端口，保留 global_vars、能力
+快照与模块契约行为；配置债务由 19 个文件降至 15 个，文件存储、WebPush 与 Module contract 专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

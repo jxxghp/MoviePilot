@@ -9,20 +9,16 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 19,
+    "count": 15,
     "files": [
-      "app/adapters/system/fsproxy.py",
       "app/db/base.py",
       "app/db/engine.py",
       "app/db/session.py",
-      "app/modules/filemanager/storages/local.py",
       "app/modules/postgresql/__init__.py",
       "app/modules/qbittorrent/__init__.py",
       "app/modules/redis/__init__.py",
       "app/modules/rtorrent/__init__.py",
       "app/modules/transmission/__init__.py",
-      "app/modules/webpush/__init__.py",
-      "app/runtime/extensions/host_module_adapter.py",
       "app/startup/agent_initializer.py",
       "app/startup/database.py",
       "app/startup/database_initializer.py",
