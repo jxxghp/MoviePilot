@@ -11,7 +11,9 @@ from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServ
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
 from app.schemas.types import MediaType

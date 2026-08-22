@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 62,
+    "count": 57,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/cli.py",
@@ -20,9 +20,6 @@
       "app/doctor/runner.py",
       "app/factory.py",
       "app/main.py",
-      "app/modules/discord/discord.py",
-      "app/modules/emby/emby.py",
-      "app/modules/feishu/feishu.py",
       "app/modules/filemanager/module.py",
       "app/modules/filemanager/storages/alipan.py",
       "app/modules/filemanager/storages/alist.py",
@@ -42,13 +39,11 @@
       "app/modules/indexer/spider/tnode.py",
       "app/modules/indexer/spider/torrentleech.py",
       "app/modules/indexer/spider/yema.py",
-      "app/modules/jellyfin/jellyfin.py",
       "app/modules/postgresql/__init__.py",
       "app/modules/qbittorrent/__init__.py",
       "app/modules/qqbot/qqbot.py",
       "app/modules/redis/__init__.py",
       "app/modules/rtorrent/__init__.py",
-      "app/modules/slack/slack.py",
       "app/modules/subtitle/__init__.py",
       "app/modules/telegram/telegram.py",
       "app/modules/themoviedb/__init__.py",
