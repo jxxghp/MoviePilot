@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6415,
-  "edge_sha256": "d763c4fede395d6ef881e1308b68cfaf484b82ce2b6f0dec808abf4b1d820858",
+  "edge_count": 6416,
+  "edge_sha256": "c138400e259f15da3b22796667691ccca229c9c8b9a4c88f3c122922600c38a1",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2705,9 +2705,10 @@
     "app.application.security.token -> app.schemas.token",
     "app.application.security.twofactor -> app.runtime",
     "app.application.security.twofactor -> app.runtime.log",
+    "app.application.security.url -> app.application",
+    "app.application.security.url -> app.application.configuration",
     "app.application.security.url -> app.runtime",
     "app.application.security.url -> app.runtime.coalesce",
-    "app.application.security.url -> app.runtime.config",
     "app.application.security.url -> app.runtime.log",
     "app.application.servarr -> app.schemas",
     "app.application.servarr -> app.schemas.types",

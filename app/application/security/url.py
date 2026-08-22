@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import importlib
 import ipaddress
 import socket
 import threading
@@ -13,7 +14,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 from anyio import Path as AsyncPath
 from cachetools import TTLCache
 
-from app.runtime.config import settings
+from app.application.configuration import get_token_runtime_config
 from app.runtime.log import logger
 from app.runtime.coalesce import (
     CoalesceDecision,
@@ -41,6 +42,15 @@ _dns_cache_lock = threading.Lock()
 # 后续并发请求 await 同一把锁，避免对同一目标重复发起 `getaddrinfo`。
 _dns_inflight_locks: Dict[str, asyncio.Lock] = {}
 _dns_inflight_meta_lock = threading.Lock()
+
+
+def _resource_secret_key() -> str:
+    """读取 URL 签名密钥快照，并保留旧插件直接导入模块的兼容路径。"""
+    try:
+        return get_token_runtime_config().resource_secret_key
+    except RuntimeError:
+        legacy_settings = importlib.import_module("app.runtime.config").settings
+        return legacy_settings.RESOURCE_SECRET_KEY
 
 
 class UrlSafetyReason(str, Enum):
@@ -447,7 +457,7 @@ class SecurityUtils:
         或显式轮换密钥时所有旧签名一起作废。
         """
         return hmac.new(
-            settings.RESOURCE_SECRET_KEY.encode("utf-8"),
+            _resource_secret_key().encode("utf-8"),
             SecurityUtils._url_signature_payload(url, purpose),
             sha256,
         ).hexdigest()
