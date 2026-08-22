@@ -277,16 +277,13 @@ function stage_runtime_payload() {
     [ -f "${stage_app}/uv.lock" ] || return 1
     [ -f "${TMP_PATH}/dist/index.html" ] || return 1
 
+    # app/plugins 是纯数据目录：里面只有扩展，没有宿主源码。升级会把整个 /app 换代，
+    # 所以用户已装的扩展要先搬进新代际的同名目录；新版本自带的扩展留在原地不清空，
+    # 同名时以运行目录里的实际安装为准。
+    mkdir -p "${stage_plugin_dir}" || return 1
     if [ -d "${APP_DIR}/app/plugins" ]; then
-        rm -rf "${stage_plugin_dir}" || return 1
-        mkdir -p "${stage_plugin_dir}" || return 1
-        if ! cp -a "${APP_DIR}/app/plugins/." "${stage_plugin_dir}/"; then
-            return 1
-        fi
-    else
-        mkdir -p "${stage_plugin_dir}" || return 1
+        cp -a "${APP_DIR}/app/plugins/." "${stage_plugin_dir}/" || return 1
     fi
-    rm -f "${stage_plugin_dir}/__init__.py"
 
     resource_source_dir="$(existing_resource_dir)"
     mkdir -p "${stage_resource_dir}" || return 1
