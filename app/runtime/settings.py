@@ -9,6 +9,7 @@ from typing import Any
 
 RuntimeSettingProvider = Callable[[str], Any]
 _provider: RuntimeSettingProvider | None = None
+_runtime_settings_service: Any | None = None
 # 测试和插件可能临时替换某个模块上的 importlib.import_module；保存原始函数，
 # 让兼容代理的 legacy Settings 解析不受这类局部替身影响。
 _import_module = importlib.import_module
@@ -42,32 +43,29 @@ class RuntimeSettingsCompat:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """导出当前配置快照，保留旧 Settings 的序列化入口。"""
-        try:
-            from app.application.configuration import get_runtime_settings
-
-            return get_runtime_settings().snapshot(include=include, exclude=exclude)
-        except RuntimeError:
-            return self._legacy_settings().model_dump(
-                include=include, exclude=exclude, **kwargs
-            )
+        if _runtime_settings_service is not None:
+            return _runtime_settings_service.snapshot(include=include, exclude=exclude)
+        return self._legacy_settings().model_dump(
+            include=include, exclude=exclude, **kwargs
+        )
 
     def update_setting(self, key: str, value: Any) -> tuple[Any, str]:
         """更新单项配置，兼容插件对模块级 Settings 的公开调用。"""
-        try:
-            from app.application.configuration import get_runtime_settings
-
-            return get_runtime_settings().update(key, value)
-        except RuntimeError:
-            return self._legacy_settings().update_setting(key, value)
+        if _runtime_settings_service is not None:
+            return _runtime_settings_service.update(key, value)
+        return self._legacy_settings().update_setting(key, value)
 
     def update_settings(self, env: dict[str, Any]) -> dict[str, tuple[Any, str]]:
         """批量更新配置，兼容旧 Settings 的管理接口。"""
-        try:
-            from app.application.configuration import get_runtime_settings
+        if _runtime_settings_service is not None:
+            return _runtime_settings_service.update_many(env)
+        return self._legacy_settings().update_settings(env=env)
 
-            return get_runtime_settings().update_many(env)
-        except RuntimeError:
-            return self._legacy_settings().update_settings(env=env)
+
+def configure_runtime_settings_compat(service: Any) -> None:
+    """由应用组合根注入可变配置服务，避免低层代理反向导入应用层。"""
+    global _runtime_settings_service
+    _runtime_settings_service = service
 
 
 def configure_runtime_setting_provider(provider: RuntimeSettingProvider) -> None:
