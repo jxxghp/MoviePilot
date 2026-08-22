@@ -60,6 +60,8 @@ METRIC_SPECS = {
         MetricSpec("scheduler.job.dead_letter", MetricKind.COUNTER, frozenset({"owner"})),
         MetricSpec("plugin.lifecycle.duration", MetricKind.HISTOGRAM, frozenset({"operation", "outcome"})),
         MetricSpec("agent.active_tasks", MetricKind.GAUGE, frozenset({"task_type"})),
+        MetricSpec("agent.chat.persistence.pending", MetricKind.GAUGE, frozenset()),
+        MetricSpec("agent.chat.persistence.rejected", MetricKind.COUNTER, frozenset()),
         MetricSpec("agent.cancel", MetricKind.COUNTER, frozenset({"task_type", "outcome"})),
         MetricSpec("agent.provider.duration", MetricKind.HISTOGRAM, frozenset({"provider_type", "outcome"})),
         MetricSpec("agent.token_usage", MetricKind.COUNTER, frozenset({"provider_type", "direction"})),

@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, select
 
+from app.application.database import DatabaseWorkerOverloadedError
 from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
 from app.db.models.agentchat import AgentChat
 from app.db.oper.agentchat import AgentChatOper
@@ -120,6 +121,60 @@ async def test_agent_chat_persistence_propagates_worker_failure() -> None:
             user_id="1",
             messages=[],
         )
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancelled() -> None:
+    """同会话锁等待受总量限制，取消等待不会遗留 admission。"""
+
+    class BlockingExecutor:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self, operation):
+            self.started.set()
+            await self.release.wait()
+            return operation()
+
+    executor = BlockingExecutor()
+    service = AgentChatPersistenceService(
+        repository=_Repository,
+        async_executor=executor,
+        capacity=2,
+    )
+    first = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="session-admission",
+            user_id="1",
+            messages=[],
+        )
+    )
+    await executor.started.wait()
+    second = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="session-admission",
+            user_id="1",
+            messages=[],
+        )
+    )
+    await asyncio.sleep(0)
+    third = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="session-admission",
+            user_id="1",
+            messages=[],
+        )
+    )
+    with pytest.raises(DatabaseWorkerOverloadedError):
+        await third
+    second.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await second
+    assert service._pending_writes == 1
+    executor.release.set()
+    await first
+    assert service._pending_writes == 0
 
 
 @pytest.mark.asyncio

@@ -718,6 +718,7 @@ async def init_modules() -> HostRuntime:
         AgentChatPersistenceService(
             repository=AgentChatOper,
             async_executor=database_worker,
+            capacity=database_worker.snapshot().capacity,
         )
     )
     configure_user_lookups(

@@ -8,8 +8,15 @@ from collections.abc import Callable
 from typing import Any, Optional, Protocol
 from weakref import WeakValueDictionary
 
-from app.application.database import AsyncDatabaseExecutor
+from app.application.database import (
+    AsyncDatabaseExecutor,
+    DatabaseWorkerOverloadedError,
+)
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
+from app.runtime.observability import record_metric
+
+
+DEFAULT_AGENT_CHAT_WRITE_CAPACITY = 32
 
 
 def has_custom_agent_chat_title(value: Optional[str]) -> bool:
@@ -348,10 +355,15 @@ class AgentChatPersistenceService:
         self,
         repository: SyncAgentChatRepositoryFactory,
         async_executor: AsyncDatabaseExecutor,
+        capacity: int = DEFAULT_AGENT_CHAT_WRITE_CAPACITY,
     ) -> None:
         """保存同步仓储工厂和异步执行端口。"""
+        if capacity < 1:
+            raise ValueError("AgentChat 写入容量必须大于 0")
         self._repository = repository
         self._async_executor = async_executor
+        self._capacity = capacity
+        self._pending_writes = 0
         # append_display_messages 属于读取旧快照后整列写回的复合操作；按会话串行化，
         # 才能在 worker 并发下保持首次建行和既有会话追加的完整性。弱引用避免长期运行
         # 中为一次性会话永久保留锁对象，不限制不同会话之间的 worker 并行度。
@@ -371,12 +383,24 @@ class AgentChatPersistenceService:
         operation: Callable[[SyncAgentChatRepository], object],
     ) -> None:
         """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
-        async with self._session_lock(session_id):
-            def execute() -> None:
-                """执行同步写入，不让 ORM 对象越过 worker 边界。"""
-                operation(self._repository())
+        # 会话锁前的等待也纳入固定总量，避免公开展示保存入口形成无界应用层队列。
+        if self._pending_writes >= self._capacity:
+            record_metric("agent.chat.persistence.rejected")
+            raise DatabaseWorkerOverloadedError(
+                f"AgentChat 写入容量已用尽（上限 {self._capacity}）"
+            )
+        self._pending_writes += 1
+        record_metric("agent.chat.persistence.pending", self._pending_writes)
+        try:
+            async with self._session_lock(session_id):
+                def execute() -> None:
+                    """执行同步写入，不让 ORM 对象越过 worker 边界。"""
+                    operation(self._repository())
 
-            await self._async_executor.run(execute)
+                await self._async_executor.run(execute)
+        finally:
+            self._pending_writes -= 1
+            record_metric("agent.chat.persistence.pending", self._pending_writes)
 
     async def async_append_display_messages(
         self,
