@@ -4,7 +4,9 @@ from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
