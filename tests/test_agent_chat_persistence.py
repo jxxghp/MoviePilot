@@ -356,6 +356,48 @@ async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_chat_shutdown_timeout_keeps_worker_owner_until_write_finishes() -> None:
+    """持久化关闭超时时保留运行中的写入和数据库 worker owner。"""
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingRepository(_Repository):
+        def save_agent_messages(self, **kwargs):
+            started.set()
+            release.wait(1)
+            super().save_agent_messages(**kwargs)
+
+    worker = DatabaseWorker(max_workers=1, capacity=1)
+    await worker.start()
+    service = AgentChatPersistenceService(
+        repository=lambda _session: BlockingRepository(),
+        async_executor=worker,
+        sync_transaction=lambda operation: operation(object()),
+    )
+    write = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="shutdown-timeout-session",
+            user_id="1",
+            messages=[],
+        )
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+    shutdown = asyncio.create_task(service.shutdown())
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(shutdown, timeout=0.01)
+        assert service._closing is True
+        assert write.done() is False
+        assert worker._executor is not None
+    finally:
+        release.set()
+        await write
+        await worker.shutdown()
+
+    assert worker._executor is None
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() -> None:
     """真实 AgentChat Oper 经 worker 写入后可被 native async 查询恢复。"""
     worker = DatabaseWorker(max_workers=1, capacity=4)

@@ -578,6 +578,11 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
+    # 先关闭持久化准入，取消中的 Web Agent finally 才会快速拒绝晚到的快照写入。
+    await run_step(
+        "Agent会话持久化准入",
+        lambda: get_configured_agent_chat_persistence().begin_shutdown(),
+    )
     await run_step("Web Agent后台任务", shutdown_web_agent_background_tasks)
     await run_step(
         "Agent会话持久化",

@@ -389,6 +389,10 @@ class AgentChatPersistenceService:
             self._session_locks[session_id] = lock
         return lock
 
+    def begin_shutdown(self) -> None:
+        """停止接受新的 AgentChat 持久化任务。"""
+        self._closing = True
+
     async def _run_write(
         self,
         session_id: str,
@@ -436,11 +440,13 @@ class AgentChatPersistenceService:
 
     async def shutdown(self) -> None:
         """拒绝新写入并等待当前会话锁和 worker 操作取得终态。"""
-        self._closing = True
+        self.begin_shutdown()
         current = asyncio.current_task()
         tasks = tuple(task for task in self._active_tasks if task is not current)
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # wait 不会在生命周期超时时取消实际写入；外层可及时返回并保留
+            # 数据库 worker owner，已开始的事务继续由 worker 收口。
+            await asyncio.wait(tasks)
 
     async def async_append_display_messages(
         self,

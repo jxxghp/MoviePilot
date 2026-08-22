@@ -197,7 +197,9 @@ async def shutdown_web_agent_background_tasks() -> None:
     for task in tasks:
         task.cancel()
     if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # asyncio.wait 不会因关闭阶段自身被取消而再次取消这些任务；仍在收尾的
+        # Agent 任务会保留在注册表中，直到自己的数据库操作取得确定终态。
+        await asyncio.wait(tasks)
 
 
 def register_channel_admin_resolver(

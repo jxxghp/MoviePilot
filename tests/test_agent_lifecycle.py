@@ -41,6 +41,34 @@ async def test_web_agent_background_tasks_are_cancelled_and_drained() -> None:
 
 
 @pytest.mark.anyio
+async def test_web_agent_shutdown_timeout_does_not_cancel_task_cleanup() -> None:
+    """关闭超时时保留仍在执行取消收尾的 Web Agent 任务。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def task_with_slow_cleanup() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+            raise
+
+    task = create_web_agent_background_task(task_with_slow_cleanup())
+    await started.wait()
+    shutdown = asyncio.create_task(shutdown_web_agent_background_tasks())
+    await asyncio.sleep(0)
+    shutdown.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await shutdown
+
+    assert task.done() is False
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.anyio
 async def test_agent_entrypoint_initializes_on_calling_loop(monkeypatch) -> None:
     """Agent 启动入口必须在应用主循环完成初始化。"""
     current_loop = asyncio.get_running_loop()
