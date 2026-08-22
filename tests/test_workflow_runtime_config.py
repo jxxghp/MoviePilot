@@ -2,15 +2,19 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from app.application.configuration import ChainRuntimeConfig
-from app.schemas import ActionContext
 from app.schemas.context import MediaInfo
 from app.schemas.types import MediaType
+from app.schemas.workflow import ActionContext
 from app.workflow.actions.add_subscribe import AddSubscribeAction
 from app.workflow.actions.fetch_rss import FetchRssAction
 from app.workflow.actions.scan_file import ScanFileAction
+from app.workflow.actions.fetch_medias import FetchMediasAction
+from app.workflow.actions.send_message import SendMessageAction
 from app.workflow.actions import add_subscribe as add_subscribe_module
+from app.workflow.actions import fetch_medias as fetch_medias_module
 from app.workflow.actions import fetch_rss as fetch_rss_module
 from app.workflow.actions import scan_file as scan_file_module
+from app.workflow.actions import send_message as send_message_module
 
 
 def _runtime_config(**overrides):
@@ -21,6 +25,9 @@ def _runtime_config(**overrides):
         "audio_extensions": (".flac",),
         "superuser": "snapshot-admin",
         "proxy": {"https": "http://snapshot-proxy:7890"},
+        "api_port": 18080,
+        "api_token": "snapshot-api-token",
+        "workflow_url": "https://example.com/#/workflow",
     }
     values.update(overrides)
     return ChainRuntimeConfig(**values)
@@ -129,3 +136,67 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
     )
 
     assert captured["username"] == "snapshot-owner"
+
+
+def test_fetch_medias_internal_api_uses_chain_snapshot(monkeypatch):
+    """获取媒体动作构造内部 API 地址时应读取 Chain 快照。"""
+    captured = {}
+
+    class FakeRequest:
+        """记录内部 API 请求地址的测试替身。"""
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def post_res(self, url):
+            captured["url"] = url
+            return SimpleNamespace(json=lambda: [])
+
+    monkeypatch.setattr(fetch_medias_module, "RequestUtils", FakeRequest)
+    monkeypatch.setattr(
+        fetch_medias_module,
+        "get_chain_runtime_config_snapshot",
+        lambda: _runtime_config(),
+    )
+    monkeypatch.setattr(fetch_medias_module.global_vars, "is_workflow_stopped", lambda _: False)
+
+    action = FetchMediasAction("medias")
+    action._FetchMediasAction__inner_sources = [
+        {"api_path": "recommend/custom", "name": "自定义", "func": None}
+    ]
+    action.execute(
+        workflow_id=1,
+        params={"source_type": "ranking", "sources": ["recommend/custom"]},
+        context=ActionContext(),
+    )
+
+    assert captured["url"] == "http://127.0.0.1:18080/api/v1/recommend/custom?token=snapshot-api-token"
+
+
+def test_send_message_uses_workflow_url_from_chain_snapshot(monkeypatch):
+    """工作流消息链接应来自 Chain 快照，而不是全局部署设置。"""
+    captured = []
+
+    class FakeActionChain:
+        """记录发送消息载荷的测试替身。"""
+
+        def post_message(self, message):
+            captured.append(message)
+
+    monkeypatch.setattr(send_message_module, "ActionChain", FakeActionChain)
+    monkeypatch.setattr(
+        send_message_module,
+        "get_chain_runtime_config_snapshot",
+        lambda: _runtime_config(),
+    )
+
+    context = ActionContext()
+    context.progress = 100
+    context.execute_history = [SimpleNamespace(action="测试", message="完成")]
+    SendMessageAction("message").execute(
+        workflow_id=1,
+        params={"client": ["telegram"], "userid": "u1"},
+        context=context,
+    )
+
+    assert captured[0].link == "https://example.com/#/workflow"
