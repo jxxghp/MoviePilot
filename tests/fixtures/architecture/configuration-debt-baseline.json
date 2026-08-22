@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 118,
+    "count": 117,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -20,7 +20,6 @@
       "app/adapters/system/plugin/dependency.py",
       "app/adapters/system/plugin/package.py",
       "app/adapters/system/resource.py",
-      "app/adapters/system/rust.py",
       "app/adapters/web/security/access.py",
       "app/agent/capabilities/adapter.py",
       "app/agent/llm/capability.py",
