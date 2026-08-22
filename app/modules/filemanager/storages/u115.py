@@ -14,7 +14,10 @@ from cryptography.hazmat.primitives import hashes
 
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.config import settings, global_vars
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.config import global_vars
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules.filemanager import StorageBase
 from app.modules.filemanager.storages import transfer_process

@@ -826,9 +826,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   失败和重置均由 Application command 显式 commit/rollback。`WorkflowOper()` 的旧方法名、参数和返回值
   继续可用，无 Session 调用委托组合根服务，显式 Session 调用只暂存；同步 Model 自动提交装饰器移除 6 个，
   事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
-- 剩余 45 个同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
+- 剩余同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
   站点快照、媒体服务器、插件数据、TransferPending 等写入由调用方 Session 和 UoW 收口；无 Session
-  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 119 个查询装饰器，
+  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 106 个查询装饰器，
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
 - 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
@@ -1040,6 +1040,43 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 服务端和评分专项 184 项测试与 Pylint 通过，配置债务由 107 个文件降至 105 个文件。
 用户模型的 `get_by_name` 与 `get_by_id` 同步查询改为显式 Session 执行，并以一次性短会话保留旧插件
 无 Session ABI；用户查询与兼容专项 75 项测试、Pylint 及架构基线通过，查询装饰器由 119 个降至 117 个。
+随后将 Agent 系统设置查询/更新工具切换到已装配的 `RuntimeSettingsService` 窄端口，保留工具构造和
+设置更新返回 ABI；配置债务由 103 个文件降至 101 个文件，系统设置工具专项测试与架构基线通过。
+站点图标、站点统计和用户配置的只读 Model 方法随后改为显式 Session 执行，异步无 Session 旧 ABI 由
+一次性兼容查询会话承接；查询装饰器由 117 个降至 112 个，站点查询专项测试与架构基线通过。
+插件数据的六个只读入口也改为显式 Session/AsyncSession，旧插件无会话读取通过一次性兼容查询会话保留；
+查询装饰器由 112 个降至 106 个，插件数据与事务专项测试及架构基线通过。
+Agent 能力适配器、记忆和提示词模块改用 `RuntimeSettingsCompat` 动态运行时端口，保留模块级覆盖和
+导入早期回退；配置债务由 101 个文件降至 98 个，Agent 能力、提示词与运行时专项测试通过。
+随后将 LLM capability/helper/provider、Agent orchestrator 和工具基础类统一切换到同一动态运行时端口；
+配置债务由 98 个文件降至 93 个，LLM、Agent 生命周期与工具专项测试通过。
+技能注册表、插件工具辅助、终端会话和语音工具也已切换到动态运行时端口，技能市场写入改走配置服务；
+配置债务由 93 个文件降至 89 个，技能、工具和安全专项测试通过。
+运行时状态、线程池、插件目录/管理器和模块管理器随后切换到同一动态运行时端口，保留旧模块覆盖语义；
+配置债务由 89 个文件降至 84 个，插件、模块生命周期与线程安全专项测试通过。
+Agent 下载、任务、媒体识别、刮削和 Web 搜索工具也切换到动态运行时端口，保留原工具输入与输出 ABI；
+配置债务由 84 个文件降至 77 个，Agent 任务、搜索与识别专项测试通过。
+AcoustID、AniList、Bangumi、Douban、Fanart 和 IMDb 模块族改用动态运行时端口，模块公开类与配置热读保持；
+配置债务由 77 个文件降至 67 个，相关识别、浏览与刮削专项测试通过。
+MusicBrainz、ListenBrainz、LrcLib 与 TheAudioDB 模块族也完成同样迁移，配置债务由 67 个文件降至 62 个，
+音乐元数据专项测试通过。
+Emby、Jellyfin、Feishu、Discord 与 Slack 模块切换到动态运行时配置，模块测试与消息生命周期 ABI 保持；
+配置债务由 62 个文件降至 57 个，媒体服务器和消息模块专项测试通过。
+文件管理器及 Alist、Rclone、U115、SMB、Alipan 存储实现切换到动态运行时配置，保留模块级 global_vars 与
+存储公开方法；配置债务由 57 个文件降至 50 个，文件管理与存储专项测试通过。
+Indexer parser/spider 模块族切换到动态运行时配置，站点搜索 URL、解析与分类行为保持；配置债务由 50 个文件
+降至 39 个，Indexer 专项测试通过。
+QQ、Telegram、WeChat、WeChatClawBot 与字幕模块切换到动态运行时配置，消息回调、代理和字幕下载行为保持；
+配置债务由 39 个文件降至 34 个，消息与字幕专项测试通过。
+TMDB、TVDB 与 TriMedia 模块切换到动态运行时配置，缓存、重试、媒体源和登录兼容行为保持；配置债务由 34 个
+文件降至 24 个，TMDB、媒体源与 TriMedia 专项测试通过。
+Doctor、factory、main 与 CLI 的部署读取切换到动态运行时端口，CLI 仍保留 `Settings` 类型清单和旧命令 ABI；
+配置债务由 24 个文件降至 19 个，Doctor、启动、CLI 与数据库迁移专项测试通过。
+FS proxy、Local/WebPush 存储适配以及 Module host adapter 切换到动态运行时端口，保留 global_vars、能力
+快照与模块契约行为；配置债务由 19 个文件降至 15 个，文件存储、WebPush 与 Module contract 专项测试通过。
+启动 Agent、数据库、领域、生命周期和插件初始化模块切换到动态运行时端口；组合根 provider 明确绑定原始
+Settings，避免代理自递归，配置债务由 15 个文件降至 8 个。数据库引擎/Session 与下载器模块保留底层
+Settings 读取作为基础设施边界，架构基线已明确记录该例外，启动与架构专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
@@ -1056,6 +1093,13 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 下载、订阅、媒体服务器及 durable/outbox 专项共 370 项测试通过，复杂度基线移除上述三个订阅/下载入口。
 当前仍不把普通用户通知和 MoviePilot Server 外部统计标记为 durable：它们尚未与业务写入和 outbox intent
 绑定在同一事务，继续保持 post-commit 的准确边界。
+
+2026-08-23 收口兼容回归：`RuntimeSettingsCompat` 补齐 `update_setting`、`update_settings` 和
+`model_dump` 旧 Settings ABI，并由应用组合根注入服务对象，低层 runtime 不再反向导入 `app.application`；
+`SkillHelper` 的技能市场写入继续经过兼容代理，旧插件/测试的模块级替换语义保持。`UserConfigOper` 的
+无 Session 查询改为一次性兼容查询会话，显式 Session 仍由调用方持有。配置债务稳定为 8 个文件，Model
+查询装饰器稳定为 106 个且写装饰器为 0；四分片全量测试 `5441 passed, 3 skipped`，mypy、复杂度、异步阻塞、
+host/plugin 架构基线均通过。
 
 #### ARCH-272：异步阻塞检测
 
@@ -1234,7 +1278,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 当前 119 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| Model 事务装饰器 | 当前 106 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |

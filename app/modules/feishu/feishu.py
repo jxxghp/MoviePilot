@@ -50,7 +50,9 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import Context, MediaInfo
 from app.application.security.user import get_configured_user_channel_lookup
 from app.application.messaging.agent import matches_channel_admin

@@ -3,7 +3,6 @@ from sqlalchemy import String, UniqueConstraint, JSON, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query
 
 
 class UserConfig(Base):
@@ -24,8 +23,8 @@ class UserConfig(Base):
     )
 
     @classmethod
-    @db_query
     def get_by_key(cls, db: Session, username: str, key: str):
+        """在调用方 Session 中查询用户配置。"""
         return db.execute(
             select(cls).where(cls.username == username, cls.key == key)
         ).scalars().first()

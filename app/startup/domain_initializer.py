@@ -6,7 +6,9 @@ from app.domain.meta.runtime import configure_recognition_runtime
 from app.domain.meta.words import configure_custom_words_provider
 from app.domain.metainfo import clear_rust_parse_options_cache
 from app.adapters.system import rust as rust_accelerator
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.recognition import RecognitionRuleService
 
 

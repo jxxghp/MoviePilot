@@ -55,7 +55,10 @@ elif SystemUtils.is_frozen():
     sys.stderr = open(os.devnull, 'w')
 
 from app.factory import app
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.topology import (
     UnsupportedProcessTopologyError,
     validate_process_topology,

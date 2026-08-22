@@ -8,7 +8,9 @@ from typing import Any, Iterable, Optional, Tuple, Union
 from requests import Session
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,

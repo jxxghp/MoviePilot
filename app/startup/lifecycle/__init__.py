@@ -26,7 +26,10 @@ except Exception:
 
 from app.chain.system import SystemChain
 from app.application.plugin.runtime import get_plugin_manager
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
 from app.runtime.topology import validate_process_topology
 from app.adapters.external.server import MoviePilotServerHelper

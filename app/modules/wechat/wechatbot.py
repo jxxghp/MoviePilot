@@ -12,7 +12,9 @@ import websocket
 from Crypto.Cipher import AES
 
 from app.runtime.cache import FileCache
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.application.messaging.agent import matches_channel_admin

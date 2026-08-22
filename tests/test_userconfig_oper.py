@@ -75,7 +75,7 @@ def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_async_write_uses_same_repository_rule() -> None:
+async def test_async_write_uses_same_repository_rule(db) -> None:
     """异步入口提交后同步读取立即看到相同结果。"""
     oper = _fresh_oper()
     service = UserConfigurationService(
@@ -87,7 +87,7 @@ async def test_async_write_uses_same_repository_rule() -> None:
 
     assert service.get("async-user", "theme") == "dark"
     assert UserConfig.get_by_key(
-        oper._db,
+        db.session,
         username="async-user",
         key="theme",
     ).value == "dark"
@@ -102,7 +102,7 @@ def test_existing_falsey_value_is_removed_from_db_but_kept_until_reload(db) -> N
     oper.set("falsey-user", "enabled", False)
 
     assert UserConfig.get_by_key(
-        oper._db,
+        db.session,
         username="falsey-user",
         key="enabled",
     ) is None
@@ -120,7 +120,7 @@ def test_falsey_value_without_existing_row_is_persisted(db) -> None:
     oper.set("new-falsey-user", "enabled", False)
 
     persisted = UserConfig.get_by_key(
-        oper._db,
+        db.session,
         username="new-falsey-user",
         key="enabled",
     )

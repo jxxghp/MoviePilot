@@ -16,11 +16,11 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.application.configuration import (
     SystemConfigService,
     get_configured_system_config as SystemConfigOper,
+    get_runtime_settings,
 )
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
@@ -126,7 +126,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
     def _load_setting_value(self, spec: SettingSpec):
         """读取指定设置项的当前值。"""
         if spec.source == "settings":
-            return getattr(settings, spec.key)
+            return get_runtime_settings().get(spec.key)
         return self._get_system_config().get(spec.systemconfig_key)
 
     @staticmethod
@@ -274,7 +274,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
             changed = False
             message = ""
             if spec.source == "settings":
-                success, message = settings.update_setting(spec.key, next_value)
+                success, message = get_runtime_settings().update(spec.key, next_value)
                 if success is False:
                     return json.dumps(
                         {

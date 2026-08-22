@@ -6,7 +6,9 @@ import cn2an
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger

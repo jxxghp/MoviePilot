@@ -15,7 +15,10 @@ from urllib.request import ProxyHandler, Request, build_opener, urlopen
 import click
 import psutil
 
-from app.runtime.config import Settings, settings
+from app.runtime.config import Settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.state import SystemHelper
 from app.application.backup import BackupArtifact
 from app.startup.database import build_database_governance

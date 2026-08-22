@@ -2,7 +2,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 from xml.dom import minidom
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaType

@@ -17,7 +17,10 @@ except ImportError as e:
 
 from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.config import settings as legacy_settings
+
+settings = RuntimeSettingsCompat()
 from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -669,7 +672,7 @@ async def init_modules() -> HostRuntime:
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
-    configure_runtime_setting_provider(lambda key: getattr(settings, key))
+    configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)

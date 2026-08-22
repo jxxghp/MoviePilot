@@ -17,7 +17,9 @@ from app.runtime.capabilities.model import (
     SelectorSchema,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 
 
 _DEFAULT_CAPABILITY_ROOT = Path(__file__).resolve().parent

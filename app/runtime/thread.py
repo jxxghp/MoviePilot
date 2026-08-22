@@ -1,7 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.foundation.singleton import Singleton
 
 

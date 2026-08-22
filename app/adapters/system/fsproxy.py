@@ -27,7 +27,9 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 
 # worker 脚本路径。用绝对路径直接执行，而不是 -m 或 import：

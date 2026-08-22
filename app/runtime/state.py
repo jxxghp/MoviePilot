@@ -11,7 +11,9 @@ from typing import Optional, Tuple
 import docker
 import psutil
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.environment import is_docker

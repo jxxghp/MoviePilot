@@ -15,7 +15,9 @@ from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.extensions.plugin.loader import PluginLoader

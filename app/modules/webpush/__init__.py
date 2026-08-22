@@ -3,7 +3,10 @@ from typing import Union, Tuple
 
 from pywebpush import webpush, WebPushException
 
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas.message import Message

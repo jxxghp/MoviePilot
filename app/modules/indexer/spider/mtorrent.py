@@ -4,7 +4,9 @@ import re
 from typing import Tuple, List, Optional
 from urllib.parse import urlparse
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.runtime.log import logger
 from app.schemas.types import MediaType

@@ -1,12 +1,12 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 49,
+      "async_db_query": 44,
       "async_db_update": 0,
-      "db_query": 68,
+      "db_query": 62,
       "db_update": 0
     },
-    "count": 117,
+    "count": 106,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -195,36 +195,6 @@
       },
       {
         "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data_by_key"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data_by_plugin_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data_by_key"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data_by_plugin_id"
-      },
-      {
-        "decorator": "async_db_query",
         "file": "app/db/models/site.py",
         "method": "Site.async_get_actives"
       },
@@ -262,26 +232,6 @@
         "decorator": "db_query",
         "file": "app/db/models/site.py",
         "method": "Site.list_order_by_pri"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/siteicon.py",
-        "method": "SiteIcon.async_get_by_domain"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/siteicon.py",
-        "method": "SiteIcon.get_by_domain"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/sitestatistic.py",
-        "method": "SiteStatistic.async_get_by_domain"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/sitestatistic.py",
-        "method": "SiteStatistic.get_by_domain"
       },
       {
         "decorator": "async_db_query",
@@ -547,11 +497,6 @@
         "decorator": "async_db_query",
         "file": "app/db/models/user.py",
         "method": "User.async_get_by_name"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/userconfig.py",
-        "method": "UserConfig.get_by_key"
       },
       {
         "decorator": "async_db_query",

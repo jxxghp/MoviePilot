@@ -7,7 +7,9 @@ from app.runtime.compat.diagnostics import (
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
 from app.application.plugin.routes import register_plugin_api
 from app.runtime.config import global_vars
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.extensions.plugin_manager import (
     PluginManager,
     configure_plugin_catalog_factory,

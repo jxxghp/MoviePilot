@@ -20,7 +20,9 @@ import psutil
 
 from app.adapters.system.backup.database import verify_database_backup
 from app.adapters.system.backup.files import BackupFiles
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.topology import process_topology_issue
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorReport, DoctorSeverity
 from app.adapters.system.host import SystemUtils

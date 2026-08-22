@@ -11,7 +11,9 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from app.agent.skills.metadata import parse_skill_metadata
 from app.runtime.cache import cached, fresh
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton

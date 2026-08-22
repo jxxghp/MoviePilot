@@ -280,7 +280,7 @@ class RuntimeSettingsService:
 
     def update(self, key: str, value: Any) -> tuple[Optional[bool], str]:
         """更新单个部署设置。"""
-        return self._settings.update_setting(key=key, value=value)
+        return self._settings.update_setting(key, value)
 
 
 class SystemConfigService:
@@ -383,6 +383,9 @@ def configure_runtime_settings(service: RuntimeSettingsService) -> None:
     """由组合根登记管理 API 使用的部署设置服务。"""
     global _runtime_settings_service
     _runtime_settings_service = service
+    from app.runtime.settings import configure_runtime_settings_compat
+
+    configure_runtime_settings_compat(service)
 
 
 def get_runtime_settings() -> RuntimeSettingsService:
