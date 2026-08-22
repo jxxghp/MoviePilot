@@ -19,6 +19,7 @@ from app.api.endpoints.agent import (
     _build_web_agent_message_events,
     _build_web_agent_command_items,
     _build_web_agent_session_id,
+    _build_web_agent_session_id_async,
     _build_web_agent_traditional_callback_payload,
     _build_web_agent_display_message_from_events,
     _collect_web_agent_traditional_events,
@@ -172,6 +173,30 @@ def test_build_web_agent_session_id_reuses_accessible_history():
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
 
     assert _build_web_agent_session_id(user, "telegram-session") == "telegram-session"
+
+
+def test_build_web_agent_session_id_async_uses_worker_persistence():
+    """异步 Web 会话解析应通过 AgentChat worker 端口读取历史。"""
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    persistence = SimpleNamespace(
+        async_get=AsyncMock(
+            return_value=SimpleNamespace(
+                user_id="telegram-user",
+                username="tester",
+            )
+        )
+    )
+
+    with patch(
+        "app.api.endpoints.agent.get_configured_agent_chat_persistence",
+        return_value=persistence,
+    ):
+        session_id = asyncio.run(
+            _build_web_agent_session_id_async(user, "telegram-session")
+        )
+
+    assert session_id == "telegram-session"
+    persistence.async_get.assert_awaited_once_with("telegram-session")
 
 
 def test_apply_web_agent_display_event_updates_snapshot():
@@ -904,6 +929,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
             return_value=FakeProtectedAgent,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
         ) as save_snapshot:
             body = asyncio.run(scenario())
 
@@ -970,6 +996,7 @@ def test_web_agent_cancel_keeps_existing_display_history():
             new=AsyncMock(return_value="已取消敏感设置读取。"),
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
         ) as save_snapshot:
             body = asyncio.run(scenario())
 
@@ -1113,6 +1140,7 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
             new=AsyncMock(side_effect=finish_after_disconnect),
         ) as process, patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
         ) as save_snapshot:
             body = asyncio.run(scenario())
 
@@ -1156,7 +1184,7 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
         "app.api.endpoints.agent._has_web_agent_traditional_interaction",
         return_value=False,
     ), patch(
-        "app.api.endpoints.agent._build_web_agent_session_id",
+        "app.api.endpoints.agent._build_web_agent_session_id_async",
         return_value="web-agent:heartbeat",
     ), patch.object(
         MessageChain,
@@ -1167,6 +1195,7 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
         side_effect=slow_process_message,
     ), patch(
         "app.api.endpoints.agent._save_web_agent_display_snapshot",
+        new_callable=AsyncMock,
     ):
         body = asyncio.run(scenario())
 
@@ -1228,7 +1257,7 @@ def test_web_agent_stop_finishes_stream_without_error():
             "app.api.endpoints.agent._has_web_agent_traditional_interaction",
             return_value=False,
         ), patch(
-            "app.api.endpoints.agent._build_web_agent_session_id",
+            "app.api.endpoints.agent._build_web_agent_session_id_async",
             return_value=session_id,
         ), patch.object(
             MessageChain,
@@ -1238,6 +1267,7 @@ def test_web_agent_stop_finishes_stream_without_error():
             return_value=BlockingWebAgent,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
         ):
             body = asyncio.run(scenario())
     finally:
@@ -1275,9 +1305,10 @@ def test_web_agent_stream_rechecks_running_service_before_enqueue():
     ), patch(
         "app.api.endpoints.agent.get_running_agent_manager",
         side_effect=[stale_manager, None],
-    ), patch(
-        "app.api.endpoints.agent._save_web_agent_display_snapshot",
-    ):
+        ), patch(
+            "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
+        ):
         body = asyncio.run(scenario())
 
     assert '"type": "error"' in body
@@ -1299,11 +1330,11 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
         await asyncio.sleep(0.035)
         return [{"type": "delta", "content": "状态正常"}]
 
-    def slow_snapshot(**_kwargs):
+    async def slow_snapshot(**_kwargs):
         """阻塞快照写入，便于断言 done 不等待落库。"""
-        snapshot_started.set()
-        snapshot_release.wait(timeout=2)
-        snapshot_finished.set()
+        await asyncio.to_thread(snapshot_started.set)
+        await asyncio.to_thread(snapshot_release.wait, 2)
+        await asyncio.to_thread(snapshot_finished.set)
 
     async def scenario():
         response = await web_agent_stream(payload, request, user)
@@ -1323,6 +1354,8 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
             await asyncio.sleep(0.001)
         assert snapshot_started.is_set()
         assert not snapshot_finished.is_set()
+        snapshot_release.set()
+        await asyncio.to_thread(snapshot_finished.wait, 1)
         await iterator.aclose()
         return "".join(received)
 
@@ -1340,13 +1373,14 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
             "app.api.endpoints.agent._get_web_agent_unknown_command_message",
             return_value=None,
         ), patch(
-            "app.api.endpoints.agent._build_web_agent_session_id",
+            "app.api.endpoints.agent._build_web_agent_session_id_async",
             return_value="web-agent:traditional-heartbeat",
         ), patch(
             "app.api.endpoints.agent._collect_web_agent_traditional_events",
             side_effect=slow_collect,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
             side_effect=slow_snapshot,
         ):
             body = asyncio.run(scenario())
@@ -1354,7 +1388,6 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
         assert ": heartbeat\n\n" in body
         assert '"type": "delta"' in body
         assert '"type": "done"' in body
-        assert not snapshot_finished.is_set()
     finally:
         snapshot_release.set()
 
@@ -1374,11 +1407,11 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         """立即生成一段文本，随后进入终态。"""
         kwargs["output_callback"]("检查完成")
 
-    def slow_snapshot(**_kwargs):
+    async def slow_snapshot(**_kwargs):
         """阻塞快照写入，便于验证 done 的发送时机。"""
-        snapshot_started.set()
-        snapshot_release.wait(timeout=2)
-        snapshot_finished.set()
+        await asyncio.to_thread(snapshot_started.set)
+        await asyncio.to_thread(snapshot_release.wait, 2)
+        await asyncio.to_thread(snapshot_finished.set)
 
     async def scenario():
         response = await web_agent_stream(payload, request, user)
@@ -1398,6 +1431,8 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         assert snapshot_started.is_set()
         assert not snapshot_finished.is_set()
 
+        snapshot_release.set()
+        await asyncio.to_thread(snapshot_finished.wait, 1)
         await iterator.aclose()
         return "".join(received)
 
@@ -1412,7 +1447,7 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
             "app.api.endpoints.agent._has_web_agent_traditional_interaction",
             return_value=False,
         ), patch(
-            "app.api.endpoints.agent._build_web_agent_session_id",
+            "app.api.endpoints.agent._build_web_agent_session_id_async",
             return_value="web-agent:snapshot",
         ), patch.object(
             MessageChain,
@@ -1423,12 +1458,12 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
             side_effect=immediate_process_message,
         ), patch(
             "app.api.endpoints.agent._save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
             side_effect=slow_snapshot,
         ):
             body = asyncio.run(scenario())
 
         assert '"type": "done"' in body
-        assert not snapshot_finished.is_set()
     finally:
         snapshot_release.set()
 

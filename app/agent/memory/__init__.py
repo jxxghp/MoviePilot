@@ -10,6 +10,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
 from app.application.agentdata import AgentChatPort as AgentChatOper
+from app.application.messaging.chat import get_configured_agent_chat_persistence
 from app.runtime.log import logger
 from app.schemas.agent import ConversationMemory
 
@@ -105,6 +106,42 @@ class MemoryManager:
         self.save_memory(memory)
         return memory.messages
 
+    async def async_get_agent_messages(
+        self, session_id: str, user_id: str
+    ) -> List[BaseMessage]:
+        """异步恢复 Agent 消息，持久化读取经有界数据库 worker 承接。"""
+        memory = self.get_memory(session_id, user_id)
+        if memory:
+            return memory.messages
+
+        try:
+            persistence = get_configured_agent_chat_persistence()
+            chat = await persistence.async_get(
+                session_id=session_id,
+                user_id=user_id,
+            )
+            if not chat:
+                chat = await persistence.async_get(session_id=session_id)
+        except Exception as e:
+            logger.debug(f"读取持久化Agent会话失败: {e}")
+            return []
+        if not chat or not chat.agent_messages:
+            return []
+
+        try:
+            messages = messages_from_dict(chat.agent_messages)
+        except Exception as e:
+            logger.debug(f"恢复持久化Agent消息失败: {e}")
+            return []
+
+        memory = ConversationMemory(
+            session_id=session_id,
+            user_id=user_id,
+            messages=messages,
+        )
+        self.save_memory(memory)
+        return memory.messages
+
     def save_agent_messages(
             self, session_id: str, user_id: str, messages: List[BaseMessage]
     ):
@@ -122,6 +159,27 @@ class MemoryManager:
         self.save_memory(memory)
         try:
             AgentChatOper().save_agent_messages(
+                session_id=session_id,
+                user_id=user_id,
+                messages=messages_to_dict(messages),
+            )
+        except Exception as e:
+            logger.debug(f"持久化Agent消息失败: {e}")
+
+    async def async_save_agent_messages(
+        self, session_id: str, user_id: str, messages: List[BaseMessage]
+    ) -> None:
+        """异步保存 Agent 消息，持久化写入经有界数据库 worker 承接。"""
+        memory = self.get_memory(session_id, user_id)
+        if not memory:
+            memory = ConversationMemory(session_id=session_id, user_id=user_id)
+
+        memory.messages = messages
+        memory.updated_at = datetime.now()
+        self.save_memory(memory)
+        try:
+            persistence = get_configured_agent_chat_persistence()
+            await persistence.async_save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
                 messages=messages_to_dict(messages),

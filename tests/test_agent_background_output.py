@@ -249,7 +249,11 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
         )
         agent.send_agent_message = AsyncMock()
 
-        with patch.object(memory_manager, "save_agent_messages") as save_messages:
+        with patch.object(
+            memory_manager,
+            "async_save_agent_messages",
+            new=AsyncMock(),
+        ) as save_messages:
             await agent._execute_agent([HumanMessage(content="测试")])
 
         save_messages.assert_called_once()
@@ -277,7 +281,9 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                memory_manager, "get_agent_messages", return_value=cached_messages
+                memory_manager,
+                "async_get_agent_messages",
+                new=AsyncMock(return_value=cached_messages),
             ),
             patch.object(agent, "prepare_chat_title", new=AsyncMock()),
             patch.object(agent, "_save_display_history_messages"),
@@ -305,7 +311,11 @@ class AgentBackgroundOutputTest(unittest.IsolatedAsyncioTestCase):
         )
         agent.send_agent_message = AsyncMock()
 
-        with patch.object(memory_manager, "save_agent_messages") as save_messages:
+        with patch.object(
+            memory_manager,
+            "async_save_agent_messages",
+            new=AsyncMock(),
+        ) as save_messages:
             await agent._execute_agent([])
 
         agent.send_agent_message.assert_awaited_once_with(

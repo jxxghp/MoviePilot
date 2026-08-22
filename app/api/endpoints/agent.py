@@ -53,6 +53,7 @@ from app.application.messaging.chat import (
     AgentChatRecord,
     AgentChatService,
     get_configured_agent_chat_service,
+    get_configured_agent_chat_persistence,
 )
 from app.application.security.user import get_configured_user_id_lookup
 from app.application.configuration import get_api_runtime_config_snapshot
@@ -513,6 +514,25 @@ def _build_web_agent_session_id(user: ApiPrincipal, session_id: Optional[str]) -
     return f"{WEB_AGENT_SESSION_PREFIX}{digest[:32]}"
 
 
+async def _build_web_agent_session_id_async(
+    user: ApiPrincipal,
+    session_id: Optional[str],
+) -> str:
+    """异步解析 Web Agent 会话 ID，历史查询经有界数据库 worker 承接。"""
+    seed = str(session_id or "").strip() or uuid.uuid4().hex
+    if seed.startswith(WEB_AGENT_SESSION_PREFIX):
+        return seed
+    try:
+        existing_chat = await get_configured_agent_chat_persistence().async_get(seed)
+        if existing_chat and AgentChatService.can_access(existing_chat, user):
+            return seed
+    except Exception as e:
+        logger.debug(f"读取WebAgent历史会话失败: {e}")
+    user_part = user.name or str(user.id)
+    digest = hashlib.sha256(f"{user_part}:{seed}".encode("utf-8")).hexdigest()
+    return f"{WEB_AGENT_SESSION_PREFIX}{digest[:32]}"
+
+
 def _can_access_agent_chat(chat: Any, user: ApiPrincipal) -> bool:
     """
     判断当前登录用户是否可以访问指定 Agent 会话。
@@ -632,7 +652,7 @@ def _apply_web_agent_display_event(event: dict, assistant_message: dict) -> None
             tool["status"] = "done"
 
 
-def _save_web_agent_display_snapshot(
+async def _save_web_agent_display_snapshot(
     *,
     session_id: str,
     current_user: ApiPrincipal,
@@ -643,9 +663,10 @@ def _save_web_agent_display_snapshot(
     保存 WebAgent 当前展示消息快照。
     """
     try:
-        service = get_configured_agent_chat_service()
-        existing_chat = service.get_sync(session_id)
-        service.save_display_sync(
+        existing_chat = await get_configured_agent_chat_persistence().async_get(
+            session_id
+        )
+        await get_configured_agent_chat_persistence().async_save_display_messages(
             session_id=session_id,
             user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
             username=(existing_chat.username if existing_chat else current_user.name),
@@ -735,7 +756,10 @@ def _sanitize_web_agent_upload_name(
     return safe_name
 
 
-def _get_web_agent_upload_dir(user: ApiPrincipal, session_id: Optional[str]) -> Path:
+async def _get_web_agent_upload_dir(
+    user: ApiPrincipal,
+    session_id: Optional[str],
+) -> Path:
     """
     计算当前 Web Agent 会话的临时附件目录。
 
@@ -743,7 +767,7 @@ def _get_web_agent_upload_dir(user: ApiPrincipal, session_id: Optional[str]) -> 
     :param session_id: 前端会话标识
     :return: 已创建的临时附件目录
     """
-    server_session_id = _build_web_agent_session_id(user, session_id)
+    server_session_id = await _build_web_agent_session_id_async(user, session_id)
     safe_session_id = server_session_id.replace(":", "_")
     upload_dir = get_api_runtime_config_snapshot().temp_path / "agent_uploads" / safe_session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -1690,7 +1714,7 @@ async def upload_web_agent_file(
     """
     mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0]
     safe_name = _sanitize_web_agent_upload_name(file.filename, mime_type)
-    upload_dir = _get_web_agent_upload_dir(current_user, session_id)
+    upload_dir = await _get_web_agent_upload_dir(current_user, session_id)
     target_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
     size = await _save_web_agent_upload(file, target_path)
     attachment = _register_web_agent_file(
@@ -1821,7 +1845,10 @@ async def get_agent_chat_session(
     chat = await _get_accessible_agent_chat(service, session_id, current_user)
     server_session_id = session_id
     if not chat:
-        server_session_id = _build_web_agent_session_id(current_user, session_id)
+        server_session_id = await _build_web_agent_session_id_async(
+            current_user,
+            session_id,
+        )
         if server_session_id != session_id:
             chat = await _get_accessible_agent_chat(
                 service,
@@ -1881,8 +1908,7 @@ async def save_agent_chat_display(
         message.model_dump(exclude_none=True)
         for message in payload.messages
     ]
-    await run_in_threadpool(
-        _save_web_agent_display_snapshot,
+    await _save_web_agent_display_snapshot(
         session_id=session_id,
         current_user=current_user,
         messages=messages,
@@ -1937,7 +1963,10 @@ async def stop_web_agent_session_task(
     :param service: Agent 会话应用服务
     :return: 停止结果
     """
-    server_session_id = _build_web_agent_session_id(current_user, session_id)
+    server_session_id = await _build_web_agent_session_id_async(
+        current_user,
+        session_id,
+    )
     chat = await _get_accessible_agent_chat(
         service,
         server_session_id,
@@ -1973,7 +2002,10 @@ async def _web_agent_stream_impl(
     prompt = payload.text.strip()
     locale = LocaleHelper.get_locale_from_request(request)
     display_prompt = (payload.display_text or payload.text).strip()
-    session_id = _build_web_agent_session_id(current_user, payload.session_id)
+    session_id = await _build_web_agent_session_id_async(
+        current_user,
+        payload.session_id,
+    )
     is_secret_confirmation_candidate = (
         prompt in {"确认", "取消"}
         and not payload.images
@@ -2075,8 +2107,7 @@ async def _web_agent_stream_impl(
             async def save_display_snapshot() -> None:
                 """后台保存传统消息展示快照，不阻塞 SSE 终态。"""
                 try:
-                    await run_in_threadpool(
-                        _save_web_agent_display_snapshot,
+                    await _save_web_agent_display_snapshot(
                         session_id=session_id,
                         current_user=current_user,
                         messages=display_messages,
@@ -2239,8 +2270,7 @@ async def _web_agent_stream_impl(
                 # 终态先进入 SSE 队列，避免展示快照落库延迟前端结束动画。
                 event_publisher.publish(done_event)
                 if not is_secret_confirmation_control:
-                    await run_in_threadpool(
-                        _save_web_agent_display_snapshot,
+                    await _save_web_agent_display_snapshot(
                         session_id=session_id,
                         current_user=current_user,
                         messages=display_messages,

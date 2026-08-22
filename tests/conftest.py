@@ -118,6 +118,10 @@ def configure_plugin_system_services():
         configure_chain_runtime_context_provider,
     )
     from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.messaging.chat import (
+        AgentChatPersistenceService,
+        configure_agent_chat_persistence,
+    )
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
     from app.runtime.extensions.module_manager import ModuleManager
@@ -254,6 +258,12 @@ def configure_plugin_system_services():
         download_history=lambda: DownloadHistoryOper(),
         workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
+    )
+    configure_agent_chat_persistence(
+        AgentChatPersistenceService(
+            repository=AgentChatOper,
+            async_executor=database_executor,
+        )
     )
     from app.adapters.external.market import (
         PluginHelper,

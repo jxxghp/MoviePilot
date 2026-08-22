@@ -62,7 +62,12 @@ from app.application.database import configure_database_governance
 from app.application.service import configure_service_directory
 from app.application.plugin.runtime import configure_plugin_runtime
 from app.application.module import configure_module_runtime
-from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
+from app.application.messaging.chat import (
+    AgentChatPersistenceService,
+    AgentChatService,
+    configure_agent_chat_persistence,
+    configure_agent_chat_service,
+)
 from app.application.security.user import configure_user_lookups
 from app.application.security.auth import AuthService, configure_auth_service
 from app.application.security.passkeys import PasskeyService, configure_passkey_service
@@ -709,6 +714,12 @@ async def init_modules() -> HostRuntime:
     )
     configure_database_governance(build_database_governance())
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
+    configure_agent_chat_persistence(
+        AgentChatPersistenceService(
+            repository=AgentChatOper,
+            async_executor=database_worker,
+        )
+    )
     configure_user_lookups(
         by_id=lambda user_id: UserOper().get_by_id(user_id),
         by_name=lambda username: UserOper().get_by_name(username),
