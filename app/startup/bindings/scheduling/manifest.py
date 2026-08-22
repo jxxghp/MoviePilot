@@ -25,7 +25,7 @@ from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.scheduler import ScheduledJob, ScheduledTrigger
 from app.runtime.scheduling import TimerUtils
 from app.schemas.system import MediaServerConf
-from app.startup.scheduling import systemjobs
+from app.startup.bindings.scheduling import systemjobs
 
 # 订阅 RSS 刷新周期的兜底值与下限，单位分钟
 DEFAULT_RSS_INTERVAL = 30

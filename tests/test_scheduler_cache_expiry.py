@@ -5,8 +5,8 @@ from app.scheduler import composition as scheduler_module
 from app.scheduler import Scheduler
 from app.startup import scheduler_initializer
 from app.scheduler import workflows as workflows_module
-from app.startup.scheduling import manifest as manifest_module
-from app.startup.scheduling.systemjobs import UserAuthChecker
+from app.startup.bindings.scheduling import manifest as manifest_module
+from app.startup.bindings.scheduling.systemjobs import UserAuthChecker
 
 
 class _BackgroundSchedulerStub:

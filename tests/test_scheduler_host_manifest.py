@@ -12,8 +12,8 @@ from unittest.mock import Mock
 import pytest
 
 from app.scheduler import Scheduler
-from app.startup.scheduling import manifest as manifest_module
-from app.startup.scheduling.systemjobs import UserAuthChecker
+from app.startup.bindings.scheduling import manifest as manifest_module
+from app.startup.bindings.scheduling.systemjobs import UserAuthChecker
 
 # 无论开关如何都必须出现在运行状态登记中的作业
 ALWAYS_REGISTERED = {

@@ -12,8 +12,8 @@ from app.schemas.types import SystemConfigKey
 from app.scheduler.agent_tasks import AgentTaskScheduling
 from app.scheduler.plugins import PluginScheduling
 from app.scheduler.workflows import WorkflowScheduling
-from app.startup.scheduling.manifest import build_host_jobs
-from app.startup.scheduling.systemjobs import UserAuthChecker
+from app.startup.bindings.scheduling.manifest import build_host_jobs
+from app.startup.bindings.scheduling.systemjobs import UserAuthChecker
 
 
 class Scheduler(

@@ -5,8 +5,9 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from app.scheduler import Scheduler
-from app.startup.scheduling import manifest as manifest_module
-from app.startup.scheduling import systemjobs as systemjobs_module
+from app.scheduler import composition as composition_module
+from app.startup.bindings.scheduling import manifest as manifest_module
+from app.startup.bindings.scheduling import systemjobs as systemjobs_module
 
 
 def _backup_jobs(monkeypatch) -> list:
@@ -85,9 +86,11 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
 
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
+    # 源码位置从已导入的模块取，路径不写死：模块搬家时断言随之移动，
+    # 而不是继续读一个不存在的路径或静默读到旧副本。
     sources = (
-        Path(__file__).parents[1] / "app" / "scheduler" / "composition.py",
-        Path(__file__).parents[1] / "app" / "startup" / "scheduling" / "systemjobs.py",
+        Path(composition_module.__file__),
+        Path(systemjobs_module.__file__),
     )
     function_imports = [
         node

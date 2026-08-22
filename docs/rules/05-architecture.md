@@ -514,7 +514,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |
 | `app/runtime/scheduler.py` | Scheduled-job declaration types and the generic execution engine: job-state registry, trigger expansion, sync/async/subprocess execution, progress convergence and listing. Knows no business domain; failure notices leave through a host-overridable hook |
 | `app/scheduler/` | Scheduling composition root: `composition.py` assembles the engine with the host manifest, `agent_tasks.py`/`workflows.py`/`plugins.py` own one registration path each. The three paths differ in trigger timing, lifecycle and failure semantics and are deliberately not merged |
-| `app/startup/scheduling/` | Host business job manifest expressed as data (`manifest.py`) plus the system jobs the host implements itself (`systemjobs.py`). This is where knowledge of every business domain lives |
+| `app/startup/bindings/scheduling/` | Host business job manifest expressed as data (`manifest.py`) plus the system jobs the host implements itself (`systemjobs.py`). This is where knowledge of every business domain lives |
 | `app/application/orchestration/scheduler.py` | `SchedulerChain`: table cleanup, `scheduler_job`/`clear_cache` broadcast and system-message forwarding for scheduled jobs |
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |

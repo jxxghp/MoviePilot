@@ -1,5 +1,5 @@
 from app.schemas.system import MediaServerConf
-from app.startup.scheduling.manifest import build_mediaserver_sync_schedules
+from app.startup.bindings.scheduling.manifest import build_mediaserver_sync_schedules
 
 
 def test_build_mediaserver_sync_schedules_uses_server_interval_and_legacy_fallback():
