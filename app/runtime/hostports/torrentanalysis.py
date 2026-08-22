@@ -7,7 +7,7 @@
 
 from typing import Any, List, Optional, Protocol
 
-from app.runtime.hostport import HostPort
+from app.runtime.hostports.port import HostPort
 from app.schemas.filter import TorrentVerdict
 
 

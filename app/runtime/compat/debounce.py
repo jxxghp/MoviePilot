@@ -1,3 +1,9 @@
+"""旧插件专用的防抖器与防抖装饰器。
+
+本模块只为旧插件而存在：宿主自身无任何调用方，仅由 ``app.utils.debounce``
+兼容别名指向。宿主新代码不得导入本模块。
+"""
+
 import asyncio
 import functools
 import inspect

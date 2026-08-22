@@ -23,7 +23,7 @@ from app.runtime.extensions.plugin.filter_rule_capabilities import (
 )
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.torrentanalysis import torrent_analysis_port
+from app.runtime.hostports.torrentanalysis import torrent_analysis_port
 from app.schemas.rule import is_valid_rule_id, rule_string_violation
 
 

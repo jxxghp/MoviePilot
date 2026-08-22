@@ -6,7 +6,7 @@
 
 from typing import Any, Protocol
 
-from app.runtime.hostport import HostPort
+from app.runtime.hostports.port import HostPort
 
 
 class DiagnosticsProvider(Protocol):

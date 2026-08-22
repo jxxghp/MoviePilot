@@ -10,8 +10,8 @@ import pytest
 
 from app.modules.filter import FilterModule
 from app.modules.indexer import IndexerModule
-from app.runtime.filterrules import filter_rule_group_port
-from app.runtime.siteresource import site_resource_port
+from app.runtime.hostports.filterrules import filter_rule_group_port
+from app.runtime.hostports.siteresource import site_resource_port
 from app.startup.hostport_initializer import configure_host_ports
 
 

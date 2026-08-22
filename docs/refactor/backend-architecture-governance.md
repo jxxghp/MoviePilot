@@ -494,6 +494,32 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 待本轮检查通过且插件兼容性确认后再启动下一个治理周期。
 
+#### 6.9.1 `app/runtime` 目录重排：判据与已划定的边界
+
+目录归属由 `docs/rules/05-architecture.md` 的判据 D 决定：目录存在的理由是
+「什么时候跑 + 谁能 import」不同，不是主题词相同。按 D1–D4 顺序提问，第一个命中即定位。
+
+已落地：宿主端口槽归入 `app/runtime/hostports/`（D2）；`debounce.py` 归入
+`app/runtime/compat/`（D1，宿主零调用方，只由 `app.utils.debounce` 别名吊命）。
+
+**`plugin_manager.py` 不在本轮搬迁范围内。** 它虽然同样命中判据，但迁移成本明显
+高于收益，且成本不在自身而在三处外部硬编码：
+
+- `scripts/sdk/exports.py` 的 `HOST_INTERNAL_EXPORTS` 有 5 个 `plugin_manager.*`
+  全名串；漏改会让这 5 个宿主内部符号变成 SDK 必需导出，且不会报错，是静默降级。
+- `tests/test_plugin_sdk.py` 按 `__module__` 断言符号归属。
+- `tests/test_plugin_local_sync.py` 有 14 处 monkeypatch 目标字符串。
+
+三者都是字符串匹配，改错时测试仍可能是绿的，因此该模块只在能同批收紧上述硬编码时
+才动，不允许顺手搬。
+
+#### 6.9.2 目录门禁的已知失效模式
+
+`tests/test_architecture_dependencies.py` 的 `PLUGIN_COMPONENT_ROOTS` 用 `rglob`
+扫描四个硬编码目录。目录一旦改名或搬走，`rglob` 扫空、断言列表为空、测试转绿，
+保护随之消失且无任何提示。改动这四个目录时必须同批更新常量，并用一处故意违规
+验证门禁仍会变红。
+
 ## 7. 职责模型
 
 ### 7.1 Package Ownership Matrix

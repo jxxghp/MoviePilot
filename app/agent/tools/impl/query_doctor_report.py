@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.diagnostics import diagnostics_port
+from app.runtime.hostports.diagnostics import diagnostics_port
 from app.runtime.log import logger
 
 

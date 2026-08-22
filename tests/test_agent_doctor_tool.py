@@ -15,7 +15,7 @@ from app.doctor.models import (
     DoctorReport,
     DoctorSeverity,
 )
-from app.runtime.diagnostics import diagnostics_port
+from app.runtime.hostports.diagnostics import diagnostics_port
 from app.startup.hostport_initializer import configure_host_ports
 
 

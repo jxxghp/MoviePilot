@@ -9,7 +9,7 @@ from app.application.orchestration.ports.search import SearchPorts
 from app.domain.context import TorrentInfo
 from app.modules.filter import FilterModule
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.torrentanalysis import torrent_analysis_port
+from app.runtime.hostports.torrentanalysis import torrent_analysis_port
 from app.schemas.filter import TorrentVerdict
 
 

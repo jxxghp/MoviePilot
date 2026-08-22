@@ -28,7 +28,7 @@ from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.modules import _ModuleBase
 from app.runtime.progress import ProgressHelper
-from app.runtime.storages import storage_config_port
+from app.runtime.hostports.storages import storage_config_port
 from app.runtime.extensions.module.declarations import builtin_multi_instance
 from app.runtime.extensions.service_config import (
     STORAGE_CAPABILITY,

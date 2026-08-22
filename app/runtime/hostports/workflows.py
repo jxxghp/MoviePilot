@@ -6,7 +6,7 @@
 
 from typing import Optional, Protocol, Tuple
 
-from app.runtime.hostport import HostPort
+from app.runtime.hostports.port import HostPort
 
 
 class WorkflowExecutionProvider(Protocol):

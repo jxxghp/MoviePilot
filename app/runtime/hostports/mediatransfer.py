@@ -6,8 +6,8 @@
 from pathlib import Path
 from typing import Any, List, Optional, Protocol, runtime_checkable
 
-from app.runtime.hostport import HostPort
-from app.runtime.storages import StorageOperations
+from app.runtime.hostports.port import HostPort
+from app.runtime.hostports.storages import StorageOperations
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode

@@ -12,8 +12,8 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
 from app.adapters.media.audio import AudioMetadataHelper
 from app.runtime.log import logger
-from app.runtime.naming import naming_context_port
-from app.runtime.storages import StorageOperations
+from app.runtime.hostports.naming import naming_context_port
+from app.runtime.hostports.storages import StorageOperations
 from app.application.directory import DirectoryHelper
 from app.schemas.transfer import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
