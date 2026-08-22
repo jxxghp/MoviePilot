@@ -13,6 +13,7 @@ from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
 from app.api.endpoints.openai import (
     MODEL_ID,
     _is_manager_unavailable,
+    _is_manager_queue_full,
     _run_managed_agent,
 )
 from app.api.openai_utils import (
@@ -245,6 +246,12 @@ async def messages(
                 "MoviePilot AI agent is unavailable.",
                 503,
                 error_type="api_error",
+            )
+        if _is_manager_queue_full(exc):
+            return _anthropic_error_response(
+                str(exc),
+                429,
+                error_type="rate_limit_error",
             )
         return _anthropic_error_response(str(exc), 500, error_type="api_error")
     finally:
