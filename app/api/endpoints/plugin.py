@@ -874,7 +874,10 @@ async def save_plugin_folders(
     保存插件文件夹分组配置
     """
     try:
-        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
+        await get_configured_system_config().async_set(
+            SystemConfigKey.PluginFolders,
+            folders,
+        )
         return _SchemaResponse(success=True)
     except Exception as e:
         logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
@@ -893,7 +896,10 @@ async def create_plugin_folder(
     folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
     if folder_name not in folders:
         folders[folder_name] = []
-        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
+        await get_configured_system_config().async_set(
+            SystemConfigKey.PluginFolders,
+            folders,
+        )
         return _SchemaResponse(
             success=True, message=f"文件夹 '{folder_name}' 创建成功"
         )

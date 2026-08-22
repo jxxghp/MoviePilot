@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import FrozenInstanceError
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,6 +19,15 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_transfer_retry_config,
 )
+from app.application.security.userconfig import UserConfigurationService
+
+
+class _InlineDatabaseExecutor:
+    """同步执行测试操作，并保留异步应用端口的调用形态。"""
+
+    async def run(self, operation):
+        """执行并返回操作结果。"""
+        return operation()
 
 
 class _MutableSettings:
@@ -66,21 +75,42 @@ def test_system_config_service_supports_separate_reader_and_writer() -> None:
     """应用服务可以分别注入只读与写入适配器。"""
     reader = MagicMock()
     reader.get.return_value = "old"
-    reader.async_get = AsyncMock(return_value="async-old")
     writer = MagicMock()
     writer.set.return_value = True
-    writer.async_set = AsyncMock(return_value=True)
-    service = SystemConfigService(reader=reader, writer=writer)
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+    )
 
     assert service.get("key") == "old"
     assert service.set("key", "new") is True
-    assert asyncio.run(service.async_get("key")) == "async-old"
     assert asyncio.run(service.async_set("key", "new")) is True
     service.delete("key")
 
     reader.get.assert_called_once_with("key")
-    writer.set.assert_called_once_with("key", "new")
+    assert writer.set.call_args_list == [
+        (("key", "new"), {}),
+        (("key", "new"), {}),
+    ]
     writer.delete.assert_called_once_with("key")
+
+
+def test_user_configuration_service_supports_sync_and_async_writes() -> None:
+    """用户配置服务的同步与异步入口执行同一仓储方法。"""
+    repository = MagicMock()
+    repository.set.return_value = True
+    service = UserConfigurationService(
+        repository,
+        async_executor=_InlineDatabaseExecutor(),
+    )
+
+    assert service.set("alice", "theme", "dark") is True
+    assert asyncio.run(service.async_set("alice", "theme", "light")) is True
+    assert repository.set.call_args_list == [
+        ((), {"username": "alice", "key": "theme", "value": "dark"}),
+        ((), {"username": "alice", "key": "theme", "value": "light"}),
+    ]
 
 
 def test_transfer_retry_provider_returns_frozen_snapshot_per_call() -> None:

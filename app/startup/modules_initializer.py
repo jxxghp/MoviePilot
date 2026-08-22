@@ -89,6 +89,7 @@ from app.db.session import (
     get_async_db,
     get_db,
 )
+from app.db.worker import DatabaseWorker
 from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
@@ -155,6 +156,40 @@ from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     configure_service_config_reader,
 )
+
+
+_database_worker: DatabaseWorker | None = None
+
+
+async def stop_database_worker() -> None:
+    """停止当前进程的数据库短事务 worker。"""
+    global _database_worker
+    worker = _database_worker
+    _database_worker = None
+    if worker is not None:
+        await worker.shutdown()
+
+
+async def _initialize_configuration_services(
+    database_worker: DatabaseWorker,
+) -> None:
+    """加载完整配置快照后发布系统与用户配置服务。"""
+    system_config = SystemConfigOper()
+    user_config = UserConfigOper()
+    await database_worker.run(system_config.load_snapshot)
+    await database_worker.run(user_config.load_snapshot)
+    configure_system_config(
+        SystemConfigService(
+            repository=system_config,
+            async_executor=database_worker,
+        )
+    )
+    configure_user_configuration(
+        UserConfigurationService(
+            repository=user_config,
+            async_executor=database_worker,
+        )
+    )
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -506,6 +541,7 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
+    await run_step("数据库任务", stop_database_worker)
     await run_step("数据库连接", close_database)
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
@@ -515,6 +551,7 @@ async def init_modules() -> HostRuntime:
     """
     启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
+    global _database_worker
     # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
     transaction_runner = TransactionalWriteRunner(
         sync_session=SessionFactory,
@@ -524,6 +561,14 @@ async def init_modules() -> HostRuntime:
         sync=transaction_runner.sync,
         async_=transaction_runner.async_,
     )
+    database_worker = DatabaseWorker()
+    await database_worker.start()
+    _database_worker = database_worker
+    try:
+        await _initialize_configuration_services(database_worker)
+    except BaseException:
+        await stop_database_worker()
+        raise
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
         sync_session=get_db,
@@ -599,8 +644,6 @@ async def init_modules() -> HostRuntime:
     configure_runtime_settings(host_runtime.settings)
     configure_runtime_setting_provider(lambda key: getattr(settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
-    # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
@@ -640,7 +683,6 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
-    configure_user_configuration(UserConfigurationService(repository=UserConfigOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
     configure_site_query_service(SiteQueryService(repository=SiteOper()))
     configure_site_health_service(SiteHealthService(repository=SiteOper()))

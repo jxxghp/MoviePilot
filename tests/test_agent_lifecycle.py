@@ -138,7 +138,10 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch.setattr(modules_initializer, "start_frontend", start_frontend)
     monkeypatch.setattr(modules_initializer, "check_auth", check_auth)
 
-    await modules_initializer.init_modules()
+    try:
+        await modules_initializer.init_modules()
+    finally:
+        await modules_initializer.stop_database_worker()
 
     manager.initialize.assert_awaited_once_with()
     start_frontend.assert_called_once_with()

@@ -2400,6 +2400,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         print_step(f"超级管理员初始密码：{generated_password}")
 
     system_config = SystemConfigOper()
+    system_config.load_snapshot()
     directory_items = config_payload.get("directories") or []
     if directory_items:
         current_directories = system_config.get(SystemConfigKey.Directories) or []

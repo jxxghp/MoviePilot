@@ -16,7 +16,6 @@ from app.application.security.user import UserService
 from app.api.dependencies.auth import (
     get_current_active_superuser_async,
     get_current_active_user_async,
-    get_current_active_user,
     get_user_service,
 )
 from app.application.security.userconfig import get_configured_user_configuration
@@ -140,7 +139,10 @@ async def upload_avatar(
     summary="查询用户配置",
     response_model=_SchemaResponse[_SchemaValueData],
 )
-def get_config(key: str, current_user: Any = Depends(get_current_active_user)):
+async def get_config(
+    key: str,
+    current_user: Any = Depends(get_current_active_user_async),
+):
     """
     查询用户配置
     """
@@ -149,15 +151,15 @@ def get_config(key: str, current_user: Any = Depends(get_current_active_user)):
 
 
 @router.post("/config/{key}", summary="更新用户配置", response_model=_SchemaResponse[None])
-def set_config(
+async def set_config(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-    current_user: Any = Depends(get_current_active_user),
+    current_user: Any = Depends(get_current_active_user_async),
 ):
     """
     更新用户配置
     """
-    get_configured_user_configuration().set(
+    await get_configured_user_configuration().async_set(
         username=current_user.name,
         key=key,
         value=value,

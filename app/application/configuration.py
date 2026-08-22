@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
+from app.application.database import AsyncDatabaseExecutor
 from app.schemas.types import MediaType
 
 
@@ -16,18 +18,12 @@ class SystemConfigReader(Protocol):
     def get(self, key: Any = None) -> Any:
         """读取配置。"""
 
-    async def async_get(self, key: Any = None) -> Any:
-        """异步读取配置。"""
-
 
 class SystemConfigWriter(Protocol):
     """持久化用户配置的最小写入端口。"""
 
     def set(self, key: Any, value: Any) -> bool | None:
         """写入配置。"""
-
-    async def async_set(self, key: Any, value: Any) -> bool | None:
-        """异步写入配置。"""
 
     def delete(self, key: Any) -> Any:
         """删除配置。"""
@@ -296,14 +292,16 @@ class SystemConfigService:
         *,
         reader: SystemConfigReader | None = None,
         writer: SystemConfigWriter | None = None,
+        async_executor: AsyncDatabaseExecutor | None = None,
     ) -> None:
-        """注入可分离的读写端口，并兼容旧的单仓储装配参数。"""
+        """注入读写端口及可选的异步事务执行能力。"""
         resolved_reader = reader or repository
         resolved_writer = writer or repository
         if resolved_reader is None or resolved_writer is None:
             raise ValueError("系统配置服务必须同时提供 reader 与 writer")
         self._reader = resolved_reader
         self._writer = resolved_writer
+        self._async_executor = async_executor
 
     def get(self, key: Any = None) -> Any:
         """读取配置。"""
@@ -313,13 +311,11 @@ class SystemConfigService:
         """写入配置。"""
         return self._writer.set(key, value)
 
-    async def async_get(self, key: Any = None) -> Any:
-        """异步读取配置。"""
-        return await self._reader.async_get(key)
-
     async def async_set(self, key: Any, value: Any) -> bool | None:
-        """异步写入配置。"""
-        return await self._writer.async_set(key, value)
+        """异步写入配置，并等待数据库提交或回滚完成。"""
+        if self._async_executor is None:
+            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+        return await self._async_executor.run(partial(self._writer.set, key, value))
 
     def delete(self, key: Any) -> Any:
         """删除配置。"""

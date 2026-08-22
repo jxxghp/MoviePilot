@@ -164,7 +164,13 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     monkeypatch.setattr(modules_initializer, "start_frontend", lambda: None)
     monkeypatch.setattr(modules_initializer, "check_auth", lambda: None)
 
-    asyncio.run(modules_initializer.init_modules())
+    async def initialize_modules() -> None:
+        try:
+            await modules_initializer.init_modules()
+        finally:
+            await modules_initializer.stop_database_worker()
+
+    asyncio.run(initialize_modules())
 
     assert called is False
     init_agent.assert_awaited_once_with()

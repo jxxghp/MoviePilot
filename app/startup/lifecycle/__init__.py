@@ -130,7 +130,13 @@ async def run_startup_step(
 
 async def initialize_modules_component(app: FastAPI) -> None:
     """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
-    runtime = await init_modules()
+    try:
+        runtime = await init_modules()
+    except BaseException:
+        from app.startup.modules_initializer import stop_database_worker
+
+        await stop_database_worker()
+        raise
     if runtime is not None:
         app.state.host_runtime = runtime
 
