@@ -95,6 +95,8 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
         auxiliary_auth_enable=settings.AUXILIARY_AUTH_ENABLE,
         global_image_cache=settings.GLOBAL_IMAGE_CACHE,
+        encoding_detection_performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
+        encoding_detection_min_confidence=settings.ENCODING_DETECTION_MIN_CONFIDENCE,
         download_subtitle=settings.DOWNLOAD_SUBTITLE,
         music_metadata_to_simplified=settings.MUSIC_METADATA_TO_SIMPLIFIED,
         recognize_plugin_first=settings.RECOGNIZE_PLUGIN_FIRST,

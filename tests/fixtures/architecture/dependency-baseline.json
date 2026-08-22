@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6396,
-  "edge_sha256": "343715ec8f599f096a45de0dd279d493e7eea7bcde70079f0df0446019578073",
+  "edge_count": 6397,
+  "edge_sha256": "7d10fe3157a2e2e0de2b8e7caf0edbbbb1c8302a58c9faf78812dba8a19e2d7a",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2647,8 +2647,9 @@
     "app.application.rss -> app.adapters.network.http",
     "app.application.rss -> app.adapters.system",
     "app.application.rss -> app.adapters.system.rust",
+    "app.application.rss -> app.application",
+    "app.application.rss -> app.application.configuration",
     "app.application.rss -> app.runtime",
-    "app.application.rss -> app.runtime.config",
     "app.application.rss -> app.runtime.log",
     "app.application.rules -> app.adapters",
     "app.application.rules -> app.adapters.system",

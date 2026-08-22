@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 134,
+    "count": 133,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -48,7 +48,6 @@
       "app/agent/tools/impl/update_agent_task.py",
       "app/agent/tools/impl/update_system_settings.py",
       "app/application/maintenance.py",
-      "app/application/rss.py",
       "app/application/security/auth.py",
       "app/application/security/passkey.py",
       "app/application/security/token.py",

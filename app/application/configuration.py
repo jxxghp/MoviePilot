@@ -148,6 +148,8 @@ class ChainRuntimeConfig:
     media_recognize_share: bool = False
     auxiliary_auth_enable: bool = False
     global_image_cache: bool = False
+    encoding_detection_performance_mode: bool = False
+    encoding_detection_min_confidence: float = 0.5
     download_subtitle: bool = True
     music_metadata_to_simplified: bool = True
     recognize_plugin_first: bool = False

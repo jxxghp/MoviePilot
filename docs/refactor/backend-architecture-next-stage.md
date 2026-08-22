@@ -978,6 +978,7 @@ Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源�
 `ChainRuntimeConfig`，canonical `settings` 直接读取文件数从 137 降至 136；配置/依赖基线已更新，壁纸与图片专项测试通过。
 随后将 `app/application/torrent.py` 的代理和媒体后缀读取迁移到同一快照，canonical 配置债务进一步降至 134 个文件；
 下载/种子专项测试与架构门禁通过。
+`app/application/rss.py` 的代理和编码检测选项也已迁移到快照，配置债务降至 133 个文件；RSS、Rust 解析和音乐资源专项测试通过。
 
 #### ARCH-272：异步阻塞检测
 
