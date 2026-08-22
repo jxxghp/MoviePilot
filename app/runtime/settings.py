@@ -9,6 +9,9 @@ from typing import Any
 
 RuntimeSettingProvider = Callable[[str], Any]
 _provider: RuntimeSettingProvider | None = None
+# 测试和插件可能临时替换某个模块上的 importlib.import_module；保存原始函数，
+# 让兼容代理的 legacy Settings 解析不受这类局部替身影响。
+_import_module = importlib.import_module
 
 
 class RuntimeSettingsCompat:
@@ -17,7 +20,7 @@ class RuntimeSettingsCompat:
     @staticmethod
     def _legacy_settings() -> Any:
         """返回旧 Settings 实例，供 runtime 尚未装配时的兼容回退使用。"""
-        return importlib.import_module("app.runtime.config").settings
+        return _import_module("app.runtime.config").settings
 
     def __getattr__(self, key: str) -> Any:
         """读取当前组合根配置；未装配时沿用旧 Settings 回退。"""
