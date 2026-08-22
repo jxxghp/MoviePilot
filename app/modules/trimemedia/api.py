@@ -7,7 +7,9 @@ from enum import Enum
 from typing import List, Optional, Union
 from urllib.parse import quote
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils, requests
 

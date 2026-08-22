@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 34,
+    "count": 24,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/cli.py",
@@ -25,17 +25,7 @@
       "app/modules/qbittorrent/__init__.py",
       "app/modules/redis/__init__.py",
       "app/modules/rtorrent/__init__.py",
-      "app/modules/themoviedb/__init__.py",
-      "app/modules/themoviedb/category.py",
-      "app/modules/themoviedb/scraper.py",
-      "app/modules/themoviedb/tmdb_cache.py",
-      "app/modules/themoviedb/tmdbapi.py",
-      "app/modules/themoviedb/tmdbv3api/objs/discover.py",
-      "app/modules/themoviedb/tmdbv3api/tmdb.py",
-      "app/modules/thetvdb/__init__.py",
-      "app/modules/thetvdb/tvdb_v4_official.py",
       "app/modules/transmission/__init__.py",
-      "app/modules/trimemedia/api.py",
       "app/modules/webpush/__init__.py",
       "app/runtime/extensions/host_module_adapter.py",
       "app/startup/agent_initializer.py",

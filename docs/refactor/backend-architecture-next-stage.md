@@ -1068,6 +1068,8 @@ Indexer parser/spider 模块族切换到动态运行时配置，站点搜索 URL
 降至 39 个，Indexer 专项测试通过。
 QQ、Telegram、WeChat、WeChatClawBot 与字幕模块切换到动态运行时配置，消息回调、代理和字幕下载行为保持；
 配置债务由 39 个文件降至 34 个，消息与字幕专项测试通过。
+TMDB、TVDB 与 TriMedia 模块切换到动态运行时配置，缓存、重试、媒体源和登录兼容行为保持；配置债务由 34 个
+文件降至 24 个，TMDB、媒体源与 TriMedia 专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

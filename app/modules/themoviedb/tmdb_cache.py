@@ -6,7 +6,9 @@ from time import time
 from typing import Any, Optional
 
 from app.runtime.cache import FileCache, TTLCache
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType

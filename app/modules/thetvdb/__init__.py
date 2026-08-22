@@ -1,7 +1,9 @@
 from threading import Lock
 from typing import Optional, Tuple, Union
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdb_v4_official
