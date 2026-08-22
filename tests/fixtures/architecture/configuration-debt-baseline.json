@@ -9,11 +9,9 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 105,
+    "count": 103,
     "files": [
-      "app/adapters/network/browser.py",
       "app/adapters/system/fsproxy.py",
-      "app/adapters/web/security/access.py",
       "app/agent/capabilities/adapter.py",
       "app/agent/llm/capability.py",
       "app/agent/llm/helper.py",

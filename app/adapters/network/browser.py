@@ -7,13 +7,17 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urlparse
 
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.runtime.managed_resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )
 from app.adapters.network.http import RequestUtils, cookie_parse
+
+
+# 保留旧插件可覆盖的模块级入口，默认通过 runtime 代理动态读取浏览器配置。
+settings = RuntimeSettingsCompat()
 
 
 class BrowserElement(Protocol):

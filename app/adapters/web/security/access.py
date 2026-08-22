@@ -15,8 +15,8 @@ from fastapi.security import (
 )
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.schemas.token import TokenPayload
 
 SuperuserTokenPayloadProvider = Callable[[], TokenPayload]
@@ -26,6 +26,10 @@ _superuser_token_payload_provider: Optional[SuperuserTokenPayloadProvider] = Non
 _token_encoder: Optional[TokenEncoder] = None
 _token_decoder: Optional[TokenDecoder] = None
 JWT_ALGORITHM = "HS256"
+
+
+# 兼容旧鉴权插件覆盖模块级设置；令牌实际策略仍由已注入 codec 和 runtime 配置提供。
+settings = RuntimeSettingsCompat()
 
 oauth2_scheme_manual_error = OAuth2PasswordBearer(
     auto_error=False,
