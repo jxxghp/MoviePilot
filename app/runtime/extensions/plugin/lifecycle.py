@@ -4,9 +4,49 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Callable
-from typing import Any, Optional
+from functools import wraps
+import time
+from typing import Any, Optional, ParamSpec, TypeVar, cast
 
+from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def observe_plugin_lifecycle(operation: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """为插件生命周期入口记录不含插件标识的低基数耗时。"""
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        """包装单个同步生命周期方法，并保留原始调用签名。"""
+
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            """执行生命周期方法并把失败状态归一为 error。"""
+            started_at = time.perf_counter()
+            outcome = "success"
+            try:
+                result = func(*args, **kwargs)
+                statuses = result.values() if isinstance(result, dict) else (result,)
+                if PluginRuntimeStatus.LOAD_FAILED in statuses:
+                    outcome = "error"
+                return result
+            except BaseException:
+                outcome = "error"
+                raise
+            finally:
+                record_metric(
+                    "plugin.lifecycle.duration",
+                    time.perf_counter() - started_at,
+                    operation=operation,
+                    outcome=outcome,
+                )
+
+        return cast(Callable[P, R], wrapper)
+
+    return decorator
 
 
 class PluginLifecycle:
@@ -44,6 +84,7 @@ class PluginLifecycle:
         self._logger = log
         self._event_sender = event_sender
 
+    @observe_plugin_lifecycle("start")
     def start(
         self,
         plugin_id: Optional[str] = None,
@@ -100,6 +141,7 @@ class PluginLifecycle:
         self._clear_tools()
         return results
 
+    @observe_plugin_lifecycle("initialize")
     def initialize(self, plugin_id: str, config: dict) -> None:
         """重新应用指定插件配置并刷新事件注册状态。"""
         plugin = self._running.get(plugin_id)
@@ -112,6 +154,7 @@ class PluginLifecycle:
             self._disable_events(type(plugin))
         self._clear_tools()
 
+    @observe_plugin_lifecycle("stop")
     def stop(self, plugin_id: Optional[str] = None) -> None:
         """停止指定插件或全部插件，并清理模块缓存。"""
         if plugin_id:
@@ -139,6 +182,7 @@ class PluginLifecycle:
         self._clear_tools()
         self._logger.info("插件停止完成")
 
+    @observe_plugin_lifecycle("reload")
     def reload(
         self,
         plugin_id: str,

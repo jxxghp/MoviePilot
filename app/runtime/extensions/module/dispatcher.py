@@ -9,7 +9,7 @@ from typing import Any, Protocol, cast
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.runtime.observability import observe_duration
+from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
     diagnose_module_callable,
     get_module_method_contract,
@@ -143,6 +143,7 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
             except Exception as err:
+                self._record_timeout(method, "plugin", err)
                 self._plugin_error_handler(
                     err,
                     plugin_id,
@@ -190,6 +191,7 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
             except Exception as err:
+                self._record_timeout(method, "plugin", err)
                 self._plugin_error_handler(
                     err,
                     plugin_id,
@@ -237,6 +239,7 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
             except Exception as err:
+                self._record_timeout(method, "system", err)
                 self._system_error_handler(
                     err,
                     module_id,
@@ -284,6 +287,7 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
             except Exception as err:
+                self._record_timeout(method, "system", err)
                 self._system_error_handler(
                     err,
                     module_id,
@@ -292,6 +296,16 @@ class ModuleInvocationDispatcher:
                     **kwargs,
                 )
         return result
+
+    @staticmethod
+    def _record_timeout(method: str, provider_type: str, error: Exception) -> None:
+        """仅把真实超时归入低基数模块超时指标。"""
+        if isinstance(error, TimeoutError):
+            record_metric(
+                "module.provider.timeout",
+                method=method,
+                provider_type=provider_type,
+            )
 
     @staticmethod
     def _diagnose_callable(
