@@ -87,6 +87,8 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
             + settings.RMT_SUBEXT
             + settings.RMT_AUDIOEXT
         ),
+        api_port=settings.PORT,
+        api_token=settings.API_TOKEN,
         video_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
@@ -147,6 +149,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         refresh_batch_size=settings.CONF.refresh,
         torrent_cache_size=settings.CONF.torrents,
         site_url=settings.MP_DOMAIN("#/site"),
+        workflow_url=settings.MP_DOMAIN("#/workflow"),
         season_zero_names=tuple(settings.RENAME_FORMAT_S0_NAMES),
         movie_rename_format=settings.RENAME_FORMAT(MediaType.MOVIE),
         television_rename_format=settings.RENAME_FORMAT(MediaType.TV),

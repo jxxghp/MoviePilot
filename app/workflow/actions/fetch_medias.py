@@ -4,9 +4,10 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.chain.recommend import RecommendChain
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.event import RecommendSourceEventData
@@ -152,7 +153,11 @@ class FetchMediasAction(BaseAction):
                         results = source['func']()
                     else:
                         # 调用内部API获取数据
-                        api_url = f"http://127.0.0.1:{settings.PORT}/api/v1/{source['api_path']}?token={settings.API_TOKEN}"
+                        runtime_config = get_chain_runtime_config_snapshot()
+                        api_url = (
+                            f"http://127.0.0.1:{runtime_config.api_port}"
+                            f"/api/v1/{source['api_path']}?token={runtime_config.api_token}"
+                        )
                         res = RequestUtils(timeout=15).post_res(api_url)
                         if res:
                             results = res.json()
@@ -163,7 +168,11 @@ class FetchMediasAction(BaseAction):
                         logger.error(f"{name} 获取数据失败")
             else:
                 # 调用内部API获取数据
-                api_url = f"http://127.0.0.1:{settings.PORT}{params.api_path}?token={settings.API_TOKEN}"
+                runtime_config = get_chain_runtime_config_snapshot()
+                api_url = (
+                    f"http://127.0.0.1:{runtime_config.api_port}{params.api_path}"
+                    f"?token={runtime_config.api_token}"
+                )
                 res = RequestUtils(timeout=15).post_res(api_url)
                 if res:
                     results = res.json()

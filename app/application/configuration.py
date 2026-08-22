@@ -140,6 +140,8 @@ class ChainRuntimeConfig:
     """Chain 在一次宿主生命周期内使用的基础配置快照。"""
 
     media_extensions: tuple[str, ...]
+    api_port: int = 3000
+    api_token: str | None = None
     video_extensions: tuple[str, ...] = ()
     subtitle_extensions: tuple[str, ...] = ()
     audio_extensions: tuple[str, ...] = ()
@@ -198,6 +200,7 @@ class ChainRuntimeConfig:
     refresh_batch_size: int = 50
     torrent_cache_size: int = 1000
     site_url: Optional[str] = None
+    workflow_url: Optional[str] = None
     season_zero_names: tuple[str, ...] = ()
     movie_rename_format: str = ""
     television_rename_format: str = ""
