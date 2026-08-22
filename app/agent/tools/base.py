@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import threading
 from abc import ABCMeta, abstractmethod
@@ -646,7 +647,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             self._channel == NotificationChannel.WebAgent.value
             and callable(callback)
         ):
-            callback(message)
+            callback_result = callback(message)
+            if inspect.isawaitable(callback_result):
+                await callback_result
             return
 
         if not self._channel or not self._source:
