@@ -13,8 +13,6 @@ from app.runtime.extensions.admission.command_arbitration import (
 from app.runtime.extensions.projection.command import PluginCommandTable
 from app.runtime.extensions.registry.command import CommandClaim
 from app.runtime.extensions.contract.instance import split_instance_key
-from app.application.messaging.gateway import CommandChain
-from app.application.messaging.message import MessageHelper
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.schemas.command import CommandConflict, CommandLayer, CommandOrigin
@@ -28,6 +26,8 @@ from app.foundation.collections import DictUtils
 
 # 内建命令清单的来源，由组合根在导入期注册
 _builtin_commands_provider: Optional[Callable[[], Dict[str, dict]]] = None
+# 命令消息网关的来源，由组合根在导入期注册
+_command_messenger_provider: Optional[Callable[[], Any]] = None
 
 
 def register_builtin_commands(provider: Callable[[], Dict[str, dict]]) -> None:
@@ -56,6 +56,34 @@ def _resolve_builtin_commands() -> Dict[str, dict]:
             "内建命令清单未注册：请先导入 app.startup.command_initializer 完成组合根装配"
         )
     return _builtin_commands_provider()
+
+
+def register_command_messenger(provider: Callable[[], Any]) -> None:
+    """
+    注册命令消息网关的来源
+
+    命令分发要广播菜单命令注册、发送命令回复、收口渠道处理状态并在出错时留下系统提示，
+    这四件事都经模块分发设施完成。网关实现归应用层，命令中枢经本入口取用。
+
+    :param provider: 交出命令消息网关的可调用对象
+    :return: 无返回值
+    """
+    global _command_messenger_provider
+    _command_messenger_provider = provider
+
+
+def _messenger() -> Any:
+    """
+    取出命令消息网关
+
+    :return: 命令消息网关
+    :raises RuntimeError: 组合根尚未注册命令消息网关
+    """
+    if _command_messenger_provider is None:
+        raise RuntimeError(
+            "命令消息网关未注册：请先导入 app.startup.command_initializer 完成组合根装配"
+        )
+    return _command_messenger_provider()
 
 
 def _command_callable(command: Dict[str, Any]) -> Optional[Callable]:
@@ -101,7 +129,7 @@ def _finish_command_processing_status(status: Optional[dict], user_id: Optional[
     """
     if not status:
         return
-    CommandChain().finish_message_processing_status(
+    _messenger().finish_message_processing_status(
         status=status,
         userid=user_id,
     )
@@ -129,8 +157,6 @@ class Command(metaclass=Singleton):
         )
         # 初始化锁
         self._rlock = threading.RLock()
-        # 消息管理器
-        self.messagehelper = MessageHelper()
         # 初始化命令
         self.init_commands()
 
@@ -194,7 +220,7 @@ class Command(metaclass=Singleton):
                         "Command set has changed or force registration is enabled."
                     )
                     self._registered_commands = filtered_initial_commands
-                    CommandChain().register_commands(commands=filtered_initial_commands)
+                    _messenger().register_commands(commands=filtered_initial_commands)
                 else:
                     logger.debug(
                         "Command set unchanged, skipping broadcast registration."
@@ -341,7 +367,7 @@ class Command(metaclass=Singleton):
         if command.get("type") == "scheduler":
             # 定时服务
             if userid:
-                CommandChain().post_message(
+                _messenger().post_message(
                     Message(
                         channel=channel,
                         source=source,
@@ -354,7 +380,7 @@ class Command(metaclass=Singleton):
             _command_callable(command)()
 
             if userid:
-                CommandChain().post_message(
+                _messenger().post_message(
                     Message(
                         channel=channel,
                         source=source,
@@ -478,8 +504,8 @@ class Command(metaclass=Singleton):
                 logger.error(
                     f"执行命令 {cmd} 出错：{str(err)} - {traceback.format_exc()}"
                 )
-                self.messagehelper.put(
-                    title=f"执行命令 {cmd} 出错", message=str(err), role="system"
+                _messenger().put_system_message(
+                    title=f"执行命令 {cmd} 出错", message=str(err)
                 )
 
     @staticmethod

@@ -247,10 +247,11 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             "metadata": {"kind": "typing"},
         }
 
-        with patch("app.command.CommandChain") as chain_cls:
+        messenger = Mock()
+        with patch("app.command._command_messenger_provider", return_value=messenger):
             _finish_command_processing_status(status, user_id="fallback")
 
-        chain_cls.return_value.finish_message_processing_status.assert_called_once_with(
+        messenger.finish_message_processing_status.assert_called_once_with(
             status=status,
             userid="fallback",
         )

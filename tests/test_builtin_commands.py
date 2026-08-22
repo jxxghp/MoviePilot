@@ -121,19 +121,24 @@ def test_command_hub_fails_loudly_when_the_builtin_list_is_not_composed(monkeypa
     assert "内建命令清单未注册" in str(excinfo.value)
 
 
-def test_executing_a_builtin_business_command_passes_the_call_context():
-    """命令中枢按解析出的实现的签名传入本次调用的上下文。"""
-    received = []
+def test_command_hub_fails_loudly_when_the_message_gateway_is_not_composed(monkeypatch):
+    """消息网关未装配时立刻报错，不能让命令回复与菜单广播静默落空。"""
+    monkeypatch.setattr(command_module, "_command_messenger_provider", None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        command_module._messenger()
+
+    assert "命令消息网关未注册" in str(excinfo.value)
+
+
+def _command_hub(preset: dict) -> Command:
+    """构造只挂内建命令的命令中枢测试对象。
+
+    :param preset: 内建命令表
+    :return: 命令中枢测试对象
+    """
     hub = object.__new__(Command)
-    hub._preset_commands = {
-        "/sites": {
-            "provider": lambda: (
-                lambda channel, userid, source: received.append((channel, userid, source))
-            ),
-            "description": "管理站点",
-            "data": {},
-        }
-    }
+    hub._preset_commands = preset
     hub._plugin_table = PluginCommandTable(
         builtin_command_words=lambda: hub._preset_commands,
         event_sender=Command.send_plugin_event,
@@ -142,8 +147,62 @@ def test_executing_a_builtin_business_command_passes_the_call_context():
     hub._other_commands = {}
     hub._commands = {}
     hub._rlock = threading.RLock()
-    hub.messagehelper = SimpleNamespace(put=lambda **_: None)
+    return hub
+
+
+def test_executing_a_builtin_business_command_passes_the_call_context():
+    """命令中枢按解析出的实现的签名传入本次调用的上下文。"""
+    received = []
+    hub = _command_hub({
+        "/sites": {
+            "provider": lambda: (
+                lambda channel, userid, source: received.append((channel, userid, source))
+            ),
+            "description": "管理站点",
+            "data": {},
+        }
+    })
 
     hub.execute(cmd="/sites", userid="u1", source="s1")
 
     assert received == [(None, "u1", "s1")]
+
+
+def test_executing_a_scheduler_command_frames_the_run_with_progress_messages(monkeypatch):
+    """定时任务型命令由命令中枢发出开始与完成提示，实现本身不接收参数。"""
+    runs = []
+    messenger = Mock()
+    monkeypatch.setattr(command_module, "_command_messenger_provider", lambda: messenger)
+    hub = _command_hub({
+        "/transfer": {
+            "id": "transfer",
+            "type": "scheduler",
+            "func": lambda: runs.append("ran"),
+            "description": "下载文件整理",
+        }
+    })
+
+    hub.execute(cmd="/transfer", userid="u1")
+
+    assert runs == ["ran"]
+    titles = [call.args[0].title for call in messenger.post_message.call_args_list]
+    assert titles == ["开始执行 下载文件整理 ...", "下载文件整理 执行完成"]
+
+
+def test_command_failure_is_reported_through_the_message_gateway(monkeypatch):
+    """命令执行出错时经消息网关留下系统提示，用户在消息中心看得到。"""
+    messenger = Mock()
+    monkeypatch.setattr(command_module, "_command_messenger_provider", lambda: messenger)
+    hub = _command_hub({
+        "/restart": {
+            "provider": lambda: (lambda: (_ for _ in ()).throw(RuntimeError("炸了"))),
+            "description": "重启系统",
+            "data": {},
+        }
+    })
+
+    hub.execute(cmd="/restart", userid="u1")
+
+    messenger.put_system_message.assert_called_once_with(
+        title="执行命令 /restart 出错", message="炸了"
+    )

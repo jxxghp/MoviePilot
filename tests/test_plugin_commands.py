@@ -687,7 +687,6 @@ def test_command_execution_passes_declared_data_and_context():
         },
     )])
     chain = _build_command_chain()
-    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
 
     chain.execute(cmd="/sync", data_str="目录", userid="u1", source="s1")
 
@@ -731,7 +730,6 @@ def test_stopped_plugin_command_does_not_execute():
          "impl": plugin.handle, "pid": "AcmePlugin"},
     )])
     chain = _build_command_chain()
-    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
     plugin_command_registry.unregister_owner("AcmePlugin")
 
     chain.execute(cmd="/sync", userid="u1")
@@ -785,7 +783,6 @@ def test_plugin_command_does_not_silently_shadow_the_builtin_one():
     plugin = _CommandPlugin()
     _register_plugin_command("/version", plugin)
     chain = _build_command_chain()
-    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
 
     chain.execute(cmd="/version", userid="u1")
 
@@ -799,7 +796,6 @@ def test_declared_override_hands_the_builtin_command_word_to_the_plugin():
     plugin = _CommandPlugin()
     _register_plugin_command("/version", plugin, overrides_builtin=True)
     chain = _build_command_chain()
-    chain.messagehelper = SimpleNamespace(put=lambda **_: None)
 
     chain.execute(cmd="/version", userid="u1")
 

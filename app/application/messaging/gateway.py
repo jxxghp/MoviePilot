@@ -45,3 +45,13 @@ class CommandChain:
         编辑已发送的命令回复消息，参数透传给消息分发设施
         """
         return self._chain.edit_message(**kwargs)
+
+    def put_system_message(self, title: str, message: str) -> None:
+        """
+        记录一条系统提示，命令执行出错时供前端消息中心展示
+
+        :param title: 提示标题
+        :param message: 提示正文
+        :return: 无返回值
+        """
+        self._chain.messagehelper.put(title=title, message=message, role="system")

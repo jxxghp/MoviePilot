@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6782,
-  "edge_sha256": "d8d601f69bc719e254fe12e678d0e0f2c2596665886f82e49b2f9dd49ba29f4d",
+  "edge_count": 6780,
+  "edge_sha256": "a283bd86a0b159ac5bcc66e7cf0a842d24d5dd39ab6123d533dc2eed30592494",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3505,10 +3505,6 @@
     "app.cli -> app.runtime.state",
     "app.cli -> app.startup",
     "app.cli -> app.startup.database",
-    "app.command -> app.application",
-    "app.command -> app.application.messaging",
-    "app.command -> app.application.messaging.gateway",
-    "app.command -> app.application.messaging.message",
     "app.command -> app.foundation",
     "app.command -> app.foundation.collections",
     "app.command -> app.foundation.reflection",
@@ -6364,6 +6360,8 @@
     "app.startup.cache_initializer -> app.adapters.cache.backends",
     "app.startup.command_initializer -> app.application",
     "app.startup.command_initializer -> app.application.commands",
+    "app.startup.command_initializer -> app.application.messaging",
+    "app.startup.command_initializer -> app.application.messaging.gateway",
     "app.startup.command_initializer -> app.command",
     "app.startup.command_initializer -> app.startup",
     "app.startup.command_initializer -> app.startup.builtin_commands",
