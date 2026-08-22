@@ -159,16 +159,11 @@ def provides_agent_tools(self) -> Optional[List[AgentToolDeclaration]]:
 
 ## 想让一次调用登记多项时怎么写
 
-把 `githubsso` 的例子改写成"同时接入 GitHub 与另一个自建 OIDC 部署"，只需要在返回的列表里
-多放一个 `ServiceInstanceDeclaration`，`type` 换成不同的类型标识：
-
-```python
-def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
-    return [
-        ServiceInstanceDeclaration(capability="auth", type="github", name="GitHub", impl=GithubSsoEntry),
-        ServiceInstanceDeclaration(capability="auth", type="oidc", name="OIDC", impl=OidcEntry),
-    ]
-```
+`githubsso` 现在的 `provides_service_instances()` 只 `return` 了一个
+`ServiceInstanceDeclaration`；若该插件要再接入第二个登录方式，只需要在同一个返回列表里
+追加第二个 `ServiceInstanceDeclaration`，把 `type`（连同它自己的 `impl`、`config_form`、
+`config_schema`）换成新类型自己的一份——写法上就是给同一个 Python 列表字面量多加一个元素，
+不涉及额外的注册调用或生命周期钩子。
 
 两项的 `(capability, type)` 不同，`provides_service_instances` 是扩展级族，登记表按
 `(capability, type)` 建键，二者各自独立登记、各自独立被 `unregister_owner` 回收，互不影响。
@@ -177,6 +172,10 @@ def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration
 （`provides_modules`、`provides_schedules`、`provides_dashboards`、`provides_actions`、
 `provides_meta_parsers`、`provides_channel_capabilities`）连"标识互不相同"这个前提都不必满足
 到跨实例的程度——它们的唯一性只在声明它的那个分身范围内要求。
+
+本仓库当前没有一个 `provides_*()` 调用实际返回过一项以上——三个参考插件都只声明一项，
+`tests/test_plugin_filter_rules.py::test_projection_skips_only_the_offending_declaration`
+用测试桩而非参考插件构造了两项。这里如实说明，不用虚构类去凑一个看着更完整的例子。
 
 ## 与本文档保持同步的检查
 
