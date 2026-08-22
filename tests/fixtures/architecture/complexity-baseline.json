@@ -18,7 +18,7 @@
   },
   "chain_public": {
     "app/chain/download.py:DownloadChain.batch_download": 572,
-    "app/chain/download.py:DownloadChain.download_single": 255,
+    "app/chain/download.py:DownloadChain.download_single": 167,
     "app/chain/mediaserver.py:MediaServerChain.sync": 292,
     "app/chain/subscribe.py:SubscribeChain.add": 183,
     "app/chain/subscribe.py:SubscribeChain.async_add": 186,

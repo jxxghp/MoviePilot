@@ -279,9 +279,8 @@ class RssHelper:
             return False
 
         try:
-            config = get_chain_runtime_config_snapshot()
             ret = RequestUtils(ua=ua,
-                               proxies=config.proxy if proxy else None,
+                               proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
                                timeout=timeout or 30, headers=headers).get_res(url)
             if not ret:
                 logger.error(f"获取RSS失败：请求返回空值，URL: {url}")
@@ -307,8 +306,8 @@ class RssHelper:
                 if raw_data:
                     ret_xml = RequestUtils.get_decoded_xml_content(
                         ret,
-                        performance_mode=config.encoding_detection_performance_mode,
-                        confidence_threshold=config.encoding_detection_min_confidence
+                        performance_mode=get_chain_runtime_config_snapshot().encoding_detection_performance_mode,
+                        confidence_threshold=get_chain_runtime_config_snapshot().encoding_detection_min_confidence
                     )
                     rust_items = self.__parse_with_rust(ret_xml)
                     if rust_items is not None:
