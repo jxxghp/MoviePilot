@@ -14,7 +14,7 @@
     "workflow_to_db": []
   },
   "edge_count": 6417,
-  "edge_sha256": "ded73ef8389d2d3ba9328063bad2afb6bda982fa14a8a4ae6eb369ba4e3c345c",
+  "edge_sha256": "ac7cf35f059d94d722898c9e03761bd55a674a34793e518e5a3e8cbc54da00e8",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -66,8 +66,8 @@
     "app.adapters.external.ocr -> app.adapters",
     "app.adapters.external.ocr -> app.adapters.network",
     "app.adapters.external.ocr -> app.adapters.network.http",
-    "app.adapters.external.ocr -> app.runtime",
-    "app.adapters.external.ocr -> app.runtime.config",
+    "app.adapters.external.ocr -> app.application",
+    "app.adapters.external.ocr -> app.application.configuration",
     "app.adapters.external.plugin.client -> app.adapters",
     "app.adapters.external.plugin.client -> app.adapters.external",
     "app.adapters.external.plugin.client -> app.adapters.external.market",
