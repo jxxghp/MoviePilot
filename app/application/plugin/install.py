@@ -6,6 +6,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from app.application.database import DatabaseWorkerOverloadedError
+
 
 InstalledPluginsReader = Callable[[], list[str]]
 InstalledPluginsWriter = Callable[[list[str]], Awaitable[object]]
@@ -127,7 +129,7 @@ class PluginInstallCommand:
                 force,
             )
         except Exception as err:
-            return await self._failure(
+            result = await self._failure(
                 plugin_id=plugin_id,
                 original_plugins=installed_plugins,
                 checkpoint=checkpoint,
@@ -135,6 +137,9 @@ class PluginInstallCommand:
                 message=str(err),
                 package_installed=False,
             )
+            if isinstance(err, DatabaseWorkerOverloadedError):
+                raise
+            return result
         if not state:
             return await self._failure(
                 plugin_id=plugin_id,
@@ -152,7 +157,7 @@ class PluginInstallCommand:
                 await self._installed_plugins_writer(updated_plugins)
                 installed_list_persisted = True
             except Exception as err:
-                return await self._failure(
+                result = await self._failure(
                     plugin_id=plugin_id,
                     original_plugins=installed_plugins,
                     checkpoint=checkpoint,
@@ -160,11 +165,14 @@ class PluginInstallCommand:
                     message=str(err),
                     package_installed=True,
                 )
+                if isinstance(err, DatabaseWorkerOverloadedError):
+                    raise
+                return result
 
         try:
             await self._plugin_reloader(plugin_id)
         except Exception as err:
-            return await self._failure(
+            result = await self._failure(
                 plugin_id=plugin_id,
                 original_plugins=installed_plugins,
                 checkpoint=checkpoint,
@@ -174,11 +182,14 @@ class PluginInstallCommand:
                 installed_list_persisted=installed_list_persisted,
                 runtime_touched=True,
             )
+            if isinstance(err, DatabaseWorkerOverloadedError):
+                raise
+            return result
 
         try:
             await self._registration_refresher(plugin_id)
         except Exception as err:
-            return await self._failure(
+            result = await self._failure(
                 plugin_id=plugin_id,
                 original_plugins=installed_plugins,
                 checkpoint=checkpoint,
@@ -189,6 +200,9 @@ class PluginInstallCommand:
                 runtime_touched=True,
                 registrations_touched=True,
             )
+            if isinstance(err, DatabaseWorkerOverloadedError):
+                raise
+            return result
 
         checkpoint_cleanup_error = ""
         try:
@@ -262,7 +276,7 @@ class PluginInstallCommand:
                     registrations_restored = True
                 except Exception as rollback_err:
                     rollback_errors.append(f"路由和服务注册恢复失败：{rollback_err}")
-            return PluginInstallResult(
+            result = PluginInstallResult(
                 success=False,
                 message=f"刷新插件运行态失败：{err}",
                 refreshed_only=True,
@@ -275,6 +289,9 @@ class PluginInstallCommand:
                     errors=tuple(rollback_errors),
                 ),
             )
+            if isinstance(err, DatabaseWorkerOverloadedError):
+                raise
+            return result
 
         reported = False
         report_error = ""

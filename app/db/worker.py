@@ -67,6 +67,8 @@ class DatabaseWorker:
         ] = {}
         self._queued = 0
         self._running = 0
+        self._reported_queued = 0
+        self._reported_running = 0
         self._rejected = 0
         self._closing = False
 
@@ -200,12 +202,19 @@ class DatabaseWorker:
         )
         self._record_depth()
 
-    async def _wait_until_done(self, future: asyncio.Future[object]) -> None:
-        """忽略后续取消请求，直到线程内事务结束。"""
+    async def _wait_until_done(
+        self,
+        future: asyncio.Future[object],
+        *,
+        interruptible: bool = False,
+    ) -> None:
+        """等待线程内事务结束，并按调用场景决定是否响应外层取消。"""
         while not future.done():
             try:
                 await asyncio.shield(future)
             except asyncio.CancelledError:
+                if interruptible:
+                    raise
                 continue
             except BaseException:
                 break
@@ -224,7 +233,8 @@ class DatabaseWorker:
             future.cancel()
         for future, (wrapped, _item) in futures:
             if not future.cancelled():
-                await self._wait_until_done(wrapped)
+                # 关停超时必须能返回并保留 owner；已开始的数据库事务继续由线程完成。
+                await self._wait_until_done(wrapped, interruptible=True)
         executor.shutdown(wait=True, cancel_futures=True)
         while self.snapshot().queued or self.snapshot().running:
             await asyncio.sleep(0)
@@ -232,7 +242,13 @@ class DatabaseWorker:
         self._record_depth()
 
     def _record_depth(self) -> None:
-        """记录当前排队量与运行量。"""
+        """以状态变化量记录队列和运行中的任务数量。"""
         stats = self.snapshot()
-        record_metric("db.worker.queue.depth", stats.queued)
-        record_metric("db.worker.active", stats.running)
+        queued_delta = stats.queued - self._reported_queued
+        running_delta = stats.running - self._reported_running
+        if queued_delta:
+            record_metric("db.worker.queue.depth", queued_delta)
+        if running_delta:
+            record_metric("db.worker.active", running_delta)
+        self._reported_queued = stats.queued
+        self._reported_running = stats.running

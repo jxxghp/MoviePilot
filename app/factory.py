@@ -79,6 +79,7 @@ def _native_ai_error_response(
         protocol: str,
         status_code: int,
         message: str,
+        headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。"""
     if protocol == "openai":
@@ -98,6 +99,7 @@ def _native_ai_error_response(
                     code=error_type,
                 )
             ).model_dump(mode="json"),
+            headers=headers,
         )
 
     error_type = (
@@ -112,6 +114,7 @@ def _native_ai_error_response(
         content=AnthropicErrorResponse(
             error=AnthropicErrorDetail(type=error_type, message=message)
         ).model_dump(mode="json"),
+        headers=headers,
     )
 
 
@@ -119,6 +122,7 @@ def _mcp_jsonrpc_error_response(
         status_code: int,
         code: int,
         message: str,
+        headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。"""
     return JSONResponse(
@@ -128,6 +132,7 @@ def _mcp_jsonrpc_error_response(
             id=None,
             error=McpJsonRpcErrorDetail(code=code, message=message),
         ).model_dump(mode="json"),
+        headers=headers,
     )
 
 
@@ -202,6 +207,7 @@ async def localized_http_exception_handler(
             protocol=native_ai_protocol,
             status_code=exc.status_code,
             message=message,
+            headers=exc.headers,
         )
     if _is_mcp_jsonrpc_request(request):
         error_codes = {
@@ -215,6 +221,7 @@ async def localized_http_exception_handler(
             status_code=exc.status_code,
             code=error_codes.get(exc.status_code, -32000),
             message=message,
+            headers=exc.headers,
         )
     return JSONResponse(
         status_code=exc.status_code,

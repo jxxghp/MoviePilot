@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ValidationError
+from starlette.requests import Request
 from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
@@ -24,6 +25,7 @@ from app.factory import (
 )
 from app.application.database import DatabaseWorkerOverloadedError
 from app.runtime.localization import LocaleHelper
+from app.runtime.config import settings
 from app.schemas.common import JsonData
 from app.schemas.response import Response
 
@@ -215,6 +217,40 @@ async def test_database_worker_overload_is_retryable_service_unavailable(
         "message": "服务当前繁忙，请稍后重试",
         "data": None,
     }
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"{settings.API_V1_STR}/openai/v1/chat/completions",
+        f"{settings.API_V1_STR}/anthropic/v1/messages",
+        f"{settings.API_V1_STR}/mcp",
+    ],
+)
+async def test_database_worker_overload_preserves_retry_after_for_native_protocols(
+        path: str,
+):
+    """OpenAI、Anthropic 和 MCP 的原生 503 也必须保留重试提示。"""
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": [],
+        "server": ("testserver", 80),
+        "client": ("testclient", 123),
+        "root_path": "",
+    }
+    response = await database_worker_overloaded_handler(
+        Request(scope),
+        DatabaseWorkerOverloadedError("worker full"),
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "1"
 
 
 async def test_validation_error_uses_unified_model(api_app: FastAPI):

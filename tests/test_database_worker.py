@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+from unittest.mock import patch
 
 import pytest
 
@@ -138,3 +139,64 @@ async def test_shutdown_rejects_new_work_and_waits_for_running_work() -> None:
     assert worker.snapshot().closing is True
     assert worker.snapshot().queued == 0
     assert worker.snapshot().running == 0
+
+
+@pytest.mark.asyncio
+async def test_shutdown_timeout_keeps_running_owner_until_transaction_finishes() -> None:
+    """关闭超时应返回给生命周期编排，并保留执行器等待事务收敛。"""
+    worker = DatabaseWorker(max_workers=1, capacity=1)
+    await worker.start()
+    started = threading.Event()
+    release = threading.Event()
+
+    def operation() -> None:
+        started.set()
+        release.wait(1)
+
+    running = asyncio.create_task(worker.run(operation))
+    await asyncio.to_thread(started.wait)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(worker.shutdown(), timeout=0.01)
+
+    assert worker.snapshot().closing is True
+    assert worker._executor is not None
+
+    release.set()
+    await running
+    await asyncio.sleep(0)
+    await worker.shutdown()
+    assert worker._executor is None
+
+
+@pytest.mark.asyncio
+async def test_worker_depth_metrics_emit_deltas_and_return_to_zero() -> None:
+    """队列和运行量指标按增减量上报，不能把绝对值累加成漂移。"""
+    worker = DatabaseWorker(max_workers=1, capacity=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def operation() -> None:
+        started.set()
+        release.wait(1)
+
+    with patch("app.db.worker.record_metric") as record_metric:
+        await worker.start()
+        running = asyncio.create_task(worker.run(operation))
+        await asyncio.to_thread(started.wait)
+        release.set()
+        await running
+        await worker.shutdown()
+
+    queue_values = [
+        call.args[1]
+        for call in record_metric.call_args_list
+        if call.args[0] == "db.worker.queue.depth"
+    ]
+    active_values = [
+        call.args[1]
+        for call in record_metric.call_args_list
+        if call.args[0] == "db.worker.active"
+    ]
+    assert queue_values == [1.0, -1.0]
+    assert active_values == [1.0, -1.0]

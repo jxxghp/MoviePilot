@@ -2640,6 +2640,8 @@
     "app.application.plugin.folders -> app.runtime.log",
     "app.application.plugin.folders -> app.schemas",
     "app.application.plugin.folders -> app.schemas.types",
+    "app.application.plugin.install -> app.application",
+    "app.application.plugin.install -> app.application.database",
     "app.application.recognition -> app.application",
     "app.application.recognition -> app.application.configuration",
     "app.application.recognition -> app.schemas",
