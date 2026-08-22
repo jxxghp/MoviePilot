@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6417,
-  "edge_sha256": "ac7cf35f059d94d722898c9e03761bd55a674a34793e518e5a3e8cbc54da00e8",
+  "edge_count": 6418,
+  "edge_sha256": "5849976e41ca96688d718358b3c1218d66d986efa0196051531be2a17aae1466",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -34,6 +34,8 @@
     "app.adapters.external.cookiecloud -> app.adapters",
     "app.adapters.external.cookiecloud -> app.adapters.network",
     "app.adapters.external.cookiecloud -> app.adapters.network.http",
+    "app.adapters.external.cookiecloud -> app.application",
+    "app.adapters.external.cookiecloud -> app.application.configuration",
     "app.adapters.external.cookiecloud -> app.domain",
     "app.adapters.external.cookiecloud -> app.domain.site",
     "app.adapters.external.cookiecloud -> app.foundation",
@@ -41,7 +43,6 @@
     "app.adapters.external.cookiecloud -> app.foundation.text",
     "app.adapters.external.cookiecloud -> app.foundation.url",
     "app.adapters.external.cookiecloud -> app.runtime",
-    "app.adapters.external.cookiecloud -> app.runtime.config",
     "app.adapters.external.cookiecloud -> app.runtime.log",
     "app.adapters.external.location -> app.adapters",
     "app.adapters.external.location -> app.adapters.network",

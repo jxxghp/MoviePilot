@@ -9,11 +9,10 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 120,
+    "count": 119,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
-      "app/adapters/external/cookiecloud.py",
       "app/adapters/external/market.py",
       "app/adapters/external/server.py",
       "app/adapters/network/browser.py",

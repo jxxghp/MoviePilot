@@ -1,13 +1,23 @@
 import json
+import importlib
 from typing import Any, Dict, Tuple, Optional
 
-from app.runtime.config import settings
+from app.application.configuration import get_runtime_settings
 from app.runtime.log import logger
 from app.foundation.crypto import CryptoJsUtils, HashUtils
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
 from app.foundation import text as text_tools
 from app.foundation.url import UrlUtils
+
+
+def _runtime_setting(key: str) -> Any:
+    """读取 CookieCloud 配置服务，未装配时回退旧 Settings ABI。"""
+    try:
+        return get_runtime_settings().get(key)
+    except RuntimeError:
+        legacy_settings = importlib.import_module("app.runtime.config").settings
+        return getattr(legacy_settings, key)
 
 
 class CookieCloudHelper:
@@ -23,11 +33,11 @@ class CookieCloudHelper:
         """
         同步CookieCloud配置项
         """
-        self._server = UrlUtils.standardize_base_url(settings.COOKIECLOUD_HOST)
-        self._key = text_tools.strip_optional(settings.COOKIECLOUD_KEY)
-        self._password = text_tools.strip_optional(settings.COOKIECLOUD_PASSWORD)
-        self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
-        self._local_path = settings.COOKIE_PATH
+        self._server = UrlUtils.standardize_base_url(_runtime_setting("COOKIECLOUD_HOST"))
+        self._key = text_tools.strip_optional(_runtime_setting("COOKIECLOUD_KEY"))
+        self._password = text_tools.strip_optional(_runtime_setting("COOKIECLOUD_PASSWORD"))
+        self._enable_local = _runtime_setting("COOKIECLOUD_ENABLE_LOCAL")
+        self._local_path = _runtime_setting("COOKIE_PATH")
 
     def download(self) -> Tuple[Optional[dict], str]:
         """
