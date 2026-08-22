@@ -93,13 +93,6 @@ _SUBPROCESS_METHODS = {
     "run",
 }
 _OS_IO_METHODS = {"listdir", "scandir", "walk"}
-_WORKER_CALLABLE_INDEX = {
-    "asyncio.to_thread": 0,
-    "anyio.to_thread.run_sync": 0,
-    "fastapi.concurrency.run_in_threadpool": 0,
-    "app.runtime.execution.run_in_threadpool": 0,
-    "app.agent.tools.base.run_agent_blocking": 1,
-}
 _SYSTEM_CONFIG_MEMORY_READS = {
     "app.db.oper.SystemConfigOper.all",
     "app.db.oper.SystemConfigOper.get",
@@ -117,6 +110,19 @@ class _Binding:
     kind: str = "module"
 
 
+_UNKNOWN_BINDING = _Binding("unknown", "", "unknown")
+_BLOCKING_FAMILIES = {
+    "os",
+    "requests",
+    "shutil",
+    "subprocess",
+    "sync_http",
+    "sync_oper",
+    "sync_path",
+    "time",
+}
+
+
 def _binding_for_qualified(qualified_name: str) -> _Binding:
     """按稳定模块路径识别门禁关心的符号族。"""
     if qualified_name == "app.adapters.network.http.RequestUtils":
@@ -131,8 +137,6 @@ def _binding_for_qualified(qualified_name: str) -> _Binding:
         return _Binding("async_path", qualified_name, "class")
     if qualified_name.startswith("app.db.oper.") and qualified_name.endswith("Oper"):
         return _Binding("sync_oper", qualified_name, "class")
-    if qualified_name in _WORKER_CALLABLE_INDEX:
-        return _Binding("worker_wrapper", qualified_name, "callable")
     if qualified_name.startswith("requests."):
         return _Binding("requests", qualified_name, "callable")
     if qualified_name.startswith("shutil."):
@@ -144,6 +148,76 @@ def _binding_for_qualified(qualified_name: str) -> _Binding:
     if qualified_name.startswith("time."):
         return _Binding("time", qualified_name, "callable")
     return _Binding("module", qualified_name)
+
+
+def _resolve_binding(
+    expression: ast.expr,
+    bindings: dict[str, _Binding],
+) -> _Binding | None:
+    """解析明确 import、构造、属性访问和简单路径派生。"""
+    if isinstance(expression, ast.Name):
+        return bindings.get(expression.id)
+    if isinstance(expression, ast.Attribute):
+        base = _resolve_binding(expression.value, bindings)
+        if not base or base.kind in {"collection", "unknown"}:
+            return None
+        qualified_name = f"{base.qualified_name}.{expression.attr}"
+        if base.kind == "module":
+            return _binding_for_qualified(qualified_name)
+        return _Binding(base.family, qualified_name, "callable")
+    if isinstance(expression, ast.Call):
+        target = _resolve_binding(expression.func, bindings)
+        if target and target.kind == "class":
+            return _Binding(target.family, target.qualified_name, "instance")
+        return None
+    if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Div):
+        left = _resolve_binding(expression.left, bindings)
+        if left and left.family in {"async_path", "sync_path"}:
+            return left
+    if isinstance(expression, ast.IfExp):
+        return _merge_binding_options(
+            "",
+            (
+                _resolve_binding(expression.body, bindings),
+                _resolve_binding(expression.orelse, bindings),
+            ),
+        )
+    return None
+
+
+def _merge_binding_options(
+    name: str,
+    options: Sequence[_Binding | None],
+) -> _Binding | None:
+    """控制流合流时保留任一分支可能进入的同步阻塞类型。"""
+    if options and all(option == options[0] for option in options):
+        return options[0]
+    blocking = sorted(
+        (
+            option
+            for option in options
+            if option and option.family in _BLOCKING_FAMILIES
+        ),
+        key=lambda item: (item.family, item.qualified_name, item.kind),
+    )
+    if blocking:
+        return blocking[0]
+    if name == "open" and any(option is None for option in options):
+        return None
+    return _UNKNOWN_BINDING
+
+
+def _merge_binding_states(
+    states: Sequence[dict[str, _Binding]],
+) -> dict[str, _Binding]:
+    """合并互斥控制流的局部符号表。"""
+    names = set().union(*(state.keys() for state in states))
+    merged: dict[str, _Binding] = {}
+    for name in names:
+        binding = _merge_binding_options(name, tuple(state.get(name) for state in states))
+        if binding:
+            merged[name] = binding
+    return merged
 
 
 def _load_oper_methods(root: Path) -> dict[str, set[str]]:
@@ -192,6 +266,22 @@ class _ImportCollector(ast.NodeVisitor):
             qualified_name = f"{node.module}.{alias.name}"
             self.bindings[local_name] = _binding_for_qualified(qualified_name)
 
+    def _bind_target(self, target: ast.expr, binding: _Binding | None) -> None:
+        if isinstance(target, ast.Name):
+            self.bindings[target.id] = binding or _UNKNOWN_BINDING
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self._bind_target(element, None)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        binding = _resolve_binding(node.value, self.bindings)
+        for target in node.targets:
+            self._bind_target(target, binding)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        binding = _resolve_binding(node.value, self.bindings) if node.value else None
+        self._bind_target(node.target, binding)
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         return
 
@@ -207,16 +297,25 @@ class _AsyncCallVisitor(ast.NodeVisitor):
 
     def __init__(
         self,
-        function: ast.AsyncFunctionDef,
+        function: ast.FunctionDef | ast.AsyncFunctionDef,
         module_bindings: dict[str, _Binding],
         oper_methods: dict[str, set[str]],
+        *,
+        record_calls: bool,
     ) -> None:
         self.calls: Counter[str] = Counter()
+        self.nested_functions: list[
+            tuple[ast.FunctionDef | ast.AsyncFunctionDef, dict[str, _Binding]]
+        ] = []
         self._bindings = dict(module_bindings)
         self._oper_methods = oper_methods
+        self._record_calls = record_calls
         self._bind_arguments(function)
 
-    def _bind_arguments(self, function: ast.AsyncFunctionDef) -> None:
+    def _bind_arguments(
+        self,
+        function: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
         arguments = (
             *function.args.posonlyargs,
             *function.args.args,
@@ -227,7 +326,7 @@ class _AsyncCallVisitor(ast.NodeVisitor):
             if binding:
                 self._bindings[argument.arg] = binding
             else:
-                self._bindings.pop(argument.arg, None)
+                self._bindings[argument.arg] = _UNKNOWN_BINDING
 
     def _annotation_binding(self, annotation: ast.expr | None) -> _Binding | None:
         if annotation is None:
@@ -256,44 +355,16 @@ class _AsyncCallVisitor(ast.NodeVisitor):
             return self._annotation_binding(annotation.left) or self._annotation_binding(
                 annotation.right
             )
-        binding = self._resolve(annotation)
+        binding = _resolve_binding(annotation, self._bindings)
         if binding and binding.kind == "class":
             return _Binding(binding.family, binding.qualified_name, "instance")
         return None
 
     def _resolve(self, expression: ast.expr) -> _Binding | None:
-        if isinstance(expression, ast.Name):
-            return self._bindings.get(expression.id)
-        if isinstance(expression, ast.Attribute):
-            base = self._resolve(expression.value)
-            if not base:
-                return None
-            if base.kind == "collection":
-                return None
-            qualified_name = f"{base.qualified_name}.{expression.attr}"
-            if base.kind == "module":
-                return _binding_for_qualified(qualified_name)
-            return _Binding(base.family, qualified_name, "callable")
-        if isinstance(expression, ast.Call):
-            target = self._resolve(expression.func)
-            if target and target.kind == "class":
-                return _Binding(target.family, target.qualified_name, "instance")
-            return None
-        if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Div):
-            left = self._resolve(expression.left)
-            if left and left.family in {"async_path", "sync_path"}:
-                return left
-        if isinstance(expression, ast.IfExp):
-            body = self._resolve(expression.body)
-            alternate = self._resolve(expression.orelse)
-            if body == alternate:
-                return body
-        return None
+        return _resolve_binding(expression, self._bindings)
 
     @staticmethod
-    def _call_label(binding: _Binding | None, fallback: str) -> str:
-        if not binding:
-            return fallback
+    def _call_label(binding: _Binding) -> str:
         parts = binding.qualified_name.split(".")
         if binding.family == "sync_oper" and len(parts) >= 2:
             return ".".join(parts[-2:])
@@ -303,10 +374,11 @@ class _AsyncCallVisitor(ast.NodeVisitor):
             return ".".join(parts[-2:])
         if binding.family in {"os", "requests", "shutil", "subprocess", "time"}:
             return ".".join(parts[-2:])
-        return fallback
+        return binding.qualified_name
 
     def _record_call(self, node: ast.Call, binding: _Binding | None) -> None:
-        fallback = ast.unparse(node.func)
+        if not self._record_calls:
+            return
         if not binding:
             if isinstance(node.func, ast.Name) and node.func.id == "open":
                 self.calls["open"] += 1
@@ -334,14 +406,11 @@ class _AsyncCallVisitor(ast.NodeVisitor):
                 and binding.qualified_name not in _SYSTEM_CONFIG_MEMORY_READS
             )
         if blocked:
-            self.calls[self._call_label(binding, fallback)] += 1
+            self.calls[self._call_label(binding)] += 1
 
     def _bind_target(self, target: ast.expr, binding: _Binding | None) -> None:
         if isinstance(target, ast.Name):
-            if binding:
-                self._bindings[target.id] = binding
-            else:
-                self._bindings.pop(target.id, None)
+            self._bindings[target.id] = binding or _UNKNOWN_BINDING
         elif isinstance(target, (ast.Tuple, ast.List)):
             for element in target.elts:
                 self._bind_target(element, None)
@@ -373,8 +442,29 @@ class _AsyncCallVisitor(ast.NodeVisitor):
         self.visit(node.value)
         self._bind_target(node.target, None)
 
-    def visit_For(self, node: ast.For) -> None:
+    def _visit_branch(
+        self,
+        statements: Sequence[ast.stmt],
+        initial: dict[str, _Binding],
+    ) -> dict[str, _Binding]:
+        saved = self._bindings
+        self._bindings = dict(initial)
+        for statement in statements:
+            self.visit(statement)
+        result = self._bindings
+        self._bindings = saved
+        return result
+
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        initial = dict(self._bindings)
+        body = self._visit_branch(node.body, initial)
+        alternate = self._visit_branch(node.orelse, initial) if node.orelse else initial
+        self._bindings = _merge_binding_states((body, alternate))
+
+    def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
         self.visit(node.iter)
+        initial = dict(self._bindings)
         collection = self._resolve(node.iter)
         element = (
             _Binding(collection.family, collection.qualified_name, "instance")
@@ -382,48 +472,114 @@ class _AsyncCallVisitor(ast.NodeVisitor):
             else None
         )
         self._bind_target(node.target, element)
-        for statement in (*node.body, *node.orelse):
+        for statement in node.body:
             self.visit(statement)
+        iterated = dict(self._bindings)
+        completed = self._visit_branch(node.orelse, iterated)
+        self._bindings = _merge_binding_states((initial, completed))
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self.visit_For(node)
+
+    def _visit_comprehension(
+        self,
+        generators: Sequence[ast.comprehension],
+        outputs: Sequence[ast.expr],
+    ) -> None:
+        saved = self._bindings
+        self._bindings = dict(saved)
+        for generator in generators:
+            self.visit(generator.iter)
+            collection = self._resolve(generator.iter)
+            element = (
+                _Binding(collection.family, collection.qualified_name, "instance")
+                if collection and collection.kind == "collection"
+                else None
+            )
+            self._bind_target(generator.target, element)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for output in outputs:
+            self.visit(output)
+        self._bindings = saved
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node.generators, (node.key, node.value))
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        self._bind_target(node.target, self._resolve(node.value))
 
     def visit_Call(self, node: ast.Call) -> None:
         binding = self._resolve(node.func)
         self._record_call(node, binding)
-        if binding and binding.family == "worker_wrapper":
-            callable_index = _WORKER_CALLABLE_INDEX[binding.qualified_name]
-            self.visit(node.func)
-            for index, argument in enumerate(node.args):
-                if index != callable_index or not isinstance(argument, ast.Lambda):
-                    self.visit(argument)
+        if isinstance(node.func, ast.Lambda):
+            self._visit_lambda_defaults(node.func)
+            for argument in node.args:
+                self.visit(argument)
             for keyword in node.keywords:
                 self.visit(keyword.value)
+            self.visit(node.func.body)
             return
         self.generic_visit(node)
 
+    def _visit_definition_expressions(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in node.args.defaults:
+            self.visit(default)
+        for keyword_default in node.args.kw_defaults:
+            if keyword_default:
+                self.visit(keyword_default)
+
+    def _visit_nested_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        self._visit_definition_expressions(node)
+        self.nested_functions.append((node, dict(self._bindings)))
+        self._bindings[node.name] = _UNKNOWN_BINDING
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        return
+        self._visit_nested_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        return
+        self._visit_nested_function(node)
+
+    def _visit_lambda_defaults(self, node: ast.Lambda) -> None:
+        for default in node.args.defaults:
+            self.visit(default)
+        for keyword_default in node.args.kw_defaults:
+            if keyword_default:
+                self.visit(keyword_default)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        return
+        self._visit_lambda_defaults(node)
 
 
-def _async_functions(tree: ast.Module) -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
-    """递归产出模块内 async 函数，嵌套函数使用稳定限定名。"""
-
-    def walk(
-        nodes: Sequence[ast.stmt],
-        prefix: tuple[str, ...] = (),
-    ) -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
-        for node in nodes:
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                qualname = (*prefix, node.name)
-                if isinstance(node, ast.AsyncFunctionDef):
-                    yield ".".join(qualname), node
-                yield from walk(node.body, qualname)
-
-    yield from walk(tree.body)
+def _root_functions(
+    tree: ast.Module,
+) -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
+    """产出模块顶层和类直接拥有的 async 入口。"""
+    for node in tree.body:
+        if isinstance(node, ast.AsyncFunctionDef):
+            yield node.name, node
+        elif isinstance(node, ast.ClassDef):
+            for method in node.body:
+                if isinstance(method, ast.AsyncFunctionDef):
+                    yield f"{node.name}.{method.name}", method
 
 
 def _scan_paths(root: Path, scan_roots: Sequence[str | Path]) -> Iterator[Path]:
@@ -449,12 +605,40 @@ def collect_async_blocking(
         for statement in tree.body:
             imports.visit(statement)
         relative = path.relative_to(root).as_posix()
-        for qualname, function in _async_functions(tree):
-            visitor = _AsyncCallVisitor(function, imports.bindings, oper_methods)
+        pending: list[
+            tuple[
+                str,
+                ast.FunctionDef | ast.AsyncFunctionDef,
+                dict[str, _Binding],
+            ]
+        ] = [
+            (qualname, function, imports.bindings)
+            for qualname, function in _root_functions(tree)
+        ]
+        pending_index = 0
+        while pending_index < len(pending):
+            qualname, function, lexical_bindings = pending[pending_index]
+            pending_index += 1
+            is_async = isinstance(function, ast.AsyncFunctionDef)
+            visitor = _AsyncCallVisitor(
+                function,
+                lexical_bindings,
+                oper_methods,
+                record_calls=is_async,
+            )
             for statement in function.body:
                 visitor.visit(statement)
-            for call_name, count in visitor.calls.items():
-                debt[f"{relative}:{qualname}:{call_name}"] += count
+            if is_async:
+                for call_name, count in visitor.calls.items():
+                    debt[f"{relative}:{qualname}:{call_name}"] += count
+            pending.extend(
+                (
+                    f"{qualname}.{nested.name}",
+                    nested,
+                    bindings,
+                )
+                for nested, bindings in visitor.nested_functions
+            )
     return dict(sorted(debt.items()))
 
 

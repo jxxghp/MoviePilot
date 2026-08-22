@@ -262,6 +262,88 @@ def test_async_blocking_scan_checks_worker_arguments_evaluated_on_loop(
     }
 
 
+def test_async_blocking_scan_merges_branch_bindings_conservatively(
+    tmp_path: Path,
+) -> None:
+    """任一互斥分支可能产生同步对象时，合流调用仍属于阻塞风险。"""
+    source = """
+        from anyio import Path as AsyncPath
+        from pathlib import Path
+
+        async def load(use_sync: bool):
+            if use_sync:
+                target = Path("payload")
+            else:
+                target = AsyncPath("payload")
+            return target.read_text()
+    """
+
+    assert _scan_source(tmp_path, source) == {
+        "app/api/sample.py:load:Path.read_text": 1,
+    }
+
+
+def test_nested_async_inherits_bindings_from_definition_scope(tmp_path: Path) -> None:
+    """嵌套 async 使用定义点已有的局部 import 和别名。"""
+    source = """
+        async def outer():
+            from pathlib import Path as LocalPath
+            alias = LocalPath
+
+            async def inner():
+                return alias("payload").read_text()
+
+            return await inner()
+    """
+
+    assert _scan_source(tmp_path, source) == {
+        "app/api/sample.py:outer.inner:Path.read_text": 1,
+    }
+
+
+def test_definition_time_expressions_remain_in_async_execution_body(
+    tmp_path: Path,
+) -> None:
+    """延迟函数体不扫描，但默认值和 decorator 在定义时立即求值。"""
+    source = """
+        import asyncio
+        from pathlib import Path
+
+        def register(value):
+            return lambda function: function
+
+        async def outer():
+            await asyncio.to_thread(
+                lambda value=Path("lambda").read_text(): value
+            )
+
+            @register(Path("decorator").read_text())
+            async def inner(value=Path("default").read_text()):
+                return value
+
+            return await inner()
+    """
+
+    assert _scan_source(tmp_path, source) == {
+        "app/api/sample.py:outer:Path.read_text": 3,
+    }
+
+
+def test_local_shadowing_does_not_reuse_import_or_builtin_bindings(
+    tmp_path: Path,
+) -> None:
+    """参数和 comprehension target 会遮蔽同名 builtin 或导入符号。"""
+    source = """
+        from pathlib import Path
+
+        async def invoke(open, items):
+            open()
+            return [Path.exists() for Path in items]
+    """
+
+    assert _scan_source(tmp_path, source) == {}
+
+
 @pytest.mark.asyncio
 async def test_asyncio_debug_is_enabled_for_async_tests() -> None:
     """专项异步测试必须启用慢 callback 和阻塞诊断所需的 debug 模式。"""
