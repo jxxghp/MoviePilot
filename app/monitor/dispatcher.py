@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.chain.transfer import TransferChain
 from app.runtime.cache import TTLCache
-from app.runtime.config import settings
 from app.application.directory import DirectoryHelper
 from app.application.history import (
     HistoryGateAction,
@@ -21,6 +20,7 @@ from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy
 from app.schemas.workflow import FileItem
 from app.schemas.types import MediaType
+from app.runtime.settings import get_runtime_setting
 
 
 class TransferDispatcher:
@@ -39,7 +39,10 @@ class TransferDispatcher:
         :param cache: 去重缓存，默认使用 10 秒 TTL 缓存
         """
         self.all_exts = all_exts if all_exts is not None else (
-                settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT)
+            get_runtime_setting("RMT_MEDIAEXT")
+            + get_runtime_setting("RMT_SUBEXT")
+            + get_runtime_setting("RMT_AUDIOEXT")
+        )
         self._cache = cache if cache is not None else TTLCache(region="monitor", maxsize=1024, ttl=10)
         self._lock = Lock()
         # 历史查询失败待重试的文件
@@ -76,7 +79,7 @@ class TransferDispatcher:
         """
         判断监控事件路径是否需要进入整理链。
         """
-        if self._has_suffix_in(file_path, settings.DOWNLOAD_TMPEXT):
+        if self._has_suffix_in(file_path, get_runtime_setting("DOWNLOAD_TMPEXT")):
             return False
         return self._has_suffix_in(file_path, self.all_exts)
 

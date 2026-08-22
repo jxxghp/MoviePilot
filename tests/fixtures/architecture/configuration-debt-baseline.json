@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 117,
+    "count": 109,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -17,9 +17,6 @@
       "app/adapters/external/server.py",
       "app/adapters/network/browser.py",
       "app/adapters/system/fsproxy.py",
-      "app/adapters/system/plugin/dependency.py",
-      "app/adapters/system/plugin/package.py",
-      "app/adapters/system/resource.py",
       "app/adapters/web/security/access.py",
       "app/agent/capabilities/adapter.py",
       "app/agent/llm/capability.py",
@@ -110,11 +107,6 @@
       "app/modules/webpush/__init__.py",
       "app/modules/wechat/wechatbot.py",
       "app/modules/wechatclawbot/wechatclawbot.py",
-      "app/monitor/dispatcher.py",
-      "app/monitor/monitor.py",
-      "app/monitor/snapshot.py",
-      "app/monitor/syslimits.py",
-      "app/monitor/watcher.py",
       "app/runtime/extensions/host_module_adapter.py",
       "app/runtime/extensions/module_manager.py",
       "app/runtime/extensions/plugin/catalog.py",

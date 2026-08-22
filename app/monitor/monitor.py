@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.runtime.config import settings
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.log import logger
@@ -21,6 +20,7 @@ from app.schemas.types import SystemConfigKey
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
 from app.adapters.system.host import SystemUtils
+from app.runtime.settings import get_runtime_setting
 
 
 class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
@@ -172,7 +172,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         logger.info(f"找到 {len(monitor_dirs)} 个目录监控配置")
 
         # 启动定时服务进程
-        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+        self._scheduler = BackgroundScheduler(timezone=get_runtime_setting("TZ"))
 
         mon_storages: Dict[str, List[Path]] = {}
         # 本地监控启动结果计数，用于输出真实的启动总结
@@ -285,7 +285,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 网络/FUSE 挂载轮询降频，减少监控自身对挂载后端的持续 stat 压力
             poll_delay_ms = None
             if use_polling and SystemUtils.is_network_filesystem(mon_path):
-                poll_delay_ms = (settings.MONITOR_POLL_DELAY_NETWORK
+                poll_delay_ms = (get_runtime_setting("MONITOR_POLL_DELAY_NETWORK")
                                  or LocalDirectoryWatcher.POLL_DELAY_NETWORK_MS)
                 logger.info(f"检测到网络文件系统，轮询扫描间隔调整为 {poll_delay_ms}ms: {mon_path}")
 

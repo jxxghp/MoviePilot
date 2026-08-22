@@ -70,7 +70,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
 | 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 117 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| 直接读取 `settings` 的文件 | 109 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
 | Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
@@ -1023,6 +1023,16 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 2026-08-23 将 `CookieCloudHelper` 的五项运行配置改为通过 `RuntimeSettingsService` 读取；同步期间仍获取最新值，未装配时保留旧 Settings ABI。配置债务由 120 个文件降至 119 个文件，并通过 CookieCloud 路由与站点回归测试。
 2026-08-23 将 DoH 开关、域名和解析器配置改为通过 `RuntimeSettingsService` 动态读取；socket 补丁、热更新、缓存和线程池关闭语义保持不变，未装配时保留旧 Settings ABI。配置债务由 119 个文件降至 118 个文件，并通过 DoH 与生命周期回归测试。
 2026-08-23 将 Rust 加速开关改为通过 `RuntimeSettingsService` 动态读取；扩展可用性、异常回退和公开适配器 API 保持不变，未装配时保留旧 Settings ABI。配置债务由 118 个文件降至 117 个文件，并通过 Rust 解析与开关回归测试。
+2026-08-23 将目录监控的快照、整理分发、系统限制、监控门面和本地 watcher 配置读取统一改为
+`app.runtime.settings.get_runtime_setting()`；保留未装配时的旧 Settings 回退和热更新读取语义，监控专项
+87 项测试、Pylint 与架构基线通过。配置债务由 117 个文件降至 112 个文件。
+随后将插件依赖扫描、插件包事务和 V3 资源安装适配器的部署配置读取迁移到同一 runtime 端口；资源适配器
+保留模块级 `settings` 兼容入口供旧插件覆盖，实际逻辑动态读取 runtime 配置。插件/资源专项 141 项测试、
+Pylint 与架构基线通过，配置债务由 112 个文件降至 109 个文件。
+
+同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
+`app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
+架构依赖专项和官方插件语义观察均通过。
 
 **收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
 随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式

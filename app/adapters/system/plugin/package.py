@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,9 @@ class PluginPackageManager:
     @staticmethod
     def _plugin_dir(plugin_id: str) -> Path:
         """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
-        plugins_root = (Path(settings.ROOT_PATH) / "app" / "plugins").resolve()
+        plugins_root = (
+            Path(get_runtime_setting("ROOT_PATH")) / "app" / "plugins"
+        ).resolve()
         plugin_dir = (plugins_root / plugin_id.lower()).resolve()
         if plugin_dir == plugins_root or not plugin_dir.is_relative_to(plugins_root):
             raise ValueError(f"非法插件ID：{plugin_id}")
@@ -47,7 +49,7 @@ class PluginPackageManager:
         """在包变更前创建独立快照，供后续提交或补偿恢复。"""
         plugin_dir = self._plugin_dir(plugin_id)
         transaction_dir = (
-            Path(settings.TEMP_PATH)
+            Path(get_runtime_setting("TEMP_PATH"))
             / "plugin_transactions"
             / f"{plugin_id.lower()}-{uuid.uuid4().hex}"
         )

@@ -7,8 +7,8 @@ from typing import Any, Optional
 
 from watchfiles import Change, DefaultFilter, watch
 
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 @dataclass(frozen=True)
@@ -285,7 +285,9 @@ class LocalDirectoryWatcher:
         配置，配置热更新后无需重建监控线程即可生效；解析失败或未配置时回退默认值。
         :return: 重扫轮次延迟秒数元组
         """
-        return self._parse_rescan_delays(getattr(settings, "MONITOR_RESCAN_DELAYS", None))
+        return self._parse_rescan_delays(
+            get_runtime_setting("MONITOR_RESCAN_DELAYS")
+        )
 
     @classmethod
     def _parse_rescan_delays(cls, raw: Optional[str]) -> tuple[int, ...]:

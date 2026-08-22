@@ -3,8 +3,8 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from app.runtime.cache import FileCache
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 class SnapshotStore:
@@ -18,7 +18,9 @@ class SnapshotStore:
         初始化快照存储。
         :param cache: 快照文件缓存，默认使用 CACHE_PATH/snapshots
         """
-        self._cache = cache if cache is not None else FileCache(base=settings.CACHE_PATH / "snapshots")
+        self._cache = cache if cache is not None else FileCache(
+            base=get_runtime_setting("CACHE_PATH") / "snapshots"
+        )
 
     def save(self, storage: str, snapshot: Dict, file_count: int = 0,
              last_snapshot_time: Optional[float] = None,
