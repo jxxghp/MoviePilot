@@ -4,58 +4,68 @@ vulnerabilities:
       - Python
     purls:
       - pkg:pypi/msgpack@1.1.2
+    expired_at: 2026-11-20
     statement: The finding belongs to the base image's system pip and is not imported by MoviePilot.
   - id: CVE-2025-47273
     paths:
       - Python
     purls:
       - pkg:pypi/setuptools@70.3.0
+    expired_at: 2026-11-20
     statement: The finding belongs to the base image's system pip and is not used for dependency installation.
   - id: CVE-2026-33818
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-39821
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-46600
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-56853
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-56858
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-56859
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-56860
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
   - id: CVE-2026-56862
     paths:
       - usr/bin/rclone
     purls:
       - pkg:golang/stdlib@v1.26.5
+    expired_at: 2026-11-20
     statement: The official rclone binary has no patched release for this embedded Go runtime yet.
