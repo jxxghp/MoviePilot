@@ -482,20 +482,7 @@ async def list_models(
     )
 
 
-@router.post(
-    "/chat/completions",
-    summary="OpenAI compatible chat completions",
-    response_model=_SchemaOpenAIChatCompletionResponse,
-    responses={
-        200: {
-            "description": "OpenAI chat completion 或 SSE 数据流",
-            "content": {
-                "text/event-stream": {"schema": {"type": "string"}},
-            },
-        }
-    },
-)
-async def chat_completions(
+async def _chat_completions_impl(
     payload: _SchemaOpenAIChatCompletionsRequest,
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
@@ -592,12 +579,7 @@ async def chat_completions(
     return JSONResponse(content=build_completion_payload(content, MODEL_ID))
 
 
-@router.post(
-    "/responses",
-    summary="OpenAI compatible responses",
-    response_model=_SchemaOpenAIResponsesResponse,
-)
-async def responses(
+async def _responses_impl(
     payload: _SchemaOpenAIResponsesRequest,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
@@ -690,3 +672,31 @@ async def responses(
         output=[output_message],
         usage=_SchemaOpenAIUsage(),
     )
+
+
+@router.post(
+    "/chat/completions",
+    summary="OpenAI compatible chat completions",
+    response_model=_SchemaOpenAIChatCompletionResponse,
+    responses={200: {"description": "OpenAI chat completion 或 SSE 数据流", "content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
+async def chat_completions(
+    payload: _SchemaOpenAIChatCompletionsRequest,
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(openai_bearer_scheme),
+):
+    """OpenAI Chat Completions 兼容公开入口。"""
+    return await _chat_completions_impl(payload, request, credentials)
+
+
+@router.post(
+    "/responses",
+    summary="OpenAI compatible responses",
+    response_model=_SchemaOpenAIResponsesResponse,
+)
+async def responses(
+    payload: _SchemaOpenAIResponsesRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(openai_bearer_scheme),
+):
+    """OpenAI Responses 兼容公开入口。"""
+    return await _responses_impl(payload, credentials)

@@ -1118,22 +1118,7 @@ async def get_message(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get(
-    "/logging",
-    summary="实时日志",
-    response_model=None,
-    response_class=StreamingResponse,
-    responses={
-        200: {
-            "description": "实时日志流或完整日志文本",
-            "content": {
-                "text/event-stream": {"schema": {"type": "string"}},
-                "text/plain": {"schema": {"type": "string"}},
-            },
-        }
-    },
-)
-async def get_logging(
+async def _get_logging_impl(
     request: Request,
     length: Optional[int] = 50,
     logfile: Optional[str] = "moviepilot.log",
@@ -1244,6 +1229,23 @@ async def get_logging(
     else:
         # 返回SSE流响应
         return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+
+@router.get(
+    "/logging",
+    summary="实时日志",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={200: {"description": "实时日志流或完整日志文本", "content": {"text/event-stream": {"schema": {"type": "string"}}, "text/plain": {"schema": {"type": "string"}}}}},
+)
+async def get_logging(
+    request: Request,
+    length: Optional[int] = 50,
+    logfile: Optional[str] = "moviepilot.log",
+    _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
+):
+    """实时日志的兼容公开入口。"""
+    return await _get_logging_impl(request, length, logfile, _)
 
 
 @router.get(

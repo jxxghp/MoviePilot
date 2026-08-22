@@ -1,16 +1,5 @@
 {
-  "api_endpoint": {
-    "app/api/endpoints/agent.py:web_agent_stream": 346,
-    "app/api/endpoints/media.py:scrape": 105,
-    "app/api/endpoints/openai.py:chat_completions": 95,
-    "app/api/endpoints/openai.py:responses": 93,
-    "app/api/endpoints/system.py:get_logging": 111
-  },
-  "application_public": {
-    "app/application/messaging/site.py:SiteInteractionHandler.handle_text_interaction": 227,
-    "app/application/messaging/skill.py:SkillInteractionHandler.handle_callback_interaction": 158,
-    "app/application/messaging/skill.py:SkillInteractionHandler.handle_text_interaction": 296,
-    "app/application/messaging/subscribe.py:SubscribeInteractionHandler.handle_text_interaction": 205
-  },
+  "api_endpoint": {},
+  "application_public": {},
   "chain_public": {}
 }
