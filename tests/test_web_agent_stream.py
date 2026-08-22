@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app import schemas
-from app.agent import ReplyMode, agent_manager
+from app.agent.contracts import ReplyMode
+from app.agent.orchestrator import agent_manager
 from app.api.endpoints.agent import (
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,

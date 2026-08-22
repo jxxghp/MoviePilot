@@ -1067,6 +1067,14 @@ def _transcribe_web_agent_audio_files(
     return "\n".join(transcripts).strip() if transcripts else None
 
 
+async def _transcribe_web_agent_audio_input(audio_refs: list[str]) -> Optional[str]:
+    """解析并在线程池中转写 WebAgent 音频引用。"""
+    audio_files = _resolve_web_agent_audio_refs(audio_refs)
+    if not audio_files:
+        return None
+    return await asyncio.to_thread(_transcribe_web_agent_audio_files, audio_files)
+
+
 def _merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[str]) -> str:
     """合并用户输入文本和语音转写文本，避免重复发送相同内容。"""
     merged_parts = []
@@ -2118,13 +2126,7 @@ async def web_agent_stream(
             locale=locale,
         )
 
-    # 音频转写包含同步文件读取和第三方 SDK 请求，必须离开事件循环执行。
-    audio_files = _resolve_web_agent_audio_refs(payload.audio_refs or [])
-    transcript = (
-        await asyncio.to_thread(_transcribe_web_agent_audio_files, audio_files)
-        if audio_files
-        else None
-    )
+    transcript = await _transcribe_web_agent_audio_input(payload.audio_refs or [])
     prompt = _merge_web_agent_prompt_with_transcript(prompt, transcript)
     display_prompt = _merge_web_agent_prompt_with_transcript(display_prompt, transcript)
     has_audio_input = bool(transcript)
