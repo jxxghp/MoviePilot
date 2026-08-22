@@ -8,13 +8,15 @@ from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.plugin import reload_plugin
 from app.api.endpoints.plugin import runtime_status
+from app.api.endpoints.plugin import plugin_static_file
+from app.api.endpoints.plugin import uninstall_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.event import PluginDataResetEventData
-from app.schemas.plugin import PluginRuntimeStatus
-from app.schemas.types import ChainEventType
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
+from app.schemas.types import ChainEventType, SystemConfigKey
 from app.foundation.singleton import Singleton
 
 
@@ -518,9 +520,70 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
     storage.delete.return_value = True
     with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
         assert manager.delete_plugin_config("DemoPlugin", force=True) is True
-
     storage.delete.assert_called_once_with("plugin.DemoPlugin")
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monkeypatch):
+    """实例 URL 保持独立，但静态内容直接读取共享的源插件目录。"""
+    source_file = tmp_path / "app/plugins/demoplugin/dist/remoteEntry.js"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("export default 'shared'", encoding="utf-8")
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_source_id.return_value = "DemoPlugin"
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "settings",
+        MagicMock(ROOT_PATH=tmp_path),
+    )
+
+    response = asyncio.run(
+        plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None)
+    )
+
+    async def read_body() -> bytes:
+        """读取流式响应的全部测试内容。"""
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == b"export default 'shared'"
+    assert response.media_type == "application/javascript"
+    plugin_manager.get_plugin_source_id.assert_called_once_with("DemoPluginwork")
+
+
+def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
+    """卸载虚拟实例只清理实例状态，不触碰源插件安装清单或目录。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
+    plugin_manager.get_plugin_source_instances.return_value = []
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+
+    result = uninstall_plugin("DemoPluginwork", None)
+
+    assert result.success is True
+    config.set.assert_called_once_with(
+        SystemConfigKey.UserInstalledPlugins,
+        ["DemoPlugin"],
+    )
+    plugin_manager.delete_plugin_config.assert_called_once_with(
+        "DemoPluginwork",
+        force=True,
+    )
+    plugin_manager.delete_plugin_data.assert_called_once_with(
+        "DemoPluginwork",
+        force=True,
+    )
+    plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
+    plugin_manager.remove_plugin.assert_called_once_with("DemoPluginwork")
 
 
 def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():

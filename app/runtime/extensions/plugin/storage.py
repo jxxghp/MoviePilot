@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from pydantic import ValidationError
+
+from app.schemas.plugin import PluginInstance
+from app.schemas.types import SystemConfigKey
+
 
 ConfigReader = Callable[[Any], Any]
 ConfigWriter = Callable[[Any, Any], Any]
@@ -137,6 +142,74 @@ class PluginConfigStore:
             return False
         self._storage().delete_data(plugin_id)
         return True
+
+
+class PluginInstanceStore:
+    """管理虚拟插件实例描述，并隔离兼容清单与新实例清单。"""
+
+    def __init__(self, *, storage: Callable[[], "PluginStorage"]) -> None:
+        """保存延迟解析的持久化端口，便于启动组合根后装配。"""
+        self._storage = storage
+
+    def all(self) -> dict[str, PluginInstance]:
+        """读取全部有效实例，忽略损坏项以免阻断存量插件启动。"""
+        raw_instances = self._storage().read(SystemConfigKey.PluginInstances) or {}
+        if isinstance(raw_instances, list):
+            entries = {
+                item.get("instance_id"): item
+                for item in raw_instances
+                if isinstance(item, dict) and item.get("instance_id")
+            }
+        elif isinstance(raw_instances, dict):
+            entries = raw_instances
+        else:
+            return {}
+
+        instances: dict[str, PluginInstance] = {}
+        for instance_id, raw_instance in entries.items():
+            try:
+                payload = dict(raw_instance) if isinstance(raw_instance, dict) else {}
+                payload.setdefault("instance_id", instance_id)
+                instance = PluginInstance.model_validate(payload)
+                instances[instance.instance_id] = instance
+            except (TypeError, ValidationError):
+                continue
+        return instances
+
+    def get(self, instance_id: str) -> PluginInstance | None:
+        """读取指定实例描述。"""
+        return self.all().get(instance_id)
+
+    def save(self, instance: PluginInstance) -> None:
+        """新增或更新实例描述，并以实例 ID 作为稳定持久化键。"""
+        instances = self.all()
+        instances[instance.instance_id] = instance
+        self._write(instances)
+
+    def delete(self, instance_id: str) -> bool:
+        """删除指定实例描述，返回删除前是否存在。"""
+        instances = self.all()
+        removed = instances.pop(instance_id, None)
+        if removed is None:
+            return False
+        self._write(instances)
+        return True
+
+    def for_source(self, source_plugin_id: str) -> list[PluginInstance]:
+        """按持久化顺序返回引用同一源码插件的全部实例。"""
+        return [
+            instance
+            for instance in self.all().values()
+            if instance.source_plugin_id == source_plugin_id
+        ]
+
+    def _write(self, instances: dict[str, PluginInstance]) -> None:
+        """把模型映射序列化为普通字典，避免存储层依赖 Pydantic。"""
+        payload = {
+            instance_id: instance.model_dump(mode="json")
+            for instance_id, instance in instances.items()
+        }
+        self._storage().write(SystemConfigKey.PluginInstances, payload)
 
 
 _plugin_storage = PluginStorage()

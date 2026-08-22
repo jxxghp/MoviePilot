@@ -392,6 +392,8 @@ class SystemConfigKey(Enum):
     UserCustomCSS = "UserCustomCSS"
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
+    # 共享源码插件的虚拟运行实例
+    PluginInstances = "PluginInstances"
     # 插件文件夹分组配置
     PluginFolders = "PluginFolders"
     # 默认电影订阅规则

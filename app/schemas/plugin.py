@@ -1,7 +1,7 @@
 from enum import Enum as _Enum
-from typing import Optional, List, Dict, Union
+from typing import Literal, Optional, List, Dict, Union
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, field_validator
 
 from app.schemas.common import JsonData
 
@@ -15,6 +15,27 @@ class PluginRuntimeStatus(str, _Enum):
     ACTIVE = "active"
     BLOCKED_BY_POLICY = "blocked_by_policy"
     LOAD_FAILED = "load_failed"
+
+
+class PluginInstance(BaseModel):
+    """持久化一个共享源码插件的独立运行实例。"""
+
+    instance_id: str = Field(description="运行实例 ID，也是配置、数据和路由命名空间")
+    source_plugin_id: str = Field(description="提供代码与前端资源的源插件 ID")
+    plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
+    plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
+    plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
+    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+
+    @field_validator("instance_id", "source_plugin_id")
+    @classmethod
+    def validate_plugin_id(cls, value: str) -> str:
+        """限制实例标识为可安全用作 Python 类名和路由段的格式。"""
+        if not value or not value[0].isalpha() or not value.isalnum():
+            raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
+        if len(value) > 128:
+            raise ValueError("插件 ID 长度不能超过 128 个字符")
+        return value
 
 
 class Plugin(BaseModel):
@@ -72,6 +93,12 @@ class Plugin(BaseModel):
     add_time: Optional[int] = 0
     # 插件公钥
     plugin_public_key: Optional[str] = None
+    # 共享代码与前端资源的源插件 ID；普通插件为空
+    source_plugin_id: Optional[str] = None
+    # 是否为共享源码的虚拟实例
+    is_instance: Optional[bool] = False
+    # 实例实现模式；存量物理分身为空
+    instance_mode: Optional[str] = None
 
 
 class PluginRuntimeSummary(BaseModel):
@@ -81,6 +108,24 @@ class PluginRuntimeSummary(BaseModel):
     generation: int = Field(description="插件运行状态变化代次")
     pending_count: int = Field(description="仍处于准备阶段的插件数量")
     failed_count: int = Field(description="加载失败或被策略阻止的插件数量")
+
+
+class PluginCloneRequest(BaseModel):
+    """创建虚拟插件分身的请求参数。"""
+
+    suffix: str = Field(
+        min_length=1,
+        max_length=20,
+        pattern=r"^[A-Za-z0-9]+$",
+        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀",
+    )
+    name: str = Field(default="", description="分身展示名称")
+    description: str = Field(default="", description="分身展示描述")
+    icon: Optional[str] = Field(default=None, description="分身展示图标")
+    version: Optional[str] = Field(
+        default=None,
+        description="兼容旧客户端保留，虚拟分身始终跟随源插件版本",
+    )
 
 
 class PluginDashboard(Plugin):
@@ -164,6 +209,7 @@ class PluginRemoteInfo(BaseModel):
     id: str
     url: str
     name: str
+    source_plugin_id: Optional[str] = None
 
 
 class PluginReleaseItem(BaseModel):

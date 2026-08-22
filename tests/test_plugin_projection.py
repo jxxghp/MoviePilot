@@ -172,6 +172,27 @@ def test_projection_builds_federation_and_auth_provider_entries():
     }]
 
 
+def test_projection_exposes_source_identity_for_virtual_frontend_instance():
+    """虚拟实例的联邦入口保留实例 URL，并补充共享源码身份。"""
+    plugin = _Plugin(
+        plugin_source_id="Demo",
+        get_render_mode=lambda: ("vue", "dist/assets"),
+        get_auth_providers=lambda: [{"id": "demo-login"}],
+    )
+    projection = PluginProjection(
+        {"DemoWork": plugin},
+        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+    )
+
+    assert projection.remotes()[0] == {
+        "id": "DemoWork",
+        "url": "/DemoWork/dist/assets",
+        "name": "测试插件",
+        "source_plugin_id": "Demo",
+    }
+    assert projection.auth_providers()[0]["remote"]["source_plugin_id"] == "Demo"
+
+
 def test_projection_normalizes_sidebar_and_dashboard_metadata():
     """侧栏和仪表板元数据在投影层完成校验、排序与兼容默认值。"""
     plugin = _Plugin(

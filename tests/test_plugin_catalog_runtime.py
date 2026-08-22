@@ -37,6 +37,8 @@ def test_installed_catalog_keeps_plugins_that_are_not_loaded():
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
+        plugin_instance=lambda _plugin_id: None,
+        plugin_instances=lambda: {},
         runtime_status=statuses.get,
         log=SimpleNamespace(error=lambda *_args: None, info=lambda *_args: None),
     )

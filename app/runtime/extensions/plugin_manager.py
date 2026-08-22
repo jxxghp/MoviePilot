@@ -9,7 +9,7 @@ from watchfiles import watch
 
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
@@ -42,7 +42,7 @@ from app.runtime.extensions.plugin.dependency import (
     PluginDependencyInstallResult,
     PluginDependencyService,
 )
-from app.runtime.extensions.plugin.storage import PluginConfigStore
+from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginInstanceStore
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -131,6 +131,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 旧属性继续引用注册表拥有的可变字典，保持插件和测试的访问身份。
         self._plugins = self._plugin_registry.classes
         self._running_plugins = self._plugin_registry.running
+        self._plugin_instance_store = PluginInstanceStore(
+            storage=lambda: get_plugin_storage(),
+        )
         # 配置Key
         self._config_key: str = "plugin.%s"
         self._plugin_config_store = PluginConfigStore(
@@ -158,6 +161,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             map_plugin=lambda **kwargs: self._process_plugin_info(**kwargs),
             auth_checker=lambda **kwargs: self.__set_and_check_auth_level(**kwargs),
             plugin_attr=lambda pid, attr: self.get_plugin_attr(pid, attr),
+            plugin_instance=self.get_plugin_instance,
+            plugin_instances=self.get_plugin_instances,
             runtime_status=self._plugin_registry.runtime_status,
             log=logger,
         )
@@ -201,7 +206,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_lifecycle = PluginLifecycle(
             classes=self._plugins,
             running=self._running_plugins,
-            load_plugins=lambda pid, installed, check: self._load_selective_plugins(
+            load_plugins=lambda pid, installed, check: self._load_runtime_plugins(
                 pid,
                 installed,
                 check,
@@ -262,23 +267,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_clone = PluginCloneService(
             plugin_class=self._plugin_registry.plugin_class,
             plugin_exists=lambda plugin_id: self.is_plugin_exists(plugin_id),
-            package_clone=lambda **kwargs: get_plugin_system().package.clone(**kwargs),
-            installed_plugins=lambda: get_plugin_storage().read(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            save_installed_plugins=lambda plugins: get_plugin_storage().write(
-                SystemConfigKey.UserInstalledPlugins,
-                plugins,
-            ),
+            source_plugin_id=self.get_plugin_source_id,
+            save_instance=self._plugin_instance_store.save,
+            delete_instance=self._plugin_instance_store.delete,
             read_config=self.get_plugin_config,
             save_config=lambda plugin_id, config: self.save_plugin_config(
                 plugin_id,
                 config,
                 force=True,
             ),
+            delete_config=lambda plugin_id: self.delete_plugin_config(
+                plugin_id,
+                force=True,
+            ),
             reload_plugin=self.reload_plugin,
-            running_plugin=self._plugin_registry.instance,
-            initialize_plugin=self.init_plugin,
+            remove_plugin=self.remove_plugin,
             log=logger,
         )
         # 事件总线只通过通用解析器访问运行中的插件实例。
@@ -372,6 +375,30 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         ).load(pid, installed_plugins, check_module_func)
 
+    def _load_runtime_plugins(
+        self,
+        pid: Optional[str],
+        installed_plugins: List[str],
+        check_module_func: Callable[[Any], bool],
+    ) -> List[Any]:
+        """加载物理插件或虚拟实例，并保留旧选择性加载方法的合同。"""
+        if pid:
+            instance = self._plugin_instance_store.get(pid)
+            if instance:
+                return self._plugin_loader.load_instance(instance, check_module_func)
+            return self._plugin_loader.load(pid, installed_plugins, check_module_func)
+
+        plugins = self._plugin_loader.load(
+            None,
+            installed_plugins,
+            check_module_func,
+        )
+        for instance in self._plugin_instance_store.all().values():
+            plugins.extend(
+                self._plugin_loader.load_instance(instance, check_module_func)
+            )
+        return plugins
+
     @property
     def running_plugins(self) -> Dict[str, Any]:
         """
@@ -435,7 +462,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             monitor_suppressed=self.is_plugin_monitor_suppressed,
             local_candidate=self._get_local_plugin_candidate_from_path,
             sync_local=self._sync_local_plugin_if_installed,
-            reload_plugin=self.reload_plugin,
+            reload_plugin=self.reload_plugin_tree,
             dependency_manifest_status=(
                 get_plugin_system().dependency_manifest_status
             ),
@@ -512,6 +539,27 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
 
+    def reload_plugin_tree(self, plugin_id: str) -> PluginRuntimeStatus:
+        """重载源码插件，并同步刷新所有引用该源码的虚拟实例。"""
+        source_plugin_id = self.get_plugin_source_id(plugin_id)
+        status = self.reload_plugin(source_plugin_id)
+        for instance in self._plugin_instance_store.for_source(source_plugin_id):
+            self.reload_plugin(instance.instance_id)
+        return status
+
+    def get_plugin_reload_targets(self, plugin_id: str) -> List[str]:
+        """返回源码更新后需要刷新注册信息的源插件及其实例 ID。"""
+        source_plugin_id = self.get_plugin_source_id(plugin_id)
+        return [
+            source_plugin_id,
+            *(
+                instance.instance_id
+                for instance in self._plugin_instance_store.for_source(
+                    source_plugin_id
+                )
+            ),
+        ]
+
     @staticmethod
     def _clear_plugin_modules(plugin_id: Optional[str] = None):
         """
@@ -551,13 +599,29 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         ).install_missing_with_status()
 
-    @staticmethod
-    def classify_plugins() -> PluginDependencyClassification:
-        """按源码和依赖是否就绪划分已安装插件。"""
-        return PluginDependencyService(
+    def classify_plugins(self) -> PluginDependencyClassification:
+        """按源码依赖状态分类物理插件，并把结果映射到虚拟实例。"""
+        source_classification = PluginDependencyService(
             system=get_plugin_system,
             log=logger,
         ).classify_plugins()
+        ready = list(source_classification.ready)
+        missing_dependencies = list(source_classification.missing_dependencies)
+        missing_source = list(source_classification.missing_source)
+        source_ready = set(source_classification.ready)
+        source_pending = set(source_classification.missing_dependencies)
+        for instance in self._plugin_instance_store.all().values():
+            if instance.source_plugin_id in source_ready:
+                ready.append(instance.instance_id)
+            elif instance.source_plugin_id in source_pending:
+                missing_dependencies.append(instance.instance_id)
+            else:
+                missing_source.append(instance.instance_id)
+        return PluginDependencyClassification(
+            ready=tuple(ready),
+            missing_dependencies=tuple(missing_dependencies),
+            missing_source=tuple(missing_source),
+        )
 
     def apply_plugin_dependency_classification(
         self,
@@ -609,6 +673,27 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID
         """
         return self._plugin_config_store.read(pid)
+
+    def get_plugin_instances(self) -> dict[str, PluginInstance]:
+        """返回全部有效虚拟插件实例描述。"""
+        return self._plugin_instance_store.all()
+
+    def get_plugin_instance(self, plugin_id: str) -> Optional[PluginInstance]:
+        """返回指定虚拟插件实例描述，物理插件返回空。"""
+        return self._plugin_instance_store.get(plugin_id)
+
+    def get_plugin_source_id(self, plugin_id: str) -> str:
+        """解析插件运行身份对应的源码身份，普通插件保持原值。"""
+        instance = self._plugin_instance_store.get(plugin_id)
+        return instance.source_plugin_id if instance else plugin_id
+
+    def get_plugin_source_instances(self, plugin_id: str) -> List[PluginInstance]:
+        """返回直接引用指定源码插件的虚拟实例。"""
+        return self._plugin_instance_store.for_source(plugin_id)
+
+    def delete_plugin_instance(self, plugin_id: str) -> bool:
+        """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。"""
+        return self._plugin_instance_store.delete(plugin_id)
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """

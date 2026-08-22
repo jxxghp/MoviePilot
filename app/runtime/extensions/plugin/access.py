@@ -45,9 +45,10 @@ class PluginAccessPolicy:
             and hasattr(plugin, "plugin_public_key")
         ):
             plugin_id = (
-                getattr(plugin, "id", None)
+                getattr(plugin, "plugin_source_id", None)
+                or getattr(plugin, "id", None)
                 if not isinstance(plugin, type)
-                else plugin.__name__
+                else getattr(plugin, "plugin_source_id", None) or plugin.__name__
             )
             public_key = plugin.plugin_public_key
             if public_key and plugin_id:

@@ -150,11 +150,15 @@ class PluginProjection:
                 continue
             if not self._remote_entry_factory:
                 raise RuntimeError("插件联邦入口生成器尚未配置")
-            remotes.append({
+            remote = {
                 "id": plugin_id,
                 "url": self._remote_entry_factory(plugin_id, dist_path),
                 "name": plugin.plugin_name,
-            })
+            }
+            source_plugin_id = getattr(plugin, "plugin_source_id", None)
+            if source_plugin_id:
+                remote["source_plugin_id"] = source_plugin_id
+            remotes.append(remote)
         return remotes
 
     def auth_providers(self) -> List[Dict[str, Any]]:
@@ -189,11 +193,15 @@ class PluginProjection:
                     if not self._remote_entry_factory:
                         raise RuntimeError("插件联邦入口生成器尚未配置")
                     provider.setdefault("component", "AuthPage")
-                    provider["remote"] = {
+                    remote = {
                         "id": plugin_id,
                         "url": self._remote_entry_factory(plugin_id, dist_path),
                         "name": plugin.plugin_name,
                     }
+                    source_plugin_id = getattr(plugin, "plugin_source_id", None)
+                    if source_plugin_id:
+                        remote["source_plugin_id"] = source_plugin_id
+                    provider["remote"] = remote
                 providers.append(provider)
         return providers
 
@@ -335,4 +343,9 @@ class PluginProjection:
             cols=cols or {},
             attrs=attrs or {},
             elements=elements,
+            source_plugin_id=getattr(plugin, "plugin_source_id", None),
+            is_instance=bool(getattr(plugin, "plugin_source_id", None)),
+            instance_mode=(
+                "virtual" if getattr(plugin, "plugin_source_id", None) else None
+            ),
         )

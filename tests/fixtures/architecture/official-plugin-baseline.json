@@ -2695,7 +2695,7 @@
       ]
     },
     "get_api": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2775,6 +2775,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2787,7 +2788,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 81,
+      "file_count": 82,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2865,6 +2866,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2888,7 +2890,7 @@
       ]
     },
     "get_form": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2968,6 +2970,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -2986,7 +2989,7 @@
       ]
     },
     "get_page": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3066,6 +3069,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3148,7 +3152,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 85,
+      "file_count": 86,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3230,6 +3234,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3238,7 +3243,7 @@
       ]
     },
     "init_plugin": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3318,6 +3323,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -3326,7 +3332,7 @@
       ]
     },
     "stop_service": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3406,6 +3412,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4293,7 +4300,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 83,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4373,6 +4380,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4541,7 +4549,7 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 66,
+      "file_count": 67,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4604,6 +4612,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4655,7 +4664,7 @@
       ]
     },
     "app.sdk.events": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -4664,6 +4673,7 @@
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4671,7 +4681,7 @@
       ]
     },
     "app.sdk.logging": {
-      "file_count": 23,
+      "file_count": 24,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
@@ -4691,6 +4701,7 @@
         "plugins.v3/imdbsource/officialapi.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
@@ -4936,9 +4947,9 @@
     }
   },
   "provenance": {
-    "head": "217c8d25ffe6ff0b3f6352c4278fd6896def442e",
-    "python_file_count": 237,
-    "source_sha256": "c3796565ff3fd49a8ff3f1e1373d9afab44fd7b98371e44f662c32739fe53d15"
+    "head": "fd0363711dbba96e31a27ad56b2e87c3524096a4",
+    "python_file_count": 238,
+    "source_sha256": "f07ff2e8c95080cbbf6d229376464e61dc74061c1a8d371b5ea2cf00148413de"
   },
   "schema_version": 3,
   "scope": {

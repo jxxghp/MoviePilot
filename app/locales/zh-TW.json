@@ -836,6 +836,10 @@
       "target": "建立插件分身失敗：{reason}"
     },
     {
+      "source": "请先卸载该插件的分身：{instances}",
+      "target": "請先解除安裝該插件的分身：{instances}"
+    },
+    {
       "source": "{domain} 站点己存在",
       "target": "{domain} 站點已存在"
     },

@@ -13,6 +13,7 @@ from starlette.responses import StreamingResponse
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
+from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
@@ -558,12 +559,13 @@ async def install(
         )
 
     async def reload_runtime(target_id: str) -> object:
-        """在线程池中重建插件实例并广播重载事件。"""
-        return await run_in_threadpool(PluginManager().reload_plugin, target_id)
+        """在线程池中重建源插件及其全部虚拟实例。"""
+        return await run_in_threadpool(PluginManager().reload_plugin_tree, target_id)
 
     async def refresh_registrations(target_id: str) -> object:
-        """在线程池中刷新插件服务、命令和动态路由。"""
-        return await run_in_threadpool(register_plugin, target_id)
+        """在线程池中刷新源插件及其虚拟实例的全部宿主注册。"""
+        for reload_target in plugin_manager.get_plugin_reload_targets(target_id):
+            await run_in_threadpool(register_plugin, reload_target)
 
     command = PluginInstallCommand(
         installed_plugins_reader=lambda: get_configured_system_config().get(
@@ -779,8 +781,12 @@ async def plugin_static_file(
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
+    source_plugin_id = PluginManager().get_plugin_source_id(plugin_id)
     plugin_base_dir = (
-        AsyncPath(settings.ROOT_PATH) / "app" / "plugins" / plugin_id.lower()
+        AsyncPath(settings.ROOT_PATH)
+        / "app"
+        / "plugins"
+        / source_plugin_id.lower()
     )
     plugin_file_path = plugin_base_dir / filepath.lstrip("/")
 
@@ -940,7 +946,9 @@ async def update_folder_plugins(
     "/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None]
 )
 def clone_plugin(
-    plugin_id: str, clone_data: dict, _: ApiPrincipal = Depends(get_current_active_superuser)
+    plugin_id: str,
+    clone_data: _SchemaPluginCloneRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
 ) -> Any:
     """
     创建插件分身
@@ -948,16 +956,16 @@ def clone_plugin(
     try:
         success, message = PluginManager().clone_plugin(
             plugin_id=plugin_id,
-            suffix=clone_data.get("suffix", ""),
-            name=clone_data.get("name", ""),
-            description=clone_data.get("description", ""),
-            version=clone_data.get("version", ""),
-            icon=clone_data.get("icon", ""),
+            suffix=clone_data.suffix,
+            name=clone_data.name,
+            description=clone_data.description,
+            version=clone_data.version,
+            icon=clone_data.icon,
         )
 
         if success:
-            # 注册插件服务
-            reload_plugin(message)
+            # 分身服务已完成运行态加载，此处只补齐宿主注册。
+            register_plugin(message)
             # 将分身插件添加到原插件所在的文件夹中
             _add_clone_to_plugin_folder(plugin_id, message)
             return _SchemaResponse(success=True, message="插件分身创建成功")
@@ -1003,6 +1011,15 @@ def uninstall_plugin(
     """
     卸载插件
     """
+    plugin_manager = PluginManager()
+    virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
+    source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
+    if not virtual_instance and source_instances:
+        instance_ids = "、".join(item.instance_id for item in source_instances)
+        return _SchemaResponse(
+            success=False,
+            message=f"请先卸载该插件的分身：{instance_ids}",
+        )
     config_oper = get_configured_system_config()
     # 删除已安装信息
     install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
@@ -1016,9 +1033,12 @@ def uninstall_plugin(
     # 移除插件服务
     remove_plugin_job(plugin_id)
     # 判断是否为分身
-    plugin_manager = PluginManager()
     plugin_class = plugin_manager.plugins.get(plugin_id)
-    if getattr(plugin_class, "is_clone", False):
+    if virtual_instance:
+        plugin_manager.delete_plugin_config(plugin_id, force=True)
+        plugin_manager.delete_plugin_data(plugin_id, force=True)
+        plugin_manager.delete_plugin_instance(plugin_id)
+    elif getattr(plugin_class, "is_clone", False):
         # 如果是分身插件，则删除分身数据和配置
         plugin_manager.delete_plugin_config(plugin_id)
         plugin_manager.delete_plugin_data(plugin_id)

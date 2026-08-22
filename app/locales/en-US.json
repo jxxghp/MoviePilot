@@ -840,6 +840,10 @@
       "target": "Failed to create plugin clone: {reason}"
     },
     {
+      "source": "请先卸载该插件的分身：{instances}",
+      "target": "Uninstall this plugin's instances first: {instances}"
+    },
+    {
       "source": "{domain} 站点己存在",
       "target": "Site {domain} already exists"
     },
