@@ -22,6 +22,10 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
+TOOL_TIMEOUT_MESSAGE = (
+    "工具执行超时，已停止等待结果；"
+    "若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
+)
 
 
 class AgentPolicyMiddleware(AgentMiddleware):
@@ -118,12 +122,13 @@ class AgentPolicyMiddleware(AgentMiddleware):
                 handler=lambda: handler(request),
                 enforce_decision=False,
             )
-        except TimeoutError as error:
+        except TimeoutError:
             tool_name = str(getattr(request.tool, "name", None) or "unknown")
             return ToolMessage(
-                content=str(error),
+                content=TOOL_TIMEOUT_MESSAGE,
                 tool_call_id=str(tool_call.get("id") or ""),
                 name=tool_name,
+                status="error",
             )
         # 普通 ToolNode 保持 shadow 观测；已确认调用使用默认的强制决策语义。
         return result

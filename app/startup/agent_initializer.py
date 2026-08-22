@@ -217,7 +217,7 @@ async def stop_agent():
         if is_tool_factory_materialized():
             from app.agent.tools.base import shutdown_blocking_executors
 
-            shutdown_blocking_executors(cancel_futures=True)
+            shutdown_blocking_executors(wait=False, cancel_futures=True)
     except Exception as e:
         logger.error(f"停止AI智能体时发生错误: {e}")
     finally:

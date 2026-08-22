@@ -247,7 +247,6 @@ class _CompiledAgentBundle:
     plugin_revision: int = -1
     mcp_config_signature: str = ""
     catalog_checked_at: Optional[datetime] = None
-    subagent_middlewares: tuple[Any, ...] = ()
 
 
 class _ThinkTagStripper:
@@ -1743,7 +1742,6 @@ class MoviePilotAgent:
             plugin_revision=tool_catalog.plugin_revision,
             mcp_config_signature=mcp_config_signature,
             catalog_checked_at=datetime.now(),
-            subagent_middlewares=subagent_middlewares,
         )
         self._subagent_middlewares = subagent_middlewares
         return agent

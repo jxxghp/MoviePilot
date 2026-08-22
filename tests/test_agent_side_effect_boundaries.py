@@ -219,7 +219,7 @@ async def test_terminal_manager_cancellation_terminates_unregistered_session() -
 
 @pytest.mark.anyio
 async def test_langchain_timeout_records_policy_failure() -> None:
-    """LangChain 工具超时必须形成失败回执并保留错误消息。"""
+    """LangChain 工具超时必须形成不泄露异常凭据的失败消息。"""
     tool = _SlowWriteTool(session_id="session-1", user_id="user-1")
     orchestrator = MagicMock()
     orchestrator.start.side_effect = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start
@@ -242,11 +242,34 @@ async def test_langchain_timeout_records_policy_failure() -> None:
     with patch("app.agent.tools.base.settings.LLM_TOOL_TIMEOUT", 0.01):
         result = await middleware.awrap_tool_call(request, _handler)
 
-    assert "工具 plugin_write 执行超时" in result.content
-    assert "外部写操作" in result.content
+    assert "工具执行超时" in result.content
+    assert "若工具包含外部写操作" in result.content
     assert "请先确认实际状态再重试" in result.content
+    assert result.status == "error"
     orchestrator.fail.assert_called_once()
     orchestrator.finish.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_langchain_timeout_message_sanitizes_dynamic_error() -> None:
+    """非宿主工具抛出的超时异常不得把凭据带入模型上下文。"""
+    tool = SimpleNamespace(name="dynamic_tool")
+    middleware = AgentPolicyMiddleware(
+        context=_policy_context(),
+        tools=[tool],
+    )
+    request = SimpleNamespace(
+        tool=tool,
+        tool_call={"id": "call-timeout", "name": tool.name, "args": {}},
+    )
+
+    async def _handler(_request):
+        raise TimeoutError("Authorization: Bearer secret-value")
+
+    result = await middleware.awrap_tool_call(request, _handler)
+
+    assert result.status == "error"
+    assert "secret-value" not in result.content
 
 
 @pytest.mark.anyio
