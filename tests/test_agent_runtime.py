@@ -2,6 +2,8 @@ import shutil
 import tempfile
 import textwrap
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 from app.agent.runtime import AgentRuntimeManager
@@ -22,6 +24,16 @@ class TestAgentRuntimeConfig(unittest.TestCase):
             agent_root_dir=self.agent_root,
             bundled_defaults_dir=self.defaults_root,
         )
+
+    def test_default_root_uses_runtime_settings_service(self):
+        """未显式传入目录时，管理器应读取组合根提供的配置目录。"""
+        config_root = self.temp_root / "configured"
+        service = SimpleNamespace(get=lambda key: config_root if key == "CONFIG_PATH" else None)
+
+        with patch("app.agent.runtime.get_runtime_settings", return_value=service):
+            manager = AgentRuntimeManager(bundled_defaults_dir=self.defaults_root)
+
+        self.assertEqual(manager.agent_root_dir, config_root / "agent")
 
     def test_load_runtime_config_syncs_defaults_and_parses_sections(self):
         manager = self._manager()

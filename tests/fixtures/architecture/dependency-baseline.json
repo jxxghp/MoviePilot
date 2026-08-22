@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6416,
-  "edge_sha256": "c138400e259f15da3b22796667691ccca229c9c8b9a4c88f3c122922600c38a1",
+  "edge_count": 6417,
+  "edge_sha256": "ded73ef8389d2d3ba9328063bad2afb6bda982fa14a8a4ae6eb369ba4e3c345c",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -384,8 +384,9 @@
     "app.agent.prompt -> app.schemas.notification",
     "app.agent.prompt.transfer_redo -> app.agent",
     "app.agent.prompt.transfer_redo -> app.agent.prompt",
+    "app.agent.runtime -> app.application",
+    "app.agent.runtime -> app.application.configuration",
     "app.agent.runtime -> app.runtime",
-    "app.agent.runtime -> app.runtime.config",
     "app.agent.runtime -> app.runtime.log",
     "app.agent.runtime_loader -> app.agent",
     "app.agent.runtime_loader -> app.agent.capabilities",
