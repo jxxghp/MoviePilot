@@ -983,6 +983,8 @@ Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源�
 清理服务与 Chain 专项测试通过。
 Passkey 的 APP_DOMAIN、NGINX_PORT 和用户验证要求也已接入 API 配置快照，配置债务降至 131 个文件；
 MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安全端口范围内。
+认证服务的超级用户、向导开关和访问令牌过期时间也改用配置快照，债务降至 130 个文件；
+鉴权与 MFA 专项测试通过。
 `DownloadChain.download_single` 的下载成功结算已提取为独立阶段，入口从 255 行降至 167 行；
 历史、文件明细、durable intent、post-commit 通知和旧测试 fallback 语义保持，下载专项测试通过。
 
