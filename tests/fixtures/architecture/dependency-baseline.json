@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6397,
-  "edge_sha256": "801b80e33c626aecf70e5320a2c1c81db401549faa652e718be7386bac593f43",
+  "edge_count": 6396,
+  "edge_sha256": "343715ec8f599f096a45de0dd279d493e7eea7bcde70079f0df0446019578073",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2787,7 +2787,6 @@
     "app.application.torrent -> app.foundation.text",
     "app.application.torrent -> app.runtime",
     "app.application.torrent -> app.runtime.cache",
-    "app.application.torrent -> app.runtime.config",
     "app.application.torrent -> app.runtime.log",
     "app.application.torrent -> app.schemas",
     "app.application.torrent -> app.schemas.media",
