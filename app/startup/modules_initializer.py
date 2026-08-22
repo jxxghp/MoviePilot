@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import sys
 from typing import Callable
@@ -69,7 +70,10 @@ from app.application.messaging.chat import (
     configure_agent_chat_service,
     get_configured_agent_chat_persistence,
 )
-from app.application.messaging.agent import shutdown_web_agent_background_tasks
+from app.application.messaging.agent import (
+    shutdown_web_agent_background_tasks,
+    wait_web_agent_background_tasks,
+)
 from app.application.security.user import configure_user_lookups
 from app.application.security.auth import AuthService, configure_auth_service
 from app.application.security.passkeys import PasskeyService, configure_passkey_service
@@ -559,14 +563,19 @@ async def stop_modules():
     """
     服务关闭
     """
-    async def run_step(name: str, callback: Callable[[], object]) -> None:
+    async def run_step(name: str, callback: Callable[[], object]) -> bool:
         """单个模块资源关闭失败时继续执行后续阶段"""
         try:
             result = callback()
             if inspect.isawaitable(result):
                 await result
+            return True
+        except asyncio.CancelledError:
+            logger.warning("关闭%s时收到取消请求，继续执行资源收口", name)
+            return False
         except Exception as err:
             logger.error(f"关闭{name}失败：{err}")
+            return True
 
     await run_step("AI智能体", stop_agent)
     await run_step("模块", lambda: ModuleManager().shutdown())
@@ -578,21 +587,32 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
-    # 先关闭持久化准入，取消中的 Web Agent finally 才会快速拒绝晚到的快照写入。
-    await run_step(
-        "Agent会话持久化准入",
-        lambda: get_configured_agent_chat_persistence().begin_shutdown(),
+    # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
+    web_agent_drained = await run_step(
+        "Web Agent后台任务", shutdown_web_agent_background_tasks
     )
-    await run_step("Web Agent后台任务", shutdown_web_agent_background_tasks)
-    await run_step(
-        "Agent会话持久化",
-        lambda: get_configured_agent_chat_persistence().shutdown(),
-    )
-    await run_step("数据库任务", stop_database_worker)
-    if _database_worker is None:
-        await run_step("数据库连接", close_database)
+    if not web_agent_drained:
+        web_agent_drained = await run_step(
+            "Web Agent后台任务收尾", wait_web_agent_background_tasks
+        )
+    if web_agent_drained:
+        await run_step(
+            "Agent会话持久化准入",
+            lambda: get_configured_agent_chat_persistence().begin_shutdown(),
+        )
+        persistence_drained = await run_step(
+            "Agent会话持久化",
+            lambda: get_configured_agent_chat_persistence().shutdown(),
+        )
     else:
-        logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
+        persistence_drained = False
+        logger.error("Web Agent任务未完成收尾，跳过持久化和数据库关闭以保护活动事务")
+    if persistence_drained:
+        await run_step("数据库任务", stop_database_worker)
+        if _database_worker is None:
+            await run_step("数据库连接", close_database)
+        else:
+            logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
 

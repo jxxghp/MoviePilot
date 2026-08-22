@@ -355,6 +355,23 @@ def test_web_agent_stream_returns_error_for_unknown_command():
     handle_message.assert_not_called()
 
 
+def test_web_agent_stream_does_not_bind_request_scoped_chat_service():
+    """流式路由不能把请求级 Agent 会话服务捕获到后台任务。"""
+    from app.api.dependencies.agent import get_agent_chat_service
+    from app.api.endpoints import agent as agent_endpoint
+
+    route = next(
+        route
+        for route in agent_endpoint.router.routes
+        if getattr(route, "name", None) == "web_agent_stream"
+    )
+
+    assert all(
+        dependency.call is not get_agent_chat_service
+        for dependency in route.dependant.dependencies
+    )
+
+
 def test_build_web_agent_message_update_event_converts_buttons():
     """WebAgent 编辑消息应转换为可原地更新卡片的事件。"""
     event = build_web_agent_message_update_event(

@@ -17,7 +17,7 @@ from app.application.messaging.chat import (
     AsyncUnitOfWork,
 )
 from app.application.messaging.message import MessageQueryService
-from app.startup.context import HostRuntime
+from app.startup.context import AgentChatRuntime, HostRuntime
 
 
 def get_agent_chat_service(
@@ -29,7 +29,7 @@ def get_agent_chat_service(
 
 
 def get_agent_chat_persistence(
-    runtime: HostRuntime = Depends(get_agent_chat_runtime),
+    runtime: AgentChatRuntime = Depends(get_agent_chat_runtime),
 ) -> AgentChatPersistenceService:
     """从类型化 Agent 运行时获取有界会话写入端口。"""
     return runtime.persistence

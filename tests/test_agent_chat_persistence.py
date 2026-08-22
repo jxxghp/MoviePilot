@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -174,6 +174,53 @@ async def test_authoritative_display_save_propagates_worker_overload() -> None:
             service=service,
             persistence=OverloadedPersistence(),
         )
+
+
+@pytest.mark.asyncio
+async def test_authoritative_display_save_reads_fresh_projection_after_worker_write(
+        monkeypatch,
+) -> None:
+    """权威展示保存的响应必须读取 worker 提交后的最新投影。"""
+    existing_chat = SimpleNamespace(
+        user_id="1",
+        username="admin",
+        channel="WebAgent",
+        source="web-agent",
+        original_chat_id=None,
+        client_session_id="client-1",
+    )
+    updated_chat = SimpleNamespace(
+        session_id="fresh-session",
+        message_count=2,
+    )
+    request_service = SimpleNamespace(
+        get_accessible=AsyncMock(return_value=existing_chat),
+        get=AsyncMock(return_value=existing_chat),
+    )
+    canonical_service = SimpleNamespace(
+        get_accessible=AsyncMock(return_value=updated_chat),
+        to_summary=MagicMock(return_value="fresh-summary"),
+    )
+    persistence = SimpleNamespace(async_save_display_messages=AsyncMock())
+    current_user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    monkeypatch.setattr(
+        "app.api.endpoints.agent.get_configured_agent_chat_service",
+        MagicMock(return_value=canonical_service),
+    )
+
+    response = await save_agent_chat_display(
+        session_id="fresh-session",
+        payload=AgentChatDisplaySaveRequest(messages=[]),
+        current_user=current_user,
+        service=request_service,
+        persistence=persistence,
+    )
+
+    assert response.success is True
+    assert response.data == "fresh-summary"
+    canonical_service.get_accessible.assert_awaited_once_with(
+        "fresh-session", current_user
+    )
 
 
 @pytest.mark.asyncio

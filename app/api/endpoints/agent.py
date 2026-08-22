@@ -1937,10 +1937,13 @@ async def save_agent_chat_display(
         service=service,
         persistence=persistence,
     )
-    chat = await service.get_accessible(session_id, current_user)
+    # 写入由独立 worker 事务完成，使用组合根登记的短会话服务复读，避免请求会话
+    # 的 identity map 返回写入前的 ORM 快照。
+    chat_service = get_configured_agent_chat_service()
+    chat = await chat_service.get_accessible(session_id, current_user)
     if not chat:
         return _SchemaResponse(success=False, message="会话保存失败")
-    return _SchemaResponse(success=True, data=service.to_summary(chat))
+    return _SchemaResponse(success=True, data=chat_service.to_summary(chat))
 
 
 @router.delete(
@@ -2027,7 +2030,7 @@ async def _web_agent_stream_impl(
     """
     prompt = payload.text.strip()
     if not isinstance(service, AgentChatService):
-        # 直接调用公开函数时不经过 FastAPI 依赖解析；生产路由总是传入运行时服务。
+        # SSE 后台任务可能在请求依赖释放后继续运行，查询服务必须自行取得短会话。
         service = get_configured_agent_chat_service()
     if not isinstance(persistence, AgentChatPersistenceService):
         # 直接调用公开函数时不经过 FastAPI 依赖解析；生产路由总是传入运行时端口。
@@ -2387,7 +2390,6 @@ async def web_agent_stream(
     payload: _SchemaAgentWebChatRequest,
     request: Request,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-    service: AgentChatService = Depends(get_agent_chat_service),
     persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
 ) -> StreamingResponse:
     """Web 智能助手流式对话的稳定公开路由入口。"""
@@ -2395,6 +2397,5 @@ async def web_agent_stream(
         payload,
         request,
         current_user,
-        service,
-        persistence,
+        persistence=persistence,
     )

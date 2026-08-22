@@ -202,6 +202,13 @@ async def shutdown_web_agent_background_tasks() -> None:
         await asyncio.wait(tasks)
 
 
+async def wait_web_agent_background_tasks() -> None:
+    """等待已登记的 Web Agent 任务完成取消后的最终收尾。"""
+    tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 def register_channel_admin_resolver(
         channel: Union[NotificationChannel, str],
         resolver: _ChannelAdminResolver,

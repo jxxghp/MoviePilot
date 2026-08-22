@@ -103,10 +103,21 @@ async def run_shutdown_step(
     try:
         result = callback()
         if inspect.isawaitable(result):
+            task = asyncio.ensure_future(result)
             if timeout_seconds:
-                await asyncio.wait_for(result, timeout=timeout_seconds)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(task), timeout=timeout_seconds
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("关闭%s超时，等待其取消收口", name)
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
             else:
-                await result
+                await task
     except Exception as err:
         logger.error(f"关闭{name}失败：{err}")
 
