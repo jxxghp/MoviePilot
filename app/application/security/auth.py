@@ -8,7 +8,7 @@ from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.application.security.token import create_access_token
 from app.runtime.config import settings
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
 

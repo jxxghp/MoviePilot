@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.chain.transfer import TransferChain
-from app.schemas import TransferInfo
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
 from tests.test_transfer_job_manager import FakeMedia, make_task, make_transfer_chain
 

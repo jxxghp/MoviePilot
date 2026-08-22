@@ -5,7 +5,7 @@ from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.query import get_configured_site_query_service
 from app.foundation.reflection import ModuleHelper
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase

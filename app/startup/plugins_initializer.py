@@ -29,7 +29,7 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
 )
 from app.runtime.managed_resources import acquire_managed_resource
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import (
     PluginHelper,

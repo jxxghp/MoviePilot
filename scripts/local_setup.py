@@ -2099,7 +2099,7 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+    from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
     auth_sites = SitesHelper().get_authsites() or {}
     definitions: dict[str, Any] = {}
@@ -2440,7 +2440,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         system_config.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
-            from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+            from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
             status, msg = SitesHelper().check_user(
                 site_auth_item.get("site"), site_auth_item.get("params")

@@ -37,7 +37,7 @@ from app.api.dependencies.site import (
     get_site_query_service,
     get_site_sync_query_service,
 )
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.application.scheduling import Scheduler
 from app.schemas.types import SystemConfigKey, MediaType

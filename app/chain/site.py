@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from lxml import etree
 
 from app.chain import ChainBase

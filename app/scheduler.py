@@ -40,7 +40,7 @@ from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.extensions.service_config import ServiceConfigHelper
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.message import MessageType

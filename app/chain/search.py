@@ -23,7 +23,7 @@ from app.domain.metainfo import MetaInfo
 from app.domain.context import MusicInfo
 from app.application.configuration import get_configured_system_config
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.search.state import (
     SearchStateService,
     normalize_search_params,

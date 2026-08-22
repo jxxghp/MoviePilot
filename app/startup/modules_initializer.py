@@ -8,7 +8,7 @@ from app.chain.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.application.site.sites import SitesHelper  # noqa
+    from app.application.site.sites import SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
 except ImportError as e:
     SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"

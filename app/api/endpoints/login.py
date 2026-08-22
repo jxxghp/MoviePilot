@@ -15,7 +15,7 @@ from app.adapters.web.security.access import set_or_refresh_resource_token_cooki
 from app.application.security.token import create_access_token
 from app.api.context import get_api_runtime_config, resolve_api_runtime_config
 from app.application.configuration import ApiRuntimeConfig, get_configured_system_config
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 

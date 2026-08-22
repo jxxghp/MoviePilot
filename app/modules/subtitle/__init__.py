@@ -7,7 +7,7 @@ from lxml import etree
 from app.runtime.config import settings
 from app.domain.context import Context
 from app.application.site.query import get_configured_site_query_service
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType

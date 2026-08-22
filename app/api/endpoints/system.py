@@ -13,7 +13,7 @@ import aiofiles
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 from anyio import Path as AsyncPath
-from app.application.site.sites import SitesHelper  # pylint: disable=no-name-in-module
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from fastapi import Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
