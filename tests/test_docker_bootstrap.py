@@ -108,7 +108,13 @@ def test_launcher_prefers_complete_trusted_source_bundle(tmp_path: Path) -> None
     assert result.stdout == "source\n"
 
 
-def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("previous_bundle_state", "expected_output"),
+    [("trusted", "old\n"), ("incomplete", "image\n"), ("untrusted", "image\n")],
+)
+def test_launcher_isolates_control_generation_during_pending_recovery(
+    tmp_path: Path, previous_bundle_state: str, expected_output: str
+) -> None:
     source = tmp_path / "source"
     image = tmp_path / "image"
     previous = tmp_path / "previous-app"
@@ -116,6 +122,8 @@ def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Pat
     _write_bundle(source, "new")
     _write_bundle(image, "image")
     _write_bundle(previous / "docker", "old")
+    if previous_bundle_state == "incomplete":
+        (previous / "docker" / "browser.sh").unlink()
     (config / "temp").mkdir(parents=True)
     (config / "temp" / "__update_pending__").write_text("prepared\n", encoding="utf-8")
     script = textwrap.dedent(
@@ -126,7 +134,14 @@ def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Pat
         RUNTIME_ROOT="$3"
         UPDATE_PENDING_FILE="$4"
         UPDATE_PREVIOUS_APP="$5"
-        source_bundle_is_trusted() {{ control_bundle_generation "$1" >/dev/null; }}
+        PREVIOUS_BUNDLE_STATE="$6"
+        PREVIOUS_CONTROL_DIR="$5/docker"
+        source_bundle_is_trusted() {{
+            [ "${{PREVIOUS_BUNDLE_STATE}}" != "untrusted" ] \
+                || [ "$1" != "${{PREVIOUS_CONTROL_DIR}}" ] \
+                || return 1
+            control_bundle_generation "$1" >/dev/null
+        }}
         launcher_main
         """
     )
@@ -142,6 +157,7 @@ def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Pat
             str(tmp_path / "run"),
             str(config / "temp" / "__update_pending__"),
             str(previous),
+            previous_bundle_state,
         ],
         text=True,
         capture_output=True,
@@ -149,7 +165,7 @@ def test_launcher_uses_previous_generation_during_pending_recovery(tmp_path: Pat
     )
 
     assert result.returncode == 0
-    assert result.stdout == "old\n"
+    assert result.stdout == expected_output
 
 
 @pytest.mark.parametrize("missing_file", BASE_CONTROL_FILES)

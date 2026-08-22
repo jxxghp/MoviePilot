@@ -109,8 +109,13 @@ function pending_recovery_control_dir() {
     case "${state}" in
     prepared|dependencies)
         [ -e "${UPDATE_PREVIOUS_APP}" ] || return 1
-        source_bundle_is_trusted "${previous_control_dir}" || return 1
-        printf '%s\n' "${previous_control_dir}"
+        if source_bundle_is_trusted "${previous_control_dir}"; then
+            printf '%s\n' "${previous_control_dir}"
+        else
+            # pending 恢复只能使用旧代或镜像控制脚本，不能执行尚未提交的新源码控制脚本。
+            printf '%s\n' "MoviePilot 旧代控制脚本不完整或不可信，回退到镜像内置版本。" >&2
+            printf '%s\n' "${IMAGE_CONTROL_DIR}"
+        fi
         return 0
         ;;
     esac
