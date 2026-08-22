@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -22,6 +22,10 @@ from app.domain.media import normalize_music_type
 from app.schemas.media import resolve_media_identity
 from app.adapters.system.host import SystemUtils
 from version import APP_VERSION, FRONTEND_VERSION
+
+
+# 保留旧插件可覆盖的模块级入口，默认通过 runtime 代理动态读取配置。
+settings = RuntimeSettingsCompat()
 
 
 _server_report_service: Any = None

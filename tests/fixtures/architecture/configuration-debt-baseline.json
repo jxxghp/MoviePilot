@@ -9,10 +9,8 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 107,
+    "count": 105,
     "files": [
-      "app/adapters/external/market.py",
-      "app/adapters/external/server.py",
       "app/adapters/network/browser.py",
       "app/adapters/system/fsproxy.py",
       "app/adapters/web/security/access.py",

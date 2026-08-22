@@ -70,7 +70,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
 | 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 107 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| 直接读取 `settings` 的文件 | 105 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
 | Model 上的 DB 查询装饰器 | 117 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
@@ -1031,6 +1031,9 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 Pylint 与架构基线通过，配置债务由 112 个文件降至 109 个文件。
 缓存 Redis 连接池、内存限制和文件缓存工厂随后改用 runtime 配置端口，保留旧模块级 Settings 覆盖入口；
 缓存专项 41 项测试与 Pylint 通过，配置债务由 109 个文件降至 107 个文件。
+同时为兼容市场、服务端和插件包适配器增加 `RuntimeSettingsCompat` 动态代理：组合根已装配时读取
+runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原覆盖语义。相关插件市场、插件本地同步、
+服务端和评分专项 184 项测试与 Pylint 通过，配置债务由 107 个文件降至 105 个文件。
 用户模型的 `get_by_name` 与 `get_by_id` 同步查询改为显式 Session 执行，并以一次性短会话保留旧插件
 无 Session ABI；用户查询与兼容专项 75 项测试、Pylint 及架构基线通过，查询装饰器由 119 个降至 117 个。
 

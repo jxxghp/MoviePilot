@@ -12,7 +12,11 @@ from typing import Optional
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
 from app.runtime.log import logger
-from app.runtime.settings import get_runtime_setting
+from app.runtime.settings import RuntimeSettingsCompat
+
+
+# 保留旧模块级入口，插件本地同步测试和旧扩展仍可能覆盖这些设置。
+settings = RuntimeSettingsCompat()
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +42,7 @@ class PluginPackageManager:
     def _plugin_dir(plugin_id: str) -> Path:
         """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
         plugins_root = (
-            Path(get_runtime_setting("ROOT_PATH")) / "app" / "plugins"
+            Path(settings.ROOT_PATH) / "app" / "plugins"
         ).resolve()
         plugin_dir = (plugins_root / plugin_id.lower()).resolve()
         if plugin_dir == plugins_root or not plugin_dir.is_relative_to(plugins_root):
@@ -49,7 +53,7 @@ class PluginPackageManager:
         """在包变更前创建独立快照，供后续提交或补偿恢复。"""
         plugin_dir = self._plugin_dir(plugin_id)
         transaction_dir = (
-            Path(get_runtime_setting("TEMP_PATH"))
+            Path(settings.TEMP_PATH)
             / "plugin_transactions"
             / f"{plugin_id.lower()}-{uuid.uuid4().hex}"
         )
