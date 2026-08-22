@@ -5,8 +5,9 @@
 """
 
 from app.application.scheduling import AGENT_TASK_JOB_PREFIX
+from app.runtime.scheduler import SCHEDULER_PROGRESS_PREFIX, lock
 from app.scheduler.agent_tasks import AgentTaskScheduling
-from app.scheduler.composition import SCHEDULER_PROGRESS_PREFIX, Scheduler, lock
+from app.scheduler.composition import Scheduler
 from app.scheduler.plugins import PluginScheduling
 from app.scheduler.workflows import WorkflowScheduling
 
