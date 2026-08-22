@@ -67,12 +67,12 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | 架构专项测试 | 39 passed | `test_architecture_dependencies` + `test_architecture_contract_baseline` |
 | 宿主 Python 代码行 | 约 241,227 | 含注释和空行，仅用于趋势 |
 | 已登记模块调用方法 | 211 | 260 个静态调用点，0 个动态方法名调用点 |
-| legacy 默认模块契约 | 96 | 显式契约目前也主要只描述 family/legacy aggregation |
+| legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
 | 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
-| 专用 EventData model | 20 | 尚未形成 EventType → payload model 的完整映射 |
-| 直接读取 `settings` 的文件 | 180 | 全局部署配置仍是广泛事实 API |
-| `SystemConfigOper()` | 45 次 / 21 文件 | Agent、Module、Startup 等仍直接构造 |
-| Model 上的 DB 事务装饰器 | 178 | `app/db/oper` 中为 0，Oper 多委托给 Model |
+| 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
+| 直接读取 `settings` 的文件 | 127 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
+| Model 上的 DB 查询装饰器 | 121 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
 | Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
 | Application 方法超过 150 行 | 8 | 最大 296 行 |
