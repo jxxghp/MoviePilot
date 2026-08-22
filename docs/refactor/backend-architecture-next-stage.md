@@ -805,6 +805,10 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   投递原有 `subscribe_id`、`subscribe_info`、`mediainfo` 字段，仅增加可选 `idempotency_key`。
 - 普通订阅新增/修改/删除路径的用户通知与第三方插件自行发送的事件仍不自动纳入宿主事务；本切片只覆盖
   主仓可追踪的 `SubscribeChain` 完成生产者。
+- 2026-08-23 将主仓可追踪的订阅新增与完成用户通知冻结为已渲染 `Message` JSON 快照，并分别写入
+  `subscribe.added.notification`、`subscribe.complete.notification` outbox intent。即时发送成功后按稳定
+  幂等键收口，崩溃或发送失败由现有 dispatcher 恢复；旧插件收到的事件字段和同步/异步入口保持不变。
+  第三方插件自行调用通知或自行写库的副作用仍不在宿主原子事务边界内。
 - `DownloadAdded`、`TransferComplete`、`TransferFailed` 也已逐项接入，而不是复用一个不分业务语义的
   “万能消息总线”。下载历史、下载文件清单或整理历史与各自 intent 在独占同步 Session/UoW 中原子提交；
   即时广播失败时 intent 保持 pending，三种恢复 handler 均继续使用有限重试与 dead-letter 策略。

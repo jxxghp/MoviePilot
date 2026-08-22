@@ -259,6 +259,20 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
         ):
             raise RuntimeError("订阅完成统计上报未确认")
 
+    def dispatch_subscribe_notification(message) -> None:
+        """恢复订阅完成通知；消息快照无需重建领域对象。"""
+        snapshot = message.payload.get("message") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("订阅完成通知快照格式无效")
+        CommandChain().post_message(Message.model_validate(snapshot))
+
+    def dispatch_subscribe_added_notification(message) -> None:
+        """恢复订阅新增通知；恢复使用提交前冻结的渲染消息快照。"""
+        snapshot = message.payload.get("message") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("订阅新增通知快照格式无效")
+        CommandChain().post_message(Message.model_validate(snapshot))
+
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
@@ -268,6 +282,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 message.payload,
             ),
             "subscribe.added.report": dispatch_subscribe_added_report,
+            "subscribe.added.notification": dispatch_subscribe_added_notification,
             "subscribe.modified": lambda message: EventManager().send_event(
                 EventType.SubscribeModified,
                 message.payload,
@@ -282,6 +297,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 message.payload,
             ),
             "subscribe.complete.report": dispatch_subscribe_complete_report,
+            "subscribe.complete.notification": dispatch_subscribe_notification,
             "download.added": lambda message: EventManager().send_event(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),

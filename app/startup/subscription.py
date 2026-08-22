@@ -14,6 +14,7 @@ from app.application.subscription.write import (
     AsyncCreateSubscriptionCommand,
     CreateSubscriptionCommand,
     subscription_added_event_key,
+    subscription_added_notification_key,
     subscription_added_report_key,
 )
 from app.application.subscription.delete import (
@@ -63,6 +64,7 @@ class TransactionalSubscribeWriter:
         payload: dict,
         username: str | None = None,
         after_commit: AfterCommitEffect | None = None,
+        notification: dict[str, object] | None = None,
     ) -> tuple[int, str]:
         """在独占同步会话内执行一次完整订阅新增事务。"""
         session = self._sync_session()
@@ -82,12 +84,23 @@ class TransactionalSubscribeWriter:
                         subscription_added_event_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
                     )
+                    if notification:
+                        outbox.complete_by_event_key(
+                            subscription_added_notification_key(subscribe_id, payload),
+                            datetime.now(timezone.utc),
+                        )
                     outbox.complete_by_event_key(
                         subscription_added_report_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
                     )
 
-            return command.execute(identity, payload, username, delivered)
+            return command.execute(
+                identity,
+                payload,
+                username,
+                delivered,
+                notification,
+            )
         finally:
             session.close()
 
@@ -97,6 +110,7 @@ class TransactionalSubscribeWriter:
         payload: dict,
         username: str | None = None,
         after_commit: AsyncAfterCommitEffect | None = None,
+        notification: dict[str, object] | None = None,
     ) -> tuple[int, str]:
         """在独占异步会话作用域内执行一次完整订阅新增事务。"""
         async with self._async_session() as session:
@@ -115,6 +129,11 @@ class TransactionalSubscribeWriter:
                         subscription_added_event_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
                     )
+                    if notification:
+                        await outbox.complete_by_event_key(
+                            subscription_added_notification_key(subscribe_id, payload),
+                            datetime.now(timezone.utc),
+                        )
                     await outbox.complete_by_event_key(
                         subscription_added_report_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
@@ -125,6 +144,7 @@ class TransactionalSubscribeWriter:
                 payload,
                 username,
                 delivered,
+                notification,
             )
 
 

@@ -49,8 +49,9 @@ class CompleteSubscriptionCommand:
         mediainfo: Mapping[str, Any],
         notify: CompletionEffect,
         report: CompletionReporter,
+        notification: Mapping[str, Any] | None = None,
     ) -> None:
-        """在同一事务中写历史、删订阅并暂存完成事件与统计意图。"""
+        """在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。"""
         info = dict(subscribe_info)
         event_payload = {
             "subscribe_id": subscribe_id,
@@ -60,6 +61,7 @@ class CompleteSubscriptionCommand:
         }
         event_key = event_payload["idempotency_key"]
         report_key = completion_report_key(subscribe_id, info)
+        notification_key = completion_notification_key(subscribe_id, info)
         report_payload = {"subscribe_info": _completion_report_payload(info, report_key)}
         try:
             self._repository.add_history(**info)
@@ -74,6 +76,18 @@ class CompleteSubscriptionCommand:
                     ),
                     now,
                 )
+                if notification:
+                    self._outbox.stage(
+                        OutboxIntent(
+                            event_key=notification_key,
+                            topic="subscribe.complete.notification",
+                            payload={
+                                "idempotency_key": notification_key,
+                                "message": dict(notification),
+                            },
+                        ),
+                        now,
+                    )
                 self._outbox.stage(
                     OutboxIntent(
                         event_key=report_key,
@@ -88,6 +102,11 @@ class CompleteSubscriptionCommand:
             raise
 
         notify()
+        if self._outbox and notification:
+            self._outbox.complete_by_event_key(
+                notification_key,
+                datetime.now(timezone.utc),
+            )
         self._publish(event_payload)
         if self._outbox:
             self._outbox.complete_by_event_key(event_key, datetime.now(timezone.utc))
@@ -109,6 +128,14 @@ def completion_event_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -
 def completion_report_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -> str:
     """构造可独立重试的订阅完成统计幂等键。"""
     return f"{completion_event_key(subscribe_id, subscribe_info)}:report"
+
+
+def completion_notification_key(
+    subscribe_id: int,
+    subscribe_info: Mapping[str, Any],
+) -> str:
+    """构造订阅完成通知的稳定幂等键，避免恢复时重复生成不同消息。"""
+    return f"{completion_event_key(subscribe_id, subscribe_info)}:notification"
 
 
 def _completion_report_payload(
