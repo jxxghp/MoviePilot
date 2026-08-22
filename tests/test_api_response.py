@@ -247,6 +247,17 @@ async def test_database_worker_closed_is_retryable_service_unavailable(
     }
 
 
+def test_create_app_registers_closed_database_worker_handler() -> None:
+    """生产组合根必须为 worker 关闭态登记 503 处理器。"""
+    from app.factory import create_app
+
+    app = create_app()
+
+    assert app.exception_handlers[DatabaseWorkerClosedError] is (
+        database_worker_overloaded_handler
+    )
+
+
 @pytest.mark.parametrize(
     "path",
     [
