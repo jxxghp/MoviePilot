@@ -426,8 +426,12 @@ flowchart TB
   回调交给 Command；commit/flush 失败回滚，事件或上报失败只传播原异常，不回滚已提交记录。
 - 同步/异步 `SubscribeChain.add` 方法长度从各 203 行降至 183/186 行；新增 9 个事务边界测试，
   覆盖成功顺序、commit/flush 失败、重复请求、Oper 不提交、事件失败、上报失败与真实落库。
-- Model 装饰器总数仍为 178：本切片绕开了继承自 `Base.create/async_create` 的自动提交，
-  但为保留既有 Model/旧 SDK 查询兼容未机械删除查询装饰器；ratchet 保持不增，后续切片继续下降。
+- Model 查询装饰器此前为 123 个：本切片绕开了继承自 `Base.create/async_create` 的自动提交，
+  并继续保留既有 Model/旧 SDK 查询兼容；本次 AgentTask 切片将查询装饰器减少到 121 个。
+  2026-08-23 已完成 AgentTask 查询切片：`AgentTaskOper.get/list` 直接在调用方 Session 中执行查询，
+  `AgentTask.get_for_user/list_for_user` 保留原签名和返回语义供旧调用方使用，但不再持有查询装饰器；
+  无 Session 的旧 Oper 入口继续由组合根兼容事务执行器承接。查询装饰器低水位由 123 降至 121，
+  归属过滤、启用状态过滤和创建时间/主键稳定排序由 canonical Oper 测试覆盖。
 
 #### ARCH-222：按风险迁移其余写用例
 
@@ -1191,7 +1195,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 当前 123 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| Model 事务装饰器 | 当前 121 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |
