@@ -492,6 +492,7 @@ class NotificationChannel(Enum):
     Telegram = "Telegram"
     Slack = "Slack"
     Discord = "Discord"
+    DingTalk = "钉钉"
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
     Web = "Web"

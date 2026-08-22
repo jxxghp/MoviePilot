@@ -60,6 +60,24 @@ MODULE_QUALITY_PROFILES = {
             "本轮仅对配置快照改动面启用 assessed 门禁"
         ),
     ),
+    "dingtalk": ModuleQualityProfile(
+        module="dingtalk",
+        level=ModuleQualityLevel.ASSESSED,
+        owner="MoviePilot core",
+        verified_rules=frozenset(
+            {
+                "fake-client-or-fixture",
+                "zero-real-network-tests",
+                "reload-stop-idempotent",
+                "module-contract-v2",
+                "sensitive-log-redaction",
+                "owner-declared",
+            }
+        ),
+        exemption_reason=(
+            "钉钉自定义机器人仅提供同步出站 Webhook，不包含长连接、轮询或入站回调"
+        ),
+    ),
 }
 
 
@@ -74,4 +92,3 @@ def get_module_quality_profile(module: str) -> ModuleQualityProfile:
             exemption_reason="存量模块尚未在二阶段任务中修改，按渐进策略暂不提升门禁",
         ),
     )
-
