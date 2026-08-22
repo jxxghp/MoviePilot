@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 

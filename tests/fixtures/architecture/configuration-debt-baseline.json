@@ -9,15 +9,10 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 98,
+    "count": 93,
     "files": [
       "app/adapters/system/fsproxy.py",
-      "app/agent/llm/capability.py",
-      "app/agent/llm/helper.py",
-      "app/agent/llm/provider.py",
-      "app/agent/orchestrator.py",
       "app/agent/skills/registry.py",
-      "app/agent/tools/base.py",
       "app/agent/tools/impl/_plugin_tool_utils.py",
       "app/agent/tools/impl/_terminal_session.py",
       "app/agent/tools/impl/add_download_tasks.py",

@@ -1048,6 +1048,8 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 查询装饰器由 112 个降至 106 个，插件数据与事务专项测试及架构基线通过。
 Agent 能力适配器、记忆和提示词模块改用 `RuntimeSettingsCompat` 动态运行时端口，保留模块级覆盖和
 导入早期回退；配置债务由 101 个文件降至 98 个，Agent 能力、提示词与运行时专项测试通过。
+随后将 LLM capability/helper/provider、Agent orchestrator 和工具基础类统一切换到同一动态运行时端口；
+配置债务由 98 个文件降至 93 个，LLM、Agent 生命周期与工具专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

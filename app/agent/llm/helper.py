@@ -11,7 +11,9 @@ from urllib.parse import urlsplit
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.agent.llm.gateway import resolve_llm_provider_runtime
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 
 if TYPE_CHECKING:

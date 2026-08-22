@@ -68,7 +68,9 @@ from app.agent.tools.impl.mcp import (
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.chain.agent import AgentChain
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.events import eventmanager
 from app.runtime.observability import record_metric
 from app.application.plugin.runtime import get_plugin_manager
