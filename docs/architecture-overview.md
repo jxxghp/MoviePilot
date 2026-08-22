@@ -247,7 +247,8 @@ sequenceDiagram
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
 - **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
   上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。Agent 会话已迁移，不再通过
-  字符串仓储键定位；`ApiDataPorts` 暂作未迁移领域的同实例兼容 Facade。
+  字符串仓储键定位；API、Scheduler、Chain 从 `HostRuntime.configuration` 获取 frozen 配置快照，
+  `ApiDataPorts` 暂作未迁移领域的同实例兼容 Facade。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
@@ -315,6 +316,8 @@ flowchart TB
 
 - `run_module("method_name", **kwargs)` 会遍历所有实现了该方法的模块并聚合结果；
   插件若实现了同名方法可获得优先响应。
+- `runtime/extensions/module/contracts.py` 为宿主已观察到的方法提供显式参数与返回合同；兼容期只诊断
+  旧插件签名差异，不改变插件优先级、短路和自由返回语义。
 - `app/chain/` 中下划线前缀文件（`_recognition.py`、`_messaging.py`、`_interaction.py`、
   `_music.py`、`_transfer.py`）是 `ChainBase` 的功能域 Mixin，不是独立 Chain。
 - 需要斜杠命令交互的 Chain 继承 `InteractionChainMixin`，只实现 `_interaction_handler`。
@@ -323,6 +326,9 @@ flowchart TB
 
 `EventManager`（`app/runtime/events.py`）提供进程级事件总线，用于解耦跨切面反应
 （整理完成后刷新媒体库、配置变更后重载模块、消息分发等）：
+
+宿主内建 `EventType` / `ChainEventType` 均在事件注册表中绑定 typed payload。开放插件事件允许
+额外字段，校验只生成诊断；分发给既有插件的仍是原始 dict/model 对象，不改变事件 ABI。
 
 ```mermaid
 sequenceDiagram
@@ -385,6 +391,7 @@ flowchart LR
 | **Config Reload** | 继承 `ConfigReloadMixin` 并声明 `CONFIG_WATCH`，配置变更时自动重建长生命周期对象（如下载器客户端重连） |
 | **Singleton** | `EventManager`、`ModuleManager`、`PluginManager` 等全局共享管理器继承 `foundation/singleton.py` 的 `Singleton` |
 | **Managed Resource** | 可选进程级技术资源（浏览器、虚拟显示等）以 data-only `capability.toml` 声明，`runtime/extensions` 解释生命周期，`startup` 构建 Runtime，消费者经 `runtime/managed_resources.py` 显式获取；插件使用浏览器走 `app.sdk.browser` |
+| **Observability** | `runtime/observability` 定义低基数指标和默认 no-op 端口，Startup 可选装配 OTel；HTTP、DB、Event、Module、Scheduler、插件生命周期和 Agent 只提交白名单标签 |
 
 ---
 

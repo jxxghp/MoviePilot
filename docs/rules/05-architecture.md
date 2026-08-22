@@ -84,6 +84,7 @@ create additional top-level directory categories.
 | `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
 | `app/runtime/topology.py` | Process topology policy shared by startup and offline diagnostics |
 | `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
+| `app/runtime/observability/` | Low-cardinality metric contracts and no-op-capable observation facade |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
 | `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
@@ -99,6 +100,9 @@ API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.
 Legacy registries may delegate the same object while domains migrate, but they
 must not construct a second set of service instances.
+API, Scheduler and Chain deployment values are exposed as frozen snapshots from
+`HostRuntime.configuration`; canonical callers must not add a fresh direct
+`settings` import when the required field belongs to an existing snapshot.
 
 `app.schemas` and `app.db` are compatibility facades, not implementation
 dependency hubs. Host code imports concrete schema submodules; the schema root
