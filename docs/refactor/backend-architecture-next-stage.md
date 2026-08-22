@@ -826,9 +826,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   失败和重置均由 Application command 显式 commit/rollback。`WorkflowOper()` 的旧方法名、参数和返回值
   继续可用，无 Session 调用委托组合根服务，显式 Session 调用只暂存；同步 Model 自动提交装饰器移除 6 个，
   事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
-- 剩余 45 个同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
+- 剩余同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
   站点快照、媒体服务器、插件数据、TransferPending 等写入由调用方 Session 和 UoW 收口；无 Session
-  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 119 个查询装饰器，
+  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 106 个查询装饰器，
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
 - 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
@@ -1094,6 +1094,13 @@ Settings 读取作为基础设施边界，架构基线已明确记录该例外�
 当前仍不把普通用户通知和 MoviePilot Server 外部统计标记为 durable：它们尚未与业务写入和 outbox intent
 绑定在同一事务，继续保持 post-commit 的准确边界。
 
+2026-08-23 收口兼容回归：`RuntimeSettingsCompat` 补齐 `update_setting`、`update_settings` 和
+`model_dump` 旧 Settings ABI，并由应用组合根注入服务对象，低层 runtime 不再反向导入 `app.application`；
+`SkillHelper` 的技能市场写入继续经过兼容代理，旧插件/测试的模块级替换语义保持。`UserConfigOper` 的
+无 Session 查询改为一次性兼容查询会话，显式 Session 仍由调用方持有。配置债务稳定为 8 个文件，Model
+查询装饰器稳定为 106 个且写装饰器为 0；四分片全量测试 `5441 passed, 3 skipped`，mypy、复杂度、异步阻塞、
+host/plugin 架构基线均通过。
+
 #### ARCH-272：异步阻塞检测
 
 **目标**：对新 API/Agent/Application async 路径检测 `open`、文件遍历、同步 HTTP、阻塞 sleep 和重 CPU 解析。
@@ -1271,7 +1278,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 当前 119 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| Model 事务装饰器 | 当前 106 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |
