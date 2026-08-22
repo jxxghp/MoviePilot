@@ -4,7 +4,9 @@ import json
 import shutil
 from typing import Any, Optional
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.install import PluginInstallCommand
 from app.application.configuration import get_configured_system_config as SystemConfigOper

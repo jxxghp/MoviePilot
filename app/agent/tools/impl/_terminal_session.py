@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.agent.tools.impl._command_safety import validate_command_safety
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 
 if os.name == "posix":

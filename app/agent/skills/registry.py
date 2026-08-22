@@ -11,7 +11,10 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from app.agent.skills.metadata import parse_skill_metadata
 from app.runtime.cache import cached, fresh
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+from app.application.configuration import get_runtime_settings
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -200,7 +203,7 @@ class SkillHelper(metaclass=WeakSingleton):
         将技能源列表写回配置文件，并同步更新内存中的 settings。
         """
         filtered_sources = [item.strip() for item in sources if item and item.strip()]
-        success, message = settings.update_setting(
+        success, message = get_runtime_settings().update(
             key="SKILL_MARKET",
             value=",".join(filtered_sources),
         )
