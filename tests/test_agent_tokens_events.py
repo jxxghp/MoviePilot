@@ -94,6 +94,36 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
     assert agent._llm_provider_selection["selected_provider_id"] == "provider-1"
 
 
+def test_record_usage_emits_low_cardinality_token_metrics() -> None:
+    """Token 指标只暴露归一供应商类别与输入输出方向。"""
+    agent = MoviePilotAgent(session_id="usage-metrics", user_id="user-1")
+    agent._llm_provider_selection = {"provider": "private-provider-name"}
+
+    with patch("app.agent.orchestrator.record_metric") as record_metric:
+        agent._record_usage(
+            {
+                "has_usage": True,
+                "input_usage_available": True,
+                "input_tokens": 120,
+                "output_tokens": 30,
+                "total_tokens": 150,
+            }
+        )
+
+    record_metric.assert_any_call(
+        "agent.token_usage",
+        120,
+        provider_type="custom",
+        direction="input",
+    )
+    record_metric.assert_any_call(
+        "agent.token_usage",
+        30,
+        provider_type="custom",
+        direction="output",
+    )
+
+
 def test_execute_agent_broadcasts_usage_on_success() -> None:
     """Agent 执行成功后应广播聚合 token 用量事件。"""
     agent = MoviePilotAgent(session_id="usage-success", user_id="user-1")

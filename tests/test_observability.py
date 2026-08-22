@@ -5,12 +5,16 @@ from typing import Mapping
 
 import httpx
 import pytest
+from sqlalchemy import create_engine
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
 from app.adapters.observability import otel
 from app.adapters.web.metrics import HttpMetricsMiddleware
+from app.db.engine import _register_database_pool_metrics
+from app.runtime.extensions.plugin.lifecycle import observe_plugin_lifecycle
+from app.schemas.plugin import PluginRuntimeStatus
 from app.runtime.observability import (
     METRIC_SPECS,
     MetricSpec,
@@ -137,3 +141,36 @@ def test_optional_otel_adapter_falls_back_to_noop(monkeypatch) -> None:
     monkeypatch.setattr(otel.importlib, "import_module", missing)
 
     assert isinstance(otel.build_observation_port(), NoopObservationPort)
+
+
+def test_database_pool_checkout_updates_gauge() -> None:
+    """真实 SQLAlchemy checkout/checkin 应成对维护连接借出量。"""
+    port = RecordingObservationPort()
+    configure_observation(port)
+    engine = create_engine("sqlite://")
+    _register_database_pool_metrics(engine)
+
+    with engine.connect():
+        pass
+    engine.dispose()
+
+    records = [record for record in port.records if record[0].name == "db.pool.checked_out"]
+    assert [record[1] for record in records] == [1.0, -1.0]
+    assert all(record[2] == {"backend": "sqlite"} for record in records)
+
+
+def test_plugin_lifecycle_failed_status_records_error_outcome() -> None:
+    """被插件生命周期内部收敛的加载失败仍应记录 error。"""
+    port = RecordingObservationPort()
+    configure_observation(port)
+
+    @observe_plugin_lifecycle("start")
+    def load_plugin() -> dict[str, PluginRuntimeStatus]:
+        """返回插件加载失败状态。"""
+        return {"Example": PluginRuntimeStatus.LOAD_FAILED}
+
+    load_plugin()
+
+    spec, _, labels = port.records[-1]
+    assert spec.name == "plugin.lifecycle.duration"
+    assert labels == {"operation": "start", "outcome": "error"}

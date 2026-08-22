@@ -3,6 +3,7 @@ import hashlib
 import inspect
 import json
 import re
+import time
 import traceback
 import uuid
 import warnings
@@ -69,6 +70,7 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.chain.agent import AgentChain
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
+from app.runtime.observability import record_metric
 from app.application.plugin.runtime import get_plugin_manager
 
 
@@ -88,6 +90,37 @@ from app.schemas.types import ChainEventType, EventType, NotificationChannel
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
+
+
+_KNOWN_AGENT_PROVIDER_TYPES = (
+    "anthropic",
+    "azure",
+    "deepseek",
+    "gemini",
+    "ollama",
+    "openai",
+)
+
+
+def _agent_provider_metric_type(provider: object) -> str:
+    """把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。"""
+    normalized = str(provider or "").strip().lower()
+    if not normalized:
+        return "unknown"
+    for provider_type in _KNOWN_AGENT_PROVIDER_TYPES:
+        if provider_type in normalized:
+            return provider_type
+    return "custom"
+
+
+def _agent_task_metric_type(source: object, channel: object = None) -> str:
+    """把 Agent 来源归一为交互、调度、后台三类稳定标签。"""
+    normalized = str(source or "").strip().lower()
+    if normalized in {"scheduler", "scheduled", "heartbeat", "agent_task"}:
+        return "scheduled"
+    if channel:
+        return "interactive"
+    return "background"
 
 
 def _finish_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
@@ -707,6 +740,24 @@ class MoviePilotAgent:
         self._session_usage.total_cache_write_input_tokens += cache_write_input_tokens
         self._session_usage.total_uncached_input_tokens += uncached_input_tokens
         self._session_usage.cache_usage_available |= cache_usage_available
+        provider_type = _agent_provider_metric_type(
+            (self._llm_provider_selection or {}).get("provider")
+            or settings.LLM_PROVIDER
+        )
+        if input_tokens:
+            record_metric(
+                "agent.token_usage",
+                input_tokens,
+                provider_type=provider_type,
+                direction="input",
+            )
+        if output_tokens:
+            record_metric(
+                "agent.token_usage",
+                output_tokens,
+                provider_type=provider_type,
+                direction="output",
+            )
 
         if not is_current_request:
             return
@@ -2279,6 +2330,7 @@ class MoviePilotAgent:
         """
         execution_success = False
         execution_error: Optional[str] = None
+        metric_started_at = time.perf_counter()
         self._agent_started_at = datetime.now()
         self._llm_runtime_config = None
         self._llm_provider_selection = {}
@@ -2435,6 +2487,15 @@ class MoviePilotAgent:
             await self._dispatch_execution_notice(friendly_message)
             return friendly_message, {}
         finally:
+            selection = self._llm_provider_selection or {}
+            record_metric(
+                "agent.provider.duration",
+                time.perf_counter() - metric_started_at,
+                provider_type=_agent_provider_metric_type(
+                    selection.get("provider") or settings.LLM_PROVIDER
+                ),
+                outcome="success" if execution_success else "error",
+            )
             self._send_agent_tokens_usage_event(
                 success=execution_success,
                 error=execution_error,
@@ -2885,6 +2946,8 @@ class AgentManager:
                     logger.debug(f"会话 {session_id} 的消息队列空闲，worker退出")
                     break
 
+                task_type = _agent_task_metric_type(task.source, task.channel)
+                active_metric_recorded = False
                 try:
                     if task.enqueued_at is not None:
                         queue_wait_ms = max(
@@ -2900,6 +2963,12 @@ class AgentManager:
                             3,
                         )
                     await self._start_task_processing_status(task)
+                    record_metric(
+                        "agent.active_tasks",
+                        1,
+                        task_type=task_type,
+                    )
+                    active_metric_recorded = True
                     result = await self._process_message_internal(task)
                     if task.completion_future and not task.completion_future.done():
                         if (
@@ -2923,6 +2992,12 @@ class AgentManager:
                     if task.completion_future and not task.completion_future.done():
                         task.completion_future.set_exception(e)
                 finally:
+                    if active_metric_recorded:
+                        record_metric(
+                            "agent.active_tasks",
+                            -1,
+                            task_type=task_type,
+                        )
                     await self._finish_task_processing_status(task)
                     queue.task_done()
                 if session_id in self._session_cancel_requested:
@@ -3060,6 +3135,15 @@ class AgentManager:
     async def _stop_current_task_locked(self, session_id: str):
         """在 lifecycle 互斥域内停止会话 worker。"""
         stopped = False
+        active_agent = self.active_agents.get(session_id)
+        task_type = (
+            _agent_task_metric_type(
+                getattr(active_agent, "source", None),
+                getattr(active_agent, "channel", None),
+            )
+            if active_agent
+            else "unknown"
+        )
 
         worker = self._session_workers.get(session_id)
         queue = self._session_queues.get(session_id)
@@ -3100,6 +3184,12 @@ class AgentManager:
             logger.info(f"会话 {session_id} 的Agent推理已应急停止")
         else:
             logger.debug(f"会话 {session_id} 没有正在执行的Agent任务")
+
+        record_metric(
+            "agent.cancel",
+            task_type=task_type,
+            outcome="stopped" if stopped else "not_found",
+        )
 
         return stopped
 

@@ -866,6 +866,10 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 - `app.adapters.observability.otel` 只在组合根显式读取 `MOVIEPILOT_OTEL_METRICS=1` 后懒加载 OTel API；
   未安装可选包时稳定回退 no-op，不给核心层增加 SDK 依赖。HTTP Adapter 通过路由匹配输出模板，绝不以原始
   request path 充当 label。
+- 2026-08-22 扩展接线覆盖 SQLAlchemy checkout/checkin、异步回退配额 wait/timeout、Module 真实
+  `TimeoutError`、插件 start/initialize/stop/reload，以及 Agent 活跃任务、取消结果、供应商耗时和输入/
+  输出 token。自定义 Agent provider 统一归类为 `custom`，不会暴露配置名称；Scheduler retry/dead-letter
+  属于本轮明确暂停的 Outbox worker 范围，目录合同保留但不在本轮接线。
 - 专项测试覆盖 exporter 缺失、非法标签、全目录高基数审计、成功/失败 outcome、动态 URL 路由模板；
   既有 API、Event、Module、Scheduler 与健康探针回归保持通过。
 

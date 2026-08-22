@@ -14,6 +14,7 @@ Connection 与 aiosqlite 的线程都绑定在创建它的循环上。因此池�
 """
 import asyncio
 import threading
+from unittest.mock import patch
 
 import pytest
 
@@ -163,8 +164,16 @@ def test_fallback_slot_times_out_when_exhausted(monkeypatch):
 
     async def run():
         db_module._fallback_slots.acquire()  # 占满唯一名额
-        with pytest.raises(TimeoutError):
-            await db_module._acquire_fallback_slot()
+        with patch("app.db.session.record_metric") as record_metric:
+            with pytest.raises(TimeoutError):
+                await db_module._acquire_fallback_slot()
+        record_metric.assert_any_call("db.pool.timeout", backend="sqlite")
+        record_metric.assert_any_call(
+            "db.pool.wait",
+            pytest.approx(0.05, abs=0.03),
+            backend="sqlite",
+            outcome="timeout",
+        )
 
     asyncio.run(run())
 
