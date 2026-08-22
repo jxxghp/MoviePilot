@@ -264,6 +264,12 @@ class RssHelper:
 
     def parse(self, url, proxy: bool = False,
               timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
+        """解析 RSS 地址并保留插件兼容的返回约定。"""
+        return self._parse_impl(url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
+
+    def _parse_impl(self, url, proxy: bool = False,
+                    timeout: Optional[int] = 15, headers: dict = None,
+                    ua: str = None) -> Union[List[dict], None, bool]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址

@@ -114,6 +114,23 @@ class CookieHelper:
                            two_step_code: Optional[str] = None,
                            proxies: Optional[dict] = None,
                            timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+        """获取站点 Cookie、User-Agent 和兼容错误消息。"""
+        return self._get_site_cookie_ua_impl(
+            url=url,
+            username=username,
+            password=password,
+            two_step_code=two_step_code,
+            proxies=proxies,
+            timeout=timeout,
+        )
+
+    def _get_site_cookie_ua_impl(self,
+                                 url: str,
+                                 username: str,
+                                 password: str,
+                                 two_step_code: Optional[str] = None,
+                                 proxies: Optional[dict] = None,
+                                 timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua
         :param url: 站点地址

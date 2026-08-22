@@ -4,17 +4,13 @@
     "app/api/endpoints/media.py:scrape": 105,
     "app/api/endpoints/openai.py:chat_completions": 95,
     "app/api/endpoints/openai.py:responses": 93,
-    "app/api/endpoints/system.py:get_logging": 111,
-    "app/api/endpoints/system.py:nettest": 87,
-    "app/api/endpoints/torrent.py:reidentify_cache": 147
+    "app/api/endpoints/system.py:get_logging": 111
   },
   "application_public": {
     "app/application/messaging/site.py:SiteInteractionHandler.handle_text_interaction": 227,
     "app/application/messaging/skill.py:SkillInteractionHandler.handle_callback_interaction": 158,
     "app/application/messaging/skill.py:SkillInteractionHandler.handle_text_interaction": 296,
-    "app/application/messaging/subscribe.py:SubscribeInteractionHandler.handle_text_interaction": 205,
-    "app/application/rss.py:RssHelper.parse": 206,
-    "app/application/security/cookie.py:CookieHelper.get_site_cookie_ua": 221
+    "app/application/messaging/subscribe.py:SubscribeInteractionHandler.handle_text_interaction": 205
   },
   "chain_public": {}
 }

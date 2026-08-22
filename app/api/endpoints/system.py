@@ -72,6 +72,7 @@ from app.foundation.crypto import HashUtils
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
 from app.application.security.url import SecurityUtils
+from app.application.network import NetworkTestService
 from app.foundation.url import UrlUtils
 from version import APP_VERSION
 
@@ -1411,78 +1412,19 @@ async def nettest(
     target = _get_nettest_rule(url=url, target_id=target_id)
     if not target:
         return _SchemaResponse(success=False, message="测试目标不存在")
-    # 记录开始的毫秒数
-    start_time = datetime.now()
     url = target["url"]
     invalid_message = _validate_nettest_url(url)
     if invalid_message:
         logger.warning(f"拦截不安全的网络测试地址: {url}")
         return _SchemaResponse(success=False, message=invalid_message)
-    if include:
-        logger.debug("nettest include 参数已忽略，改为服务端固定校验")
-
-    request_utils = AsyncRequestUtils(
-        proxies=get_runtime_settings().get("PROXY") if target.get("proxy") else None,
-        headers=target.get("headers"),
-        timeout=10,
-        ua=get_runtime_settings().get("NORMAL_USER_AGENT"),
-        verify=True,
-        follow_redirects=False,
-    )
-    result = None
-    current_url = url
-    redirect_count = 0
-    while redirect_count <= 3:
-        result = await request_utils.get_res(current_url, allow_redirects=False)
-        if result is None:
-            break
-        if result.status_code not in _NETTEST_REDIRECT_STATUS_CODES:
-            break
-        location = result.headers.get("location")
-        if not location:
-            break
-        next_url = urljoin(current_url, location)
-        if not _is_allowed_nettest_redirect(next_url, target):
-            await _close_nettest_response(result)
-            logger.warning(f"拦截网络测试重定向: {current_url} -> {next_url}")
-            return _SchemaResponse(success=False, message="测试目标发生了未授权跳转")
-        await _close_nettest_response(result)
-        current_url = next_url
-        redirect_count += 1
-    if redirect_count > 3:
-        return _SchemaResponse(success=False, message="测试目标重定向次数过多")
-    # 计时结束的毫秒数
-    end_time = datetime.now()
-    time = round((end_time - start_time).total_seconds() * 1000)
-    # 计算相关秒数
-    if result is None:
-        return _SchemaResponse(
-            success=False,
-            message=f"{target.get('proxy_name') or target.get('name')}无法连接",
-            data={"time": time},
-        )
-    elif result.status_code == 200:
-        expected_text = target.get("expected_text")
-        if expected_text and expected_text.lower() not in (result.text or "").lower():
-            return _SchemaResponse(
-                success=False,
-                message=target.get("invalid_message") or "无效响应",
-                data={"time": time},
-            )
-        return _SchemaResponse(success=True, data={"time": time})
-    else:
-        if target.get("proxy_name"):
-            # 加速代理失败
-            message = f"{target['proxy_name']}已失效，错误码：{result.status_code}"
-        else:
-            message = f"错误码：{result.status_code}"
-            if "github" in url:
-                # 非加速代理访问github
-                if result.status_code == 401:
-                    message = "Github Token已失效，请检查配置"
-                elif result.status_code in {403, 429}:
-                    message = "触发限流，请配置Github Token"
-        return _SchemaResponse(success=False, message=message, data={"time": time})
+    success, message, data = await NetworkTestService(
+        request_utils_cls=AsyncRequestUtils,
+        settings_getter=get_runtime_settings,
+        logger=logger,
+        redirect_checker=_is_allowed_nettest_redirect,
+        close_response=_close_nettest_response,
+    ).execute(target, include=include)
+    return _SchemaResponse(success=success, message=message, data=data)
 
 
 @router.get(
