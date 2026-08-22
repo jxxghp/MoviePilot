@@ -9,7 +9,7 @@ FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
 
 
-FROM python:3.14.7-slim-trixie@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS base
+FROM python:3.14.7-slim-trixie AS base
 
 
 # 准备外部制品所需的最小工具集
@@ -38,7 +38,6 @@ ENV LANG="C.UTF-8" \
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 
 RUN apt-get update \
-    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && install -d -m 0755 /usr/share/postgresql-common/pgdg \
     && curl -fsSL \
@@ -77,6 +76,7 @@ RUN apt-get update \
     openssh-client \
     sshpass \
     iproute2 \
+    util-linux \
     netcat-openbsd \
     lsof \
     nano \
