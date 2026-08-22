@@ -21,7 +21,7 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Optional, Tuple
 
 from app.runtime.capabilities.model import CapabilitySpec
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.lifecycle.host_module_adapter import (
     build_host_module_registry,
     declared_media_sources,
     host_module_root,

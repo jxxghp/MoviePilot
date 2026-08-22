@@ -74,7 +74,7 @@ from app.runtime.extensions.registry.filter_rule import plugin_filter_rule_regis
 from app.runtime.extensions.registry.service_instance import service_instance_registry
 from app.runtime.extensions.registry.meta_parser import meta_parser_registry
 from app.runtime.extensions.service_config import STORAGE_CAPABILITY
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     SERVICE_INSTANCE_PARAM,
     accepts_keyword,
     resolve_required_service_instance,
@@ -2326,7 +2326,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         :param instance_id: 实例标识，调用方需确保不是默认实例
         """
-        from app.runtime.extensions.paths import plugin_instance_path
+        from app.runtime.extensions.lifecycle.paths import plugin_instance_path
         instance_dir = plugin_instance_path(plugin_id, instance_id, "data").parent
         plugin_root = instance_dir.parent
         resolved_instance_dir = instance_dir.resolve()

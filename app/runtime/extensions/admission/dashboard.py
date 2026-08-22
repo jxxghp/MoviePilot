@@ -11,7 +11,7 @@ from app.runtime.extensions.contract.declaration import (
     declaration_service_instance_requirement,
 )
 from app.runtime.extensions.admission.config_interface import config_interface_violation
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     service_instance_requirement_violation,
 )
 
@@ -30,7 +30,7 @@ def dashboard_declaration_violation(
     既有单仪表盘约定一致。
 
     声明了 requires_service_instance 时只判它的形状，不判该能力标签有没有登记成
-    服务族；判据见 `app.runtime.extensions.service_instance_requirement`。
+    服务族；判据见 `app.runtime.extensions.admission.service_instance_requirement`。
 
     :param declaration: `DashboardDeclaration` 实例，或插件直接交出的描述字典
     :param render_mode: 声明该仪表盘的扩展当前的渲染模式；为 None 时跳过

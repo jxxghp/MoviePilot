@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.runtime.extensions import paths as plugin_paths_module
-from app.runtime.extensions.paths import plugin_instance_path
+from app.runtime.extensions.lifecycle import paths as plugin_paths_module
+from app.runtime.extensions.lifecycle.paths import plugin_instance_path
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 

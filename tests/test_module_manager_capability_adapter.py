@@ -19,7 +19,7 @@ from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
 from app.runtime.capabilities.model import SelectorSchema
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
-from app.runtime.extensions import host_module_adapter
+from app.runtime.extensions.lifecycle import host_module_adapter
 from app.runtime.extensions import module_manager as module_manager_extension
 from app.runtime.extensions.module_manager import ModuleManager
 
@@ -587,7 +587,7 @@ def test_all_real_host_modules_zero_arg_construct_without_starting_resources(
 ) -> None:
     """每份真实 manifest 都必须能解析 canonical class 并零参数构造且不启动资源。"""
     body = r"""
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.lifecycle.host_module_adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
@@ -631,7 +631,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
 from app.runtime.config import settings
 from app.runtime.events import Event
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.lifecycle.host_module_adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
@@ -808,7 +808,7 @@ def test_default_config_keeps_every_manifest_configured_entrypoint_unimported(
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
 from app.runtime.config import settings
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.lifecycle.host_module_adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )

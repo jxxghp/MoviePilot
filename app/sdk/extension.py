@@ -44,7 +44,7 @@ from app.runtime.extensions.contract.instance import (
     instance_key,
     normalize_instance_id,
 )
-from app.runtime.extensions.paths import plugin_instance_path
+from app.runtime.extensions.lifecycle.paths import plugin_instance_path
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilities
 from app.schemas.types import MessageType, NotificationChannel

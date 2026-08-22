@@ -275,7 +275,7 @@ def _resolve_plugin_instance_log_dir(plugin_id: str, instance_id: str) -> Path:
     :param instance_id: 实例标识
     :return: 该实例的日志目录
     """
-    from app.runtime.extensions.paths import plugin_instance_path
+    from app.runtime.extensions.lifecycle.paths import plugin_instance_path
     return plugin_instance_path(plugin_id, instance_id, "data").parent / "logs"
 
 

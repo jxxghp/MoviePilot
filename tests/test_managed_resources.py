@@ -18,7 +18,7 @@ from app.runtime.capabilities.errors import (
     CapabilityRuntimeClosedError,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.extensions.managed_resource_adapter import (
+from app.runtime.extensions.lifecycle.managed_resource_adapter import (
     AsyncManagedResourceAdapter,
     SyncManagedResourceAdapter,
     build_managed_resource_registry,

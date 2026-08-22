@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple
 
-from app.runtime.extensions.paths import plugin_instance_path
+from app.runtime.extensions.lifecycle.paths import plugin_instance_path
 
 # 插件 SQLite 库文件的固定文件名；文件所在目录已经过 plugin_instance_path 按插件与
 # 实例分段，文件名无需再编码插件标识

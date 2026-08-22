@@ -33,7 +33,7 @@ from app.runtime.extensions.admission.service_config import (
     service_config_record,
     service_config_record_violation,
 )
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     service_instance_candidates,
     service_instance_reference_issue,
 )

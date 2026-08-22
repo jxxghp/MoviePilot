@@ -102,7 +102,7 @@ def test_legacy_plugin_base_import_still_resolves() -> None:
 def test_legacy_plugin_chain_and_instance_path_still_resolve() -> None:
     """挂载点上其余旧符号同样由兼容层解析，不随 __init__.py 一起消失。"""
     from app.plugins import PluginChian, plugin_instance_path
-    from app.runtime.extensions.paths import (
+    from app.runtime.extensions.lifecycle.paths import (
         plugin_instance_path as canonical_path_helper,
     )
     from app.sdk.extension import PluginChian as canonical_chain

@@ -13,7 +13,7 @@ from app.runtime.extensions.contract.extension import (
     ExtensionProvider,
     ExtensionProviderSource,
 )
-from app.runtime.extensions.host_module_adapter import HostModuleProviderSource
+from app.runtime.extensions.lifecycle.host_module_adapter import HostModuleProviderSource
 from app.runtime.extensions.contract.module_method import get_module_method_contract
 from app.runtime.extensions.projection.plugin import PluginProviderSource
 from app.runtime.log import logger

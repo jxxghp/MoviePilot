@@ -2,7 +2,7 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     SERVICE_INSTANCE_PARAM,
     resolve_required_service_instance,
 )

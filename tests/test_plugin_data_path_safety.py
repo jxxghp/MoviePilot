@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
-from app.runtime.extensions import paths as plugin_paths_module
+from app.runtime.extensions.lifecycle import paths as plugin_paths_module
 from app.foundation.paths import ensure_path_segment, is_safe_path_segment
 from app.sdk.extension import _PluginBase
 

@@ -78,7 +78,7 @@ from app.runtime.extensions.admission.service_instance import (
     SERVICE_INSTANCE_SCHEMA_DEPRECATION,
     service_instance_declaration_violation,
 )
-from app.runtime.extensions.service_instance_requirement import (
+from app.runtime.extensions.admission.service_instance_requirement import (
     projected_service_instance_requirement,
 )
 from app.runtime.deprecation.policy import is_active as deprecation_is_active

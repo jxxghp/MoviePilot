@@ -675,7 +675,7 @@ REMOVED   触达即报错并给出迁移指引
 停用、或默认被 `types` 收窄排除在外，一律报错并列出候选，绝不取第一个。只有一个候选也不
 替用户挑——没有默认就是没有默认。登录认证族没有默认调用目标这个概念，该族一律要求显式指定。
 
-实现收在 `app/runtime/extensions/service_instance_requirement.py`，候选与已选实例的现状由
+实现收在 `app/runtime/extensions/admission/service_instance_requirement.py`，候选与已选实例的现状由
 `GET /service/instance_candidates/{capability}` 交出。该端点只要管理权限而非超级管理员：它的
 消费方是工作流编辑器，且候选只带身份与启用态、不带 `config` 载荷。
 

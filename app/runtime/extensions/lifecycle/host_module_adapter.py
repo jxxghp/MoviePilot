@@ -36,7 +36,7 @@ from app.schemas.types import ModuleType
 HOST_MODULE_KIND = "host_module"
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
-_MODULE_ROOT = Path(__file__).resolve().parents[2] / "modules"
+_MODULE_ROOT = Path(__file__).resolve().parents[3] / "modules"
 # 模块 manifest 必须声明的元数据字段
 _REQUIRED_METADATA_FIELDS = frozenset({"name", "priority"})
 # 只有按服务配置扇出多实例的模块才声明的元数据字段，取值是服务能力标签，

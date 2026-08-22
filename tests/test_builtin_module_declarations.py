@@ -18,7 +18,7 @@ import app.api.endpoints.media as media_endpoint
 from app.api.endpoints.service import config_form as service_config_form_endpoint
 from app.modules import _DownloaderBase
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.extensions import host_module_adapter
+from app.runtime.extensions.lifecycle import host_module_adapter
 from app.runtime.extensions.projection.module_declarations import (
     build_declaration_index,
     builtin_media_sources,

@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.runtime.extensions import paths as plugin_paths_module
+from app.runtime.extensions.lifecycle import paths as plugin_paths_module
 from app.api.endpoints import plugin as plugin_endpoint
 from app.db.models.plugindata import PluginData
 from app.db.models.pluginconfig import PluginConfig
