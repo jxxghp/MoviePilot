@@ -11,7 +11,7 @@ from sqlalchemy import Column, Integer, MetaData, Table, create_engine, inspect,
 from sqlalchemy.engine.url import make_url
 
 from app.startup import database_initializer as db_init
-from app.startup import database as startup_database
+from app.startup.bindings import database as startup_database
 
 
 LOCAL_SETUP_PATH = (

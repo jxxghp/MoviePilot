@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.application.database import get_database_governance
-from app.startup import database as startup_database
+from app.startup.bindings import database as startup_database
 
 
 def test_builder_uses_cached_engine_as_database_fact_source(monkeypatch) -> None:

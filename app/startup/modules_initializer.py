@@ -55,7 +55,7 @@ from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
-from app.startup.database import build_database_governance
+from app.startup.bindings.database import build_database_governance
 from app.startup.managed_resources_initializer import (
     init_managed_resources,
     stop_managed_resources,

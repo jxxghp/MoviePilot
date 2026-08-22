@@ -15,7 +15,7 @@ from app.db import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models
 from app.runtime.log import logger
-from app.startup.database import build_database_governance
+from app.startup.bindings.database import build_database_governance
 
 
 def _build_alembic_config(engine: Engine | None = None) -> Config:

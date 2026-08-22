@@ -18,7 +18,7 @@ import psutil
 from app.runtime.config import Settings, settings
 from app.runtime.state import SystemHelper
 from app.application.backup import BackupArtifact
-from app.startup.database import build_database_governance
+from app.startup.bindings.database import build_database_governance
 from version import APP_VERSION
 
 BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"
