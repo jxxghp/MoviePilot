@@ -23,6 +23,7 @@ from app.runtime.extensions.admission.command_arbitration import (
     PLUGIN_LAYER,
     BuiltinCommandArbiter,
 )
+from app.runtime.extensions.projection.command import PluginCommandTable
 from app.runtime.extensions.registry.command import plugin_command_registry
 from app.schemas.command import CommandOrigin
 
@@ -53,11 +54,10 @@ def _chain() -> Command:
             "data": {},
         }
     }
-    chain._plugin_commands = {}
-    chain._declined_plugin_commands = {}
-    chain._plugin_command_revision = -1
-    chain._builtin_arbiter = BuiltinCommandArbiter(
-        log=SimpleNamespace(warning=lambda _: None)
+    chain._plugin_table = PluginCommandTable(
+        builtin_command_words=lambda: chain._preset_commands,
+        event_sender=Command.send_plugin_event,
+        arbiter=BuiltinCommandArbiter(log=SimpleNamespace(warning=lambda _: None)),
     )
     chain._other_commands = {}
     chain._commands = {}

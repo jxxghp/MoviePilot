@@ -2,29 +2,19 @@ import copy
 import threading
 import traceback
 from concurrent.futures import Future
-from typing import Any, List, Union, Dict, Optional
+from typing import Any, Callable, List, Union, Dict, Optional
 
-from app.application.orchestration import ChainBase
-from app.application.orchestration.download import DownloadChain
-from app.application.orchestration.message import MessageChain
-from app.application.orchestration.site import SiteChain
-from app.application.orchestration.subscribe import SubscribeChain
-from app.application.orchestration.system import SystemChain
-from app.application.orchestration.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
 from app.runtime.extensions.admission.command_arbitration import (
     BUILTIN_LAYER,
     OTHER_LAYER,
     PLUGIN_LAYER,
-    BuiltinCommandArbiter,
 )
-from app.runtime.extensions.registry.command import CommandClaim, plugin_command_registry
+from app.runtime.extensions.projection.command import PluginCommandTable
+from app.runtime.extensions.registry.command import CommandClaim
 from app.runtime.extensions.contract.instance import split_instance_key
-from app.application.messaging.message import MessageHelper
-from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
-from app.scheduler import Scheduler
 from app.schemas.command import CommandConflict, CommandLayer, CommandOrigin
 from app.schemas.message import Message
 from app.schemas.event import CommandRegisterEventData
@@ -34,41 +24,83 @@ from app.foundation.singleton import Singleton
 from app.foundation.collections import DictUtils
 
 
-class CommandChain:
+# 内建命令清单的来源，由组合根在导入期注册
+_builtin_commands_provider: Optional[Callable[[], Dict[str, dict]]] = None
+# 命令消息网关的来源，由组合根在导入期注册
+_command_messenger_provider: Optional[Callable[[], Any]] = None
+
+
+def register_builtin_commands(provider: Callable[[], Dict[str, dict]]) -> None:
     """
-    命令分发消息网关，持有消息与模块分发设施：
-    - 收口渠道消息处理状态
-    - 广播命令注册表给实现该接口的模块与插件
-    - 转发/编辑命令回复消息
+    注册内建命令清单的来源
+
+    命令词与业务实现的绑定认识全部业务域，归组合根持有；命令中枢经本入口取用，
+    因而不反向依赖组合根。
+
+    :param provider: 交出内建命令表的可调用对象
+    :return: 无返回值
     """
+    global _builtin_commands_provider
+    _builtin_commands_provider = provider
 
-    def __init__(self):
-        """初始化消息与模块分发设施实例。"""
-        self._chain = ChainBase()
 
-    def finish_message_processing_status(self, *args, **kwargs) -> None:
-        """
-        结束渠道侧消息输入/处理状态，参数透传给消息分发设施
-        """
-        return self._chain.finish_message_processing_status(*args, **kwargs)
+def _resolve_builtin_commands() -> Dict[str, dict]:
+    """
+    取出内建命令表
 
-    def register_commands(self, commands: Dict[str, dict]) -> None:
-        """
-        广播菜单命令注册，由实现该接口的模块与插件自行处理
-        """
-        self._chain.register_commands(commands=commands)
+    :return: 命令词到命令表条目的映射
+    :raises RuntimeError: 组合根尚未注册内建命令清单
+    """
+    if _builtin_commands_provider is None:
+        raise RuntimeError(
+            "内建命令清单未注册：请先导入 app.startup.command_initializer 完成组合根装配"
+        )
+    return _builtin_commands_provider()
 
-    def post_message(self, *args, **kwargs) -> None:
-        """
-        发送命令回复消息，参数透传给消息分发设施
-        """
-        return self._chain.post_message(*args, **kwargs)
 
-    def edit_message(self, **kwargs) -> bool:
-        """
-        编辑已发送的命令回复消息，参数透传给消息分发设施
-        """
-        return self._chain.edit_message(**kwargs)
+def register_command_messenger(provider: Callable[[], Any]) -> None:
+    """
+    注册命令消息网关的来源
+
+    命令分发要广播菜单命令注册、发送命令回复、收口渠道处理状态并在出错时留下系统提示，
+    这四件事都经模块分发设施完成。网关实现归应用层，命令中枢经本入口取用。
+
+    :param provider: 交出命令消息网关的可调用对象
+    :return: 无返回值
+    """
+    global _command_messenger_provider
+    _command_messenger_provider = provider
+
+
+def _messenger() -> Any:
+    """
+    取出命令消息网关
+
+    :return: 命令消息网关
+    :raises RuntimeError: 组合根尚未注册命令消息网关
+    """
+    if _command_messenger_provider is None:
+        raise RuntimeError(
+            "命令消息网关未注册：请先导入 app.startup.command_initializer 完成组合根装配"
+        )
+    return _command_messenger_provider()
+
+
+def _command_callable(command: Dict[str, Any]) -> Optional[Callable]:
+    """
+    取出命令表条目的实现
+
+    插件命令与单独注册的命令在登记时就已绑定实现；内建命令交出的是解析器，
+    业务链在此刻才物化。
+
+    :param command: 命令表条目
+    :return: 命令实现；条目既无实现也无解析器时为 None
+    """
+    func = command.get("func")
+    if func is not None:
+        return func
+    provider = command.get("provider")
+    return provider() if provider else None
 
 
 def _command_layer(layer: str, entry: Dict[str, Any]) -> CommandLayer:
@@ -97,7 +129,7 @@ def _finish_command_processing_status(status: Optional[dict], user_id: Optional[
     """
     if not status:
         return
-    CommandChain().finish_message_processing_status(
+    _messenger().finish_message_processing_status(
         status=status,
         userid=user_id,
     )
@@ -115,107 +147,16 @@ class Command(metaclass=Singleton):
         # 所有命令集合
         self._commands = {}
         # 内建命令集合
-        self._preset_commands = {
-            "/cookiecloud": {
-                "id": "cookiecloud",
-                "type": "scheduler",
-                "description": "同步站点",
-                "category": "站点",
-            },
-            "/sites": {
-                "func": SiteChain().remote_list,
-                "description": "管理站点",
-                "category": "站点",
-                "data": {},
-            },
-            "/mediaserver_sync": {
-                "id": "mediaserver_sync",
-                "type": "scheduler",
-                "description": "同步媒体服务器",
-                "category": "管理",
-            },
-            "/subscribes": {
-                "func": SubscribeChain().remote_list,
-                "description": "管理订阅",
-                "category": "订阅",
-                "data": {},
-            },
-            "/downloading": {
-                "func": DownloadChain().remote_downloading,
-                "description": "正在下载",
-                "category": "管理",
-                "data": {},
-            },
-            "/transfer": {
-                "id": "transfer",
-                "type": "scheduler",
-                "description": "下载文件整理",
-                "category": "管理",
-            },
-            "/redo": {
-                "func": TransferChain().remote_transfer,
-                "description": "手动整理",
-                "data": {},
-            },
-            "/clear_cache": {
-                "func": SystemChain().remote_clear_cache,
-                "description": "清理缓存",
-                "category": "管理",
-                "data": {},
-            },
-            "/restart": {
-                "func": SystemChain().restart,
-                "description": "重启系统",
-                "category": "管理",
-                "data": {},
-            },
-            "/version": {
-                "func": SystemChain().version,
-                "description": "当前版本",
-                "category": "管理",
-                "data": {},
-            },
-            "/clear_session": {
-                "func": MessageChain().remote_clear_session,
-                "description": "清除会话",
-                "category": "管理",
-                "data": {},
-            },
-            "/stop_agent": {
-                "func": MessageChain().remote_stop_agent,
-                "description": "停止推理",
-                "category": "管理",
-                "data": {},
-            },
-            "/session_status": {
-                "func": MessageChain().remote_session_status,
-                "description": "会话状态",
-                "category": "智能体",
-                "data": {},
-            },
-            "/skills": {
-                "func": SkillInteractionHandler(messenger=CommandChain()).remote_manage,
-                "description": "管理技能",
-                "category": "智能体",
-                "data": {},
-            },
-        }
-        # 插件命令集合
-        self._plugin_commands = {}
-        # 与内建命令同名却未声明接管意图、已作废的插件命令集合
-        self._declined_plugin_commands = {}
-        # 插件命令集合对应的注册表版本号，-1 表示尚未按注册表组装过
-        self._plugin_command_revision = -1
-        # 插件与内建同命令词的裁决器
-        self._builtin_arbiter = BuiltinCommandArbiter()
+        self._preset_commands = _resolve_builtin_commands()
         # 其他命令集合
         self._other_commands = {}
+        # 插件命令表，随插件命令登记版本对齐
+        self._plugin_table = PluginCommandTable(
+            builtin_command_words=lambda: self._preset_commands,
+            event_sender=self.send_plugin_event,
+        )
         # 初始化锁
         self._rlock = threading.RLock()
-        # 定时服务管理
-        self.scheduler = Scheduler()
-        # 消息管理器
-        self.messagehelper = MessageHelper()
         # 初始化命令
         self.init_commands()
 
@@ -232,14 +173,8 @@ class Command(metaclass=Singleton):
         try:
             with self._rlock:
                 logger.debug("Acquired lock for initializing commands in background.")
-                revision = plugin_command_registry.revision
-                self._plugin_commands = self.__build_plugin_commands(pid)
-                self._plugin_command_revision = revision
-                self._commands = {
-                    **self._preset_commands,
-                    **self._plugin_commands,
-                    **self._other_commands,
-                }
+                self._plugin_table.rebuild()
+                self._commands = self.__merge_commands()
 
                 # 强制触发注册
                 force_register = False
@@ -285,7 +220,7 @@ class Command(metaclass=Singleton):
                         "Command set has changed or force registration is enabled."
                     )
                     self._registered_commands = filtered_initial_commands
-                    CommandChain().register_commands(commands=filtered_initial_commands)
+                    _messenger().register_commands(commands=filtered_initial_commands)
                 else:
                     logger.debug(
                         "Command set unchanged, skipping broadcast registration."
@@ -295,6 +230,20 @@ class Command(metaclass=Singleton):
                 f"Error occurred during command initialization in background: {e}",
                 exc_info=True,
             )
+
+    def __merge_commands(self) -> Dict[str, dict]:
+        """
+        把内建、插件与单独注册三处来源合并成一张命令表
+
+        合并次序即优先级，后一处压住前一处的同名命令词。
+
+        :return: 命令词到命令表条目的映射
+        """
+        return {
+            **self._preset_commands,
+            **self._plugin_table.commands,
+            **self._other_commands,
+        }
 
     def __trigger_register_commands_event(self) -> tuple[Optional[Event], dict]:
         """
@@ -323,7 +272,7 @@ class Command(metaclass=Singleton):
         # 初始化命令字典
         commands: Dict[str, dict] = {}
         add_commands(self._preset_commands, "preset")
-        add_commands(self._plugin_commands, "plugin")
+        add_commands(self._plugin_table.commands, "plugin")
         add_commands(self._other_commands, "other")
 
         # 触发事件允许可以拦截和调整命令
@@ -332,51 +281,6 @@ class Command(metaclass=Singleton):
         )
         event = eventmanager.send_event(ChainEventType.CommandRegister, event_data)
         return event, commands
-
-    def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict]:
-        """
-        构建插件命令
-
-        命令来源是插件命令注册表，同插件多实例与跨插件的同命令词裁决都已在表内完成。
-        与内建命令的同词争用只有本方法看得见——内建命令表是命令中枢自己持有的，注册表
-        看不到它——因此在这里按接管意图裁决一次，未声明接管的同名插件命令不进命令表，
-        用户敲这个词仍得到内建行为。
-
-        :param _: 插件标识，命令表按注册表整体重建，不按插件裁剪
-        :return: 命令词到命令表条目的映射，仅含通过裁决的插件命令
-        """
-        definitions = plugin_command_registry.command_definitions()
-        arbitration = self._builtin_arbiter.arbitrate(
-            definitions, self._preset_commands
-        )
-        self._declined_plugin_commands = {
-            cmd: {
-                "pid": command.get("pid"),
-                "description": command.get("desc"),
-                "category": command.get("category"),
-            }
-            for cmd, command in arbitration.declined.items()
-        }
-        plugin_commands = {}
-        for cmd, command in arbitration.effective.items():
-            impl = command.get("impl")
-            data = command.get("data") or {}
-            if callable(impl):
-                func, payload = impl, {"data": data}
-            else:
-                func, payload = self.send_plugin_event, {
-                    "etype": command.get("event"),
-                    "data": data,
-                }
-            plugin_commands[cmd] = {
-                "pid": command.get("pid"),
-                "func": func,
-                "description": command.get("desc"),
-                "category": command.get("category"),
-                "show": command.get("show", True),
-                "data": payload,
-            }
-        return plugin_commands
 
     def command_origins(self) -> List[CommandOrigin]:
         """
@@ -391,10 +295,10 @@ class Command(metaclass=Singleton):
         self._refresh_plugin_commands()
         with self._rlock:
             preset = dict(self._preset_commands)
-            plugin = dict(self._plugin_commands)
-            declined = dict(self._declined_plugin_commands)
+            plugin = dict(self._plugin_table.commands)
+            declined = dict(self._plugin_table.declined)
             other = dict(self._other_commands)
-        claims = {claim.cmd: claim for claim in plugin_command_registry.claims()}
+        claims = {claim.cmd: claim for claim in self._plugin_table.claims()}
         words = set(preset) | set(plugin) | set(declined) | set(other) | set(claims)
         return [
             self.__command_origin(cmd, preset, plugin, declined, other, claims.get(cmd))
@@ -463,7 +367,7 @@ class Command(metaclass=Singleton):
         if command.get("type") == "scheduler":
             # 定时服务
             if userid:
-                CommandChain().post_message(
+                _messenger().post_message(
                     Message(
                         channel=channel,
                         source=source,
@@ -473,10 +377,10 @@ class Command(metaclass=Singleton):
                 )
 
             # 执行定时任务
-            self.scheduler.start(job_id=command.get("id"))
+            _command_callable(command)()
 
             if userid:
-                CommandChain().post_message(
+                _messenger().post_message(
                     Message(
                         channel=channel,
                         source=source,
@@ -486,8 +390,9 @@ class Command(metaclass=Singleton):
                 )
         else:
             # 命令
+            func = _command_callable(command)
             cmd_data = copy.deepcopy(command["data"]) if command.get("data") else {}
-            args_num = ObjectUtils.arguments(command["func"])
+            args_num = ObjectUtils.arguments(func)
             if args_num > 0:
                 if cmd_data:
                     # 有内置参数直接使用内置参数
@@ -498,38 +403,29 @@ class Command(metaclass=Singleton):
                     if data_str:
                         data["arg_str"] = data_str
                     cmd_data["data"] = data
-                    command["func"](**cmd_data)
+                    func(**cmd_data)
                 elif args_num == 3:
                     # 没有输入参数，只输入渠道来源、用户ID和消息来源
-                    command["func"](channel, userid, source)
+                    func(channel, userid, source)
                 elif args_num > 3:
                     # 多个输入参数：用户输入、用户ID
-                    command["func"](data_str, channel, userid, source)
+                    func(data_str, channel, userid, source)
             else:
                 # 没有参数
-                command["func"]()
+                func()
 
     def _refresh_plugin_commands(self) -> None:
         """
         插件命令登记发生变化时重新组装命令表
 
         插件停用或卸载后其命令必须立刻从命令表里消失，而广播注册是异步的、也未必每次
-        都被触发。命令表是注册表某一版本的快照，版本号变了即代表快照过期，在查表前对
-        齐一次，用户敲已卸载插件的命令就得到「命令不存在」而不是调用到已卸载的代码。
+        都被触发。插件命令表是注册表某一版本的快照，版本号变了即代表快照过期，在查表前
+        对齐一次，用户敲已卸载插件的命令就得到「命令不存在」而不是调用到已卸载的代码。
         """
-        if plugin_command_registry.revision == self._plugin_command_revision:
+        if not self._plugin_table.refresh():
             return
         with self._rlock:
-            revision = plugin_command_registry.revision
-            if revision == self._plugin_command_revision:
-                return
-            self._plugin_commands = self.__build_plugin_commands()
-            self._plugin_command_revision = revision
-            self._commands = {
-                **self._preset_commands,
-                **self._plugin_commands,
-                **self._other_commands,
-            }
+            self._commands = self.__merge_commands()
 
     def get_commands(self):
         """
@@ -539,11 +435,7 @@ class Command(metaclass=Singleton):
         if not self._commands:
             with self._rlock:
                 if not self._commands:
-                    self._commands = {
-                        **self._preset_commands,
-                        **self._plugin_commands,
-                        **self._other_commands,
-                    }
+                    self._commands = self.__merge_commands()
         return self._commands
 
     def get(self, cmd: str) -> Any:
@@ -612,8 +504,8 @@ class Command(metaclass=Singleton):
                 logger.error(
                     f"执行命令 {cmd} 出错：{str(err)} - {traceback.format_exc()}"
                 )
-                self.messagehelper.put(
-                    title=f"执行命令 {cmd} 出错", message=str(err), role="system"
+                _messenger().put_system_message(
+                    title=f"执行命令 {cmd} 出错", message=str(err)
                 )
 
     @staticmethod

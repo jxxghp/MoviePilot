@@ -286,7 +286,9 @@ def test_build_web_agent_command_items_returns_slash_commands():
 
 def test_build_web_agent_command_items_includes_sites_command():
     """WebAgent 命令建议应包含内建站点管理命令。"""
-    with patch("app.command.Scheduler"), patch("app.command.ThreadHelper"):
+    import app.startup.command_initializer  # noqa: F401  组合根装配内建命令清单
+
+    with patch("app.command.ThreadHelper"):
         commands = _build_web_agent_command_items()
 
     assert any(command["command"] == "/sites" for command in commands)
