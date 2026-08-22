@@ -1044,6 +1044,8 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 设置更新返回 ABI；配置债务由 103 个文件降至 101 个文件，系统设置工具专项测试与架构基线通过。
 站点图标、站点统计和用户配置的只读 Model 方法随后改为显式 Session 执行，异步无 Session 旧 ABI 由
 一次性兼容查询会话承接；查询装饰器由 117 个降至 112 个，站点查询专项测试与架构基线通过。
+插件数据的六个只读入口也改为显式 Session/AsyncSession，旧插件无会话读取通过一次性兼容查询会话保留；
+查询装饰器由 112 个降至 106 个，插件数据与事务专项测试及架构基线通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
