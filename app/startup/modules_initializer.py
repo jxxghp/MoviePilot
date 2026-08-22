@@ -50,7 +50,7 @@ from app.db.oper.serviceconfig import ServiceConfigOper
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
-from app.command import CommandChain
+from app.application.messaging.gateway import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import SystemConfigKey

@@ -4,7 +4,6 @@ import traceback
 from concurrent.futures import Future
 from typing import Any, List, Union, Dict, Optional
 
-from app.application.orchestration import ChainBase
 from app.application.orchestration.download import DownloadChain
 from app.application.orchestration.message import MessageChain
 from app.application.orchestration.site import SiteChain
@@ -20,6 +19,7 @@ from app.runtime.extensions.admission.command_arbitration import (
 )
 from app.runtime.extensions.registry.command import CommandClaim, plugin_command_registry
 from app.runtime.extensions.contract.instance import split_instance_key
+from app.application.messaging.gateway import CommandChain
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
 from app.runtime.thread import ThreadHelper
@@ -32,43 +32,6 @@ from app.schemas.types import EventType, NotificationChannel, ChainEventType
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.foundation.collections import DictUtils
-
-
-class CommandChain:
-    """
-    命令分发消息网关，持有消息与模块分发设施：
-    - 收口渠道消息处理状态
-    - 广播命令注册表给实现该接口的模块与插件
-    - 转发/编辑命令回复消息
-    """
-
-    def __init__(self):
-        """初始化消息与模块分发设施实例。"""
-        self._chain = ChainBase()
-
-    def finish_message_processing_status(self, *args, **kwargs) -> None:
-        """
-        结束渠道侧消息输入/处理状态，参数透传给消息分发设施
-        """
-        return self._chain.finish_message_processing_status(*args, **kwargs)
-
-    def register_commands(self, commands: Dict[str, dict]) -> None:
-        """
-        广播菜单命令注册，由实现该接口的模块与插件自行处理
-        """
-        self._chain.register_commands(commands=commands)
-
-    def post_message(self, *args, **kwargs) -> None:
-        """
-        发送命令回复消息，参数透传给消息分发设施
-        """
-        return self._chain.post_message(*args, **kwargs)
-
-    def edit_message(self, **kwargs) -> bool:
-        """
-        编辑已发送的命令回复消息，参数透传给消息分发设施
-        """
-        return self._chain.edit_message(**kwargs)
 
 
 def _command_layer(layer: str, entry: Dict[str, Any]) -> CommandLayer:

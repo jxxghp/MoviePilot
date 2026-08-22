@@ -63,8 +63,8 @@
       "app.workflow.actions -> app.db.oper.systemconfig"
     ]
   },
-  "edge_count": 6765,
-  "edge_sha256": "ded520e71c7fd0fb8a6ef8e06575e404c1e5036e81bf1020e608bb0f2e976704",
+  "edge_count": 6769,
+  "edge_sha256": "48b87e415e6b3342fc2c30288dd696f0a6aa278a877b5c9e4ee6766603d50c8f",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2502,6 +2502,8 @@
     "app.application.messaging.agent -> app.runtime.channels",
     "app.application.messaging.chat -> app.schemas",
     "app.application.messaging.chat -> app.schemas.agent",
+    "app.application.messaging.gateway -> app.application",
+    "app.application.messaging.gateway -> app.application.orchestration",
     "app.application.messaging.interaction -> app.schemas",
     "app.application.messaging.interaction -> app.schemas.message",
     "app.application.messaging.interaction -> app.schemas.notification",
@@ -3505,6 +3507,7 @@
     "app.cli -> app.startup.database",
     "app.command -> app.application",
     "app.command -> app.application.messaging",
+    "app.command -> app.application.messaging.gateway",
     "app.command -> app.application.messaging.message",
     "app.command -> app.application.messaging.skill",
     "app.command -> app.application.orchestration",
@@ -6519,6 +6522,7 @@
     "app.startup.modules_initializer -> app.application.database",
     "app.startup.modules_initializer -> app.application.image",
     "app.startup.modules_initializer -> app.application.messaging",
+    "app.startup.modules_initializer -> app.application.messaging.gateway",
     "app.startup.modules_initializer -> app.application.messaging.message",
     "app.startup.modules_initializer -> app.application.module",
     "app.startup.modules_initializer -> app.application.orchestration",
@@ -6832,7 +6836,7 @@
     "app.workflow.service -> app.schemas.workflow",
     "app.workflow.service -> app.workflow"
   ],
-  "module_count": 853,
+  "module_count": 854,
   "modules": [
     "app",
     "app.adapters",
@@ -7091,6 +7095,7 @@
     "app.application.messaging",
     "app.application.messaging.agent",
     "app.application.messaging.chat",
+    "app.application.messaging.gateway",
     "app.application.messaging.interaction",
     "app.application.messaging.media",
     "app.application.messaging.message",
