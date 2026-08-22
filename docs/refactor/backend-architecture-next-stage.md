@@ -1046,6 +1046,8 @@ runtime provider，旧插件或测试替换模块级 `settings` 时仍保持原�
 一次性兼容查询会话承接；查询装饰器由 117 个降至 112 个，站点查询专项测试与架构基线通过。
 插件数据的六个只读入口也改为显式 Session/AsyncSession，旧插件无会话读取通过一次性兼容查询会话保留；
 查询装饰器由 112 个降至 106 个，插件数据与事务专项测试及架构基线通过。
+Agent 能力适配器、记忆和提示词模块改用 `RuntimeSettingsCompat` 动态运行时端口，保留模块级覆盖和
+导入早期回退；配置债务由 101 个文件降至 98 个，Agent 能力、提示词与运行时专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，
