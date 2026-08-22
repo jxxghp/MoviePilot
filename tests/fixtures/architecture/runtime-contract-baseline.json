@@ -2343,7 +2343,10 @@
       "input_contract": "StorageDownloadRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "fileitem",
+        "path"
+      ],
       "result_contract": "FileItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2358,7 +2361,9 @@
       "input_contract": "MessageFinalizeRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "response"
+      ],
       "result_contract": "Message | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2373,7 +2378,10 @@
       "input_contract": "StorageItemRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "path",
+        "storage"
+      ],
       "result_contract": "FileItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2388,7 +2396,10 @@
       "input_contract": "StorageFolderRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "path",
+        "storage"
+      ],
       "result_contract": "FileItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2403,7 +2414,9 @@
       "input_contract": "StorageParentRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "fileitem"
+      ],
       "result_contract": "FileItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2418,7 +2431,10 @@
       "input_contract": "StorageListRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "fileitem",
+        "recursion"
+      ],
       "result_contract": "list[FileItem]",
       "supports_async": true,
       "supports_sync": true,
@@ -2448,7 +2464,10 @@
       "input_contract": "MediaServerItemRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
       "result_contract": "MediaServerItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2463,7 +2482,12 @@
       "input_contract": "MediaServerItemsRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "library_id",
+        "limit",
+        "server",
+        "start_index"
+      ],
       "result_contract": "list[MediaServerItem]",
       "supports_async": true,
       "supports_sync": true,
@@ -2478,7 +2502,10 @@
       "input_contract": "MediaServerPlayRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
       "result_contract": "str | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2493,7 +2520,10 @@
       "input_contract": "MediaServerEpisodesRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
       "result_contract": "list[MediaServerPlayItem]",
       "supports_async": true,
       "supports_sync": true,
@@ -2508,7 +2538,9 @@
       "input_contract": "MediaInfo",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "mediainfo"
+      ],
       "result_contract": "MediaInfo | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2523,7 +2555,14 @@
       "input_contract": "MediaRecognitionRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "cache",
+        "episode_group",
+        "media_id",
+        "media_source",
+        "meta",
+        "mtype"
+      ],
       "result_contract": "MediaInfo | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2538,7 +2577,9 @@
       "input_contract": "CommandRegistrationRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "commands"
+      ],
       "result_contract": "None",
       "supports_async": true,
       "supports_sync": true,
@@ -2553,7 +2594,10 @@
       "input_contract": "StorageRenameRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "fileitem",
+        "name"
+      ],
       "result_contract": "bool | FileItem",
       "supports_async": true,
       "supports_sync": true,
@@ -2583,7 +2627,10 @@
       "input_contract": "MediaSearchRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "media_source",
+        "meta"
+      ],
       "result_contract": "list[MediaInfo]",
       "supports_async": true,
       "supports_sync": true,
@@ -2613,7 +2660,13 @@
       "input_contract": "StorageSnapshotRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "last_snapshot_time",
+        "max_depth",
+        "path",
+        "previous_snapshot",
+        "storage"
+      ],
       "result_contract": "dict[str, dict] | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2628,7 +2681,10 @@
       "input_contract": "StorageManageRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "action",
+        "storage"
+      ],
       "result_contract": "Any",
       "supports_async": true,
       "supports_sync": true,
@@ -2643,7 +2699,11 @@
       "input_contract": "StorageUploadRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "fileitem",
+        "new_name",
+        "path"
+      ],
       "result_contract": "FileItem | None",
       "supports_async": true,
       "supports_sync": true,
@@ -2658,7 +2718,11 @@
       "input_contract": "WebhookRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
+      "required_parameters": [
+        "args",
+        "body",
+        "form"
+      ],
       "result_contract": "WebhookEventInfo | None",
       "supports_async": true,
       "supports_sync": true,

@@ -92,3 +92,23 @@ def test_signature_diagnostics_do_not_reject_legacy_callable() -> None:
         "signature-unavailable",
     )
     assert _OpaqueCallable()() == "ok"
+
+
+def test_signature_diagnostics_report_missing_contract_parameters() -> None:
+    """显式 Contract 应能指出 provider 遗漏的宿主调用参数。"""
+    def incomplete_storage_provider(fileitem):
+        """模拟仍未接受 recursion 参数的旧存储 provider。"""
+        return [fileitem]
+
+    assert diagnose_module_callable(
+        "list_files", incomplete_storage_provider
+    ) == ("missing-parameter:recursion",)
+
+
+def test_signature_diagnostics_accept_keyword_compatibility_provider() -> None:
+    """带 **kwargs 的第三方 provider 继续兼容逐步扩展的输入契约。"""
+    def compatible_provider(**kwargs):
+        """模拟通过关键字参数保持前向兼容的第三方 provider。"""
+        return kwargs
+
+    assert diagnose_module_callable("snapshot_storage", compatible_provider) == ()

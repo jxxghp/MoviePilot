@@ -1,8 +1,6 @@
 {
   "api_endpoint": {
     "app/api/endpoints/agent.py:web_agent_stream": 346,
-    "app/api/endpoints/download.py:add": 92,
-    "app/api/endpoints/mcp.py:mcp_jsonrpc": 83,
     "app/api/endpoints/media.py:scrape": 105,
     "app/api/endpoints/openai.py:chat_completions": 107,
     "app/api/endpoints/openai.py:responses": 105,
@@ -20,8 +18,7 @@
   },
   "chain_public": {
     "app/chain/download.py:DownloadChain.batch_download": 572,
-    "app/chain/download.py:DownloadChain.download_single": 276,
-    "app/chain/download.py:DownloadChain.get_no_exists_info": 152,
+    "app/chain/download.py:DownloadChain.download_single": 255,
     "app/chain/mediaserver.py:MediaServerChain.sync": 292,
     "app/chain/site.py:SiteChain.sync_cookies": 180,
     "app/chain/subscribe.py:SubscribeChain.add": 183,

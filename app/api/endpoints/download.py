@@ -111,6 +111,74 @@ def _build_unrecognized_media_info(
     )
 
 
+def _resolve_add_media(
+    torrent_in: _SchemaTorrentInfo,
+    media_source: MediaSource | None,
+    media_id: str | None,
+    music_type: MusicTargetEntityType | None,
+    allow_unrecognized: bool,
+) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None, _SchemaResponse | None]:
+    """校验媒体身份并为无媒体信息下载构建识别上下文。"""
+    normalized_music_type = normalize_music_type(music_type, allow_artist=False)
+    if music_type is not None and not normalized_music_type:
+        return None, None, _SchemaResponse(
+            success=False,
+            message="音乐实体类型无效，仅支持 recording 或 album",
+        )
+    if (media_source is None) != (media_id is None):
+        return None, None, _SchemaResponse(
+            success=False,
+            message="媒体来源和媒体 ID 必须同时提供",
+        )
+    is_music = (
+        torrent_in.category in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
+        or is_music_media_source(media_source)
+        or normalized_music_type is not None
+    )
+    if is_music and media_source and not is_music_media_source(media_source):
+        return None, None, _SchemaResponse(
+            success=False,
+            message="音乐下载只能使用音乐元数据源",
+        )
+    if is_music and not normalized_music_type:
+        normalized_music_type = MUSIC_ENTITY_RECORDING
+    metainfo = (
+        MetaMusic.parse_query(torrent_in.title)
+        if is_music
+        else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+    )
+    if media_source and media_id:
+        mediainfo = MediaChain().recognize_media(
+            meta=metainfo,
+            media_source=media_source,
+            media_id=media_id,
+            mtype=MediaType.MUSIC if is_music else None,
+            music_type=normalized_music_type,
+        )
+    else:
+        mediainfo = MediaChain().recognize_by_meta(
+            metainfo,
+            media_source=media_source,
+            obtain_images=False,
+            mtype=MediaType.MUSIC if is_music else None,
+            music_type=normalized_music_type,
+        )
+    if mediainfo:
+        return metainfo, mediainfo, None
+    if not allow_unrecognized:
+        return metainfo, None, _SchemaResponse(
+            success=False,
+            message="无法识别媒体信息",
+            data=_SchemaDownloadAddedData(requires_confirmation=True),
+        )
+    return metainfo, _build_unrecognized_media_info(
+        torrent_in,
+        metainfo,
+        is_music=is_music,
+        music_type=normalized_music_type,
+    ), None
+
+
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
 def current(
     name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
@@ -183,66 +251,17 @@ def add(
     """
     添加下载任务（不含媒体信息）
     """
-    normalized_music_type = normalize_music_type(music_type, allow_artist=False)
-    if music_type is not None and not normalized_music_type:
-        return _SchemaResponse(
-            success=False,
-            message="音乐实体类型无效，仅支持 recording 或 album",
-        )
-    if (media_source is None) != (media_id is None):
-        return _SchemaResponse(
-            success=False,
-            message="媒体来源和媒体 ID 必须同时提供",
-        )
-    is_music = (
-        torrent_in.category in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
-        or is_music_media_source(media_source)
-        or normalized_music_type is not None
+    metainfo, mediainfo, error = _resolve_add_media(
+        torrent_in,
+        media_source,
+        media_id,
+        music_type,
+        allow_unrecognized,
     )
-    if is_music and media_source and not is_music_media_source(media_source):
-        return _SchemaResponse(
-            success=False,
-            message="音乐下载只能使用音乐元数据源",
-        )
-    if is_music and not normalized_music_type:
-        normalized_music_type = MUSIC_ENTITY_RECORDING
-    # 元数据
-    metainfo = (
-        MetaMusic.parse_query(torrent_in.title)
-        if is_music
-        else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
-    )
-    # 媒体信息
-    if media_source and media_id:
-        mediainfo = MediaChain().recognize_media(
-            meta=metainfo,
-            media_source=media_source,
-            media_id=media_id,
-            mtype=MediaType.MUSIC if is_music else None,
-            music_type=normalized_music_type,
-        )
-    else:
-        mediainfo = MediaChain().recognize_by_meta(
-            metainfo,
-            media_source=media_source,
-            obtain_images=False,
-            mtype=MediaType.MUSIC if is_music else None,
-            music_type=normalized_music_type,
-        )
-    if not mediainfo:
-        if not allow_unrecognized:
-            return _SchemaResponse(
-                success=False,
-                message="无法识别媒体信息",
-                data=_SchemaDownloadAddedData(requires_confirmation=True),
-            )
-        # 用户已确认：影视与音乐统一按种子元信息构造最小上下文继续下载
-        mediainfo = _build_unrecognized_media_info(
-            torrent_in,
-            metainfo,
-            is_music=is_music,
-            music_type=normalized_music_type,
-        )
+    if error:
+        return error
+    if metainfo is None or mediainfo is None:
+        return _SchemaResponse(success=False, message="无法识别媒体信息")
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())

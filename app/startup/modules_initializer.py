@@ -36,8 +36,13 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.configuration import (
+    ApiRuntimeConfig,
+    ChainRuntimeConfig,
+    RuntimeConfiguration,
+    SchedulerRuntimeConfig,
     SystemConfigService,
     TransferRetryConfig,
+    configure_runtime_configuration,
     configure_system_config,
     configure_transfer_retry_config,
 )
@@ -86,7 +91,6 @@ from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.oper.mediaserver import MediaServerOper
-from app.db.oper.downloadfailure import DownloadFailureOper
 from app.db.oper.site import SiteOper
 from app.db.oper.message import MessageOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
@@ -108,6 +112,7 @@ from app.startup.subscription import (
     configure_transactional_subscription_scopes,
 )
 from app.startup.chain_events import TransactionalChainDurableEventWriter
+from app.startup.download_failure import TransactionalDownloadFailureRepository
 from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.security.auth import build_superuser_token_payload
@@ -151,8 +156,65 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
             send_callback=callback
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        configuration=_build_chain_runtime_config(),
         data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
+    )
+
+
+def _normalize_subscribe_rss_interval(value: object) -> int:
+    """把无效或过小的 RSS 间隔收敛为兼容的安全值。"""
+    try:
+        return max(int(value), 5)
+    except (TypeError, ValueError):
+        return 30
+
+
+def _build_api_runtime_config() -> ApiRuntimeConfig:
+    """从可热更新 settings 构建一次 API 请求配置快照。"""
+    return ApiRuntimeConfig(
+        advanced_mode=settings.ADVANCED_MODE,
+        access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
+        ai_agent_enable=settings.AI_AGENT_ENABLE,
+    )
+
+
+def _build_scheduler_runtime_config() -> SchedulerRuntimeConfig:
+    """从可热更新 settings 构建一次 Scheduler 操作配置快照。"""
+    return SchedulerRuntimeConfig(
+        dev=settings.DEV,
+        timezone=settings.TZ,
+        scheduler_workers=settings.CONF.scheduler,
+        db_backup_enable=settings.DB_BACKUP_ENABLE,
+        db_backup_cron=settings.DB_BACKUP_CRON,
+        cookiecloud_interval=settings.COOKIECLOUD_INTERVAL,
+        mediaserver_sync_interval=settings.MEDIASERVER_SYNC_INTERVAL,
+        subscribe_search=settings.SUBSCRIBE_SEARCH,
+        subscribe_search_interval=settings.SUBSCRIBE_SEARCH_INTERVAL,
+        subscribe_mode=settings.SUBSCRIBE_MODE,
+        subscribe_rss_interval=_normalize_subscribe_rss_interval(
+            settings.SUBSCRIBE_RSS_INTERVAL
+        ),
+        data_cleanup_enable=settings.DATA_CLEANUP_ENABLE,
+        sitedata_refresh_interval=settings.SITEDATA_REFRESH_INTERVAL,
+        memory_gc_interval=settings.MEMORY_GC_INTERVAL,
+        ai_agent_enable=settings.AI_AGENT_ENABLE,
+        ai_agent_job_interval=settings.AI_AGENT_JOB_INTERVAL,
+        usage_statistic_share=settings.USAGE_STATISTIC_SHARE,
+        site_link=settings.MP_DOMAIN("#/site"),
+    )
+
+
+def _build_chain_runtime_config() -> ChainRuntimeConfig:
+    """构建 Chain 通用媒体文件后缀配置快照。"""
+    return ChainRuntimeConfig(
+        media_extensions=tuple(
+            settings.RMT_MEDIAEXT
+            + settings.DOWNLOAD_TMPEXT
+            + settings.RMT_SUBEXT
+            + settings.RMT_AUDIOEXT
+        )
     )
 
 
@@ -478,6 +540,11 @@ async def init_modules() -> HostRuntime:
             "sync": SqlAlchemyUnitOfWork,
         },
     )
+    runtime_configuration = RuntimeConfiguration(
+        api=_build_api_runtime_config,
+        scheduler=_build_scheduler_runtime_config,
+        chain=_build_chain_runtime_config,
+    )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -491,8 +558,10 @@ async def init_modules() -> HostRuntime:
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
         ),
+        configuration=runtime_configuration,
         compatibility_api_data=api_data,
     )
+    configure_runtime_configuration(host_runtime.configuration)
     configure_api_data_runtime(host_runtime.compatibility_api_data)
     configure_runtime_data_providers()
     configure_chain_data_ports(
@@ -503,7 +572,9 @@ async def init_modules() -> HostRuntime:
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransferPendingOper(),
         media_server=lambda: MediaServerOper(),
-        download_failure=lambda: DownloadFailureOper(),
+        download_failure=lambda: TransactionalDownloadFailureRepository(
+            SessionFactory
+        ),
         user=lambda: UserOper(),
     )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))

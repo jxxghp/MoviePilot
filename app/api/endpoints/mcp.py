@@ -84,6 +84,39 @@ def create_jsonrpc_error(
     return error
 
 
+async def _dispatch_jsonrpc_method(
+    method: Any,
+    params: Dict[str, Any],
+    request_id: Union[str, int, None],
+) -> Union[JSONResponse, Response]:
+    """分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。"""
+    if method == "initialize":
+        result = await handle_initialize(params)
+        return JSONResponse(content=create_jsonrpc_response(request_id, result))
+    if method == "notifications/initialized":
+        if request_id is None:
+            return Response(status_code=204)
+        return JSONResponse(
+            status_code=400,
+            content=create_jsonrpc_error(
+                request_id, -32600, "initialized must be a notification"
+            ),
+        )
+    if method == "tools/list":
+        result = await handle_tools_list()
+        return JSONResponse(content=create_jsonrpc_response(request_id, result))
+    if method == "tools/call":
+        result = await handle_tools_call(params)
+        return JSONResponse(content=create_jsonrpc_response(request_id, result))
+    if method == "ping":
+        return JSONResponse(content=create_jsonrpc_response(request_id, {}))
+    return JSONResponse(
+        content=create_jsonrpc_error(
+            request_id, -32601, f"Method not found: {method}"
+        )
+    )
+
+
 @router.post(
     "",
     summary="MCP JSON-RPC 端点",
@@ -130,48 +163,8 @@ async def mcp_jsonrpc(
     params = body.get("params", {})
     request_id = body.get("id")
 
-    # 如果有 id，则为请求；没有 id 则为通知
-    is_notification = request_id is None
-
     try:
-        # 处理初始化请求
-        if method == "initialize":
-            result = await handle_initialize(params)
-            return JSONResponse(content=create_jsonrpc_response(request_id, result))
-
-        # 处理已初始化通知
-        elif method == "notifications/initialized":
-            if is_notification:
-                return Response(status_code=204)
-            else:
-                return JSONResponse(
-                    status_code=400,
-                    content=create_jsonrpc_error(
-                        request_id, -32600, "initialized must be a notification"
-                    ),
-                )
-
-        # 处理工具列表请求
-        if method == "tools/list":
-            result = await handle_tools_list()
-            return JSONResponse(content=create_jsonrpc_response(request_id, result))
-
-        # 处理工具调用请求
-        elif method == "tools/call":
-            result = await handle_tools_call(params)
-            return JSONResponse(content=create_jsonrpc_response(request_id, result))
-
-        # 处理 ping 请求
-        elif method == "ping":
-            return JSONResponse(content=create_jsonrpc_response(request_id, {}))
-
-        # 未知方法
-        else:
-            return JSONResponse(
-                content=create_jsonrpc_error(
-                    request_id, -32601, f"Method not found: {method}"
-                )
-            )
+        return await _dispatch_jsonrpc_method(method, params, request_id)
 
     except ValueError as e:
         logger.warning(f"MCP 请求参数错误: {e}")

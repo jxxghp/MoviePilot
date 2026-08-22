@@ -9,6 +9,7 @@ from app.application.messaging.chat import (
     AsyncUnitOfWork,
 )
 from app.application.outbox import AsyncOutboxTransaction
+from app.application.configuration import RuntimeConfiguration
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -125,4 +126,5 @@ class HostRuntime:
 
     agent_chat: AgentChatRuntime
     subscription: SubscriptionRuntime
+    configuration: RuntimeConfiguration
     compatibility_api_data: CompatibilityApiData

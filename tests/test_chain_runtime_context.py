@@ -3,6 +3,7 @@
 from unittest.mock import Mock
 
 from app.application.chain.context import ChainRuntimeContext
+from app.application.configuration import ChainRuntimeConfig
 from app.application.chain import context as chain_context
 from app.chain import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -20,6 +21,7 @@ def _context() -> ChainRuntimeContext:
         async_file_cache=Mock(),
         message_queue_factory=Mock(return_value=Mock()),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        configuration=ChainRuntimeConfig(media_extensions=(".mkv",)),
         durable_event_writer=Mock(),
     )
 

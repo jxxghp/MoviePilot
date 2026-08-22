@@ -4,7 +4,19 @@ import asyncio
 
 import pytest
 
-from scripts.architecture.async_blocking import compare_async_blocking
+from scripts.architecture.async_blocking import SCAN_ROOTS, compare_async_blocking
+
+
+def test_async_blocking_scan_covers_runtime_entrypoints() -> None:
+    """扫描范围必须覆盖 API、Scheduler、Chain 及其启动组合根。"""
+    assert {
+        "app/api",
+        "app/application",
+        "app/chain",
+        "app/modules",
+        "app/startup",
+        "app/scheduler.py",
+    }.issubset({str(path) for path in SCAN_ROOTS})
 
 
 def test_async_blocking_ratchet_allows_removal_and_rejects_growth() -> None:

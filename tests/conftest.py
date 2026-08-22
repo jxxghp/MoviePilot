@@ -29,8 +29,13 @@ def configure_plugin_system_services():
     )
     from app.api.data import configure_api_data_ports
     from app.application.configuration import (
+        ApiRuntimeConfig,
+        ChainRuntimeConfig,
+        RuntimeConfiguration,
+        SchedulerRuntimeConfig,
         SystemConfigService,
         TransferRetryConfig,
+        configure_runtime_configuration,
         configure_system_config,
         configure_transfer_retry_config,
     )
@@ -46,6 +51,22 @@ def configure_plugin_system_services():
     from app.db.oper.systemconfig import SystemConfigOper
 
     configure_token_codec(create_access_token, decode_access_token)
+    configure_runtime_configuration(
+        RuntimeConfiguration(
+            api=lambda: ApiRuntimeConfig(
+                advanced_mode=settings.ADVANCED_MODE,
+                access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+                btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
+                ai_agent_enable=settings.AI_AGENT_ENABLE,
+            ),
+            scheduler=lambda: SchedulerRuntimeConfig(
+                False, settings.TZ, 1, False, "", None, None, False, 24,
+                "rss", 30, False, None, None, settings.AI_AGENT_ENABLE,
+                None, False, None,
+            ),
+            chain=lambda: ChainRuntimeConfig(media_extensions=()),
+        )
+    )
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(

@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 from app import scheduler as scheduler_module
 from app.scheduler import Scheduler
+from app.application.configuration import SchedulerRuntimeConfig
 from app.startup import scheduler_initializer
 
 
@@ -75,16 +76,14 @@ def test_clear_cache_is_manual_only(monkeypatch):
     monkeypatch.setattr(Scheduler, "init_workflow_jobs", lambda self: None)
     monkeypatch.setattr(Scheduler, "init_agent_task_jobs", lambda self: None)
     monkeypatch.setattr(Scheduler, "init_plugin_jobs", lambda self: None)
-    monkeypatch.setattr(scheduler_module.settings, "DEV", False)
-    monkeypatch.setattr(scheduler_module.settings, "COOKIECLOUD_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_SEARCH", False)
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_MODE", "rss")
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_RSS_INTERVAL", 30)
-    monkeypatch.setattr(scheduler_module.settings, "SITEDATA_REFRESH_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "MEMORY_GC_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "AI_AGENT_ENABLE", False)
-    monkeypatch.setattr(scheduler_module.settings, "DATA_CLEANUP_ENABLE", False)
-    monkeypatch.setattr(scheduler_module.settings, "USAGE_STATISTIC_SHARE", False)
+    monkeypatch.setattr(
+        scheduler_module,
+        "get_scheduler_runtime_config",
+        lambda: SchedulerRuntimeConfig(
+            False, "Asia/Shanghai", 1, False, "", 0, None, False, 24,
+            "rss", 30, False, 0, 0, False, None, False, None,
+        ),
+    )
 
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = None

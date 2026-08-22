@@ -7,6 +7,10 @@ from fastapi import Depends, Request
 
 from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
 from app.application.outbox import AsyncOutboxTransaction
+from app.application.configuration import (
+    ApiRuntimeConfig,
+    get_api_runtime_config_snapshot,
+)
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -26,6 +30,20 @@ def get_host_runtime(request: Request) -> HostRuntime:
     if not isinstance(runtime, HostRuntime):
         raise RuntimeError("HostRuntime 尚未由启动组合根装配")
     return runtime
+
+
+def get_api_runtime_config(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> ApiRuntimeConfig:
+    """为当前请求创建稳定的 API 配置快照。"""
+    return runtime.configuration.api()
+
+
+def resolve_api_runtime_config(value: object) -> ApiRuntimeConfig:
+    """兼容直接调用 endpoint 的旧入口，并统一返回真实配置快照。"""
+    if isinstance(value, ApiRuntimeConfig):
+        return value
+    return get_api_runtime_config_snapshot()
 
 
 def get_agent_chat_runtime(

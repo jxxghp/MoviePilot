@@ -41,6 +41,56 @@ class TransferRetryConfig:
     max_failed_retries: Any
 
 
+@dataclass(frozen=True, slots=True)
+class ApiRuntimeConfig:
+    """单次 API 请求使用的宿主配置快照。"""
+
+    advanced_mode: bool
+    access_token_expire_minutes: int
+    btrfs_fsid_dedup: bool
+    ai_agent_enable: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerRuntimeConfig:
+    """一次 Scheduler 初始化或任务注册使用的稳定配置快照。"""
+
+    dev: bool
+    timezone: str
+    scheduler_workers: int
+    db_backup_enable: bool
+    db_backup_cron: str
+    cookiecloud_interval: Any
+    mediaserver_sync_interval: Any
+    subscribe_search: bool
+    subscribe_search_interval: Any
+    subscribe_mode: str
+    subscribe_rss_interval: int
+    data_cleanup_enable: bool
+    sitedata_refresh_interval: Any
+    memory_gc_interval: Any
+    ai_agent_enable: bool
+    ai_agent_job_interval: Any
+    usage_statistic_share: bool
+    site_link: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ChainRuntimeConfig:
+    """Chain 在一次宿主生命周期内使用的基础配置快照。"""
+
+    media_extensions: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeConfiguration:
+    """由启动组合根提供的 API、Scheduler 与 Chain 配置快照工厂。"""
+
+    api: Callable[[], ApiRuntimeConfig]
+    scheduler: Callable[[], SchedulerRuntimeConfig]
+    chain: Callable[[], ChainRuntimeConfig]
+
+
 class SystemConfigService:
     """系统配置读写应用服务。"""
 
@@ -82,6 +132,7 @@ class SystemConfigService:
 
 _configured_system_config: SystemConfigService | None = None
 _transfer_retry_config_provider: Callable[[], TransferRetryConfig] | None = None
+_runtime_configuration: RuntimeConfiguration | None = None
 
 
 def configure_system_config(service: SystemConfigService) -> None:
@@ -110,3 +161,23 @@ def get_transfer_retry_config() -> TransferRetryConfig:
     if _transfer_retry_config_provider is None:
         raise RuntimeError("整理失败重试配置尚未装配")
     return _transfer_retry_config_provider()
+
+
+def configure_runtime_configuration(configuration: RuntimeConfiguration) -> None:
+    """由启动组合根登记各运行面使用的类型化配置快照工厂。"""
+    global _runtime_configuration
+    _runtime_configuration = configuration
+
+
+def get_scheduler_runtime_config() -> SchedulerRuntimeConfig:
+    """为一次调度操作创建不可变配置快照。"""
+    if _runtime_configuration is None:
+        raise RuntimeError("运行时配置尚未装配")
+    return _runtime_configuration.scheduler()
+
+
+def get_api_runtime_config_snapshot() -> ApiRuntimeConfig:
+    """为一次 API 调用创建不可变配置快照。"""
+    if _runtime_configuration is None:
+        raise RuntimeError("运行时配置尚未装配")
+    return _runtime_configuration.api()

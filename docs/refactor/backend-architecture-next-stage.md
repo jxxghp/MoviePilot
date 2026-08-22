@@ -559,6 +559,17 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 - 219 个架构、配置、Agent 安全、整理重试、Module reload 专项测试通过，Pylint 10/10；依赖基线
   仅把 `app.application.history -> app.runtime.config` 替换为窄配置端口边，禁止边不变。
 
+**扩展实施记录（2026-08-22）**：
+
+- `HostRuntime.configuration` 现在提供 API、Scheduler、Chain 三类 frozen snapshot 工厂。API 每个请求、
+  Scheduler 每次初始化/任务注册都取得新快照，因此配置 reload 后的新调用可见新值，已经开始执行的调用
+  不会在中途漂移；Chain 基础文件后缀由启动上下文一次注入。
+- 登录、仪表板和整理历史 API 不再直接导入 `settings`；`Scheduler` 已清除全部直接 `settings` 访问，
+  用户认证配置改走 `SystemConfigService`；`StorageChain` 的媒体后缀改走 Chain snapshot。canonical 配置债务
+  从 169/15 降到 164 个 settings import 文件/14 个 SystemConfigOper 构造点。
+- 直接调用 endpoint 和显式构造 `ChainRuntimeContext` 的旧测试/兼容入口仍有 fallback；正式 FastAPI 与
+  Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
+
 ### 阶段 4：把动态模块和事件变成可演进契约
 
 #### ARCH-240：Module Contract V2
@@ -605,6 +616,8 @@ ModuleMethodSpec(
   方法继续使用 legacy contract。
 - runtime contract baseline 现包含稳定的 `module_method_specs`，后续字段或显式方法变化必须审查；
   `ModuleCapability` Protocol 为宿主和新插件提供静态声明入口，但不替换字符串 dispatcher ABI。
+- 22 个显式方法进一步登记宿主真实传入的 required parameter 名称，覆盖识别、搜索、媒体服务器、存储、
+  消息收尾、命令注册和 webhook；dispatcher 仍只输出诊断 warning，不阻断缺少参数的旧插件或未知自定义方法。
 
 #### ARCH-241：Event Contract Registry
 
@@ -753,6 +766,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   Application 删除命令替代的两个 `Subscribe` Model 级删除事务装饰器；Model decorator 基线从
   178 降到 176，Oper 内显式 commit/rollback 仍为 0。strict mypy 门禁新增 Chain durable context、
   payload 转换和启动适配器。
+- 下载失败冷却切片继续迁移到 `TransactionalDownloadFailureRepository`：Chain 每次读写使用独立短会话，
+  写成功由显式 `SqlAlchemyUnitOfWork` commit，异常 rollback；`DownloadFailure` 查询和记录方法不再拥有
+  自动会话/提交装饰器。Model decorator 基线继续从 176 降到 174，Oper 内显式 commit/rollback 仍为 0。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -864,6 +880,9 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 - 配置约束测试会检查 strict、关键合同文件和至少一个 Domain 文件均在清单中，并实际启动锁定版本 mypy；
   当前 10 个源文件零错误通过。
 
+**扩展实施记录（2026-08-22）**：mypy 目标运行时更新到 Python 3.14，严格清单扩大到 20 个源文件；
+新增纳管配置快照和下载失败事务适配器，仍保持零错误、无全局 ignore。
+
 #### ARCH-271：复杂度和端点预算 ratchet
 
 **目标**：阻止大方法继续增长，并让拆分对应真实阶段，而不是机械 helper 化。
@@ -887,6 +906,8 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 - 当前债务清单明确包含 `web_agent_stream`、`batch_download`、`SubscribeChain.match`、`do_transfer`；
   `Scheduler.init` 已在 ARCH-252 通过 JobSpec/catalog 拆分退出超限清单，调度专项测试是该代表性拆分的回归证据。
 - 单元测试覆盖删除/缩短放行和增长/新增拒绝，当前仓库 baseline check 通过。
+- 2026-08-22 将 MCP JSON-RPC 分派、无媒体信息下载识别、缺集结果合并拆成具有独立输入/输出的私有阶段；
+  对应 `mcp_jsonrpc`、`download.add`、`DownloadChain.get_no_exists_info` 退出超限清单，总债务从 28 降到 25。
 
 #### ARCH-272：异步阻塞检测
 
@@ -910,6 +931,8 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
   ActivityLog 为保证 `O_EXCL` 原子创建使用的一处 `os.open` 精确债务，不泛化豁免整个文件或目录。
 - pytest 全局启用 `asyncio_debug`，专项测试验证实际 loop debug 状态；AST ratchet 与 46 个 Agent 流式回归
   通过。同步第三方 Module 仍由 dispatcher 的 `app.runtime.execution.run_in_threadpool` 兼容。
+- 2026-08-22 扫描范围扩大到 `app/chain`、`app/modules`、`app/startup` 与 `app/scheduler.py`；扩大后未发现
+  新存量，仍只保留 ActivityLog 的一处原子 `os.open` 精确债务，并由测试锁定扫描根目录。
 
 ## 6. 推荐执行队列
 

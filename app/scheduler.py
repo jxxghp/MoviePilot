@@ -24,13 +24,17 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
-from app.db.oper.systemconfig import SystemConfigOper
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
+from app.application.configuration import (
+    SchedulerRuntimeConfig,
+    get_configured_system_config,
+    get_scheduler_runtime_config,
+)
 from app.application.image import WallpaperHelper
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
@@ -209,9 +213,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """按当前宿主策略创建一次定时数据库备份。"""
         return get_database_governance().create_backup()
 
-    def _register_database_backup_job(self) -> None:
+    def _register_database_backup_job(
+            self,
+            config: SchedulerRuntimeConfig,
+    ) -> None:
         """在共享调度器中按当前配置维护唯一的数据库备份作业。"""
-        if not settings.DB_BACKUP_ENABLE or not settings.DB_BACKUP_CRON.strip():
+        if not config.db_backup_enable or not config.db_backup_cron.strip():
             return
 
         job_id = "database_backup"
@@ -226,8 +233,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self.start,
             trigger=TimerUtils.build_schedule_trigger(
                 trigger_type="cron",
-                trigger_value=settings.DB_BACKUP_CRON,
-                timezone_name=settings.TZ,
+                trigger_value=config.db_backup_cron,
+                timezone_name=config.timezone,
             ),
             id=job_id,
             name="数据库备份",
@@ -240,11 +247,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         初始化定时服务
         """
 
+        config = get_scheduler_runtime_config()
         # 停止定时服务
         self.stop()
 
         # 调试模式不启动定时服务
-        if settings.DEV:
+        if config.dev:
             return
 
         # 对账上个进程未收口的 Agent 任务；进程内重复初始化不会重复改写状态。
@@ -277,11 +285,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             ]).runtime_states()
 
             self._scheduler = BackgroundScheduler(
-                timezone=settings.TZ,
-                executors={"default": ThreadPoolExecutor(settings.CONF.scheduler)},
+                timezone=config.timezone,
+                executors={"default": ThreadPoolExecutor(config.scheduler_workers)},
             )
 
-            self._register_database_backup_job()
+            self._register_database_backup_job(config)
             self._jobs["outbox_dispatch"] = JobSpec(
                 "outbox_dispatch",
                 "恢复待投递副作用",
@@ -295,30 +303,30 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 id="outbox_dispatch",
                 name="恢复待投递副作用",
                 seconds=30,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)),
+                next_run_time=datetime.now(pytz.timezone(config.timezone)),
                 kwargs={"job_id": "outbox_dispatch"},
                 replace_existing=True,
             )
 
             # CookieCloud定时同步
             if (
-                    settings.COOKIECLOUD_INTERVAL
-                    and str(settings.COOKIECLOUD_INTERVAL).isdigit()
+                    config.cookiecloud_interval
+                    and str(config.cookiecloud_interval).isdigit()
             ):
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="cookiecloud",
                     name="同步CookieCloud站点",
-                    minutes=int(settings.COOKIECLOUD_INTERVAL),
-                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
+                    minutes=int(config.cookiecloud_interval),
+                    next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=5),
                     kwargs={"job_id": "cookiecloud"},
                 )
 
             # 按媒体服务器分别注册自动同步任务
             mediaserver_schedules = self._build_mediaserver_sync_schedules(
                 mediaservers=ServiceConfigHelper.get_mediaserver_configs(),
-                default_interval=settings.MEDIASERVER_SYNC_INTERVAL,
+                default_interval=config.mediaserver_sync_interval,
             )
             for mediaserver_schedule in mediaserver_schedules:
                 job_id = mediaserver_schedule["id"]
@@ -335,7 +343,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     id=job_id,
                     name=mediaserver_schedule["name"],
                     hours=mediaserver_schedule["interval"],
-                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=10),
+                    next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=10),
                     kwargs={"job_id": job_id},
                 )
 
@@ -360,17 +368,17 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
 
             # 订阅状态每隔24小时搜索一次
-            if settings.SUBSCRIBE_SEARCH:
+            if config.subscribe_search:
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="subscribe_search",
                     name="订阅搜索补全",
-                    hours=settings.SUBSCRIBE_SEARCH_INTERVAL,
+                    hours=config.subscribe_search_interval,
                     kwargs={"job_id": "subscribe_search"},
                 )
 
-            if settings.SUBSCRIBE_MODE == "spider":
+            if config.subscribe_mode == "spider":
                 # 站点首页种子定时刷新模式
                 triggers = TimerUtils.random_scheduler(num_executions=32)
                 for trigger in triggers:
@@ -385,19 +393,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     )
             else:
                 # RSS订阅模式
-                if (
-                        not settings.SUBSCRIBE_RSS_INTERVAL
-                        or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit()
-                ):
-                    settings.SUBSCRIBE_RSS_INTERVAL = 30
-                elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 5:
-                    settings.SUBSCRIBE_RSS_INTERVAL = 5
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="subscribe_refresh",
                     name="RSS订阅刷新",
-                    minutes=int(settings.SUBSCRIBE_RSS_INTERVAL),
+                    minutes=config.subscribe_rss_interval,
                     kwargs={"job_id": "subscribe_refresh"},
                 )
 
@@ -428,7 +429,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 id="random_wallpager",
                 name="壁纸缓存",
                 minutes=30,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=1),
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=1),
                 kwargs={"job_id": "random_wallpager"},
             )
 
@@ -443,7 +444,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
 
             # 数据表清理服务，每天凌晨执行一次
-            if settings.DATA_CLEANUP_ENABLE:
+            if config.data_cleanup_enable:
                 self._scheduler.add_job(
                     self.start,
                     "cron",
@@ -465,13 +466,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             )
 
             # 站点数据刷新
-            if settings.SITEDATA_REFRESH_INTERVAL:
+            if config.sitedata_refresh_interval:
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="sitedata_refresh",
                     name="站点数据刷新",
-                    minutes=settings.SITEDATA_REFRESH_INTERVAL * 60,
+                    minutes=config.sitedata_refresh_interval * 60,
                     kwargs={"job_id": "sitedata_refresh"},
                 )
 
@@ -482,7 +483,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 id="recommend_refresh",
                 name="推荐缓存",
                 hours=24,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=5),
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=5),
                 kwargs={"job_id": "recommend_refresh"},
             )
 
@@ -503,34 +504,34 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 id="subscribe_calendar_cache",
                 name="订阅日历缓存",
                 hours=6,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=2),
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=2),
                 kwargs={"job_id": "subscribe_calendar_cache"},
             )
 
             # 主动内存回收
-            if settings.MEMORY_GC_INTERVAL:
+            if config.memory_gc_interval:
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="full_gc",
                     name="主动内存回收",
-                    minutes=settings.MEMORY_GC_INTERVAL,
+                    minutes=config.memory_gc_interval,
                     kwargs={"job_id": "full_gc"},
                 )
 
             # 智能体定时任务检查
-            if settings.AI_AGENT_ENABLE and settings.AI_AGENT_JOB_INTERVAL:
+            if config.ai_agent_enable and config.ai_agent_job_interval:
                 self._scheduler.add_job(
                     self.start,
                     "interval",
                     id="agent_heartbeat",
                     name="智能体定时任务",
-                    hours=settings.AI_AGENT_JOB_INTERVAL,
+                    hours=config.ai_agent_job_interval,
                     kwargs={"job_id": "agent_heartbeat"},
                 )
 
             # 安装版本统计上报
-            if settings.USAGE_STATISTIC_SHARE:
+            if config.usage_statistic_share:
                 self._scheduler.add_job(
                     self.start,
                     "interval",
@@ -544,7 +545,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self.init_workflow_jobs()
 
             # 恢复 Agent 自主定时任务
-            if settings.AI_AGENT_ENABLE:
+            if config.ai_agent_enable:
                 self.init_agent_task_jobs()
 
             # 初始化插件服务
@@ -969,10 +970,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         :param task_id: Agent 定时任务 ID
         :return: 下一次执行时间，不可调度时返回 None
         """
+        config = get_scheduler_runtime_config()
         self.remove_agent_task_job(task_id)
         task = AgentTaskOper().get(task_id)
         if (
-                not settings.AI_AGENT_ENABLE
+                not config.ai_agent_enable
                 or not task
                 or not task.enabled
                 or not self._scheduler
@@ -989,7 +991,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 trigger = TimerUtils.build_schedule_trigger(
                     trigger_type=task.trigger_type,
                     trigger_value=trigger_value,
-                    timezone_name=settings.TZ,
+                    timezone_name=config.timezone,
                 )
             except (TypeError, ValueError) as err:
                 logger.error(f"Agent 定时任务 {task_id} 的触发配置无效：{str(err)}")
@@ -1046,6 +1048,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         :param task_id: Agent 定时任务 ID
         :return: 带时区的 ISO 8601 时间，不再执行时返回 None
         """
+        config = get_scheduler_runtime_config()
         job_id = self._get_agent_task_job_id(task_id)
         if self._scheduler:
             job = self._scheduler.get_job(job_id)
@@ -1065,7 +1068,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             next_run_time = TimerUtils.get_schedule_next_run_time(
                 trigger_type=task.trigger_type,
                 trigger_value=trigger_value,
-                timezone_name=settings.TZ,
+                timezone_name=config.timezone,
             )
         except (TypeError, ValueError):
             return None
@@ -1443,6 +1446,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         用户认证检查
         """
+        config = get_scheduler_runtime_config()
         if SitesHelper().auth_level >= 2:
             return
         # 最大重试次数
@@ -1457,7 +1461,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 self._auth_message = True
             return
         logger.info("用户未认证，正在尝试认证...")
-        auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+        auth_conf = get_configured_system_config().get(
+            SystemConfigKey.UserSiteAuthParams
+        )
         if auth_conf:
             status, msg = SitesHelper().check_user(**auth_conf)
         else:
@@ -1470,7 +1476,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     mtype=MessageType.Manual,
                     title="MoviePilot用户认证成功",
                     text=f"使用站点：{msg}，如有插件使用异常，请重启MoviePilot。",
-                    link=settings.MP_DOMAIN("#/site"),
+                    link=config.site_link,
                 )
             )
             # 认证通过后重新初始化插件

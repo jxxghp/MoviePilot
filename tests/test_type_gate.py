@@ -24,7 +24,9 @@ def test_mypy_gate_has_explicit_strict_scope_without_global_ignore() -> None:
     assert "app/runtime/event/contracts.py" in governed_files
     assert "app/runtime/extensions/module/contracts.py" in governed_files
     assert "app/startup/context.py" in governed_files
+    assert "app/startup/download_failure.py" in governed_files
     assert "app/api/context.py" in governed_files
+    assert len(governed_files) >= 20
     assert any(path.startswith("app/domain/") for path in governed_files)
     assert "ignore_errors" not in MYPY_CONFIG.read_text(encoding="utf-8")
 

@@ -4,9 +4,15 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 from app.application.configuration import (
+    ApiRuntimeConfig,
+    ChainRuntimeConfig,
+    RuntimeConfiguration,
+    SchedulerRuntimeConfig,
     SystemConfigService,
     TransferRetryConfig,
+    configure_runtime_configuration,
     configure_transfer_retry_config,
+    get_api_runtime_config_snapshot,
     get_transfer_retry_config,
 )
 
@@ -45,3 +51,32 @@ def test_transfer_retry_provider_returns_frozen_snapshot_per_call() -> None:
 
     assert before_reload.max_failed_retries == 2
     assert after_reload.max_failed_retries == 4
+
+
+def test_api_runtime_provider_returns_frozen_snapshot_per_request() -> None:
+    """API 每次请求读取新配置，但已取得的快照保持不变。"""
+    state = {"enabled": False}
+    configure_runtime_configuration(
+        RuntimeConfiguration(
+            api=lambda: ApiRuntimeConfig(
+                advanced_mode=False,
+                access_token_expire_minutes=60,
+                btrfs_fsid_dedup=False,
+                ai_agent_enable=state["enabled"],
+            ),
+            scheduler=lambda: SchedulerRuntimeConfig(
+                False, "Asia/Shanghai", 1, False, "", None, None, False,
+                24, "rss", 30, False, None, None, False, None, False, None,
+            ),
+            chain=lambda: ChainRuntimeConfig(media_extensions=(".mkv",)),
+        )
+    )
+
+    before_reload = get_api_runtime_config_snapshot()
+    state["enabled"] = True
+    after_reload = get_api_runtime_config_snapshot()
+
+    assert before_reload.ai_agent_enable is False
+    assert after_reload.ai_agent_enable is True
+    configure_runtime_configuration,
+    get_api_runtime_config_snapshot,

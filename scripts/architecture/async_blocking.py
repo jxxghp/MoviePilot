@@ -10,7 +10,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/async-blocking-baseline.json"
-SCAN_ROOTS = ("app/api", "app/agent", "app/application")
+SCAN_ROOTS = (
+    "app/api",
+    "app/agent",
+    "app/application",
+    "app/chain",
+    "app/modules",
+    "app/startup",
+    "app/scheduler.py",
+)
 BLOCKING_EXACT = {
     "open",
     "time.sleep",
@@ -167,7 +175,9 @@ def collect_async_blocking(root: Path = PROJECT_ROOT) -> dict[str, int]:
     """扫描关键目录并以文件、函数、调用名聚合存量次数。"""
     debt: Counter[str] = Counter()
     for scan_root in SCAN_ROOTS:
-        for path in sorted((root / scan_root).rglob("*.py")):
+        target = root / scan_root
+        paths = [target] if target.is_file() else sorted(target.rglob("*.py"))
+        for path in paths:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             relative = path.relative_to(root).as_posix()
             for qualname, function in _async_functions(tree):

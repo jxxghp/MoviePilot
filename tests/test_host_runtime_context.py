@@ -18,6 +18,12 @@ from app.api.data import (
 )
 from app.startup import lifecycle
 from app.startup.context import AgentChatRuntime, HostRuntime, SubscriptionRuntime
+from app.application.configuration import (
+    ApiRuntimeConfig,
+    ChainRuntimeConfig,
+    RuntimeConfiguration,
+    SchedulerRuntimeConfig,
+)
 
 
 class _Repository:
@@ -86,6 +92,14 @@ def _runtime() -> HostRuntime:
             history_repository=_Repository,
             transaction=_UnitOfWork,
             outbox=_Outbox,
+        ),
+        configuration=RuntimeConfiguration(
+            api=lambda: ApiRuntimeConfig(False, 60, False, True),
+            scheduler=lambda: SchedulerRuntimeConfig(
+                False, "Asia/Shanghai", 1, False, "", None, None,
+                False, 24, "rss", 30, False, None, None, True, 1, False, None,
+            ),
+            chain=lambda: ChainRuntimeConfig(media_extensions=(".mkv",)),
         ),
         compatibility_api_data=compatibility,
     )

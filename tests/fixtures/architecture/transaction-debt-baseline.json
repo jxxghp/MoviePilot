@@ -3,10 +3,10 @@
     "by_kind": {
       "async_db_query": 49,
       "async_db_update": 12,
-      "db_query": 75,
-      "db_update": 40
+      "db_query": 74,
+      "db_update": 39
     },
-    "count": 176,
+    "count": 174,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -82,16 +82,6 @@
         "decorator": "db_update",
         "file": "app/db/models/downloadfailure.py",
         "method": "DownloadFailure.delete_expired"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/downloadfailure.py",
-        "method": "DownloadFailure.get_active_by_fingerprints"
-      },
-      {
-        "decorator": "db_update",
-        "file": "app/db/models/downloadfailure.py",
-        "method": "DownloadFailure.record_failure"
       },
       {
         "decorator": "db_update",

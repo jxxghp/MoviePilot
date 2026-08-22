@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 169,
+    "count": 164,
     "files": [
       "app/adapters/cache/backends.py",
       "app/adapters/cache/redis.py",
@@ -49,9 +49,6 @@
       "app/agent/tools/impl/update_system_settings.py",
       "app/api/endpoints/agent.py",
       "app/api/endpoints/anthropic.py",
-      "app/api/endpoints/dashboard.py",
-      "app/api/endpoints/history.py",
-      "app/api/endpoints/login.py",
       "app/api/endpoints/media.py",
       "app/api/endpoints/message.py",
       "app/api/endpoints/openai.py",
@@ -83,7 +80,6 @@
       "app/chain/scraping.py",
       "app/chain/search.py",
       "app/chain/site.py",
-      "app/chain/storage.py",
       "app/chain/subscribe.py",
       "app/chain/system.py",
       "app/chain/torrents.py",
@@ -166,7 +162,6 @@
       "app/runtime/extensions/plugin_manager.py",
       "app/runtime/state.py",
       "app/runtime/thread.py",
-      "app/scheduler.py",
       "app/startup/agent_initializer.py",
       "app/startup/database.py",
       "app/startup/database_initializer.py",
@@ -184,10 +179,6 @@
   },
   "system_config_oper_constructions": {
     "calls": [
-      {
-        "file": "app/scheduler.py",
-        "name": "SystemConfigOper"
-      },
       {
         "file": "app/startup/modules_initializer.py",
         "name": "SystemConfigOper"
@@ -245,6 +236,6 @@
         "name": "SystemConfigOper"
       }
     ],
-    "count": 15
+    "count": 14
   }
 }
