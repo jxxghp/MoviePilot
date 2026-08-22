@@ -54,12 +54,17 @@ uv run --locked --no-sync pylint app/
 ## Dependency Security Scan
 
 ```bash
-uvx safety scan --target . --policy-file safety.policy.yml
+uv export --quiet --locked --no-dev --no-emit-project \
+  --output-file /tmp/moviepilot-audit-requirements.txt
+uvx --from pip-audit==2.10.1 pip-audit \
+  --require-hashes --disable-pip --strict --progress-spinner off \
+  --requirement /tmp/moviepilot-audit-requirements.txt
 ```
 
-- Run manually after runtime or development dependency changes; Safety scans `pyproject.toml` and `uv.lock` directly, and this check is not currently an automated CI job.
-- No new high-severity vulnerabilities may be introduced.
-- If a vulnerability cannot be patched immediately, document it explicitly in the PR description.
+- Run after runtime dependency changes; the release workflow audits the same locked dependency set before publishing images.
+- Any Python vulnerability reported by this audit blocks publishing until the dependency or explicit audit policy is updated.
+- Release candidates also scan Debian OS packages on amd64 and arm64. HIGH or CRITICAL findings with an available fix block publishing; unfixed upstream findings require a separate reachability and impact assessment.
+- If upstream has no fix, assess reachability and impact before changing the audit policy; PR documentation alone does not bypass the gate.
 
 ---
 
@@ -131,7 +136,7 @@ Before marking any task as complete:
 
 - [ ] Related pytest tests pass
 - [ ] No new pylint error-level issues in `pylint app/`
-- [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, locked sync and `uv pip check` pass, and the manual Safety scan passes
+- [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, locked sync and `uv pip check` pass, and the locked runtime dependency audit passes
 - [ ] If CLI behavior changed: `docs/cli.md` and related tests are updated
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated
 - [ ] If database schema changed: a new Alembic migration exists under `database/versions/`

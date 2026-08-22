@@ -132,7 +132,7 @@
 | pytest | Test runner | `uv run --locked --no-sync pytest tests/test_xxx.py` |
 | pylint | Static analysis | `uv run --locked --no-sync pylint app/` |
 | uv | Lock and environment consistency | `uv lock --check && uv pip check` |
-| safety | Manual dependency vulnerability scan | `uvx safety scan --target . --policy-file safety.policy.yml` |
+| pip-audit | Locked dependency vulnerability scan | `uv export --quiet --locked --no-dev --no-emit-project -o /tmp/moviepilot-audit-requirements.txt && uvx --from pip-audit==2.10.1 pip-audit --require-hashes --disable-pip --strict --progress-spinner off -r /tmp/moviepilot-audit-requirements.txt` |
 
 ---
 

@@ -150,20 +150,20 @@ python -m scripts.generate_plugin_market_default \
   --config-file app/runtime/config.py
 ```
 
-### 5. 运行安全检查
+### 5. 运行依赖漏洞检查
 
-我们使用 `safety` 工具检查 `pyproject.toml` 与 `uv.lock` 中是否存在已知安全漏洞。该检查是
-依赖变更的人工门禁，当前不属于自动 CI。
-
-#### 执行安全检查
-
-可以通过 `uvx` 在隔离工具环境中运行 `safety`，无需把它加入主程序依赖：
+正式发布会使用固定版本的 `pip-audit` 检查 `uv.lock` 锁定的运行时依赖。依赖变更后也可以在
+本地执行同一检查：
 
 ```bash
-uvx safety scan --target . --policy-file safety.policy.yml
+uv export --quiet --locked --no-dev --no-emit-project \
+  --output-file /tmp/moviepilot-audit-requirements.txt
+uvx --from pip-audit==2.10.1 pip-audit \
+  --require-hashes --disable-pip --strict --progress-spinner off \
+  --requirement /tmp/moviepilot-audit-requirements.txt
 ```
 
-Safety 直接识别项目清单和锁文件，不需要生成或维护 requirements 文件。
+导出文件由 `uv.lock` 生成且保留哈希，不作为项目依赖清单提交。
 
 ### 6. 提交代码前的检查
 
@@ -171,7 +171,7 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
 
 1. **确认依赖分层正确**：运行时包进入 `[project].dependencies`；测试、覆盖率、静态检查和构建辅助进入 `[dependency-groups].dev`；插件依赖不并入主程序运行时依赖。
 
-2. **运行安全检查**：确保 `safety` 检查通过，没有新的安全漏洞。
+2. **运行依赖漏洞检查**：确保锁定的运行时依赖通过 `pip-audit`。
 
 3. **运行测试**：如果项目中包含测试，请确保所有测试都通过。运行以下命令以执行测试：
 
@@ -202,6 +202,6 @@ Safety 直接识别项目清单和锁文件，不需要生成或维护 requireme
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
-- [Safety CLI 官方文档](https://docs.safetycli.com/)
+- [pip-audit](https://github.com/pypa/pip-audit)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)

@@ -103,7 +103,7 @@ When updating a dependency:
 
 1. Decide the dependency layer: runtime packages go to `[project].dependencies`; test, coverage, lint, and explicit build tooling go to `[dependency-groups].dev`.
 2. Run `uv lock`, commit the updated `uv.lock`, and verify it with `uv lock --check`.
-3. Run `uv sync --locked`, `uv pip check`, and the manual `uvx safety scan --target . --policy-file safety.policy.yml` check.
+3. Run `uv sync --locked`, `uv pip check`, and the locked runtime dependency audit documented in `03-commands.md`.
 4. Run the full test suite: `uv run --locked --no-sync pytest`.
 
 ---

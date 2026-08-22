@@ -38,7 +38,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### Quality and Security
 * **Primary Reference:** `docs/rules/11-quality-and-security.md`
-* **Required Constraints:** All code changes must pass the relevant pytest tests and pylint checks. Dependency changes require a current `uv.lock`, locked environment verification, and a passing manual Safety scan.
+* **Required Constraints:** All code changes must pass the relevant pytest tests and pylint checks. Dependency changes require a current `uv.lock`, locked environment verification, and a passing locked dependency vulnerability audit.
 
 ### Testing
 * **Primary Reference:** `docs/testing.md`

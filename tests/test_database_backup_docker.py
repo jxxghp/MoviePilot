@@ -11,7 +11,7 @@ def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
     ).read_text(encoding="utf-8")
 
     assert re.search(
-        r"^FROM python:[^\s]+-slim-trixie@sha256:[0-9a-f]{64} AS base$",
+        r"^FROM python:3\.14\.7-slim-trixie AS base$",
         dockerfile,
         re.MULTILINE,
     )
