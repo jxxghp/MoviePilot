@@ -68,6 +68,7 @@ class _InstallState:
     checkpoint: Any = None
     stage: str = "package_checkpoint"
     package_installed: bool = False
+    installed_list_touched: bool = False
     installed_list_persisted: bool = False
     runtime_touched: bool = False
     registrations_touched: bool = False
@@ -210,6 +211,8 @@ class PluginInstallCommand:
         if plugin_id not in installed_plugins:
             updated_plugins = [*installed_plugins, plugin_id]
             try:
+                # 写入方可能在返回前已经提交；取消时按已触碰处理，恢复原清单是幂等的。
+                state.installed_list_touched = True
                 await self._installed_plugins_writer(updated_plugins)
                 installed_list_persisted = True
                 state.installed_list_persisted = True
@@ -267,9 +270,10 @@ class PluginInstallCommand:
 
         checkpoint_cleanup_error = ""
         state.stage = "checkpoint_commit"
+        # 运行态和注册已完成，后续只清理临时快照，不再把取消当作未提交安装回滚。
+        state.committed = True
         try:
             await self._package_committer(checkpoint)
-            state.committed = True
         except Exception as err:
             checkpoint_cleanup_error = str(err)
 
@@ -328,7 +332,7 @@ class PluginInstallCommand:
                 stage=state.stage,
                 message="插件安装已取消",
                 package_installed=state.package_installed,
-                installed_list_persisted=state.installed_list_persisted,
+                installed_list_persisted=state.installed_list_touched,
                 runtime_touched=state.runtime_touched,
                 registrations_touched=state.registrations_touched,
             )

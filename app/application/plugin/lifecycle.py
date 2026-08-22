@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from contextlib import asynccontextmanager, contextmanager
-from typing import Iterator
+from contextlib import asynccontextmanager
 
 
 class PluginLifecycleCoordinator:
@@ -58,21 +57,6 @@ class PluginLifecycleCoordinator:
         finally:
             self._release_plugin(plugin_id)
 
-    @contextmanager
-    def hold_sync(self, plugin_id: str) -> Iterator[None]:
-        """同步持有单个插件的生命周期资格。"""
-        normalized_id = self._normalize(plugin_id)
-        if not normalized_id:
-            raise ValueError("插件ID不能为空")
-        with self._condition:
-            while self._startup_active or normalized_id in self._active_plugins:
-                self._condition.wait()
-            self._active_plugins.add(normalized_id)
-        try:
-            yield
-        finally:
-            self._release_plugin(normalized_id)
-
     @asynccontextmanager
     async def hold_startup(self):
         """异步持有启动同步的全局资格，阻止安装请求穿过启动收口。"""
@@ -85,4 +69,3 @@ class PluginLifecycleCoordinator:
 
 
 plugin_lifecycle = PluginLifecycleCoordinator()
-

@@ -101,16 +101,18 @@ class PluginPackageManager:
     @staticmethod
     def rollback(checkpoint: PluginPackageCheckpoint) -> None:
         """删除当前包并把变更前文件快照恢复到运行目录。"""
-        if checkpoint.plugin_dir.exists():
-            shutil.rmtree(checkpoint.plugin_dir)
         snapshot_dir = checkpoint.transaction_dir / "package"
         if checkpoint.existed:
             if not snapshot_dir.is_dir():
                 raise FileNotFoundError(
                     f"插件 {checkpoint.plugin_id} 的补偿快照不存在：{snapshot_dir}"
                 )
+        if checkpoint.plugin_dir.exists():
+            shutil.rmtree(checkpoint.plugin_dir)
+        if checkpoint.existed:
             shutil.copytree(snapshot_dir, checkpoint.plugin_dir)
-        shutil.rmtree(checkpoint.transaction_dir, ignore_errors=False)
+        if checkpoint.transaction_dir.exists():
+            shutil.rmtree(checkpoint.transaction_dir, ignore_errors=False)
 
     async def async_rollback(self, checkpoint: PluginPackageCheckpoint) -> None:
         """在线程池中恢复插件包文件快照。"""

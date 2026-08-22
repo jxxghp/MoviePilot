@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
+import psutil
 import pytest
 
 from app.runtime.state import SystemHelper
@@ -203,6 +204,51 @@ async def test_async_subprocess_cancellation_reaps_process(tmp_path):
         await asyncio.sleep(0.01)
     else:
         pytest.fail(f"子进程仍在运行：{pid}")
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_cancellation_reaps_process_tree(tmp_path):
+    """取消安装命令时，子进程派生的构建进程也不得继续运行。"""
+    marker = tmp_path / "pids"
+    child_code = "import time; time.sleep(60)"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import subprocess, os, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}]); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pids = [int(value) for value in marker.read_text().split(":")]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        alive = []
+        for pid in pids:
+            try:
+                process = psutil.Process(pid)
+                if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+            except (psutil.Error, OSError):
+                continue
+            alive.append(pid)
+        if not alive:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"进程树仍在运行：{alive}")
 
 
 def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():

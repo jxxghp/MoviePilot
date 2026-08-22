@@ -372,6 +372,58 @@ async def test_cancelled_install_waits_for_rollback_before_releasing_lifecycle()
 
 
 @pytest.mark.asyncio
+async def test_cancelled_persisted_list_is_restored_conservatively() -> None:
+    """清单写入已产生副作用但尚未返回时取消，也必须恢复原清单。"""
+    persisted: list[list[str]] = []
+    writer_started = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def writer(plugin_ids: list[str]) -> None:
+        persisted.append(list(plugin_ids))
+        if len(persisted) == 1:
+            writer_started.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(
+        _command(writer=writer, rollback=rollback).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await writer_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert persisted == [["DemoPlugin"], []]
+    rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_snapshot_cleanup_does_not_rollback_committed_plugin() -> None:
+    """运行态提交后清理快照期间取消，不得删除已生效插件。"""
+    cleanup_started = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def committer(_checkpoint) -> None:
+        cleanup_started.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(
+        _command(committer=committer, rollback=rollback).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await cleanup_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_startup_lifecycle_lock_blocks_plugin_install_until_settlement() -> None:
     """启动同步持有全局资格时，插件安装不得穿过启动收口。"""
     from app.application.plugin.lifecycle import plugin_lifecycle

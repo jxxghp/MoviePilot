@@ -188,9 +188,11 @@ class SystemUtils:
             grace_seconds: float = 5,
     ) -> None:
         """终止安装子进程及其同组子进程，并确保句柄已回收。"""
+        process_tree = SystemUtils._process_tree(process.pid)
         if process.returncode is None:
             try:
                 if os.name == "nt":
+                    SystemUtils._signal_process_tree(process_tree)
                     process.terminate()
                 else:
                     os.killpg(process.pid, signal.SIGTERM)
@@ -205,9 +207,11 @@ class SystemUtils:
         except (asyncio.TimeoutError, asyncio.CancelledError):
             try:
                 if os.name == "nt":
+                    SystemUtils._signal_process_tree(process_tree, force=True)
                     process.kill()
                 else:
                     os.killpg(process.pid, signal.SIGKILL)
+                    SystemUtils._signal_process_tree(process_tree, force=True)
             except (ProcessLookupError, OSError):
                 pass
             try:
@@ -223,6 +227,27 @@ class SystemUtils:
                 await process.wait()
             except (ProcessLookupError, OSError):
                 pass
+
+    @staticmethod
+    def _process_tree(pid: int) -> list[psutil.Process]:
+        """收集安装进程及其后代，避免构建进程继续写运行环境。"""
+        try:
+            parent = psutil.Process(pid)
+            return [parent, *parent.children(recursive=True)]
+        except (psutil.Error, OSError):
+            return []
+
+    @staticmethod
+    def _signal_process_tree(
+            processes: list[psutil.Process],
+            force: bool = False,
+    ) -> None:
+        """向进程树发送终止或强制结束信号。"""
+        for child in reversed(processes):
+            try:
+                (child.kill if force else child.terminate)()
+            except (psutil.Error, OSError):
+                continue
 
     @staticmethod
     async def execute_with_subprocess_async(
