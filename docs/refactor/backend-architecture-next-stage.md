@@ -992,6 +992,9 @@ MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安�
 `SubscribeAdded` payload、outbox stage/commit/post-commit 顺序仍由既有 `application/subscription/write.py` 负责。
 两个公开入口均降至 150 行预算内，复杂度基线移除对应债务项；订阅识别、音乐订阅、写入事务和搜索来源专项
 共 280 项测试通过，架构、复杂度与异步阻塞门禁通过。
+随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式
+`media_source/media_id` 校验、识别失败文案和所有原有调用参数；整理专项 80 项测试通过，复杂度基线移除该入口，
+后续继续拆分其批次规划与执行阶段。
 
 #### ARCH-272：异步阻塞检测
 

@@ -1606,7 +1606,124 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
         return shared_roots
 
+    @staticmethod
+    def _normalize_transfer_identity(
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+        mtype: Optional[MediaType],
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        meta: Optional[MetaBase],
+    ) -> Tuple[
+        Optional[Union[MediaInfo, MusicInfo]],
+        Optional[MediaSource],
+        Optional[str],
+        Optional[str],
+    ]:
+        """
+        规范整理请求的媒体身份，并在显式身份缺失时短路。
+
+        :return: ``(媒体信息、媒体来源、媒体 ID、错误信息)``；错误信息为空表示可继续执行
+        """
+        explicit_identity = media_source is not None or media_id is not None
+        normalized_source, normalized_media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (
+                not normalized_source or not normalized_media_id
+        ):
+            return (
+                mediainfo,
+                normalized_source,
+                normalized_media_id,
+                "整理任务需要同时提供有效的 media_source 和 media_id",
+            )
+        if not explicit_identity and mediainfo:
+            normalized_source, normalized_media_id = resolve_media_identity(
+                media=mediainfo
+            )
+        if explicit_identity and not mediainfo:
+            mediainfo = MediaChain().recognize_media(
+                mtype=mtype,
+                media_source=normalized_source,
+                media_id=normalized_media_id,
+                music_type=getattr(meta, "music_type", None),
+            )
+            if not mediainfo:
+                return (
+                    mediainfo,
+                    normalized_source,
+                    normalized_media_id,
+                    "未识别到媒体信息，"
+                    f"media_source：{normalized_source}，media_id：{normalized_media_id}",
+                )
+        return mediainfo, normalized_source, normalized_media_id, None
+
     def do_transfer(
+            self,
+            fileitem: FileItem,
+            meta: MetaBase = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+            mtype: Optional[MediaType] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
+            target_directory: TransferDirectoryConf = None,
+            target_storage: Optional[str] = None,
+            target_path: Path = None,
+            transfer_type: Optional[str] = None,
+            scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            season: Optional[int] = None,
+            epformat: EpisodeFormat = None,
+            min_filesize: Optional[int] = 0,
+            downloader: Optional[str] = None,
+            download_hash: Optional[str] = None,
+            force: Optional[bool] = False,
+            background: Optional[bool] = True,
+            manual: Optional[bool] = False,
+            preview: Optional[bool] = False,
+            sync_extra_files: Optional[bool] = False,
+            cleanup_dest_fileitem: Optional[FileItem] = None,
+            continue_callback: Callable = None,
+            reorganize: Optional[bool] = False,
+    ) -> Tuple[bool, Union[str, dict]]:
+        """
+        兼容公开整理入口，委托给内部批次执行阶段。
+
+        公开签名是 API、工作流、监控器和插件共同使用的稳定契约；具体整理阶段保留在
+        内部方法中，后续可以独立拆分规划、执行和结算，而不迫使调用方迁移参数。
+        """
+        return self._execute_transfer(
+            fileitem=fileitem,
+            meta=meta,
+            mediainfo=mediainfo,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            target_directory=target_directory,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type,
+            scrape=scrape,
+            library_type_folder=library_type_folder,
+            library_category_folder=library_category_folder,
+            season=season,
+            epformat=epformat,
+            min_filesize=min_filesize,
+            downloader=downloader,
+            download_hash=download_hash,
+            force=force,
+            background=background,
+            manual=manual,
+            preview=preview,
+            sync_extra_files=sync_extra_files,
+            cleanup_dest_fileitem=cleanup_dest_fileitem,
+            continue_callback=continue_callback,
+            reorganize=reorganize,
+        )
+
+    def _execute_transfer(
             self,
             fileitem: FileItem,
             meta: MetaBase = None,
@@ -1665,33 +1782,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
-        explicit_identity = media_source is not None or media_id is not None
-        normalized_source, normalized_media_id = resolve_media_identity(
-            media_source=media_source,
-            media_id=media_id,
-        )
-        if explicit_identity and (
-                not normalized_source or not normalized_media_id
-        ):
-            return False, "整理任务需要同时提供有效的 media_source 和 media_id"
-        if not explicit_identity and mediainfo:
-            normalized_source, normalized_media_id = resolve_media_identity(
-                media=mediainfo
-            )
-        media_source = normalized_source
-        media_id = normalized_media_id
-        if explicit_identity and not mediainfo:
-            mediainfo = MediaChain().recognize_media(
+        mediainfo, media_source, media_id, identity_error = (
+            self._normalize_transfer_identity(
+                mediainfo=mediainfo,
                 mtype=mtype,
                 media_source=media_source,
                 media_id=media_id,
-                music_type=getattr(meta, "music_type", None),
+                meta=meta,
             )
-            if not mediainfo:
-                return False, (
-                    "未识别到媒体信息，"
-                    f"media_source：{media_source}，media_id：{media_id}"
-                )
+        )
+        if identity_error:
+            return False, identity_error
 
         # 是否全部成功
         all_success = True
