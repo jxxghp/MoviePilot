@@ -11,7 +11,9 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.context import MediaCredit, MediaImageSet
 from app.schemas.media import normalize_media_source
