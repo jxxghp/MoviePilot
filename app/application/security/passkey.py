@@ -32,7 +32,7 @@ from webauthn.helpers.cose import COSEAlgorithmIdentifier
 from webauthn.helpers.exceptions import InvalidRegistrationResponse
 
 from app.runtime.cache import TTLCache
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.cache.redis import RedisHelper
 from app.runtime.log import logger
 
@@ -127,8 +127,9 @@ class PassKeyHelper:
         """
         获取 Relying Party ID
         """
-        if settings.APP_DOMAIN:
-            app_domain = settings.APP_DOMAIN.strip()
+        config = get_api_runtime_config_snapshot()
+        if config.app_domain:
+            app_domain = config.app_domain.strip()
             # 确保存在协议前缀，以便 urlparse 正确解析主机和端口
             if not app_domain.startswith(('http://', 'https://')):
                 app_domain = f'https://{app_domain}'
@@ -137,7 +138,7 @@ class PassKeyHelper:
             if host:
                 return host
             # 从 APP_DOMAIN 中提取域名
-            host = settings.APP_DOMAIN.replace('https://', '').replace('http://', '')
+            host = config.app_domain.replace('https://', '').replace('http://', '')
             # 移除端口号
             if ':' in host:
                 host = host.split(':')[0]
@@ -157,10 +158,11 @@ class PassKeyHelper:
         """
         获取源地址
         """
-        if settings.APP_DOMAIN:
-            return settings.APP_DOMAIN.rstrip('/')
+        config = get_api_runtime_config_snapshot()
+        if config.app_domain:
+            return config.app_domain.rstrip('/')
         # 如果未配置APP_DOMAIN，使用默认的localhost地址
-        return f'http://localhost:{settings.NGINX_PORT}'
+        return f'http://localhost:{config.nginx_port}'
 
     @staticmethod
     def standardize_credential_id(credential_id: str) -> str:
@@ -229,7 +231,7 @@ class PassKeyHelper:
         """
         if user_verification:
             return UserVerificationRequirement(user_verification)
-        return UserVerificationRequirement.REQUIRED if settings.PASSKEY_REQUIRE_UV \
+        return UserVerificationRequirement.REQUIRED if get_api_runtime_config_snapshot().passkey_require_uv \
             else UserVerificationRequirement.PREFERRED
 
     @staticmethod
@@ -337,7 +339,7 @@ class PassKeyHelper:
                 expected_challenge=challenge_bytes,
                 expected_rp_id=rp_id,
                 expected_origin=origin,
-                require_user_verification=settings.PASSKEY_REQUIRE_UV
+                require_user_verification=get_api_runtime_config_snapshot().passkey_require_uv
             )
 
             # 提取信息
@@ -441,7 +443,7 @@ class PassKeyHelper:
                 expected_origin=origin,
                 credential_public_key=public_key_bytes,
                 credential_current_sign_count=credential_current_sign_count,
-                require_user_verification=settings.PASSKEY_REQUIRE_UV
+                require_user_verification=get_api_runtime_config_snapshot().passkey_require_uv
             )
 
             return True, verification.new_sign_count

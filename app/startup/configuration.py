@@ -46,6 +46,9 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
         cookie_path=settings.COOKIE_PATH,
         root_path=settings.ROOT_PATH,
         version_flag=settings.VERSION_FLAG,
+        app_domain=settings.APP_DOMAIN,
+        nginx_port=settings.NGINX_PORT,
+        passkey_require_uv=settings.PASSKEY_REQUIRE_UV,
     )
 
 

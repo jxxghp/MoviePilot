@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6398,
-  "edge_sha256": "ca0fced68968392288a03d38c2da937cf75e6a9fd2dc3be6dadcb72efdbc462b",
+  "edge_count": 6399,
+  "edge_sha256": "f3e4e76578ddfc1ac0717f9d0c2fc9a95c4c659e00c3cc25894304c69ae892fa",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2695,9 +2695,10 @@
     "app.application.security.passkey -> app.adapters",
     "app.application.security.passkey -> app.adapters.cache",
     "app.application.security.passkey -> app.adapters.cache.redis",
+    "app.application.security.passkey -> app.application",
+    "app.application.security.passkey -> app.application.configuration",
     "app.application.security.passkey -> app.runtime",
     "app.application.security.passkey -> app.runtime.cache",
-    "app.application.security.passkey -> app.runtime.config",
     "app.application.security.passkey -> app.runtime.log",
     "app.application.security.token -> app.runtime",
     "app.application.security.token -> app.runtime.config",

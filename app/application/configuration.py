@@ -98,6 +98,9 @@ class ApiRuntimeConfig:
     cookie_path: Path = Path(".")
     root_path: Path = Path(".")
     version_flag: str = "v3"
+    app_domain: str | None = None
+    nginx_port: int = 3000
+    passkey_require_uv: bool = True
 
     def rename_format(self, media_type: MediaType) -> str:
         """从请求快照返回指定媒体类型的稳定重命名格式。"""
