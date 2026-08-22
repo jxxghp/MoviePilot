@@ -53,6 +53,8 @@ class SystemConfModel(BaseModel):
     bangumi: int = 0
     # AniList请求缓存数量
     anilist: int = 0
+    # IMDb请求缓存数量
+    imdb: int = 0
     # Fanart请求缓存数量
     fanart: int = 0
     # MusicBrainz请求缓存数量
@@ -260,11 +262,11 @@ class ConfigModel(BaseModel):
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
 
     # ==================== 媒体元数据配置 ====================
-    # 媒体搜索来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
+    # 媒体搜索来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb"
-    # 媒体识别来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
+    # 媒体识别来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic
     RECOGNIZE_SOURCE: str = "themoviedb"
-    # 刮削来源 themoviedb/douban/bangumi/anilist/musicbrainz/theaudiodb/doubanmusic
+    # 刮削来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic
     SCRAP_SOURCE: str = "themoviedb"
     # 电视剧动漫的分类genre_ids
     ANIME_GENREIDS: List[int] = Field(default=[16])
@@ -1118,6 +1120,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 tmdb=1024,
                 douban=512,
                 bangumi=512,
+                imdb=512,
                 fanart=512,
                 musicbrainz=512,
                 theaudiodb=512,
@@ -1132,6 +1135,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             tmdb=256,
             douban=256,
             bangumi=256,
+            imdb=256,
             fanart=128,
             musicbrainz=256,
             theaudiodb=256,

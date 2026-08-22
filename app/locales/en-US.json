@@ -25,6 +25,9 @@
       "FilterModule": {
         "name": "Filter"
       },
+      "ImdbModule": {
+        "name": "IMDb"
+      },
       "IndexerModule": {
         "name": "Site Indexer"
       },

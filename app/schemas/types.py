@@ -605,6 +605,8 @@ class MediaRecognizeType(Enum):
     Bangumi = "Bangumi"
     # AniList
     AniList = "AniList"
+    # IMDb
+    IMDb = "IMDb"
     # MusicBrainz
     MusicBrainz = "MusicBrainz"
     # TheAudioDB
