@@ -156,10 +156,6 @@ registry that holds them is `registry/storage.py`.
 `app/runtime/config.py` does not move. Three workflow paths under `.github/`
 and three assertions in `tests/test_plugin_market_default.py` name it literally.
 
-`app/startup/` remains the established composition root and is not nested under
-runtime. It injects providers and callbacks, orders initialization/shutdown and
-decides restart policy. Lower-level runtime modules must not import startup.
-
 `app.schemas` and `app.db` are compatibility facades, not implementation
 dependency hubs. Host code imports concrete schema submodules; the schema root
 resolves its generated export manifest lazily for plugins and legacy callers.
@@ -167,6 +163,70 @@ DB internals import `base`, `decorators`, `engine`, `session`, concrete models
 and Oper modules directly. `app.db.models.load_all_models()` is the explicit
 composition entry used before metadata creation or migration; importing one
 model must not import every table.
+
+### Composition-root boundaries
+
+`app/startup/` remains the established composition root and is not nested under
+runtime. It injects providers and callbacks, orders initialization/shutdown and
+decides restart policy. Lower-level runtime modules must not import startup.
+
+Criterion D cannot place a file inside `app/startup/`. Its four questions ask
+what a module means to extension authors, and the composition root holds no
+extension: D1–D3 miss every member and all of them fall through to D4,
+"process-level mechanism, stays flat at the root". One answer for every file is
+not a decision procedure, and it is exactly where the *de facto* rule — "a new
+file defaults to the top level" — came from. That default held for every file
+added between 2024-09 and 2026-08-16, and it left three unrelated shapes
+indistinguishable by path.
+
+**Criterion S — a directory under `app/startup/` exists because *what the caller
+does with its members* differs, not because they share a topic word.**
+
+Ask in order. The first hit decides placement; parallel answers are not allowed.
+
+| # | Question | Hit → |
+|---|---|---|
+| S1 | Does it decide *when* other members run — order, dependencies, timeout budget, failure policy, normal/safe-mode scope? | `lifecycle/` |
+| S2 | Does the caller *perform* it, once, at a moment the composition root names, and never read it again? | flat `*_initializer.py` at the startup root |
+| S3 | Does the caller *read* it as a table — the caller picks the moment, may read it again, and an engine that must not know the entries executes them later? | `bindings/` |
+| S4 | None of the above | There is no fourth class. Extend this criterion before landing the file; it must not default to the top level |
+
+Tie-break: S1 > S2 > S3 — the end that decides moments wins.
+`command_initializer.py` both pushes a table into the command hub at import time
+(S3-shaped) and exposes `init_command`/`stop_command` (S2); it hits S2 and stays
+flat, while the table it pushes hits S3 and lives in `bindings/`.
+
+Decidability check when S2 and S3 both look like a hit: **is it called a second
+time in the same process?** An action runs once per lifecycle moment — a restart
+is a new process or a new `lifespan`. A binding is re-read on the consumer's
+schedule: `builtin_commands()` on every `restart_command()`, `build_host_jobs()`
+on every `Scheduler().init()`, `build_database_governance()` on every backup.
+
+| Path | Admitted by | Contents |
+|---|---|---|
+| `app/startup/lifecycle/` | S1 | `components.py` declares the normal/safe-mode manifest, ordering, dependencies, timeout budgets and failure policy; `__init__.py` is the `lifespan` that executes it. Nothing here binds a business domain |
+| `app/startup/*_initializer.py` (flat) | S2 | One initialization-action family per module. Every public symbol is a verb bound to a moment, and deleting its lifecycle entry makes the module dead. The top level admits nothing else |
+| `app/startup/bindings/` | S3 | Command word, job id and database dialect bound to concrete business chains and infrastructure. Knows every business domain; the engines that consume it know none. One binding family per module, or a subpackage when it needs more than one |
+
+The fifteen `*_initializer.py` modules deliberately stay flat. They are one class
+with one shape, and a subdirectory for them would only restate `_initializer`.
+Eleven are invoked from `lifecycle/`, three (`agent`, `hostport`,
+`managed_resources`) from `modules_initializer.py`, and `database_initializer.py`
+from `app/main.py` before the ASGI application exists. That is a difference in
+*which* moment, not in *what the caller does*, so criterion S does not split on
+it — and `lifecycle/components.py` is already the one place the moments are
+declared.
+
+`bindings/database.py` and `database_initializer.py` are two modules on purpose.
+The first picks the backup backend by dialect and assembles the governance
+facade; the second owns table creation and Alembic migration. Keeping them apart
+keeps Alembic and `load_all_models()` off `app/cli.py`, which builds the
+governance facade to take one backup without ever starting the application.
+
+`tests/test_architecture_dependencies.py` gates all three rows: the top level
+admits only `*_initializer.py`, no subpackage may contain one, and the set of
+subpackages is closed — a third one turns the gate red until criterion S is
+extended to admit it.
 
 ### Adapter boundaries
 
@@ -515,6 +575,8 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/runtime/scheduler.py` | Scheduled-job declaration types and the generic execution engine: job-state registry, trigger expansion, sync/async/subprocess execution, progress convergence and listing. Knows no business domain; failure notices leave through a host-overridable hook |
 | `app/scheduler/` | Scheduling composition root: `composition.py` assembles the engine with the host manifest, `agent_tasks.py`/`workflows.py`/`plugins.py` own one registration path each. The three paths differ in trigger timing, lifecycle and failure semantics and are deliberately not merged |
 | `app/startup/bindings/scheduling/` | Host business job manifest expressed as data (`manifest.py`) plus the system jobs the host implements itself (`systemjobs.py`). This is where knowledge of every business domain lives |
+| `app/startup/bindings/builtin_commands.py` | Built-in command words bound to business chains and scheduled-job ids; business chains materialize on first execution, not at registration |
+| `app/startup/bindings/database.py` | Backup backend selected by dialect and the assembled database-governance facade; carries no Alembic or model-loading dependency |
 | `app/application/orchestration/scheduler.py` | `SchedulerChain`: table cleanup, `scheduler_job`/`clear_cache` broadcast and system-message forwarding for scheduled jobs |
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |

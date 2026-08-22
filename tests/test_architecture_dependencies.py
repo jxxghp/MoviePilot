@@ -381,6 +381,65 @@ def test_no_shell_directories_remain():
     )
 
 
+def test_startup_root_admits_only_initializers():
+    """组合根顶层只放初始化动作。
+
+    判据 S（docs/rules/05-architecture.md）把 `app/startup/` 的成员分成三类：
+    `lifecycle/` 决定时刻，顶层 `*_initializer.py` 在指定时刻执行一次，
+    `bindings/` 由消费方按自己的时刻反复读取。顶层若没有形状约束，新文件的默认
+    落点就是顶层——2024-09 到 2026-08-16 之间新增的每一个文件都落在这里，
+    三类因此混在一层，「谁在启动时被调用」只能靠逐个打开文件重建。
+    """
+    strays = sorted(
+        path.name
+        for path in (APP_ROOT / "startup").glob("*.py")
+        if path.name != "__init__.py" and not path.name.endswith("_initializer.py")
+    )
+    assert strays == [], (
+        f"app/startup/ 顶层出现非初始化动作模块：{strays}\n"
+        "按判据 S 重新定位：决定其他成员运行时刻的进 lifecycle/；"
+        "由消费方按自己的时刻反复读取的绑定表进 bindings/；"
+        "三问皆不命中时先扩充判据 S，不得默认留在顶层。"
+    )
+
+
+def test_startup_subpackages_admit_no_initializers():
+    """组合根子目录不得混入初始化动作。
+
+    用 rglob 扫描而非逐个列出子目录：新增子包会自动进入覆盖范围，
+    不会出现「加了目录、门禁还绿着但已不覆盖它」的静默失效。
+    """
+    startup_root = APP_ROOT / "startup"
+    strays = sorted(
+        str(path.relative_to(PROJECT_ROOT))
+        for path in startup_root.rglob("*_initializer.py")
+        if path.parent != startup_root
+    )
+    assert strays == [], (
+        f"组合根子目录出现初始化动作模块：{strays}\n"
+        "按判据 S，在组合根指定时刻执行一次的动作平铺在 app/startup/ 顶层。"
+    )
+
+
+def test_startup_subpackages_are_declared():
+    """判据 S 承认的组合根子目录是封闭集合。
+
+    第三个子目录意味着出现了判据 S 四问之外的第四类成员。门禁在此转红，
+    迫使新增者先在 docs/rules/05-architecture.md 里把判据补到能唯一定位它，
+    而不是先建目录、再由后来者反推它凭什么存在。
+    """
+    actual = sorted(
+        path.name
+        for path in (APP_ROOT / "startup").iterdir()
+        if path.is_dir() and path.name != "__pycache__"
+    )
+    assert actual == ["bindings", "lifecycle"], (
+        f"app/startup/ 的子目录集合变为 {actual}\n"
+        "判据 S 只承认 lifecycle/（S1 决定时刻）与 bindings/（S3 供消费方读取的绑定表）。"
+        "新增子目录前先扩充判据 S 并同步更新本断言。"
+    )
+
+
 def test_retired_canonical_filenames_do_not_return():
     """能力包应使用包内语境明确的短文件名，避免再次出现冗余角色后缀。"""
     leftovers = [
