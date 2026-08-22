@@ -644,6 +644,8 @@ ModuleMethodSpec(
 - 契约清单现覆盖静态扫描到的 211 个宿主字符串调用，并保留一个暂未被宿主调用的 `send_message` 公开能力，
   共 212 个显式 V2 spec。原先仅按 prefix 分类或落入默认 legacy 的宿主方法均获得稳定 family、输入合同、
   结果合同、执行、超时和错误语义；未知第三方自定义方法仍走开放 legacy fallback，不拒绝加载或执行。
+- 未知动态方法在真实 provider 命中时记录 `module.contract.legacy_hit`，区分插件/宿主调用方和 ABI 来源；
+  该指标只在 callable 实际存在并准备执行时递增，不改变未知第三方方法的开放 fallback、聚合或异常语义。
 
 #### ARCH-241：Event Contract Registry
 
