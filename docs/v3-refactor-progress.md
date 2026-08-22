@@ -24,9 +24,10 @@
 
 反向边 `modules → application` **已清零**（35 条 → 0）。扩展不再 import 应用服务实现：
 
-- `runtime/hostport.py` 提供端口槽位；`directories` / `storages` / `naming` /
-  `siteresource` / `filterrules` / `ruleexpression` 六个端口各自只声明模块
-  实际调用到的方法，由组合根 `startup/hostport_initializer.py` 惰性注入实现。
+- `runtime/hostports/` 提供端口槽位（泛型在 `hostports/port.py`）；`directories`、`storages`、
+  `naming`、`siteresource`、`filterrules`、`mediatransfer`、`torrentanalysis`、`diagnostics`、
+  `workflows` 九个端口各自只声明模块实际调用到的方法，由组合根
+  `startup/hostport_initializer.py` 惰性注入实现。
 - 媒体根路径推导下沉 `domain/mediapath.py`：返回问题描述而不打日志，
   日志级别交回各层调用侧决定（domain 不依赖 runtime）。
 - URL 与路径安全原语迁入 `adapters/network/urlsafety.py`，
@@ -35,7 +36,7 @@
   未注入时回落纯 Python 解析，rust 实现由组合根注入（与识别加速同一装配点）。
   下沉后模块可直接依赖领域层，为绕开该阻碍而建的端口脚手架随之删除。
 
-### 1.2 分发内核：v2 聚合 → v3 能力索引三级分发
+### 1.2 分发内核：v2 聚合 → v3 能力索引四级分发
 
 v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义协议
 （插件先行 → 首个非空 → 签名匹配则管道传递 → 列表则合并 → 否则中止）
@@ -45,10 +46,11 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 
 - `ModuleManager` 建立方法名能力索引 `providers_for`，按代际失效，
   能力从**运行期实例反射**推导（不信任枚举标签）。
-- `ModuleInvocationDispatcher` 提供三级语义（含异步）：
+- `ModuleInvocationDispatcher` 提供四级语义（含异步）：
   - **广播** 通知全体、不收答案，遍历是其固有代价，刻意不索引化；
   - **多播** 走索引收集族类内全部非空答案；
-  - **单播** 与多播同一候选集，叠加短路取首个非空，无人认领返回 `None`。
+  - **单播** 与多播同一候选集，叠加短路取首个非空，无人认领返回 `None`；
+  - **管道** 按提供者顺序接力，每一环在同一个产出上继续富化。
 - 全树 **250 处聚合调用完成迁移，仅存 2 处**（`ChainBase` 与两个 Mixin 的 64 处、
   具体链的 186 处）。分类以逐端口取证为准：单播占绝大多数（族类内单一答案）、
   多播用于原本依赖列表合并的场景（仪表板统计、媒体库壁纸、跨提供者艺人专辑）、
@@ -122,7 +124,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 解析到同一对象，插件反射与 Pickle 往返已实测。
 
 存储模块与下载器、媒体服务器同构，由能力清单发现与启停；
-`runtime/extensions/storage_registry.py` 只保留「按标识直取后端」这一项职责，
+`runtime/extensions/registry/storage.py` 只保留「按标识直取后端」这一项职责，
 登记由各存储模块的生命周期驱动，供整理编排取用成对的源、目标操作对象。
 
 `StorageSchema` 保留为已知值目录（存量配置、前端展示、本地存储引用），
@@ -151,7 +153,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 取代结构上不完备的禁止前缀黑名单。负债清单 `DEPENDENCY_DEBT` **已清空**，
 矩阵成为无例外的硬约束：
 
-- Agent 工具经 `runtime/diagnostics.py`、`runtime/workflows.py` 端口取用
+- Agent 工具经 `runtime/hostports/diagnostics.py`、`runtime/hostports/workflows.py` 端口取用
   自检诊断与工作流执行，扩展之间不再互相 import。
 - 认证依赖下沉 `application/security/dependencies.py`：函数名、签名、
   `Depends` 链、状态码与文案逐字保留；`api/deps.py` 再导出使端点侧零改动，
@@ -160,7 +162,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 ### 1.8 服务层合并
 
 `app/application/` 成为唯一的服务层包，跨入口复用的用例编排收敛为其
-`orchestration/` 子包（44 个文件），两个顶级包并列且边界含糊的状态结束。
+`orchestration/` 子包（48 个文件），两个顶级包并列且边界含糊的状态结束。
 
 - 896 处导入路径由脚本统一重写，覆盖 `app/` 与 `tests/` 共 207 个文件。
 - `app.chain.*` 登记为兼容层旧导入根（45 条别名 + 虚拟包），
@@ -171,7 +173,7 @@ v2 内核的问题是调用方无法表达意图：`run_module` 用一套歧义�
 
 ### 1.9 单一 Extension 契约
 
-`runtime/extensions/contract.py` 声明扩展的共同面：发行方式（预装 / 市场）与
+`runtime/extensions/contract/` 声明扩展的共同面：发行方式（预装 / 市场）与
 失败归属、身份、生命周期、能力与钩子探测，以及分发用的提供者视图与来源协议。
 
 - **两个基类源码零改动**，经适配器投影成契约视图：模块侧映射

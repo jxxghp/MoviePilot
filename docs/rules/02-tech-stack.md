@@ -38,9 +38,9 @@
 
 | Item | Detail |
 |---|---|
-| File-based cache | `FileCache` / `AsyncFileCache` in `app/runtime/cache.py` |
+| File-based cache | `FileCache()` / `AsyncFileCache()` backend factories in `app/runtime/cache.py` — return the filesystem backend, or the Redis backend when Redis is configured |
 | Redis | Optional; `app/modules/redis/` module; used for distributed caching when configured |
-| In-process cache | Decorator helpers `fresh` / `async_fresh` on `FileCache` |
+| In-process cache | `MemoryBackend` / `AsyncMemoryBackend`; the `cached` decorator memoizes a call; `fresh()` / `async_fresh()` are context managers that force a cache bypass |
 
 ---
 

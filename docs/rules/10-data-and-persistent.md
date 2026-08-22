@@ -60,7 +60,10 @@ directly in chain, module, or endpoint code.
 | `DownloadHistoryOper` | `oper/downloadhistory.py` |
 | `MediaServerOper` | `oper/mediaserver.py` |
 | `MessageOper` | `oper/message.py` |
+| `PassKeyOper` | `oper/passkey.py` |
+| `PluginConfigOper` | `oper/pluginconfig.py` |
 | `PluginDataOper` | `oper/plugindata.py` |
+| `ServiceConfigOper` | `oper/serviceconfig.py` |
 | `SiteOper` | `oper/site.py` |
 | `SubscribeHistoryOper` | `oper/subscribehistory.py` |
 | `SubscribeOper` | `oper/subscribe.py` |
@@ -68,6 +71,7 @@ directly in chain, module, or endpoint code.
 | `TransferHistoryOper` | `oper/transferhistory.py` |
 | `TransferPendingOper` | `oper/transferpending.py` |
 | `UserConfigOper` | `oper/userconfig.py` |
+| `UserIdentityOper` | `oper/user_identity.py` |
 | `UserOper` | `oper/user.py` |
 | `WorkflowOper` | `oper/workflow.py` |
 
@@ -75,7 +79,7 @@ Import by module (`from app.db.oper.subscribe import SubscribeOper`) — that is
 preferred form in this repository. `app/db/oper/__init__.py` also resolves class
 names lazily for callers that only want a name, but it deliberately does not
 eagerly re-export: several tests isolate a single Oper by stubbing it in
-`sys.modules`, and an eager re-export would pull in the other fifteen and bypass
+`sys.modules`, and an eager re-export would pull in the other seventeen and bypass
 the stub.
 
 Oper classes accept and return persistence values. Turning a `MediaInfo` or
@@ -84,9 +88,13 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records the
-  existing Model transaction decorators. The current 119 decorators are query-only
-  migration debt: they may decrease but must never increase or move to a new
-  Model method. Both `db_update` and `async_db_update` must remain at zero.
+  existing Model transaction decorators. The current 155 decorators (83 `db_query`,
+  56 `async_db_query`, 11 `db_update`, 5 `async_db_update`) are migration debt: they
+  may decrease but must never increase or move to a new Model method. The 16 write
+  decorators are frozen by name in `MODEL_WRITE_DECORATOR_DEBT`
+  (`tests/test_architecture_contract_baseline.py`) and confined to `PluginConfig`,
+  `ServiceConfig` and `UserIdentity`; no other Model may gain one, and these three
+  may not gain another.
 - New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
   `async_db_update`, create a Session, or call `commit()` / `rollback()`.
 - Oper receives a caller-owned Session and may query, add, update, delete, or
@@ -193,14 +201,16 @@ port = settings.QB_PORT
 Used to cache expensive external API responses to disk. Cache entries have a configurable TTL.
 
 ```python
-from app.runtime.cache import FileCache, fresh
+from app.runtime.cache import cached
 
-cache = FileCache(cache_name="tmdb", ttl=3600)
-
-@fresh(cache=cache, key_func=lambda tmdb_id: f"movie_{tmdb_id}")
+@cached(region="tmdb", ttl=3600)
 def get_movie_detail(tmdb_id: int) -> dict:
     return self._tmdb_client.get_movie(tmdb_id)
 ```
+
+`FileCache()` / `AsyncFileCache()` are backend factories, not classes. `fresh()` /
+`async_fresh()` are context managers that force a cache bypass for the enclosed block,
+not decorators.
 
 ### Redis (Optional)
 

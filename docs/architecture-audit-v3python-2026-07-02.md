@@ -1,5 +1,8 @@
 # v3-python 复审报告（2026-07-02）
 
+> **本文描述的是 `v3-python` 分支的目录结构，该结构已不存在。**文中的 `core/`、`helper/`、
+> `chain/` 等路径与当前树不对应，只作历史记录读，不要按它定位代码。
+>
 > **范围**：v3-python 主线（HEAD 树 == `origin/v3-python`，PR #97/#98/#99 已合入；本地分支 `fix/p1-post-message-leak` 工作树与主线一致）。
 > **方法**：多 agent workflow 复审 —— ①核对上一轮（`62eecb38`，`docs/architecture-audit-v3python-2026-06-29.md`）35 confirmed + 17 needs-scoping 在当前代码的状态；②14 子系统并行发现新缺陷 → 每条独立 skeptic 默认证伪裁决。
 > **规模**：两遍独立发现（首轮 47 agent + 因限流补跑 48 agent，共约 760 万 token）。finder 非确定性使两轮各有侧重，**取并集**覆盖更全；6 条最高危发现经主审逐行独立复读坐实。

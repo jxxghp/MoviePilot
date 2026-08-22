@@ -1,5 +1,9 @@
 # MoviePilot v3-python 架构图集 · 多维审计汇总 · Rust 重构原型就绪度评估
 
+> **本文描述的是 `v3-python` 分支的目录结构，该结构已不存在。**文中的 `app/core/`、
+> `app/helper/`、`app/utils/`、`app/chain/`、`modules/filemanager/` 等路径与当前树不对应，
+> 规模与文件数也停在当时快照，只作历史记录读，不要按它定位代码。
+>
 > **范围**:v3-python @ `62eecb38`(HEAD 未变,~227K 行 / 750 文件,17 子系统)
 > **日期**:2026-07-01
 > **定位**:本文是 [`architecture-audit-v3python-2026-06-29.md`](./architecture-audit-v3python-2026-06-29.md)(对抗性缺陷审计,71 agent/489 万 token)的**补充卷**,新增两块此前未覆盖的内容:**① 架构图集(可视化)** 与 **② Rust 重构原型就绪度评估**。缺陷清单不重复,详见母报告 §五/§七/§八。

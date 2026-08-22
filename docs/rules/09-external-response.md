@@ -119,9 +119,9 @@ Query:  ?apikey=<api_key>
 | -32600 | Invalid Request | Invalid JSON-RPC request structure |
 | -32601 | Method not found | Unknown method |
 | -32602 | Invalid params | Parameter validation failure |
-| -32002 | Session not found | Session does not exist or has expired |
-| -32003 | Not initialized | Session has not completed initialization |
 | -32603 | Internal error | Server-side error |
+
+The endpoint is stateless; there are no session-lifecycle error codes.
 
 ### Tool Response Format
 
@@ -131,19 +131,19 @@ MCP tools return structured content. Errors must use the JSON-RPC error object f
 
 ## Notification and Messaging
 
-Internal notifications use the `Notification` schema and the event system:
+Internal notifications use the `Message` schema and the event system:
 
 ```python
-from app.schemas import Notification
-from app.schemas.types import NotificationType, MessageChannel
+from app.schemas import Message
+from app.schemas.types import MessageType, NotificationChannel
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
 eventmanager.send_event(
     EventType.NoticeMessage,
     {
-        "channel": MessageChannel.Telegram,
-        "type": NotificationType.Download,
+        "channel": NotificationChannel.Telegram,
+        "type": MessageType.Download,
         "title": "下载成功",
         "text": f"{media_name} 已添加到下载队列",
         "image": poster_url,

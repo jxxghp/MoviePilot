@@ -50,7 +50,7 @@ cycle passes through an established package that was not moved.
 | `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; live configuration, persistence, transport and acceleration are injected |
 | `app/application/` | Focused stateful application services, configured capability selection and service-bound rules |
 | `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, localization, scheduling, restart state, concurrency, GC and rate limits |
-| `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system and external boundaries |
+| `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system, media, web, observability and external boundaries |
 | `app/sdk/` | Stable, deliberately curated imports for plugin authors |
 
 The packages above are the only top-level roots created by the legacy-module
@@ -62,7 +62,7 @@ to make the directory tree look symmetrical.
 | Path | Ownership |
 |---|---|
 | `app/application/*.py` | Established single-module application services and compatibility facades |
-| `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
+| `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity, completion and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and later submission use cases |
 | `app/application/music/` | Multi-source music catalog orchestration |
@@ -70,7 +70,7 @@ to make the directory tree look symmetrical.
 | `app/application/plugin/` | Plugin market catalog, installation command, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `chat.py` agent chat-history query/authorization/deletion; `gateway.py` the message gateway command dispatch uses; `session.py` per-user session state at the message entry; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules, runtime contracts, Oper classes and
@@ -119,12 +119,14 @@ Directories follow from the criterion, not from subject matter:
 | `app/runtime/extensions/registry/` | D3 held state | Registries that keep admitted extensions by coordinate and reclaim their entries. They only store and hand back registration results |
 | `app/runtime/extensions/projection/` | D3 query | Views and dispatch paths aggregated from a registration snapshot; a projection never changes what is registered |
 | `app/runtime/extensions/lifecycle/` | D3 discovery and loading | Manifest discovery, versioned plugin source layout, plugin persistence directory layout, the Capability Runtime adapters that materialize/start/stop host modules and managed resources, and the persistence and external-system ports the loader resolves |
+| `app/runtime/capabilities/` | D3 | The Capability Runtime itself: manifest model, registry, runtime and its errors. Lazily re-exported; kinds and selector schemas are supplied by the caller, so the package knows nothing about host modules |
+| `app/runtime/deprecation/` | D4 | The `WARN` → `DISABLED` → `REMOVED` retirement ladder: `notices.py` holds the registry of retiring surfaces, `policy.py` the stage decision. Advancing a stage edits the registry, never a call site |
 | `app/runtime/compat/` | D1 | Exact legacy import routing, resource preflight scanning and DEBUG diagnostics, plus modules the host itself no longer calls and only already-published plugins still import. `manifest.py` stays standard-library-only so the baseline script can load it without importing the host |
 
 `plugin_manager.py` and `module_manager.py` stay flat in
 `app/runtime/extensions/`. They belong to the discovery-and-loading phase, but
 five hard-coded names in `scripts/sdk/exports.py`, one `__module__` assertion
-and fourteen patch-target strings in tests all spell their current path, and
+and fifteen distinct patch-target strings in tests all spell their current path, and
 every one of those is a string match that stays green when it is wrong.
 
 `service_config.py` stays flat for a structural reason: the host-internal
@@ -241,9 +243,9 @@ them by name.
 
 The fifteen `*_initializer.py` modules deliberately stay flat. They are one class
 with one shape, and a subdirectory for them would only restate `_initializer`.
-Eleven are invoked from `lifecycle/`, three (`agent`, `hostport`,
-`managed_resources`) from `modules_initializer.py`, and `database_initializer.py`
-from `app/main.py` before the ASGI application exists. That is a difference in
+Twelve are invoked from `lifecycle/` (including `database_initializer.py`, which runs
+first so that table creation and Alembic migration precede everything else), and three
+(`agent`, `hostport`, `managed_resources`) from `modules_initializer.py`. That is a difference in
 *which* moment, not in *what the caller does*, so criterion S does not split on
 it — and `lifecycle/components.py` is already the one place the moments are
 declared.
@@ -266,9 +268,12 @@ extended to admit it.
 | `app/adapters/cache/` | Redis and filesystem cache implementations and Redis clients |
 | `app/adapters/network/` | Generic HTTP, browser, DNS, Cloudflare and IP transport mechanisms |
 | `app/adapters/system/` | OS/filesystem/process facilities, stdio, display, packages, resources and optional Rust acceleration |
+| `app/adapters/media/` | Audio and image resource reading and recognition (`audio.py`, `image.py`) |
+| `app/adapters/web/` | Web-framework adapters: correlation, health, metrics, dynamic plugin routes, access security |
+| `app/adapters/observability/` | Runtime observation exporters (`otel.py`) |
 | `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
 | `app/adapters/external/plugin/client.py` | Read-only plugin-market and local-repository client over the established `PluginHelper` implementation |
-| `app/adapters/system/plugin/` | Plugin package and dependency I/O (`package.py`, `dependency.py`) |
+| `app/adapters/system/plugin/` | Plugin package, dependency and manifest I/O (`package.py`, `dependency.py`, `manifest.py`) |
 
 Generic protocol transport belongs in `adapters/network`; a named product or
 ecosystem workflow belongs in `adapters/external`. An adapter may depend on
@@ -314,6 +319,8 @@ mentions media, site or torrent:
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
 | Torrent | `torrent.py` owns magnet-link semantics; configured download/cache/file behavior stays in `app/application/torrent.py` |
+| Library | `library.py` owns media-library entry identity adaptation and music matching rules; `mediapath.py` owns media-library root path derivation |
+| Filtering | `filterrule.py` owns the built-in rule definitions and the rule-expression parser; the accelerated backend is injected by the composition root |
 
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services
@@ -340,6 +347,8 @@ part of migrated-capability cleanup:
 - `app/monitor/`
 - `app/plugins/`（扩展的安装挂载点，纯数据目录：不放任何宿主源码，连
   `__init__.py` 都没有，`app.plugins` 是命名空间包）
+- `app/locales/`
+- `app/scheduler/`
 - `app/schemas/`
 - `app/startup/`
 - `app/testing/`
@@ -414,7 +423,7 @@ compatibility facade. New chains and tests inject the minimal
 `ChainRuntimeContext` from `app/application/orchestration/context.py`. No-argument
 `Chain()` remains supported through the startup-configured compatibility
 provider. High-frequency string methods are classified in
-`module/contracts.py`; unknown third-party plugin methods retain the frozen
+`app/runtime/extensions/contract/module_method.py`; unknown third-party plugin methods retain the frozen
 legacy aggregation contract, while the architecture baseline records every
 literal method and call site.
 
@@ -454,9 +463,11 @@ historical `app.modules.filemanager` path and the `FileManagerModule` class name
 stay resolvable through `app/runtime/compat/manifest.py`.
 
 `app/modules/_base/` hosts the shared template base classes for module families
-(`downloader.py`, `mediaserver.py`, `notification.py`), each combining the
-family mixin with `_ModuleBase` and typed by `TService` (usage:
-`class QbittorrentModule(_DownloaderModuleBase[Qbittorrent])`). The base classes
+(`downloader.py`, `mediaserver.py`, `notification.py`, `storage.py`), each combining the
+family mixin with `_ModuleBase` (usage:
+`class QbittorrentModule(_DownloaderModuleBase[Qbittorrent])`). The first three are typed
+by `TService`; `_StorageModuleBase` is not parameterized — it declares `storage_class`
+instead. The base classes
 carry only verbatim-duplicated boilerplate — connection test, scheduled
 reconnect, torrent-info reading, query-status normalization for downloaders;
 authentication, media-exists check, inactive-server handling for media servers;
@@ -499,9 +510,11 @@ callback URL from that route name and injects it as an action parameter.
 SQLAlchemy models stay under `app/db/models/`; the data access classes live in
 `app/db/oper/` and mirror them one-for-one (`models/subscribe.py` ↔
 `oper/subscribe.py`), so a filename carries only the entity and the package name
-carries the role. Two verified aggregation exceptions exist: the site family
-(`Passkey`, `SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
-`oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. Chains, modules,
+carries the role. Three verified exceptions exist: the site family
+(`SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
+`oper/site.py`; `AgentTaskRun` lives in `oper/agenttask.py`; and `Outbox` has no Oper
+at all — the composition root reads it directly through `app/startup/ports/outbox.py`.
+Chains, modules,
 application services and endpoints use Oper
 classes instead of issuing SQLAlchemy queries directly. Every schema change
 requires an Alembic migration under `database/versions/`.

@@ -6,17 +6,18 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零；`SystemConfigOper` 构造点当前 11 个，收口未完成；插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
 
 ## 1. 结论先行
 
 MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第一阶段治理已经取得实质成果：
 
 - `foundation/domain/runtime/adapters/application` 等实现根没有自有循环依赖；
-- Adapter、Runtime、Application、Chain、API 等重点边界到 DB 的禁止边为零；
+- Adapter、Runtime、Chain、Agent、Monitor 到 DB 的禁止边为零（`modules`/`api`/`application`/`workflow` 到 DB 仍有记账中的存量边）；
 - `app.core`、`app.helper`、`app.utils` 已经是精确兼容入口，不再是宿主实现目录；
 - 插件 raw API、SDK/Compat、生命周期清单、模块调度快照和零真实网络测试均已有门禁；
-- 当前唯一 SCC 位于隔离的 TMDB 移植包内部，不应为了指标归零重写第三方风格代码。
+- 最大的 SCC 位于隔离的 TMDB 移植包内部，不应为了指标归零重写第三方风格代码；`application.orchestration`
+  与 `scheduler` 等宿主自有环则是待处理的债。
 
 因此，下一阶段不应继续以“搬文件、拆目录、减少行数”为主目标。真正需要处理的是八类运行时和演进问题：
 
@@ -60,34 +61,34 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 
 | 指标 | 当前值 | 判断 |
 | --- | ---: | --- |
-| 宿主 Python 模块数 | 753 | 排除 `app/plugins/**` |
-| 宿主内部导入边 | 6,076 | 边数本身不是质量目标 |
-| 非平凡 SCC | 1 | 仅 TMDB 移植包内部 |
-| 重点禁止边 | 0 | Adapter/Runtime/Application/API/Chain 等到 DB 的既有门禁均通过 |
-| 架构专项测试 | 39 passed | `test_architecture_dependencies` + `test_architecture_contract_baseline` |
+| 宿主 Python 模块数 | 911 | 排除 `app/plugins/**` |
+| 宿主内部导入边 | 7,277 | 边数本身不是质量目标 |
+| 非平凡 SCC | 9 | 最大一个 29 模块，在隔离的 TMDB 移植包内；其余为 `application.orchestration`(12)、`modules.indexer`(3)、`modules.ugreen`(3) 及五个 2 模块环 |
+| 重点禁止边 | 7 项为 0，5 项非 0 | 为 0：`adapters_to_db`、`runtime_to_db`、`chain_to_db`、`agent_to_db`、`monitor_to_db`、`api_endpoints_to_sessions`、`application_to_agent`；非 0：`modules_to_db` 25、`api_to_db` 10、`api_endpoints_to_db_models` 4、`application_to_db` 3、`workflow_to_db` 3 |
+| 架构专项测试 | 47 passed | `test_architecture_dependencies`(32) + `test_architecture_contract_baseline`(15) |
 | 宿主 Python 代码行 | 约 241,227 | 含注释和空行，仅用于趋势 |
-| 已登记模块调用方法 | 211 | 260 个静态调用点，0 个动态方法名调用点 |
+| 已登记模块调用方法 | 43 个显式 V2 spec | 另有 10 条多源契约；`run_module` 静态调用点 0，动态方法名调用点 0 |
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
-| 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
+| 事件枚举 | 53 | 83 个静态 producer、16 个静态 consumer |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 127 | 仍按模块族迁移，动态协议和安全端口暂保留 |
-| `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
-| Model 上的 DB 查询装饰器 | 119 | `db_update`/`async_db_update` 为 0；查询 ABI 继续按 canonical 用例迁移 |
-| 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
-| Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
-| Application 方法超过 150 行 | 8 | 最大 296 行 |
-| Agent 方法超过 150 行 | 13 | 最大 713 行 |
+| 直接读取 `settings` 的文件 | 131 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| `SystemConfigOper()` | 11 个 | 组合根之外仍有构造点，收口未完成 |
+| Model 上的 DB 事务装饰器 | 155 | 查询 139（`db_query` 83 + `async_db_query` 56）；写 16（`db_update` 11 + `async_db_update` 5），由 `MODEL_WRITE_DECORATOR_DEBT` 按名冻结在 `PluginConfig`/`ServiceConfig`/`UserIdentity` 三张表上 |
+| 路由端点 | 369 | 11 个已装饰端点超过 80 行，最大 400 行 |
+| Orchestration 方法超过 150 行 | 11 | 最大 `TransferChain._execute_transfer()` 821 行 |
+| Application 方法超过 150 行（含 orchestration） | 21 | 最大同上 |
+| Agent 方法超过 150 行 | 13 | 最大 `_builtin_provider_specs()` 713 行 |
+| 公共复杂度基线 | 已清零 | `tests/fixtures/architecture/complexity-baseline.json` 三个桶均为空，即公共面无超预算条目；上面三行统计的是含私有方法的全量 |
 | 公共函数缺少返回注解 | 约 1,592 / 7,442 | AST 近似值，适合做 ratchet，不适合直接作为失败阈值 |
 | 公共参数缺少注解 | 约 858 / 12,763 | 主要集中在 `app/modules` |
 
 代表性大方法：
 
-- `app/chain/transfer.py::TransferChain.do_transfer()`：约 885 行；
-- `app/chain/download.py::DownloadChain.batch_download()`：约 572 行；
-- `app/chain/subscribe.py::SubscribeChain.match()`：约 417 行；
-- `app/api/endpoints/agent.py::web_agent_stream()`：约 400 行；
-- `app/api/endpoints/transfer.py::manual_transfer()`：约 295 行；
-- `app/scheduler.py::Scheduler.init()`：约 383 行。
+- `app/application/orchestration/transfer.py::TransferChain._execute_transfer()`：约 821 行；
+- `app/agent/llm/provider.py::_builtin_provider_specs()`：约 713 行；
+- `app/api/endpoints/agent.py::_web_agent_stream_impl()`：约 346 行。
+
+公共面（`api_endpoint`/`application_public`/`chain_public`）的超预算条目已清零，剩下的都是私有实现方法。
 
 ### 2.3 本次检查暴露的基线问题
 
@@ -461,7 +462,7 @@ flowchart TB
 
 旧插件与宿主存量代码直接构造 `PluginDataOper`、`AgentChatOper` 的行为继续保留；新 API 和插件
 重置链不得回退到这些自动提交兼容方法。五类矩阵聚焦测试共 57 项通过，事务 ratchet 仍为
-178 且没有新增或搬移 Model 装饰器。
+155 且没有新增或搬移 Model 装饰器。
 
 ### 阶段 3：类型化运行时装配，减少全局服务定位
 
@@ -505,7 +506,7 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 - `init_modules()` 保留零参数兼容签名并返回本次 lifespan 唯一 Runtime；生命周期组件把结果挂到
   `app.state.host_runtime`。`app/api/context.py` 只向 Depends 暴露 Agent chat 的最小能力。
 - `get_agent_chat_service` 不再读取全局 `_ports` 或 `"agent_chat"` key；该 key 已从宿主和测试
-  `ApiDataPorts.repositories` 删除。未迁移领域仍通过 `compatibility_api_data` 使用同一个实例。
+  `ApiDataPorts.repositories` 删除。未迁移领域仍通过 `get_api_data_ports()` 使用同一个实例。
 - fake Runtime 请求测试证明仓储与 UoW 共享同一请求会话，且无需加载真实 DB engine、
   PluginManager 或其他运行时服务；旧 `configure_api_data_ports()` 调用形态继续可用。
 
@@ -534,9 +535,10 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 
 **实施记录（2026-08-21）**：
 
-- `app/api/deps.py` 已由 524 行集中装配点收敛为 88 行兼容聚合入口；认证、Agent、订阅、站点、
-  工作流、历史和插件依赖分别由 `app/api/dependencies/` 下的领域模块拥有。宿主 API 端点全部改为
-  直接导入领域依赖，旧入口只为外部兼容消费者保留。
+- 认证、Agent、订阅、站点、工作流、历史和插件依赖分别由 `app/api/dependencies/` 下的领域模块拥有。
+  **收敛未完成**：`app/api/deps.py` 仍是 424 行、33 个依赖工厂的集中装配点，`app/api/endpoints/`
+  下仍有 13 个模块从它导入；其中一批依赖仍按字符串能力键（subscribe、site、workflow、user、
+  passkey、system_config、user_identity）定位仓储与事务。
 - 新增 `app/api/presentation/sse.py`，统一 non-buffered SSE transport 策略，并分别提供 unnamed data
   与 named event wire mapper。WebAgent、OpenAI 和 Anthropic 继续保留各自协议 payload 与错误结构，
   不进入通用 `Response` 包装。
@@ -595,7 +597,7 @@ app/api/dependencies/           # 按领域拆分依赖工厂
   Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
 - 收尾批次把 API 与 Chain 余下直接配置读取全部迁入类型化 snapshot；Scheduler 继续保持为零。
   `HostRuntime` 新增可变部署设置服务，只供系统设置管理 API 使用，业务 API/Chain 只接收 frozen 字段。
-  snapshot 构造集中到 `app/startup/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
+  snapshot 构造集中到 `app/startup/ports/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
   漂移。canonical `settings` 直接导入低水位从 154 降到 137，`SystemConfigOper()` 保持 14 个。
 - `ApiRuntimeConfig` 已覆盖搜索来源、媒体/字幕/音频后缀、重命名格式、WebPush、CookieCloud、根目录和
   版本标识；`ChainRuntimeConfig` 覆盖搜索、下载、整理、刮削、AI、代理、缓存、链接、路径和 TMDB 图片域。
@@ -649,8 +651,9 @@ ModuleMethodSpec(
   `ModuleCapability` Protocol 为宿主和新插件提供静态声明入口，但不替换字符串 dispatcher ABI。
 - 22 个显式方法进一步登记宿主真实传入的 required parameter 名称，覆盖识别、搜索、媒体服务器、存储、
   消息收尾、命令注册和 webhook；dispatcher 仍只输出诊断 warning，不阻断缺少参数的旧插件或未知自定义方法。
-- 契约清单现覆盖静态扫描到的 211 个宿主字符串调用，并保留一个暂未被宿主调用的 `send_message` 公开能力，
-  共 212 个显式 V2 spec。原先仅按 prefix 分类或落入默认 legacy 的宿主方法均获得稳定 family、输入合同、
+- 契约清单现覆盖宿主实际分发的方法名，共 43 个显式 V2 spec（另有 10 条多源契约），冻结在
+  `tests/fixtures/architecture/runtime-contract-baseline.json` 的 `module_method_specs`。
+  原先仅按 prefix 分类或落入默认 legacy 的宿主方法均获得稳定 family、输入合同、
   结果合同、执行、超时和错误语义；未知第三方自定义方法仍走开放 legacy fallback，不拒绝加载或执行。
 - 未知动态方法在真实 provider 命中时记录 `module.contract.legacy_hit`，区分插件/宿主调用方和 ABI 来源；
   该指标只在 callable 实际存在并准备执行时递增，不改变未知第三方方法的开放 fallback、聚合或异常语义。
@@ -716,15 +719,14 @@ ModuleMethodSpec(
 
 **实施记录（2026-08-21）**：
 
-- `app/runtime/extensions/module/quality.py` 提供十项统一规则、`legacy/assessed` 等级、owner、已验证
+- `app/runtime/extensions/contract/module_quality.py` 提供十项统一规则、`legacy/assessed` 等级、owner、已验证
   规则和精确豁免原因；所有存量模块均能生成有 owner/原因的 legacy 视图，不一次性阻断。
 - 本轮修改的 `bangumi` 首个进入 assessed：fake client、零真实网络、sync/async 边界、reload/stop、
   Contract V2、敏感日志和 owner 已登记；限流/并发继续复用通用 HTTP adapter 并明确豁免范围。
 - 详细规则和验收证据见 `docs/refactor/module-quality-scale.md`；自动测试阻止 profile 使用未登记规则，
   并要求今后修改模块时将对应 profile 纳入同一提交。
 
-**收口记录（2026-08-22）**：39 个宿主 Module 已全部显式进入 assessed，不再以通用 fallback 把
-37 个模块标成“尚未审查”。所有模块共同由零真实网络、async 阻塞扫描、Module Contract V2 和 owner
+**收口记录**：46 个宿主 Module 已全部显式进入 assessed，不再以通用 fallback 把 44 个模块标成“尚未审查”。所有模块共同由零真实网络、async 阻塞扫描、Module Contract V2 和 owner
 四项机器门禁覆盖；能力专属的鉴权、限流、并发、敏感日志与 reload/stop 仍按 profile 精确豁免，
 不会把 assessed 误读为十项满分。未知第三方模块继续使用 legacy 兼容视图，Module ABI 未变。
 
@@ -935,7 +937,7 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
    - `app/domain/`
    - 新增 Application command/port
    - `app/runtime/event/`
-   - `app/runtime/extensions/module/contracts.py`
+   - `app/runtime/extensions/contract/module_method.py`
    - `app/startup/ports/context.py` / `app/api/context.py`
 3. 对第三方移植包、旧插件 Facade 和动态 SDK 设置精确豁免，不允许 `app.* = ignore_errors`。
 4. CI 先检查严格目录；每次迁移扩大 include 范围。

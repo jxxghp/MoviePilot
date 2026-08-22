@@ -39,7 +39,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 |---|---|---|
 | All functions and methods | `snake_case` | `get_subscribe`, `run_module`, `on_config_changed` |
 | Private methods | `_snake_case` (leading underscore) | `_submit_download_added_task`, `_parse_result` |
-| Event handler methods | `on_<event_name>` or descriptive | `on_transfer_complete`, `handle_config_changed` |
+| Event handler methods | `on_<event_name>` or descriptive | `on_config_changed`, `on_plugin_reload`, `on_node_complete` |
 | Module interface methods | Match `_ModuleBase` contract | `init_module`, `init_setting`, `get_name`, `get_subtype`, `test`, `stop` |
 | Oper methods | Verb + noun | `get`, `add`, `update`, `delete`, `list` |
 
@@ -73,7 +73,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 | Context | Convention | Examples |
 |---|---|---|
 | `Settings` / `ConfigModel` fields | `UPPER_SNAKE_CASE` | `API_TOKEN`, `LLM_MODEL`, `QB_HOST` |
-| `SystemConfigKey` enum members | `PascalCase` | `SystemConfigKey.RssUrls`, `SystemConfigKey.SubscribeFilter` |
+| `SystemConfigKey` enum members | `PascalCase` | `SystemConfigKey.RssSites`, `SystemConfigKey.SubscribeFilterRuleGroups` |
 | Environment variable names | `UPPER_SNAKE_CASE` | `AI_AGENT_ENABLE`, `DB_TYPE` |
 
 ---
@@ -82,7 +82,7 @@ All new code must follow these conventions. Consistent naming is how the codebas
 
 | Context | Convention | Examples |
 |---|---|---|
-| Endpoint function names | `snake_case`, verb-first | `get_subscribe_list`, `add_download`, `delete_history` |
+| Endpoint function names | `snake_case`, verb-first | `read_subscribes`, `start_subscribe_add`, `delete_history` |
 | URL path segments | `kebab-case` or `snake_case` matching existing patterns | `/api/v1/subscribe`, `/api/v1/transfer/history` |
 | Router tags | Match the resource domain name | `"subscribe"`, `"download"`, `"media"` |
 

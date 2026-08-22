@@ -6,7 +6,7 @@
 
 在开始之前，请确保您的系统已安装以下软件：
 
-- **Python 3.12+**
+- **Python 3.14+**
 - **uv 0.12.5**（Python 版本、虚拟环境和依赖锁定工具）
 - **Git** (用于版本控制)
 - **RAR 解压工具**：本地开发如需测试或使用 `.rar` 字幕包解压，请安装 `unar`、`unrar`、`7z` 或 `bsdtar` 之一；Docker 镜像会内置 `unar`。
@@ -37,7 +37,7 @@ uv sync --locked --no-dev --no-install-project
 | --- | --- | --- |
 | `pyproject.toml` 的 `[project].dependencies` | 主程序生产运行依赖。 | 开发者按直接依赖的兼容范围维护。 |
 | `pyproject.toml` 的 `[dependency-groups].dev` | pytest、覆盖率、Pylint 和源码构建等开发工具。 | 不进入 Docker 生产运行环境。 |
-| `uv.lock` | Python 3.12+ 和受支持平台共享的完整解析结果。 | 修改 `pyproject.toml` 后由 `uv lock` 更新并提交。 |
+| `uv.lock` | Python 3.14+ 和受支持平台共享的完整解析结果。 | 修改 `pyproject.toml` 后由 `uv lock` 更新并提交。 |
 
 主程序不再维护 `requirements.in`、`requirements-dev.in` 或 `requirements.txt`，也不生成
 平台专属的 requirements 锁文件。Docker、CLI 和 CI 都以提交的 `uv.lock` 为安装输入。

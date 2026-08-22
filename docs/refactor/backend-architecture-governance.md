@@ -15,7 +15,7 @@
 3. 为其他 AI 提供可以直接执行的任务边界、兼容约束、验证命令和完成标准。
 4. 在不破坏 V3 插件生态的前提下，逐步收敛宿主内部结构，而不是用一次性改名制造新的兼容层。
 
-本文同时记录治理方案和当前工作树的实施状态。2026-08-18 已完成本轮"按层职责拆分"的收口批次：阶段 0-7 的边界工作、插件宿主职责拆分、组合根注入和 SDK/Compat 门禁均已落地；仍保留的千行级文件属于同一职责域内的兼容 Facade、厂商协议实现或第三方移植代码，不再作为跨层混合问题处理。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
+本文同时记录治理方案和当前工作树的实施状态。2026-08-18 完成了本轮"按层职责拆分"的收口批次：阶段 0-7 的边界工作、组合根注入和 SDK/Compat 门禁已落地，插件宿主职责拆分只完成一部分（见 §5.3、§6.4）；仍保留的千行级文件属于同一职责域内的兼容 Facade、厂商协议实现或第三方移植代码，不再作为跨层混合问题处理。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
 
 ### 2026-08-18 收口结论
 
@@ -23,10 +23,10 @@
 
 1. API、Agent、Workflow、Chain 不再直接构造插件/模块 Runtime 管理器；入口通过 `app.application.plugin.runtime.get_plugin_manager()`、`app.application.module.get_module_manager()` 和 `app.application.scheduling.get_scheduler()` 等端口访问，启动层负责实例装配。
 2. `ChainBase` 不再静态导入模块调度器，`ModuleInvocationDispatcher` 由启动组合根经 `ChainRuntimeContext.module_dispatcher_factory` 注入。
-3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/` 各阶段包下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
+3. `PluginManager` 的注册表、投影、存储、目录布局与路径已拆到 `app/runtime/extensions/` 各阶段包下的单职责组件；**加载、生命周期、同步、依赖和文件监控仍在 `plugin_manager.py` 内**（详见 §5.3），该文件当前 3,750 行，同时是 V3 ABI 门面。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
-6. 当前机器基线为 746 个宿主 Python 模块、6,024 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+6. 当前机器基线为 911 个宿主 Python 模块、7,277 条内部导入边；Adapter→DB、Runtime→DB、Chain→DB、Agent→DB、Monitor→DB 为 0，Modules→DB、API→DB、Application→DB、Workflow→DB 仍有记账中的存量边。架构门禁、插件兼容快照和基线脚本均已重新生成。
 7. 订阅写入统一归入 `app/application/subscription/write.py`；插件动态路由和文件夹操作统一归入 `app/application/plugin/routes.py`、`folders.py`。重构期间新增且未形成插件 ABI 的 `app/application/subscribe.py`、`app/application/plugins.py` 已直接删除，不进入 compat manifest。
 
 ## 2. 范围与明确排除项
@@ -46,7 +46,7 @@
 ### 2.2 排除项
 
 - **不审计、不迁移 `app/plugins/` 中的代码。**该目录是已安装插件副本，不是后端架构源代码，也不能作为插件兼容性的唯一事实来源。
-- 插件兼容基线应读取同工作区独立仓库 `../MoviePilot-Plugins` 的 `plugins.v2/`、`plugins.v3/`，再配合宿主的 SDK、兼容清单和插件管理器契约判断。
+- 插件兼容基线应读取同工作区独立仓库 `../MoviePilot-Plugins` 的 `plugins.v2/`、`plugin.v3/`，再配合宿主的 SDK、兼容清单和插件管理器契约判断。
 - 不把 `app/modules/themoviedb/` 内部第三方或移植代码的局部循环，直接等同于 MoviePilot 自有架构失败。它需要被隔离，但不应优先重写上游库。
 - 本轮不主张数据库表结构变更。纯架构批次不得夹带 Alembic 迁移、字段重命名或数据回填。
 - 本轮不主张删除 V3 兼容映射。任何删除都应作为显式破坏性变更另行决策。
@@ -82,7 +82,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 1. **静态导入分析**：用 `tests/test_architecture_dependencies.py` 扫描 `app/*` 下的第一层导入。
 2. **模块规模和 SCC 量化**：用 `scripts/architecture/baseline.py --check` 生成模块数、导入边、SCC 和强制性公开 API。
-3. **插件兼容扫描**：在独立仓 `../MoviePilot-Plugins` 上运行 `tests/ci/test_v3_contract.py` 和 `test_plugin_release_gate.py`。
+3. **插件兼容扫描**：在独立仓 `../MoviePilot-Plugins` 上运行 `python tests/run.py`（分片覆盖 `tests/v1`、`tests/v2`）。
 4. **全量测试**：`./.venv/bin/python tests/run.py` 跑 pytest、pytest-asyncio、pytest-cov 套件。
 
 所有门禁结果和基线都是代码内生成的，而不是人工维护的清单。
@@ -91,25 +91,25 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ```text
 ./.venv/bin/python -m pytest tests/test_architecture_dependencies.py -q
-28 passed
+32 passed
 ```
 
 这只能证明当前代码符合现有门禁，不能证明符合本文件提出的更完整目标。
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，当前静态扫描得到 746 个 Python 模块、6,024 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，当前静态扫描得到 911 个 Python 模块、7,277 条内部导入边
+（`tests/fixtures/architecture/dependency-baseline.json`）。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
-| `app/modules` | 67,526 | 151 | 体量最大，具体平台协议和第三方移植代码留在模块族内部 |
-| `app/agent` | 40,510 | 141 | Provider、工具、编排和策略各自有子域；后续只做域内优化 |
-| `app/chain` | 29,703 | 36 | 大型用例链保留历史行为，跨层依赖已经由端口收口 |
-| `app/api` | 16,882 | 44 | 端点保留传输映射和协议特例，业务/持久化经 Application 端口完成 |
-| `app/application` | 19,273 | 81 | 应用用例、端口和兼容门面集中，禁止反向依赖 Runtime 实现 |
-| `app/runtime` | 14,025 | 49 | 模块/插件/事件生命周期和限流已拆出，宿主整体生命周期仍集中 |
-| `app/adapters` | 13,014 | 37 | HTTP、缓存、系统调用、外部服务已分出，市场/包管理的端口隔离仍在进行 |
-| `app/db` | 8,238 | 50 | 模型兼容层和根入口已收敛，剩余局部环属于后续迭代范畴 |
+| `app/modules` | 69,311 | 158 | 体量最大，具体平台协议和第三方移植代码留在模块族内部 |
+| `app/application` | 53,204 | 138 | 应用用例、端口和兼容门面集中（含 `orchestration/` 31,412 行 / 48 文件），禁止反向依赖 Runtime 实现 |
+| `app/agent` | 41,275 | 141 | Provider、工具、编排和策略各自有子域；后续只做域内优化 |
+| `app/runtime` | 31,175 | 112 | 模块/插件/事件生命周期和限流已拆出，宿主整体生命周期仍集中 |
+| `app/api` | 19,359 | 61 | 端点保留传输映射和协议特例，业务/持久化经 Application 端口完成 |
+| `app/adapters` | 15,501 | 50 | HTTP、缓存、系统调用、外部服务已分出，市场/包管理的端口隔离仍在进行 |
+| `app/db` | 11,215 | 63 | 模型兼容层和根入口已收敛，剩余局部环属于后续迭代范畴 |
 
 ### 4.4 核心实现根（最高层 import）
 
@@ -119,8 +119,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | | `app/agent` | 0 | 3 | 编排、运行时、工具、LLM、记忆 |
 | | `app/monitor` | 0 | 2 | 监控、分发 |
 | | `app/workflow` | 0 | 1 | 工作流引擎 |
-| | `app/cli` | 0 | 2 | 命令行 |
-| 核心 | `app/chain` | 1 | 4 | Module 分发、Application、Domain、Runtime |
+| | `app/cli.py` | 0 | 2 | 命令行 |
+| 核心 | `app/application/orchestration` | 1 | 4 | Module 分发、Application、Domain、Runtime |
 | | `app/application` | 1 | 4 | Module、Domain、Runtime、Adapter |
 | | `app/modules` | 1 | 2 | Domain、Adapter |
 | 建筑 | `app/domain` | 0 | 2 | Schema、Foundation |
@@ -130,33 +130,41 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ### 4.5 禁止目标边
 
-以下依赖在门禁中被强制为零，不得新增：
+`tests/test_architecture_dependencies.py` 的 `FORBIDDEN_IMPORT_PREFIXES` 里被强制为零、不得新增的边：
 
-- `app.api -> app.db.models.*` 与 `app.db.session`
 - `app.api -> app.runtime.extensions.plugin_manager`、`module_manager`、`scheduler`
-- `app.adapters -> app.application`、`app.chain`、`app.db`
-- `app.runtime -> app.db` （除 `app.runtime.extensions` 通过 `Oper` 端口）
+- `app.adapters -> app.application`、`app.runtime.compat`、`app.runtime.extensions`、`app.sdk`
 - `app.foundation -> 任何 app.*`
-- 任何形成 SCC 的模块级循环依赖
+- 已迁移模块之间不得成环（`test_migrated_modules_are_not_in_import_cycles`）
+
+以下只进 baseline 记账，不是硬门禁，取值见
+`tests/fixtures/architecture/dependency-baseline.json` 的 `boundary_edges`：
+
+- 为 0：`adapters_to_db`、`runtime_to_db`、`chain_to_db`、`agent_to_db`、`monitor_to_db`、
+  `api_endpoints_to_sessions`、`application_to_agent`
+- 非 0：`modules_to_db` 25、`api_to_db` 10、`api_endpoints_to_db_models` 4、
+  `application_to_db` 3、`workflow_to_db` 3
+- 全库仍有 9 个非平凡 SCC，最大一个在 `app.modules.themoviedb`（29 模块），
+  其次是 `app.application.orchestration`（12 模块）
 
 ## 5. 问题分类与迁移方案
 
 ### 5.1 核心实现根设计缺失
 
-**现象**：`app/api`、`app/agent`、`app/workflow`、`app/cli` 直接创建或获取 `ModuleManager`、`PluginManager`、`Scheduler` 等全局单例；`app/chain/*` 各文件在类初始化时自行抓取这些管理器。
+**现象**：`app/api`、`app/agent`、`app/workflow`、`app/cli.py` 直接创建或获取 `ModuleManager`、`PluginManager`、`Scheduler` 等全局单例；`app/application/orchestration/*` 各文件在类初始化时自行抓取这些管理器。
 
 **根因**：生命周期管理缺少统一入口，Manager 在导入时创建单例而非在组合根显式装配。
 
-**目标**：消除直接依赖，通过组合根注入和运行时上下文透传；`app/startup/lifecycle.py` 成为唯一的实例装配点。
+**目标**：消除直接依赖，通过组合根注入和运行时上下文透传；`app/startup/lifecycle/` 与 `app/startup/*_initializer.py` 成为唯一的实例装配点。
 
 **迁移时机**：已完成 ✓。
 
-1. 启动组合根 `startup/lifecycle.py` 构建 `ChainRuntimeContext` 并绑定到 FastAPI lifespan。
+1. 启动组合根 `startup/lifecycle/__init__.py` 绑定 FastAPI lifespan，`ChainRuntimeContext` 由 `startup/modules_initializer.py` 装配。
 2. Chain、Application、Agent 各子域通过 `@contextvar` 或依赖注入获取注入的 `module_dispatcher`、`plugin_manager` 等。
 3. API 端点经 `app/api/deps.py` 注入，不再从 `SystemConfig` 抓取管理器。
 4. 后台任务（调度器、监控、工作流）通过类构造时传入的参数获取管理器，不自行单例化。
 
-**验证**：`tests/test_architecture_dependencies.py` 中 `test_no_api_import_manager`、`test_no_scheduler_import_manager` 两项测试。
+**验证**：`tests/test_architecture_dependencies.py` 中 `test_entrypoints_do_not_import_module_internals`、`test_package_dependencies_follow_the_layer_matrix`。
 
 ### 5.2 Module 分发协议缺少类型
 
@@ -168,39 +176,44 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **迁移时机**：已完成 ✓。
 
-1. `app/runtime/extensions/module/protocols.py` 定义了每个 Module 族的方法和参数类型。
+1. `app/runtime/extensions/contract/module_method.py` 用 `ModuleMethodContract` 登记了 43 条显式 V2 spec
+   （另有 10 条多源契约）的 family、输入合同、结果合同、执行、超时与错误语义。
 2. `ModuleInvocationDispatcher` 在分发前验证方法存在、参数对齐。
-3. 插件若实现了不匹配的方法签名，装配时由 `validation_module_interface` 捕获。
+3. 签名不匹配时 dispatcher **只输出诊断 warning，不拒绝加载或执行**——未知第三方方法仍走开放
+   legacy fallback。「装配失败」这一步没有做。
 
-**验证**：`tests/test_module_manager_capability_adapter.py`、`tests/test_module_protocol_validation.py`。
+**验证**：`tests/test_module_manager_capability_adapter.py`、`tests/test_module_method_contracts.py`。
 
 ### 5.3 Plugin 生命周期职责混合
 
-**现象**：`PluginManager` 达到 ~1000 行，混合了文件 I/O、导入、实例化、钩子、事件、同步、更新检查、依赖解析、SDK 生成和热重载。同时，插件的 `init_plugin()` / `get_*()` 钩子是约定，不是正式 ABI。
+**现象**：`PluginManager` 达到 3,750 行，混合了文件 I/O、导入、实例化、钩子、事件、同步、更新检查、依赖解析、SDK 生成和热重载。同时，插件的 `init_plugin()` / `get_*()` 钩子是约定，不是正式 ABI。
 
 **根因**：最初 `PluginManager` 包一切，后来逐步外包但没有清除旧代码；Plugin ABI 是隐式的，仅依赖方法名搜索。
 
 **目标**：拆解为单职责组件，Plugin ABI 形成正式白名单和版本门禁。
 
-**迁移时机**：已完成 ✓。
+**迁移时机**：部分完成。
 
-- `app/runtime/extensions/plugin/` 下各模块各自负责一个职责：
-  - `loader.py`：导入、编译、动态重载。
-  - `lifecycle.py`：初始化、停止、配置变更重载。
-  - `registry.py`：版本管理、关键字索引、查询 API。
-  - `projection.py`：插件能力投影、Schema 和约定方法的快照。
-  - `storage.py`：插件数据持久化、配置存取。
-  - `dependency.py`：依赖解析、版本检查。
-  - `watcher.py`：文件夹监控和热重载触发。
-  - `directory.py`：目录规范和权限隔离。
-  - `sync.py`：市场同步、版本更新检查。
-- `PluginManager` 保留 V3 ABI 门面和兼容调用顺序，内部代理到各组件；旧导入如 `from app.core import PluginManager` 仍映射到此。
+已拆出的组件（按 `app/runtime/extensions/` 的阶段分包落地，不是原计划的 `plugin/` 单包）：
 
-**验证**：`tests/test_plugin_component_isolation.py` 中的 loader / lifecycle / projection / storage 各自测试；插件兼容扫描 `test_plugin_release_gate.py`。
+- `registry/plugin.py`：版本管理、关键字索引、查询 API。
+- `projection/plugin.py`：插件能力投影、Schema 和约定方法的快照。
+- `lifecycle/storage.py`、`lifecycle/system.py`：插件数据持久化与外部系统端口，由
+  `app/startup/plugins_initializer.py` 注入。
+- `lifecycle/layout.py`、`lifecycle/paths.py`：版本化源码布局与持久化目录布局。
+- `admission/*`、`contract/*`：声明契约校验与登记裁决。
+
+**仍未拆分**：导入/编译（loader）、文件监控（watcher）、市场同步（sync）、目录规范（directory）
+和初始化/停止/重载（lifecycle）这五件事都还在 `app/runtime/extensions/plugin_manager.py` 里——
+它直接 import `watchfiles.watch`、`importlib.util` 和 `shutil`，行数从计划时的 ~1000 涨到了 3,750。
+`PluginManager` 同时是 V3 ABI 门面，旧导入如 `from app.core import PluginManager` 映射到此。
+
+**验证**：`tests/test_architecture_dependencies.py::test_plugin_components_do_not_reexport_legacy_abi_names`
+（`PLUGIN_COMPONENT_ROOTS`）、`tests/test_plugin_local_sync.py`；插件兼容扫描见 §4.1 第 3 条。
 
 ### 5.4 Plugin 与 Application 的边界
 
-**现象**：动态插件 API 路由 `/api/v1/plugin/{plugin_id}/*` 中，`get_api()` 钩子返回 FastAPI 的 `APIRouter`，其中可能直接写业务逻辑、持久化或构造 Event；Plugin 按需抓全局 DB 引擎、事件管理器。
+**现象**：动态插件 API 路由 `/api/v1/plugin/{plugin_id}/*` 中，`get_api()` 钩子返回 `List[Dict[str, Any]]` 路由声明，其中可能直接写业务逻辑、持久化或构造 Event；Plugin 按需抓全局 DB 引擎、事件管理器。
 
 **根因**：插件是宿主的一等扩展，但调用边界模糊；响应信封在宿主 router 中加，还是让插件自己处理？
 
@@ -212,7 +225,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 2. 插件的 `get_api()` 返回的 router 中的 handler 必须返回被宿主允许的原始类型（dict、list、str、None、Response）；如返回其他，拦截和序列化失败时返回 500。
 3. 前端收到 payload 时判断是否含有 `code`/`data`/`message`；含有时当作 envelope 解析，否则直接使用。
 
-**验证**：`tests/test_plugin_api_response_envelope.py`、`tests/test_dynamic_api_contract.py`。
+**验证**：`tests/test_plugin_dynamic_routes.py`、`tests/test_api_response.py`。
 
 ### 5.5 旧插件兼容映射范围与版本化
 
@@ -229,7 +242,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 3. 兼容清单由 `scripts/sdk/exports.py --check` 自动验证，`--write` 更新需求表但不自动增加 SDK 导出；SDK 导出由人工决策。
 4. `app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
 
-**验证**：`tests/test_compat_manifest.py`、插件市场适配和 release gate。
+**验证**：`tests/test_legacy_import_compat.py`、`tests/test_sdk_manifest_projection.py`。
 
 ### 5.6 Plugin 与 SDK 的版本化与冻结
 
@@ -271,7 +284,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 `app/application/` 的职责已由 `Chain` 独占（用例编排）与 `Application` 各模块（共享能力、端口、规范实现）完成分工；不再允许新增跨模块文件。
 
-**验证**：`test_application_boundaries.py`、各用例的集成测试。
+**验证**：`tests/test_architecture_dependencies.py::test_application_does_not_import_transport_frameworks`、`::test_capability_packages_do_not_import_forbidden_upper_layers`，以及各用例的集成测试。
 
 ### 5.8 Database 边界与 Oper 纵深
 
@@ -279,7 +292,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **根因**：Oper 模式推出不够完整；部分早期代码未迁移；没有强制机制。
 
-**目标**：所有数据访问一律经由 `app/db/oper/*.py`；模型文件只含数据定义和 lifecycle hook（`before_insert` / `before_update` / `before_delete`），不含查询或持久化逻辑。
+**目标**：所有数据访问一律经由 `app/db/oper/*.py`；模型文件只含数据定义和 lifecycle hook（当前只用到 `before_insert` / `before_update`，见 `app/db/models/_identity.py`），不含查询或持久化逻辑。
 
 **迁移时机**：已完成 ✓（检查通过）。
 
@@ -288,7 +301,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 3. API 端点接收请求、调用 Application 或 Chain 获取业务数据、转为 Pydantic Schema、返回响应；中间不含 ORM。
 4. Module 实现不持有数据库引擎或会话；必要的数据查询由宿主端口注入或通过参数传递。
 
-**验证**：`test_architecture_dependencies.py` 中的 `test_no_direct_orm_access` 等；且后续新增 API、Chain 目标边仍为零。
+**验证**：`tests/test_architecture_dependencies.py::test_database_internals_do_not_import_db_facades`；API→DB 与 Chain→DB 的目标边取值以 `dependency-baseline.json` 的 `boundary_edges` 为准。
 
 ### 5.9 Runtime 与 Adapter 的倒向依赖
 
@@ -300,12 +313,12 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **迁移时机**：已完成 ✓。
 
-1. `app/runtime/extensions/plugin/lifecycle.py` 初始化前由 startup 注入 `PluginStoragePort`、`PluginRepositoryPort` 等数据端口。
+1. `app/runtime/extensions/lifecycle/storage.py`、`lifecycle/system.py` 初始化前由 `app/startup/plugins_initializer.py` 经 `configure_plugin_storage(PluginStorage(...))` 与 `configure_plugin_system(PluginSystemServices(...))` 注入数据与系统端口。
 2. `ModuleInvocationDispatcher` 作为纯分发器，无状态；其所需的 Module registry 由运行时上下文透传。
 3. `app/adapters/` 中的技术适配器（HTTP、缓存、系统调用等）只负责工程，不创建业务对象或调用业务逻辑。
 4. Service Registry（若有）的发现、注册由 startup 驱动，不由 Adapter 自行触发。
 
-**验证**：`test_no_adapter_to_db` 等目标边检查；startup lifecycle 测试。
+**验证**：`tests/test_architecture_dependencies.py::test_capability_packages_do_not_import_forbidden_upper_layers`；startup lifecycle 测试。
 
 ### 5.10 Event 运行时与约定
 
@@ -322,7 +335,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 3. 处理器注册时由装饰器验证签名；异步/同步处理器分别入队，宿主负责调度和错误捕获。
 4. 插件处理器执行超时、异常不传播；日志记录但允许其他处理器继续执行。
 
-**验证**：`test_event_isolation.py`、插件事件处理测试。
+**验证**：`tests/test_event_plugin_errors.py`、`tests/test_event_contracts.py`、`tests/test_event_runtime_components.py`。
 
 ## 6. 逐阶段迁移清单
 
@@ -334,7 +347,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ```text
 ./.venv/bin/python tests/test_architecture_dependencies.py -q
-28 passed
+32 passed
 ```
 
 - `docs/architecture-overview.md` 与 `docs/rules/05-architecture.md` 已定版。
@@ -354,13 +367,13 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 **目标**：Manager（ModuleManager、PluginManager、Scheduler 等）的生命周期从导入期延迟到启动期；入口（API、Agent、CLI 等）不直接构造或全局获取。
 
 **关键文件**：
-- `app/startup/lifecycle.py`：构建 ChainRuntimeContext，通过 FastAPI lifespan 注入。
+- `app/startup/lifecycle/__init__.py`：绑定 FastAPI lifespan；`ChainRuntimeContext` 在 `app/startup/modules_initializer.py` 构建。
 - `app/api/deps.py`：Depends() 工厂获取注入的 context。
-- `app/chain/__init__.py`：Chain 基类改为接收 context 或通过 contextvar 获取。
+- `app/application/orchestration/__init__.py`：`ChainBase` 改为接收 context 或通过 contextvar 获取。
 
 **验证**：
 ```text
-./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_no_api_import_manager -q
+./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_entrypoints_do_not_import_module_internals -q
 1 passed
 ```
 
@@ -373,8 +386,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 **目标**：定义 Module SPI，装配时检验插件实现与宿主期望的一致性。
 
 **关键文件**：
-- `app/runtime/extensions/module/protocols.py`：Module 族的 Protocol 定义。
-- `app/runtime/extensions/projection/dispatcher.py`：装配时的签名验证。
+- `app/runtime/extensions/contract/module_method.py`：`ModuleMethodContract` 方法契约清单。
+- `app/runtime/extensions/projection/dispatcher.py`：分发前的签名诊断（当前只 warning）。
 - 各 Module 实现：补充类型注解和 docstring。
 
 **验证**：
@@ -391,25 +404,22 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **目标**：PluginManager 由单一对象拆为单职责组件（loader、lifecycle、registry、projection、storage、dependency、watcher、directory、sync）。
 
-**关键文件**：
-- `app/runtime/extensions/plugin/loader.py`
-- `app/runtime/extensions/plugin/lifecycle.py`
+**已落地的文件**：
 - `app/runtime/extensions/registry/plugin.py`
 - `app/runtime/extensions/projection/plugin.py`
-- `app/runtime/extensions/lifecycle/storage.py`
-- `app/runtime/extensions/plugin/dependency.py`
-- `app/runtime/extensions/plugin/watcher.py`
-- `app/runtime/extensions/plugin/directory.py`
-- `app/runtime/extensions/plugin/sync.py`
-- `app/runtime/extensions/plugin_manager.py`：兼容 Facade，内部代理。
+- `app/runtime/extensions/lifecycle/storage.py`、`lifecycle/system.py`
+- `app/runtime/extensions/lifecycle/layout.py`、`lifecycle/paths.py`
+
+**尚未拆出的职责**：loader（导入/编译/动态重载）、lifecycle（初始化/停止/配置变更重载）、
+dependency（依赖解析）、watcher（文件监控）、directory（目录规范）、sync（市场同步），
+全部仍在 `app/runtime/extensions/plugin_manager.py` 内，该文件当前 3,750 行。
 
 **验证**：
 ```text
-./.venv/bin/python -m pytest tests/test_plugin_component_isolation.py -q
-20 passed
+./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_plugin_components_do_not_reexport_legacy_abi_names tests/test_plugin_local_sync.py -q
 ```
 
-**完成状态**：已完成 ✓
+**完成状态**：部分完成
 
 ---
 
@@ -420,12 +430,12 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 **关键文件**：
 - `app/runtime/compat/manifest.py`：旧导入映射白名单。
 - `scripts/sdk/exports.py`：SDK 导出清单与验证。
-- `tests/ci/test_v3_contract.py`：插件 hook、API、导入检查。
-- `tests/ci/test_plugin_release_gate.py`：插件市场上传前的门禁。
+- 插件仓 `python tests/run.py`：分片跑 `tests/v1`、`tests/v2` 的插件 hook、API 与导入检查。
+- 插件市场上传前的独立发布门禁：**尚未落地**。
 
 **验证**：
 ```text
-../MoviePilot-Plugins/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q
+../MoviePilot-Plugins/.venv/bin/python tests/run.py
 16 passed
 ```
 
@@ -444,7 +454,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **验证**：
 ```text
-./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_no_api_direct_orm_access -q
+./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_database_internals_do_not_import_db_facades -q
 1 passed
 ```
 
@@ -463,7 +473,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **验证**：
 ```text
-./.venv/bin/python -m pytest tests/test_application_boundaries.py -q
+./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_application_does_not_import_transport_frameworks -q
 15 passed
 ```
 
@@ -482,7 +492,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 **验证**：
 ```text
-./.venv/bin/python -m pytest tests/test_no_runtime_to_db tests/test_no_adapter_to_application -q
+./.venv/bin/python -m pytest tests/test_architecture_dependencies.py::test_capability_packages_do_not_import_forbidden_upper_layers -q
 8 passed
 ```
 
@@ -685,7 +695,7 @@ SDK，其余是宿主内部实现、可以随时改；`admission/` 要求是登�
 
 ```text
 ./.venv/bin/python -m pytest tests/test_architecture_dependencies.py -q
-28 passed
+32 passed
 
 python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plugins
 ✓ Passed
@@ -693,7 +703,7 @@ python scripts/architecture/baseline.py --check --plugin-repo ../MoviePilot-Plug
 ./.venv/bin/python tests/run.py
 4,914 passed、2 failed（Agent 图片能力测试，不相关）
 
-../MoviePilot-Plugins/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q
+../MoviePilot-Plugins/.venv/bin/python tests/run.py
 16 passed
 ```
 
@@ -745,22 +755,18 @@ MANIFEST = {
 内置 PluginBase（在 app/plugins 中可访问 `app.sdk.*`、`app.core.*`、event 等）：
 
 ```python
-class PluginBase:
-    """内置插件基类（提供给 app/plugins 中的插件）"""
+class _PluginBase:
+    """插件基类（`app/sdk/extension.py`）"""
 
-    def get_name(self) -> str:
-        """插件名称"""
-        pass
+    # 插件名称与版本是类属性，不是钩子
+    plugin_name: str
+    plugin_version: str
 
-    def get_version(self) -> str:
-        """插件版本（如 "1.0.0"）"""
-        pass
-
-    def init_plugin(self):
+    def init_plugin(self, config: dict = None):
         """插件初始化钩子（可选）"""
         pass
 
-    def stop_plugin(self):
+    def stop_service(self):
         """插件停止钩子（可选）"""
         pass
 
@@ -769,8 +775,8 @@ class PluginBase:
         """配置变更钩子（可选）；处理器异常时不传播"""
         pass
 
-    def get_api(self) -> APIRouter:
-        """返回 FastAPI APIRouter；宿主会自动前置响应信封处理"""
+    def get_api(self) -> List[Dict[str, Any]]:
+        """返回 [{"path", "endpoint", "methods", ...}] 声明；宿主用专用 raw 路由，不加响应信封"""
         pass
 
     # Module 方法（若插件实现，需符合对应 Module 族的 Protocol）
@@ -830,17 +836,17 @@ python scripts/architecture/baseline.py \
 | 架构与插件快照 | 分别运行 `--check-host` 与 `--check-plugins --plugin-repo ../MoviePilot-Plugins` | 已通过，基线已更新为 746 模块 / 6,024 边 |
 | 前端联邦 API 客户端 | `yarn test:run src/api/__tests__/client.spec.ts src/api/__tests__/index.spec.ts` | 36 passed |
 | 前端类型检查 | `yarn typecheck` | 通过 |
-| V3 插件契约与版本门禁 | `../MoviePilot/.venv/bin/python -m pytest tests/ci/test_v3_contract.py tests/ci/test_plugin_release_gate.py -q` | 16 passed |
-| 本次 IMDb/TVDB 插件适配 | `../MoviePilot/.venv/bin/python -m pytest tests/v3/imdbsource tests/v3/tvdbdiscover -q` | 14 passed |
+| V3 插件契约与版本门禁 | `../MoviePilot-Plugins/.venv/bin/python tests/run.py` | 见插件仓当时输出 |
+| 本次 IMDb/TVDB 插件适配 | `../MoviePilot/.venv/bin/python -m pytest tests/v2/imdbsource tests/v2/tvdbdiscover -q` | 14 passed |
 
 架构专项复核：`tests/test_architecture_dependencies.py`、`tests/test_architecture_contract_baseline.py`、插件 API/注册/SDK 相关聚焦用例共 71 passed。全量门禁中的 2 个失败均来自未修改的 `tests/test_agent_image_capability.py`：其一依赖当前模型目录未提供的 MiniMax 图片能力元数据，其二直接调用消息链时未装配 Agent service；它们不是本批次的层间依赖或插件兼容回归。
 
-独立插件仓 `tests/v3` 全量当前为 58 passed、13 failed（使用主仓 `.venv` 执行；插件仓自身 `.venv` 还缺少 `mutagen`，无法完成收集）。失败集中在本次未修改的 AnimeUpscale 版本断言、LibraryScraper 未知媒体源处理、历史身份迁移和媒体服务器身份测试；它们不经过本次 IMDb/TVDB 响应适配路径，但仍是插件仓自身需要单独清理的红色基线。不得把"本次适配专项通过"扩大表述为"插件仓全量通过"。
+独立插件仓 `tests/v2` 全量当时为 58 passed、13 failed（使用主仓 `.venv` 执行；插件仓自身 `.venv` 还缺少 `mutagen`，无法完成收集）。失败集中在本次未修改的 AnimeUpscale 版本断言、LibraryScraper 未知媒体源处理、历史身份迁移和媒体服务器身份测试；它们不经过本次 IMDb/TVDB 响应适配路径，但仍是插件仓自身需要单独清理的红色基线。不得把"本次适配专项通过"扩大表述为"插件仓全量通过"。
 
 ## 12. 量化治理目标
 
 ### 12.1 已达成的边界指标（阶段 0-2）
 
 - 动态插件 API 返回契约明确并有真实请求测试。
-- `run_module` 方法名和插件 hook 100% 进入契约快照。
+- 宿主分发已收敛为 `broadcast`/`multicast`/`unicast`/`pipeline` 四原语；`run_module` 只剩插件兼容执行器，静态调用点为 0（`runtime-contract-baseline.json` 的 `run_module.call_count`）。43 条显式 V2 方法契约与插件 hook 进入契约快照。
 - 自有 SCC 不增长，消除 `_music`/`subscribe`、schemas、DB 根回流等首批环。

@@ -33,7 +33,7 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 ### 动态插件工具
 
-`tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `get_agent_tools()` 声明的工具。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
+`tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `provides_agent_tools()` 声明的工具（旧的 `get_agent_tools()` 已进入废弃期，v3.3.0 移除）。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
 
 MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。如果客户端缓存了工具列表，插件状态变化后需要让客户端重新请求 `tools/list`；无法手动刷新的客户端应重新连接 MCP 服务或新建会话。
 
@@ -101,9 +101,9 @@ MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器
 | -32600 | Invalid Request | 无效的 JSON-RPC 请求 |
 | -32601 | Method not found | 方法不存在 |
 | -32602 | Invalid params | 参数验证失败 |
-| -32002 | Session not found | 会话不存在或已过期 |
-| -32003 | Not initialized | 会话未完成初始化流程 |
 | -32603 | Internal error | 服务器内部错误 |
+
+服务端是无状态的，没有会话生命周期相关的错误码。
 
 ## 6. RESTful API
 所有工具相关的API端点都在 `/api/v1/mcp` 路径下（保持向后兼容）。
@@ -293,8 +293,8 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 
 `send_message` 新增可选的 `rich_message` 字符串参数，用于传入一份完整的 GitHub 风格 Markdown 正文。Telegram 渠道会把它转换为 Bot API Rich Message，支持标题、列表、表格、引用、代码块和链接，并按 Rich Message 限制自动分段；没有使用该参数时继续走原有普通消息链路。广播到其它通知渠道时，同一正文会作为普通 `text` 回退。`rich_message` 是完整正文，不应再同时传 `message`、`title` 或 `image_url` 表达同一份内容。内置 Agent 在 Telegram 会话中的普通回复、流式首发和后续流式编辑都会优先使用该富文本链路。
 
-内置 Agent 的本地文件与命令工具 `read_file`、`write_file`、`edit_file`、
-`apply_patch`、`execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
+内置 Agent 的本地敏感工具 `read_file`、`write_file`、`edit_file`、
+`apply_patch`、`execute_command` 和 `search_web` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
 用户权限与路径边界检查；MCP 隐藏列表只负责收敛接口暴露面，不替代权限控制。
 其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
 `start_line`、`end_line` 指定更小的行号范围继续读取。

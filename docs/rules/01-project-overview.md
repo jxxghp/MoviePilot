@@ -71,8 +71,8 @@ An alternative for users running from source. The `moviepilot` CLI handles insta
 |---|---|
 | Torrent indexers | Site-specific spiders, Jackett/Prowlarr compatible |
 | Download clients | qBittorrent, Transmission, rTorrent |
-| Media servers | Emby, Jellyfin, Plex, TrimMedia, Zspace, Ugreen |
-| Metadata sources | TMDB, TheTVDB, Douban, Bangumi, Fanart |
+| Media servers | Emby, Jellyfin, Plex, Navidrome, TrimMedia, Zspace, Ugreen |
+| Metadata sources | TMDB, TheTVDB, Douban, Bangumi, AniList, IMDb, Fanart; music metadata via MusicBrainz, TheAudioDB, ListenBrainz, LrcLib, AcoustID |
 | Message channels | Telegram, WeChat, WeChatClawBot, Feishu, Slack, Discord, VoceChat, Synology Chat, WebPush, QQBot |
 | LLM providers | OpenAI-compatible, Anthropic, and other configurable providers |
 

@@ -187,7 +187,7 @@ foundation  无状态原语（现状已达标）
 对照现状的三处关键裁定：
 
 - **services ✗ extensions**：编排触达扩展只经 kernel dispatch
-  （fork 已有三级分发 broadcast/multicast/unicast，语义保留、位置下沉）。
+  （fork 已有四级分发 broadcast/multicast/unicast/pipeline，语义保留、位置下沉）。
 - **extensions ✗ services 实现**：今天 `modules → application` 29 文件反向边
   与市场插件直捅 Chain 类，统一收敛到受版本承诺的 SDK 门面。
 - **extensions ✗ extensions**：跨扩展协作经事件或能力分发。
@@ -235,7 +235,7 @@ fork（`feat/plugin-multi-instance` 系）基于官方 v3 基线，与官方共�
 
 - **fork 自有债务**：插件多实例改造把 plugin_manager 拆包并引入 `runtime → db` 8 文件依赖，
   形成官方没有的 `runtime↔db` 包级循环——D1 落地时一并用 ExtensionStateStore 端口消除。
-- **fork 自有资产**：三级分发（能力索引/多播修复/诊断接口）、插件自管理表（`app/db/plugin/`，
+- **fork 自有资产**：四级分发（能力索引/多播修复/诊断接口）、插件自管理表（`app/db/plugin/`，
   官方仍无，是 D4 中 agent 表自持的现成机制）、内置插件样本
   （借其测得插件真实 API 面 76% compat / 17% 直捅 / 0% sdk 的量化证据）。
 - **跟进成本判断**：官方治理是进行时（顶端提交即分层治理），fork 的结构改造需分两类——

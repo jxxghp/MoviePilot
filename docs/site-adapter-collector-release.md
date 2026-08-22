@@ -16,7 +16,7 @@
 
 ## 运行采集器
 
-Windows 用户下载后双击 `.exe`，按窗口提示操作即可。macOS 用户解压 ZIP 后双击 `start-site-adapter-collector.command`，不要打开构建目录中的 `.pkg` 文件。Linux 用户在下载目录打开终端，只需首次赋予执行权限后运行：
+Windows 用户下载后双击 `.exe`，按窗口提示操作即可。macOS 用户解压 ZIP 后双击 `start-site-adapter-collector.command`。Linux 用户在下载目录打开终端，只需首次赋予执行权限后运行：
 
 ```bash
 chmod +x moviepilot-site-collector-linux
@@ -29,7 +29,7 @@ chmod +x moviepilot-site-collector-linux
 
 当前自动构建产物尚未接入 Windows 或 Apple 代码签名。Windows SmartScreen 或 macOS Gatekeeper 可能因此显示安全提示。仅在文件来自 MoviePilot 官方 GitHub Release，且校验摘要一致时运行；不要从聊天、网盘或第三方站点接收采集器。
 
-如果系统阻止运行，可改用随 MoviePilot 源码提供的本地采集脚本；该方式需要 Python 3.12+ 及完整后端依赖，不适合作为普通用户的首选路径。
+如果系统阻止运行，可改用随 MoviePilot 源码提供的本地采集脚本；该方式需要 Python 3.14+ 以及 `requests`、`websocket-client`、`beautifulsoup4` 三个采集器依赖（见 `scripts/site_adapter_collector_requirements.txt`），不适合作为普通用户的首选路径。
 
 ## 维护者发布流程
 

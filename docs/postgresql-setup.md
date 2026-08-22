@@ -6,7 +6,7 @@ MoviePilot 现在支持 PostgreSQL 数据库，您可以根据需要选择使用
 
 ### 1. 数据库类型选择
 
-在 `config/app.env` 文件中设置：
+在配置目录下的 `app.env` 文件中设置（Docker 为 `/config/app.env`；本地安装用 `moviepilot config path` 查看实际路径）：
 
 ```bash
 # 使用 SQLite（默认）
@@ -37,10 +37,10 @@ DB_POSTGRESQL_USERNAME=moviepilot
 DB_POSTGRESQL_PASSWORD=moviepilot
 
 # PostgreSQL 连接池大小
-DB_POSTGRESQL_POOL_SIZE=20
+DB_POSTGRESQL_POOL_SIZE=10
 
 # PostgreSQL 连接池溢出数量
-DB_POSTGRESQL_MAX_OVERFLOW=30
+DB_POSTGRESQL_MAX_OVERFLOW=50
 ```
 
 ### 3. Unix Socket 连接
@@ -80,13 +80,13 @@ DB_POSTGRESQL_PASSWORD=your-password
 ### 从 SQLite 迁移到 PostgreSQL（以在 Windows 下操作为例）
 
 1. 关闭 SQLite 的 WAL 模式（如果此前已经开启），并关闭 MoviePilot
-2. 备份现有的 SQLite 数据库文件（`config/user.db`）
+2. 备份现有的 SQLite 数据库文件（`<配置目录>/user.db`，Docker 为 `/config/user.db`）
 3. 按照上述要求修改配置为 PostgreSQL
 4. 注意，由于 SQLite 与 PostgreSQL 对部分字段的类型（例如`json`类型）定义不同，请勿通过`user.db`在迁移阶段直接在空数据库的基础上创建表结构，而应按照下一条要求通过 MoviePilot 的初始化自动创建正确的表结构，只有在这种情况下迁移工具才能正确处理数据类型
 5. 启动应用，让 MoviePilot 自动创建表结构，确认创建完成后关闭 MoviePilot
 6. 使用如下 SQL 语句清理所有初始化完成的表数据，只保留表结构，避免默认的初始化数据干扰迁移
 ```sql
-TRUNCATE TABLE agentchat, agenttask, alembic_version, downloadfailure, downloadfiles, downloadhistory, mediaserveritem, message, passkey, plugindata, site, siteicon, sitestatistic, siteuserdata, subscribe, subscribehistory, systemconfig, transferhistory, "user", userconfig, workflow RESTART IDENTITY CASCADE;
+TRUNCATE TABLE agentchat, agenttask, agenttaskrun, alembic_version, downloadfailure, downloadfiles, downloadhistory, mediaserveritem, message, outboxmessage, passkey, pluginconfig, plugindata, serviceconfig, site, siteicon, sitestatistic, siteuserdata, subscribe, subscribehistory, systemconfig, transferhistory, transferpending, "user", userconfig, useridentity, workflow RESTART IDENTITY CASCADE;
 ```
 6. 安装 Java 21 或更新的版本，并下载 dimitri/pgloader 中的 v4 版本 jar 包，即`pgloader.jar`
 7. 创建`migrate.load`文件，并编辑如下内容，注意：Windows 下本地`.db`文件路径引用需要有 3 个斜线；`userrequest`表已经废弃，是 v1 阶段的残留物，下列配置文件将会自动去除
@@ -203,7 +203,7 @@ ORDER BY sequencename;
 ```
 12. 启动 MoviePilot，如果迁移成功，你应当在日志中看到类似下面的信息：
 ```
-INFO:    [moviepilot] 5b3355c964bb_2_2_0.py - 发现 21 个表需要检查序列
+INFO:    [moviepilot] 5b3355c964bb_2_2_0.py - 发现 N 个表需要检查序列
 INFO:    [moviepilot] a946dae52526_2_2_1.py - 开始PostgreSQL数据库userid字段迁移...
 INFO:    [moviepilot] a946dae52526_2_2_1.py - PostgreSQL数据库userid字段迁移完成
 INFO:    [moviepilot] 41ef1dd7467c_2_2_2.py - SystemConfig 表去重操作已完成。
@@ -221,24 +221,25 @@ INFO:     Started server process [129]
 
 ### PostgreSQL 数据备份
 
-PostgreSQL 数据存储在 `${CONFIG_DIR}/postgresql/` 目录中，您可以通过以下方式进行备份：
+MoviePilot 镜像不自带 PostgreSQL 服务端，只装了 `postgresql-client`。数据在外部
+PostgreSQL 主机上，文件级备份必须在那台主机上做。可用的两条路径：
 
-#### 1. 文件级备份
+#### 1. MoviePilot 内置备份
 ```bash
-# 备份整个PostgreSQL数据目录
-tar -czf postgresql_backup_$(date +%Y%m%d_%H%M%S).tar.gz config/postgresql/
+# 走 pg_dump 自定义格式，产物落在 DB_BACKUP_PATH 或 <配置目录>/database_backup/
+moviepilot database backup
 ```
 
-#### 2. 数据库级备份
+#### 2. 在容器里用客户端连外部库
 ```bash
 # 进入容器
 docker exec -it moviepilot bash
 
-# 使用pg_dump备份
-pg_dump -h localhost -U moviepilot -d moviepilot > /config/moviepilot_backup.sql
+# 使用 pg_dump 备份（连的是外部主机，不是 localhost）
+pg_dump -h "$DB_POSTGRESQL_HOST" -p "$DB_POSTGRESQL_PORT" -U moviepilot -d moviepilot > /config/moviepilot_backup.sql
 
-# 或使用pg_dumpall备份所有数据库
-pg_dumpall -h localhost -U moviepilot > /config/all_databases_backup.sql
+# 或使用 pg_dumpall 备份所有数据库
+pg_dumpall -h "$DB_POSTGRESQL_HOST" -p "$DB_POSTGRESQL_PORT" -U moviepilot > /config/all_databases_backup.sql
 ```
 
 #### 3. 恢复数据
@@ -289,7 +290,7 @@ psql -h localhost -U moviepilot < /config/all_databases_backup.sql
 
 PostgreSQL 相关日志可以在以下位置查看：
 
-- Docker 容器：`${CONFIG_DIR}/postgresql/logs/`
+- 外部 PostgreSQL 主机上的服务端日志（MoviePilot 容器内没有服务端，也没有它的日志）
 - 系统日志：`journalctl -u postgresql`
 
 ## 注意事项

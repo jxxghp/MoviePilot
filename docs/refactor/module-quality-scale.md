@@ -1,11 +1,11 @@
 # Module / Integration 渐进质量清单
 
 本清单对应 ARCH-242。机器可检查定义位于
-`app/runtime/extensions/module/quality.py`；它不改变 Module ABI，也不把“已评估”误写成“所有规则满分”。
+`app/runtime/extensions/contract/module_quality.py`；它不改变 Module ABI，也不把“已评估”误写成“所有规则满分”。
 
 ## 使用规则
 
-- 当前 47 个宿主模块（含本 fork 自有的 7 个存储后端模块与 `filemanager` 改名后的
+- 当前 46 个宿主模块（含本 fork 自有的 7 个存储后端模块与 `filemanager` 改名后的
   `medialibrary`）都必须显式登记 `ModuleQualityProfile`；未知第三方扩展才解析为 `legacy`。
 - 新模块必须在同一提交新增 profile，只可使用登记规则；宿主目录与 profile 集合不一致时测试失败。
 - `assessed` 表示已明确检查的规则集合，不等于所有规则满分；未覆盖项必须写精确原因。
@@ -29,9 +29,9 @@
 
 ## 当前 assessed 范围
 
-全部 47 个宿主模块已经完成显式 assessed 登记。所有模块共同具备四项机器证据：全测试真实网络
-守卫、覆盖 `app/modules` 的 async 阻塞扫描、宿主已观察能力的 Module Contract V2、明确的
-`MoviePilot core` owner。鉴权、限流、并发、敏感日志和 reload/stop 等能力相关规则不做虚假
+全部 46 个宿主模块已经完成显式 assessed 登记。所有模块共同具备四项机器证据
+（`COMMON_ASSESSED_RULES`）：`zero-real-network-tests`、`no-blocking-io-in-event-loop`、
+`module-contract-v2`、`owner-declared`。鉴权、限流、并发、敏感日志和 reload/stop 等能力相关规则不做虚假
 “全通过”声明，仍由对应模块专项测试证明，并在 profile 中保留豁免边界。
 
 `bangumi` 与 `dingtalk` 已登记更细的专项证据；其他模块先完成“已审查、通用门禁已覆盖、专属规则

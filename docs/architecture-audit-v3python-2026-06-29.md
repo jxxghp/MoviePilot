@@ -1,5 +1,9 @@
 # v3-python 对抗性多维架构审计报告
 
+> **本文描述的是 `v3-python` 分支的目录结构，该结构已不存在。**文中的 `app/core/`、
+> `app/helper/`、`app/utils/`、`app/chain/`、`app/managers/` 等路径与当前树不对应，
+> 只作历史记录读，不要按它定位代码。
+>
 > **审计范围**:v3-python @ 62eecb38(MoviePilot Python 重写主线,~180K 行,17 子系统)  
 > **审计日期**:2026-06-29  
 > **方法**:多 agent workflow 对抗性审计 —— 11 子系统 × 4 维度并行发现 → 每条发现对抗性证伪(注入 by-design / 已修 / 已判不可行三张清单)→ 综合排序  

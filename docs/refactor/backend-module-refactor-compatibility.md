@@ -123,7 +123,7 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 | `utils.mixins` | 按能力拆分，配置重载部分归 `runtime` | 消除 mixin 对全局事件单例的导入期注册 |
 | `helper.redis/browser/doh/display/thread/package` 等 | `adapters/cache`、`adapters/network`、`adapters/system` 或 `runtime/thread.py` | 生命周期由 startup 装配，不在适配器内部反向获取管理器 |
 | `helper.module` | `foundation.reflection` | 只保留通用 Python 反射、模块发现与动态加载，不承担模块生命周期 |
-| `helper.downloader/mediaserver/service` | `app.application` + `app.application.service` / `app.sdk.services` | 媒体服务器身份/匹配规则与配置化服务发现统一归入 application；旧 `app.runtime.extensions.service_registry` 由 `app/runtime/compat/manifest.py` 精确映射到 `app.sdk.services`，不在新模块复制旧导出 |
+| `helper.downloader/mediaserver/service` | `app.application.downloader` / `app.application.mediaserver` / `app.runtime.extensions.service_registry` | 媒体服务器身份/匹配规则归入 application；配置化服务发现的 canonical 落点是 `app.runtime.extensions.service_registry`，旧键 `app.helper.service` 由 `app/runtime/compat/manifest.py` 精确映射过去、推荐插件路径为 `app.sdk.services`，不在新模块复制旧导出 |
 | `helper.message/interaction` | `app.application.messaging` | 负责消息渲染、路由和交互，不承担配置化服务发现 |
 | `helper.notification` | `app.application.notification` | 通知模块发现依赖持久化配置，属于应用服务 |
 | `helper.webpush` | `app.api.endpoints.message` | Web Push 订阅和手动发送只服务消息 HTTP API，直接归入对应 endpoint |
@@ -151,11 +151,15 @@ Entrypoints / Plugins --> Application / Chain --> Domain + Ports --> Foundation
 
 ```text
 app/
-  compat/
-    __init__.py
-    imports.py       # Finder、Loader、安装和卸载入口
-    manifest.py      # 不导入业务模块的静态映射数据
-    diagnostics.py   # Debug 诊断与插件源码扫描
+  runtime/
+    compat/
+      __init__.py
+      imports.py                    # Finder、Loader、安装和卸载入口
+      manifest.py                   # 不导入业务模块的静态映射数据
+      diagnostics.py                # Debug 诊断与插件源码扫描
+      debounce.py                   # 告警去重
+      resource_imports.py           # 资源预检扫描
+      plugin_version_readiness.py   # 插件版本 import 面判定
   sdk/
     __init__.py
     events.py
@@ -163,7 +167,7 @@ app/
     services.py
 ```
 
-`app.runtime.compat` 自身只使用标准库，尤其不能导入 `settings`、logger、事件总线、插件管理器或映射目标。`app/__init__.py` 只负责无业务依赖地安装钩子；配置初始化完成后、插件加载前，再由启动装配代码调用类似 `configure_diagnostics(enabled=settings.DEBUG, emit=logger.warning)` 的入口注入 Debug 状态和日志回调，避免兼容层再次进入当前依赖环。
+`app.runtime.compat` 自身只使用标准库，尤其不能导入 `settings`、logger、事件总线、插件管理器或映射目标。`app/__init__.py` 只负责无业务依赖地安装钩子；配置初始化完成后、插件加载前，再由启动装配代码调用 `configure_legacy_import_diagnostics(enabled=settings.DEBUG, emitter=logger.warning)` 注入 Debug 状态和日志回调，避免兼容层再次进入当前依赖环。
 
 ### 4.3 声明式映射
 
@@ -260,7 +264,7 @@ Loader 因此不能在旧模块名下再次 `exec` 目标源码，而应导入 c
 - 提供仅供测试使用的卸载和状态复原能力；
 - 安装失败应在启动阶段明确失败，不能等某个插件加载后才随机暴露。
 
-Finder 在诊断回调尚未配置时仍可暂存命中的旧路径和调用模块；`configure_diagnostics()` 完成后仅刷新能够确认来自插件/扩展的记录。这样不需要在 `app/__init__.py` 导入配置，又不会漏掉非常早期的插件式扩展导入。
+Finder 在诊断回调尚未配置时仍可暂存命中的旧路径和调用模块；`configure_legacy_import_diagnostics()` 完成后仅刷新能够确认来自插件/扩展的记录。这样不需要在 `app/__init__.py` 导入配置，又不会漏掉非常早期的插件式扩展导入。
 
 不建议只在 `PluginManager` 中临时安装钩子。主程序启动、CLI、脚本、插件依赖扫描和测试都可能在插件管理器初始化前导入旧路径。
 

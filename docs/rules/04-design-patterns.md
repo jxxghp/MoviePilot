@@ -10,14 +10,17 @@ This document defines the structural patterns used across this codebase. When im
 
 **Base class:** `_ModuleBase` in `app/modules/__init__.py`
 
-**Specialized base classes:**
-- `_DownloaderBase` — for download clients
-- `_MediaServerBase` — for media servers (implied by existing patterns)
+**Family template base classes** in `app/modules/_base/` (each combines the family
+mixin from `app/modules/__init__.py` with `_ModuleBase`):
+- `_DownloaderModuleBase[TService]` — `_base/downloader.py`
+- `_MediaServerModuleBase[TService]` — `_base/mediaserver.py`
+- `_MessageChannelModuleBase[TService]` — `_base/notification.py`
+- `_StorageModuleBase` — `_base/storage.py` (not `TService`-parameterized; declares `storage_class`)
 
 **Required methods every module must implement:**
 
 ```python
-class ExampleModule(_ModuleBase, _DownloaderBase):
+class ExampleModule(_DownloaderModuleBase[ExampleClient]):
 
     def init_module(self) -> None:
         """模块初始化"""

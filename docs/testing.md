@@ -20,7 +20,9 @@ uv run --locked --no-sync python tests/run.py --shard 1/4           # 只跑指�
 `ceil(文件数 / 分片数)` 的大小连续切片，确保本地与 CI 执行相同的文件集合和顺序。
 
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
-- 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
+- 不再依赖 `python tests/test_xxx.py` 直跑。`if __name__ == "__main__": unittest.main()` 尾巴仍有 6 个文件保留
+  （`test_interaction_router`、`test_pipeline_dispatch`、`test_monitor_flapout`、`test_post_message_trunk`、
+  `test_transfer_queue_count`、`test_tmdb_failure_snapshot_cache`），改到哪个就顺手删掉。
 - **复现 CI 用干净环境**：使用 `uv sync --locked` 从 `uv.lock` 创建环境，再以
   `uv run --locked --no-sync` 运行测试，避免本地额外包、未锁定解析结果或编译产物掩盖问题。
 
