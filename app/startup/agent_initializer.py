@@ -71,14 +71,14 @@ def _get_prompt_manager() -> Any:
 
 def _get_capability_manager() -> Any:
     """首个多模态调用才导入 Agent 能力管理器。"""
-    from app.agent.llm import AgentCapabilityManager
+    from app.agent.llm.capability import AgentCapabilityManager
 
     return AgentCapabilityManager
 
 
 def _get_llm_helper() -> Any:
     """首个模型能力查询才导入 LLM helper。"""
-    from app.agent.llm import LLMHelper
+    from app.agent.llm.helper import LLMHelper
 
     return LLMHelper
 

@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from app.runtime.log import logger
 
 if TYPE_CHECKING:
-    from app.agent.policy import AgentToolPolicyOrchestrator, ToolPolicyContext
+    from app.agent.policy.contracts import ToolPolicyContext
+    from app.agent.policy.orchestrator import AgentToolPolicyOrchestrator
     from app.agent.tools.catalog import ToolCatalogSnapshot
 
 
@@ -58,7 +59,7 @@ class MoviePilotToolsManager:
     @staticmethod
     def _summarize_error(error: Exception) -> str:
         """仅在错误路径加载策略脱敏器，保持默认导入轻量。"""
-        from app.agent.policy import summarize_error
+        from app.agent.policy.sanitizer import summarize_error
 
         return summarize_error(error)
 
@@ -144,13 +145,13 @@ class MoviePilotToolsManager:
         if policy_orchestrator is not None and policy_context is not None:
             return policy_orchestrator, policy_context
 
-        from app.agent.policy import (
-            DEFAULT_TOOL_POLICY_ORCHESTRATOR,
+        from app.agent.policy.contracts import (
             AuthSource,
             PrincipalType,
             ToolOrigin,
             ToolPolicyContext,
         )
+        from app.agent.policy.orchestrator import DEFAULT_TOOL_POLICY_ORCHESTRATOR
 
         if policy_orchestrator is None:
             policy_orchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR
@@ -382,7 +383,7 @@ class MoviePilotToolsManager:
             )
             return error_msg
 
-        from app.agent.policy import call_policy_hook
+        from app.agent.policy.orchestrator import call_policy_hook
         from app.agent.tools.base import (
             ToolExecutionTimeoutError,
             format_tool_result_for_agent,
