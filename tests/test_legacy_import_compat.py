@@ -427,3 +427,26 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     assert set(SYMBOL_ALIASES["app.schemas.message"]) == set(
         _MESSAGE_NOTIFICATION_SYMBOL_ALIASES
     )
+
+
+def test_command_legacy_module_shares_identity_with_canonical_path(monkeypatch):
+    """旧路径 app.command 与新路径 app.runtime.command 必须是同一模块对象。
+
+    命令中枢的测试历来在旧路径上 monkeypatch 模块级变量（消息网关、ThreadHelper 等）；
+    若兼容层给出的是转发副本而非同一对象，这类 patch 改的是没人读的副本，
+    新路径下运行的代码不会感知到，而测试仍可能因为没读到 patch 前的值而误判通过。
+    """
+    legacy = importlib.import_module("app.command")
+    canonical = importlib.import_module("app.runtime.command")
+
+    assert legacy is canonical
+    assert sys.modules["app.command"] is sys.modules["app.runtime.command"]
+    assert legacy.Command is canonical.Command
+
+    sentinel_a = object()
+    monkeypatch.setattr("app.command._command_messenger_provider", lambda: sentinel_a)
+    assert canonical._command_messenger_provider() is sentinel_a
+
+    sentinel_b = object()
+    monkeypatch.setattr(canonical, "_command_messenger_provider", lambda: sentinel_b)
+    assert legacy._command_messenger_provider() is sentinel_b

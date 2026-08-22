@@ -9,7 +9,7 @@ from typing import Iterator, List, Optional
 
 import pytest
 
-from app.command import Command
+from app.runtime.command import Command
 from app.modules.discord.discord import Discord
 from app.runtime.deprecation import policy as deprecation_policy
 from app.runtime.extensions.admission.command_arbitration import BuiltinCommandArbiter

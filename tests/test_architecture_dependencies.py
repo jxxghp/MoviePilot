@@ -130,6 +130,7 @@ RETIRED_CANONICAL_FILES = (
     "app/application/plugins.py",
     "app/application/subscribe.py",
     "app/scheduler.py",
+    "app/command.py",
 )
 # 空壳目录扫描豁免的 app/ 下顶级目录：目录内容由插件仓自治，属运行期数据。
 SHELL_SCAN_EXEMPT_ROOTS = frozenset({"plugins"})

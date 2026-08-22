@@ -21,7 +21,7 @@ from app.application.site.query import SiteQueryService
 from app.api.endpoints.plugin import register_plugin_api
 from app.application.orchestration.site import SiteChain
 from app.application.orchestration.torrents import TorrentsChain
-from app.command import Command
+from app.runtime.command import Command
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.adapters.web.security.access import verify_token
 from app.api.principal import ApiPrincipal

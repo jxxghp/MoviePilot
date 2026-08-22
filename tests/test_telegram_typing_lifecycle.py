@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.agent import AgentManager, _MessageTask, _async_start_processing_status
 from app.application.orchestration.message import MessageChain
-from app.command import Command, _finish_command_processing_status
+from app.runtime.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas.types import NotificationChannel
@@ -229,7 +229,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             }
         )
 
-        with patch("app.command._finish_command_processing_status") as finish_status:
+        with patch("app.runtime.command._finish_command_processing_status") as finish_status:
             command.command_event(event)
 
         command.execute.assert_called_once()
@@ -248,7 +248,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
         }
 
         messenger = Mock()
-        with patch("app.command._command_messenger_provider", return_value=messenger):
+        with patch("app.runtime.command._command_messenger_provider", return_value=messenger):
             _finish_command_processing_status(status, user_id="fallback")
 
         messenger.finish_message_processing_status.assert_called_once_with(

@@ -11,8 +11,8 @@ from unittest.mock import Mock
 
 import pytest
 
-import app.command as command_module
-from app.command import Command, _command_callable, _resolve_builtin_commands
+import app.runtime.command as command_module
+from app.runtime.command import Command, _command_callable, _resolve_builtin_commands
 from app.runtime.extensions.admission.command_arbitration import BuiltinCommandArbiter
 from app.runtime.extensions.projection.command import PluginCommandTable
 from app.startup.bindings.builtin_commands import builtin_commands

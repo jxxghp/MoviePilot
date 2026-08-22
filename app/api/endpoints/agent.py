@@ -41,7 +41,7 @@ from app.agent.runtime_loader import (
     get_running_agent_manager,
 )
 from app.application.orchestration.message import MessageChain
-from app.command import Command
+from app.runtime.command import Command
 from app.runtime.config import global_vars, settings
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal

@@ -256,6 +256,12 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="db",
     ),
+    "app.command": ModuleAlias(
+        target="app.runtime.command",
+        replacement="app.runtime.command",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
     "app.utils.crypto": ModuleAlias(
         target="app.foundation.crypto",
         replacement="app.sdk.utilities",

@@ -193,7 +193,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     from app.application.orchestration.site import SiteChain
     from app.application.orchestration.subscribe import SubscribeChain
     from app.workflow.service import WorkflowChain
-    from app.command import Command
+    from app.runtime.command import Command
     from app.scheduler import PluginScheduling, Scheduler
 
     return {
