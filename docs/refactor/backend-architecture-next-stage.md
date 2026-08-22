@@ -1058,6 +1058,8 @@ Agent 下载、任务、媒体识别、刮削和 Web 搜索工具也切换到动
 配置债务由 84 个文件降至 77 个，Agent 任务、搜索与识别专项测试通过。
 AcoustID、AniList、Bangumi、Douban、Fanart 和 IMDb 模块族改用动态运行时端口，模块公开类与配置热读保持；
 配置债务由 77 个文件降至 67 个，相关识别、浏览与刮削专项测试通过。
+MusicBrainz、ListenBrainz、LrcLib 与 TheAudioDB 模块族也完成同样迁移，配置债务由 67 个文件降至 62 个，
+音乐元数据专项测试通过。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

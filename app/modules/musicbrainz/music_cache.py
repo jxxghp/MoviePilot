@@ -6,7 +6,9 @@ from time import time
 from typing import Optional
 
 from app.runtime.cache import FileCache, TTLCache
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger

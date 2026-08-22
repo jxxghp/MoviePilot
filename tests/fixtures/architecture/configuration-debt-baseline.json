@@ -9,7 +9,7 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 67,
+    "count": 62,
     "files": [
       "app/adapters/system/fsproxy.py",
       "app/cli.py",
@@ -43,10 +43,6 @@
       "app/modules/indexer/spider/torrentleech.py",
       "app/modules/indexer/spider/yema.py",
       "app/modules/jellyfin/jellyfin.py",
-      "app/modules/listenbrainz/__init__.py",
-      "app/modules/lrclib/__init__.py",
-      "app/modules/musicbrainz/__init__.py",
-      "app/modules/musicbrainz/music_cache.py",
       "app/modules/postgresql/__init__.py",
       "app/modules/qbittorrent/__init__.py",
       "app/modules/qqbot/qqbot.py",
@@ -55,7 +51,6 @@
       "app/modules/slack/slack.py",
       "app/modules/subtitle/__init__.py",
       "app/modules/telegram/telegram.py",
-      "app/modules/theaudiodb/__init__.py",
       "app/modules/themoviedb/__init__.py",
       "app/modules/themoviedb/category.py",
       "app/modules/themoviedb/scraper.py",
