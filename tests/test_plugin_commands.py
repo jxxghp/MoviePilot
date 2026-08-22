@@ -220,7 +220,7 @@ def test_grammar_check_agrees_with_builtin_preset_commands():
 
 def _preset_command_words() -> List[str]:
     """读取内建命令词，清单由组合根持有，取用它不必构造命令中枢。"""
-    from app.startup.builtin_commands import builtin_commands
+    from app.startup.bindings.builtin_commands import builtin_commands
 
     return list(builtin_commands())
 

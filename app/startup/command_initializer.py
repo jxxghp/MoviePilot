@@ -3,7 +3,7 @@ from concurrent.futures import Future
 from app.application.commands import register_command_class
 from app.application.messaging.gateway import CommandChain
 from app.command import Command, register_builtin_commands, register_command_messenger
-from app.startup.builtin_commands import builtin_commands
+from app.startup.bindings.builtin_commands import builtin_commands
 
 # 导入期即向 application 门面注册命令类，保证工具调用时不依赖静态边。
 register_command_class(Command)

@@ -15,7 +15,7 @@ import app.command as command_module
 from app.command import Command, _command_callable, _resolve_builtin_commands
 from app.runtime.extensions.admission.command_arbitration import BuiltinCommandArbiter
 from app.runtime.extensions.projection.command import PluginCommandTable
-from app.startup.builtin_commands import builtin_commands
+from app.startup.bindings.builtin_commands import builtin_commands
 
 # 内建清单里由业务链提供实现的命令词
 BUSINESS_COMMANDS = (
@@ -67,7 +67,7 @@ def test_building_the_builtin_list_materializes_no_business_chain(monkeypatch):
     for name in ("SiteChain", "SubscribeChain", "DownloadChain", "TransferChain",
                  "SystemChain", "MessageChain", "SkillInteractionHandler", "CommandChain"):
         monkeypatch.setattr(
-            "app.startup.builtin_commands." + name,
+            "app.startup.bindings.builtin_commands." + name,
             Mock(side_effect=lambda *_, _n=name, **__: constructed.append(_n)),
         )
 
@@ -80,7 +80,7 @@ def test_business_chain_is_materialized_on_first_execution_and_reused(monkeypatc
     """业务链在首次执行该命令时才物化，同一命令的后续执行复用同一个实例。"""
     chain = SimpleNamespace(remote_list=lambda: None)
     factory = Mock(return_value=chain)
-    monkeypatch.setattr("app.startup.builtin_commands.SiteChain", factory)
+    monkeypatch.setattr("app.startup.bindings.builtin_commands.SiteChain", factory)
     entry = builtin_commands()["/sites"]
     assert factory.call_count == 0
 
@@ -94,7 +94,7 @@ def test_business_chain_is_materialized_on_first_execution_and_reused(monkeypatc
 def test_scheduler_command_starts_its_job_without_arguments(monkeypatch):
     """定时任务型命令的实现不接收任何参数，只按任务标识启动定时服务。"""
     scheduler = Mock()
-    monkeypatch.setattr("app.startup.builtin_commands.Scheduler", Mock(return_value=scheduler))
+    monkeypatch.setattr("app.startup.bindings.builtin_commands.Scheduler", Mock(return_value=scheduler))
 
     _command_callable(builtin_commands()["/transfer"])()
 
@@ -104,7 +104,7 @@ def test_scheduler_command_starts_its_job_without_arguments(monkeypatch):
 def test_scheduler_command_does_not_touch_the_scheduler_until_it_runs(monkeypatch):
     """定时任务型条目在构造清单时不解析定时服务。"""
     scheduler_class = Mock()
-    monkeypatch.setattr("app.startup.builtin_commands.Scheduler", scheduler_class)
+    monkeypatch.setattr("app.startup.bindings.builtin_commands.Scheduler", scheduler_class)
 
     builtin_commands()
 
