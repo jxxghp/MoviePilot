@@ -570,6 +570,35 @@ def test_stop_modules_continues_after_internal_owner_failures(monkeypatch):
         _assert_completed_once(dependency)
 
 
+def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
+    """关闭时必须先收口 Web Agent 后台任务，再关闭会话持久化端口。"""
+    order = []
+    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        modules_initializer,
+        "shutdown_web_agent_background_tasks",
+        AsyncMock(side_effect=lambda: order.append("web-agent")),
+    )
+    persistence = MagicMock()
+    persistence.shutdown = AsyncMock(side_effect=lambda: order.append("persistence"))
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=persistence),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_database_worker",
+        AsyncMock(side_effect=lambda: order.append("database")),
+    )
+    monkeypatch.setattr(modules_initializer, "_database_worker", object())
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    assert order == ["web-agent", "persistence", "database"]
+
+
 def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}

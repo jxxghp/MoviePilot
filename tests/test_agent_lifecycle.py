@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
+from app.application.messaging.agent import (
+    create_web_agent_background_task,
+    shutdown_web_agent_background_tasks,
+)
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
@@ -12,6 +16,28 @@ from app.agent.orchestrator import (
 )
 from app.agent.memory import MemoryManager
 from app.startup import agent_initializer, modules_initializer
+
+
+@pytest.mark.anyio
+async def test_web_agent_background_tasks_are_cancelled_and_drained() -> None:
+    """Web Agent 任务关闭后不得继续占用循环或提交晚到的快照。"""
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def blocked_task() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            finished.set()
+
+    task = create_web_agent_background_task(blocked_task())
+    await started.wait()
+    await shutdown_web_agent_background_tasks()
+
+    assert task.done()
+    assert task.cancelled()
+    assert finished.is_set()
 
 
 @pytest.mark.anyio

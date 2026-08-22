@@ -47,17 +47,25 @@ from app.command import Command
 from app.runtime.config import global_vars
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal
-from app.api.dependencies.agent import get_agent_chat_service
+from app.api.dependencies.agent import (
+    get_agent_chat_persistence,
+    get_agent_chat_service,
+)
 from app.api.dependencies.auth import get_current_active_user
 from app.application.messaging.chat import (
     AgentChatRecord,
+    AgentChatPersistenceService,
     AgentChatService,
     get_configured_agent_chat_service,
     get_configured_agent_chat_persistence,
 )
 from app.application.security.user import get_configured_user_id_lookup
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.messaging.agent import attach_web_agent_edit_queue, detach_web_agent_edit_queue
+from app.application.messaging.agent import (
+    attach_web_agent_edit_queue,
+    create_web_agent_background_task,
+    detach_web_agent_edit_queue,
+)
 from app.application.messaging.agent import agent_interaction_manager
 from app.application.messaging.agent import (
     build_agent_choice_button_rows,
@@ -88,7 +96,6 @@ _WEB_AGENT_FILE_REGISTRY: dict[str, dict[str, Any]] = {}
 _WEB_AGENT_MESSAGE_QUEUES: dict[str, list[Queue[_SchemaMessage]]] = {}
 _WEB_AGENT_MESSAGE_LOCK = Lock()
 _WEB_AGENT_MESSAGE_LISTENER_REGISTERED = False
-_WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
 class _WebAgentEventPublisher:
@@ -517,13 +524,16 @@ def _build_web_agent_session_id(user: ApiPrincipal, session_id: Optional[str]) -
 async def _build_web_agent_session_id_async(
     user: ApiPrincipal,
     session_id: Optional[str],
+    service: Optional[AgentChatService] = None,
 ) -> str:
     """异步解析 Web Agent 会话 ID，并复用异步会话查询端口。"""
     seed = str(session_id or "").strip() or uuid.uuid4().hex
     if seed.startswith(WEB_AGENT_SESSION_PREFIX):
         return seed
     try:
-        existing_chat = await get_configured_agent_chat_service().get(seed)
+        if service is None:
+            service = get_configured_agent_chat_service()
+        existing_chat = await service.get(seed)
         if existing_chat and AgentChatService.can_access(existing_chat, user):
             return seed
     except Exception as e:
@@ -658,36 +668,41 @@ async def _save_web_agent_display_snapshot(
     current_user: ApiPrincipal,
     messages: list[dict],
     client_session_id: Optional[str] = None,
+    service: Optional[AgentChatService] = None,
+    persistence: Optional[AgentChatPersistenceService] = None,
 ) -> None:
     """
     保存 WebAgent 当前展示消息快照。
     """
-    try:
-        existing_chat = await get_configured_agent_chat_service().get(session_id)
-        await get_configured_agent_chat_persistence().async_save_display_messages(
-            session_id=session_id,
-            user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
-            username=(existing_chat.username if existing_chat else current_user.name),
-            channel=(
-                existing_chat.channel
-                if existing_chat and existing_chat.channel
-                else NotificationChannel.WebAgent
-            ),
-            source=(
-                existing_chat.source
-                if existing_chat and existing_chat.source
-                else WEB_AGENT_SOURCE
-            ),
-            original_chat_id=existing_chat.original_chat_id if existing_chat else None,
-            client_session_id=(
-                existing_chat.client_session_id
-                if existing_chat and existing_chat.client_session_id
-                else client_session_id
-            ),
-            messages=messages,
-        )
-    except Exception as e:
-        logger.debug(f"保存WebAgent展示历史失败: {e}")
+    if service is None:
+        # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
+        service = get_configured_agent_chat_service()
+    existing_chat = await service.get(session_id)
+    if persistence is None:
+        # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
+        persistence = get_configured_agent_chat_persistence()
+    await persistence.async_save_display_messages(
+        session_id=session_id,
+        user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
+        username=(existing_chat.username if existing_chat else current_user.name),
+        channel=(
+            existing_chat.channel
+            if existing_chat and existing_chat.channel
+            else NotificationChannel.WebAgent
+        ),
+        source=(
+            existing_chat.source
+            if existing_chat and existing_chat.source
+            else WEB_AGENT_SOURCE
+        ),
+        original_chat_id=existing_chat.original_chat_id if existing_chat else None,
+        client_session_id=(
+            existing_chat.client_session_id
+            if existing_chat and existing_chat.client_session_id
+            else client_session_id
+        ),
+        messages=messages,
+    )
 
 
 def _build_web_agent_sse(
@@ -757,6 +772,7 @@ def _sanitize_web_agent_upload_name(
 async def _get_web_agent_upload_dir(
     user: ApiPrincipal,
     session_id: Optional[str],
+    service: Optional[AgentChatService] = None,
 ) -> Path:
     """
     计算当前 Web Agent 会话的临时附件目录。
@@ -765,7 +781,11 @@ async def _get_web_agent_upload_dir(
     :param session_id: 前端会话标识
     :return: 已创建的临时附件目录
     """
-    server_session_id = await _build_web_agent_session_id_async(user, session_id)
+    server_session_id = await _build_web_agent_session_id_async(
+        user,
+        session_id,
+        service,
+    )
     safe_session_id = server_session_id.replace(":", "_")
     upload_dir = get_api_runtime_config_snapshot().temp_path / "agent_uploads" / safe_session_id
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -1701,6 +1721,7 @@ async def upload_web_agent_file(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form(None),
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
 ) -> _SchemaResponse:
     """
     上传 Web 智能助手对话附件。
@@ -1712,7 +1733,7 @@ async def upload_web_agent_file(
     """
     mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0]
     safe_name = _sanitize_web_agent_upload_name(file.filename, mime_type)
-    upload_dir = await _get_web_agent_upload_dir(current_user, session_id)
+    upload_dir = await _get_web_agent_upload_dir(current_user, session_id, service)
     target_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
     size = await _save_web_agent_upload(file, target_path)
     attachment = _register_web_agent_file(
@@ -1846,6 +1867,7 @@ async def get_agent_chat_session(
         server_session_id = await _build_web_agent_session_id_async(
             current_user,
             session_id,
+            service,
         )
         if server_session_id != session_id:
             chat = await _get_accessible_agent_chat(
@@ -1884,6 +1906,7 @@ async def save_agent_chat_display(
     payload: _SchemaAgentChatDisplaySaveRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
+    persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
 ) -> _SchemaResponse:
     """
     保存前端聚合后的 Agent 展示消息。
@@ -1911,6 +1934,8 @@ async def save_agent_chat_display(
         current_user=current_user,
         messages=messages,
         client_session_id=existing_chat.client_session_id if existing_chat else session_id,
+        service=service,
+        persistence=persistence,
     )
     chat = await service.get_accessible(session_id, current_user)
     if not chat:
@@ -1964,6 +1989,7 @@ async def stop_web_agent_session_task(
     server_session_id = await _build_web_agent_session_id_async(
         current_user,
         session_id,
+        service,
     )
     chat = await _get_accessible_agent_chat(
         service,
@@ -1988,6 +2014,8 @@ async def _web_agent_stream_impl(
     payload: _SchemaAgentWebChatRequest,
     request: Request,
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: Optional[AgentChatService] = None,
+    persistence: Optional[AgentChatPersistenceService] = None,
 ) -> StreamingResponse:
     """
     Web 智能助手流式对话。
@@ -1998,11 +2026,18 @@ async def _web_agent_stream_impl(
     :return: SSE 流式响应
     """
     prompt = payload.text.strip()
+    if not isinstance(service, AgentChatService):
+        # 直接调用公开函数时不经过 FastAPI 依赖解析；生产路由总是传入运行时服务。
+        service = get_configured_agent_chat_service()
+    if not isinstance(persistence, AgentChatPersistenceService):
+        # 直接调用公开函数时不经过 FastAPI 依赖解析；生产路由总是传入运行时端口。
+        persistence = get_configured_agent_chat_persistence()
     locale = LocaleHelper.get_locale_from_request(request)
     display_prompt = (payload.display_text or payload.text).strip()
     session_id = await _build_web_agent_session_id_async(
         current_user,
         payload.session_id,
+        service,
     )
     is_secret_confirmation_candidate = (
         prompt in {"确认", "取消"}
@@ -2110,13 +2145,13 @@ async def _web_agent_stream_impl(
                         current_user=current_user,
                         messages=display_messages,
                         client_session_id=payload.session_id or session_id,
+                        service=service,
+                        persistence=persistence,
                     )
                 except Exception as err:
                     logger.error(f"保存WebAgent传统消息快照失败: {str(err)}")
 
-            snapshot_task = asyncio.create_task(save_display_snapshot())
-            _WEB_AGENT_BACKGROUND_TASKS.add(snapshot_task)
-            snapshot_task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+            snapshot_task = create_web_agent_background_task(save_display_snapshot())
             await asyncio.sleep(0)
             for event in events:
                 event_payload = copy.deepcopy(event)
@@ -2268,16 +2303,19 @@ async def _web_agent_stream_impl(
                 # 终态先进入 SSE 队列，避免展示快照落库延迟前端结束动画。
                 event_publisher.publish(done_event)
                 if not is_secret_confirmation_control:
-                    await _save_web_agent_display_snapshot(
-                        session_id=session_id,
-                        current_user=current_user,
-                        messages=display_messages,
-                        client_session_id=payload.session_id or session_id,
-                    )
+                    try:
+                        await _save_web_agent_display_snapshot(
+                            session_id=session_id,
+                            current_user=current_user,
+                            messages=display_messages,
+                            client_session_id=payload.session_id or session_id,
+                            service=service,
+                            persistence=persistence,
+                        )
+                    except Exception as err:
+                        logger.error(f"保存WebAgent展示历史失败：{err}")
 
-        task = asyncio.create_task(run_agent())
-        _WEB_AGENT_BACKGROUND_TASKS.add(task)
-        task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+        task = create_web_agent_background_task(run_agent())
         disconnected = False
         terminal_sent = False
         try:
@@ -2349,6 +2387,14 @@ async def web_agent_stream(
     payload: _SchemaAgentWebChatRequest,
     request: Request,
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: AgentChatService = Depends(get_agent_chat_service),
+    persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
 ) -> StreamingResponse:
     """Web 智能助手流式对话的稳定公开路由入口。"""
-    return await _web_agent_stream_impl(payload, request, current_user)
+    return await _web_agent_stream_impl(
+        payload,
+        request,
+        current_user,
+        service,
+        persistence,
+    )

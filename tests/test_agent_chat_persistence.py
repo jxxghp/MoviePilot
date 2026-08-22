@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, call, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete, select
 
-from app.application.database import DatabaseWorkerOverloadedError
+from app.application.database import (
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+)
 from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
+from app.api.endpoints.agent import save_agent_chat_display
 from app.db.models.agentchat import AgentChat
 from app.db.oper.agentchat import AgentChatOper
 from app.db.session import SessionFactory, async_session_scope
+from app.db.uow import run_sync_transaction
+from app.schemas.agent import AgentChatDisplaySaveRequest
 from app.db.worker import DatabaseWorker
 
 
@@ -65,8 +73,9 @@ async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> No
     executor = _Executor()
     repository = _Repository()
     service = AgentChatPersistenceService(
-        repository=lambda: repository,
+        repository=lambda _session: repository,
         async_executor=executor,
+        sync_transaction=lambda operation: operation(object()),
     )
     caller_thread_id = threading.get_ident()
 
@@ -111,8 +120,9 @@ async def test_agent_chat_persistence_propagates_worker_failure() -> None:
             raise RuntimeError("worker failed")
 
     service = AgentChatPersistenceService(
-        repository=_Repository,
+        repository=lambda _session: _Repository(),
         async_executor=FailingExecutor(),
+        sync_transaction=lambda operation: operation(object()),
     )
 
     with pytest.raises(RuntimeError, match="worker failed"):
@@ -121,6 +131,83 @@ async def test_agent_chat_persistence_propagates_worker_failure() -> None:
             user_id="1",
             messages=[],
         )
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_persistence_pending_metric_uses_deltas() -> None:
+    """pending 是 UpDownCounter，准入和释放必须分别记录增减量。"""
+    service = AgentChatPersistenceService(
+        repository=lambda _session: _Repository(),
+        async_executor=_Executor(),
+        sync_transaction=lambda operation: operation(object()),
+    )
+    with patch("app.application.messaging.chat.record_metric") as record_metric:
+        await service.async_save_agent_messages(
+            session_id="metric-session",
+            user_id="1",
+            messages=[],
+        )
+    record_metric.assert_has_calls(
+        [
+            call("agent.chat.persistence.pending", 1),
+            call("agent.chat.persistence.pending", -1),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_authoritative_display_save_propagates_worker_overload() -> None:
+    """权威 PUT 保存不能把 worker 背压吞成成功或普通业务失败。"""
+    repository = AsyncMock()
+    repository.async_get.return_value = None
+    service = AgentChatService(repository=repository)
+
+    class OverloadedPersistence:
+        async def async_save_display_messages(self, **_kwargs):
+            raise DatabaseWorkerOverloadedError("busy")
+
+    with pytest.raises(DatabaseWorkerOverloadedError, match="busy"):
+        await save_agent_chat_display(
+            session_id="overloaded-session",
+            payload=AgentChatDisplaySaveRequest(messages=[]),
+            current_user=SimpleNamespace(id=1, name="admin", is_superuser=True),
+            service=service,
+            persistence=OverloadedPersistence(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_persistence_rolls_back_compound_write(monkeypatch) -> None:
+    """复合写入中途失败时，创建或更新不能留下半成品。"""
+    worker = DatabaseWorker(max_workers=1, capacity=4)
+    await worker.start()
+    session_id = f"worker-rollback-{uuid4().hex}"
+    persistence = AgentChatPersistenceService(
+        repository=lambda session: AgentChatOper(session),
+        async_executor=worker,
+        sync_transaction=run_sync_transaction,
+    )
+    original = AgentChatOper.save_display_messages
+
+    def fail_after_stage(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        raise RuntimeError("display snapshot failed")
+
+    monkeypatch.setattr(AgentChatOper, "save_display_messages", fail_after_stage)
+    try:
+        with pytest.raises(RuntimeError, match="display snapshot failed"):
+            await persistence.async_append_display_messages(
+                session_id=session_id,
+                user_id="rollback-user",
+                messages=[{"role": "user", "content": "not committed"}],
+            )
+        async with async_session_scope() as session:
+            result = await session.execute(
+                select(AgentChat).where(AgentChat.session_id == session_id)
+            )
+            assert result.scalars().first() is None
+    finally:
+        await worker.shutdown()
 
 
 @pytest.mark.asyncio
@@ -139,9 +226,11 @@ async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancel
 
     executor = BlockingExecutor()
     service = AgentChatPersistenceService(
-        repository=_Repository,
+        repository=lambda _session: _Repository(),
         async_executor=executor,
+        sync_transaction=lambda operation: operation(object()),
         capacity=2,
+        session_capacity=2,
     )
     first = asyncio.create_task(
         service.async_save_agent_messages(
@@ -178,14 +267,104 @@ async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancel
 
 
 @pytest.mark.asyncio
+async def test_agent_chat_persistence_session_admission_is_fair() -> None:
+    """热点会话的锁等待不能占满全局容量并拒绝其他会话。"""
+
+    class BlockingExecutor:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self, operation):
+            self.started.set()
+            await self.release.wait()
+            return operation()
+
+    executor = BlockingExecutor()
+    service = AgentChatPersistenceService(
+        repository=lambda _session: _Repository(),
+        async_executor=executor,
+        sync_transaction=lambda operation: operation(object()),
+        capacity=4,
+        session_capacity=2,
+    )
+    first = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="hot-session", user_id="1", messages=[]
+        )
+    )
+    await executor.started.wait()
+    second = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="hot-session", user_id="1", messages=[]
+        )
+    )
+    await asyncio.sleep(0)
+    with pytest.raises(DatabaseWorkerOverloadedError):
+        await service.async_save_agent_messages(
+            session_id="hot-session", user_id="1", messages=[]
+        )
+    other = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="other-session", user_id="1", messages=[]
+        )
+    )
+    await asyncio.sleep(0)
+    assert not other.done()
+    executor.release.set()
+    await first
+    await second
+    await other
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
+    """关闭持久化端口时拒绝新写入并等待现有会话写入收口。"""
+
+    class BlockingExecutor:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self, operation):
+            self.started.set()
+            await self.release.wait()
+            return operation()
+
+    executor = BlockingExecutor()
+    service = AgentChatPersistenceService(
+        repository=lambda _session: _Repository(),
+        async_executor=executor,
+        sync_transaction=lambda operation: operation(object()),
+    )
+    write = asyncio.create_task(
+        service.async_save_agent_messages(
+            session_id="shutdown-session", user_id="1", messages=[]
+        )
+    )
+    await executor.started.wait()
+    shutdown = asyncio.create_task(service.shutdown())
+    await asyncio.sleep(0)
+    assert not shutdown.done()
+    with pytest.raises(DatabaseWorkerClosedError):
+        await service.async_save_agent_messages(
+            session_id="new-session", user_id="1", messages=[]
+        )
+    executor.release.set()
+    await write
+    await shutdown
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() -> None:
     """真实 AgentChat Oper 经 worker 写入后可被 native async 查询恢复。"""
     worker = DatabaseWorker(max_workers=1, capacity=4)
     await worker.start()
     session_id = f"worker-{uuid4().hex}"
     persistence = AgentChatPersistenceService(
-        repository=AgentChatOper,
+        repository=lambda session: AgentChatOper(session),
         async_executor=worker,
+        sync_transaction=run_sync_transaction,
     )
     query = AgentChatService(repository=AgentChatOper())
 
@@ -221,8 +400,9 @@ async def test_agent_chat_persistence_serializes_same_session_writes() -> None:
     session_id = f"worker-race-{uuid4().hex}"
     existing_session_id = f"worker-race-existing-{uuid4().hex}"
     persistence = AgentChatPersistenceService(
-        repository=AgentChatOper,
+        repository=lambda session: AgentChatOper(session),
         async_executor=worker,
+        sync_transaction=run_sync_transaction,
     )
 
     async def append(content: str) -> None:

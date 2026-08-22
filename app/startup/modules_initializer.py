@@ -67,7 +67,9 @@ from app.application.messaging.chat import (
     AgentChatService,
     configure_agent_chat_persistence,
     configure_agent_chat_service,
+    get_configured_agent_chat_persistence,
 )
+from app.application.messaging.agent import shutdown_web_agent_background_tasks
 from app.application.security.user import configure_user_lookups
 from app.application.security.auth import AuthService, configure_auth_service
 from app.application.security.passkeys import PasskeyService, configure_passkey_service
@@ -576,6 +578,11 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
+    await run_step("Web Agent后台任务", shutdown_web_agent_background_tasks)
+    await run_step(
+        "Agent会话持久化",
+        lambda: get_configured_agent_chat_persistence().shutdown(),
+    )
     await run_step("数据库任务", stop_database_worker)
     if _database_worker is None:
         await run_step("数据库连接", close_database)
@@ -642,11 +649,18 @@ async def init_modules() -> HostRuntime:
         chain=lambda: build_chain_runtime_config(settings),
     )
     runtime_settings = _build_runtime_settings_service()
+    agent_chat_persistence = AgentChatPersistenceService(
+        repository=lambda session: AgentChatOper(session),
+        async_executor=database_worker,
+        sync_transaction=transaction_runner.sync,
+        capacity=database_worker.snapshot().capacity,
+    )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
             repository=AgentChatOper,
             transaction=SqlAlchemyAsyncUnitOfWork,
+            persistence=agent_chat_persistence,
         ),
         persistence=PersistenceRuntime(
             sync_session=get_db,
@@ -714,13 +728,7 @@ async def init_modules() -> HostRuntime:
     )
     configure_database_governance(build_database_governance())
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
-    configure_agent_chat_persistence(
-        AgentChatPersistenceService(
-            repository=AgentChatOper,
-            async_executor=database_worker,
-            capacity=database_worker.snapshot().capacity,
-        )
-    )
+    configure_agent_chat_persistence(agent_chat_persistence)
     configure_user_lookups(
         by_id=lambda user_id: UserOper().get_by_id(user_id),
         by_name=lambda username: UserOper().get_by_name(username),

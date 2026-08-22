@@ -6097,6 +6097,7 @@
     "app.startup.modules_initializer -> app.application.history",
     "app.startup.modules_initializer -> app.application.image",
     "app.startup.modules_initializer -> app.application.messaging",
+    "app.startup.modules_initializer -> app.application.messaging.agent",
     "app.startup.modules_initializer -> app.application.messaging.chat",
     "app.startup.modules_initializer -> app.application.messaging.message",
     "app.startup.modules_initializer -> app.application.module",

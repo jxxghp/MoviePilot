@@ -263,8 +263,9 @@ def configure_plugin_system_services():
     )
     configure_agent_chat_persistence(
         AgentChatPersistenceService(
-            repository=AgentChatOper,
+            repository=lambda session: AgentChatOper(session),
             async_executor=database_executor,
+            sync_transaction=transaction_runner.sync,
         )
     )
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))

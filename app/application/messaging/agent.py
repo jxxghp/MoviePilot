@@ -1,9 +1,10 @@
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from queue import Queue
 from threading import Lock
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from app.schemas.types import NotificationChannel
 
@@ -177,6 +178,26 @@ _WEB_AGENT_EDIT_QUEUES: dict[str, list[Queue[dict]]] = {}
 _WEB_AGENT_EDIT_LOCK = Lock()
 _ChannelAdminResolver = Callable[[Optional[dict]], Iterable[Union[str, int]]]
 _CHANNEL_ADMIN_RESOLVERS: dict[str, _ChannelAdminResolver] = {}
+_WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
+
+
+def create_web_agent_background_task(
+    coroutine: Awaitable[object],
+) -> asyncio.Task[object]:
+    """登记 Web Agent 后台任务，使应用关闭时可以统一收口。"""
+    task = asyncio.create_task(coroutine)
+    _WEB_AGENT_BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+    return task
+
+
+async def shutdown_web_agent_background_tasks() -> None:
+    """取消并等待 Web Agent 后台任务，避免关闭数据库后仍提交快照。"""
+    tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def register_channel_admin_resolver(

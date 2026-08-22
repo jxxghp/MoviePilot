@@ -4,6 +4,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.context import (
+    get_agent_chat_runtime,
     get_agent_chat_repository,
     get_agent_chat_transaction,
     get_async_session,
@@ -11,6 +12,7 @@ from app.api.context import (
 )
 from app.application.messaging.chat import (
     AgentChatService,
+    AgentChatPersistenceService,
     AsyncAgentChatRepository,
     AsyncUnitOfWork,
 )
@@ -24,6 +26,13 @@ def get_agent_chat_service(
 ) -> AgentChatService:
     """组装类型化 Agent 会话历史查询和删除服务。"""
     return AgentChatService(chat_repository, unit_of_work)
+
+
+def get_agent_chat_persistence(
+    runtime: HostRuntime = Depends(get_agent_chat_runtime),
+) -> AgentChatPersistenceService:
+    """从类型化 Agent 运行时获取有界会话写入端口。"""
+    return runtime.persistence
 
 
 def get_message_query_service(

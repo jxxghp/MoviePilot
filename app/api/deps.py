@@ -5,6 +5,7 @@
 """
 
 from app.api.dependencies.agent import (
+    get_agent_chat_persistence,
     get_agent_chat_service,
     get_message_query_service,
 )
@@ -52,6 +53,7 @@ from app.api.dependencies.workflow import (
 
 # 兼容聚合入口只显式列出既有 FastAPI 依赖，不向插件制造新的动态导出规则。
 __all__ = [
+    "get_agent_chat_persistence",
     "get_agent_chat_service",
     "get_auth_service",
     "get_current_active_manage_user",

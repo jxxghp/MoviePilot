@@ -10,6 +10,7 @@ from weakref import WeakValueDictionary
 
 from app.application.database import (
     AsyncDatabaseExecutor,
+    DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
@@ -17,6 +18,7 @@ from app.runtime.observability import record_metric
 
 
 DEFAULT_AGENT_CHAT_WRITE_CAPACITY = 32
+DEFAULT_AGENT_CHAT_SESSION_CAPACITY = 4
 
 
 def has_custom_agent_chat_title(value: Optional[str]) -> bool:
@@ -143,7 +145,8 @@ class SyncAgentChatRepository(Protocol):
         ...
 
 
-SyncAgentChatRepositoryFactory = Callable[[], SyncAgentChatRepository]
+SyncAgentChatRepositoryFactory = Callable[[object], SyncAgentChatRepository]
+SyncAgentChatTransaction = Callable[[Callable[[object], object]], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,15 +358,24 @@ class AgentChatPersistenceService:
         self,
         repository: SyncAgentChatRepositoryFactory,
         async_executor: AsyncDatabaseExecutor,
+        sync_transaction: SyncAgentChatTransaction,
         capacity: int = DEFAULT_AGENT_CHAT_WRITE_CAPACITY,
+        session_capacity: int = DEFAULT_AGENT_CHAT_SESSION_CAPACITY,
     ) -> None:
-        """保存同步仓储工厂和异步执行端口。"""
+        """保存同步仓储工厂、事务端口和两级写入容量。"""
         if capacity < 1:
             raise ValueError("AgentChat 写入容量必须大于 0")
+        if session_capacity < 1:
+            raise ValueError("AgentChat 单会话写入容量必须大于 0")
         self._repository = repository
         self._async_executor = async_executor
+        self._sync_transaction = sync_transaction
         self._capacity = capacity
+        self._session_capacity = session_capacity
         self._pending_writes = 0
+        self._pending_by_session: dict[str, int] = {}
+        self._active_tasks: set[asyncio.Task[object]] = set()
+        self._closing = False
         # append_display_messages 属于读取旧快照后整列写回的复合操作；按会话串行化，
         # 才能在 worker 并发下保持首次建行和既有会话追加的完整性。弱引用避免长期运行
         # 中为一次性会话永久保留锁对象，不限制不同会话之间的 worker 并行度。
@@ -383,24 +395,52 @@ class AgentChatPersistenceService:
         operation: Callable[[SyncAgentChatRepository], object],
     ) -> None:
         """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
-        # 会话锁前的等待也纳入固定总量，避免公开展示保存入口形成无界应用层队列。
-        if self._pending_writes >= self._capacity:
+        # 同时限制全局和单会话等待量，避免一个热点会话占满总 admission 后饿死其他会话。
+        if self._closing:
+            raise DatabaseWorkerClosedError("AgentChat 持久化服务当前不可接收任务")
+        session_pending = self._pending_by_session.get(session_id, 0)
+        if (
+            self._pending_writes >= self._capacity
+            or session_pending >= self._session_capacity
+        ):
             record_metric("agent.chat.persistence.rejected")
             raise DatabaseWorkerOverloadedError(
-                f"AgentChat 写入容量已用尽（上限 {self._capacity}）"
+                f"AgentChat 写入容量已用尽（全局上限 {self._capacity}，"
+                f"单会话上限 {self._session_capacity}）"
             )
         self._pending_writes += 1
-        record_metric("agent.chat.persistence.pending", self._pending_writes)
+        self._pending_by_session[session_id] = session_pending + 1
+        current = asyncio.current_task()
+        if current is not None:
+            self._active_tasks.add(current)
+        record_metric("agent.chat.persistence.pending", 1)
         try:
             async with self._session_lock(session_id):
                 def execute() -> None:
-                    """执行同步写入，不让 ORM 对象越过 worker 边界。"""
-                    operation(self._repository())
+                    """在单一同步事务中执行写入，不让 ORM 对象越过 worker 边界。"""
+                    self._sync_transaction(
+                        lambda session: operation(self._repository(session))
+                    )
 
                 await self._async_executor.run(execute)
         finally:
             self._pending_writes -= 1
-            record_metric("agent.chat.persistence.pending", self._pending_writes)
+            remaining = self._pending_by_session.get(session_id, 1) - 1
+            if remaining:
+                self._pending_by_session[session_id] = remaining
+            else:
+                self._pending_by_session.pop(session_id, None)
+            if current is not None:
+                self._active_tasks.discard(current)
+            record_metric("agent.chat.persistence.pending", -1)
+
+    async def shutdown(self) -> None:
+        """拒绝新写入并等待当前会话锁和 worker 操作取得终态。"""
+        self._closing = True
+        current = asyncio.current_task()
+        tasks = tuple(task for task in self._active_tasks if task is not current)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def async_append_display_messages(
         self,
