@@ -4,23 +4,31 @@ import ast
 from pathlib import Path
 from unittest.mock import Mock
 
-from app import scheduler as scheduler_module
 from app.scheduler import Scheduler
+from app.startup.scheduling import manifest as manifest_module
+from app.startup.scheduling import systemjobs as systemjobs_module
 
 
-class _SchedulerStub:
-    def __init__(self) -> None:
-        self.jobs = {}
-
-    def add_job(self, func, *, trigger, id, **kwargs) -> None:
-        self.jobs[id] = {"func": func, "trigger": trigger, **kwargs}
-
-
-def _scheduler() -> Scheduler:
-    scheduler = object.__new__(Scheduler)
-    scheduler._scheduler = _SchedulerStub()
-    scheduler._jobs = {}
-    return scheduler
+def _backup_jobs(monkeypatch) -> list:
+    """构建宿主作业清单并取出数据库备份作业。"""
+    monkeypatch.setattr(
+        manifest_module.ServiceConfigHelper,
+        "get_mediaserver_configs",
+        lambda: [],
+    )
+    for name in [
+        "MediaServerChain",
+        "RecommendChain",
+        "SchedulerChain",
+        "SiteChain",
+        "SubscribeChain",
+        "TransferChain",
+        "WallpaperHelper",
+        "PluginManager",
+    ]:
+        monkeypatch.setattr(manifest_module, name, Mock())
+    jobs = manifest_module.build_host_jobs(user_auth=lambda: None)
+    return [job for job in jobs if job.id == "database_backup"]
 
 
 def test_database_backup_schedule_only_watches_job_shape() -> None:
@@ -35,56 +43,56 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
 
 
 def test_disabled_database_backup_does_not_register_job(monkeypatch) -> None:
-    scheduler = _scheduler()
-    monkeypatch.setattr(scheduler_module.settings, "DB_BACKUP_ENABLE", False)
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_ENABLE", False)
 
-    scheduler._register_database_backup_job()
-
-    assert scheduler._scheduler.jobs == {}
+    assert _backup_jobs(monkeypatch) == []
 
 
 def test_enabled_database_backup_without_cron_does_not_register_job(monkeypatch) -> None:
     """总开关开启但未配置周期时，不启用定时备份。"""
-    scheduler = _scheduler()
-    monkeypatch.setattr(scheduler_module.settings, "DB_BACKUP_ENABLE", True)
-    monkeypatch.setattr(scheduler_module.settings, "DB_BACKUP_CRON", "")
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_ENABLE", True)
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_CRON", "")
 
-    scheduler._register_database_backup_job()
-
-    assert scheduler._scheduler.jobs == {}
+    assert _backup_jobs(monkeypatch) == []
 
 
 def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -> None:
-    scheduler = _scheduler()
     trigger = object()
-    monkeypatch.setattr(scheduler_module.settings, "DB_BACKUP_ENABLE", True)
-    monkeypatch.setattr(scheduler_module.settings, "DB_BACKUP_CRON", "0 3 * * *")
-    monkeypatch.setattr(scheduler_module.TimerUtils, "build_schedule_trigger", Mock(return_value=trigger))
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_ENABLE", True)
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_CRON", "0 3 * * *")
+    monkeypatch.setattr(
+        manifest_module.TimerUtils,
+        "build_schedule_trigger",
+        Mock(return_value=trigger),
+    )
 
-    scheduler._register_database_backup_job()
-    scheduler._register_database_backup_job()
+    jobs = _backup_jobs(monkeypatch)
 
-    assert list(scheduler._scheduler.jobs) == ["database_backup"]
-    assert scheduler._scheduler.jobs["database_backup"]["replace_existing"] is True
+    assert [job.id for job in jobs] == ["database_backup"]
+    assert len(jobs[0].triggers) == 1
+    assert jobs[0].triggers[0].trigger is trigger
+    assert jobs[0].triggers[0].replace_existing is True
 
 
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:
     governance = Mock()
-    monkeypatch.setattr(scheduler_module, "get_database_governance", lambda: governance)
+    monkeypatch.setattr(systemjobs_module, "get_database_governance", lambda: governance)
 
-    result = Scheduler.database_backup()
+    result = systemjobs_module.database_backup()
 
     assert result is governance.create_backup.return_value
     governance.create_backup.assert_called_once_with()
 
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
-    tree = ast.parse(
-        (Path(__file__).parents[1] / "app" / "scheduler.py").read_text(encoding="utf-8")
+    sources = (
+        Path(__file__).parents[1] / "app" / "scheduler" / "composition.py",
+        Path(__file__).parents[1] / "app" / "startup" / "scheduling" / "systemjobs.py",
     )
     function_imports = [
         node
-        for function in ast.walk(tree)
+        for source in sources
+        for function in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
         if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
         for node in ast.walk(function)
         if isinstance(node, (ast.Import, ast.ImportFrom))

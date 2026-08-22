@@ -1,11 +1,14 @@
 import asyncio
 import threading
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 
 from app.runtime.config import global_vars
+from app.runtime.scheduler import SchedulerEngine
 from app.scheduler import Scheduler
+from app.scheduler import composition as composition_module
 
 
 def _build_scheduler(job_id, func):
@@ -62,7 +65,7 @@ def test_scheduler_failure_preserves_last_progress(monkeypatch):
     scheduler = _build_scheduler(job_id, task)
     monkeypatch.setattr(
         scheduler,
-        "_Scheduler__handle_job_error",
+        "_SchedulerEngine__handle_job_error",
         lambda **kwargs: None,
     )
 
@@ -155,9 +158,9 @@ def test_scheduler_records_cancelled_async_job_as_failed():
         raise asyncio.CancelledError
 
     async def run_task():
-        job = scheduler._Scheduler__prepare_job(job_id)
+        job = scheduler._SchedulerEngine__prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
-            await scheduler._Scheduler__run_coro_job(task(), job_id, job)
+            await scheduler._SchedulerEngine__run_coro_job(task(), job_id, job)
 
     scheduler = _build_scheduler(job_id, task)
     asyncio.run(run_task())
@@ -177,3 +180,44 @@ def test_scheduler_returns_none_for_unknown_job():
     scheduler._jobs = {}
 
     assert scheduler.get_progress(job_id) is None
+
+
+def test_engine_routes_job_failure_through_the_host_hook(monkeypatch):
+    """引擎只经宿主钩子投递失败提示，自身不认识消息中心。"""
+    job_id = f"test-hook-{uuid4()}"
+
+    def task():
+        """直接抛出异常。"""
+        raise RuntimeError("预期失败")
+
+    scheduler = _build_scheduler(job_id, task)
+    notified = []
+    monkeypatch.setattr(
+        scheduler,
+        "notify_job_failure",
+        lambda title, message: notified.append((title, message)),
+    )
+
+    scheduler.start(job_id)
+
+    assert notified == [("测试定时服务 执行失败", "预期失败")]
+
+
+def test_engine_default_hook_does_not_reach_any_message_center():
+    """引擎默认实现不投递任何提示，宿主策略由组合根重写。"""
+    assert SchedulerEngine.notify_job_failure is not Scheduler.notify_job_failure
+    assert SchedulerEngine().notify_job_failure(title="t", message="m") is None
+
+
+def test_host_hook_puts_a_system_message(monkeypatch):
+    """组合根把失败提示投递到消息中心的系统通道。"""
+    message_helper = Mock()
+    monkeypatch.setattr(
+        composition_module, "MessageHelper", lambda: message_helper
+    )
+
+    object.__new__(Scheduler).notify_job_failure(title="标题", message="正文")
+
+    message_helper.put.assert_called_once_with(
+        title="标题", message="正文", role="system"
+    )

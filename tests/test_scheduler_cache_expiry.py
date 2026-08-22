@@ -1,9 +1,12 @@
 import threading
 from unittest.mock import Mock
 
-from app import scheduler as scheduler_module
+from app.scheduler import composition as scheduler_module
 from app.scheduler import Scheduler
 from app.startup import scheduler_initializer
+from app.scheduler import workflows as workflows_module
+from app.startup.scheduling import manifest as manifest_module
+from app.startup.scheduling.systemjobs import UserAuthChecker
 
 
 class _BackgroundSchedulerStub:
@@ -57,12 +60,12 @@ def test_clear_cache_is_manual_only(monkeypatch):
         "SubscribeChain",
         "TransferChain",
         "WallpaperHelper",
-        "WorkflowChain",
         "PluginManager",
     ]:
-        monkeypatch.setattr(scheduler_module, name, lambda: generic_chain)
+        monkeypatch.setattr(manifest_module, name, lambda: generic_chain)
+    monkeypatch.setattr(workflows_module, "WorkflowChain", lambda: generic_chain)
     monkeypatch.setattr(
-        scheduler_module.ServiceConfigHelper,
+        manifest_module.ServiceConfigHelper,
         "get_mediaserver_configs",
         lambda: [],
     )
@@ -76,15 +79,16 @@ def test_clear_cache_is_manual_only(monkeypatch):
     monkeypatch.setattr(Scheduler, "init_agent_task_jobs", lambda self: None)
     monkeypatch.setattr(Scheduler, "init_plugin_jobs", lambda self: None)
     monkeypatch.setattr(scheduler_module.settings, "DEV", False)
-    monkeypatch.setattr(scheduler_module.settings, "COOKIECLOUD_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_SEARCH", False)
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_MODE", "rss")
-    monkeypatch.setattr(scheduler_module.settings, "SUBSCRIBE_RSS_INTERVAL", 30)
-    monkeypatch.setattr(scheduler_module.settings, "SITEDATA_REFRESH_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "MEMORY_GC_INTERVAL", 0)
-    monkeypatch.setattr(scheduler_module.settings, "AI_AGENT_ENABLE", False)
-    monkeypatch.setattr(scheduler_module.settings, "DATA_CLEANUP_ENABLE", False)
-    monkeypatch.setattr(scheduler_module.settings, "USAGE_STATISTIC_SHARE", False)
+    monkeypatch.setattr(manifest_module.settings, "COOKIECLOUD_INTERVAL", 0)
+    monkeypatch.setattr(manifest_module.settings, "SUBSCRIBE_SEARCH", False)
+    monkeypatch.setattr(manifest_module.settings, "SUBSCRIBE_MODE", "rss")
+    monkeypatch.setattr(manifest_module.settings, "SUBSCRIBE_RSS_INTERVAL", 30)
+    monkeypatch.setattr(manifest_module.settings, "SITEDATA_REFRESH_INTERVAL", 0)
+    monkeypatch.setattr(manifest_module.settings, "MEMORY_GC_INTERVAL", 0)
+    monkeypatch.setattr(manifest_module.settings, "AI_AGENT_ENABLE", False)
+    monkeypatch.setattr(manifest_module.settings, "DATA_CLEANUP_ENABLE", False)
+    monkeypatch.setattr(manifest_module.settings, "USAGE_STATISTIC_SHARE", False)
+    monkeypatch.setattr(manifest_module.settings, "DB_BACKUP_ENABLE", False)
 
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = None
@@ -92,8 +96,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._agent_task_interruptions_reconciled = True
-    scheduler._auth_count = 0
-    scheduler._auth_message = False
+    scheduler._user_auth = UserAuthChecker(on_authenticated=lambda: None)
 
     scheduler.init()
 

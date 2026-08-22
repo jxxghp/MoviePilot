@@ -208,6 +208,8 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
     assert {owner.__name__ for owner in factories} == {
         "Command",
         "DownloadChain",
+        # 插件重载处理器声明在混入类上，其实例由调度器组合根提供
+        "PluginScheduling",
         "Scheduler",
         "ScrapingChain",
         "SearchChain",

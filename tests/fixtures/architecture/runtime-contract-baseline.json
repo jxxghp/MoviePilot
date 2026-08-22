@@ -2133,8 +2133,8 @@
       "EventType.PluginReload": {
         "consumers": [
           {
-            "caller": "app.scheduler",
-            "line": 1179
+            "caller": "app.scheduler.plugins",
+            "line": 31
           }
         ],
         "producers": [
@@ -2299,8 +2299,8 @@
             "line": 121
           },
           {
-            "caller": "app.scheduler",
-            "line": 799
+            "caller": "app.runtime.scheduler",
+            "line": 297
           }
         ]
       },
