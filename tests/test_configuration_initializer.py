@@ -102,3 +102,39 @@ async def test_modules_startup_failure_stops_database_worker(monkeypatch) -> Non
         await initialize_modules_component(object())
 
     stop_worker.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_modules_startup_failure_preserves_original_error_when_cleanup_fails(
+        monkeypatch,
+) -> None:
+    """数据库任务清理失败时仍向上层保留原始启动异常。"""
+    monkeypatch.setattr(
+        "app.startup.lifecycle.init_modules",
+        AsyncMock(side_effect=RuntimeError("startup failed")),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_database_worker",
+        AsyncMock(side_effect=RuntimeError("cleanup failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        await initialize_modules_component(object())
+
+
+@pytest.mark.asyncio
+async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch) -> None:
+    """数据库 worker 关闭失败时保留 owner，允许后续重试或诊断。"""
+
+    class _FailingWorker:
+        async def shutdown(self):
+            raise RuntimeError("shutdown failed")
+
+    worker = _FailingWorker()
+    monkeypatch.setattr(modules_initializer, "_database_worker", worker)
+
+    with pytest.raises(RuntimeError, match="shutdown failed"):
+        await modules_initializer.stop_database_worker()
+
+    assert modules_initializer._database_worker is worker

@@ -91,3 +91,39 @@ async def test_async_write_uses_same_repository_rule() -> None:
         username="async-user",
         key="theme",
     ).value == "dark"
+
+
+def test_existing_falsey_value_is_removed_from_db_but_kept_until_reload(db) -> None:
+    """已有用户配置写入假值时删除记录，当前快照仍保留该假值直到重载。"""
+    db.watermark(UserConfig)
+    oper = _fresh_oper()
+
+    oper.set("falsey-user", "enabled", True)
+    oper.set("falsey-user", "enabled", False)
+
+    assert UserConfig.get_by_key(
+        oper._db,
+        username="falsey-user",
+        key="enabled",
+    ) is None
+    assert oper.get("falsey-user", "enabled") is False
+
+    oper.load_snapshot()
+    assert oper.get("falsey-user", "enabled") is None
+
+
+def test_falsey_value_without_existing_row_is_persisted(db) -> None:
+    """不存在的用户配置写入假值时保留记录，兼容历史写入规则。"""
+    db.watermark(UserConfig)
+    oper = _fresh_oper()
+
+    oper.set("new-falsey-user", "enabled", False)
+
+    persisted = UserConfig.get_by_key(
+        oper._db,
+        username="new-falsey-user",
+        key="enabled",
+    )
+    assert persisted is not None
+    assert persisted.value is False
+    assert oper.get("new-falsey-user", "enabled") is False

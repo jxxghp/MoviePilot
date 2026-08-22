@@ -1,5 +1,7 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from app.application.server.report import ServerReportService
 
@@ -11,6 +13,7 @@ def _service(**overrides) -> ServerReportService:
         "config_writer": Mock(),
         "installed_plugins_provider": Mock(return_value=[]),
         "subscribes_provider": Mock(return_value=[]),
+        "async_subscribes_provider": AsyncMock(return_value=[]),
         "plugin_report_sender": Mock(
             return_value=SimpleNamespace(status_code=200)
         ),
@@ -18,6 +21,8 @@ def _service(**overrides) -> ServerReportService:
         "subscribe_report_sender": Mock(
             return_value=SimpleNamespace(status_code=200)
         ),
+        "async_subscribe_report_sender": AsyncMock(),
+        "async_config_writer": AsyncMock(),
         "repo_url_sanitizer": lambda value: value,
     }
     defaults.update(overrides)
@@ -60,6 +65,44 @@ def test_initial_report_marker_is_written_only_after_success():
     )
 
     writer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_initial_report_marker_uses_async_writer_after_success():
+    """异步首次上报成功后只通过异步配置端口写完成标记。"""
+    sync_writer = Mock()
+    async_writer = AsyncMock()
+    reporter = AsyncMock(return_value=True)
+    service = _service(
+        config_writer=sync_writer,
+        async_config_writer=async_writer,
+    )
+
+    await service.async_init_report(
+        enabled=True,
+        state_key="report",
+        reporter=reporter,
+    )
+
+    reporter.assert_awaited_once_with()
+    async_writer.assert_awaited_once_with("report", "1")
+    sync_writer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_report_uses_async_reader():
+    """异步订阅上报通过异步读取端口获取数据，不在事件循环内查同步库。"""
+    sync_reader = Mock(side_effect=AssertionError("不应调用同步订阅读取"))
+    async_reader = AsyncMock(return_value=[])
+    service = _service(
+        subscribes_provider=sync_reader,
+        async_subscribes_provider=async_reader,
+    )
+
+    assert await service.async_report_subscribes(enabled=True) is True
+
+    sync_reader.assert_not_called()
+    async_reader.assert_awaited_once_with()
 
 
 def test_plugin_report_sanitizes_explicit_sources_before_transport():

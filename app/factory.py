@@ -14,6 +14,7 @@ from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
+from app.application.database import DatabaseWorkerOverloadedError
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,
@@ -222,6 +223,21 @@ async def localized_http_exception_handler(
     )
 
 
+async def database_worker_overloaded_handler(
+        request: Request,
+        _exc: DatabaseWorkerOverloadedError,
+) -> JSONResponse:
+    """将数据库短事务背压映射为可重试的 503 响应。"""
+    return await localized_http_exception_handler(
+        request,
+        HTTPException(
+            status_code=503,
+            detail="服务当前繁忙，请稍后重试",
+            headers={"Retry-After": "1"},
+        ),
+    )
+
+
 async def localized_validation_exception_handler(
         request: Request,
         exc: RequestValidationError,
@@ -306,6 +322,10 @@ def create_app() -> FastAPI:
     )
 
     _app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    _app.add_exception_handler(
+        DatabaseWorkerOverloadedError,
+        database_worker_overloaded_handler,
+    )
     _app.add_exception_handler(
         RequestValidationError,
         localized_validation_exception_handler,

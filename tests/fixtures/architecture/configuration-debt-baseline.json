@@ -4,7 +4,8 @@
     "excluded": [
       "app/plugins",
       "app/sdk",
-      "app/runtime/compat"
+      "app/runtime/compat",
+      "app/testing"
     ],
     "root": "app"
   },

@@ -57,6 +57,7 @@ from app.api.dependencies.plugin import (
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.application.database import DatabaseWorkerOverloadedError
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -879,6 +880,8 @@ async def save_plugin_folders(
             folders,
         )
         return _SchemaResponse(success=True)
+    except DatabaseWorkerOverloadedError:
+        raise
     except Exception as e:
         logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
         return _SchemaResponse(success=False, message=str(e))

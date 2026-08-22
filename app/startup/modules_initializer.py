@@ -165,9 +165,9 @@ async def stop_database_worker() -> None:
     """停止当前进程的数据库短事务 worker。"""
     global _database_worker
     worker = _database_worker
-    _database_worker = None
     if worker is not None:
         await worker.shutdown()
+        _database_worker = None
 
 
 async def _initialize_configuration_services(
@@ -237,15 +237,20 @@ def configure_runtime_data_providers() -> None:
         report_service=ServerReportService(
             config_reader=lambda key: get_configured_system_config().get(key),
             config_writer=lambda key, value: get_configured_system_config().set(key, value),
+            async_config_writer=lambda key, value: get_configured_system_config().async_set(
+                key, value
+            ),
             installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             subscribes_provider=lambda: SubscribeOper().list(),
+            async_subscribes_provider=lambda: SubscribeOper().async_list(),
             plugin_report_sender=MoviePilotServerHelper.plugin_install_report,
             async_plugin_report_sender=(
                 MoviePilotServerHelper.async_plugin_install_report
             ),
             subscribe_report_sender=MoviePilotServerHelper.subscribe_report,
+            async_subscribe_report_sender=MoviePilotServerHelper.async_subscribe_report,
             repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
         ),
         sharing_service=ServerSharingService(
@@ -542,7 +547,10 @@ async def stop_modules():
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
     await run_step("数据库任务", stop_database_worker)
-    await run_step("数据库连接", close_database)
+    if _database_worker is None:
+        await run_step("数据库连接", close_database)
+    else:
+        logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
 
@@ -567,7 +575,10 @@ async def init_modules() -> HostRuntime:
     try:
         await _initialize_configuration_services(database_worker)
     except BaseException:
-        await stop_database_worker()
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
@@ -731,8 +742,8 @@ async def init_modules() -> HostRuntime:
     # 启动事件消费
     EventManager().start()
     # 初始化共享服务端状态
-    MoviePilotServerHelper.init_plugin_report()
-    MoviePilotServerHelper.init_subscribe_report()
+    await MoviePilotServerHelper.async_init_plugin_report()
+    await MoviePilotServerHelper.async_init_subscribe_report()
     MoviePilotServerHelper.get_user_uuid()
     MoviePilotServerHelper.get_github_user()
     # 初始化AI智能体

@@ -135,7 +135,10 @@ async def initialize_modules_component(app: FastAPI) -> None:
     except BaseException:
         from app.startup.modules_initializer import stop_database_worker
 
-        await stop_database_worker()
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
     if runtime is not None:
         app.state.host_runtime = runtime

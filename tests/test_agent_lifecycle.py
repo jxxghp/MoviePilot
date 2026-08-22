@@ -123,15 +123,15 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch.setattr(modules_initializer, "user_auth", MagicMock())
     monkeypatch.setattr(modules_initializer.EventManager, "start", MagicMock())
     for name in (
-        "init_plugin_report",
-        "init_subscribe_report",
+        "async_init_plugin_report",
+        "async_init_subscribe_report",
         "get_user_uuid",
         "get_github_user",
     ):
         monkeypatch.setattr(
             modules_initializer.MoviePilotServerHelper,
             name,
-            MagicMock(),
+            AsyncMock() if name.startswith("async_") else MagicMock(),
         )
     start_frontend = MagicMock()
     check_auth = MagicMock()

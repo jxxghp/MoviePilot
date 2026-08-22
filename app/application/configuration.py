@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, cast
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.types import MediaType
@@ -315,7 +315,8 @@ class SystemConfigService:
         """异步写入配置，并等待数据库提交或回滚完成。"""
         if self._async_executor is None:
             raise RuntimeError("系统配置异步数据库执行端口尚未配置")
-        return await self._async_executor.run(partial(self._writer.set, key, value))
+        result = await self._async_executor.run(partial(self._writer.set, key, value))
+        return cast(bool | None, result)
 
     def delete(self, key: Any) -> Any:
         """删除配置。"""

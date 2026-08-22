@@ -2,6 +2,8 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
+from scripts.architecture.baseline import iter_runtime_import_nodes
+
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
@@ -156,7 +158,7 @@ def _resolve_imports(
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
     dependencies: set[str] = set()
-    for node in ast.walk(tree):
+    for node in iter_runtime_import_nodes(tree):
         candidates: list[str] = []
         if isinstance(node, ast.Import):
             candidates.extend(alias.name for alias in node.names)

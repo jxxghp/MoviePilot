@@ -17,10 +17,12 @@ from app.api.response import (
     ResponseAPIRouter,
 )
 from app.factory import (
+    database_worker_overloaded_handler,
     localized_http_exception_handler,
     localized_unhandled_exception_handler,
     localized_validation_exception_handler,
 )
+from app.application.database import DatabaseWorkerOverloadedError
 from app.runtime.localization import LocaleHelper
 from app.schemas.common import JsonData
 from app.schemas.response import Response
@@ -59,6 +61,10 @@ def api_app() -> FastAPI:
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
     app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    app.add_exception_handler(
+        DatabaseWorkerOverloadedError,
+        database_worker_overloaded_handler,
+    )
     from fastapi.exceptions import RequestValidationError
 
     app.add_exception_handler(
@@ -111,6 +117,11 @@ def api_app() -> FastAPI:
     async def get_crash() -> Item:
         """抛出需要隐藏内部细节的未捕获异常。"""
         raise RuntimeError("private failure detail")
+
+    @app.get("/database-busy")
+    async def get_database_busy() -> None:
+        """模拟数据库短事务容量耗尽。"""
+        raise DatabaseWorkerOverloadedError("worker full")
 
     @app.get("/native", response_model=None)
     async def get_native_response() -> dict[str, bool]:
@@ -188,6 +199,22 @@ async def test_accept_language_localizes_success_and_http_error(api_app: FastAPI
         "data": None,
     }
     assert zh_error_response.json()["message"] == "用户名或密码错误"
+
+
+async def test_database_worker_overload_is_retryable_service_unavailable(
+        api_app: FastAPI,
+):
+    """数据库 worker 背压应返回 503，而不是伪装成未知错误。"""
+    async with make_client(api_app) as client:
+        response = await client.get("/database-busy")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "1"
+    assert response.json() == {
+        "success": False,
+        "message": "服务当前繁忙，请稍后重试",
+        "data": None,
+    }
 
 
 async def test_validation_error_uses_unified_model(api_app: FastAPI):

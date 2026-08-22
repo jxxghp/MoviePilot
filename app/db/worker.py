@@ -10,18 +10,17 @@ from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
+from app.application.database import (
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+)
 from app.runtime.observability import record_metric
 
 
 T = TypeVar("T")
 
-
-class DatabaseWorkerClosedError(RuntimeError):
-    """数据库执行器尚未启动或已经停止。"""
-
-
-class DatabaseWorkerOverloadedError(RuntimeError):
-    """数据库执行器的运行与排队容量已经用尽。"""
+DATABASE_WORKER_MAX_WORKERS = 4
+DATABASE_WORKER_CAPACITY = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +46,12 @@ class _WorkItem:
 class DatabaseWorker:
     """以有限线程和队列执行不能原生异步化的数据库短事务。"""
 
-    def __init__(self, *, max_workers: int = 4, capacity: int = 32) -> None:
+    def __init__(
+        self,
+        *,
+        max_workers: int = DATABASE_WORKER_MAX_WORKERS,
+        capacity: int = DATABASE_WORKER_CAPACITY,
+    ) -> None:
         """保存容量配置，线程只在显式启动后创建。"""
         if max_workers < 1:
             raise ValueError("数据库 worker 线程数必须大于 0")
