@@ -11,6 +11,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: moviepilot-v3-release
+  cancel-in-progress: false
+
 jobs:
   Docker-build:
     runs-on: ubuntu-latest
@@ -269,6 +273,35 @@ jobs:
           ignore-unfixed: true
           trivyignores: .trivyignore.yaml
           exit-code: 1
+
+      - name: Verify release generation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_GENERATION: ${{ github.run_id }}.${{ github.run_attempt }}
+        run: |
+          latest_release=$(gh api "repos/${{ github.repository }}/releases/latest")
+          asset_count=$(jq '[.assets[]? | select(.name == "source-update-payload.json")] | length' <<< "$latest_release")
+          if [ "$asset_count" -eq 0 ]; then
+            echo "当前正式 Release 尚未提供源码更新身份，允许首次迁移发布"
+            exit 0
+          fi
+          if [ "$asset_count" -ne 1 ]; then
+            echo "当前正式 Release 的源码更新身份资产不唯一" >&2
+            exit 1
+          fi
+
+          latest_tag=$(jq -er '.tag_name' <<< "$latest_release")
+          published_payload=$(mktemp)
+          trap 'rm -f "$published_payload"' EXIT
+          gh release download "$latest_tag" \
+            --repo "${{ github.repository }}" \
+            --pattern source-update-payload.json \
+            --output "$published_payload"
+          published_generation=$(jq -er \
+            'select(.schema_version == 2 and .channel == "release") | .release_generation' \
+            "$published_payload")
+          python3 scripts/check_release_generation.py \
+            "$RELEASE_GENERATION" "$published_generation"
 
       - name: Login DockerHub
         uses: docker/login-action@v3

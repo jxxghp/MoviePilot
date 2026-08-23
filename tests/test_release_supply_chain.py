@@ -1,5 +1,7 @@
 """正式镜像发布的供应链门禁合同。"""
 
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from ruamel.yaml import YAML
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
+RELEASE_GENERATION_CHECK = ROOT / "scripts" / "check_release_generation.py"
 TRIVY_IGNORE = ROOT / ".trivyignore.yaml"
 
 
@@ -147,3 +150,48 @@ def test_release_binds_source_update_identity_to_image_payload() -> None:
     )
     assert "sha256=" in generate["run"]
     assert release["with"]["files"] == ".build/source-update-payload.json"
+
+
+def test_release_serializes_writers_and_checks_generation_before_mutation() -> None:
+    """正式发布必须串行，并在写入镜像、Tag 或 Release 前拒绝旧代际。"""
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["Docker-build"]["steps"]
+    names = [step.get("name") for step in steps]
+    verify = _steps_by_name(workflow)["Verify release generation"]["run"]
+
+    assert workflow["concurrency"] == {
+        "group": "moviepilot-v3-release",
+        "cancel-in-progress": False,
+    }
+    verify_index = names.index("Verify release generation")
+    for mutation in (
+        "Publish multi-architecture image",
+        "Delete Release",
+        "Publish Release Tag",
+        "Generate Release",
+    ):
+        assert verify_index < names.index(mutation)
+    assert "releases/latest" in verify
+    assert "source-update-payload.json" in verify
+    assert "scripts/check_release_generation.py" in verify
+
+
+def test_release_generation_gate_rejects_late_old_run() -> None:
+    """A/B 发布乱序时仅允许不早于已发布代际的任务继续。"""
+    cases = (
+        ("200.1", "100.1", 0),
+        ("200.2", "200.1", 0),
+        ("200.2", "200.2", 0),
+        ("100.1", "200.1", 1),
+        ("200.1", "200.2", 1),
+        ("invalid", "200.1", 2),
+    )
+
+    for candidate, published, expected_code in cases:
+        result = subprocess.run(
+            [sys.executable, str(RELEASE_GENERATION_CHECK), candidate, published],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == expected_code
