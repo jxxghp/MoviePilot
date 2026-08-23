@@ -648,6 +648,44 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
     stop_database_worker.assert_awaited_once_with()
 
 
+@pytest.mark.asyncio
+async def test_shutdown_timeout_has_hard_bound_for_nonconverging_cleanup() -> None:
+    """关闭收尾不响应取消时，生命周期调用仍必须在预算内返回。"""
+    started = asyncio.Event()
+    cancel_requested = asyncio.Event()
+    release = asyncio.Event()
+    settled = asyncio.Event()
+
+    async def nonconverging_shutdown() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancel_requested.set()
+            await release.wait()
+            settled.set()
+            raise
+
+    started_at = asyncio.get_running_loop().time()
+    shutdown = asyncio.create_task(
+        lifecycle.run_shutdown_step(
+            "不可收敛阶段",
+            nonconverging_shutdown,
+            timeout_seconds=0.01,
+        )
+    )
+    await started.wait()
+    await shutdown
+
+    elapsed = asyncio.get_running_loop().time() - started_at
+    assert elapsed < 0.2
+    await asyncio.wait_for(cancel_requested.wait(), timeout=0.2)
+    assert not settled.is_set()
+
+    release.set()
+    await asyncio.wait_for(settled.wait(), timeout=0.2)
+
+
 def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}
