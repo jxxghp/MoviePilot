@@ -13,7 +13,7 @@ from app.application.messaging.media import (
     media_interaction_manager,
 )
 from app.application.torrent import TorrentHelper
-from app.application.chain.data import UserPortProxy as UserOper
+from app.application.chain.data import get_chain_user_port
 from app.domain import episode as episode_rules
 from app.domain import title as title_rules
 from app.domain.context import Context, MediaInfo
@@ -669,7 +669,9 @@ class MediaInteractionChain(ChainBase):
                 return
 
         mp_name = (
-            UserOper().get_name(**{f"{channel.name.lower()}_userid": userid})
+            get_chain_user_port().get_name(
+                **{f"{channel.name.lower()}_userid": userid}
+            )
             if channel
             else None
         )
@@ -980,7 +982,9 @@ class MediaInteractionChain(ChainBase):
             note = None
 
         mp_name = (
-            UserOper().get_name(**{f"{channel.name.lower()}_userid": userid})
+            get_chain_user_port().get_name(
+                **{f"{channel.name.lower()}_userid": userid}
+            )
             if channel
             else None
         )

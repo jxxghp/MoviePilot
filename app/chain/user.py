@@ -4,7 +4,7 @@ from typing import Any, Literal, Optional, Tuple, Union
 
 from app.chain import ChainBase
 from app.application.security.token import get_password_hash, verify_password
-from app.application.chain.data import UserPortProxy as UserOper
+from app.application.chain.data import get_chain_user_port
 from app.runtime.log import logger
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials
@@ -116,7 +116,7 @@ class UserChain(ChainBase):
             logger.info("密码认证失败，认证类型不匹配")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
 
-        user = UserOper().get_by_name(name=credentials.username)
+        user = get_chain_user_port().get_by_name(name=credentials.username)
         if not user:
             logger.info(f"密码认证失败，用户 {credentials.username} 不存在")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -144,7 +144,7 @@ class UserChain(ChainBase):
             return False, "认证凭证无效"
 
         # 检查是否因为用户被禁用
-        useroper = UserOper()
+        useroper = get_chain_user_port()
         if credentials.username:
             user = useroper.get_by_name(name=credentials.username)
             if user and not user.is_active:
@@ -232,7 +232,7 @@ class UserChain(ChainBase):
                 return False
 
         # 检查用户是否存在，如果不存在且当前为密码认证时则创建新用户
-        useroper = UserOper()
+        useroper = get_chain_user_port()
         user = useroper.get_by_name(name=username)
         if user:
             # 如果用户存在，但是已经被禁用，则直接响应

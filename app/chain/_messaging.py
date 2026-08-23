@@ -8,7 +8,7 @@ import copy
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from app.application.chain.data import UserPortProxy as UserOper
+from app.application.chain.data import get_chain_user_port
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
@@ -168,7 +168,7 @@ class NotificationMixin:
                 # 是否已发送管理员标志
                 admin_sended = False
                 send_orignal = False
-                useroper = UserOper()
+                useroper = get_chain_user_port()
                 for action in actions:
                     send_message = copy.deepcopy(dispatch_message)
                     if action == "admin" and not admin_sended:
@@ -286,7 +286,7 @@ class NotificationMixin:
                 # 是否已发送管理员标志
                 admin_sended = False
                 send_orignal = False
-                useroper = UserOper()
+                useroper = get_chain_user_port()
                 for action in actions:
                     send_message = copy.deepcopy(dispatch_message)
                     if action == "admin" and not admin_sended:
