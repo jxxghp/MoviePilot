@@ -917,9 +917,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         job_name = job.get("name") if job else job_id
         # 收尾可能发生在事件循环上（__run_coro_job），使用异步进度后端避免阻塞
         progress = AsyncProgressHelper(self._get_progress_key(job_id))
-        current_progress = await progress.get() or {}
-        progress_value = 100 if success else current_progress.get("value", 0)
         try:
+            current_progress = await progress.get() or {}
+            progress_value = 100 if success else current_progress.get("value", 0)
             await progress.end(
                 text=f"{job_name} {'执行完成' if success else '执行失败'}",
                 data={
@@ -1198,17 +1198,21 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 and not target_loop.is_closed()
             )
             if running_loop and (not target_loop_available or running_loop is target_loop):
+                started = threading.Event()
+
+                async def run_owned_job() -> None:
+                    started.set()
+                    await self.__run_coro_job(
+                        coro_factory=coro_factory,
+                        job_id=job_id,
+                        job=job,
+                        generation=generation,
+                    )
+
                 with self._lock:
                     if not self._accepts_handle(job_id, generation):
                         return False, False
-                    handle = running_loop.create_task(
-                        self.__run_coro_job(
-                            coro_factory=coro_factory,
-                            job_id=job_id,
-                            job=job,
-                            generation=generation,
-                        ),
-                    )
+                    handle = running_loop.create_task(run_owned_job())
                     registered = self._register_handle(
                         job_id=job_id,
                         generation=generation,
@@ -1219,7 +1223,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     def _finish_cancelled_before_start(
                             submitted: asyncio.Future[Any],
                     ) -> None:
-                        if submitted.cancelled():
+                        if submitted.cancelled() and not started.is_set():
                             self._finish_unsubmitted_job(
                                 job_id=job_id,
                                 job=job,
