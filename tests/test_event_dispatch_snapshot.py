@@ -1,7 +1,11 @@
-"""事件调度订阅快照的并发回归测试。"""
+"""事件调度订阅快照和生命周期回归测试。"""
+
+import asyncio
+import threading
 
 import pytest
 
+from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.schemas.types import ChainEventType, EventType
 
@@ -36,6 +40,26 @@ def isolated_eventmanager(monkeypatch):
         eventmanager,
         "_EventManager__executor",
         _ImmediateExecutor(),
+    )
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__event",
+        threading.Event(),
+    )
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__consumer_threads",
+        [],
+    )
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__lifecycle_state",
+        "new",
+    )
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__async_handles",
+        {},
     )
     return eventmanager
 
@@ -158,3 +182,46 @@ async def test_async_chain_dispatch_uses_subscription_snapshot(
     calls.clear()
     assert await dispatch(Event(ChainEventType.NameRecognize, {})) is True
     assert calls == ["mutating", "late"]
+
+
+@pytest.mark.asyncio
+async def test_async_broadcast_handles_are_cancelled_on_shutdown(isolated_eventmanager):
+    """事件总线关闭时必须取消并收口已投递的异步广播处理器。"""
+    global_vars.set_loop(asyncio.get_running_loop())
+    handler_count = 5
+    active = 0
+    cancelled = 0
+    all_active = asyncio.Event()
+
+    async def handler(_event):
+        nonlocal active, cancelled
+        active += 1
+        if active == handler_count:
+            all_active.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+    isolated_eventmanager.start()
+    consumer_threads = tuple(isolated_eventmanager._EventManager__consumer_threads)
+    for _ in range(handler_count):
+        isolated_eventmanager.send_event(
+            EventType.ConfigChanged,
+            {"key": {"shutdown"}},
+        )
+
+    await asyncio.wait_for(all_active.wait(), timeout=2)
+    assert len(isolated_eventmanager._EventManager__async_handles) == handler_count
+
+    await isolated_eventmanager.stop_async()
+    await asyncio.sleep(0)
+
+    assert cancelled == handler_count
+    assert isolated_eventmanager._EventManager__async_handles == {}
+    assert not any(
+        thread.is_alive()
+        for thread in consumer_threads
+    )
